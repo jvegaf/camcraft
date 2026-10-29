@@ -54,8 +54,13 @@ no new scope.
   needed to *represent* it.
 - **A4** — `Region::normalize()` resolves every crossing between its boundaries by splitting them at
   the intersections, discarding pieces on the wrong side of the parity, and chaining what is left into
-  closed contours (`cam_geom::chain`). The result has no crossings between boundaries, so the even-odd
-  rule and the boundary orientation agree. Input with no crossings is returned unchanged and arc-exact.
+  closed contours. The result has no crossings between boundaries, so the even-odd rule and the boundary
+  orientation agree. Input with no crossings is returned unchanged and arc-exact. Two corrections made
+  while implementing (L7): the chaining is **not** `cam_geom::chain` — `chain` matches endpoints
+  greedily and every crossing is a four-way vertex where the greedy match rejoins a piece to its own
+  boundary's continuation and returns the input, crossings included — so the pieces are walked with an
+  angular continuation rule that turns at a crossing instead of passing through it; and normalizing is
+  **parity-preserving, not a union** (D-RB-8).
 - **A5** — `Region::subtract(hole)` appends the boundary and normalizes (A3, A4), so subtracting an
   island from a pocket is one call and the result stays a `Region`, not a special "pocket shape".
 - **A6** — `Region::offset(distance)` moves each boundary the way that grows the material: outer
@@ -113,6 +118,13 @@ no new scope.
 - **D-RB-6 — The offset distance proof lives in one place.** A6 reuses the rule M4 put in
   `pocket.rs::clears_boundary` (each vertex at least `distance − slack` from the original boundary),
   moved into the kernel so the pocket and any later consumer cannot drift apart.
+- **D-RB-8 — Normalization preserves parity; it is not a union.** Overlapping boundaries describe their
+  **symmetrical difference**, because `Region::contains` is parity (D-RB-2) and `subtract` works by
+  appending a boundary (A5). A union would need boundary orientation to decide which side is inside,
+  which is exactly what D-RB-2 refuses, and it would be a new operation rather than a normalization.
+  This does not weaken the pocket: an island that overlaps its boundary, and two islands that overlap,
+  are refused by validation (A9), so a valid pocket never needs a union — it needs subtraction, which
+  parity gives for free.
 - **D-RB-7 — No UI in this feature.** Same boundary as D-M4-8: the authoring surface is
   `cam-cli toolpath`. The shell keeps its M2 authoring surface and gains nothing here.
 
@@ -274,7 +286,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | --- | --- | --- |
 | K1 | this commit | 9 tests (`crates/cam-geom/tests/winding.rs`). Analytic winding with arcs, `Membership::{Outside, OnBoundary, Inside}`, tolerance-driven boundary test, open contours enclose nothing, and a property test against a fine tessellation over three shapes (a circle, a four-bulge shape, a three-arc shape) |
 | K2 | this commit | 11 tests (`crates/cam-geom/tests/relation.rs`): circle in square and the inverse, arc in arc, overlapping squares, plate crossing a circle, disjoint squares, shared edge, internal tangency, identical contours, the C notch (bounds contain, geometry does not), the tolerance changing "meeting" into "apart", and a property test for antisymmetry |
-| K3 | _pending_ | |
+| K3 | `85b4b6e` | 15 tests. Overlapping squares → 2 contours, 6 vertices, 75 mm² each (parity, D-RB-8); touching squares → 1 contour of 200 mm² whose perimeter is 60 mm, so the shared edge is not doubled; square + edge-crossing circle → 74.867 + 25.133 mm² with every surviving arc at radius 4 and its original centre; a plus sign (4 crossings) → 4 contours of 100 mm²; a bulge the model cannot hold is rebuilt and `flattened` says so; determinism vertex-for-vertex; a property test that a normalized region's `contains` agrees with the original's. Two decidability limits are refused by name instead of guessed: an arrangement finer than the tolerance, and a boundary that crosses itself (A4 only asks about crossings between boundaries) |
 | K4 | _pending_ | |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
@@ -296,6 +308,19 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L7** — K3 evidence: 15 tests, 657 in the workspace, gates green. Three spec corrections, none of them
+  cosmetic. (1) The task text asked for overlapping squares to normalize to "one contour with the
+  expected area" and a crossing configuration to reach "the analytic union area" — with even-odd
+  membership that is the *symmetrical difference*, so the tests pin 75 mm² L-shapes and 100 mm² for a
+  square plus an edge-crossing circle, and D-RB-8 states why a union would be a different operation
+  needing orientation. (2) A4 named `cam_geom::chain` for chaining; every crossing is a four-way vertex
+  and `chain`'s greedy endpoint match rejoins a piece to its own continuation, handing back the input
+  with its crossings — the arrangement is walked with an angular continuation rule instead, and `chain`
+  is left untouched. (3) A4 did not say what happens to a boundary that crosses itself: it is passed
+  through unresolved rather than guessed at, which is now recorded as a limit. The worker also reported
+  that its own RED was weaker than the others' — the module was written before the tests — and that two
+  of its tests caught real defects (a chain guard counting tessellated segments, a fixture placing a
+  tangent edge exactly on the circle so the parity correctly dropped the arc).
 - **L6** — P1 evidence: 639 tests, gates green. Two things the tests caught. The island containment
   check asked `relation(boundary, island)` and compared it to `FirstInside`, but the relation is
   directional and a boundary *holding* an island reports `SecondInside` — every valid island was being
