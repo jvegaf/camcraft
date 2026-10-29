@@ -95,6 +95,7 @@ fn run(contour: &Contour, params: &PocketParams) -> Pocketpath {
 fn run_with(contour: &Contour, params: &PocketParams, tool: &ToolSpec) -> Pocketpath {
   pocket(&PocketRequest {
     contour,
+    islands: &[],
     params,
     tool,
     job: &job(),
@@ -343,6 +344,7 @@ fn tool_wider_than_the_pocket_is_refused_as_offset_collapsed() {
   for strategy in [PocketStrategy::Offset, PocketStrategy::Raster] {
     let error = pocket(&PocketRequest {
       contour: &narrow,
+      islands: &[],
       params: &params(strategy, 0.0, 3.0, 6.0, 12.0),
       tool: &tool(4.0),
       job: &job(),
@@ -491,6 +493,7 @@ fn zero_stepover_is_refused() {
   for strategy in [PocketStrategy::Offset, PocketStrategy::Raster] {
     let error = pocket(&PocketRequest {
       contour: &square(100.0),
+      islands: &[],
       params: &params(strategy, 0.0, 0.0, 6.0, 12.0),
       tool: &tool(6.0),
       job: &job(),
@@ -510,6 +513,7 @@ fn open_contour_is_refused() {
   for strategy in [PocketStrategy::Offset, PocketStrategy::Raster] {
     let error = pocket(&PocketRequest {
       contour: &open,
+      islands: &[],
       params: &params(strategy, 0.0, 3.0, 6.0, 12.0),
       tool: &tool(6.0),
       job: &job(),
@@ -578,6 +582,7 @@ fn invalid_tool_depth_and_range_are_refused() {
   for (tool, params, expected) in cases {
     let error = pocket(&PocketRequest {
       contour: &square(100.0),
+      islands: &[],
       params: &params,
       tool: &tool,
       job: &job(),
