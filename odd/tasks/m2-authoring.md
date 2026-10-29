@@ -227,7 +227,7 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 | T8 | `HEAD` | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome` |
 | T9 | — | pending |
 | T10 | — | pending |
-| T11 | `HEAD` | cam-geom half: 10 tests, 79-glyph table, no new dependency |
+| T11 | `d053640` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
 | T12 | — | pending |
 | T13 | — | pending |
 
