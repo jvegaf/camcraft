@@ -128,7 +128,7 @@ One line per task: ID — acceptance criteria — route — commit.
 - **T1** — A1, A2, A3, A14 — inline — `feat(import): cam-import crate, format detection and cli import`
 - **T2** — A16 — inline — `feat(geom): vector validation for open and self-intersecting contours`
 - **T3** — A4, A5 — writer — `feat(import): dxf entities, layers and units`
-- **T4** — A6, A7, A8 — writer — `feat(import): svg shapes, paths, transforms and units`
+- **T4** — A6, A7, A8 — **blocked** (branch `import/svg`, unmerged) — `feat(import): svg shapes, paths, transforms and units`
 - **T5** — A9, A10 — writer — `feat(import): pdf content stream path import`
 - **T6** — A11 — writer — `feat(import): eps postscript path import`
 - **T7** — A12, A13 — writer — `feat(import): png raster trace`
@@ -284,8 +284,8 @@ with the evidence table and the deviations.
 | Slice | Tasks | Subject |
 | --- | --- | --- |
 | 1 | T1–T2 | Crate spine, report, CLI `import`; kernel validation |
-| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces |
-| 3 | T8–T10 | `check`, shell import, docs |
+| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered; T4 blocked** |
+| 3 | T8–T10 | `check`, shell import, docs — **delivered** |
 
 Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `22c255f`, 1705 authored lines across
 three commits (plan `2bd7440`, `1d46e51`, `22c255f`). Like M2 the milestone overtakes the ~400-line review
@@ -298,14 +298,14 @@ commit with its own tests, to be reviewed per slice.
 | --- | --- | --- |
 | T1 | `1d46e51` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
 | T2 | `22c255f` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
-| T3 | pending | |
-| T4 | pending | |
-| T5 | pending | |
-| T6 | pending | |
-| T7 | pending | |
-| T8 | pending | |
-| T9 | pending | |
-| T10 | pending | |
+| T3 | `655ead6` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
+| T4 | **blocked** | Work orphaned on branch `import/svg` when its worker died: 14 of 29 tests fail and 11 hang (infinite loop in the path-data loop), so it is not mergeable and not merged. See L7 |
+| T5 | `48cab49` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
+| T6 | `546374e` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`d93fd01`) |
+| T7 | `984bd61` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
+| T8 | `f95af8f`-series | 5 CLI tests; deterministic ordering, exit `5`, `all vectors valid` on a clean document |
+| T9 | `de54dce` | 5 tests (2 cam-app, 3 cam-ui); undoable replacement, reseeded id counter, exact status sentence, failed import leaves document and history untouched |
+| T10 | this commit | `docs/m3-import.md`, `docs/format.md` contract rows, roadmap M3 evidence |
 
 ## Log
 
@@ -317,6 +317,28 @@ commit with its own tests, to be reviewed per slice.
   (`cam_geom::validate`). Gates green after both (`./scripts/check.sh`). One correction found by the
   second gate run: `assert!(len >= 1)` fails clippy's `len_zero`, so the degenerate-contour test asserts
   `!is_empty()`.
-- **L4** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
+- **L4** — Slice 2 evidence: five importers were launched as writers over disjoint surfaces (`src/<fmt>.rs`,
+  `tests/<fmt>.rs`, `tests/fixtures/<fmt>/`) in five isolated worktrees, so no two could compile each other's
+  half-written module. T3, T5, T6 and T7 landed and merged; T4 (SVG) did not (L7). Merges are `5a0d0a1`
+  (DXF), `4686e39` (PDF), `7ae22a9` (EPS), `0264ac0` (raster).
+- **L5** — Slice 3 evidence: `check` (T8), the shell import action (T9) and the docs (T10). T9 also added
+  `AppState::replace_document_undoable`, because `replace_document` is the open-a-file path and clears the
+  history: an import the user did not ask for must be one undo away, not a lost drawing.
+- **L6** — Contract defect found while reviewing the EPS delivery: `eps::import` had grown its own parse
+  error for "a file that names no path", because the T1 spine test only accepted `Refused` or `Parse`. That
+  was the test pinning a stub, not the contract. Fixed in `d93fd01`: every importer returns an empty layer
+  set and the spine turns it into `NothingImported` with one message.
+- **L7** — T4 (SVG) blocked, recorded honestly rather than merged. Its worker vanished mid-flight; the work
+  on branch `import/svg` (1940 lines of `svg.rs`, 552 of tests) leaves 14 of 29 tests failing on assertions
+  and 11 hanging past 60 s, which points at a non-advancing loop in the path-data scanner. Merging a parser
+  that can hang and that mirrors its own tests' expectations would poison the branch, so the branch is left
+  unmerged as evidence for a later session with a working worker. M3 therefore ships four of the five
+  formats S2 names.
+- **L8** — Open decision for the owner, found while reading the parked SVG work: it maps SVG user space to
+  millimetres **without flipping Y**, so a part would arrive mirrored about the horizontal axis relative to
+  how the file renders. DXF, PDF, EPS are y-up already and the raster tracer flips, so SVG would be the one
+  format that does not match the artwork. The next session should decide the convention before finishing
+  that module, and flip through `cam_geom::transform::mirror` (exact on arcs) rather than by negating points.
+- **L9** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
   `zip` to a direct one for `cam-import` (PDF `FlateDecode`, PNG `IDAT`); nothing else added, so no
   parser, XML or image crate enters the tree (D-M3-1).

@@ -137,7 +137,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
 | **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
 | **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | The authoring half of "similar to the reference CAM application"; all of it rides on `cam-geom`, proven headless |
-| **M3** | Import & interchange | DXF, SVG, PDF, EPS, raster trace; validation report of open/self-intersecting vectors | Users bring geometry; the original's own filter list is the target set |
+| **M3** ⚠️ | Import & interchange | **Partially delivered.** DXF, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document and `cam-cli check` reports open, self-intersecting and degenerate vectors. **SVG is blocked** (see §4.5) | Users bring geometry; the original's own filter list is the target set |
 | **M4** | Core toolpaths | Profile (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing; they exercise every post-processor block |
 | **M5** | Simulation & 3D preview | Heightfield material removal, gouge/uncut reporting, 3D stock view, animated preview | G-code without simulation is unverifiable by the user; also the only honest acceptance test for M4–M7 |
 | **M6** | Depth-variant strategies | Quick Engrave, Chamfer, Fluting, Texture, Thread Milling, Inlay (male/female pair) | All are profile/pocket variants with a different Z law — cheap once M4 and M5 exist |
@@ -231,6 +231,37 @@ cost rather than refusing, decided as D-M2-2. Both are in the M2 feature documen
 acceptance criteria. Known limit carried forward: `Contour::bounds()` still samples arcs through
 tessellation, so bounds, align and the lost-arc counts are accurate to about 1e-6 mm on arc-bearing
 selections rather than exact.
+
+### 4.5 M3 partially delivered (evidence)
+
+| Deliverable | Where | Proof |
+| --- | --- | --- |
+| Import contract: bytes + options in, millimetre contours + report out, no filesystem and no document mutation | `crates/cam-import` | 10 tests; detection by extension then by content signature; the report renders whole and identically every time |
+| Document assembly: stock fitted to the imported bounds plus a 10 mm placement margin, `L1..Ln`, `E1..En` | `cam-import::into_document` | 3 tests; exact placement and job size, single-layer override, `validate()` runs on the result |
+| DXF: `LINE`, `LWPOLYLINE`/`POLYLINE` with bulges, `ARC`, `CIRCLE`, `ELLIPSE`, layers, `$INSUNITS`/`$MEASUREMENT` | `cam-import::dxf` | 25 tests; a bulge is an exact arc, a full ellipse is rotated exactly, a partial one is flattened and counted, skipped entities carry their line number |
+| PDF: tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, content-stream paths through `cm` | `cam-import::pdf` | 16 tests; compressed and uncompressed streams give identical contours, two pages import in order, encryption is refused by name |
+| EPS: PostScript path subset with a transformation stack | `cam-import::eps` | 26 tests; `arc` of 360° is a closed circle of two arcs, `curveto` is flattened and counted, `%%BoundingBox` places the drawing |
+| Raster trace: hand-written PNG decoder plus deterministic contour extraction | `cam-import::raster` | 16 tests; all five scanline filters, holes wound the opposite way, `--min-area`/`--simplify` reported, same bytes give the same contours |
+| Vector validation in the kernel: open gap, self-intersections with segment indices, degenerate segments | `cam-geom::validate` | 10 tests incl. two property tests; adjacent segments are never intersected, so a valid polygon is clean |
+| `cam-cli import` and `cam-cli check`, with exit `5` for vector issues | `crates/cam-cli` | 10 binary tests; exact stdout, exit codes, a conversion written and reloaded |
+| Shell import: `UiAction::ImportFile`, undoable replacement, outcome in the status bar | `crates/cam-ui`, `crates/cam-app` | 5 tests; one undo restores the previous drawing, a failed import changes nothing, the status sentence is asserted whole |
+
+M3 defects found and fixed at the root: `eps::import` had invented its own parse error for a file that
+draws nothing, because one spine test only accepted `Refused` or `Parse` — the test was pinning the stub,
+not the contract; every importer now returns an empty layer set and the spine reports `NothingImported`
+(`d93fd01`). Recorded, not fixed: `replace_document` clears history, so the import path needed
+`replace_document_undoable` rather than reusing it.
+
+**Blocked: SVG (T4).** The worker died mid-implementation and the work left behind on branch `import/svg`
+fails 14 of its own 29 tests and hangs on 11 of them (a non-advancing loop in the path-data scanner). It is
+not merged. Two things the next session must settle before finishing it: the infinite loop, and the fact
+that the parked code maps SVG user space to millimetres **without flipping Y**, so a part would arrive
+mirrored relative to how the file renders (every other importer either is y-up already or flips). The flip
+belongs in `cam_geom::transform::mirror`, which is exact on arcs.
+
+Recorded deviation: PDF imports one user unit as one millimetre with a warning, because a PDF path carries
+no physical size and A9 names no scale. Known limit carried forward: a `W f` clip-and-fill in PDF loses the
+fill, because a clip discards the path.
 
 ## 5. Verification strategy
 
