@@ -137,7 +137,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
 | **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
 | **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | The authoring half of "similar to the reference CAM application"; all of it rides on `cam-geom`, proven headless |
-| **M3** ⚠️ | Import & interchange | **Partially delivered.** DXF, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document and `cam-cli check` reports open, self-intersecting and degenerate vectors. **SVG is blocked** (see §4.5) | Users bring geometry; the original's own filter list is the target set |
+| **M3** ⚠️ | Import & interchange | **Delivered on four of five formats.** DXF, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document and `cam-cli check` reports open, self-intersecting and degenerate vectors. **SVG is deferred to its own session** by owner decision (see §4.5) | Users bring geometry; the original's own filter list is the target set |
 | **M4** | Core toolpaths | Profile (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing; they exercise every post-processor block |
 | **M5** | Simulation & 3D preview | Heightfield material removal, gouge/uncut reporting, 3D stock view, animated preview | G-code without simulation is unverifiable by the user; also the only honest acceptance test for M4–M7 |
 | **M6** | Depth-variant strategies | Quick Engrave, Chamfer, Fluting, Texture, Thread Milling, Inlay (male/female pair) | All are profile/pocket variants with a different Z law — cheap once M4 and M5 exist |
@@ -252,12 +252,12 @@ not the contract; every importer now returns an empty layer set and the spine re
 (`d93fd01`). Recorded, not fixed: `replace_document` clears history, so the import path needed
 `replace_document_undoable` rather than reusing it.
 
-**Blocked: SVG (T4).** The worker died mid-implementation and the work left behind on branch `import/svg`
-fails 14 of its own 29 tests and hangs on 11 of them (a non-advancing loop in the path-data scanner). It is
-not merged. Two things the next session must settle before finishing it: the infinite loop, and the fact
-that the parked code maps SVG user space to millimetres **without flipping Y**, so a part would arrive
-mirrored relative to how the file renders (every other importer either is y-up already or flips). The flip
-belongs in `cam_geom::transform::mirror`, which is exact on arcs.
+**Deferred: SVG (T4).** By owner decision, SVG moves to its own session; the work parked on branch
+`import/svg` is the starting point. Its worker died mid-implementation and what it left fails 14 of its own
+29 tests and hangs on 11 of them (a non-advancing loop in the path-data scanner), so it was not merged. The
+session that picks it up has one thing already decided: SVG user space is y-down, so it is mapped to
+millimetres with **Y inverted** (as the raster tracer does; DXF/PDF/EPS are y-up already), through
+`cam_geom::transform::mirror`, which is exact on arcs and normalises winding.
 
 Recorded deviation: PDF imports one user unit as one millimetre with a warning, because a PDF path carries
 no physical size and A9 names no scale. Known limit carried forward: a `W f` clip-and-fill in PDF loses the

@@ -120,6 +120,10 @@ against.
 - **D-M3-9** — Import never mutates an existing document in this milestone: `import` always builds a
   new document, and merging an import into an open document is a later command (recorded so the
   `cam-app` command surface stays untouched by M3).
+- **D-M3-10** — SVG user space is **y-down**, so it is mapped to millimetre space with **Y inverted**,
+  exactly like the raster tracer does, and unlike DXF/PDF/EPS which are y-up already. Confirmed by the
+  owner (L10). The flip goes through `cam_geom::transform::mirror`, which is exact on arcs and
+  normalises winding, never by negating points in a way that would reverse arc bulges.
 
 ## Tasks
 
@@ -128,7 +132,7 @@ One line per task: ID — acceptance criteria — route — commit.
 - **T1** — A1, A2, A3, A14 — inline — `feat(import): cam-import crate, format detection and cli import`
 - **T2** — A16 — inline — `feat(geom): vector validation for open and self-intersecting contours`
 - **T3** — A4, A5 — writer — `feat(import): dxf entities, layers and units`
-- **T4** — A6, A7, A8 — **blocked** (branch `import/svg`, unmerged) — `feat(import): svg shapes, paths, transforms and units`
+- **T4** — A6, A7, A8 — **deferred to a new session** (owner, L10; work parked on branch `import/svg`, unmerged) — `feat(import): svg shapes, paths, transforms and units`
 - **T5** — A9, A10 — writer — `feat(import): pdf content stream path import`
 - **T6** — A11 — writer — `feat(import): eps postscript path import`
 - **T7** — A12, A13 — writer — `feat(import): png raster trace`
@@ -284,7 +288,7 @@ with the evidence table and the deviations.
 | Slice | Tasks | Subject |
 | --- | --- | --- |
 | 1 | T1–T2 | Crate spine, report, CLI `import`; kernel validation |
-| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered; T4 blocked** |
+| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered; T4 deferred to a new session** |
 | 3 | T8–T10 | `check`, shell import, docs — **delivered** |
 
 Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `22c255f`, 1705 authored lines across
@@ -299,7 +303,7 @@ commit with its own tests, to be reviewed per slice.
 | T1 | `1d46e51` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
 | T2 | `22c255f` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
 | T3 | `655ead6` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
-| T4 | **blocked** | Work orphaned on branch `import/svg` when its worker died: 14 of 29 tests fail and 11 hang (infinite loop in the path-data loop), so it is not mergeable and not merged. See L7 |
+| T4 | **deferred** | Not delivered in this session. Work orphaned on branch `import/svg` when its worker died: 14 of 29 tests fail and 11 hang (a non-advancing loop in the path-data scanner), so it was not merged. Owner moved it to a new session (L10) and settled the Y convention (D-M3-10). See L7 |
 | T5 | `48cab49` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
 | T6 | `546374e` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`d93fd01`) |
 | T7 | `984bd61` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
@@ -339,6 +343,11 @@ commit with its own tests, to be reviewed per slice.
   how the file renders. DXF, PDF, EPS are y-up already and the raster tracer flips, so SVG would be the one
   format that does not match the artwork. The next session should decide the convention before finishing
   that module, and flip through `cam_geom::transform::mirror` (exact on arcs) rather than by negating points.
+- **L10** — Owner decision (verbatim, this session): "orientacion del svg confirmada como tu recomiendas. y el
+  svg lo pasamos a una sesion nueva". Two outcomes: S8's counterpart for SVG is now decided as Y-inverted
+  (D-M3-10), and T4 leaves this milestone's scope by the owner's choice — the branch `import/svg` and the
+  worktree stay as the starting point for that session. M3 therefore closes delivered on four of the five
+  formats S2 names.
 - **L9** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
   `zip` to a direct one for `cam-import` (PDF `FlateDecode`, PNG `IDAT`); nothing else added, so no
   parser, XML or image crate enters the tree (D-M3-1).
