@@ -89,8 +89,9 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
   a cutting move: a program that rams the tool must fail the simulation.
 - **A5 — One target surface, two deviations.** The simulation derives, from the document alone, the
   depth each cell is *authorised* to lose: the pocket region (boundary minus islands) to the pocket's
-  final depth, each hole's circle to the drilling depth, each profile's kerf band to the profile's final
-  depth, minus the material a tab declares it keeps, and **zero everywhere else**. Then gouge is
+  final depth less the wall its allowance keeps, each hole's circle to the drilling depth, each
+  profile's swept band to the profile's final depth, minus the material a tab declares it keeps, and
+  **zero everywhere else**. Then gouge is
   "removed deeper than authorised" and uncut is "authorised deeper than removed", each reported as a
   volume and a cell count, per toolpath and in total.
 - **A6 — Resolution is decoupled from the job, and bounded.** The cell size is a caller's parameter
@@ -144,10 +145,20 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
   precisely so no rapid crosses material, so a program that does has a defect that must surface. The
   simulation reports it and the command fails (A4); it does not "cut" the rapid and continue, because
   that would hide a crash inside a plausible volume number.
-- **D-M5-5 — The wrapper band of a profile is the kerf it declares.** For `Outside`, the authorised
-  band is the region between the contour and its offset by `radius + allowance`; for `Inside`, between
-  the contour and its inward offset; for `On`, the band either side of the contour. Material on the
-  keep side has target depth zero, which is what turns "the profile gouged the part" into one number.
+- **D-M5-5 — A profile's target is the material its tool sweeps, not the distance its centre travels.**
+  The emitter offsets the tool *centre* by `radius + allowance`, so the material a clean profile
+  removes spans from `allowance` to `2·radius + allowance` outside the vector (`Inside`: the same band
+  inwards; `On`: `±radius`, because `lateral_offset` returns zero for `On` whatever the allowance says).
+  Authorising only `0…radius + allowance` would report every clean profile as a gouge of the outer
+  half of its own kerf, and S3 found exactly that: the narrow band was the spec's reading, not the
+  machine's (L6). Material on the keep side has target depth zero, which is what turns "the profile
+  gouged the part" into one number.
+- **D-M5-10 — An allowance is material the target does not authorise.** The emitter insets a pocket's
+  outermost ring by `radius + allowance`, so a pocket with an allowance leaves a wall of width
+  `allowance` standing on purpose. The target for a pocket is therefore its region inset by the
+  allowance (islands grown by it, which is the same parity operation), and with the default allowance
+  of zero it is the region itself. Without this, a correctly cut allowance pocket reports `allowance ×
+  perimeter × depth` of uncut material that the document asked to keep.
 - **D-M5-6 — A simulation that finds defects exits `6`.** The CLI's existing codes are `0` ok, `2`
   invalid input, `3` unsupported schema, `4` post error, `5` vector issues; `5` sets the precedent that
   a *found defect* is its own code rather than "invalid input". Crash, gouge and uncut therefore exit
@@ -318,16 +329,21 @@ stated in both directions so the test cannot pass by reporting the wrong sign.
 **V1 — The camera and the mesh.** In `cam-view`:
 
 ```rust
-pub struct Camera3d { pub yaw: f64, pub pitch: f64, pub distance: Length, pub target: Point3, pub viewport: Rect }
-impl Camera3d { pub fn project(&self, point: Point3) -> Option<Screen3>;  // Screen3 { x, y, depth } }
+pub struct Camera3d { pub yaw: f64, pub pitch: f64, pub distance: Length, pub target: Point3, pub viewport: Viewport }
+impl Camera3d { pub fn project(&self, point: Point3) -> Option<Screen3>;  // Screen3 { x, y, depth }
+                pub fn orbit(&mut self, delta_yaw: f64, delta_pitch: f64);
+                pub fn zoom(&mut self, factor: f64); }
 pub struct SurfaceMesh { pub vertices: Vec<SurfaceVertex>, pub triangles: Vec<[usize; 3]> }
 pub struct SurfaceVertex { pub position: Point3, pub depth: f32 }   // depth for the colour ramp
-pub fn build_surface(field: &Heightfield, camera: &Camera3d, stride: usize, bounds: Rect) -> SurfaceMesh;
-pub fn build_stock_box(job: &Job) -> [Point2; 4];
+pub fn build_surface(field: &Heightfield, camera: &Camera3d, stride: usize) -> SurfaceMesh;
+pub fn build_stock_box(job: &Job) -> Vec<Line3>;
 ```
 
 `pitch` is clamped just short of vertical (the projection has no up vector to invent), `project` returns
 `None` behind the camera, and the mesh decimates by `stride` so its triangle count is bounded (D-M5-7).
+The viewport is `cam_app::Viewport`, which is the type this crate already uses for the 2D camera; the
+mesh takes no bounds argument because the grid carries its own extent, and the stock box returns lines
+because four plan-view corners cannot express a thickness (L6).
 Tests: a point at the camera's target projects to the viewport's centre; yaw rotates a point about the
 target by that angle; a point behind the camera projects to `None`; pitch clamping is asserted at both
 ends; a flat field at `stride = 1` gives `(columns-1) × (rows-1) × 2` triangles and at `stride = 4` the
@@ -397,7 +413,7 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
 | S3 | _pending_ | |
 | S4 | _pending_ | |
 | S5 | _pending_ | |
-| V1 | _pending_ | |
+| V1 | `THIS_COMMIT` | 13 tests (`crates/cam-view/tests/camera3d.rs`, `tests/mesh.rs`); the crate stands at 36. The target projects to the viewport's centre at four pitches and three yaws; yawing the camera by δ equals rotating the point about the vertical by δ, and a quarter turn carries a point across the centre in the direction the sign says; points behind the eye or not finite are `None` while points in front are not; the pitch clamp holds at both ends and a field poked past it still projects; zoom halves, clamps at `MIN_DISTANCE`/`MAX_DISTANCE` and ignores a zero, a negative, a NaN and an infinity; a 10 x 8 field gives 80 triangles / 126 vertices at stride 1, 12 / 12 at stride 4 and 4 / 2 at stride 100, all indices in range, with a zero stride treated as one; the depth ramp is exactly 0.0 at the untouched top and exactly 1.0 at the stock bottom, 2/18 for a shallow cut; the stock box has 12 edges, 8 corners of degree 3, every edge axis-aligned, spanning `0..width`, `0..height`, `-thickness..0`; two builds are identical vertex for vertex, even across a different camera, and the triangles are ordered back to front by a stable sort. 2D suites untouched (13 + 10) and `cargo test -p cam-ui` still green (14 + 38), which is A12's crate-boundary half |
 | V2 | _pending_ | |
 | V3 | _pending_ | |
 | D1 | _pending_ | |
@@ -433,3 +449,19 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   needs the footprint a move sweeps (the emitter ignores the field, and its seven tests are unchanged);
   and `Heightfield` gained `surface_under`, the cell containing a point, which is what the crash rule
   asks.
+- **L6 (execution, S3, and a decision reversed by evidence).** S3's worker found that D-M5-5 as first
+  written could not be satisfied by a clean program: the emitter offsets the tool *centre* by
+  `radius + allowance`, so the kerf it cuts is `allowance … 2·radius + allowance` wide, and a target of
+  `0 … radius + allowance` reports the outer half of a perfect cut as gouge. The decision and A5 were
+  amended rather than the test. Four further defects came out of the same task, each fixed at its root:
+  `authorised_depth` read `start_depth + cut_depth` when the emitter's `pass_depths` walks *from*
+  `start_depth` to `cut_depth` and lands on it (`crates/cam-toolpath/src/lib.rs:264`, `docs/m4-toolpaths.md:60`),
+  so any toolpath with a non-zero start depth authorised material no program cuts; the tab spans were
+  gated on a half-cell halo instead of the band they belong to; the tab parameterisation was read from
+  `Contour::tessellate`, which samples only segment ends, so a cell beside the middle of a long edge
+  mapped to the edge's start and a tab at 0.9 could never match; and the `On` band applied the
+  allowance that the emitter ignores. `deviations` also compared only the grid's shape, so two
+  different stocks with the same column and row counts compared silently — the cell size is compared
+  too. The remaining limit is recorded, not fixed: a document whose `cut_depth` exceeds the stock's
+  thickness reports the difference as uncut, which is the honest reading of "the program does not
+  reach the declared depth".
