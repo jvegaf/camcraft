@@ -542,3 +542,135 @@ fn the_help_lists_the_import_command_and_its_trace_options() {
     );
   }
 }
+
+/// A document with the given contours as `E1..En` on one layer, and no toolpaths.
+fn write_vectors(directory: &Path, name: &str, contours: Vec<Contour>) -> PathBuf {
+  let mut document = Document::new(Job {
+    width: Length::from_mm(200.0),
+    height: Length::from_mm(100.0),
+    thickness: Length::from_mm(18.0),
+    units: UnitSystem::Mm,
+    origin: cam_model::OriginCorner::BottomLeft,
+    safe_z: Length::from_mm(5.0),
+  });
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Vectors".to_owned(),
+    visible: true,
+    entities: contours
+      .into_iter()
+      .enumerate()
+      .map(|(index, contour)| Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour { contour },
+      })
+      .collect(),
+  });
+  let path = directory.join(name);
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+fn figure_eight_contour() -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 10.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(0.0, 10.0),
+    ],
+    true,
+  )
+  .expect("figure eight")
+}
+
+#[test]
+fn check_reports_a_self_intersection_with_its_point_and_segments() {
+  let directory = scratch("check-intersection");
+  let document = write_vectors(&directory, "eight.c2d", vec![figure_eight_contour()]);
+  let outcome = run(&["check", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 5, "{}", outcome.stderr);
+  assert_eq!(
+    outcome.stdout,
+    "E1 self-intersection at 5.000, 5.000 (segments 0, 2)\n"
+  );
+  assert!(
+    outcome.stderr.contains("1 vector issue(s) found"),
+    "{}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn check_reports_an_open_contour_with_its_gap() {
+  let directory = scratch("check-open");
+  let open = Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 4.0),
+    ],
+    false,
+  )
+  .expect("open contour");
+  let document = write_vectors(&directory, "open.c2d", vec![open]);
+  let outcome = run(&["check", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 5, "{}", outcome.stderr);
+  assert_eq!(
+    outcome.stdout,
+    format!("E1 open: gap {:.4} mm\n", 10.0_f64.hypot(4.0))
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn check_accepts_a_clean_document_and_says_so() {
+  let directory = scratch("check-clean");
+  let document = write_vectors(
+    &directory,
+    "clean.c2d",
+    vec![
+      rectangle_contour(50.0, 25.0),
+      cam_geom::primitive::circle(Point2::new(100.0, 50.0), 8.0).expect("circle"),
+    ],
+  );
+  let outcome = run(&["check", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, "all vectors valid\n");
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn check_orders_findings_by_entity_id() {
+  let directory = scratch("check-order");
+  let open = Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 4.0),
+    ],
+    false,
+  )
+  .expect("open contour");
+  let document = write_vectors(&directory, "order.c2d", vec![open, figure_eight_contour()]);
+  let outcome = run(&["check", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 5, "{}", outcome.stderr);
+  let lines: Vec<&str> = outcome.stdout.lines().collect();
+  assert_eq!(lines.len(), 2, "{}", outcome.stdout);
+  assert!(lines[0].starts_with("E1 open: gap"), "{}", outcome.stdout);
+  assert!(
+    lines[1].starts_with("E2 self-intersection"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn check_still_exits_two_for_a_missing_document() {
+  let outcome = run(&["check", "/nonexistent/part.c2d"]);
+  assert_eq!(outcome.code, 2);
+  assert!(outcome.stderr.contains("error:"), "{}", outcome.stderr);
+}

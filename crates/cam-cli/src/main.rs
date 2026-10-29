@@ -1,4 +1,4 @@
-//! Headless pipeline: `validate`, `inspect`, `import`, `postp validate`, `tools` and `emit`.
+//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools` and `emit`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -35,6 +35,7 @@ COMMANDS:
         --invert              Trace the light regions instead of the dark ones
         --min-area <mm2>      Drop traced regions smaller than this area
         --simplify <mm>       Simplify traced contours within this distance
+    check <document>          Report open and self-intersecting vectors
     postp validate <file>     Parse a post-processor and print a summary
     tools list <library>      List the tools in a SQLite tool library
     tools add <library>       Add or replace a tool: --id, --diameter, --number, [--name-format]
@@ -51,6 +52,7 @@ EXIT CODES:
     2   invalid input: unusable path, malformed document, missing tool data
     3   unsupported document schema
     4   post-processor error, including a program the post cannot express
+    5   the document has vector issues (check only)
 ";
 
 fn main() -> ExitCode {
@@ -102,6 +104,13 @@ impl Failure {
       message: message.into(),
     }
   }
+
+  fn vectors(message: impl Into<String>) -> Self {
+    Self {
+      code: 5,
+      message: message.into(),
+    }
+  }
 }
 
 fn run(arguments: &[String]) -> Result<(), Failure> {
@@ -121,6 +130,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "inspect" => inspect(rest),
     "postp" => postp(rest),
     "import" => import_command(rest),
+    "check" => check(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     other => Err(Failure::input(format!(
@@ -216,6 +226,67 @@ fn inspect(rest: &[String]) -> Result<(), Failure> {
   }
   println!("geometry length: {total_length:.3} mm");
   Ok(())
+}
+
+fn check(rest: &[String]) -> Result<(), Failure> {
+  let path = only_path(rest, "check")?;
+  let document = open(&path)?;
+
+  // Findings are collected with the entity id and the entity's own issue order, then sorted by
+  // id, so the report is stable whatever order the layers happen to be in.
+  let mut findings: Vec<(String, usize, String)> = Vec::new();
+  for entity in document.entities() {
+    let Some(contour) = entity.kind.as_contour() else {
+      continue;
+    };
+    let issues = cam_geom::validate::inspect(contour, cam_geom::DEFAULT_TOLERANCE);
+    let mut order = 0;
+    if let Some(gap) = issues.open {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!("{} open: gap {gap:.4} mm", entity.id),
+      ));
+      order += 1;
+    }
+    for intersection in &issues.intersections {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!(
+          "{} self-intersection at {:.3}, {:.3} (segments {}, {})",
+          entity.id,
+          intersection.point.x,
+          intersection.point.y,
+          intersection.first,
+          intersection.second
+        ),
+      ));
+      order += 1;
+    }
+    for index in &issues.degenerate {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!("{} degenerate segment {index}", entity.id),
+      ));
+      order += 1;
+    }
+  }
+
+  if findings.is_empty() {
+    println!("all vectors valid");
+    return Ok(());
+  }
+
+  findings.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+  for (_, _, line) in &findings {
+    println!("{line}");
+  }
+  Err(Failure::vectors(format!(
+    "{} vector issue(s) found",
+    findings.len()
+  )))
 }
 
 fn import_command(rest: &[String]) -> Result<(), Failure> {
