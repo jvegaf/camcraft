@@ -16,10 +16,18 @@
 //! was supposed to leave standing, and in a ring loop it makes the rings grow instead of ending. So
 //! every offset piece is dropped unless it proves it really is the offset it claims to be: every
 //! point of it at least `distance - slack` from an **original** boundary. That is M4's
-//! `clears_boundary` rule (D-M4-9) moved into the kernel (D-RB-6), so the pocket and every later
-//! consumer of a region cannot drift apart — generalised from "every vertex" to "every point of
-//! every arc, and the ends of every straight stretch" (D-RB-10), because a vertex is not the worst
-//! point of an arc.
+//! `clears_boundary` rule (D-M4-9) moved into the kernel (D-RB-6), and it is a proof about the whole
+//! piece rather than about its ends because the minimum distance from the piece to an original is
+//! measured **exactly**, segment pair by segment pair (D-RB-11, [`segment_to_segment`]).
+//!
+//! There is no resolution knob in that sentence. Earlier versions of this proof asked only about a
+//! piece's vertices, and then about the ends of stretches of arc against a Lipschitz budget; both
+//! were answered by looking at finitely many points and hoping the worst point was one of them, and
+//! both were unsound — a lens-shaped piece bulged 6 mm inside the distance between its two crossings
+//! (D-RB-10), and a straight chord cut 6 mm inside the distance between the crossings that bounded
+//! it (D-RB-11). The exact minimum deletes the question: a piece survives when *no* pair of (its
+//! segment, an original segment) comes closer than `distance - slack`, and that is a statement about
+//! every point of the piece.
 //!
 //! The proof is stated per **piece**, and a piece here is a chained contour: normalization has
 //! already walked the arrangement and closed its survivors, so a contour is the finest unit the
@@ -41,17 +49,15 @@
 //! model's bulge cannot hold flattens anything. [`RegionOffset::flattened`] says when it happened and
 //! the warnings say which step did it, exactly as [`crate::offset::Offset`] already does.
 
-use crate::arc::Arc;
 use crate::contour::Contour;
+use crate::distance::segment_to_segment;
 use crate::intersect::{intersect, Intersections};
 use crate::offset::{offset_contour, OffsetOptions, OffsetWarning};
-use crate::point::{Bounds, Point2, Vec2};
+use crate::point::{Bounds, Point2};
 use crate::region::Region;
 use crate::segment::{LineSeg, Segment};
 use crate::winding::{relation, Relation};
 use crate::GeomError;
-
-use std::f64::consts::{PI, TAU};
 
 /// The offset kernel's chord tolerance, in millimetres.
 ///
@@ -66,27 +72,6 @@ const OFFSET_CHORD_TOLERANCE: f64 = 0.001;
 /// chose (`RING_DISTANCE_SLACK` in `pocket.rs`), and it is kept at exactly that value so the region
 /// offset reproduces M4's rings vertex for vertex when the region has no islands (A15).
 const DISTANCE_SLACK: f64 = 2.0 * OFFSET_CHORD_TOLERANCE;
-
-/// How long a stretch of curve one check point stands for, in millimetres (D-RB-10).
-///
-/// The distance proof is a Lipschitz argument, not a sampler: the distance to a set changes by at
-/// most the distance travelled, so a piece cut into stretches no longer than this needs its check
-/// points — their ends — to clear `distance - slack + stretch` for the whole stretch to clear
-/// `distance - slack`. The budget is a quarter of [`DISTANCE_SLACK`], which keeps the extra
-/// requirement it puts on a check point (`distance - slack + step`) well below `distance`, so a
-/// piece whose points really are `distance` away is never dropped for the sake of the budget, while
-/// the number of check points is still finite work. It is derived from the kernel's own tolerance
-/// and not from anything the caller passes, so it is a proof and not a resolution knob.
-const CHECK_STEP: f64 = DISTANCE_SLACK / 4.0;
-
-/// The most check points one piece of curve may be cut into for the proof.
-///
-/// Ten million points is five metres of curve at [`CHECK_STEP`] — every arc a sheet-sized machine
-/// cuts, and a full circle of any radius up to 795 mm exactly. Geometry beyond that is checked at
-/// the step this many points really gives, which is what makes the cap safe: the step is measured
-/// back out of it and the threshold widens to match, so the answer stays a proof — more
-/// conservative, never weaker — and the loop is still bounded.
-const MAX_CHECK_POINTS: usize = 10_000_000;
 
 /// How much longer than the region's own extent the raster line reaches, in millimetres.
 ///
@@ -281,233 +266,66 @@ fn nesting_depths(region: &Region, tolerance: f64) -> Result<Vec<usize>, GeomErr
 }
 
 /// The offset pieces that prove they are `distance` away from an original boundary (D-M4-9,
-/// D-RB-10).
+/// D-RB-11).
 ///
 /// A piece is kept or dropped whole, and the threshold carries M4's exact form,
 /// `distance - slack - distance·1e-9`, so the region and the pocket agree to the last bit on when a
 /// ring has escaped.
 ///
-/// # The argument, and why its vertices were not enough
+/// # The argument
 ///
-/// The distance to a set is 1-Lipschitz: moving a point by `s` changes its distance to the set by at
-/// most `s`. So cut a piece's arc into stretches short enough that every point of a stretch lies
-/// within `step` of one of its ends; if both ends clear `distance - slack + step`, then every point
-/// of the stretch clears `distance - slack`, because it is at worst `step` closer than the end that
-/// covers it. That is a proof about the whole arc, and `step` is derived from the kernel's own slack
-/// ([`CHECK_STEP`]), so no resolution knob decides the answer.
+/// The distance from a piece to the originals is the minimum over the pairs, and
+/// [`segment_to_segment`] returns each pair's minimum **exactly**. So if every pair's minimum is at
+/// least `distance - slack`, then no point of the piece is closer than that to any original: the
+/// minimum over a set of curves is attained *somewhere* on them, and the pair that attains it is one
+/// of the pairs that was measured. Keeping on that condition and dropping otherwise is therefore a
+/// statement about every point of the piece, and it needs no resolution parameter — there is no step
+/// to choose and nothing between two measurements that could go unchecked.
 ///
-/// The vertices alone were that same argument with `step = 0`, which is exactly where it stopped
-/// being true for an arc (D-RB-10). A lens-shaped piece at a crossing stage has its two crossings as
-/// its only vertices — both of them *exactly* `distance` from both originals — while the arc between
-/// them bulges towards a wall that neither crossing is near. In the 4 mm island fixture that bulge
-/// came 6 mm inside the requested distance (L9), and the vertex rule kept it.
+/// # Why the ends were not enough, twice
 ///
-/// The stretch a check point stands for is its **length**, not its sagitta. A sagitta bounds how far
-/// a chord wanders from the curve; the Lipschitz argument needs how far a point of the curve is from
-/// a point that was actually checked, and the farthest point of a stretch of circle from its nearer
-/// end is half a chord away — for the same stretch several hundred times its sagitta. Cutting by
-/// length is therefore strictly finer than cutting by sagitta, and it is what makes the bound true.
+/// The vertex rule this replaced was that same argument with the piece assumed to be worst at its
+/// ends. It is not. A lens-shaped piece at a crossing stage has its two crossings as its only
+/// vertices — both of them *exactly* `distance` from both originals — while the arc between them
+/// bulges towards a wall that neither crossing is near; in the 4 mm island fixture that bulge came
+/// 6 mm inside the requested distance (L9, D-RB-10). And a **straight** piece fails the same way:
+/// in K5's 23 mm fixture the chord between a lens's two crossings has both ends `23` mm from the
+/// island and comes `17` mm from it in the middle, because the island's circle bulges under the
+/// chord (L10, D-RB-11). A subdivision fine enough to catch a chord that dips six millimetres over a
+/// thirty-eight millimetre span is sampling dressed as a proof, which is why the answer is the exact
+/// pair distance instead of a finer step.
 ///
 /// # The limit this keeps
 ///
-/// A straight stretch keeps M4's rule exactly: its two ends are its check points and it has no
-/// others (D-RB-9), which is the rule a pocket has always used. A straight edge can therefore still
-/// come closer than `distance` to an original it does not belong to in the *middle* of its span —
-/// the lens above has one, a chord that runs inside the grown island between its two crossings — and
-/// that stays the per-piece limit D-RB-9 recorded. The case K5 fixes is the arc, which is the one
-/// that was measured going wrong; subdividing straight edges as well would need a check point every
-/// half micrometre of a 100 mm wall, which is sampling rather than a proof.
+/// A piece is still kept or dropped whole, so a failing piece costs the material of that piece and
+/// never a gouge (D-RB-9's recorded limit). What is gone is the escape hatch: a piece that fails
+/// *any* pair test is dropped, wherever on the piece the closeness happened.
 fn distance_proof(region: &Region, pieces: Vec<Contour>, distance: f64) -> Vec<Contour> {
   let original: Vec<Segment> = region
     .boundaries
     .iter()
     .flat_map(|boundary| boundary.segments())
     .collect();
+  let threshold = distance - DISTANCE_SLACK - distance.abs() * 1.0e-9;
   pieces
     .into_iter()
-    .filter(|piece| proves_distance(&original, piece, distance))
+    .filter(|piece| proves_distance(&original, piece, threshold))
     .collect()
 }
 
-/// Whether every point of `piece` clears `distance - DISTANCE_SLACK` from `original`.
+/// Whether every point of `piece` clears `threshold` from every segment of `original`.
 ///
-/// The check points are the piece's vertices plus, for every arc, its interior cut into stretches
-/// no longer than [`CHECK_STEP`]; the threshold is that much stricter than the distance the piece
-/// claims, which is what covers the points between two checks (see [`distance_proof`]). A piece with
-/// no arc has no interior check points and keeps the threshold M4 used.
-fn proves_distance(original: &[Segment], piece: &Contour, distance: f64) -> bool {
-  let segments = piece.segments();
-  let mut arcs = Vec::new();
-  // The longest stretch a single check point has to stand for. Zero when the piece is all lines:
-  // every point of it is then a vertex or lies on a straight stretch, and the threshold is M4's.
-  let mut step = 0.0_f64;
-  for segment in &segments {
-    let Some(arc) = segment.as_arc() else {
-      continue;
-    };
-    let count = check_count(arc, CHECK_STEP);
-    step = step.max(arc.length() / count as f64);
-    arcs.push((arc, count));
-  }
-
-  let threshold = distance - DISTANCE_SLACK + step - distance.abs() * 1.0e-9;
-  if piece
-    .vertices()
-    .iter()
-    .any(|vertex| nearest_distance(vertex.point, original) < threshold)
-  {
-    return false;
-  }
-  for (arc, count) in arcs {
-    // The closed form settles most arcs without a single check point: an arc that is an exact
-    // offset of an original is exactly `distance` from it everywhere, and its nearest point to the
-    // other originals is a turning point of a sinusoid, not something between two samples.
-    if arc_lower_bound(arc, original) >= threshold {
-      continue;
-    }
-    for index in 1..count {
-      let point = arc.point_at_fraction(index as f64 / count as f64);
-      if nearest_distance(point, original) < threshold {
-        return false;
-      }
-    }
-  }
-  true
-}
-
-/// How many equal stretches `arc` has to be cut into so that each is at most `step` long.
-///
-/// A stretch of circle is no longer than its arc length, so the count is the length divided by the
-/// step, rounded up: every point of a stretch is then within one stretch-length of its start, which
-/// is the bound [`proves_distance`] needs. The count is capped at [`MAX_CHECK_POINTS`] so that
-/// absurd geometry cannot turn the proof into an unbounded loop; the caller reads the step the cap
-/// really gives back out of [`Arc::length`], so the cap can only make the proof more conservative.
-fn check_count(arc: Arc, step: f64) -> usize {
-  let length = arc.length();
-  if !length.is_finite() || length <= 0.0 || !step.is_finite() || step <= 0.0 {
-    return 1;
-  }
-  let count = (length / step).ceil();
-  if !count.is_finite() || count >= MAX_CHECK_POINTS as f64 {
-    return MAX_CHECK_POINTS;
-  }
-  (count as usize).max(1)
-}
-
-/// A lower bound on the distance from any point of `arc` to `original`.
-///
-/// This is a closed form over the arc's whole sweep, not a sample of it, and it is what keeps the
-/// check points above from being the cost of every arc in every ring. Both distances it can meet are
-/// sinusoids in the arc's angle: the distance from a point of an arc to a line's supporting line is
-/// `|a + ρ·cos(φ - ψ)|`, and to an arc's circle it is `|‖p - C‖ - r|` with `‖p - C‖` the square root
-/// of `D² + ρ² + 2ρD·cos(φ - ψ)`. Each one's extremes over the sweep are its two ends and its own
-/// turning points, so the range is found in constant time, and the smallest distance in that range
-/// is the bound. It is exact for a supporting line and a circle, and therefore never above the true
-/// distance to the segment: the bound is only ever used to *skip* check points, so an inexact one
-/// costs work and can never keep a piece that should have been dropped.
-fn arc_lower_bound(arc: Arc, original: &[Segment]) -> f64 {
-  original
-    .iter()
-    .map(|segment| arc_segment_lower_bound(arc, *segment))
-    .fold(f64::INFINITY, f64::min)
-}
-
-/// One original segment's contribution to [`arc_lower_bound`].
-fn arc_segment_lower_bound(arc: Arc, segment: Segment) -> f64 {
-  let radius = arc.radius();
-  match segment {
-    Segment::Line(line) => {
-      let Some(direction) = line.direction() else {
-        return 0.0;
-      };
-      let normal = Vec2::new(-direction.y, direction.x);
-      let base = (arc.center() - line.start).dot(normal);
-      let (low, high) = cosine_range(arc, normal.angle());
-      let (low, high) = (base + radius * low, base + radius * high);
-      if low <= 0.0 && high >= 0.0 {
-        0.0
-      } else {
-        low.abs().min(high.abs())
-      }
-    }
-    Segment::Arc(other) => {
-      let offset = arc.center() - other.center();
-      let separation = offset.length();
-      let (low, high) = cosine_range(arc, offset.angle());
-      let base = separation * separation + radius * radius;
-      let swing = 2.0 * separation * radius;
-      let near = (base + swing * low).max(0.0).sqrt();
-      let far = (base + swing * high).max(0.0).sqrt();
-      let other_radius = other.radius();
-      if other_radius >= near && other_radius <= far {
-        0.0
-      } else {
-        (near - other_radius).abs().min((far - other_radius).abs())
-      }
-    }
-  }
-}
-
-/// The range of `cos(angle - phase)` over `arc`'s sweep.
-///
-/// A cosine over an interval is extreme at the interval's ends and at its own turning points, so the
-/// two ends and whichever of `phase` and `phase + π` the sweep covers are the whole candidate set.
-fn cosine_range(arc: Arc, phase: f64) -> (f64, f64) {
-  let start = arc.start_angle();
-  let mut low = (start - phase).cos();
-  let mut high = low;
-  let end = (start + arc.sweep() - phase).cos();
-  low = low.min(end);
-  high = high.max(end);
-  for turning in [phase, phase + PI] {
-    if covers_angle(arc, turning) {
-      let value = (turning - phase).cos();
-      low = low.min(value);
-      high = high.max(value);
-    }
-  }
-  (low, high)
-}
-
-/// True when `angle` lies within `arc`'s sweep, measured in the sweep's direction.
-///
-/// The comparison leans outwards by a picoradian: counting a turning point a hair outside the sweep
-/// only widens the range [`cosine_range`] reports, which can make [`arc_segment_lower_bound`] smaller
-/// — more check points, never a piece kept that should have been dropped. Erring the other way would
-/// narrow the range, and a narrowed range is the one way this bound could exceed the true distance.
-fn covers_angle(arc: Arc, angle: f64) -> bool {
-  let sweep = arc.sweep();
-  if sweep == 0.0 {
-    return false;
-  }
-  let delta = if sweep > 0.0 {
-    wrap_turn(angle - arc.start_angle())
-  } else {
-    wrap_turn(arc.start_angle() - angle)
-  };
-  delta <= sweep.abs() + 1.0e-12
-}
-
-/// `angle` reduced to `[0, TAU)`.
-fn wrap_turn(angle: f64) -> f64 {
-  let wrapped = angle % TAU;
-  if wrapped < 0.0 {
-    wrapped + TAU
-  } else {
-    wrapped
-  }
-}
-
-/// The shortest distance from `point` to any of `boundary`'s segments.
-///
-/// Segment distance is exact for arcs, so the proof measures against the geometry rather than against
-/// a tessellation of it: an arc's own chord approximation would sit *inside* the boundary and make a
-/// correct offset look short.
-fn nearest_distance(point: Point2, boundary: &[Segment]) -> f64 {
-  boundary
-    .iter()
-    .map(|segment| segment.distance_to_point(point))
-    .fold(f64::INFINITY, f64::min)
+/// One comparison per (piece segment, original segment) pair, each of them exact (D-RB-11): the
+/// proof asks [`segment_to_segment`] for the unsnapped minimum, because `threshold` is already the
+/// distance the piece claims less the kernel's slack, and snapping a small positive distance to zero
+/// would only make the test stricter than the geometry. Nothing here is sampled, so there is no
+/// check point count, no step, and no bound that decides whether a pair has to be looked at.
+fn proves_distance(original: &[Segment], piece: &Contour, threshold: f64) -> bool {
+  piece.segments().into_iter().all(|segment| {
+    original
+      .iter()
+      .all(|other| segment_to_segment(segment, *other, 0.0) >= threshold)
+  })
 }
 
 /// The box containing every boundary of the region.
