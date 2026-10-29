@@ -25,7 +25,7 @@ error: 1 vector issue(s) found
 | Format | Geometry | Arcs stay arcs | Units |
 | --- | --- | --- | --- |
 | DXF (ASCII) | `LINE`, `LWPOLYLINE`/`POLYLINE` with bulges, `ARC`, `CIRCLE`, `ELLIPSE` | yes: a bulge is an `Arc`, a circle is two half-turns | `$INSUNITS`, then `$MEASUREMENT`, then millimetres with a warning |
-| SVG | `<path>` (full grammar), `<line>`, `<polyline>`, `<polygon>`, `<rect>`, `<circle>`, `<ellipse>`, `transform` on any element and inherited through `<g>`, `viewBox` | yes for a circular `A` arc | unitless = px at 96 dpi; `mm`, `cm`, `in`, `pt`, `pc`, `px` accepted |
+| SVG | `<path>` (full grammar), `<line>`, `<polyline>`, `<polygon>`, `<rect>` with `rx`/`ry`, `<circle>`, `<ellipse>`, `transform` on any element and inherited through `<g>`, `viewBox` with `preserveAspectRatio`'s default `xMidYMid meet` | yes: a circular `A`, `<circle>` and a rounded `<rect>` corner stay exact `Arc`s | root `width`/`height`: unitless = px at 96 dpi, `mm`, `cm`, `in`, `pt`, `pc`, `px` accepted; on a shape a bare number is a user unit |
 | PDF | content-stream paths of every page, through `cm` and the `MediaBox` origin | no: PDF has no circular-arc operator | one user unit is one millimetre, with a warning (a PDF path carries no physical size) |
 | EPS / PS | `moveto lineto curveto rlineto rcurveto closepath arc arcn` under `translate scale rotate concat setmatrix`, painted by `stroke fill eofill clip` | yes: `arc`/`arcn` become `Arc`s, a full turn is a closed circle | PostScript points: 25.4 / 72 mm |
 | PNG | traced from a global threshold: luminance → mask → contours | no: a trace is a polyline by nature | `--dpi` (default 96) decides pixels per millimetre |
@@ -50,6 +50,10 @@ Every import returns the same report, and the CLI prints it whole:
 ## Rules that apply to every format
 
 - **Millimetres in, millimetres out.** No stage downstream sees a source unit.
+- **Every import is y-up in millimetres.** DXF, PDF and EPS are y-up already; SVG and the raster
+  tracer are y-down and are reflected about the page's horizontal centre line (D-M3-10). The
+  reflection is an isometry: arcs stay exact with their bulge sign flipped, and a closed contour stays
+  counter-clockwise. A `<rect y="20">` on a 100 mm SVG page therefore lands at `y = 40..80`.
 - **Arcs stay arcs.** A circular arc in the file never becomes a polyline: G2/G3 output depends on it.
 - **Flattening is counted.** A Bézier, an elliptical or rotated SVG arc, a partial DXF ellipse and a
   PDF/EPS curve are flattened at `--tolerance` (default `0.01` mm) and reported. Non-uniform transforms
@@ -82,9 +86,12 @@ broken part, not a warning.
   `POINT` are skipped with their line number. Binary DXF is refused by name. `POLYLINE` vertex flags
   (spline frames, 3D faces) are ignored: every vertex is read as a flat 2D vertex with its bulge.
   A partial `ELLIPSE` is the one entity that loses its exactness.
-- **SVG**: `<text>`, `<image>`, `<use>`, `<defs>` are skipped; `style`/`class` do not change geometry, so
-  a shape is imported even when it is `fill="none"` (a boundary is what a cutter can follow).
-  `preserveAspectRatio` is applied as its default `xMidYMid meet`.
+- **SVG**: `<text>`, `<image>`, `<use>`, `<defs>`, `<clipPath>`, `<style>` and `<script>` are skipped and
+  reported; `style`/`class` do not change geometry, so a shape is imported even when it is
+  `fill="none"` (a boundary is what a cutter can follow). `preserveAspectRatio` is only read as its
+  default `xMidYMid meet`; a percentage length is skipped with a warning, and a nested `<svg>` viewport
+  is treated as a plain group. A rotated or non-circular `A` arc, a Bézier and an elliptical `<rect>`
+  corner are flattened at the tolerance and counted.
 - **PDF**: text is not traced (only paths), images, form XObjects, shadings, inline images and Type3
   procedures are counted; encrypted documents are refused. A `W f` clip-and-fill loses the fill, because
   a clip discards the path.
