@@ -34,7 +34,9 @@ cam-app = { path = "crates/cam-app" }
 cam-view = { path = "crates/cam-view" }
 cam-ui = { path = "crates/cam-ui" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip` makes JSON parsing exact: without it a stored coordinate can come back one ULP
+# away, which breaks the documented lossless round trip of `c2d/document@1` (M0 A3).
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
