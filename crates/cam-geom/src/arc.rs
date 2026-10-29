@@ -195,6 +195,28 @@ impl Arc {
         + r * r * (a2 - a1))
   }
 
+  /// Shortest distance from `point` to the arc.
+  ///
+  /// Inside the sweep the distance is radial; outside it, the nearest endpoint wins. Measuring it
+  /// radially everywhere would report a point beyond the arc's end as being on it.
+  pub fn distance_to_point(self, point: Point2) -> f64 {
+    let offset = point - self.center;
+    let distance = offset.length();
+    if distance <= f64::MIN_POSITIVE {
+      return self.radius;
+    }
+    if self.contains_angle(offset.angle()) {
+      (distance - self.radius).abs()
+    } else {
+      distance.min(0.0).max(
+        self
+          .start_point()
+          .distance_to(point)
+          .min(self.end_point().distance_to(point)),
+      )
+    }
+  }
+
   /// Exact axis-aligned bounds: endpoints plus whichever axis extremes the sweep passes through.
   ///
   /// Tessellating to measure an arc is both approximate and wasteful, and the viewport asks for

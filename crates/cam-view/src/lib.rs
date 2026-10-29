@@ -11,6 +11,13 @@
 
 #![warn(missing_docs)]
 
+mod pick;
+
+pub use pick::{
+  box_select, choose_snap, pick, snap_candidates, Pick, Snap, SnapKind, PICK_TOLERANCE_PX,
+  SNAP_TOLERANCE_PX,
+};
+
 use cam_app::{Camera, Selection};
 use cam_geom::{Arc, Bounds, LineSeg, Point2, Segment};
 use cam_model::Document;

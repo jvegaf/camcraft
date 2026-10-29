@@ -51,6 +51,17 @@ impl LineSeg {
     0.5 * (self.start.x * self.end.y - self.end.x * self.start.y)
   }
 
+  /// Shortest distance from `point` to the segment.
+  pub fn distance_to_point(self, point: Point2) -> f64 {
+    let span = self.end - self.start;
+    let length_squared = span.length_squared();
+    if length_squared <= 0.0 {
+      return point.distance_to(self.start);
+    }
+    let projection = ((point - self.start).dot(span) / length_squared).clamp(0.0, 1.0);
+    point.distance_to(self.start + span * projection)
+  }
+
   /// Bounds of the segment.
   pub fn bounds(self) -> Bounds {
     Bounds::from_points(&[self.start, self.end])
@@ -128,6 +139,14 @@ impl Segment {
     match self {
       Self::Line(line) => line.bounds(),
       Self::Arc(arc) => arc.bounds(),
+    }
+  }
+
+  /// Shortest distance from `point` to the segment.
+  pub fn distance_to_point(self, point: Point2) -> f64 {
+    match self {
+      Self::Line(line) => line.distance_to_point(point),
+      Self::Arc(arc) => arc.distance_to_point(point),
     }
   }
 
