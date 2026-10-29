@@ -15,6 +15,13 @@ use cam_units::Length;
 /// exact offset curve, so a distance assertion allows exactly that much and no more.
 const SLACK: f64 = 0.002;
 
+/// How far apart the samples of a cutting move are, in millimetres.
+///
+/// An arc move's bulge is not a vertex, so asserting over move *destinations* would miss exactly the
+/// defect K5 fixes. A move is walked at this spacing instead, which leaves at most one spacing of it
+/// unmeasured — a thousandth of the 6 mm gouge these tests pin, and well under the kernel's own slack.
+const CUT_STEP: f64 = 0.005;
+
 fn square(size: f64) -> Contour {
   Contour::from_points(
     &[
@@ -178,6 +185,77 @@ fn cut_spans(unit: &[Move]) -> Vec<(Point2, Point2)> {
   path.windows(2).map(|pair| (pair[0], pair[1])).collect()
 }
 
+/// Every XY position a unit actually **cuts through**, its arcs' interiors included.
+///
+/// A move carries where it ends, not the curve it travels, so an arc's bulge is invisible to
+/// [`cut_path`] — which is exactly the bug K5 fixes, and a test that reused `cut_path` could not see
+/// it either. An arc move carries its centre and its direction, and the machine cuts the shorter way
+/// round (that is the arc G-code means), so that is the arc sampled here, at a spacing of [`CUT_STEP`].
+fn cut_points(unit: &[Move]) -> Vec<Point2> {
+  let mut points = Vec::new();
+  let mut previous: Point2 = Point2::new(0.0, 0.0);
+  let mut cutting = false;
+  for movement in unit {
+    let to = movement.destination().xy();
+    match movement {
+      Move::Rapid { .. } => {
+        cutting = false;
+      }
+      Move::Retract { .. } => {
+        cutting = false;
+      }
+      Move::Feed { .. } => {
+        if cutting {
+          let span = previous.distance_to(to);
+          let steps = ((span / CUT_STEP).ceil() as usize).max(1);
+          for index in 1..=steps {
+            points.push(previous.lerp(to, index as f64 / steps as f64));
+          }
+        } else {
+          points.push(to);
+        }
+        cutting = true;
+      }
+      Move::Arc { center, ccw, .. } => {
+        let radius = previous.distance_to(*center);
+        let start = (previous.y - center.y).atan2(previous.x - center.x);
+        let end = (to.y - center.y).atan2(to.x - center.x);
+        let sweep = if *ccw {
+          wrap_turn(end - start)
+        } else {
+          -wrap_turn(start - end)
+        };
+        assert!(
+          sweep.abs() <= std::f64::consts::PI + 1.0e-9,
+          "an emitted arc is the shorter way round: sweep {sweep}"
+        );
+        let steps = ((radius * sweep.abs() / CUT_STEP).ceil() as usize).max(1);
+        for index in 1..=steps {
+          let angle = start + sweep * index as f64 / steps as f64;
+          points.push(Point2::new(
+            center.x + radius * angle.cos(),
+            center.y + radius * angle.sin(),
+          ));
+        }
+        cutting = true;
+      }
+    }
+    previous = to;
+  }
+  points
+}
+
+/// An angle reduced to `[0, TAU)`.
+fn wrap_turn(angle: f64) -> f64 {
+  let turn = std::f64::consts::TAU;
+  let wrapped = angle % turn;
+  if wrapped < 0.0 {
+    wrapped + turn
+  } else {
+    wrapped
+  }
+}
+
 fn xy_bounds(points: &[Point2]) -> (f64, f64, f64, f64) {
   let mut bounds = (
     f64::INFINITY,
@@ -244,6 +322,50 @@ fn assert_stages(units: &[Vec<Move>], originals: &[&Contour], expected: &[f64]) 
   }
 }
 
+/// Assert that no cutting move of `unit` comes closer than its stage's distance to either original,
+/// and return how close it comes.
+///
+/// The unit's own closest approach *is* its stage distance — the kernel keeps a ring only when it
+/// proves that distance — so the stage is read back off the measurement and then every point of every
+/// move, arcs' interiors included, has to clear it. This is the assertion that fails for the 6 mm
+/// gouge of D-RB-10, because the offending piece's two ends sat exactly on the stage distance while
+/// its arc between them did not.
+fn assert_no_cut_is_too_close(unit: &[Move], originals: &[&Contour], stages: &[f64]) -> f64 {
+  let points = cut_points(unit);
+  let clearance_at = |point: Point2| {
+    originals
+      .iter()
+      .map(|contour| distance_to(contour, point))
+      .fold(f64::INFINITY, f64::min)
+  };
+  let closest = points
+    .iter()
+    .map(|point| clearance_at(*point))
+    .fold(f64::INFINITY, f64::min);
+  let stage = stages
+    .iter()
+    .copied()
+    .min_by(|a, b| {
+      (closest - a)
+        .abs()
+        .partial_cmp(&(closest - b).abs())
+        .expect("finite distances")
+    })
+    .expect("a stage to belong to");
+  assert!(
+    (closest - stage).abs() < 1.0e-6,
+    "a ring cut at {closest} mm is not one of the stages {stages:?}"
+  );
+  for point in &points {
+    let clearance = clearance_at(*point);
+    assert!(
+      clearance >= stage - SLACK - CUT_STEP,
+      "a cutting position {point:?} is {clearance} mm from the originals, inside the {stage} mm stage"
+    );
+  }
+  closest
+}
+
 #[test]
 fn an_island_pocket_cuts_rings_that_follow_both_boundaries() {
   // A 100 mm square with a centred r10 island, a 6 mm tool (so the tool centre rides 3 mm inside the
@@ -301,17 +423,38 @@ fn an_island_pocket_cuts_rings_that_follow_both_boundaries() {
   // The arithmetic of where it ends: the wall ring's half-width is 50 - d and the island ring's
   // radius is 10 + d, so the two are still separate while 10 + d < 50 - d, i.e. d < 20 — the last
   // separate stage is d = 19. At d = 23 the grown island (r33) has crossed the shrunken wall
-  // (27..77) and the stage is cut as its corner slivers; at d = 27 the grown island (r37) covers the
-  // shrunken wall entirely, nothing is further than 27 from both originals, and the kernel refuses.
+  // (23..77) and the stage is cut as its corner slivers; at d = 27 the wall's own inset (23 mm from
+  // the wall) is nearer than 27, nothing is further than 27 from both originals, and the kernel
+  // refuses.
   let originals: [&Contour; 2] = [&boundary, &island];
-  assert_stages(&units, &originals, &[3.0, 7.0, 11.0, 15.0, 19.0, 23.0]);
+  let stages = [3.0, 7.0, 11.0, 15.0, 19.0, 23.0];
+  assert_stages(&units, &originals, &stages);
 
-  // Five stages of two rings (the wall and the island) plus the crossing stage's four corner
-  // slivers is the floor; a stage that comes back as more pieces is still material the tool reaches.
-  assert!(
-    path.rings >= 14,
-    "at least five two-ring stages and the four corner slivers, got {}",
+  // The ring count is the analytic one, not a floor.
+  //
+  // 5 stages × 2 rings + 4 slivers = 14. The five two-ring stages are d = 3, 7, 11, 15 and 19, each
+  // a wall inset and an island growth. At d = 23 the r33 island covers every edge of the shrunken
+  // 23..77 wall but not its corners — a corner is 27·√2 = 38.18 from the centre, outside the disc —
+  // so parity leaves exactly four corner slivers there. Parity *also* claims the two lenses where the
+  // disc sticks out of the wall (below y = 23 and above y = 77), and those are the pieces D-RB-10 is
+  // about: their crossings sit exactly 23 mm from both originals while the arc between them comes to
+  // y = 17, 6 mm inside the stage's distance. The sound proof drops them, so the stage is four pieces
+  // and not six.
+  assert_eq!(
+    path.rings, 14,
+    "5 two-ring stages and the crossing stage's 4 corner slivers, got {}",
     path.rings
+  );
+
+  // And no cutting move anywhere in the program comes closer to either original than the distance its
+  // own stage claims — measured over the emitted moves, arc interiors included.
+  let mut closest = f64::INFINITY;
+  for unit in &units {
+    closest = closest.min(assert_no_cut_is_too_close(unit, &originals, &stages));
+  }
+  assert!(
+    (closest - 3.0).abs() < 1.0e-6,
+    "the closest the program comes is its first inset, 3 mm, got {closest}"
   );
 }
 

@@ -12,16 +12,28 @@
 //! that: the naive kernel call returns a ring, and the region offset refuses it by name. A region
 //! offset that trusted the kernel would hand the pocket a ring that cuts the wall it was meant to
 //! leave standing.
+//!
+//! The same is true one level finer for an arc (D-RB-10). A lens-shaped piece at a crossing stage has
+//! its two crossings as its only vertices, both of them exactly the requested distance away, while the
+//! arc between them bulges towards a wall neither crossing is near — so the suite pins both what a
+//! vertices-only proof would have kept and what the sound one keeps, and measures the bulge.
 
 use std::f64::consts::PI;
 
 use cam_geom::offset::{offset_contour, OffsetOptions, OffsetWarning};
 use cam_geom::primitive;
 use cam_geom::region::{Region, RegionOffset};
-use cam_geom::{Contour, GeomError, Point2};
+use cam_geom::{Contour, GeomError, Point2, Segment};
+use proptest::prelude::*;
 
 /// One nanometre: the tolerance every test here states explicitly.
 const TOLERANCE: f64 = 1.0e-9;
+
+/// The slack the kernel's distance proof allows itself, in millimetres.
+///
+/// `DISTANCE_SLACK` in `region_offset.rs`: two offset chord tolerances, kept at that value so the
+/// region reproduces M4's rings. A distance assertion allows exactly this much and no more.
+const SLACK: f64 = 0.002;
 
 fn square(at: Point2, width: f64, height: f64) -> Contour {
   primitive::rectangle(at, width, height).expect("square")
@@ -84,6 +96,47 @@ fn every_vertex_clears(
       .iter()
       .all(|vertex| distance_to_contour(original, vertex.point) >= distance - allowed)
   })
+}
+
+/// The distance from `point` to the nearest of `originals`.
+fn nearest_distance(originals: &[&Contour], point: Point2) -> f64 {
+  originals
+    .iter()
+    .map(|contour| distance_to_contour(contour, point))
+    .fold(f64::INFINITY, f64::min)
+}
+
+/// The points of a piece the distance proof has to cover: every vertex, and the midpoint of every arc.
+///
+/// An arc's midpoint is the apex of its sagitta, which is exactly where a bulging piece comes closest
+/// to something — the one point a vertices-only proof never looks at.
+fn proof_points(piece: &Contour) -> Vec<Point2> {
+  let mut points: Vec<Point2> = piece.vertices().iter().map(|vertex| vertex.point).collect();
+  for segment in piece.segments() {
+    if let Segment::Arc(arc) = segment {
+      points.push(arc.mid_point());
+    }
+  }
+  points
+}
+
+/// Assert that no point the proof has to cover of any surviving piece is closer than
+/// `distance - slack` to any of `originals`.
+fn assert_no_survivor_is_too_close(
+  result: &RegionOffset,
+  originals: &[&Contour],
+  distance: f64,
+  context: &str,
+) {
+  for boundary in &result.region.boundaries {
+    for point in proof_points(boundary) {
+      let clearance = nearest_distance(originals, point);
+      assert!(
+        clearance >= distance - SLACK,
+        "{context}: {point:?} is {clearance} mm from the originals, inside {distance}"
+      );
+    }
+  }
 }
 
 #[test]
@@ -558,4 +611,198 @@ fn a_zero_distance_offset_changes_nothing() {
     result.region.raster_spans(53.0, TOLERANCE),
     material.raster_spans(53.0, TOLERANCE)
   );
+}
+
+#[test]
+fn a_bulging_piece_that_only_its_vertices_could_pass_is_dropped() {
+  // D-RB-10's fixture. A 100 mm square pocket with a centred r10 island, offset by 23 mm: the wall's
+  // inset is the 23..77 square, the island's growth is the r33 disc around (50, 50), and the two
+  // cross. Between the crossings the grown island leaves the shrunken wall, so parity claims the
+  // disc's four lunes as material — and it is the distance proof, not parity, that has to refuse
+  // them.
+  let outer = square(Point2::new(0.0, 0.0), 100.0, 100.0);
+  let island = circle(Point2::new(50.0, 50.0), 10.0);
+  let distance = 23.0;
+
+  // Reproduce what the proof used to see: the two offsets normalized, with no distance proof at all.
+  let naive = region(vec![
+    offset_contour(&outer, -distance, &OffsetOptions::default())
+      .expect("the wall's inset")
+      .contour,
+    offset_contour(&island, distance, &OffsetOptions::default())
+      .expect("the island's growth")
+      .contour,
+  ])
+  .normalize(TOLERANCE)
+  .expect("the offsets cross cleanly")
+  .region;
+  let originals: [&Contour; 2] = [&outer, &island];
+
+  // The vertices-only rule keeps six of the eight pieces: the four corner slivers, which really are
+  // 23 mm from both originals, and two lenses whose only vertices are their crossings.
+  let vertex_clean = naive
+    .boundaries
+    .iter()
+    .filter(|piece| {
+      piece
+        .vertices()
+        .iter()
+        .all(|vertex| nearest_distance(&originals, vertex.point) >= distance - SLACK)
+    })
+    .count();
+  assert_eq!(
+    vertex_clean, 6,
+    "the vertices-only proof keeps the two lenses as well as the four corners"
+  );
+
+  // One of them, measured. A lens has two vertices — its crossings — and one arc of the island's
+  // growth; the arc dips towards the wall's inset line and comes 6 mm inside the requested distance.
+  let lens = naive
+    .boundaries
+    .iter()
+    .find(|piece| piece.len() == 2)
+    .expect("the crossing stage leaves a lens");
+  let arc = lens
+    .segments()
+    .into_iter()
+    .find_map(|segment| segment.as_arc())
+    .expect("a lens has an arc");
+  for vertex in lens.vertices() {
+    let from_wall = distance_to_contour(&outer, vertex.point);
+    let from_island = distance_to_contour(&island, vertex.point);
+    assert!(
+      (from_wall - distance).abs() < 1.0e-9 && (from_island - distance).abs() < 1.0e-9,
+      "the crossings sit exactly {distance} from both originals, got {from_wall} and {from_island}"
+    );
+  }
+  let apex = arc.mid_point();
+  let from_wall = distance_to_contour(&outer, apex);
+  let from_island = distance_to_contour(&island, apex);
+  assert!(
+    (apex.y - 17.0).abs() < 1.0e-6,
+    "the arc's lowest point is at y = 17, not {}",
+    apex.y
+  );
+  assert!(
+    (from_wall - 17.0).abs() < 1.0e-6,
+    "the apex is 17 mm from the wall, not {from_wall}"
+  );
+  assert!(
+    (distance - from_wall - 6.0).abs() < 1.0e-6,
+    "the bulge is 6 mm inside the requested distance: {} vs {distance}",
+    from_wall
+  );
+  assert!(
+    (from_island - distance).abs() < 1.0e-6,
+    "and it is still exactly {distance} from the island it grew from, got {from_island}"
+  );
+  assert!(
+    from_wall < distance - SLACK,
+    "a vertex-only proof cannot see this bulge"
+  );
+
+  // The sound proof refuses that piece and keeps the four corner slivers, which are 23 mm from both
+  // originals everywhere — the arc included.
+  let result = offset(&region(vec![outer.clone(), island.clone()]), distance);
+  assert_eq!(
+    result.region.boundaries.len(),
+    4,
+    "the four corners, and neither lens: got {:?}",
+    result
+      .region
+      .boundaries
+      .iter()
+      .map(|piece| piece.bounds())
+      .collect::<Vec<_>>()
+  );
+  for piece in &result.region.boundaries {
+    assert_eq!(piece.len(), 3, "a corner sliver is three vertices");
+    assert_eq!(
+      piece
+        .segments()
+        .iter()
+        .filter(|s| s.as_arc().is_some())
+        .count(),
+      1,
+      "and one arc of the island's growth"
+    );
+  }
+  assert_no_survivor_is_too_close(&result, &originals, distance, "at 23 mm");
+
+  // One step further the wall's own inset (23 mm of a 100 mm square is at 23..77, i.e. 23 mm from
+  // the wall rather than 27) is inside the requested distance, so even the corners go and the whole
+  // offset is refused instead of returning a ring that gouges.
+  let error = region(vec![outer, island])
+    .offset(27.0, TOLERANCE)
+    .expect_err("at 27 mm nothing is far enough from both originals");
+  let GeomError::EditRefused { reason } = error else {
+    panic!("refused by name, got {error:?}");
+  };
+  assert!(
+    reason.contains("no material"),
+    "the reason names what collapsed: {reason}"
+  );
+}
+
+proptest! {
+  #![proptest_config(ProptestConfig { cases: 64, ..ProptestConfig::default() })]
+
+  /// Every point a surviving piece's claim covers — its vertices and its arcs' apexes — is at least
+  /// `distance - slack` from every original boundary, at every distance the fixture has material for.
+  ///
+  /// This is the property D-RB-10 exists for. It fails for the vertices-only rule at 23 mm, where the
+  /// lens above is kept with an apex 6 mm inside the distance.
+  #[test]
+  fn no_surviving_piece_comes_closer_than_the_distance_it_claims(distance in 0.5_f64..=23.0) {
+    let outer = square(Point2::new(0.0, 0.0), 100.0, 100.0);
+    let island = circle(Point2::new(50.0, 50.0), 10.0);
+    let originals: [&Contour; 2] = [&outer, &island];
+    let result = region(vec![outer.clone(), island.clone()])
+      .offset(distance, TOLERANCE);
+    // One distance in this range is not a geometry question: at exactly 20 mm the grown island
+    // (r30) is tangent to all four wall insets (at 30 from the wall), and the arrangement refuses
+    // that degeneracy by name rather than guessing which way round it goes (K3's recorded limit).
+    // The property is about the pieces that *survive*, and a refusal has none.
+    prop_assume!(result.is_ok());
+    let result = result.expect("just checked");
+    for boundary in &result.region.boundaries {
+      for point in proof_points(boundary) {
+        let clearance = nearest_distance(&originals, point);
+        prop_assert!(
+          clearance >= distance - SLACK,
+          "at {} mm: {:?} is {} mm from the originals",
+          distance,
+          point,
+          clearance
+        );
+      }
+    }
+
+  }
+
+  /// The same property on a three-boundary region, where a boss sits inside a hole: the signs flip at
+  /// every depth, so the proof runs in both directions at once. The boss is r10 and shrinks, so the
+  /// distances stop at 9 mm — beyond that the boss itself is gone and the offset is refused.
+  #[test]
+  fn no_surviving_piece_of_a_nested_region_comes_closer_than_its_distance(distance in 0.5_f64..=9.0) {
+    let outer = square(Point2::new(0.0, 0.0), 100.0, 100.0);
+    let hole = circle(Point2::new(50.0, 50.0), 30.0);
+    let boss = circle(Point2::new(50.0, 50.0), 10.0);
+    let originals: [&Contour; 3] = [&outer, &hole, &boss];
+    let result = region(vec![outer.clone(), hole.clone(), boss.clone()])
+      .offset(distance, TOLERANCE)
+      .expect("square, hole and boss all survive these distances");
+    for boundary in &result.region.boundaries {
+      for point in proof_points(boundary) {
+        let clearance = nearest_distance(&originals, point);
+        prop_assert!(
+          clearance >= distance - SLACK,
+          "at {} mm: {:?} is {} mm from the originals",
+          distance,
+          point,
+          clearance
+        );
+      }
+    }
+  }
 }
