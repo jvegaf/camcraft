@@ -217,6 +217,11 @@ impl AppState {
     self.history.past.len()
   }
 
+  /// Number of steps available to redo.
+  pub fn redo_depth(&self) -> usize {
+    self.history.future.len()
+  }
+
   /// Number of undo steps discarded because the history was full.
   pub fn history_dropped(&self) -> usize {
     self.history.dropped
