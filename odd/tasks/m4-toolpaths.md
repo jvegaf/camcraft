@@ -146,8 +146,8 @@ against.
 
 One line per task: ID — acceptance criteria — route — commit.
 
-- **T1** — A1, A2, A10, A11 (inspect/emit dispatch), A13, A14 (stub set-up) — inline —
-  `feat(model): pocket and drilling operations, and cli toolpath command`
+- **T1** — A1, A2, A10, A11 (inspect/emit dispatch), A13, A14 (stub set-up) — inline — three
+  commits: `docs(m4)`, `feat(model)`, `feat(cli)`
 - **T2** — A3, A4, A5, A6 — writer (isolated worktree, `crates/cam-toolpath/src/pocket.rs` +
   `tests/pocket.rs`) — `feat(toolpath): offset and raster pocket strategies`
 - **T3** — A7, A8 — writer (isolated worktree, `crates/cam-toolpath/src/drill.rs` + `tests/drill.rs`)
@@ -180,8 +180,8 @@ pub enum Operation { Profile(ProfileParams), Pocket(PocketParams), Drilling(Dril
 
 `Default` for both new param structs: pocket `Offset`, allowance 0, stepover 3 mm, pass depth 6 mm,
 start 0, cut 18; drilling peck 0 (single plunge), `RetractMode::Full`, start 0, cut 18, no bank. The
-`RetractMode` serde shape is `{"mode":"amount","mm":1.0}` / `{"mode":"full"}` — a bare string for the
-tagged-enum rule in `docs/format.md`. `Document::validate` refuses an open contour for every operation
+`RetractMode` serde shape is `{"mode":"amount","amount":1.0}` / `{"mode":"full"}` — a struct-like
+variant because a tagged newtype over a bare number cannot carry the tag (L3). `Document::validate` refuses an open contour for every operation
 that cuts one (generalise the existing profile check and its error message; keep the error variant
 name). D-M4-1's restatement goes into the crate docs, and `docs/format.md`'s `Extensibility` row is
 updated in T6.
@@ -293,7 +293,7 @@ drill at any pitch emits exactly the un-banked program.
 offset pocket and one drilling toolpath emitted through `tests/fixtures/post_mm.pp` asserted **byte for
 byte** (the whole program as one expected string), the same assertion after a save/load round trip, and
 `cam-cli toolpath --kind pocket`/`--kind drilling` end to end from a fixture document through `emit`.
-`ToolpathError::NotImplemented` is deleted along with the T1 test that expected it; a test asserts the
+`ToolpathError::NotImplemented` is deleted; no test ever pinned it (L4), and a test asserts the
 strategies' error set explicitly (A14). The profile-only golden from M0 is unchanged (A13).
 
 **T6 — Docs.** `docs/m4-toolpaths.md`: the two strategies and what each produces, the parameter table
@@ -308,7 +308,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 
 | Slice | Tasks | Subject |
 | --- | --- | --- |
-| 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs |
+| 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs — **delivered** (`61e1df5`, `a263b28`, `9eb1326`) |
 | 2 | T2, T3 | The two strategies, in parallel over isolated worktrees |
 | 3 | T4, T5, T6 | Drill bank, golden G-code, docs |
 
@@ -316,7 +316,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | _pending_ | |
+| T1 | `a263b28`, `9eb1326` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `61e1df5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
 | T2 | _pending_ | |
 | T3 | _pending_ | |
 | T4 | _pending_ | |
@@ -328,4 +328,20 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 - **L1** — Owner instruction (verbatim, this session): "arranca M4". Read as: author the M4 feature
   document under ODD and start implementing it on a feature branch off `master`.
 - **L2** — Plan: 6 tasks, branch `feat/m4-toolpaths` from `master` (`1bf8711`). Baseline
-  `./scripts/check.sh` green with 550 tests before the first write.
+  `./scripts/check.sh` green with 550 tests before the first write. Plan commit `61e1df5`.
+- **L3** — Slice 1 evidence: T1 in `a263b28` (model + kernel spine) and `9eb1326` (CLI), 23 tests, 573
+  total, gates green. Three corrections found by the tests themselves rather than by reading:
+  `RetractMode` cannot be a tagged **newtype** over `Length`, because a bare number cannot carry the
+  tag — it is a struct-like variant with an `amount` field; the first `circle_centre` tests used
+  `tan(π/4)` where a quarter turn needs `tan(π/8)`, so the "circle" they built was two half turns and
+  the test was measuring itself, not the rule; and the `toolpath` parser advanced two tokens for a
+  positional argument, so the document path swallowed its first option. RED/GREEN was observed per
+  A2 (the pocket arm removed from the validate match fails its test) and per A10 (all nine CLI tests
+  failed with the command missing before it was written).
+- **L4** — Scope correction recorded instead of a stub test: T1 does **not** add the temporary
+  "`pocket` exits with `NotImplemented`" test the task detail proposed. Pinning a stub is exactly the
+  M3 L6 defect, and A14 already requires the placeholder to be gone by T5. The stub is covered by
+  T2/T3 replacing it and by T5's golden test, and `ToolpathError::NotImplemented` is removed there.
+- **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
+  `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
+  are two independent units of behaviour over disjoint module and test surfaces.
