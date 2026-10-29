@@ -1,4 +1,4 @@
-//! Headless pipeline: `validate`, `inspect`, `postp validate`, `tools` and `emit`.
+//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools` and `emit`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -26,6 +26,16 @@ USAGE:
 COMMANDS:
     validate <document>       Check the document's schema and referential invariants
     inspect <document>        Print layer, entity and toolpath counts
+    import <input>            Import DXF, SVG, PDF, EPS or PNG into a new document
+        --out <path>          Write the document here; without it the report goes to stdout
+        --layer <name>        Put every imported contour in one layer with this name
+        --tolerance <mm>      Flattening tolerance for curves (default 0.01)
+        --dpi <n>             Raster trace scale (default 96)
+        --threshold <0-255>   Raster trace luminance cut-off (default 128)
+        --invert              Trace the light regions instead of the dark ones
+        --min-area <mm2>      Drop traced regions smaller than this area
+        --simplify <mm>       Simplify traced contours within this distance
+    check <document>          Report open and self-intersecting vectors
     postp validate <file>     Parse a post-processor and print a summary
     tools list <library>      List the tools in a SQLite tool library
     tools add <library>       Add or replace a tool: --id, --diameter, --number, [--name-format]
@@ -42,6 +52,7 @@ EXIT CODES:
     2   invalid input: unusable path, malformed document, missing tool data
     3   unsupported document schema
     4   post-processor error, including a program the post cannot express
+    5   the document has vector issues (check only)
 ";
 
 fn main() -> ExitCode {
@@ -93,6 +104,13 @@ impl Failure {
       message: message.into(),
     }
   }
+
+  fn vectors(message: impl Into<String>) -> Self {
+    Self {
+      code: 5,
+      message: message.into(),
+    }
+  }
 }
 
 fn run(arguments: &[String]) -> Result<(), Failure> {
@@ -111,6 +129,8 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "validate" => validate(rest),
     "inspect" => inspect(rest),
     "postp" => postp(rest),
+    "import" => import_command(rest),
+    "check" => check(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     other => Err(Failure::input(format!(
@@ -206,6 +226,173 @@ fn inspect(rest: &[String]) -> Result<(), Failure> {
   }
   println!("geometry length: {total_length:.3} mm");
   Ok(())
+}
+
+fn check(rest: &[String]) -> Result<(), Failure> {
+  let path = only_path(rest, "check")?;
+  let document = open(&path)?;
+
+  // Findings are collected with the entity id and the entity's own issue order, then sorted by
+  // id, so the report is stable whatever order the layers happen to be in.
+  let mut findings: Vec<(String, usize, String)> = Vec::new();
+  for entity in document.entities() {
+    let Some(contour) = entity.kind.as_contour() else {
+      continue;
+    };
+    let issues = cam_geom::validate::inspect(contour, cam_geom::DEFAULT_TOLERANCE);
+    let mut order = 0;
+    if let Some(gap) = issues.open {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!("{} open: gap {gap:.4} mm", entity.id),
+      ));
+      order += 1;
+    }
+    for intersection in &issues.intersections {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!(
+          "{} self-intersection at {:.3}, {:.3} (segments {}, {})",
+          entity.id,
+          intersection.point.x,
+          intersection.point.y,
+          intersection.first,
+          intersection.second
+        ),
+      ));
+      order += 1;
+    }
+    for index in &issues.degenerate {
+      findings.push((
+        entity.id.clone(),
+        order,
+        format!("{} degenerate segment {index}", entity.id),
+      ));
+      order += 1;
+    }
+  }
+
+  if findings.is_empty() {
+    println!("all vectors valid");
+    return Ok(());
+  }
+
+  findings.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+  for (_, _, line) in &findings {
+    println!("{line}");
+  }
+  Err(Failure::vectors(format!(
+    "{} vector issue(s) found",
+    findings.len()
+  )))
+}
+
+fn import_command(rest: &[String]) -> Result<(), Failure> {
+  let mut input: Option<PathBuf> = None;
+  let mut out: Option<PathBuf> = None;
+  let mut layer: Option<String> = None;
+  let mut options = cam_import::ImportOptions::default();
+
+  let mut index = 0;
+  while index < rest.len() {
+    match rest[index].as_str() {
+      "--out" => {
+        out = Some(PathBuf::from(option_value(rest, index, "--out")?));
+        index += 2;
+      }
+      "--layer" => {
+        layer = Some(option_value(rest, index, "--layer")?.to_string());
+        index += 2;
+      }
+      "--tolerance" => {
+        options.tolerance = number(rest, index, "--tolerance")?;
+        index += 2;
+      }
+      "--dpi" => {
+        options.trace.dpi = number(rest, index, "--dpi")?;
+        index += 2;
+      }
+      "--threshold" => {
+        let value = number(rest, index, "--threshold")?;
+        if !(0.0..=255.0).contains(&value) {
+          return Err(Failure::input(format!(
+            "--threshold must be between 0 and 255, got {value}"
+          )));
+        }
+        options.trace.threshold = Some(value.round() as u8);
+        index += 2;
+      }
+      "--min-area" => {
+        options.trace.min_area = number(rest, index, "--min-area")?;
+        index += 2;
+      }
+      "--simplify" => {
+        options.trace.simplify = number(rest, index, "--simplify")?;
+        index += 2;
+      }
+      "--invert" => {
+        options.trace.invert = true;
+        index += 1;
+      }
+      other if other.starts_with('-') => {
+        return Err(Failure::input(format!("unknown import option {other:?}")))
+      }
+      other => {
+        if input.is_some() {
+          return Err(Failure::input("import takes exactly one input file"));
+        }
+        input = Some(PathBuf::from(other));
+        index += 1;
+      }
+    }
+  }
+
+  let input = input.ok_or_else(|| Failure::input("import requires an input file"))?;
+  if options.tolerance <= 0.0 {
+    return Err(Failure::input(
+      "--tolerance must be a positive length in mm",
+    ));
+  }
+  if options.trace.dpi <= 0.0 {
+    return Err(Failure::input("--dpi must be a positive number"));
+  }
+
+  let imported = cam_import::import_path(&input, &options)
+    .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
+  let document = cam_import::into_document(&imported, layer.as_deref())
+    .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
+
+  if let Some(path) = &out {
+    cam_store::document::save_document(path, &document)
+      .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
+    eprintln!(
+      "wrote {} layer(s), {} entity(ies) to {}",
+      document.layers.len(),
+      document.entities().count(),
+      path.display()
+    );
+  }
+
+  print!("{}", imported.report.render());
+  Ok(())
+}
+
+/// The value that follows an option.
+fn option_value<'a>(rest: &'a [String], index: usize, name: &str) -> Result<&'a str, Failure> {
+  rest
+    .get(index + 1)
+    .map(String::as_str)
+    .ok_or_else(|| Failure::input(format!("{name} requires a value")))
+}
+
+/// The number that follows an option.
+fn number(rest: &[String], index: usize, name: &str) -> Result<f64, Failure> {
+  let value = option_value(rest, index, name)?;
+  value
+    .parse::<f64>()
+    .map_err(|_| Failure::input(format!("{name} expects a number, got {value:?}")))
 }
 
 fn postp(rest: &[String]) -> Result<(), Failure> {

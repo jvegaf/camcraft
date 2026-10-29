@@ -298,3 +298,47 @@ fn redo_depth_tracks_the_future_stack() {
   app.execute(resize(800.0, 800.0, 9.0)).expect("applies");
   assert_eq!(app.redo_depth(), 0);
 }
+
+#[test]
+fn replacing_a_document_undoably_keeps_the_previous_one_and_reseeds_the_ids() {
+  let mut app = state();
+  let original = app.document_json();
+  assert_eq!(app.history_depth(), 0);
+
+  let mut imported = Document::new(Job::default_sheet());
+  imported.layers.push(cam_model::Layer {
+    id: "L1".to_owned(),
+    name: "Imported".to_owned(),
+    visible: true,
+    entities: vec![cam_model::Entity {
+      id: "E1".to_owned(),
+      kind: cam_model::EntityKind::Contour {
+        contour: cam_geom::primitive::circle(cam_geom::Point2::ORIGIN, 5.0).expect("circle"),
+      },
+    }],
+  });
+  app.replace_document_undoable(imported);
+
+  assert_eq!(app.history_depth(), 1);
+  assert!(app.is_dirty());
+  assert!(app.selection().is_empty());
+  assert_eq!(app.document().entities().count(), 1);
+  // The counter is reseeded from the new document, so the next id cannot collide with `E1`.
+  assert_eq!(app.next_entity_id(), "E2");
+
+  assert!(app.undo(), "the replacement is one undo step");
+  assert_eq!(app.document_json(), original);
+}
+
+#[test]
+fn opening_a_document_still_clears_the_history() {
+  let mut app = state();
+  app.execute(resize(600.0, 400.0, 12.0)).expect("applies");
+  assert_eq!(app.history_depth(), 1);
+
+  app.replace_document(Document::new(Job::default_sheet()));
+
+  assert_eq!(app.history_depth(), 0);
+  assert!(!app.can_undo());
+  assert!(!app.is_dirty());
+}

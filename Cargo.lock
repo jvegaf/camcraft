@@ -628,6 +628,7 @@ name = "cam-cli"
 version = "0.0.1"
 dependencies = [
  "cam-geom",
+ "cam-import",
  "cam-model",
  "cam-move",
  "cam-post",
@@ -656,6 +657,18 @@ dependencies = [
  "cam-units",
  "proptest",
  "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "cam-import"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-model",
+ "cam-units",
+ "flate2",
  "serde_json",
  "thiserror 2.0.21",
 ]
@@ -721,6 +734,7 @@ version = "0.0.1"
 dependencies = [
  "cam-app",
  "cam-geom",
+ "cam-import",
  "cam-model",
  "cam-view",
  "egui",
