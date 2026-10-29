@@ -65,7 +65,8 @@ no new scope.
   island from a pocket is one call and the result stays a `Region`, not a special "pocket shape".
 - **A6** — `Region::offset(distance)` moves each boundary the way that grows the material: outer
   boundaries inward, holes outward (their `offset_contour` sign is the opposite), then normalizes and
-  drops every piece that is closer than `|distance|` to any **original** boundary. The distance proof is
+  drops every piece whose exact distance to any **original** boundary is under `distance − 0.002 mm`
+  (the slack is two chord tolerances of the offset kernel, the form M4 proved necessary). The distance proof is
   D-M4-9's rule generalised from one contour to a region, and it is what makes the shrinking terminate.
   Settled while implementing (L8, D-RB-9): the sign comes from the **parity of the boundary's nesting
   depth**, and "any original boundary" is literal — a 100 mm square offset by 55 mm does not fail in
@@ -80,7 +81,9 @@ no new scope.
   and when it happens the caller is told, the way `Offset::flattened` tells it today.
 - **A9** — `cam_model::Toolpath` gains `island_ids: Vec<String>`, omitted when empty, and
   `Document::validate` refuses an island that is not a closed contour, that is not strictly inside the
-  pocket's boundary, that crosses another island, or that is repeated. Islands are **explicit**: the
+  pocket's boundary, that crosses **or touches** another island, or that is repeated. Nesting is legal:
+  an island strictly inside another is a boss, which D-RB-2 and A14 both anticipate, and P1's first
+  version refused it (L12). Islands are **explicit**: the
   model never infers containment from the selection (D-RB-1).
 - **A10** — Because an older build would silently ignore `island_ids` and cut the island away, the
   document schema is bumped to **`c2d/document@2`** when this lands: the writer emits `@2`, the reader
@@ -324,8 +327,9 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | --- | --- | --- |
 | K1 | this commit | 9 tests (`crates/cam-geom/tests/winding.rs`). Analytic winding with arcs, `Membership::{Outside, OnBoundary, Inside}`, tolerance-driven boundary test, open contours enclose nothing, and a property test against a fine tessellation over three shapes (a circle, a four-bulge shape, a three-arc shape) |
 | K2 | this commit | 11 tests (`crates/cam-geom/tests/relation.rs`): circle in square and the inverse, arc in arc, overlapping squares, plate crossing a circle, disjoint squares, shared edge, internal tangency, identical contours, the C notch (bounds contain, geometry does not), the tolerance changing "meeting" into "apart", and a property test for antisymmetry |
-| K3 | `85b4b6e` | 15 tests. Overlapping squares → 2 contours, 6 vertices, 75 mm² each (parity, D-RB-8); touching squares → 1 contour of 200 mm² whose perimeter is 60 mm, so the shared edge is not doubled; square + edge-crossing circle → 74.867 + 25.133 mm² with every surviving arc at radius 4 and its original centre; a plus sign (4 crossings) → 4 contours of 100 mm²; a bulge the model cannot hold is rebuilt and `flattened` says so; determinism vertex-for-vertex; a property test that a normalized region's `contains` agrees with the original's. Two decidability limits are refused by name instead of guessed: an arrangement finer than the tolerance, and a boundary that crosses itself (A4 only asks about crossings between boundaries) |
+| K3 | `85b4b6e` | 15 tests. Overlapping squares → 2 contours, 6 vertices, 75 mm² each (parity, D-RB-8); touching squares → 1 contour of 200 mm² whose perimeter is 60 mm, so the shared edge is not doubled; square + edge-crossing circle → 74.867 + 25.133 mm² with every surviving arc at radius 4 and its original centre; a plus sign (4 crossings) → 4 contours of 100 mm²; a bulge the model cannot hold is rebuilt and `flattened` says so; determinism vertex-for-vertex; a property test that a normalized region's `contains` agrees with the original's. One decidability limit is refused by name (an arrangement finer than the tolerance), and a boundary that crosses **itself** is passed through unaltered, because A4 only asks about crossings *between* boundaries (`region.rs` says so where it documents `normalize`; nothing pins either behaviour with a test — L12) |
 | K4 | `49e2dc8` | 14 tests. A 100 mm square inset by 10 → bounds (10,10)–(90,90), area 6400, every vertex 10.0 mm from its wall. A square with a centred r10 island inset by 8 → outer ring 84 mm wide, island ring r18 (area 1017.876), every vertex clearing both originals. An odd-depth hole grows: area 314.159 → 706.858. Nested parity (square / hole / boss) → 90, 70, 10 mm widths. Over-shrink and wider-than-material both refused where a naive `offset_contour` returns a well-formed gouging ring (the D-M4-9 evidence). A row crossing the island → spans at `50 ± √91`; a tangent row → `None`; a row along a boundary → `None`; `Some(vec![])` when the row misses. A U bracket's narrow arms flatten and say so |
+| K6 | `dacdca1` (+ seed `4dab36c`) | 13 tests. `segment_to_segment` exact for all four pair types from a closed-form candidate set, with the completeness argument stated in the module docs: parallel lines 5 mm apart, staggered spans `√125`, a T-junction at 0, a line reaching 4 mm past a circle's centre giving 6 = r − 4, a tangent line at 0, concentric arcs `|r1 − r2|` = 6 and `√116` when their sweeps do not overlap, side-by-side circles 8 = 20 − 5 − 7, nearest point an endpoint (`√109`, `√101`), and an interior arc foot (2.0, 5.0). The K5 chord now measures 17.0 against ends at 23.0 and is dropped; the 4 mm pocket fixture still gives 14 pieces, and no fixture's count changed — the gain is that the rule no longer depends on a piece happening to carry a betraying arc. Three property tests: symmetry, never exceeding sampled point distances, and zero exactly when `intersect` meets. Recorded pre-existing defect: `intersect` at tolerance `0.0` misses real crossings, so `segment_to_segment` carries its own exact meeting tests |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
 | K5 | `cee70de` | 17 cam-geom tests (3 new: the lens case with the old proof reproduced from the public API and its 23 mm ends against a 17 mm apex, plus two property tests that no surviving piece comes closer than its stage distance, arcs and nested regions) and 7 tightened `pocket_islands` tests. The 4 mm fixture now gives the analytic **14** rings instead of 16, and the pocket test measures the closest approach over the emitted moves: 3.0000 mm at the first stage, 23.0000 mm at the crossing stage where the dropped lenses reached 17 mm. The new CLI assertion counts arc blocks (0 without the island, 14 with it) instead of comparing line counts, which was only passing while the gouging pieces were cut |
@@ -347,6 +351,15 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L12** — Two corrections after P6 read the feature document against the code. P6's own review found the
+  first two in **my** text, and they matter because the document is what a later session trusts: K3's
+  evidence row claimed a self-crossing boundary is "refused by name" while `region.rs` documents it as
+  passed through (the row is fixed; neither behaviour has a test, which is recorded rather than papered
+  over), and A9 said an island that "crosses" another is refused while the code refused *any* pair that
+  was not `Disjoint` — so a legitimate **boss inside a hole** could not be authored at all, contradicting
+  D-RB-2 and A14. P5 found that one by trying to write the nested golden: `emit` refused the document it
+  was supposed to cut. That is P1's defect, mine, and P5 is fixing the rule under a widened surface rather
+  than dropping the test. Also fixed here: A6 never stated the 0.002 mm slack the proof actually uses.
 - **L11** — P4 evidence: 5 tests, 687 in the workspace, gates green, merged at `4b47ae7`. The raster
   pocket cuts a region now, which closes the gap that mattered most for shipping: before it, a raster
   pocket that named an island cut the island away. `tests/pocket.rs` needed no edit and a differential

@@ -44,7 +44,7 @@ COMMANDS:
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
         --kind <kind>         profile, pocket or drilling (required)
         --entities <ids>      Comma-separated entity ids (required)
-    --islands <ids>       pocket: contours inside the pocket to leave standing
+        --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
         --side <side>         profile: inside, outside or on (default outside)
         --allowance <mm>      profile, pocket: material left on the vector
