@@ -42,9 +42,12 @@ no new scope.
   — `contains` must never answer "inside" and "on the edge" the same way for two contours that share
   an edge).
 - **A2** — `cam_geom::winding::relation(first, second, tolerance)` classifies two closed contours as
-  `Disjoint`, `FirstInsideSecond`, `SecondInsideFirst`, `Nested` (no shared area, no crossing) or
-  `Crossing`. It is decided by segment intersections plus one interior point, never by bounding boxes
-  alone, and it is the only place that decides containment.
+  `Disjoint`, `FirstInside`, `SecondInside`, `Crossing` or `Touching`. It is decided by segment
+  intersections plus one interior point, never by bounding boxes alone, and it is the only place that
+  decides containment. Corrected while implementing (L5): an intersection reported as a single point
+  counts as a crossing only when it lies **away from both segments' ends**; a `Point` at an endpoint is
+  a shared corner and therefore `Touching`, not `Crossing`, or two squares meeting at one corner would
+  look like overlapping material.
 - **A3** — `Region { boundaries: Vec<Contour> }` with the **even-odd** membership rule: a point is
   material when it is inside an odd number of boundaries. `Region::contains(point)` is therefore
   `winding_number`s summed mod 2, and a hole is expressed by appending its boundary — no subtraction
@@ -270,7 +273,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | Task | Commit | Notes |
 | --- | --- | --- |
 | K1 | this commit | 9 tests (`crates/cam-geom/tests/winding.rs`). Analytic winding with arcs, `Membership::{Outside, OnBoundary, Inside}`, tolerance-driven boundary test, open contours enclose nothing, and a property test against a fine tessellation over three shapes (a circle, a four-bulge shape, a three-arc shape) |
-| K2 | _pending_ | |
+| K2 | this commit | 11 tests (`crates/cam-geom/tests/relation.rs`): circle in square and the inverse, arc in arc, overlapping squares, plate crossing a circle, disjoint squares, shared edge, internal tangency, identical contours, the C notch (bounds contain, geometry does not), the tolerance changing "meeting" into "apart", and a property test for antisymmetry |
 | K3 | _pending_ | |
 | K4 | _pending_ | |
 | P1 | _pending_ | |
@@ -293,6 +296,14 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L5** — K2 evidence: 11 tests, 630 in the workspace, gates green. A2's wording was wrong in exactly
+  the way the kernel caught: it said any `Point` intersection is a crossing, and a shared corner or a
+  shared edge's two ends are `Point` results, which made two touching squares report `Crossing`. A
+  meeting point now only counts when it is interior to both segments (measured along the segment, arcs
+  included), so shared corners are `Touching`. A tolerance test was added in place of a nested-contour
+  test whose premise was wrong (the circle I drew was not inside the square, so the test was asserting
+  geometry that did not exist) — the property test for antisymmetry and the C-notch case carry the
+  "bounds are not containment" coverage.
 - **L4** — K1 evidence. Two defects were found by the tests, both real and both fixed in the root rather
   than in the expectation. First, the arc's contribution was computed by cutting the arc at its
   **tangency** points and taking the short-way angle between each piece's endpoint directions; that is

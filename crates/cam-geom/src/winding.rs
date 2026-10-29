@@ -17,6 +17,7 @@ use std::f64::consts::{PI, TAU};
 
 use crate::arc::Arc;
 use crate::contour::Contour;
+use crate::intersect::{intersect, Intersections};
 use crate::point::{Point2, Vec2};
 use crate::segment::Segment;
 
@@ -182,4 +183,135 @@ fn fraction_at_angle(arc: Arc, angle: f64) -> Option<f64> {
     return None;
   }
   Some(travelled / magnitude)
+}
+
+/// How two closed contours sit relative to each other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Relation {
+  /// They share no point and neither encloses the other.
+  Disjoint,
+  /// `first` lies inside `second`.
+  FirstInside,
+  /// `second` lies inside `first`.
+  SecondInside,
+  /// They cross: their boundaries intersect at a point that is not a tangency or an overlap.
+  Crossing,
+  /// They meet without crossing: a shared edge, a tangency, or identical contours.
+  Touching,
+}
+
+/// Classify how two closed contours sit relative to each other, within `tolerance` millimetres.
+///
+/// The boundaries are intersected first — that is the only thing that can produce a crossing — and
+/// containment is decided afterwards by asking [`classify`] about one point of each contour. Bounding
+/// boxes are a fast path to [`Relation::Disjoint`], never the decision: a rectangle's bounds contain a
+/// circle's bounds without containing the circle.
+///
+/// A contour that merely touches the other's boundary is `Touching`, not `Crossing`, because a boolean
+/// cannot cut along a shared edge without producing a doubled edge — the caller has to decide what a
+/// shared edge means before anything is subtracted.
+pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
+  let first_bounds = first.bounds().expand(tolerance);
+  let second_bounds = second.bounds().expand(tolerance);
+  let boxes_overlap = first_bounds.min.x <= second_bounds.max.x
+    && second_bounds.min.x <= first_bounds.max.x
+    && first_bounds.min.y <= second_bounds.max.y
+    && second_bounds.min.y <= first_bounds.max.y;
+  if !boxes_overlap {
+    return Relation::Disjoint;
+  }
+
+  let mut crossing = false;
+  let mut touching = false;
+  for own in first.segments() {
+    for other in second.segments() {
+      match intersect(own, other, tolerance) {
+        Intersections::None => {}
+        Intersections::Point(point) => {
+          // A meeting point that is an endpoint of either segment is a touch, not a crossing: two
+          // squares sharing a corner meet at a point that belongs to both, and calling that a crossing
+          // would make every shared corner look like overlapping material.
+          if is_interior(own, point, tolerance) && is_interior(other, point, tolerance) {
+            crossing = true;
+          } else {
+            touching = true;
+          }
+        }
+        Intersections::Points(first_point, second_point) => {
+          let proper = [first_point, second_point].into_iter().any(|point| {
+            is_interior(own, point, tolerance) && is_interior(other, point, tolerance)
+          });
+          if proper {
+            crossing = true;
+          } else {
+            touching = true;
+          }
+        }
+        Intersections::Tangent(_) | Intersections::Coincident => touching = true,
+      }
+    }
+  }
+  if crossing {
+    return Relation::Crossing;
+  }
+  if touching {
+    return Relation::Touching;
+  }
+
+  // No contact at all, so each contour is wholly inside or wholly outside the other.
+  let mut probed = 0;
+  if probe(first).is_some_and(|point| classify(second, point, tolerance) == Membership::Inside) {
+    return Relation::FirstInside;
+  }
+  if probe(first).is_some() {
+    probed += 1;
+  }
+  if probe(second).is_some_and(|point| classify(first, point, tolerance) == Membership::Inside) {
+    return Relation::SecondInside;
+  }
+  // A probe that lands on the other boundary cannot decide containment; saying "touching" keeps the
+  // caller from treating an ambiguous pair as nested.
+  if probe(second).is_none() || probed == 0 {
+    return Relation::Touching;
+  }
+  Relation::Disjoint
+}
+
+/// Whether `point` lies on the segment away from both of its ends, within `tolerance` millimetres.
+fn is_interior(segment: Segment, point: Point2, tolerance: f64) -> bool {
+  let length = segment.length();
+  if length <= 0.0 {
+    return false;
+  }
+  let fraction = match segment {
+    Segment::Line(line) => {
+      let direction = line.end - line.start;
+      let denominator = direction.length_squared();
+      if denominator == 0.0 {
+        return false;
+      }
+      (point - line.start).dot(direction) / denominator
+    }
+    Segment::Arc(arc) => {
+      let angle = (point.y - arc.center().y).atan2(point.x - arc.center().x);
+      match fraction_at_angle(arc, angle) {
+        Some(fraction) => fraction,
+        None => return false,
+      }
+    }
+  };
+  fraction * length > tolerance && (1.0 - fraction) * length > tolerance
+}
+
+/// A point that is strictly inside a closed contour, if one can be named.
+///
+/// The first vertex is the honest choice for a simple closed contour in general position: it is a point
+/// of the contour itself, so it is inside any contour that contains this one. Its bounds centre is the
+/// fallback for a contour whose vertices all land on the other one.
+fn probe(contour: &Contour) -> Option<Point2> {
+  contour
+    .vertices()
+    .first()
+    .map(|vertex| vertex.point)
+    .or_else(|| Some(contour.bounds().center()))
 }
