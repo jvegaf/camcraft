@@ -17,6 +17,7 @@
 mod arc;
 mod chain;
 mod contour;
+pub mod intersect;
 pub mod offset;
 mod point;
 pub mod primitive;

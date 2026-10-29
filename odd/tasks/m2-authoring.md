@@ -197,6 +197,21 @@ after a non-uniform scale; the whole shell still runs headless.
 non-uniform-scale tolerances with their numbers, the join/trim refusal messages, and the text glyph
 source and its limitation. Roadmap M2 row marked delivered with the evidence table.
 
+## Delivery slices
+
+The milestone is one feature branch and four reviewable pull requests, sized so a reviewer keeps
+context across a slice:
+
+| Slice | Tasks | Subject |
+| --- | --- | --- |
+| 1 | T1–T3 | Kernel: primitives, ellipse, transforms |
+| 2 | T4–T7 | Kernel: intersections, node editing, join, trim |
+| 3 | T8–T10 | Document commands: draw, transform, edit |
+| 4 | T11–T13 | Text, shell wiring, docs |
+
+Slice boundaries are recorded here as they close, per the review-workload rule: `2a11db6` + `e59f484`
+(plan + T1, 778 lines), `2a0bc5d` (T2, 325), `74b55a6` (T3, 486). Slices 1 closes with T1–T3.
+
 ## Evidence — commit per task
 
 | Task | Commit | Notes |
@@ -204,7 +219,7 @@ source and its limitation. Roadmap M2 row marked delivered with the evidence tab
 | T1 | `e59f484` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
 | T2 | `2a0bc5d` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
 | T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
-| T4 | — | pending |
+| T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
 | T5 | — | pending |
 | T6 | — | pending |
 | T7 | — | pending |
