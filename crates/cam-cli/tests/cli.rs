@@ -1978,6 +1978,18 @@ fn set_job(document: &Path, edit: impl Fn(&mut Job)) {
 
 /// Author a pocket on `E1` through the real `toolpath` command, as a user's document carries one.
 fn author_pocket(document: &Path, library: &Path, name: &str, stepover: f64, cut_depth: f64) {
+  author_pocket_with(document, library, name, "offset", stepover, cut_depth);
+}
+
+/// The same, with the clearing strategy named: `offset` or `raster`.
+fn author_pocket_with(
+  document: &Path,
+  library: &Path,
+  name: &str,
+  strategy: &str,
+  stepover: f64,
+  cut_depth: f64,
+) {
   let stepover = stepover.to_string();
   let cut_depth = cut_depth.to_string();
   let outcome = run(&[
@@ -1991,6 +2003,8 @@ fn author_pocket(document: &Path, library: &Path, name: &str, stepover: f64, cut
     "1",
     "--name",
     name,
+    "--strategy",
+    strategy,
     "--stepover",
     &stepover,
     "--pass-depth",
@@ -2104,6 +2118,96 @@ fn simulate_pins_the_whole_report_of_a_pocket_that_cuts_what_it_claimed() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+/// The whole report a 100 mm square raster pocket prints, byte for byte.
+///
+/// The same region as the offset pocket above, cleared the other way: a 2 mm tool in 1 mm cells,
+/// inset 1 mm from the square's edges, so the rows span x = 1 .. 99 (98 mm) and start at y = 1 one
+/// stepover apart. The stepover is 1.58 mm, which puts 63 rows at y = 1, 2.58, ... 98.96, and that
+/// last row is what the fixture turns on. A row ends 1 mm inside the square's edge, so a cell centre
+/// half a cell further out is `sqrt(1^2 - 0.5^2)` = 0.866 mm away across the row: the last row has to
+/// be within that of the top row of centres at 99.5 mm, and short of the inset region's far edge at
+/// 99 mm, where the kernel reports a row lying on a boundary as ambiguous and the strategy drops it —
+/// the row-lattice finding recorded in the task's return. Between rows the discs overlap by 0.79 mm at
+/// the row ends, inside that 0.866 mm, so the raster clears the whole 100 x 100 square: 10000 cells at
+/// 6 mm deep is 60000 mm3. Four moves a row (rapid, plunge, feed, retract) is 63 x 4 = 252 moves, and
+/// the cutting length is 63 rows x 98 mm = 6174 mm.
+const CLEAN_RASTER_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 252 move(s), 6174.000 mm cutting length
+removed: 60000.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_pins_the_whole_report_of_a_raster_pocket_that_cuts_what_it_claimed() {
+  let directory = scratch("simulate-raster");
+  let document = write_vectors(
+    &directory,
+    "raster.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket_with(&document, &library, "Pocket", "raster", 1.58, 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_RASTER_REPORT);
+
+  // A8's oracle for the second strategy: the same region, the same analytic volume, the same bound —
+  // the region's perimeter times half a cell times the depth.
+  let removed = report_volume(&outcome.stdout, "removed:");
+  let analytic = 100.0 * 100.0 * 6.0;
+  let bound = 4.0 * 100.0 * 1.0 / 2.0 * 6.0;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole report a drilling toolpath prints, byte for byte.
+///
+/// One r3 hole drilled 6 mm deep with a 6 mm tool: the tool is the hole, so the document's target and
+/// the program's sweep are the same disc. 32 cells of 1 mm2 have their centre inside it, which is
+/// 32 x 1 x 6 = 192 mm3 — against the analytic `pi r^2 depth` = 169.646 mm3, inside the hole's own
+/// bound of `2 pi r x cell / 2 x depth` = 56.549 mm3. The program is a rapid, one plunge (the peck
+/// depth is zero, so the hole is one plunge) and a retract: 3 moves, no cutting length.
+const CLEAN_DRILL_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 3 move(s), 0.000 mm cutting length
+removed: 192.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_pins_the_whole_report_of_a_hole_the_drill_matches() {
+  let directory = scratch("simulate-drill");
+  let document = write_vectors(&directory, "hole.c2d", vec![circle_contour(3.0)]);
+  let library = write_sim_library(&directory, 6.0);
+  author_drill(&document, &library, "Drill", 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_DRILL_REPORT);
+
+  // A8's oracle for drilling: the removed volume is `pi r^2 depth` per hole, inside the hole's
+  // perimeter times half a cell times the depth.
+  let removed = report_volume(&outcome.stdout, "removed:");
+  let analytic = PI * 3.0 * 3.0 * 6.0;
+  let bound = 2.0 * PI * 3.0 * 1.0 / 2.0 * 6.0;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 #[test]
 fn a_finer_resolution_reduces_the_coverage_error() {
   // A6: refinement is monotone on a fixed fixture. The region is 120.4 x 90.4 mm, so its edges do
@@ -2198,6 +2302,12 @@ fn a_drill_wider_than_its_hole_reports_gouge_and_exits_six() {
   // target is derived from the same `cut_depth` the pass sequence lands on — so the gouge is stated
   // the way a document can express it: a 4 mm hole drilled with a 6 mm tool removes a disc a
   // millimetre wider on every side than the hole the document authorised.
+  //
+  // The arithmetic: 32 cells of 1 mm2 have their centre inside the 3 mm disc the tool sweeps, and 12
+  // of them are inside the 2 mm circle the document authorised, so the 20 cells outside the hole are
+  // 6 mm of material nobody asked to lose: 20 x 1 x 6 = 120 mm3 of gouge, over 20 cells. Every cell
+  // the document did claim was reached, so uncut is zero — the same volume reported with the sign the
+  // defect has, and not the other one.
   let directory = scratch("simulate-gouge");
   let document = write_vectors(
     &directory,
@@ -2209,14 +2319,15 @@ fn a_drill_wider_than_its_hole_reports_gouge_and_exits_six() {
 
   let outcome = simulate(&document, &library, &[]);
   assert_eq!(outcome.code, 6, "{}{}", outcome.stdout, outcome.stderr);
-  let gouge = report_volume(&outcome.stdout, "gouge:");
-  assert!(gouge > 0.0, "{}", outcome.stdout);
-  assert!(
-    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
-    "the gouge is the only defect:\n{}",
-    outcome.stdout
-  );
-  assert!(outcome.stdout.contains("crash: none"), "{}", outcome.stdout);
+  let expected = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 3 move(s), 0.000 mm cutting length
+removed: 192.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 120.000 mm3 over 20 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+  assert_eq!(outcome.stdout, expected);
   assert!(outcome.stderr.contains("gouge"), "{}", outcome.stderr);
   std::fs::remove_dir_all(&directory).ok();
 }
