@@ -318,7 +318,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 | --- | --- | --- |
 | T1 | `a263b28`, `9eb1326` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `61e1df5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
 | T2 | _pending_ | |
-| T3 | _pending_ | |
+| T3 | `1382e97` (merge `5201ab4`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
 | T4 | _pending_ | |
 | T5 | _pending_ | |
 | T6 | _pending_ | |
@@ -342,6 +342,13 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   "`pocket` exits with `NotImplemented`" test the task detail proposed. Pinning a stub is exactly the
   M3 L6 defect, and A14 already requires the placeholder to be gone by T5. The stub is covered by
   T2/T3 replacing it and by T5's golden test, and `ToolpathError::NotImplemented` is removed there.
+- **L6** — Slice 2 evidence, drilling: T3 in `1382e97`, merged `5201ab4`; 13 tests, 586 total, gates
+  green. RED was observed for real: all 13 tests failed against the stub with "not implemented yet".
+  One spec deviation kept rather than papered over: `drill()` receives `DrillHole`s, not contours, so
+  the "square is refused as `NotACircle`" case cannot live in `tests/drill.rs`; it is pinned where the
+  resolution actually happens, in `tests/drill_targets.rs` and the CLI layer. The tour's seed is taken
+  in document space, which differs from machine space only for `TopLeft`, and only for which hole goes
+  first — distances are identical under any origin transform.
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
