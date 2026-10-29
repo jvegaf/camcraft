@@ -6,7 +6,7 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Job, Layer};
-use cam_ui::{handle_action, Shell, ShellOutput};
+use cam_ui::{handle_action, DrawShape, Shell, ShellOutput, Tool, UiAction};
 
 fn rectangle(x: f64, y: f64, width: f64, height: f64) -> Contour {
   Contour::from_points(
@@ -20,6 +20,13 @@ fn rectangle(x: f64, y: f64, width: f64, height: f64) -> Contour {
   )
   .expect("rectangle")
 }
+
+/// How closely a dragged world size can be recovered, in millimetres.
+///
+/// A window position is an `f32` pixel, so a world point that makes the round trip
+/// world -> pixel -> world comes back with a few nanometres of error. A thousandth of a millimetre is
+/// a safe bound and is still four orders of magnitude below a pixel at any usable zoom.
+const GESTURE_TOLERANCE_MM: f64 = 1.0e-3;
 
 fn document() -> Document {
   let mut document = Document::new(Job::default_sheet());
@@ -92,8 +99,31 @@ impl Harness {
     self.output = captured.expect("the shell ran");
     let actions = self.output.actions.clone();
     for action in actions {
-      let _ = handle_action(&mut self.app, &action);
+      // The host applies what the shell returned; going through the shell's own entry point is what
+      // keeps the status bar in the loop, which the authoring tests assert on.
+      self.shell.apply_action(&mut self.app, &action);
     }
+  }
+
+  /// Press at `from`, move to `to`, release: one complete drag gesture.
+  fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) {
+    let modifiers = egui::Modifiers::default();
+    self.frame(vec![
+      egui::Event::PointerMoved(from),
+      egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers,
+      },
+    ]);
+    self.frame(vec![egui::Event::PointerMoved(to)]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos: to,
+      button: egui::PointerButton::Primary,
+      pressed: false,
+      modifiers,
+    }]);
   }
 
   /// Convert a world position into a window position through the live camera.
@@ -341,6 +371,176 @@ fn hovering_a_corner_reports_a_snap_marker_and_the_status_readout() {
 }
 
 #[test]
+fn a_rectangle_drag_draws_one_command_of_the_dragged_world_size() {
+  let mut harness = Harness::new();
+  // Snapping has its own tests; this one is about the gesture's geometry, so it asks for the world
+  // points the cursor reports rather than the snapped ones.
+  harness.shell.snapping = false;
+  harness.shell.active_tool = Tool::Rectangle;
+  harness.frame(Vec::new());
+
+  let from = harness.at(Point2::new(10.0, 10.0));
+  let to = harness.at(Point2::new(90.0, 50.0));
+  harness.drag(from, to);
+
+  assert_eq!(
+    harness.output.actions.len(),
+    1,
+    "a press-move-release is exactly one command, got {:?}",
+    harness.output.actions
+  );
+  let UiAction::Draw(DrawShape::Rectangle { at, width, height }) = &harness.output.actions[0]
+  else {
+    panic!(
+      "the rectangle tool must draw a rectangle, got {:?}",
+      harness.output.actions
+    );
+  };
+  assert!(
+    at.is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM),
+    "{at:?}"
+  );
+  assert!(
+    (width - 80.0).abs() < GESTURE_TOLERANCE_MM,
+    "dragged width must be 80 mm, got {width}"
+  );
+  assert!(
+    (height - 40.0).abs() < GESTURE_TOLERANCE_MM,
+    "dragged height must be 40 mm, got {height}"
+  );
+
+  assert_eq!(
+    harness.app.document().entities().count(),
+    2,
+    "the drag must add exactly one entity: {}",
+    harness.shell.status
+  );
+  assert_eq!(
+    harness.app.history_depth(),
+    1,
+    "one drag is one undo step: {}",
+    harness.shell.status
+  );
+  let drawn = harness
+    .app
+    .selection()
+    .ids()
+    .next()
+    .expect("the drawn rectangle is selected")
+    .to_owned();
+  let bounds = harness
+    .app
+    .document()
+    .entity(&drawn)
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("a contour")
+    .bounds();
+  assert!(
+    bounds
+      .min
+      .is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM)
+      && bounds
+        .max
+        .is_near(Point2::new(90.0, 50.0), GESTURE_TOLERANCE_MM),
+    "the stored rectangle must be the dragged one, got {bounds:?}"
+  );
+
+  harness.key(
+    egui::Key::Z,
+    egui::Modifiers {
+      command: true,
+      ..Default::default()
+    },
+  );
+  assert_eq!(
+    harness.app.document().entities().count(),
+    1,
+    "one undo removes the dragged rectangle"
+  );
+}
+
+#[test]
+fn a_line_drag_draws_one_open_line_even_when_it_is_horizontal() {
+  let mut harness = Harness::new();
+  harness.shell.snapping = false;
+  harness.shell.active_tool = Tool::Line;
+  harness.frame(Vec::new());
+
+  let from = harness.at(Point2::new(10.0, 10.0));
+  let to = harness.at(Point2::new(90.0, 10.0));
+  harness.drag(from, to);
+
+  assert_eq!(
+    harness.output.actions.len(),
+    1,
+    "{:?}",
+    harness.output.actions
+  );
+  let UiAction::Draw(DrawShape::Line { from, to }) = &harness.output.actions[0] else {
+    panic!(
+      "the line tool must draw a line, got {:?}",
+      harness.output.actions
+    );
+  };
+  assert!(
+    from.is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM),
+    "{from:?}"
+  );
+  assert!(
+    to.is_near(Point2::new(90.0, 10.0), GESTURE_TOLERANCE_MM),
+    "{to:?}"
+  );
+
+  let drawn = harness
+    .app
+    .selection()
+    .ids()
+    .next()
+    .expect("the drawn line is selected")
+    .to_owned();
+  let contour = harness
+    .app
+    .document()
+    .entity(&drawn)
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("a contour");
+  assert!(!contour.is_closed(), "a line stays open");
+  assert!(
+    (contour.perimeter() - 80.0).abs() < GESTURE_TOLERANCE_MM,
+    "the line must be the dragged length, got {}",
+    contour.perimeter()
+  );
+}
+
+#[test]
+fn a_press_and_release_without_movement_draws_nothing() {
+  let mut harness = Harness::new();
+  harness.shell.snapping = false;
+  harness.shell.active_tool = Tool::Rectangle;
+  harness.frame(Vec::new());
+  let depth = harness.app.history_depth();
+
+  let position = harness.at(Point2::new(10.0, 10.0));
+  harness.click(position);
+
+  assert!(
+    harness.output.actions.is_empty(),
+    "a click with a drawing tool armed must not submit a shape, got {:?}",
+    harness.output.actions
+  );
+  assert_eq!(
+    harness.app.document().entities().count(),
+    1,
+    "no entity may be drawn"
+  );
+  assert_eq!(
+    harness.app.history_depth(),
+    depth,
+    "a cancelled gesture must not grow the undo history"
+  );
+}
+
+#[test]
 fn zoom_and_pan_are_not_written_into_the_undo_history() {
   let mut harness = Harness::new();
   let depth = harness.app.history_depth();
@@ -361,4 +561,31 @@ fn zoom_and_pan_are_not_written_into_the_undo_history() {
     "moving the view is not an edit"
   );
   assert!(!harness.app.is_dirty(), "nor does it dirty the document");
+}
+
+#[test]
+fn a_rectangle_drag_along_one_axis_is_cancelled_with_a_hint() {
+  let mut harness = Harness::new();
+  harness.shell.snapping = false;
+  harness.shell.active_tool = Tool::Rectangle;
+  harness.frame(Vec::new());
+  let depth = harness.app.history_depth();
+
+  // A horizontal drag gives the rectangle no height: a zero-size shape is cancelled, not submitted.
+  let from = harness.at(Point2::new(10.0, 10.0));
+  let to = harness.at(Point2::new(90.0, 10.0));
+  harness.drag(from, to);
+
+  assert!(
+    harness.output.actions.is_empty(),
+    "a drag with no height must not submit a shape, got {:?}",
+    harness.output.actions
+  );
+  assert_eq!(harness.app.document().entities().count(), 1);
+  assert_eq!(harness.app.history_depth(), depth);
+  assert!(
+    harness.shell.status.contains("drag in both directions"),
+    "the status bar must say why nothing was drawn: {}",
+    harness.shell.status
+  );
 }

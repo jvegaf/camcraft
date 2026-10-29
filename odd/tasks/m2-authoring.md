@@ -233,7 +233,7 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 | T9 | `HEAD` | 18 tests (36 → 54); `lost_arcs` aggregated from the kernel; array copies are full-duplicate per cell |
 | T10 | `HEAD` | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `4fc6940` |
 | T11 | `d053640` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
-| T12 | — | pending |
+| T12 | `HEAD` | 18 tests (14 input + 35 shell in total); every command reachable, drag draws one command per gesture |
 | T13 | — | pending |
 
 ## Log

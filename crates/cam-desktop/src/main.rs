@@ -6,7 +6,7 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2, Vertex};
 use cam_model::{Document, Entity, EntityKind, Job, Layer};
-use cam_ui::{handle_action, Shell};
+use cam_ui::Shell;
 
 fn main() -> eframe::Result<()> {
   let options = eframe::NativeOptions {
@@ -44,9 +44,10 @@ impl eframe::App for Editor {
     // The shell never mutates the document itself; its actions are applied here, and a refusal
     // becomes a status-bar message instead of a silent no-op.
     for action in output.actions {
-      if let Err(message) = handle_action(&mut self.app, &action) {
-        self.shell.status = message;
-      }
+      // Through the shell, not the bare handler: the shell turns the command's outcome into the
+      // sentence the user reads, including created counts, an ellipse's radial error and how many
+      // arcs a non-uniform scale cost (M2 A5, D-M2-2).
+      self.shell.apply_action(&mut self.app, &action);
     }
   }
 }
