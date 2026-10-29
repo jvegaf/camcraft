@@ -201,7 +201,7 @@ source and its limitation. Roadmap M2 row marked delivered with the evidence tab
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | — | pending |
+| T1 | `e59f484` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
 | T2 | — | pending |
 | T3 | — | pending |
 | T4 | — | pending |
@@ -226,3 +226,10 @@ source and its limitation. Roadmap M2 row marked delivered with the evidence tab
   automáticamente con tolerancia declarada". Recorded as D-M2-2 (S5).
 - **L4** — Plan: 13 tasks, dependency chain, all inline, branch `feat/m2-authoring` off `master`
   (`4578cdc`). Baseline suite: see `scripts/check.sh`.
+- **L5** — T1 evidence. `2a11db6` holds the plan (228 lines); `e59f484` holds T1 (530 authored
+  lines). Slice boundary recorded per the review-workload rule: the slab is above ~400 lines because
+  the plan and the first task are separate units and the task's tests are half of it. A real defect
+  surfaced while writing T1's round-trip property test: `serde_json`'s default float parsing returns
+  one ULP off, so a stored coordinate did not round-trip exactly. Fixed at the root by enabling
+  `float_roundtrip` in the workspace dependency; the whole suite, every M0 golden G-code program
+  included, is green with and without it.

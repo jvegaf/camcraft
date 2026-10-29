@@ -189,3 +189,121 @@ pub fn arc_through(a: Point2, b: Point2, c: Point2) -> Result<Contour, GeomError
     false,
   )
 }
+
+/// How many pieces the ellipse approximation may be split into before it gives up.
+///
+/// Well under [`crate::MAX_TESSELLATION_STEPS`]: an approximation is an approximation, and a
+/// sliver-thin ellipse at a micrometre tolerance must stop somewhere rather than allocate without
+/// limit.
+const MAX_ELLIPSE_ARCS: usize = 2048;
+
+/// How many interior samples each approximation piece is measured at.
+///
+/// The error is estimated, not proved, so the builder hands the estimate back to the caller instead
+/// of pretending the tolerance was met.
+const ELLIPSE_SAMPLES: usize = 16;
+
+/// The smallest number of pieces an ellipse is split into.
+///
+/// Four keeps every axis extreme an exact vertex, so the approximated contour touches the analytic
+/// bounding box instead of drifting inside it.
+const MIN_ELLIPSE_ARCS: usize = 4;
+
+/// An approximated ellipse: the contour, and the largest radial error it actually achieved.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EllipseApproximation {
+  /// The closed, counter-clockwise contour.
+  pub contour: Contour,
+  /// The largest measured radial error, in millimetres. Zero means the request was a circle.
+  pub max_radial_error: f64,
+}
+
+impl EllipseApproximation {
+  /// Number of arcs the approximation needed.
+  pub fn arc_count(&self) -> usize {
+    self.contour.len()
+  }
+}
+
+/// A counter-clockwise ellipse, approximated by circular arcs within `tolerance`.
+///
+/// An ellipse is not representable by circular arcs, so this is an approximation whose achieved
+/// error is returned rather than hidden (M2 A3). The piece count starts at four — which puts a
+/// vertex on each axis extreme — and doubles until the measured error meets `tolerance` or
+/// [`MAX_ELLIPSE_ARCS`] is reached, in which case the best attempt and its real error come back.
+///
+/// # Errors
+///
+/// [`GeomError::InvalidPrimitive`] when either radius is not positive, or when `tolerance` is not
+/// positive.
+pub fn ellipse(
+  center: Point2,
+  rx: f64,
+  ry: f64,
+  tolerance: f64,
+) -> Result<EllipseApproximation, GeomError> {
+  require_positive("the ellipse X radius must be a positive finite number", rx)?;
+  require_positive("the ellipse Y radius must be a positive finite number", ry)?;
+  require_positive(
+    "the ellipse tolerance must be a positive finite number",
+    tolerance,
+  )?;
+
+  if rx == ry {
+    return Ok(EllipseApproximation {
+      contour: circle(center, rx)?,
+      max_radial_error: 0.0,
+    });
+  }
+
+  let mut pieces = MIN_ELLIPSE_ARCS;
+  let mut best = ellipse_pieces(center, rx, ry, pieces)?;
+  while best.max_radial_error > tolerance && pieces < MAX_ELLIPSE_ARCS {
+    pieces *= 2;
+    let attempt = ellipse_pieces(center, rx, ry, pieces)?;
+    let improved = attempt.max_radial_error <= best.max_radial_error;
+    if improved {
+      best = attempt;
+    }
+    if best.max_radial_error <= tolerance {
+      break;
+    }
+  }
+  Ok(best)
+}
+
+/// Build one approximation level and measure it.
+fn ellipse_pieces(
+  center: Point2,
+  rx: f64,
+  ry: f64,
+  pieces: usize,
+) -> Result<EllipseApproximation, GeomError> {
+  let step = TAU / pieces as f64;
+  let point_at = |angle: f64| Point2::new(center.x + rx * angle.cos(), center.y + ry * angle.sin());
+
+  let mut vertices = Vec::with_capacity(pieces);
+  let mut worst: f64 = 0.0;
+  for index in 0..pieces {
+    let start_angle = step * index as f64;
+    let end_angle = start_angle + step;
+    let middle_angle = (start_angle + end_angle) / 2.0;
+    let arc = Arc::from_three_points(
+      point_at(start_angle),
+      point_at(middle_angle),
+      point_at(end_angle),
+    )?;
+    vertices.push(Vertex::new(arc.start_point(), arc.bulge()));
+
+    for sample in 1..ELLIPSE_SAMPLES {
+      let angle = start_angle + step * sample as f64 / ELLIPSE_SAMPLES as f64;
+      let radial = arc.center().distance_to(point_at(angle)) - arc.radius();
+      worst = worst.max(radial.abs());
+    }
+  }
+
+  Ok(EllipseApproximation {
+    contour: Contour::new(vertices, true)?,
+    max_radial_error: worst,
+  })
+}
