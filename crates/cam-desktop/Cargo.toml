@@ -1,0 +1,15 @@
+[package]
+name = "cam-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-app.workspace = true
+cam-view.workspace = true
+cam-ui.workspace = true
+cam-model.workspace = true
+cam-geom.workspace = true
+eframe.workspace = true

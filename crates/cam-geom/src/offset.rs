@@ -496,20 +496,9 @@ fn distance_to_boundary(point: Point2, boundary: &[Point2]) -> f64 {
   for index in 0..boundary.len() {
     let from = boundary[index];
     let to = boundary[(index + 1) % boundary.len()];
-    best = best.min(distance_to_segment(point, from, to));
+    best = best.min(crate::segment::LineSeg::new(from, to).distance_to_point(point));
   }
   best
-}
-
-/// Shortest distance from a point to a finite segment.
-fn distance_to_segment(point: Point2, from: Point2, to: Point2) -> f64 {
-  let span = to - from;
-  let length_squared = span.length_squared();
-  if length_squared <= 0.0 {
-    return point.distance_to(from);
-  }
-  let projection = ((point - from).dot(span) / length_squared).clamp(0.0, 1.0);
-  point.distance_to(from + span * projection)
 }
 
 /// Shoelace area of a polygon.
