@@ -330,7 +330,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
 | K5 | `cee70de` | 17 cam-geom tests (3 new: the lens case with the old proof reproduced from the public API and its 23 mm ends against a 17 mm apex, plus two property tests that no surviving piece comes closer than its stage distance, arcs and nested regions) and 7 tightened `pocket_islands` tests. The 4 mm fixture now gives the analytic **14** rings instead of 16, and the pocket test measures the closest approach over the emitted moves: 3.0000 mm at the first stage, 23.0000 mm at the crossing stage where the dropped lenses reached 17 mm. The new CLI assertion counts arc blocks (0 without the island, 14 with it) instead of comparing line counts, which was only passing while the gouging pieces were cut |
 | P3 | `a2d8736` | 8 tests. `PocketRequest::islands: &[&Contour]`; rings from `Region::offset(inset + k*stepover)`, so the wall shrinks and the island grows; the strategy's own proof deleted (D-RB-6); `Pocketpath::flattened` reported. 8 mm stepover → 6 rings (3 stages × wall + island) ending at `d = 27`; 4 mm stepover → stages 3, 7, 11, 15, 19, 23 with the wall ring at `3..97` and the island ring at `r = 13`; a region that leaves nothing and a 3 mm pocket with a 4 mm tool are both `OffsetCollapsed` carrying the kernel's reason; a narrow neck reports `flattened`; two runs are identical. **All 12 M4 pocket tests passed with their expectations untouched**, and a base-vs-change dump over seven island-free fixtures in both strategies is move-for-move identical except the wording of one refusal reason the spec asks for |
-| P4 | _pending_ | |
+| P4 | `4b47ae7` | 5 tests. 100 mm square + centred r10 island, 3 mm stepover → **32 rows, 40 spans**: the 8 rows at y = 39…60 cross the island and cut two spans ending at `50 ± √(13² − (y−50)²)`, the other 24 cut one span `3…97`, and the row at y = 63 is exactly tangent so the kernel answers `None` and the retry resolves it just outside. A full-width island band → 24 rows / 24 spans (the grown island crosses the shrunken wall and the kernel normalizes the region into two bands, so those rows get no material). A narrow strip at 7 mm stepover → 14 rows / 24 spans with no unpaired span. Every cutting move stays ≥ 3 − 1e-6 mm from the island. **`tests/pocket.rs` needed no edit at all** (12/12) and a differential over eight island-free raster fixtures is 875 identical output lines |
 | P5 | _pending_ | |
 | P6 | _pending_ | |
 
@@ -347,6 +347,16 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L11** — P4 evidence: 5 tests, 687 in the workspace, gates green, merged at `4b47ae7`. The raster
+  pocket cuts a region now, which closes the gap that mattered most for shipping: before it, a raster
+  pocket that named an island cut the island away. `tests/pocket.rs` needed no edit and a differential
+  over eight island-free raster fixtures came back identical line for line. One decision the spec had
+  not settled and the worker got right: the retried row is emitted at the height the kernel actually
+  clipped at, not the nominal grid height, because emitting the nominal one moves a tangent row's ends
+  off the curve by ~1e-5 mm — and M4's tangent test pins 1e-6. Also recorded: "a row the island covers
+  entirely" cannot be built from a concentric fixture (such a row becomes two spans); it needs a
+  full-width band whose grown island crosses the shrunken wall, and then the *kernel* hands back no
+  material — which is the raster path owning no parity logic of its own.
 - **L10** — K5 evidence: 17 + 7 tests, 682 in the workspace, gates green. Two corrections of my own
   reasoning, both worth having found. First, D-RB-10 as I wrote it was **unsound**: it budgeted the
   subdivision by the piece's sagitta, but the farthest interior point of an arc stretch is about half a
