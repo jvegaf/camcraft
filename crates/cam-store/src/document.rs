@@ -70,11 +70,14 @@ impl DocumentFile {
       path: display.clone(),
       entry: DOCUMENT_ENTRY.to_owned(),
     })?;
-    let document: Document =
+    let mut document: Document =
       serde_json::from_slice(&payload).map_err(|source| StoreError::Json {
         path: display.clone(),
         source,
       })?;
+    // A document written by an older build is upgraded in memory on read, so callers never have to
+    // know which version they opened and a save writes the current one.
+    document.migrate();
     document.validate().map_err(|source| StoreError::Invalid {
       path: display,
       source,

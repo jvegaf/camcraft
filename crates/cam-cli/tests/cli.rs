@@ -68,6 +68,7 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
     id: "TP1".to_owned(),
     name: "Outside profile".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Profile(ProfileParams {
       side: ProfileSide::Outside,
@@ -175,7 +176,7 @@ fn an_unsupported_schema_exits_three_and_names_both_versions() {
     &mut payload,
   )
   .expect("utf8");
-  let broken = payload.replace("c2d/document@1", "c2d/document@42");
+  let broken = payload.replace("c2d/document@2", "c2d/document@42");
   let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
   writer
     .start_file("document.json", zip::write::SimpleFileOptions::default())
@@ -192,7 +193,7 @@ fn an_unsupported_schema_exits_three_and_names_both_versions() {
     outcome.stderr
   );
   assert!(
-    outcome.stderr.contains("c2d/document@1"),
+    outcome.stderr.contains("c2d/document@2"),
     "{}",
     outcome.stderr
   );
@@ -213,7 +214,7 @@ fn inspect_prints_a_stable_summary() {
   let outcome = run(&["inspect", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 0, "{}", outcome.stderr);
   let expected = "\
-schema: c2d/document@1
+schema: c2d/document@2
 job: 200.000 x 100.000 x 18.000 mm, origin BottomLeft, safe Z 5.000 mm
 layers: 1
   L1 \"Part\": 1 entity(ies), visible true
@@ -1012,6 +1013,7 @@ fn inspect_names_each_toolpath_kind_and_its_strategy() {
     id: "TP2".to_owned(),
     name: "Pocket offset".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Pocket(offset),
   });
@@ -1019,6 +1021,7 @@ fn inspect_names_each_toolpath_kind_and_its_strategy() {
     id: "TP3".to_owned(),
     name: "Pocket raster".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Pocket(raster),
   });
@@ -1026,6 +1029,7 @@ fn inspect_names_each_toolpath_kind_and_its_strategy() {
     id: "TP4".to_owned(),
     name: "Drill".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Drilling(cam_model::DrillParams::default()),
   });
@@ -1033,6 +1037,7 @@ fn inspect_names_each_toolpath_kind_and_its_strategy() {
     id: "TP5".to_owned(),
     name: "Drill bank".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Drilling(banked),
   });
@@ -1105,6 +1110,7 @@ fn write_golden_document(directory: &Path, name: &str) -> PathBuf {
     id: "TP1".to_owned(),
     name: "Pocket offset".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Pocket(PocketParams {
       strategy: PocketStrategy::Offset,
@@ -1119,6 +1125,7 @@ fn write_golden_document(directory: &Path, name: &str) -> PathBuf {
     id: "TP2".to_owned(),
     name: "Drill".to_owned(),
     entity_ids: vec!["E2".to_owned(), "E3".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Drilling(DrillParams {
       peck_depth: Length::from_mm(3.0),

@@ -1,7 +1,7 @@
 //! Behaviour tests for `.c2d` document persistence (A3).
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, DOCUMENT_SCHEMA};
 use cam_store::document::{load_document, save_document, DocumentFile, DOCUMENT_ENTRY};
 use cam_store::StoreError;
 use std::path::PathBuf;
@@ -58,7 +58,7 @@ fn the_archive_holds_human_readable_json() {
   let mut entry = archive.by_name(DOCUMENT_ENTRY).expect("document entry");
   let mut text = String::new();
   std::io::Read::read_to_string(&mut entry, &mut text).expect("utf8");
-  assert!(text.contains("\"schema\": \"c2d/document@1\""), "{text}");
+  assert!(text.contains("\"schema\": \"c2d/document@2\""), "{text}");
   assert!(text.contains('\n'), "payload should be pretty-printed");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }
@@ -116,7 +116,7 @@ fn a_file_that_is_not_a_zip_is_rejected() {
 fn saving_an_invalid_document_writes_nothing() {
   let path = scratch("invalid");
   let mut document = sample_document();
-  document.schema = "c2d/document@2".to_owned();
+  document.schema = "c2d/document@3".to_owned();
   let error = save_document(&path, &document).expect_err("must refuse");
   assert!(matches!(error, StoreError::Invalid { .. }), "{error:?}");
   assert!(
@@ -153,5 +153,52 @@ fn a_truncated_archive_is_rejected_rather_than_half_read() {
   let bytes = std::fs::read(&path).expect("reads");
   std::fs::write(&path, &bytes[..bytes.len() / 2]).expect("truncate");
   assert!(load_document(&path).is_err());
+  std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+}
+
+#[test]
+fn a_legacy_document_is_upgraded_on_read_and_written_as_the_current_schema() {
+  // A `c2d/document@1` file is what M0–M4 wrote: no `island_ids` field at all. Reading it must not
+  // fail, and saving it back must produce the current tag so a later build cannot mistake it for a
+  // document that predates islands.
+  let path = scratch("legacy");
+  let document = sample_document();
+  let legacy_json = serde_json::to_string(&document)
+    .expect("serialises")
+    .replace("\"c2d/document@2\"", "\"c2d/document@1\"");
+  let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+  writer
+    .start_file(DOCUMENT_ENTRY, zip::write::SimpleFileOptions::default())
+    .expect("start entry");
+  use std::io::Write as _;
+  writer
+    .write_all(legacy_json.as_bytes())
+    .expect("write payload");
+  std::fs::write(&path, writer.finish().expect("finish").into_inner()).expect("write archive");
+
+  let loaded = load_document(&path).expect("a legacy document loads");
+  assert_eq!(loaded.schema, DOCUMENT_SCHEMA);
+  assert_eq!(
+    loaded.toolpaths, document.toolpaths,
+    "the migration changes no toolpath"
+  );
+  assert!(loaded
+    .toolpaths
+    .iter()
+    .all(|toolpath| toolpath.island_ids.is_empty()));
+
+  save_document(&path, &loaded).expect("saves");
+  let raw = std::fs::read(&path).expect("read");
+  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(raw)).expect("zip");
+  let mut payload = String::new();
+  std::io::Read::read_to_string(
+    &mut archive.by_name(DOCUMENT_ENTRY).expect("entry"),
+    &mut payload,
+  )
+  .expect("utf8");
+  assert!(
+    payload.contains("\"schema\": \"c2d/document@2\""),
+    "{payload}"
+  );
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }

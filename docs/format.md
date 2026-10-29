@@ -19,12 +19,12 @@ round trip.
 
 ```
 part.c2d
-└── document.json      pretty-printed JSON, schema c2d/document@1
+└── document.json      pretty-printed JSON, schema c2d/document@2
 ```
 
 ```json
 {
-  "schema": "c2d/document@1",
+  "schema": "c2d/document@2",
   "job": {
     "width": 1219.0, "height": 2438.0, "thickness": 18.0,
     "units": "mm", "origin": "bottom_left", "safe_z": 5.0
@@ -61,7 +61,7 @@ part.c2d
 | Topic | Rule |
 | --- | --- |
 | Units | Every length in the document is **millimetres**. `job.units` records the unit the user works in and nothing else converts on read. |
-| Schema | `schema` must equal `c2d/document@1`. Anything else is rejected naming both the found and the supported version. |
+| Schema | This build **writes** `c2d/document@2` and still **reads** `c2d/document@1`, upgrading it in memory on load so a save never writes the old tag back. Anything else is rejected naming both the found and the supported version. `@2` only added `Toolpath.island_ids`: the bump exists because an older build ignores a field it does not know, so keeping the tag would let it pocket straight through an island. |
 | Geometry | A contour is an ordered list of vertices; `bulge` is the DXF bulge of the segment leaving that vertex (`0` = straight, `tan(sweep/4)` = arc, positive counter-clockwise). A full circle is two half-turn arcs. |
 | Validation | Contours are validated **on deserialisation**: too few vertices, coincident consecutive vertices and impossible bulges fail the load instead of producing geometry. |
 | References | Toolpath `entity_ids` must resolve. Every operation that cuts a closed contour — `profile`, `pocket`, `drilling` — must reference closed contours, and an open one is refused by name. Ids are unique within their kind. |

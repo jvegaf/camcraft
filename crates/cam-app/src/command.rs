@@ -242,7 +242,7 @@ pub enum Command {
   /// is refused before the document is touched, so text is never left half drawn (M2 A12).
   ///
   /// The text is turned into contours here, at creation time (M2 A14): the document schema stays
-  /// `c2d/document@1` and nothing downstream has to know a word was ever typed.
+  /// the document model and nothing downstream has to know a word was ever typed.
   AddText {
     /// Layer to add the entities to.
     layer_id: String,

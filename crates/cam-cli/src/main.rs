@@ -826,6 +826,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     id: id.clone(),
     name,
     entity_ids: entity_ids.clone(),
+    island_ids: Vec::new(),
     tool_number,
     operation: operation.clone(),
   });

@@ -276,7 +276,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K2 | this commit | 11 tests (`crates/cam-geom/tests/relation.rs`): circle in square and the inverse, arc in arc, overlapping squares, plate crossing a circle, disjoint squares, shared edge, internal tangency, identical contours, the C notch (bounds contain, geometry does not), the tolerance changing "meeting" into "apart", and a property test for antisymmetry |
 | K3 | _pending_ | |
 | K4 | _pending_ | |
-| P1 | _pending_ | |
+| P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | _pending_ | |
 | P3 | _pending_ | |
 | P4 | _pending_ | |
@@ -296,6 +296,12 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L6** — P1 evidence: 639 tests, gates green. Two things the tests caught. The island containment
+  check asked `relation(boundary, island)` and compared it to `FirstInside`, but the relation is
+  directional and a boundary *holding* an island reports `SecondInside` — every valid island was being
+  refused. And adding `island_ids` broke every `Toolpath` literal in the workspace, which is the
+  compiler doing its job; the field is added explicitly rather than defaulted through a builder,
+  because a wrong toolpath is not something a default should decide.
 - **L5** — K2 evidence: 11 tests, 630 in the workspace, gates green. A2's wording was wrong in exactly
   the way the kernel caught: it said any `Point` intersection is a crossing, and a shared corner or a
   shared edge's two ends are `Point` results, which made two touching squares report `Crossing`. A

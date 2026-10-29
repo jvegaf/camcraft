@@ -1,7 +1,7 @@
 //! Text as contours: one single-stroke glyph table behind a [`GlyphSource`] trait.
 //!
 //! A document stores geometry, not font references (M2 A14): text is turned into contours here, at
-//! creation time, so the schema stays `c2d/document@1` and no later stage — toolpath, post, view —
+//! creation time, so text never needs a schema of its own and no later stage — toolpath, post, view —
 //! has to know that some geometry used to be a word.
 //!
 //! Everything behind [`GlyphSource`] works in **glyph units**, an abstract box whose baseline is
