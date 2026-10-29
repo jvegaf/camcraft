@@ -1,0 +1,331 @@
+# Feature: the reference CAM application-class CAM application — Milestone M4 (core toolpaths)
+
+Program plan: `odd/roadmap.md` (M4 = "Core toolpaths"). This document is the executable specification
+for M4 only. Read this file until `## Log` before implementing any task.
+Stack: Rust workspace; `cam-model` (parameters), `cam-toolpath` (the strategies), `cam-cli` (the
+contract). Branch: `feat/m4-toolpaths`, cut from `master` at `1bf8711`; baseline
+`./scripts/check.sh` green with **550 tests** before the first write.
+
+## Specs
+
+Requirements as stated by the owner (verbatim):
+
+- **S1** — "arranca M4" (this session's instruction).
+- **S2** — Roadmap M4 row (verbatim, `odd/roadmap.md:141-143`): "Core toolpaths | Profile
+  (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear
+  stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing;
+  they exercise every post-processor block".
+- **S3** — the reference CAM application parameter vocabulary recovered by REA (verbatim, `evidence/analysis-report.md:200-202`):
+  "`ProfileSide` (`Profile Inside` / `Profile Outside` / `Profile On`), `ProfilePass`, `PocketAllowance`,
+  `PocketDepth`, `Pocket Pass`, `Pass Depth`, `stepover`, `clear_stepover`, `Safe Z`, `Start Depth`, `Cut
+  Depth`, `Cut Rate`/`Plunge Rate`."
+- **S4** — Strategy vocabulary recovered by REA (verbatim, `evidence/analysis-report.md:191-192`):
+  "`2D Profile Toolpath`, `Pocket Toolpath`, `Drilling Toolpath`, `Drill Bank Toolpath`".
+- **S5** — Tool cutting-data columns recovered by REA (verbatim, `evidence/analysis-report.md:96`):
+  "stepover, clear_stepover", stored per tool next to "stepdown".
+- **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:95`): "**`cam-cli`
+  is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
+  testable, and therefore not done."
+- **S7** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:98`):
+  "**Determinism is a feature.** Identical input must produce byte-identical G-code. No `HashMap`
+  iteration may reach an output path; ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
+- **S8** — Decision D6 (verbatim, `odd/roadmap.md:287`): "Arcs first-class, no pre-tessellation".
+- **S9** — The plan's deferred list (verbatim, `odd/roadmap.md:152-153`): "rotary wrapping
+  (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later milestone), **drill-bank
+  hardware integration**". This is what bounds S2's "drill bank": the *geometry and selection* half is
+  in M4, the machine-command half is deferred by the plan itself.
+- **S10** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser".
+- **S11** — Decision D8 (verbatim, `odd/roadmap.md:295`): "`cam-cli` as the test surface".
+
+Owner requirements still in force from earlier milestones:
+
+- **S12** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)".
+
+Everything else in this document is a **derived acceptance criterion** for M4 — an engineering
+consequence of S1–S12 with no new scope. Each one is falsifiable and is the thing a task is checked
+against.
+
+### Derived acceptance criteria (M4)
+
+- **A1** — `cam-model` grows exactly two new `Operation` variants, `Pocket(PocketParams)` and
+  `Drilling(DrillParams)`, with `PocketStrategy::{Raster, Offset}` and `RetractMode::{Amount(Length),
+  Full}`. They serialise as `{"kind":"pocket",…}` and `{"kind":"drilling",…}` next to the existing
+  `profile`, round-trip losslessly through `c2d/document@1`, and an unknown `kind` stays a hard load
+  error (never a skipped toolpath).
+- **A2** — `Document::validate` treats pocket and drilling like profile: a toolpath citing an open
+  contour is refused by name. Everything else it already enforces is unchanged, and every M0–M3
+  document still loads with byte-identical behaviour.
+- **A3** — Pocket (`pocket`) cuts a region in `Offset` and `Raster` mode with `allowance`, `stepover`,
+  `pass_depth`, `start_depth` and `cut_depth`, at the S3 parameter names. The tool centre stays
+  `radius + allowance` inside the boundary in both modes, so an allowance of `a` leaves exactly `a`
+  millimetres of wall material (A3 is the falsifiable form of "PocketAllowance").
+- **A4** — Offset pocket emits one closed ring per stepover, outermost first, until the inward offset
+  collapses; rings keep their arcs as arcs (S8) and the ring count is reported. A tool that does not
+  fit the region at all is refused by name (`OffsetCollapsed`), never emitted as a degenerate path.
+- **A5** — Raster pocket emits parallel rows at `stepover` spacing spanning the region's extent, each
+  row clipped to the region exactly: span ends are true line/arc intersections, not tessellated
+  approximations, and a row whose clipping is ambiguous (tangent, or collinear with a boundary segment)
+  is nudged and retried once or skipped — never emitted with an unpaired span.
+- **A6** — Both pocket modes chunk depth with the same rule profile already uses (equal steps of
+  `pass_depth`, the last pass exactly at `cut_depth`) and cut every ring/row at each depth, shallow to
+  deep, retracting to `safe_z` between them.
+- **A7** — Drilling (`drill`) plunges at the centre of each selected closed contour, refuses a
+  non-circular contour by name, and orders the holes deterministically (nearest neighbour from the
+  lowest-Y-then-lowest-X hole, ties broken by entity id) so the same document always produces the same
+  program (S7).
+- **A8** — Drilling `peck_depth > 0` plunges in pecks of at most `peck_depth`, retracting between them
+  by `RetractMode::Amount(d)` or to `safe_z` for `RetractMode::Full`; `peck_depth == 0` is one plunge.
+  Between holes the tool always rapids at `safe_z`.
+- **A9** — Drill bank (S2, bounded by S9): when `DrillBank { count, pitch }` is set, each hole names the
+  bank drill that cuts it and the emitted head position is the hole compensated by that drill's offset;
+  the selection minimises head travel, is deterministic, and is reported per hole. Machine-specific
+  bank commands (a `G` code, an `M` code, a toolchange per drill) are **not** emitted: S9 defers
+  drill-bank hardware integration, and the move vocabulary of `cam-move` has no bank command.
+- **A10** — `cam-cli toolpath <doc.c2d> --kind profile|pocket|drilling …` appends one toolpath to an
+  existing document and writes it back (`--out`, default in place), taking `--entities`, `--tool`,
+  `--id`, `--name` and the kind's parameters; omitted `--stepover`/`--pass-depth` fall back to the
+  tool's `stepover`/`stepdown` from the library (S5), and `--clear` falls back to `clear_stepover`.
+  Bad input exits `2` and never leaves a half-written document.
+- **A11** — `cam-cli inspect` names the new operations (`pocket (raster)`, `pocket (offset)`,
+  `drilling`, `drilling (bank)`), and `cam-cli emit` produces a program for them through the existing
+  move vocabulary — every strategy reaches G-code through the contract (S6, S11).
+- **A12** — Golden G-code: `emit` on a document with a pocket and a drilling toolpath produces
+  byte-identical output on every run and after a document save/load round trip.
+- **A13** — Every earlier milestone is unchanged: the whole existing suite stays green, `cam-cli emit`
+  output for a profile-only document is byte-identical, and `import`/`check`/`inspect`/`postp`/`tools`/
+  `validate` behave exactly as before.
+- **A14** — The temporary `ToolpathError::NotImplemented` placeholder used while the two strategies are
+  built in isolated worktrees is gone from the final tree, proven by a test that asserts the error set
+  the strategies can produce, so M3's L6 defect (a stub surviving as a contract) cannot repeat.
+
+### Decisions recorded for M4
+
+- **D-M4-1 — New `Operation` variants stay inside `c2d/document@1`.** `cam-model`'s module docs call a
+  new kind "a schema-version event"; taken literally that would bump the tag for every strategy in
+  M6–M8 as well. The tag exists to protect the *meaning of existing fields*, and the enumerations are
+  internally tagged, so an older build already fails loudly by name on an unknown `kind` instead of
+  silently skipping the toolpath. M4 therefore adds variants without touching the tag, and the rule is
+  restated precisely in `crates/cam-model/src/lib.rs` and `docs/format.md`. Revisit trigger: any change
+  to a field's meaning or units, which *is* a `@2`.
+- **D-M4-2 — A pocket is one region per selected contour; islands are out of scope.** the reference CAM application pockets
+  closed vectors and treats a closed vector inside another as an island, which needs boolean
+  subtraction on arc-bearing contours. `cam-geom` has offsetting, intersecting and validation but no
+  boolean ops (they are named in the roadmap's crate description, not built). Island-free pockets are
+  what M4 delivers; a nested selection pockets each contour separately and the CLI says so. Recorded as
+  a known limit, not a silent behaviour.
+- **D-M4-3 — `stepover` is a toolpath parameter, not a `ToolSpec` field.** The same tool pockets
+  differently in MDF and in hardwood, and `PocketParams` is where S3 puts `stepover`. The library's
+  `stepover`/`clear_stepover` are *defaults* the CLI fills in when the flag is omitted (A10), which is
+  also why adding fields to `ToolSpec` — and churning every existing profile test — is avoided.
+- **D-M4-4 — `clear_stepover` is the default for a clearing pocket, not a second tool inside one
+  toolpath.** In the recovered schema `clear_stepover` lives in `tool_cutting_data`, i.e. it is a
+  per-tool rate like `stepdown`, and the vendor expresses "clear with a big tool, finish with a small one"
+  as two toolpaths (`tool_entity` joins a tool to a material/machine; `PocketAllowance` is per
+  toolpath). `cam-cli toolpath --kind pocket --clear` therefore reads `clear_stepover` instead of
+  `stepover`; no two-tool toolpath is introduced. Confirmed as the reading of S5 only; the observable
+  semantics of the reference CAM application's own "Clear stepover" field are **[U]** in the analysis report and this doc does
+  not claim otherwise.
+- **D-M4-5 — Drilling accepts circles only.** A hole is the centre of a closed contour whose segments
+  are all arcs about one centre, the same construction `primitive::circle` produces. Any other closed
+  contour is refused by name rather than drilled at a guessed "geometric centre", because a hole in the
+  wrong place is a ruined part. the vendor's own rule for non-circular selections is not recoverable from
+  static evidence.
+- **D-M4-6 — Linking moves stay conservative.** Between rings, rows and holes the tool retracts to
+  `safe_z` and rapids. Staying down for the next ring (the usual CAM optimisation) needs gouge-free
+  linking through material and belongs with M5's simulation, which can prove it. Cost recorded: more
+  rapids than a hand-written program.
+- **D-M4-7 — Raster rows run along X at the given stepover; no raster angle in M4.** S2 names "raster +
+  offset", not raster direction. A `raster_angle` is an additive parameter for a later milestone.
+- **D-M4-8 — No toolpath UI in M4.** The roadmap's deliverable for M4 is the strategies and their
+  blocks, and S6 makes the CLI the contract; the toolpath panel is UI work that rides on `cam-app`
+  commands, which do not exist for toolpaths yet. Recorded so the missing panel is a decision, not a
+  gap: the shell keeps its authoring surface from M2, and `cam-cli toolpath` is how a toolpath is
+  created in this milestone.
+
+## Tasks
+
+One line per task: ID — acceptance criteria — route — commit.
+
+- **T1** — A1, A2, A10, A11 (inspect/emit dispatch), A13, A14 (stub set-up) — inline —
+  `feat(model): pocket and drilling operations, and cli toolpath command`
+- **T2** — A3, A4, A5, A6 — writer (isolated worktree, `crates/cam-toolpath/src/pocket.rs` +
+  `tests/pocket.rs`) — `feat(toolpath): offset and raster pocket strategies`
+- **T3** — A7, A8 — writer (isolated worktree, `crates/cam-toolpath/src/drill.rs` + `tests/drill.rs`)
+  — `feat(toolpath): drilling with peck and retract`
+- **T4** — A9 — inline — `feat(toolpath): drill bank selection and head compensation`
+- **T5** — A12, A14 — inline — `test(cli): golden g-code for pocket and drilling`
+- **T6** — docs — inline — `docs(m4): pocket and drilling parameters, and roadmap evidence`
+
+Route notes: T1 is the shared surface (model, CLI, dispatch) and must land first, because T2 and T3 are
+two independent units of behaviour over disjoint module + test surfaces and are therefore the writer
+reason (parallel units, isolated worktrees — the M3 L4 pattern). T4 builds on T3's module and stays
+inline; T5 and T6 depend on all of it.
+
+### Task detail
+
+**T1 — Model, CLI, dispatch.** In `crates/cam-model/src/lib.rs`:
+
+```rust
+pub enum PocketStrategy { Raster, Offset }          // serde rename_all = "snake_case"
+pub struct PocketParams { pub strategy: PocketStrategy, pub allowance: Length,
+                          pub stepover: Length, pub pass_depth: Length,
+                          pub start_depth: Length, pub cut_depth: Length }
+pub enum RetractMode { Amount(Length), Full }        // serde rename_all = "snake_case", internally tagged
+pub struct DrillBank { pub count: u32, pub pitch: Length }
+pub struct DrillParams { pub peck_depth: Length, pub retract: RetractMode,
+                         pub start_depth: Length, pub cut_depth: Length,
+                         pub bank: Option<DrillBank> }
+pub enum Operation { Profile(ProfileParams), Pocket(PocketParams), Drilling(DrillParams) }
+```
+
+`Default` for both new param structs: pocket `Offset`, allowance 0, stepover 3 mm, pass depth 6 mm,
+start 0, cut 18; drilling peck 0 (single plunge), `RetractMode::Full`, start 0, cut 18, no bank. The
+`RetractMode` serde shape is `{"mode":"amount","mm":1.0}` / `{"mode":"full"}` — a bare string for the
+tagged-enum rule in `docs/format.md`. `Document::validate` refuses an open contour for every operation
+that cuts one (generalise the existing profile check and its error message; keep the error variant
+name). D-M4-1's restatement goes into the crate docs, and `docs/format.md`'s `Extensibility` row is
+updated in T6.
+
+In `crates/cam-toolpath`:
+
+```rust
+pub mod pocket;   // T2 fills it
+pub mod drill;    // T3 fills it
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+pub enum ToolpathError { /* …existing… */,
+  #[error("stepover must be greater than zero")] InvalidStepover,
+  #[error("peck depth must not be negative")] InvalidPeckDepth,
+  #[error("entity {entity:?} is not a circle, so it has no drill centre")] NotACircle { entity: String },
+  #[error("drill bank needs at least one drill and a positive pitch")] InvalidBank,
+  #[error("not implemented yet")] NotImplemented,   // temporary: removed in T5
+}
+```
+
+`pocket.rs` starts as `pub struct PocketRequest<'a> { pub contour: &'a Contour, pub params:
+&'a PocketParams, pub tool: &'a ToolSpec, pub job: &'a Job }`, `pub struct Pocketpath { pub moves:
+Vec<Move>, pub rings: usize }` and `pub fn pocket(request: &PocketRequest<'_>) -> Result<Pocketpath,
+ToolpathError>` returning `Err(ToolpathError::NotImplemented)`. `drill.rs` starts as `pub struct
+DrillRequest<'a> { pub holes: &'a [DrillHole], pub params: &'a DrillParams, pub tool: &'a ToolSpec,
+pub job: &'a Job }` with `pub struct DrillHole { pub entity: String, pub centre: Point2 }`, `pub struct
+Drillpath { pub moves: Vec<Move>, pub order: Vec<String>, pub drill_index: Vec<Option<u32>>, pub
+rapid_length: Length }` and `pub fn drill(...)  -> Result<Drillpath, ToolpathError>` likewise. Also
+`pub fn circle_centre(contour: &Contour) -> Option<Point2>` (all segments arcs, one common centre, total
+sweep ≈ ±360°) and a shared `pub(crate) fn pass_depths(start: f64, cut: f64, step: f64) ->
+Result<Vec<f64>, ToolpathError>` extracted from `profile` so both new strategies chunk depth the same
+way (A6) without copying the rule.
+
+`cam-cli` gains `toolpath` (A10) and routes `build_segment` by operation kind, calling
+`cam_toolpath::pocket::pocket` / `cam_toolpath::drill::drill`, plus `circle_centre` to build
+`DrillHole`s (the entity id travels with the hole so a refusal and the drill-bank report can name it).
+`inspect` prints the operation with its strategy per A11. Tests: model serde round trip for both new
+kinds including `RetractMode` and `bank`; an unknown `kind` still fails to load; an open contour in a
+pocket or drilling toolpath is refused naming the entity; `toolpath --kind profile` on a fixture
+document appends and reloads; `toolpath --kind pocket` without T2 implemented exits with the
+`NotImplemented` message (this test is replaced in T5 by the real golden test); `--entities` naming a
+missing id exits `2` leaving the file untouched; `inspect` on a document with all three kinds prints
+the three expected lines; defaults come from the tool library when `--stepover`/`--pass-depth` are
+omitted, and `--clear` reads `clear_stepover`.
+
+**T2 — Pocket.** `pocket::pocket` implements A3–A6 in `crates/cam-toolpath/src/pocket.rs`, tests in
+`crates/cam-toolpath/tests/pocket.rs`. Non-negotiables: the inset is `diameter/2 + allowance` for both
+modes; arcs stay arcs in offset rings (S8); row/ring geometry is computed once and cut at every depth
+pass (A6); every retract goes to `job.safe_z` (D-M4-6); ordering is explicit and stable (S7).
+Practical shape of the two modes:
+
+```text
+Offset: for k = 0, 1, 2, … offset the boundary by -(inset + k*stepover) with
+        cam_geom::offset::offset_contour; stop at the first k whose offset is refused
+        (that is the collapsed centre); k = 0 refused → ToolpathError::OffsetCollapsed.
+        rings = that list, outermost first.
+Raster: offset the boundary by -(inset) once → region (refused → OffsetCollapsed);
+        rows at y = region.min.y + k*stepover while y <= region.max.y (last row clamped
+        to max.y); for each row, intersect a long horizontal line with every segment of
+        region through cam_geom::intersect::intersect, take the x of every returned
+        point, sort, dedupe within the offset tolerance, pair them (even-odd) into spans.
+        Odd point count (tangency) or a Coincident result → retry once at y + 1e-6,
+        then skip the row.
+Both:  moves = for each depth in pass_depths(start_depth, cut_depth, pass_depth) {
+          for each ring/row { Rapid to its start at safe_z; Feed plunge to -depth;
+                              walk it (arcs as arcs); Retract to safe_z } }
+        rows alternate direction (zigzag) so consecutive rows connect at the same end;
+        Pocketpath.rings reports the ring/row count.
+```
+
+Tests (every one asserts moves, not internals): a 100x100 square with a 6 mm tool and 4 mm stepover
+yields 12 offset rings at insets 3, 7, … 47, each a rectangle of side `100 - 2*inset`; the same square
+rastered gives 32 rows at y = 3, 6, … 97 spanning x 3…97; a 5 mm pass depth on an 12 mm cut gives passes
+`[5, 10, 12]` and every ring/row appears once per pass; `allowance = 1.0` moves every transition 1 mm
+inward; a 4 mm tool in a 5 mm pocket is refused as `OffsetCollapsed`; a circle's raster spans match the
+analytic chord length of the inset circle within 1e-6; a raster row exactly tangent to a circle produces
+no unpaired span; an arc-bearing rounded rectangle keeps `Move::Arc` moves in its offset rings and none
+in its raster rows; a zero stepover is refused as `InvalidStepover`; an open contour is refused; the
+`z` of every cutting move is exactly `-depth` of its pass.
+
+**T3 — Drilling.** `drill::drill` implements A7 and A8 in `crates/cam-toolpath/src/drill.rs`, tests in
+`crates/cam-toolpath/tests/drill.rs`. Ordered holes: start at the hole with the lowest `y` (ties:
+lowest `x`, ties: entity id), then repeatedly take the nearest unvisited hole (ties: entity id) —
+`Vec` scans, no `HashMap` (S7). Per hole: `Rapid` to the hole at `safe_z`; plunge from `start_depth` to
+`cut_depth` in steps of `peck_depth` (a single plunge when `peck_depth.mm() == 0`); between pecks a
+`Retract` to `-(plunge_depth) + amount` for `Amount`, or to `safe_z` for `Full`; and always `Retract` to
+`safe_z` before the next hole. `Drillpath.order` is the entity ids in cutting order, `drill_index`
+is `None` for every hole in T3 (T4 fills it) and `rapid_length` is the summed XY length of the moves to
+holes. Tests: four holes on a square cut in nearest-neighbour order with the exact expected `order`
+vector; `peck_depth = 3` on a 7 mm cut produces plunge moves at `-3, -6, -7` with the retracts between
+them at the expected Z for both `RetractMode`s; `Full` retracts reach `safe_z` and `Amount(1.0)` does
+not; a single `peck_depth = 0` is one plunge; a square contour is refused as `NotACircle` naming the
+entity; a negative peck depth is refused; a 0-hole request is refused; `circle_centre` accepts a
+two-half-turn circle and the 4-arc circle `primitive::circle` builds, and rejects a rounded rectangle;
+two runs on the same input produce identical `Vec<Move>`; `rapid_length` equals the hand-computed
+nearest-neighbour tour length for the square.
+
+**T4 — Drill bank.** In `drill.rs`, when `params.bank` is `Some(DrillBank { count, pitch })`, every hole
+is assigned the drill index `k ∈ 0..count` whose offset `k * pitch` keeps the head nearest the previous
+head position (first hole: nearest the machine origin), and the emitted XY is `hole.x - k*pitch`,
+`hole.y`. `count == 0` or `pitch <= 0` is `InvalidBank`. `drill_index` reports `Some(k)` per hole and
+`Drillpath` gains `bank_travel: Length` (the head's XY travel) so the CLI can print the selection.
+`inspect` prints `drilling (bank)` and `cam-cli toolpath --kind drilling --bank <count>:<pitch>`
+accepts the option. Tests: a bank of 3 drills at 32 mm pitch picks the expected index for holes at
+x = 0, 10, 40 and 100 and emits the compensated x; the head never moves further than `(count-1)*pitch/2`
+from a hole along X; a second run is identical; `count = 0` and `pitch = 0` are refused; a bank of one
+drill at any pitch emits exactly the un-banked program.
+
+**T5 — Golden G-code, and the stub removed.** `crates/cam-cli/tests/cli.rs` gains: a document with one
+offset pocket and one drilling toolpath emitted through `tests/fixtures/post_mm.pp` asserted **byte for
+byte** (the whole program as one expected string), the same assertion after a save/load round trip, and
+`cam-cli toolpath --kind pocket`/`--kind drilling` end to end from a fixture document through `emit`.
+`ToolpathError::NotImplemented` is deleted along with the T1 test that expected it; a test asserts the
+strategies' error set explicitly (A14). The profile-only golden from M0 is unchanged (A13).
+
+**T6 — Docs.** `docs/m4-toolpaths.md`: the two strategies and what each produces, the parameter table
+with the S3 names, the allowance/stepover/step-down rules, peck/retract semantics, drill-bank selection
+and its deferral of machine commands (A9, S9), the known limits from D-M4-2, D-M4-5, D-M4-6, D-M4-7 and
+D-M4-8, and the `cam-cli toolpath` synopsis with its defaults from the tool library. `docs/format.md`
+gains the two `operation` examples, the `RetractMode` serde shape and the restated `Extensibility` row
+(D-M4-1). `odd/roadmap.md` marks M4 delivered with its evidence table and the deviations, and the
+`docs/format.md` command-line contract table gains the `toolpath` row.
+
+## Delivery slices
+
+| Slice | Tasks | Subject |
+| --- | --- | --- |
+| 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs |
+| 2 | T2, T3 | The two strategies, in parallel over isolated worktrees |
+| 3 | T4, T5, T6 | Drill bank, golden G-code, docs |
+
+## Evidence — commit per task
+
+| Task | Commit | Notes |
+| --- | --- | --- |
+| T1 | _pending_ | |
+| T2 | _pending_ | |
+| T3 | _pending_ | |
+| T4 | _pending_ | |
+| T5 | _pending_ | |
+| T6 | _pending_ | |
+
+## Log
+
+- **L1** — Owner instruction (verbatim, this session): "arranca M4". Read as: author the M4 feature
+  document under ODD and start implementing it on a feature branch off `master`.
+- **L2** — Plan: 6 tasks, branch `feat/m4-toolpaths` from `master` (`1bf8711`). Baseline
+  `./scripts/check.sh` green with 550 tests before the first write.
