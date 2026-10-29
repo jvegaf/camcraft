@@ -330,21 +330,27 @@ impl Document {
         });
       }
       for entity_id in &toolpath.entity_ids {
-        let entity = self.entity(entity_id).ok_or_else(|| ModelError::UnknownEntity {
-          toolpath: toolpath.id.clone(),
-          entity: entity_id.clone(),
-        })?;
-        if let Operation::Profile(_) = toolpath.operation {
-          let closed = entity
-            .kind
-            .as_contour()
-            .map(cam_geom::Contour::is_closed)
-            .unwrap_or(false);
-          if !closed {
-            return Err(ModelError::OpenContourNotCuttable {
-              toolpath: toolpath.id.clone(),
-              entity: entity_id.clone(),
-            });
+        let entity = self
+          .entity(entity_id)
+          .ok_or_else(|| ModelError::UnknownEntity {
+            toolpath: toolpath.id.clone(),
+            entity: entity_id.clone(),
+          })?;
+        // One operation kind exists in M0; the match keeps this a compile error to update when
+        // a second kind lands, instead of silently skipping its rules.
+        match toolpath.operation {
+          Operation::Profile(_) => {
+            let closed = entity
+              .kind
+              .as_contour()
+              .map(cam_geom::Contour::is_closed)
+              .unwrap_or(false);
+            if !closed {
+              return Err(ModelError::OpenContourNotCuttable {
+                toolpath: toolpath.id.clone(),
+                entity: entity_id.clone(),
+              });
+            }
           }
         }
       }
@@ -353,5 +359,3 @@ impl Document {
     Ok(())
   }
 }
-
-

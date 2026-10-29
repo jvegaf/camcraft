@@ -95,7 +95,10 @@ fn a_toolpath_citing_missing_geometry_is_rejected() {
   let mut document = document_with_square();
   document.toolpaths[0].entity_ids = vec!["E-missing".to_owned()];
   let error = document.validate().expect_err("must reject");
-  assert!(matches!(error, ModelError::UnknownEntity { .. }), "{error:?}");
+  assert!(
+    matches!(error, ModelError::UnknownEntity { .. }),
+    "{error:?}"
+  );
   assert!(error.to_string().contains("E-missing"));
 }
 
@@ -143,7 +146,10 @@ fn deserialising_invalid_geometry_fails_instead_of_producing_it() {
   }"#;
   let result: Result<Document, _> = serde_json::from_str(json);
   let error = result.expect_err("a one-vertex contour must not deserialise");
-  assert!(error.to_string().contains("at least two vertices"), "{error}");
+  assert!(
+    error.to_string().contains("at least two vertices"),
+    "{error}"
+  );
 }
 
 #[test]

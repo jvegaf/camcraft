@@ -47,6 +47,15 @@ against.
   contract, so every check runs headless on Windows and Linux.
 - **A9** — Identical input produces byte-identical G-code across runs and across platforms.
 
+## Evidence — commit per task
+
+| Task | Commit | Notes |
+| --- | --- | --- |
+| T1 | `9405bb8` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0 |
+| T2 | `3a0aaae` | `cam-units`; 10 tests green, incl. 3 property tests |
+| T3 | `7ffbd98` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
+| T4 | `6b15cad` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
+
 ## Tasks
 
 One line per task: ID — spec — route — commit.
@@ -70,11 +79,13 @@ library) and at T12 (docs) if either grows beyond a single reviewable unit.
 
 ### Task detail
 
-**T1 — Workspace skeleton.** `cargo` workspace with `crates/cam-units`, `cam-geom`, `cam-model`,
-`cam-store`, `cam-post`, `cam-toolpath`, `cam-cli`. Each crate has a doc comment stating its
-responsibility and what it must not depend on (`cam-geom` must not depend on `cam-store`; nothing in
-M0 depends on a UI crate). `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check` green.
-Checks: the three commands above, exit code 0.
+**T1 — Workspace skeleton.** `cargo` workspace with `crates/cam-units`, `cam-geom`, `cam-move`,
+`cam-model`, `cam-store`, `cam-post`, `cam-toolpath`, `cam-cli`. Each crate has a doc comment stating
+its responsibility and what it must not depend on (`cam-geom` must not depend on `cam-store`; nothing
+in M0 depends on a UI crate). Dependency direction: `cam-units` < `cam-geom` < `cam-move` <
+`cam-model` < `cam-store`; `cam-post` depends on `cam-move`; `cam-toolpath` on `cam-geom` +
+`cam-move`; `cam-cli` on all. `cargo test`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo fmt --check` green. Checks: the three commands above, exit code 0.
 
 **T2 — Units.** `Length` (millimetres `f64`), `Angle`, `UnitSystem::{Mm, Inch}`, conversion helpers
 used only at the document boundary, and a `Format` type that produces fixed-decimal text without
@@ -165,3 +176,32 @@ record the commit holding each task. No behaviour change.
   the other depth-variant strategies, so those are scheduled as M6–M8 rather than folded into the
   core toolpath milestone; nesting (D4) is M9. M0 deliberately contains no strategy beyond `profile`
   so the vertical slice stays reviewable.
+- **L6 (deviation from the roadmap crate list):** a ninth crate, `cam-move`, holds the canonical
+  move vocabulary (`Rapid`, `Feed`, `Arc`, `Plunge`, `Retract`, `ToolChange`, `MoveStream`). Without
+  it, either `cam-post` would depend on the whole `cam-toolpath` engine or the move types would live
+  inside the emitter, and both invert the intended dependency direction: the toolpath produces the
+  stream, the emitter consumes it, and each must be testable alone. The roadmap's crate list is
+  amended accordingly rather than left contradicting the code.
+- **L7 (execution, T1–T2):** delegation unavailable — `gentle-ai-worker` failed twice with
+  "assistant reported an error" and no detail, so both tasks were executed inline by the parent. T2
+  produced two RED observations, and both were defects in the *tests*, not the implementation:
+  (a) `Format::fixed(2).apply(1.005)` cannot be `1.01` because 1.005 is 1.00499999999999989 in
+  binary — the expectation assumed decimal semantics; (b) the negative-zero property rejected 1024
+  generated cases, so the strategy was rebuilt with `prop_flat_map` to generate only values that
+  provably round to zero. Both corrected and the binary-value behaviour is now pinned by
+  `format_rounds_the_binary_value_not_the_decimal_literal`.
+- **L8 (slice boundary):** the T1+T2 slice measured 493 authored changed lines (mostly the crate
+  scaffolds). Recorded here per the review-workload rule; T3 and T4 are split into their own
+  commits so the geometry review stays small.
+- **L9 (execution, T3–T4).** T3 came in at 1,390 lines and T4 at ~690: both are past the ~400-line
+  review slice, so the review-workload risk is named here rather than discovered later. Mitigation
+  applied from T5 on: one task per commit, and the remaining tasks are individually smaller. T3 can
+  still be reviewed per file, since `point`/`arc`/`contour`/`chain` have no cross-dependencies beyond
+  the shared error type.
+  T4 exposed two genuine defects that the tests caught and that the implementation now explains:
+  (a) `Contour::tessellate` did not close the ring, leaving a duplicated final vertex, which became
+  a zero-length segment and then a *spurious* self-intersection that flattened every offset; (b)
+  offsetting a circle built from two half arcs tried to intersect a circle with itself, because two
+  concentric offsets are a smooth continuation, not a corner. Both are now handled at the root,
+  with the reasoning recorded in the source. clippy also caught `Option::is_none_or` (stable in
+  1.82) against the workspace MSRV of 1.80, which was the only lint failure.
