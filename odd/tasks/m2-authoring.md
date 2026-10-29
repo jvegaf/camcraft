@@ -216,7 +216,11 @@ context across a slice:
 
 Slice boundaries are recorded here as they close, per the review-workload rule: `2a11db6` + `e59f484`
 (plan + T1, 778 lines), `2a0bc5d` (T2, 325), `74b55a6` (T3, 486), `96138d9` (T4, 603), `8697242` (T5, 400), `bea2ed6` (T6, 350), T7 (~470).
-Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
+Slice 1 closed with T1–T3; slice 2 with T4–T7 (`8cddcc2`); slice 3 with T8–T10
+(`3f490fc`…`c2d301c`); slice 4 with T11–T13. The branch overtook the ~400-line review unit
+deliberately: each task is its own commit with its own tests, and the four PR slices above are how it
+is meant to be reviewed. Merges to `master`: `5da0d3b` (T1–T8, the owner's decision) and the closing
+merge for T9–T13.
 
 ## Evidence — commit per task
 
@@ -234,7 +238,7 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 | T10 | `HEAD` | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `4fc6940` |
 | T11 | `d053640` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
 | T12 | `HEAD` | 18 tests (14 input + 35 shell in total); every command reachable, drag draws one command per gesture |
-| T13 | — | pending |
+| T13 | `HEAD` | `docs/m2-authoring.md`, roadmap row and §4.4 evidence, M2 defects recorded |
 
 ## Log
 
@@ -254,3 +258,19 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
   one ULP off, so a stored coordinate did not round-trip exactly. Fixed at the root by enabling
   `float_roundtrip` in the workspace dependency; the whole suite, every M0 golden G-code program
   included, is green with and without it.
+- **L6** — Owner instruction (verbatim, this session): "mergea" — resolved by asking which scope, and
+  the owner chose T1–T8 to `master` now with the rest in a second merge. Executed as `5da0d3b` in a
+  temporary worktree so the in-flight worker was not disturbed.
+- **L7** — Owner instruction (verbatim, this session): "podrias cambiarme el keybind de subagents que
+  esta ahora en alt-a en otro? es que alt-a le tengo como prefix de herdr". The binding is not Pi's:
+  it is `GENTLE_PI_AGENTS_VIEW_KEY` (default `alt+a`) in gentle-pi. Moved to `ctrl+shift+j` in
+  `~/.zshrc`, outside `alt` so the herdr prefix cannot swallow it. Out of M2 scope, recorded because it
+  happened inside this session.
+- **L8** — Defects found during M2 that were fixed at the root: `serde_json` float parsing was one ULP
+  lossy, so the documented lossless round trip of `c2d/document@1` did not hold (`float_roundtrip`);
+  `offset_contour` reported an open-contour precondition as `OffsetCollapsed` and the guard had no
+  test at all (`4fc6940`); and `cam-desktop` bypassed `Shell::apply_action`, so created counts, ellipse
+  radial error and lost-arc counts never reached the user outside the tests. Follow-ups recorded, not
+  done: `Contour::bounds()` still samples arcs through tessellation; `OffsetContour` exposes no
+  tolerance or flattening warning; the shell tops up the id counter by count instead of
+  `AppState::reserve_entity_ids(n)`.
