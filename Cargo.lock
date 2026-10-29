@@ -260,6 +260,7 @@ dependencies = [
  "cam-geom",
  "cam-model",
  "cam-units",
+ "proptest",
 ]
 
 [[package]]

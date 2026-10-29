@@ -195,6 +195,36 @@ impl Arc {
         + r * r * (a2 - a1))
   }
 
+  /// Exact axis-aligned bounds: endpoints plus whichever axis extremes the sweep passes through.
+  ///
+  /// Tessellating to measure an arc is both approximate and wasteful, and the viewport asks for
+  /// bounds every frame.
+  pub fn bounds(self) -> crate::point::Bounds {
+    let mut bounds = crate::point::Bounds::from_points(&[self.start_point(), self.end_point()]);
+    let extremes = [
+      (0.0, Vec2::X_AXIS),
+      (std::f64::consts::FRAC_PI_2, Vec2::Y_AXIS),
+      (std::f64::consts::PI, -Vec2::X_AXIS),
+      (3.0 * std::f64::consts::FRAC_PI_2, -Vec2::Y_AXIS),
+    ];
+    for (angle, direction) in extremes {
+      if self.contains_angle(angle) {
+        bounds = bounds.include(self.center + direction * self.radius);
+      }
+    }
+    bounds
+  }
+
+  /// True when `angle` lies within this arc's sweep, measured in the sweep's direction.
+  fn contains_angle(self, angle: f64) -> bool {
+    let delta = if self.sweep > 0.0 {
+      wrap_positive(angle - self.start_angle)
+    } else {
+      wrap_positive(self.start_angle - angle)
+    };
+    delta <= self.sweep.abs() + 1.0e-12
+  }
+
   /// Number of chord steps needed to stay within `tolerance` of the true arc.
   pub fn step_count(self, tolerance: f64) -> usize {
     let tolerance = tolerance.max(f64::MIN_POSITIVE);

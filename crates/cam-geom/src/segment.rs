@@ -127,7 +127,7 @@ impl Segment {
   pub fn bounds(self) -> Bounds {
     match self {
       Self::Line(line) => line.bounds(),
-      Self::Arc(arc) => Bounds::from_points(&arc.tessellate(crate::DEFAULT_TOLERANCE)),
+      Self::Arc(arc) => arc.bounds(),
     }
   }
 

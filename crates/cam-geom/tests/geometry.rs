@@ -307,3 +307,30 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn arc_bounds_are_exact_not_tessellated() {
+  // Top half of the unit circle: the extremes are the two endpoints and the top of the arc.
+  let arc = Arc::new(Point2::ORIGIN, 1.0, 0.0, PI).expect("semicircle");
+  let bounds = arc.bounds();
+  assert!((bounds.min.x + 1.0).abs() < 1.0e-12, "{:?}", bounds.min);
+  assert!((bounds.max.x - 1.0).abs() < 1.0e-12, "{:?}", bounds.max);
+  assert!((bounds.min.y).abs() < 1.0e-12, "{:?}", bounds.min);
+  assert!((bounds.max.y - 1.0).abs() < 1.0e-12, "{:?}", bounds.max);
+}
+
+proptest! {
+  /// Bounds always contain the whole arc, however the sweep falls.
+  #[test]
+  fn arc_bounds_contain_the_tessellation(
+    start_angle in -PI..PI,
+    sweep in 0.05f64..(TAU - 0.05),
+    radius in 0.5f64..500.0,
+  ) {
+    let arc = Arc::new(Point2::new(7.0, -3.0), radius, start_angle, sweep).expect("arc");
+    let bounds = arc.bounds();
+    for point in arc.tessellate(0.01) {
+      prop_assert!(bounds.contains(point, 1.0e-9), "{:?} escapes {:?}", point, bounds);
+    }
+  }
+}
