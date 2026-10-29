@@ -182,14 +182,12 @@ fn a_single_layer_import_keeps_every_contour_in_one_named_layer() {
 
 #[test]
 fn an_importer_that_produces_nothing_is_an_error_not_an_empty_document() {
-  // The png tracer is not implemented yet, so every format refuses for now; the shape of the
-  // contract is what this test pins: no geometry is an error, never a silent empty document.
+  // The contract every format shares: a file that parses but yields no geometry is an error the
+  // caller sees, never a silent empty document. The spine is the one place that decides it.
   let error = import_bytes("plot.eps", b"%!PS-Adobe-3.0\n", &ImportOptions::default())
     .expect_err("nothing imported");
   match error {
-    ImportError::Refused { format, .. } | ImportError::Parse { format, .. } => {
-      assert_eq!(format, "eps")
-    }
+    ImportError::NothingImported { format, .. } => assert_eq!(format, "eps"),
     other => panic!("unexpected error {other:?}"),
   }
 }

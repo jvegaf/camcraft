@@ -475,15 +475,17 @@ fn a_path_that_is_never_painted_is_reported_not_imported() {
 }
 
 #[test]
-fn a_header_with_no_path_is_a_parse_error() {
+fn a_header_with_no_path_reports_nothing_imported() {
+  // The module returns no geometry and the spine names the failure, so every format reports an
+  // empty drawing the same way instead of each inventing its own error.
   let error =
     import_bytes("empty.eps", b"%!PS-Adobe-3.0\n", &options()).expect_err("nothing drawn");
   assert_eq!(
     error,
-    ImportError::parse_plain(
-      "eps",
-      "no path is stroked or filled: the file draws nothing"
-    )
+    ImportError::NothingImported {
+      format: "eps",
+      reason: "the file contains no vector geometry".to_string()
+    }
   );
 }
 

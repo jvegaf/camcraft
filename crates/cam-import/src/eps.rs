@@ -101,15 +101,8 @@ pub fn import(
   };
 
   if contours.is_empty() {
-    if report.skipped.is_empty() {
-      // A PostScript file that never names a path operator is not a drawing. The spine turns an
-      // empty layer set into `NothingImported`; refusing the header-plus-nothing case here keeps
-      // the reason precise instead of blaming a construct that does not exist.
-      return Err(ImportError::parse_plain(
-        "eps",
-        "no path is stroked or filled: the file draws nothing",
-      ));
-    }
+    // Nothing was painted: return no layers and let the spine turn that into `NothingImported`, so
+    // every format fails the same way for the same reason instead of each inventing its own error.
     return Ok(Vec::new());
   }
 
