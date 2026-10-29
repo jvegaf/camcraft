@@ -102,6 +102,8 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
 - **A7 — The report is the contract.** `cam-cli simulate` prints a deterministic report; the same
   document produces byte-identical output on every run, and the exit code distinguishes a clean program
   from one whose simulation found defects.
+  The profile half of A8 runs on a circular contour: at a convex corner the mitered band and the union
+  of discs disagree by design, and D-M5-11 records the bound rather than hiding it behind a fixture.
 - **A8 — The oracle.** For each strategy M4 shipped, one test asserts the simulated removed volume
   against the analytic expectation: a pocket whose toolpath cuts everything within its region, a raster
   pocket, drilled holes, and a profile kerf. The error bound is the simulation's own documented coverage
@@ -159,6 +161,16 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
   allowance (islands grown by it, which is the same parity operation), and with the default allowance
   of zero it is the region itself. Without this, a correctly cut allowance pocket reports `allowance ×
   perimeter × depth` of uncut material that the document asked to keep.
+- **D-M5-11 — A convex corner over-authorises by the corner-rounding area, and that is recorded.** The
+  band comes from `offset_contour`, whose joins are mitered (`miter_limit: 4.0`), while the removal is a
+  union of discs of the tool radius along that path. Along a straight or smooth vector the two agree;
+  at a convex corner the mitered band claims material the disc never touches, at most `4(r² − πr²/4)`
+  per right-angled corner, so a perfect cut reports `≈7.73 mm² × depth` of uncut per corner at a 6 mm
+  tool (measured: 24 mm³ over 4 cells on a 100 mm square profile at a 1 mm cell, converging to the
+  analytic limit as the grid refines). The alternative — a round-join offset — is a kernel feature this
+  milestone does not add, and a tolerance tuned to corners would be exactly the resolution knob D-M5-3
+  refuses. Recorded as a limit, with the circular-contour oracle as the case where the statement is
+  exact.
 - **D-M5-6 — A simulation that finds defects exits `6`.** The CLI's existing codes are `0` ok, `2`
   invalid input, `3` unsupported schema, `4` post error, `5` vector issues; `5` sets the precedent that
   a *found defect* is its own code rather than "invalid input". Crash, gouge and uncut therefore exit
@@ -410,7 +422,9 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
 | S1 | `THIS_COMMIT` | 11 tests (`crates/cam-sim/tests/heightfield.rs`). The default sheet at the default cell is 1219 x 2438 = 2,971,922 cells, under the 4,000,000 cap; a 0.1 mm request names 12190 x 24380, the product and the cap in one message; a zero-sized job and a zero cell are `Degenerate`, not a panic; a 10 mm square at 1 mm has 100 cells whose centres run 0.5 … 9.5; lowering twice keeps the deeper value; a cell clamped at `-thickness` counts as through; a whole field to the bottom reports 500 mm³ removed, 0 remaining and 100 through cells; 25 cells at 2 mm deep report 50 mm³; a 10.2 mm wide job gets 11 columns whose last centre is outside the nominal width, which is the coverage bound stated rather than hidden; and a property test asserts `removed + remaining` equals the grid volume for random cut sequences |
 | S2 | _pending_ | |
 | S2 | `THIS_COMMIT` | 6 tests (`crates/cam-sim/tests/sweep.rs`), one of them lifted the whole capsule question: a straight feed's cut cells are compared against a brute-forced exact point-to-segment distance over every cell, so the sampled-disc sweep has to agree with the real capsule cell for cell, and the removed volume is that count times the depth. A full-circle arc leaves its centre cell standing (the centre is 0.5 mm from the cell at (20.5, 20.5), and the tool is 1 mm, so the assertion also proves the disc is applied where the arc is); a rapid at clearance cuts nothing and is not a crash; a rapid to -3 is one crash carrying `pocket 1` and move index 1, and the field stays untouched; a feed at +2 cuts air; two runs give identical volumes and identical surfaces cell by cell. `cam_move::Segment` gained `tool_diameter` (the emitter ignores it) and `Heightfield` gained `surface_under` |
-| S3 | _pending_ | |
+| S3 | `cdc5ad1` | 15 tests (`crates/cam-sim/tests/target.rs`). A pocket region with a centred r10 island authorises the square minus the disc (island cells 0, volume `(100² − π10²) × 6` inside the published bound); an `Outside` profile authorises its band and leaves the part standing; an `Inside` profile the mirror; an `On` profile ignores the allowance the emitter ignores; a tab keeps its height back; a tab on a circular profile follows the arc length rather than a sampled point cloud; a drilling toolpath authorises each hole and nothing else; two pockets authorise the deeper, never the sum; a cell nobody claims is 0; a field cut exactly to the target deviates by zero; one difference read with two signs is a gouge and then an uncut of the same volume; the tolerance decides the side; a field and a target on different grids are refused naming both; `start_depth 2 + cut_depth 6` authorises 6, not 8; a profile without its tool diameter is refused by name |
+| S3b | `b283e6c` | 20 tests after the amendment, 5 of them new. The band is `allowance … 2·radius + allowance`: `Outside` 112²−100² = 2544 cells (was 636), `Inside` 2256 (was 636), the tab block 96 (was 39), and a 1 mm allowance authorises nothing in the first millimetre while the full depth sits past it (15552 and 13248 mm³). A pocket's target is its region inset by the allowance through one whole-region `Region::offset`, so its wall is not authorised (1944 mm³ at 18² cells) and its island grows with it. The clean-cut test is the amendment's own evidence, and it was run against the old band first: a perfect 100 mm `Outside` cut reported `Deviation { gouge: 1632.0, uncut: 0.0, gouge_cells: 272, uncut_cells: 0 }` — the outer half of its own kerf — and reports zero on a circular contour now |
+| V2 | `1c3d3bf` | 9 tests (`crates/cam-ui/tests/view3d.rs`), `cam-ui` at 61. An open panel paints triangles and exactly 16 3D lines (12 box edges + the program's 4); a drag orbits yaw and pitch with the target fixed and the wheel zooms about it; a camera the projection rejects paints nothing instead of panicking; a closed panel paints no 3D at all; the surface reaches the painter as one `egui::Mesh` of exactly three vertices per painted triangle, so A11's "no new crate" is pinned at the painter; the 2D canvas still paints its 4 items and its grid while the panel is open; and a closed panel leaves `canvas`, `painted_items` and `painted_grid_lines` equal to a second shell that holds no preview at all — the 52 pre-existing shell tests are untouched. Deviations: a top panel rather than a central split, `show_3d` as shell state rather than a `UiAction` (a view is not a document command, D-M5-9), and arcs flattened at half a pixel before projecting so the picture shows the cut the machine made |
 | S4 | _pending_ | |
 | S5 | _pending_ | |
 | V1 | `THIS_COMMIT` | 13 tests (`crates/cam-view/tests/camera3d.rs`, `tests/mesh.rs`); the crate stands at 36. The target projects to the viewport's centre at four pitches and three yaws; yawing the camera by δ equals rotating the point about the vertical by δ, and a quarter turn carries a point across the centre in the direction the sign says; points behind the eye or not finite are `None` while points in front are not; the pitch clamp holds at both ends and a field poked past it still projects; zoom halves, clamps at `MIN_DISTANCE`/`MAX_DISTANCE` and ignores a zero, a negative, a NaN and an infinity; a 10 x 8 field gives 80 triangles / 126 vertices at stride 1, 12 / 12 at stride 4 and 4 / 2 at stride 100, all indices in range, with a zero stride treated as one; the depth ramp is exactly 0.0 at the untouched top and exactly 1.0 at the stock bottom, 2/18 for a shallow cut; the stock box has 12 edges, 8 corners of degree 3, every edge axis-aligned, spanning `0..width`, `0..height`, `-thickness..0`; two builds are identical vertex for vertex, even across a different camera, and the triangles are ordered back to front by a stable sort. 2D suites untouched (13 + 10) and `cargo test -p cam-ui` still green (14 + 38), which is A12's crate-boundary half |
@@ -465,3 +479,16 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   too. The remaining limit is recorded, not fixed: a document whose `cut_depth` exceeds the stock's
   thickness reports the difference as uncut, which is the honest reading of "the program does not
   reach the declared depth".
+- **L7 (execution, S3b, and a limit rather than a fix).** Applying the amended D-M5-5 turned its premise
+  into a measurement: the clean-cut test, run once against the old band, reported `gouge: 1632.0` over
+  272 cells on a perfect 100 mm `Outside` cut. The fixed band is `allowance … 2·radius + allowance`, built
+  from two offsets through a parity region, and the pocket's allowance is applied as one whole-region
+  `Region::offset` so the kernel reads each boundary's nesting depth and islands grow in the same call
+  (D-M5-10) — the alternative, per-boundary sign arithmetic in the simulation, would be a second copy of
+  the rule the kernel already owns. One disagreement is left standing and recorded as D-M5-11: offsets
+  are mitered, removal is a union of discs, so a convex corner over-authorises by up to `4(r² − πr²/4)`
+  and a perfect square profile reports ≈`7.73 mm² × depth` of uncut per corner (24 mm³ over 4 cells at a
+  1 mm cell, converging to that limit as the grid refines). A round-join offset would remove the
+  disagreement and is a kernel feature this milestone does not add; a corner tolerance would be the
+  resolution knob D-M5-3 exists to refuse. A pocket with a non-zero allowance whose boundaries cross is
+  now refused by name out of `Region::offset`, an edge that needs the allowance to be reachable.
