@@ -157,6 +157,15 @@ impl Contour {
       segment.tessellate_into(tolerance, &mut points);
     }
     dedup_near(&mut points, tolerance);
+    // A closed contour must not repeat its first point at the end: a duplicated vertex becomes a
+    // zero-length segment, which downstream reads as a spurious self-intersection.
+    if self.closed && points.len() > 2 {
+      if let (Some(first), Some(last)) = (points.first().copied(), points.last().copied()) {
+        if first.is_near(last, tolerance) {
+          points.pop();
+        }
+      }
+    }
     points
   }
 
