@@ -1,18 +1,30 @@
-//! Backend-agnostic 2D scene: **what** to paint, not how to paint it.
+//! Backend-agnostic scenes: **what** to paint, not how to paint it.
 //!
-//! The shell paints this list today with `egui`'s painter; a `wgpu` backend will consume the same
+//! The 2D scene the shell paints today with `egui`'s painter; a `wgpu` backend will consume the same
 //! list when the 3D simulation needs the GPU (decision D-M1-2). Keeping the decision "what to draw"
 //! here is what makes picking, bounds and grid testable without a display.
 //!
 //! Arcs stay arcs in the scene. Only the painter flattens them, so the picture keeps the same
 //! geometry the toolpath engine will cut.
 //!
+//! The 3D preview keeps the same discipline (M5 A9, D-M5-7): [`Camera3d`] projects a machine-space
+//! point into a viewport and [`build_surface`] turns a simulated heightfield into triangles shaded by
+//! depth. Both are data — the projection is math and the mesh is a vertex list — so the 3D view is
+//! testable headless, and `egui::Mesh` (or a later wgpu backend) only paints what it is handed.
+//!
 //! Must not depend on `cam-ui`, `egui`, `wgpu` or any rendering crate.
 
 #![warn(missing_docs)]
 
+mod camera3d;
+mod mesh;
 mod pick;
 
+pub use camera3d::{
+  Camera3d, Screen3, DEFAULT_DISTANCE, DEFAULT_PITCH, DEFAULT_YAW, FIELD_OF_VIEW, MAX_DISTANCE,
+  MIN_DEPTH, MIN_DISTANCE, PITCH_LIMIT,
+};
+pub use mesh::{build_stock_box, build_surface, Line3, SurfaceMesh, SurfaceVertex};
 pub use pick::{
   box_select, choose_snap, pick, snap_candidates, Pick, Snap, SnapKind, PICK_TOLERANCE_PX,
   SNAP_TOLERANCE_PX,

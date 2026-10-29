@@ -768,6 +768,8 @@ dependencies = [
  "cam-app",
  "cam-geom",
  "cam-model",
+ "cam-move",
+ "cam-sim",
  "cam-units",
  "proptest",
 ]
