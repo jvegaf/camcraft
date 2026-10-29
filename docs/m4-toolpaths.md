@@ -196,10 +196,11 @@ what it gives the program is the compensated head position. `cam-cli inspect` ca
 
 ## Known limits, each a decision
 
-- **No islands** (D-M4-2). A pocket is one region per selected contour: a nested selection pockets
-  each contour separately instead of treating the inner one as an island. Islands need boolean
-  subtraction on arc-bearing contours, which the kernel does not have. Recorded as a limit, not a
-  silent behaviour.
+- **Islands** (D-M4-2, since retired). M4 shipped a pocket as one region per selected contour, so a
+  nested selection pocketed each contour separately. That limit is gone: the kernel gained region
+  subtraction and both pocket modes cut around explicit islands — see
+  [region-booleans.md](region-booleans.md), where the model, the distance proof and the `@2` document
+  contract are documented and evidenced.
 - **Circles only for holes** (D-M4-5). Any other closed contour is refused by name. The product's own
   rule for non-circular selections is not recoverable from static evidence, so no rule was invented.
 - **Conservative linking** (D-M4-6, D-M4-10). The tool retracts to `safe_z` between rings, rows, spans
