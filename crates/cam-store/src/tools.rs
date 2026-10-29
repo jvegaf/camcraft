@@ -1,0 +1,678 @@
+//! The SQLite tool library.
+//!
+//! # Why this shape
+//!
+//! The analysed product's library stores tool **geometry**, tool **cutting data** and the
+//! (material, machine) context as separate records joined by `tool_entity`. That normalisation is
+//! the reason a tool library is worth having at all: the same 6 mm end mill feeds differently in MDF
+//! and in hardwood, and differently again on a light hobby machine. Copying the shape is a deliberate
+//! decision recorded in the roadmap (analysis report §2.1).
+//!
+//! `tool_type` is preserved as the raw integer found in the analysed schema. Its numeric mapping is
+//! **not** established from the artifact, so no enum pretends to know it; each toolpath strategy
+//! instead validates the geometric parameters it actually needs.
+
+use std::path::Path;
+
+use cam_units::{Angle, Format, Length, UnitSystem};
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::StoreError;
+
+/// One forward-only schema migration.
+#[derive(Clone, Copy, Debug)]
+pub struct Migration {
+  /// Target schema version.
+  pub version: u32,
+  /// Short description, recorded in the `migration` table.
+  pub name: &'static str,
+  /// SQL applied when moving to this version.
+  pub sql: &'static str,
+}
+
+/// The migration ladder. Append only; never edit an applied entry.
+pub const MIGRATIONS: &[Migration] = &[
+  Migration {
+    version: 1,
+    name: "initial tool library",
+    sql: "
+      CREATE TABLE tool_geometry (
+        id TEXT PRIMARY KEY,
+        name_format TEXT NOT NULL,
+        notes TEXT,
+        tool_type INTEGER NOT NULL,
+        units INTEGER NOT NULL,
+        diameter REAL,
+        included_angle REAL,
+        flat_diameter REAL,
+        num_flutes INTEGER,
+        flute_length REAL,
+        tip_radius REAL
+      );
+      CREATE TABLE tool_cutting_data (
+        id TEXT PRIMARY KEY,
+        rate_units INTEGER NOT NULL,
+        feed_rate REAL,
+        plunge_rate REAL,
+        spindle_speed INTEGER,
+        spindle_dir INTEGER,
+        stepdown REAL,
+        stepover REAL,
+        clear_stepover REAL,
+        tool_number INTEGER,
+        notes TEXT
+      );
+      CREATE TABLE material (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+      CREATE TABLE machine (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        make TEXT,
+        model TEXT,
+        controller_type TEXT,
+        max_width REAL,
+        max_height REAL,
+        support_rotary INTEGER,
+        support_tool_change INTEGER
+      );
+      CREATE TABLE tool_entity (
+        id TEXT PRIMARY KEY,
+        material_id TEXT,
+        machine_id TEXT,
+        tool_geometry_id TEXT NOT NULL,
+        tool_cutting_data_id TEXT NOT NULL
+      );
+      CREATE TABLE tool_tree_entry (
+        id TEXT PRIMARY KEY,
+        parent_group_id TEXT,
+        sibling_order INTEGER NOT NULL,
+        tool_geometry_id TEXT,
+        name TEXT,
+        notes TEXT,
+        expanded INTEGER
+      );
+    ",
+  },
+  Migration {
+    version: 2,
+    name: "custom tool outline and per-tool name formats",
+    sql: "
+      ALTER TABLE tool_geometry ADD COLUMN custom_attributes TEXT;
+      CREATE TABLE tool_name_format (
+        id TEXT PRIMARY KEY,
+        tool_type INTEGER NOT NULL,
+        format TEXT NOT NULL
+      );
+      CREATE INDEX tool_entity_by_geometry
+        ON tool_entity (tool_geometry_id, material_id, machine_id);
+    ",
+  },
+];
+
+/// The schema version this build writes.
+pub fn head_version() -> u32 {
+  MIGRATIONS
+    .iter()
+    .map(|migration| migration.version)
+    .max()
+    .unwrap_or(0)
+}
+
+/// A tool's geometric definition.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolGeometry {
+  /// Stable identifier.
+  pub id: String,
+  /// Display-name template, e.g. `{Tool Type} ({Diameter|F}{Units Short})`.
+  pub name_format: String,
+  /// Raw `tool_type` value from the source schema.
+  pub tool_type: u8,
+  /// Units the geometry was authored in. Stored lengths are always millimetres.
+  pub units: UnitSystem,
+  /// Cutting diameter.
+  pub diameter: Option<Length>,
+  /// Included angle of a V-bit.
+  pub included_angle: Option<Angle>,
+  /// Flat width of a V-bit's tip.
+  pub flat_diameter: Option<Length>,
+  /// Number of flutes.
+  pub num_flutes: Option<u32>,
+  /// Usable flute length.
+  pub flute_length: Option<Length>,
+  /// Tip radius of a ball-nose or bull-nose tool.
+  pub tip_radius: Option<Length>,
+  /// Free-form extra attributes, reserved for callers.
+  pub custom_attributes: Option<String>,
+}
+
+/// Cutting parameters for one tool in one material on one machine.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CuttingData {
+  /// Stable identifier.
+  pub id: String,
+  /// Units the rates were authored in. Stored rates are millimetres per second.
+  pub rate_units: UnitSystem,
+  /// Feed rate along the cut.
+  pub feed_rate: Option<f64>,
+  /// Plunge rate.
+  pub plunge_rate: Option<f64>,
+  /// Spindle speed in rpm.
+  pub spindle_speed: Option<u32>,
+  /// Maximum depth of cut per pass.
+  pub stepdown: Option<Length>,
+  /// Stepover between passes.
+  pub stepover: Option<Length>,
+  /// Stepover used while clearing.
+  pub clear_stepover: Option<Length>,
+  /// Tool number used in the program.
+  pub tool_number: Option<u32>,
+  /// Free-form notes.
+  pub notes: Option<String>,
+}
+
+/// A workpiece material.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Material {
+  /// Stable identifier.
+  pub id: String,
+  /// Display name.
+  pub name: String,
+}
+
+/// A machine the library holds cutting data for.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Machine {
+  /// Stable identifier.
+  pub id: String,
+  /// Display name.
+  pub name: String,
+  /// Manufacturer.
+  pub make: Option<String>,
+  /// Model name.
+  pub model: Option<String>,
+  /// Controller family.
+  pub controller_type: Option<String>,
+  /// Maximum travel along X.
+  pub max_width: Option<Length>,
+  /// Maximum travel along Y.
+  pub max_height: Option<Length>,
+}
+
+/// An open tool library.
+pub struct ToolLibrary {
+  connection: Connection,
+  path: String,
+}
+
+impl ToolLibrary {
+  /// Open (and migrate) a library file, creating it when absent.
+  pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+    let path = path.as_ref();
+    let display = path.display().to_string();
+    if let Some(parent) = path.parent() {
+      if !parent.as_os_str().is_empty() {
+        std::fs::create_dir_all(parent).map_err(|source| StoreError::Io {
+          path: parent.display().to_string(),
+          source,
+        })?;
+      }
+    }
+    let connection = Connection::open(path).map_err(|source| StoreError::ToolLibrary {
+      path: display.clone(),
+      reason: source.to_string(),
+    })?;
+    let mut library = Self {
+      connection,
+      path: display,
+    };
+    library.migrate()?;
+    Ok(library)
+  }
+
+  /// Open an in-memory library. Used by tests and by tools that need a scratch library.
+  pub fn open_in_memory() -> Result<Self, StoreError> {
+    let connection = Connection::open_in_memory().map_err(|source| StoreError::ToolLibrary {
+      path: "<memory>".to_owned(),
+      reason: source.to_string(),
+    })?;
+    let mut library = Self {
+      connection,
+      path: "<memory>".to_owned(),
+    };
+    library.migrate()?;
+    Ok(library)
+  }
+
+  /// The path this library was opened from.
+  pub fn path(&self) -> &str {
+    &self.path
+  }
+
+  /// The schema version currently stored.
+  pub fn schema_version(&self) -> Result<u32, StoreError> {
+    let version: Option<u32> = self
+      .connection
+      .query_row("SELECT MAX(version) FROM migration", [], |row| row.get(0))
+      .optional()
+      .map_err(|source| self.error(source))?
+      .flatten();
+    Ok(version.unwrap_or(0))
+  }
+
+  /// Apply every migration the file has not seen yet, in one transaction.
+  pub fn migrate(&mut self) -> Result<(), StoreError> {
+    let path = self.path.clone();
+    self
+      .connection
+      .execute_batch(
+        "CREATE TABLE IF NOT EXISTS migration (
+           version INTEGER NOT NULL,
+           subversion INTEGER NOT NULL,
+           name TEXT NOT NULL,
+           checksum TEXT NOT NULL,
+           PRIMARY KEY (version, subversion)
+         );",
+      )
+      .map_err(|source| StoreError::ToolLibrary {
+        path: path.clone(),
+        reason: source.to_string(),
+      })?;
+
+    let current: Option<u32> = self
+      .connection
+      .query_row("SELECT MAX(version) FROM migration", [], |row| row.get(0))
+      .optional()
+      .map_err(|source| StoreError::ToolLibrary {
+        path: path.clone(),
+        reason: source.to_string(),
+      })?
+      .flatten();
+    let current = current.unwrap_or(0);
+
+    for migration in MIGRATIONS.iter().filter(|m| m.version > current) {
+      let transaction =
+        self
+          .connection
+          .transaction()
+          .map_err(|source| StoreError::ToolLibrary {
+            path: path.clone(),
+            reason: source.to_string(),
+          })?;
+      transaction
+        .execute_batch(migration.sql)
+        .map_err(|source| StoreError::ToolLibrary {
+          path: path.clone(),
+          reason: format!(
+            "migration {} ({}) failed: {source}",
+            migration.version, migration.name
+          ),
+        })?;
+      transaction
+        .execute(
+          "INSERT INTO migration (version, subversion, name, checksum) VALUES (?1, 0, ?2, ?3)",
+          params![migration.version, migration.name, checksum(migration.sql)],
+        )
+        .map_err(|source| StoreError::ToolLibrary {
+          path: path.clone(),
+          reason: source.to_string(),
+        })?;
+      transaction
+        .commit()
+        .map_err(|source| StoreError::ToolLibrary {
+          path: path.clone(),
+          reason: source.to_string(),
+        })?;
+    }
+    Ok(())
+  }
+
+  /// Insert or replace a tool geometry.
+  pub fn put_geometry(&self, geometry: &ToolGeometry) -> Result<(), StoreError> {
+    self
+      .connection
+      .execute(
+        "INSERT INTO tool_geometry
+           (id, name_format, notes, tool_type, units, diameter, included_angle, flat_diameter,
+            num_flutes, flute_length, tip_radius, custom_attributes)
+         VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(id) DO UPDATE SET
+           name_format = excluded.name_format, tool_type = excluded.tool_type,
+           units = excluded.units, diameter = excluded.diameter,
+           included_angle = excluded.included_angle, flat_diameter = excluded.flat_diameter,
+           num_flutes = excluded.num_flutes, flute_length = excluded.flute_length,
+           tip_radius = excluded.tip_radius, custom_attributes = excluded.custom_attributes",
+        params![
+          geometry.id,
+          geometry.name_format,
+          geometry.tool_type,
+          encode_units(geometry.units),
+          geometry.diameter.map(Length::mm),
+          geometry.included_angle.map(Angle::degrees),
+          geometry.flat_diameter.map(Length::mm),
+          geometry.num_flutes,
+          geometry.flute_length.map(Length::mm),
+          geometry.tip_radius.map(Length::mm),
+          geometry.custom_attributes,
+        ],
+      )
+      .map_err(|source| self.error(source))?;
+    Ok(())
+  }
+
+  /// Read a tool geometry by id.
+  pub fn geometry(&self, id: &str) -> Result<Option<ToolGeometry>, StoreError> {
+    self
+      .connection
+      .query_row(
+        "SELECT id, name_format, tool_type, units, diameter, included_angle, flat_diameter,
+                num_flutes, flute_length, tip_radius, custom_attributes
+         FROM tool_geometry WHERE id = ?1",
+        params![id],
+        |row| {
+          Ok(ToolGeometry {
+            id: row.get(0)?,
+            name_format: row.get(1)?,
+            tool_type: row.get(2)?,
+            units: decode_units(row.get(3)?),
+            diameter: row.get::<_, Option<f64>>(4)?.map(Length::from_mm),
+            included_angle: row.get::<_, Option<f64>>(5)?.map(Angle::from_degrees),
+            flat_diameter: row.get::<_, Option<f64>>(6)?.map(Length::from_mm),
+            num_flutes: row.get(7)?,
+            flute_length: row.get::<_, Option<f64>>(8)?.map(Length::from_mm),
+            tip_radius: row.get::<_, Option<f64>>(9)?.map(Length::from_mm),
+            custom_attributes: row.get(10)?,
+          })
+        },
+      )
+      .optional()
+      .map_err(|source| self.error(source))
+  }
+
+  /// Insert or replace cutting data.
+  pub fn put_cutting_data(&self, data: &CuttingData) -> Result<(), StoreError> {
+    self
+      .connection
+      .execute(
+        "INSERT INTO tool_cutting_data
+           (id, rate_units, feed_rate, plunge_rate, spindle_speed, spindle_dir, stepdown,
+            stepover, clear_stepover, tool_number, notes)
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(id) DO UPDATE SET
+           rate_units = excluded.rate_units, feed_rate = excluded.feed_rate,
+           plunge_rate = excluded.plunge_rate, spindle_speed = excluded.spindle_speed,
+           stepdown = excluded.stepdown, stepover = excluded.stepover,
+           clear_stepover = excluded.clear_stepover, tool_number = excluded.tool_number,
+           notes = excluded.notes",
+        params![
+          data.id,
+          encode_units(data.rate_units),
+          data.feed_rate,
+          data.plunge_rate,
+          data.spindle_speed,
+          data.stepdown.map(Length::mm),
+          data.stepover.map(Length::mm),
+          data.clear_stepover.map(Length::mm),
+          data.tool_number,
+          data.notes,
+        ],
+      )
+      .map_err(|source| self.error(source))?;
+    Ok(())
+  }
+
+  /// Read cutting data by id.
+  pub fn cutting_data(&self, id: &str) -> Result<Option<CuttingData>, StoreError> {
+    self
+      .connection
+      .query_row(
+        "SELECT id, rate_units, feed_rate, plunge_rate, spindle_speed, stepdown, stepover,
+                clear_stepover, tool_number, notes
+         FROM tool_cutting_data WHERE id = ?1",
+        params![id],
+        |row| {
+          Ok(CuttingData {
+            id: row.get(0)?,
+            rate_units: decode_units(row.get(1)?),
+            feed_rate: row.get(2)?,
+            plunge_rate: row.get(3)?,
+            spindle_speed: row.get(4)?,
+            stepdown: row.get::<_, Option<f64>>(5)?.map(Length::from_mm),
+            stepover: row.get::<_, Option<f64>>(6)?.map(Length::from_mm),
+            clear_stepover: row.get::<_, Option<f64>>(7)?.map(Length::from_mm),
+            tool_number: row.get(8)?,
+            notes: row.get(9)?,
+          })
+        },
+      )
+      .optional()
+      .map_err(|source| self.error(source))
+  }
+
+  /// Record that `geometry` is used with `cutting` in a given material and machine.
+  pub fn link(
+    &self,
+    id: &str,
+    geometry_id: &str,
+    cutting_id: &str,
+    material_id: Option<&str>,
+    machine_id: Option<&str>,
+  ) -> Result<(), StoreError> {
+    self
+      .connection
+      .execute(
+        "INSERT INTO tool_entity (id, material_id, machine_id, tool_geometry_id, tool_cutting_data_id)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+           material_id = excluded.material_id, machine_id = excluded.machine_id,
+           tool_geometry_id = excluded.tool_geometry_id, tool_cutting_data_id = excluded.tool_cutting_data_id",
+        params![id, material_id, machine_id, geometry_id, cutting_id],
+      )
+      .map_err(|source| self.error(source))?;
+    Ok(())
+  }
+
+  /// The cutting data for a tool in a material on a machine, if the library has it.
+  pub fn cutting_data_for(
+    &self,
+    geometry_id: &str,
+    material_id: Option<&str>,
+    machine_id: Option<&str>,
+  ) -> Result<Option<CuttingData>, StoreError> {
+    let cutting_id: Option<String> = self
+      .connection
+      .query_row(
+        "SELECT tool_cutting_data_id FROM tool_entity
+         WHERE tool_geometry_id = ?1
+           AND material_id IS ?2
+           AND machine_id IS ?3",
+        params![geometry_id, material_id, machine_id],
+        |row| row.get(0),
+      )
+      .optional()
+      .map_err(|source| self.error(source))?;
+    match cutting_id {
+      Some(id) => self.cutting_data(&id),
+      None => Ok(None),
+    }
+  }
+
+  /// Record a material.
+  pub fn put_material(&self, material: &Material) -> Result<(), StoreError> {
+    self
+      .connection
+      .execute(
+        "INSERT INTO material (id, name) VALUES (?1, ?2)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name",
+        params![material.id, material.name],
+      )
+      .map_err(|source| self.error(source))?;
+    Ok(())
+  }
+
+  /// Record a machine.
+  pub fn put_machine(&self, machine: &Machine) -> Result<(), StoreError> {
+    self
+      .connection
+      .execute(
+        "INSERT INTO machine
+           (id, name, make, model, controller_type, max_width, max_height, support_rotary,
+            support_tool_change)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name, make = excluded.make, model = excluded.model,
+           controller_type = excluded.controller_type, max_width = excluded.max_width,
+           max_height = excluded.max_height",
+        params![
+          machine.id,
+          machine.name,
+          machine.make,
+          machine.model,
+          machine.controller_type,
+          machine.max_width.map(Length::mm),
+          machine.max_height.map(Length::mm),
+        ],
+      )
+      .map_err(|source| self.error(source))?;
+    Ok(())
+  }
+
+  fn error(&self, source: rusqlite::Error) -> StoreError {
+    StoreError::ToolLibrary {
+      path: self.path.clone(),
+      reason: source.to_string(),
+    }
+  }
+}
+
+/// Render a tool display name from its template.
+///
+/// Supported fields: `Tool Type`, `Diameter`, `Flat Diameter`, `Included Angle`, `Tip Radius`,
+/// `Flutes`, `Units Short`. A field may carry a format suffix, as in `{Diameter|F}` where `F` means
+/// "fewest decimals that keep the value exact up to three places".
+pub fn render_name(
+  template: &str,
+  tool_type_label: &str,
+  geometry: &ToolGeometry,
+) -> Result<String, String> {
+  let units = geometry.units;
+  let mut output = String::with_capacity(template.len() + 16);
+  let mut rest = template;
+  while let Some(start) = rest.find('{') {
+    output.push_str(&rest[..start]);
+    let Some(end) = rest[start..].find('}') else {
+      return Err(format!("unclosed field in {template:?}"));
+    };
+    let field = &rest[start + 1..start + end];
+    rest = &rest[start + end + 1..];
+    let (name, format) = match field.split_once('|') {
+      Some((name, format)) => (name, Some(format)),
+      None => (field, None),
+    };
+    output.push_str(&resolve_field(
+      name,
+      format,
+      tool_type_label,
+      geometry,
+      units,
+    )?);
+  }
+  output.push_str(rest);
+  Ok(output)
+}
+
+fn resolve_field(
+  name: &str,
+  format: Option<&str>,
+  tool_type_label: &str,
+  geometry: &ToolGeometry,
+  units: UnitSystem,
+) -> Result<String, String> {
+  let number = |value: f64| format_number(value, format, name);
+
+  match name {
+    "Tool Type" => Ok(tool_type_label.to_owned()),
+    "Diameter" => Ok(number(
+      geometry
+        .diameter
+        .ok_or_else(|| format!("field {name:?} is not set on this tool"))?
+        .value_in(units),
+    )?),
+    "Flat Diameter" => Ok(number(
+      geometry
+        .flat_diameter
+        .ok_or_else(|| format!("field {name:?} is not set on this tool"))?
+        .value_in(units),
+    )?),
+    "Tip Radius" => Ok(number(
+      geometry
+        .tip_radius
+        .ok_or_else(|| format!("field {name:?} is not set on this tool"))?
+        .value_in(units),
+    )?),
+    "Included Angle" => Ok(number(
+      geometry
+        .included_angle
+        .ok_or_else(|| format!("field {name:?} is not set on this tool"))?
+        .degrees(),
+    )?),
+    "Flutes" => geometry
+      .num_flutes
+      .map(|flutes| flutes.to_string())
+      .ok_or_else(|| format!("field {name:?} is not set on this tool")),
+    "Units Short" => Ok(units.short_name().to_owned()),
+    other => Err(format!("unknown field {other:?}")),
+  }
+}
+
+/// Render a number under the template's format suffix.
+///
+/// The analysed library uses two spellings for the same idea: `F` (fewest decimals that keep the
+/// value readable) and a printf-style precision such as `.0` or `.2`.
+fn format_number(value: f64, format: Option<&str>, field: &str) -> Result<String, String> {
+  match format {
+    None => Ok(Format::fixed(0).apply(value)),
+    Some("F") => {
+      let text = Format::fixed(3).apply(value);
+      let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+      Ok(if trimmed.is_empty() || trimmed == "-" {
+        "0".to_owned()
+      } else {
+        trimmed.to_owned()
+      })
+    }
+    Some(spec) => {
+      let digits = spec.strip_prefix('.').unwrap_or(spec);
+      let decimals = digits
+        .parse::<u8>()
+        .map_err(|_| format!("unknown number format {spec:?} in field {field:?}"))?;
+      Ok(Format::fixed(decimals).apply(value))
+    }
+  }
+}
+
+fn checksum(sql: &str) -> String {
+  // A stable, dependency-free digest: FNV-1a over the migration text.
+  let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+  for byte in sql.as_bytes() {
+    hash ^= u64::from(*byte);
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+  }
+  format!("{hash:016x}")
+}
+
+fn encode_units(units: UnitSystem) -> i64 {
+  match units {
+    UnitSystem::Mm => 0,
+    UnitSystem::Inch => 1,
+  }
+}
+
+fn decode_units(value: i64) -> UnitSystem {
+  if value == 0 {
+    UnitSystem::Mm
+  } else {
+    UnitSystem::Inch
+  }
+}

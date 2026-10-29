@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 
 pub mod document;
+pub mod tools;
 
 use cam_model::ModelError;
 

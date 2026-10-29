@@ -296,7 +296,7 @@ impl Document {
       ("height", self.job.height.mm()),
       ("thickness", self.job.thickness.mm()),
     ] {
-      if !(value > 0.0) || !value.is_finite() {
+      if value <= 0.0 || !value.is_finite() {
         return Err(ModelError::NonPositiveJobDimension { field, value });
       }
     }
