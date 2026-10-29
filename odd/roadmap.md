@@ -389,11 +389,12 @@ the nominal one moves a tangent row's ends off the curve by about 1e-5 mm (L11);
 counted program lines was replaced, since an island ring is two arcs where a wall is four straight moves
 — what the island adds is arc blocks (L10).
 
-One task of this feature is still open and is recorded as such, not implied done: **P5**, the golden
-G-code for a pocket with an island in both modes, the same program after a save/load round trip, and an
-island nested in an island (a boss) cut as material again (A14). The island-free half of A15 is already
-covered by the two differentials above — M4's pocket tests pass unchanged and the island-free fixtures
-emit identical programs — but the golden files themselves are P5's.
+One task of this feature closed its own defect. **P5**, the golden G-code for a pocket with an island in
+both modes, the same program after a save/load round trip, and an island nested in an island (a boss)
+cut as material again (A14), landed in `b7910f3`: five whole programs, and the boss golden found P1's
+rule refusing every nested pair, so the fix and its proof arrived together. The island-free half of A15
+is covered by the two differentials above — M4's pocket tests pass unchanged and the island-free
+fixtures emit identical programs.
 
 ## 5. Verification strategy
 
