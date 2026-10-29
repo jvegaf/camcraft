@@ -7,9 +7,12 @@
 //! silently half-understood produces wrong G-code, which is the one failure this application must
 //! never have.
 //!
-//! New geometry or toolpath kinds are a schema-version event, not an additive tweak: `EntityKind`
-//! and `Operation` are internally tagged enums, so an unknown tag is a hard error rather than a
-//! silently ignored record.
+//! `EntityKind` and `Operation` are internally tagged enums, so an unknown tag is a hard error rather
+//! than a silently ignored record: a document written by a newer build never loads half-understood.
+//!
+//! Because of that, **adding a variant is additive and keeps the schema tag** (decision D-M4-1): the
+//! tag protects the meaning of existing fields, and an unknown `kind` already fails loudly. Changing
+//! what an existing field means, or its units, is what makes a new tag.
 //!
 //! Must not depend on `cam-store`, `cam-post` or any UI crate.
 
@@ -122,6 +125,98 @@ pub enum ProfileSide {
   On,
 }
 
+/// Which clearing pattern a pocket uses.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PocketStrategy {
+  /// Parallel rows across the region.
+  Raster,
+  /// Concentric rings following the boundary.
+  #[default]
+  Offset,
+}
+
+/// Parameters of a pocket toolpath.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PocketParams {
+  /// How the region is cleared.
+  pub strategy: PocketStrategy,
+  /// Material left on the wall, measured from the vector.
+  pub allowance: Length,
+  /// Distance between adjacent rings or raster rows.
+  pub stepover: Length,
+  /// Depth of material removed per pass.
+  pub pass_depth: Length,
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface.
+  pub cut_depth: Length,
+}
+
+impl Default for PocketParams {
+  fn default() -> Self {
+    Self {
+      strategy: PocketStrategy::Offset,
+      allowance: Length::ZERO,
+      stepover: Length::from_mm(3.0),
+      pass_depth: Length::from_mm(6.0),
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+    }
+  }
+}
+
+/// How far the tool comes back up between pecks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum RetractMode {
+  /// Lift by a fixed distance above the current depth.
+  Amount {
+    /// How far above the bottom of the current peck the tool returns.
+    amount: Length,
+  },
+  /// Lift all the way to the job's safe Z, clearing the hole completely.
+  #[default]
+  Full,
+}
+
+/// A gang of drills on one head, spaced a fixed pitch apart along X.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DrillBank {
+  /// How many drills the head carries.
+  pub count: u32,
+  /// Distance between neighbouring drills along X.
+  pub pitch: Length,
+}
+
+/// Parameters of a drilling toolpath.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DrillParams {
+  /// Depth of material removed per peck. Zero cuts the hole in one plunge.
+  pub peck_depth: Length,
+  /// How far the tool retracts between pecks.
+  pub retract: RetractMode,
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface.
+  pub cut_depth: Length,
+  /// The head's drill gang, when the machine has one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub bank: Option<DrillBank>,
+}
+
+impl Default for DrillParams {
+  fn default() -> Self {
+    Self {
+      peck_depth: Length::ZERO,
+      retract: RetractMode::Full,
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+      bank: None,
+    }
+  }
+}
+
 /// A holding tab that keeps the part attached to the stock.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tab {
@@ -175,6 +270,10 @@ impl Default for ProfileParams {
 pub enum Operation {
   /// Cut along the selected closed vectors.
   Profile(ProfileParams),
+  /// Clear the area inside the selected closed vectors.
+  Pocket(PocketParams),
+  /// Plunge at the centre of each selected circle.
+  Drilling(DrillParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -249,7 +348,7 @@ pub enum ModelError {
   /// Geometry stored in the document failed the kernel's validation.
   #[error("invalid geometry: {0}")]
   InvalidGeometry(String),
-  /// A profile toolpath was assigned an open contour.
+  /// A cutting toolpath was assigned an open contour.
   #[error("toolpath {toolpath:?} needs closed geometry, entity {entity:?} is open")]
   OpenContourNotCuttable {
     /// The toolpath id.
@@ -336,21 +435,22 @@ impl Document {
             toolpath: toolpath.id.clone(),
             entity: entity_id.clone(),
           })?;
-        // One operation kind exists in M0; the match keeps this a compile error to update when
-        // a second kind lands, instead of silently skipping its rules.
-        match toolpath.operation {
-          Operation::Profile(_) => {
-            let closed = entity
-              .kind
-              .as_contour()
-              .map(cam_geom::Contour::is_closed)
-              .unwrap_or(false);
-            if !closed {
-              return Err(ModelError::OpenContourNotCuttable {
-                toolpath: toolpath.id.clone(),
-                entity: entity_id.clone(),
-              });
-            }
+        // Listing the kinds explicitly keeps this a compile error to update when another one
+        // lands, instead of silently skipping its rules (D-M4-1).
+        let needs_closed_geometry = match toolpath.operation {
+          Operation::Profile(_) | Operation::Pocket(_) | Operation::Drilling(_) => true,
+        };
+        if needs_closed_geometry {
+          let closed = entity
+            .kind
+            .as_contour()
+            .map(cam_geom::Contour::is_closed)
+            .unwrap_or(false);
+          if !closed {
+            return Err(ModelError::OpenContourNotCuttable {
+              toolpath: toolpath.id.clone(),
+              entity: entity_id.clone(),
+            });
           }
         }
       }

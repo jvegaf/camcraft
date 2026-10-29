@@ -1,12 +1,18 @@
 //! Toolpath strategies: turn document geometry plus a tool into the moves a machine executes.
 //!
-//! M0 implements one strategy, `profile`. The rules it encodes are the ones every other strategy
-//! reuses: the side offset, the allowance, depth chunking, tab lifting and lead moves. Getting those
-//! right once is what makes the later strategies cheap.
+//! M0 implemented `profile` and the rules every other strategy reuses: the side offset, the
+//! allowance, depth chunking, tab lifting and lead moves. M4 adds the two strategies that define 2.5D
+//! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks).
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
 #![warn(missing_docs)]
+
+pub mod drill;
+pub mod pocket;
+
+pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
+pub use pocket::{pocket, PocketRequest, Pocketpath};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
@@ -62,6 +68,36 @@ pub enum ToolpathError {
     /// Its requested position.
     position: f64,
   },
+  /// Adjacent rings or rows would not overlap, leaving material between them.
+  #[error("stepover {stepover} mm must be greater than zero")]
+  InvalidStepover {
+    /// The offending stepover in millimetres.
+    stepover: f64,
+  },
+  /// A negative peck depth would plunge upwards.
+  #[error("peck depth {peck_depth} mm must not be negative")]
+  InvalidPeckDepth {
+    /// The offending peck depth in millimetres.
+    peck_depth: f64,
+  },
+  /// A hole is not a circle, so it has no centre to drill.
+  #[error("entity {entity:?} is not a circle, so it has no drill centre")]
+  NotACircle {
+    /// Id of the offending entity.
+    entity: String,
+  },
+  /// A drilling pass was given no holes.
+  #[error("drilling needs at least one hole")]
+  NoHoles,
+  /// A drill bank was described with no drills, or with drills that overlap.
+  #[error("drill bank needs at least one drill and a positive pitch")]
+  InvalidBank,
+  /// A strategy this build does not implement yet was asked for.
+  ///
+  /// Temporary: the M4 strategies are built in isolated worktrees, and T5 removes this variant and
+  /// the test that pins it so a stub can never survive as a contract (M3's L6 defect).
+  #[error("not implemented yet")]
+  NotImplemented,
 }
 
 /// Everything a profile pass needs.
@@ -123,7 +159,11 @@ pub fn profile(request: &ProfileRequest<'_>) -> Result<Vec<Move>, ToolpathError>
   };
 
   let safe_z = request.job.safe_z;
-  let passes = pass_depths(params)?;
+  let passes = pass_depths(
+    params.start_depth.mm(),
+    params.cut_depth.mm(),
+    params.pass_depth.mm(),
+  )?;
   let mut moves = Vec::new();
 
   for depth in passes {
@@ -224,10 +264,10 @@ fn lateral_offset(params: &ProfileParams, tool: &ToolSpec) -> Length {
 }
 
 /// Depth of each pass, from the start depth down to the cut depth.
-fn pass_depths(params: &ProfileParams) -> Result<Vec<f64>, ToolpathError> {
-  let start = params.start_depth.mm();
-  let cut = params.cut_depth.mm();
-  let step = params.pass_depth.mm();
+///
+/// Shared by every strategy that chunks depth, so a pocket and a profile with the same numbers cut
+/// the same number of passes at the same depths.
+pub(crate) fn pass_depths(start: f64, cut: f64, step: f64) -> Result<Vec<f64>, ToolpathError> {
   let mut passes = Vec::new();
   let mut depth = start;
   while depth < cut - 1.0e-9 {
