@@ -8,4 +8,6 @@ publish.workspace = true
 
 [dependencies]
 cam-move.workspace = true
+cam-units.workspace = true
+cam-geom.workspace = true
 thiserror.workspace = true

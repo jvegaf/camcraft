@@ -136,13 +136,16 @@ name = "cam-move"
 version = "0.0.1"
 dependencies = [
  "cam-geom",
+ "cam-units",
 ]
 
 [[package]]
 name = "cam-post"
 version = "0.0.1"
 dependencies = [
+ "cam-geom",
  "cam-move",
+ "cam-units",
  "thiserror",
 ]
 
