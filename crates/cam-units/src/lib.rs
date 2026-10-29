@@ -46,7 +46,11 @@ impl UnitSystem {
 }
 
 /// A length stored in millimetres.
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+///
+/// Serialised as a bare number of millimetres, so a document stays readable and a unit change can
+/// never happen silently inside stored data.
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Length(f64);
 
 impl Length {
@@ -142,7 +146,8 @@ impl Div<f64> for Length {
 }
 
 /// An angle stored in radians.
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Angle(f64);
 
 impl Angle {

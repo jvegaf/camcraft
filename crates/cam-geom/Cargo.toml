@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 cam-units.workspace = true
 thiserror.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

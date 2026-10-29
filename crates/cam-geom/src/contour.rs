@@ -9,7 +9,7 @@ use crate::GeomError;
 ///
 /// `bulge == 0.0` leaves a straight segment; otherwise the segment is the arc with
 /// `sweep = 4 * atan(bulge)`, positive counter-clockwise (DXF convention).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vertex {
   /// The vertex position, in millimetres.
   pub point: Point2,
@@ -34,10 +34,37 @@ impl Vertex {
 /// Closedness is stored explicitly rather than inferred from duplicated endpoints, so that a
 /// contour never carries a phantom zero-length segment that later shows up as a stray move in the
 /// G-code.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "ContourData", into = "ContourData")]
 pub struct Contour {
   vertices: Vec<Vertex>,
   closed: bool,
+}
+
+/// Wire form of a [`Contour`], validated on the way in.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ContourData {
+  vertices: Vec<Vertex>,
+  closed: bool,
+}
+
+impl From<Contour> for ContourData {
+  fn from(contour: Contour) -> Self {
+    Self {
+      vertices: contour.vertices,
+      closed: contour.closed,
+    }
+  }
+}
+
+impl TryFrom<ContourData> for Contour {
+  type Error = GeomError;
+
+  /// Deserialisation runs the same validation as construction, so a hand-edited document cannot
+  /// produce a contour that violates the kernel's invariants.
+  fn try_from(data: ContourData) -> Result<Self, Self::Error> {
+    Self::new(data.vertices, data.closed)
+  }
 }
 
 impl Contour {

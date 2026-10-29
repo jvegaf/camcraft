@@ -3,7 +3,7 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A point in the XY plane, in millimetres.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Point2 {
   /// X coordinate, in millimetres.
   pub x: f64,
