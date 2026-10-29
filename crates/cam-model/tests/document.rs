@@ -164,3 +164,113 @@ fn an_unknown_entity_type_is_rejected() {
   }"#;
   assert!(serde_json::from_str::<Document>(json).is_err());
 }
+
+fn document_with(operation: Operation) -> Document {
+  let mut document = document_with_square();
+  document.toolpaths[0].operation = operation;
+  document
+}
+
+#[test]
+fn a_pocket_round_trips_with_its_strategy_and_parameters() {
+  let params = PocketParams {
+    strategy: PocketStrategy::Raster,
+    allowance: Length::from_mm(0.5),
+    stepover: Length::from_mm(2.25),
+    pass_depth: Length::from_mm(4.0),
+    start_depth: Length::from_mm(1.0),
+    cut_depth: Length::from_mm(9.5),
+  };
+  let document = document_with(Operation::Pocket(params.clone()));
+  document
+    .validate()
+    .expect("a closed region can be pocketed");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"pocket\""), "{json}");
+  assert!(json.contains("\"strategy\":\"raster\""), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  assert_eq!(parsed.toolpaths[0].operation, Operation::Pocket(params));
+}
+
+#[test]
+fn a_drilling_toolpath_round_trips_its_retract_mode_and_bank() {
+  let params = DrillParams {
+    peck_depth: Length::from_mm(3.0),
+    retract: RetractMode::Amount {
+      amount: Length::from_mm(1.5),
+    },
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(18.0),
+    bank: Some(DrillBank {
+      count: 3,
+      pitch: Length::from_mm(32.0),
+    }),
+  };
+  let document = document_with(Operation::Drilling(params.clone()));
+  document.validate().expect("a closed hole is drillable");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"drilling\""), "{json}");
+  assert!(json.contains("\"mode\":\"amount\""), "{json}");
+  assert!(json.contains("\"pitch\":32.0"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  assert_eq!(parsed.toolpaths[0].operation, Operation::Drilling(params));
+}
+
+#[test]
+fn a_full_retract_drilling_toolpath_omits_the_amount_and_the_bank() {
+  let document = document_with(Operation::Drilling(DrillParams::default()));
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"retract\":{\"mode\":\"full\"}"), "{json}");
+  assert!(
+    !json.contains("\"bank\""),
+    "no empty bank is written: {json}"
+  );
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_pocket_toolpath_on_open_geometry_is_rejected() {
+  let mut document = document_with(Operation::Pocket(PocketParams::default()));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_drilling_toolpath_on_open_geometry_is_rejected() {
+  let mut document = document_with(Operation::Drilling(DrillParams::default()));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_unknown_operation_kind_is_a_hard_error() {
+  let json = r#"{
+    "schema": "c2d/document@1",
+    "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
+            "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
+    "layers": [], "toolpaths": [
+      {"id": "TP1", "name": "Later", "entity_ids": [], "tool_number": 1,
+       "operation": {"kind": "laser_cut"}}]
+  }"#;
+  let error = serde_json::from_str::<Document>(json).expect_err("must not load");
+  assert!(error.to_string().contains("laser_cut"), "{error}");
+}

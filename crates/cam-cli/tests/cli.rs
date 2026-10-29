@@ -3,12 +3,14 @@
 //! These run the real binary, so they assert the observable contract: exit code, exact stdout and
 //! stderr, and the files left on disk.
 
+use std::f64::consts::{FRAC_PI_2, PI};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use cam_geom::{Contour, Point2};
+use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, PocketParams, PocketStrategy,
+  ProfileParams, ProfileSide, RetractMode, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -38,6 +40,10 @@ fn rectangle_contour(width: f64, height: f64) -> Contour {
     true,
   )
   .expect("rectangle")
+}
+
+fn circle_contour(radius: f64) -> Contour {
+  cam_geom::primitive::circle(Point2::new(25.0, 15.0), radius).expect("circle")
 }
 
 fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -> PathBuf {
@@ -673,4 +679,659 @@ fn check_still_exits_two_for_a_missing_document() {
   let outcome = run(&["check", "/nonexistent/part.c2d"]);
   assert_eq!(outcome.code, 2);
   assert!(outcome.stderr.contains("error:"), "{}", outcome.stderr);
+}
+
+// --- M4 T1: the `toolpath` command and the new operation kinds (A10, A11) ---
+
+fn write_library_with_pocket_rates(directory: &Path) -> PathBuf {
+  let path = directory.join("rates.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G2".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(6.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "C2".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(5.0)),
+      stepover: Some(Length::from_mm(2.4)),
+      clear_stepover: Some(Length::from_mm(4.8)),
+      tool_number: Some(2),
+      notes: None,
+    })
+    .expect("cutting data");
+  library.link("E2", "G2", "C2", None, None).expect("link");
+  path
+}
+
+#[test]
+fn toolpath_appends_a_profile_and_the_document_reloads_with_two() {
+  let directory = scratch("toolpath-profile");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "profile",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--side",
+    "inside",
+    "--cut-depth",
+    "9",
+    "--pass-depth",
+    "3",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert_eq!(
+    outcome.stdout, "added TP2 profile, tool T1, 1 entity(ies)\n",
+    "{}",
+    outcome.stdout
+  );
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths.len(), 2);
+  match &loaded.toolpaths[1].operation {
+    Operation::Profile(params) => {
+      assert_eq!(params.side, ProfileSide::Inside);
+      assert_eq!(params.cut_depth, Length::from_mm(9.0));
+      assert_eq!(params.pass_depth, Length::from_mm(3.0));
+    }
+    other => panic!("expected a profile, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_toolpath_gets_the_next_free_id() {
+  let directory = scratch("toolpath-ids");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "profile",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--pass-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(outcome.stdout.contains("added TP2"), "{}", outcome.stdout);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_unknown_toolpath_kind_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-kind");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "laser_cut",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("laser_cut"),
+    "the refusal names the kind: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn toolpath_naming_a_missing_entity_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-entity");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E9",
+    "--tool",
+    "1",
+    "--stepover",
+    "3",
+    "--pass-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(outcome.stderr.contains("E9"), "{}", outcome.stderr);
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_takes_its_stepover_and_pass_depth_from_the_tool_library() {
+  let directory = scratch("toolpath-defaults");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_document(
+    &directory,
+    rectangle_contour(50.0, 25.0),
+    Some(library.to_str().expect("utf8")),
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--cut-depth",
+    "5",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[1].operation {
+    Operation::Pocket(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(2.4),
+        "the tool's stepover is the default"
+      );
+      assert_eq!(
+        params.pass_depth,
+        Length::from_mm(5.0),
+        "the tool's stepdown is the default"
+      );
+    }
+    other => panic!("expected a pocket, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_clearing_pocket_takes_its_stepover_from_clear_stepover() {
+  let directory = scratch("toolpath-clear");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_document(
+    &directory,
+    rectangle_contour(50.0, 25.0),
+    Some(library.to_str().expect("utf8")),
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--clear",
+    "--cut-depth",
+    "5",
+    "--pass-depth",
+    "5",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[1].operation {
+    Operation::Pocket(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(4.8),
+        "a clearing pocket uses clear_stepover"
+      );
+    }
+    other => panic!("expected a pocket, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_without_a_stepover_anywhere_exits_two_naming_the_option() {
+  let directory = scratch("toolpath-nostepover");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("--stepover"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_drilling_toolpath_accepts_a_bank_and_an_out_path() {
+  let directory = scratch("toolpath-bank");
+  let document = write_document(&directory, circle_contour(5.0), None);
+  let out = directory.join("drilled.c2d");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E1",
+    "--tool",
+    "3",
+    "--peck-depth",
+    "2",
+    "--retract",
+    "amount",
+    "--retract-amount",
+    "1",
+    "--bank",
+    "3:32",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&out).expect("loads");
+  assert_eq!(
+    loaded.toolpaths.len(),
+    2,
+    "the source document still has its profile"
+  );
+  match &loaded.toolpaths[1].operation {
+    Operation::Drilling(params) => {
+      assert_eq!(params.peck_depth, Length::from_mm(2.0));
+      assert_eq!(
+        params.retract,
+        cam_model::RetractMode::Amount {
+          amount: Length::from_mm(1.0)
+        }
+      );
+      assert_eq!(
+        params.bank,
+        Some(cam_model::DrillBank {
+          count: 3,
+          pitch: Length::from_mm(32.0)
+        })
+      );
+    }
+    other => panic!("expected drilling, got {other:?}"),
+  }
+  let original = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(original.toolpaths.len(), 1, "--out leaves the input alone");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn inspect_names_each_toolpath_kind_and_its_strategy() {
+  let directory = scratch("inspect-kinds");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  let offset = cam_model::PocketParams {
+    strategy: cam_model::PocketStrategy::Offset,
+    ..cam_model::PocketParams::default()
+  };
+  let raster = cam_model::PocketParams {
+    strategy: cam_model::PocketStrategy::Raster,
+    ..cam_model::PocketParams::default()
+  };
+  let banked = cam_model::DrillParams {
+    bank: Some(cam_model::DrillBank {
+      count: 2,
+      pitch: Length::from_mm(32.0),
+    }),
+    ..cam_model::DrillParams::default()
+  };
+  loaded.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "Pocket offset".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Pocket(offset),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP3".to_owned(),
+    name: "Pocket raster".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Pocket(raster),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP4".to_owned(),
+    name: "Drill".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Drilling(cam_model::DrillParams::default()),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP5".to_owned(),
+    name: "Drill bank".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Drilling(banked),
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let outcome = run(&["inspect", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let stdout = &outcome.stdout;
+  assert!(stdout.contains("profile, tool T1"), "{stdout}");
+  assert!(stdout.contains("pocket (offset), tool T1"), "{stdout}");
+  assert!(stdout.contains("pocket (raster), tool T1"), "{stdout}");
+  assert!(stdout.contains("drilling, tool T1"), "{stdout}");
+  assert!(stdout.contains("drilling (bank), tool T1"), "{stdout}");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- M4 T5: golden G-code for the pocket and drilling strategies (A12, A14) ---
+
+/// A counter-clockwise rounded rectangle: four lines joined by four quarter arcs.
+///
+/// The golden pocket cuts this rather than a plain rectangle so the program carries both straight
+/// feed moves and arcs (S8): offsetting a rounded rectangle keeps its arcs as arcs.
+fn rounded_rectangle(width: f64, height: f64, radius: f64) -> Contour {
+  let (w, h, r) = (width, height, radius);
+  let arc = |center: Point2, start: f64| {
+    Segment::Arc(Arc::new(center, r, start, FRAC_PI_2).expect("quarter arc"))
+  };
+  let segments = vec![
+    Segment::Line(LineSeg::new(Point2::new(r, 0.0), Point2::new(w - r, 0.0))),
+    arc(Point2::new(w - r, r), -FRAC_PI_2),
+    Segment::Line(LineSeg::new(Point2::new(w, r), Point2::new(w, h - r))),
+    arc(Point2::new(w - r, h - r), 0.0),
+    Segment::Line(LineSeg::new(Point2::new(w - r, h), Point2::new(r, h))),
+    arc(Point2::new(r, h - r), FRAC_PI_2),
+    Segment::Line(LineSeg::new(Point2::new(0.0, h - r), Point2::new(0.0, r))),
+    arc(Point2::new(r, r), PI),
+  ];
+  Contour::from_segments(&segments, true).expect("rounded rectangle")
+}
+
+/// A drilled hole: the same two-half-turn circle `cam_geom::primitive::circle` builds.
+fn hole(x: f64, y: f64) -> Contour {
+  cam_geom::primitive::circle(Point2::new(x, y), 3.0).expect("hole")
+}
+
+/// The golden fixture: the pocket shape and the two holes as `E1..E3`, with no toolpaths.
+///
+/// One definition, shared by the hand-built document and the one `cam-cli toolpath` authors, so the
+/// two paths can only differ in how the toolpaths got there.
+fn write_golden_vectors(directory: &Path, name: &str) -> PathBuf {
+  write_vectors(
+    directory,
+    name,
+    vec![
+      rounded_rectangle(40.0, 30.0, 12.0),
+      hole(80.0, 70.0),
+      hole(120.0, 30.0),
+    ],
+  )
+}
+
+/// The golden document: one offset pocket on `E1` and one drilling toolpath over `E2` and `E3`.
+///
+/// Pocket: a 6 mm tool, no allowance, 6 mm stepover and one 6 mm pass, so two rings come out
+/// (insets 3 and 9). Drilling: 3 mm pecks to 6 mm with a full retract between them.
+fn write_golden_document(directory: &Path, name: &str) -> PathBuf {
+  let path = write_golden_vectors(directory, name);
+  let mut document = cam_store::document::load_document(&path).expect("loads");
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Pocket offset".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Pocket(PocketParams {
+      strategy: PocketStrategy::Offset,
+      allowance: Length::ZERO,
+      stepover: Length::from_mm(6.0),
+      pass_depth: Length::from_mm(6.0),
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+    }),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "Drill".to_owned(),
+    entity_ids: vec!["E2".to_owned(), "E3".to_owned()],
+    tool_number: 1,
+    operation: Operation::Drilling(DrillParams {
+      peck_depth: Length::from_mm(3.0),
+      retract: RetractMode::Full,
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+      bank: None,
+    }),
+  });
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// Run `emit` and return the program it wrote.
+fn emit_program(directory: &Path, document: &Path, library: &Path, post: &Path) -> String {
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(outcome.stdout.is_empty(), "{}", outcome.stdout);
+  std::fs::read_to_string(&out).expect("program written")
+}
+
+/// The whole program the golden document emits, byte for byte.
+///
+/// Every line ends with CRLF because the fixture post-processor declares `LINE_ENDING = "[13][10]"`.
+/// The program is 42 lines: a header, the two offset rings of the pocket, and the two drilled holes.
+const GOLDEN_PROGRAM: &str = "\
+( Pocket offset )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X12.0000Y3.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X28.0000\r\n\
+N60G03X37.0000Y12.0000I0.0000J9.0000\r\n\
+N70G01Y18.0000\r\n\
+N80G03X28.0000Y27.0000I-9.0000J0.0000\r\n\
+N90G01X12.0000\r\n\
+N100G03X3.0000Y18.0000I0.0000J-9.0000\r\n\
+N110G01Y12.0000\r\n\
+N120G03X12.0000Y3.0000I9.0000J0.0000\r\n\
+N130G00Z5.0000\r\n\
+N140G00Y9.0000\r\n\
+N150G01Z-6.0000\r\n\
+N160G01X28.0000\r\n\
+N170G03X31.0000Y12.0000I0.0000J3.0000\r\n\
+N180G01Y18.0000\r\n\
+N190G03X28.0000Y21.0000I-3.0000J0.0000\r\n\
+N200G01X12.0000\r\n\
+N210G03X9.0000Y18.0000I0.0000J-3.0000\r\n\
+N220G01Y12.0000\r\n\
+N230G03X12.0000Y9.0000I3.0000J0.0000\r\n\
+N240G00Z5.0000\r\n\
+N250G00\r\n\
+N260G00X120.0000Y30.0000\r\n\
+N270G01Z-3.0000\r\n\
+N280G00Z5.0000\r\n\
+N290G01Z-6.0000\r\n\
+N300G00Z5.0000\r\n\
+N310G00X80.0000Y70.0000\r\n\
+N320G01Z-3.0000\r\n\
+N330G00Z5.0000\r\n\
+N340G01Z-6.0000\r\n\
+N350G00Z5.0000\r\n\
+N360G00Z5.0000\r\n\
+N370G00X0.0000Y0.0000\r\n\
+N380M05\r\n\
+N390M30\r\n";
+
+#[test]
+fn pocket_and_drilling_emit_the_golden_program() {
+  let directory = scratch("golden-pocket-drilling");
+  let document = write_golden_document(&directory, "golden.c2d");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_PROGRAM);
+  // A12: the same input emits the same bytes on the next run too.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_golden_program_survives_a_document_save_and_load_round_trip() {
+  let directory = scratch("golden-round-trip");
+  let document = write_golden_document(&directory, "golden.c2d");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  // Save what was loaded again, so the program comes from a document that made the c2d round trip.
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  save_document(&reloaded, &loaded).expect("saved");
+
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &post),
+    GOLDEN_PROGRAM
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_and_a_drilling_toolpath_authored_through_the_cli_emit_the_golden_program() {
+  let directory = scratch("golden-authored");
+  // The same fixture the hand-built document starts from: geometry only, no toolpaths.
+  let document = write_golden_vectors(&directory, "authored.c2d");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let pocket = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--name",
+    "Pocket offset",
+    "--strategy",
+    "offset",
+    "--stepover",
+    "6",
+    "--pass-depth",
+    "6",
+    "--cut-depth",
+    "6",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(pocket.code, 0, "{}", pocket.stderr);
+  assert_eq!(
+    pocket.stdout, "added TP1 pocket (offset), tool T1, 1 entity(ies)\n",
+    "{}",
+    pocket.stdout
+  );
+
+  let drilling = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E2,E3",
+    "--tool",
+    "1",
+    "--name",
+    "Drill",
+    "--peck-depth",
+    "3",
+    "--retract",
+    "full",
+    "--cut-depth",
+    "6",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(drilling.code, 0, "{}", drilling.stderr);
+  assert_eq!(
+    drilling.stdout, "added TP2 drilling, tool T1, 2 entity(ies)\n",
+    "{}",
+    drilling.stdout
+  );
+
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    GOLDEN_PROGRAM
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_drilling_toolpath_over_a_non_circle_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-noncircle");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert!(
+    outcome.stderr.contains("E1") && outcome.stderr.contains("not a circle"),
+    "the refusal names the entity and the reason: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused append writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
 }
