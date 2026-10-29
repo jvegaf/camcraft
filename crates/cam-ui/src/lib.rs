@@ -16,7 +16,10 @@
 
 use cam_app::{AppState, Camera, Command, ScreenPoint, Viewport};
 use cam_geom::Point2;
-use cam_view::{build_grid, build_scene, SceneItem, SnapKind, Style, TARGET_GRID_PIXELS};
+use cam_view::{
+  box_select, build_grid, build_scene, choose_snap, pick, SceneItem, SnapKind, Style,
+  PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
+};
 use egui::{Context, Pos2, Sense, Stroke};
 
 /// Colours, in one place so the picture stays consistent.
@@ -33,6 +36,8 @@ mod palette {
   pub const SELECTED: Color32 = Color32::from_rgb(255, 176, 59);
   /// The stock outline.
   pub const JOB: Color32 = Color32::from_rgb(88, 132, 178);
+  /// Snap markers and the selection marquee.
+  pub const SNAP: Color32 = Color32::from_rgb(120, 220, 160);
 }
 
 /// Everything the user can ask for. Every button, click and shortcut becomes one of these.
@@ -160,6 +165,18 @@ pub struct Shell {
   pub snap_kinds: Vec<SnapKind>,
   /// Grid step in millimetres, as reported by the view for snapping.
   pub grid_spacing: f64,
+  /// Whether snapping is active.
+  pub snapping: bool,
+  /// The snap point found for the cursor this frame, if any.
+  pub snap_marker: Option<(SnapKind, Point2)>,
+  /// Origin of a box selection in progress, in canvas-local pixels.
+  drag_box: Option<ScreenPoint>,
+  /// The canvas rectangle from the previous frame.
+  ///
+  /// Panels are laid out before the central area, so the status bar can only show this frame's cursor
+  /// if pointer tracking uses last frame's canvas geometry. That is the standard immediate-mode
+  /// approach and it keeps the readout a frame fresh instead of a frame stale.
+  last_canvas: CanvasRect,
 }
 
 impl Default for Shell {
@@ -175,6 +192,10 @@ impl Default for Shell {
         SnapKind::Grid,
       ],
       grid_spacing: 0.0,
+      snapping: true,
+      snap_marker: None,
+      drag_box: None,
+      last_canvas: CanvasRect::default(),
     }
   }
 }
@@ -191,6 +212,7 @@ impl Shell {
   /// is what makes the interface testable.
   pub fn show(&mut self, app: &mut AppState, ctx: &Context) -> ShellOutput {
     let mut output = ShellOutput::default();
+    self.track_pointer(app, ctx);
     // egui 0.37 stacks panels on the root `Ui`; every panel of one frame goes through one borrow.
     ctx.root_ui(|ui| {
       self.command_bar(app, ui, &mut output);
@@ -373,10 +395,150 @@ impl Shell {
           height: f64::from(response.rect.height()),
         };
         output.canvas = canvas;
+        self.last_canvas = canvas;
         app.camera_mut().set_viewport(canvas.viewport());
 
+        self.handle_input(app, ui, &response, &canvas, output);
         self.paint(painter, &canvas, app, output);
       });
+  }
+
+  /// Follow the pointer: cursor world position and the snap point it is near.
+  ///
+  /// Runs before the panels so the status bar shows this frame's coordinates, using the canvas
+  /// rectangle remembered from the last frame.
+  fn track_pointer(&mut self, app: &mut AppState, ctx: &Context) {
+    if self.last_canvas.width <= 0.0 || self.last_canvas.height <= 0.0 {
+      return;
+    }
+    app.camera_mut().set_viewport(self.last_canvas.viewport());
+
+    let Some(position) = ctx.input(|input| input.pointer.hover_pos()) else {
+      self.cursor_world = None;
+      self.snap_marker = None;
+      return;
+    };
+    let local = self.last_canvas.to_screen(position);
+    if local.x < 0.0
+      || local.y < 0.0
+      || local.x > self.last_canvas.width
+      || local.y > self.last_canvas.height
+    {
+      self.cursor_world = None;
+      self.snap_marker = None;
+      return;
+    }
+
+    self.cursor_world = Some(app.camera().screen_to_world(local));
+    self.snap_marker = None;
+    if self.snapping {
+      let scene = build_scene(app.document(), app.selection());
+      if let Some(snap) = choose_snap(
+        &scene,
+        app.camera(),
+        local,
+        SNAP_TOLERANCE_PX,
+        &self.snap_kinds,
+        self.grid_spacing,
+      ) {
+        self.snap_marker = Some((snap.kind, snap.point));
+        self.cursor_world = Some(snap.point);
+      }
+    }
+  }
+
+  /// Turn pointer, wheel and keyboard input into actions and camera motion.
+  ///
+  /// Every branch either moves the camera (view state, no undo) or pushes a [`UiAction`] (document
+  /// state, undoable). Nothing here mutates the document directly.
+  fn handle_input(
+    &mut self,
+    app: &mut AppState,
+    ui: &egui::Ui,
+    response: &egui::Response,
+    canvas: &CanvasRect,
+    output: &mut ShellOutput,
+  ) {
+    let pointer = response
+      .hover_pos()
+      .or_else(|| response.interact_pointer_pos());
+
+    // Wheel zooms about the cursor, but only while the canvas has the pointer.
+    if response.hovered() {
+      let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
+      if scroll.abs() > 0.01 {
+        let anchor = pointer
+          .map(|position| canvas.to_screen(position))
+          .unwrap_or_else(|| canvas.viewport().center());
+        let factor = (1.0 + f64::from(scroll) * 0.002).clamp(0.2, 5.0);
+        app.camera_mut().zoom_at(anchor, factor);
+      }
+    }
+
+    // Middle drag pans; the content follows the cursor.
+    if response.dragged_by(egui::PointerButton::Middle) {
+      let delta = response.drag_delta();
+      app
+        .camera_mut()
+        .pan_by_pixels(f64::from(delta.x), f64::from(delta.y));
+    }
+
+    // Primary drag draws a selection marquee.
+    if response.drag_started_by(egui::PointerButton::Primary) {
+      if let Some(origin) = ui.ctx().input(|input| input.pointer.press_origin()) {
+        self.drag_box = Some(canvas.to_screen(origin));
+      }
+    }
+    if response.drag_stopped_by(egui::PointerButton::Primary) {
+      if let (Some(start), Some(end)) = (self.drag_box, pointer.map(|p| canvas.to_screen(p))) {
+        let scene = build_scene(app.document(), app.selection());
+        let hits = box_select(&scene, app.camera(), start, end);
+        output.actions.push(UiAction::SetSelection(hits));
+      }
+      self.drag_box = None;
+    }
+    if response.dragged_by(egui::PointerButton::Primary) && self.drag_box.is_none() {
+      // A drag that started outside the canvas still deserves a marquee.
+      self.drag_box = pointer.map(|position| canvas.to_screen(position));
+    }
+
+    // A plain click selects what is under the cursor, or clears the selection.
+    if response.clicked() {
+      if let Some(position) = response.interact_pointer_pos() {
+        let scene = build_scene(app.document(), app.selection());
+        let hit = pick(
+          &scene,
+          app.camera(),
+          canvas.to_screen(position),
+          PICK_TOLERANCE_PX,
+        );
+        output.actions.push(UiAction::SetSelection(
+          hit.map(|hit| vec![hit.entity]).unwrap_or_default(),
+        ));
+      }
+    }
+
+    // Keyboard: undo/redo, delete, fit.
+    let (undo, redo, delete, fit) = ui.ctx().input(|input| {
+      (
+        input.modifiers.command && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
+        input.modifiers.command && input.key_pressed(egui::Key::Z) && input.modifiers.shift,
+        input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace),
+        input.key_pressed(egui::Key::F) && !input.modifiers.command,
+      )
+    });
+    if undo {
+      output.actions.push(UiAction::Undo);
+    }
+    if redo {
+      output.actions.push(UiAction::Redo);
+    }
+    if delete {
+      output.actions.push(UiAction::DeleteSelection);
+    }
+    if fit {
+      output.actions.push(UiAction::ZoomToFit);
+    }
   }
 
   fn paint(
@@ -409,6 +571,39 @@ impl Shell {
     output.drawn.painted_items = scene.len();
     for item in &scene.items {
       paint_item(&painter, canvas, &camera, item, 1.6);
+    }
+
+    if let Some((_, point)) = self.snap_marker {
+      let position = canvas.to_window(camera.world_to_screen(point));
+      let size = 5.0;
+      painter.line_segment(
+        [
+          Pos2::new(position.x - size, position.y),
+          Pos2::new(position.x + size, position.y),
+        ],
+        Stroke::new(1.5, palette::SNAP),
+      );
+      painter.line_segment(
+        [
+          Pos2::new(position.x, position.y - size),
+          Pos2::new(position.x, position.y + size),
+        ],
+        Stroke::new(1.5, palette::SNAP),
+      );
+    }
+
+    if let Some(start) = self.drag_box {
+      if let Some(end) = self.cursor_world.map(|world| camera.world_to_screen(world)) {
+        let from = canvas.to_window(start);
+        let to = canvas.to_window(end);
+        let marquee = egui::Rect::from_two_pos(from, to);
+        painter.rect_stroke(
+          marquee,
+          0.0,
+          Stroke::new(1.0, palette::SNAP),
+          egui::StrokeKind::Inside,
+        );
+      }
     }
 
     painter.text(
