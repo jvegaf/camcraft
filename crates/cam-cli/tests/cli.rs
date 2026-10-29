@@ -1474,11 +1474,27 @@ fn a_pocket_with_an_island_emits_a_different_program_and_inspect_names_the_islan
     plain, islanded,
     "the island adds rings, so the program cannot be the same"
   );
-  assert!(
-    islanded.lines().count() > plain.lines().count(),
-    "the island's rings are cut: {} lines with the island, {} without",
-    islanded.lines().count(),
+  // Counting lines was the wrong lens: an island ring is two arcs where a wall is four straight
+  // moves, so the islanded program is not necessarily longer. What the island really adds is arc
+  // moves, and that is what a machine would execute: five island rings of two half turns each, plus
+  // the crossing stage's four corner slivers, each bounded by one island arc.
+  let arcs = |program: &str| {
+    program
+      .lines()
+      .filter(|line| line.contains("G02") || line.contains("G03"))
+      .count()
+  };
+  assert_eq!(
+    arcs(&plain),
+    0,
+    "a square pocket cuts straight, so no arc blocks: {} lines",
     plain.lines().count()
+  );
+  assert_eq!(
+    arcs(&islanded),
+    14,
+    "five island rings of two half turns plus four corner slivers: {} lines",
+    islanded.lines().count()
   );
   assert!(
     !plain.contains("island"),

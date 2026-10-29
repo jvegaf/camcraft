@@ -143,9 +143,21 @@ no new scope.
   its only vertices, both exactly the requested distance away, while the arc between them bulges inside the
   material. Found by P3, which produced two such pieces 6 mm too close to the wall (L9). The fix is a
   Lipschitz argument rather than sampling: the distance to a set changes by at most the distance travelled,
-  so if a piece is cut into sub-pieces whose interior stays within `s` of an endpoint (its sagitta) and
-  every endpoint clears `distance - slack + s`, then every interior point clears `distance - slack`. The
-  subdivision is chosen from the sagitta, so it is a proof and not a resolution knob.
+  so if a piece is cut into sub-pieces whose interior stays within `s` of an endpoint and every endpoint
+  clears `distance - slack + s`, then every interior point clears `distance - slack`. Corrected while
+  implementing (L10): the budget is the sub-piece's **arc length**, not its sagitta — the farthest interior
+  point of a stretch is about half a chord, several hundred times its sagitta, so a sagitta budget does not
+  justify the step it was meant to pay for, while a length bound bounds the travel directly and is
+  strictly finer. A closed-form lower bound per (arc, original segment) skips the check points an arc does
+  not need, so the proof costs nothing measurable; the bound may only ever skip work, never keep a piece.
+- **D-RB-11 — A straight piece needs the exact distance too.** K5 recorded that the same defect class
+  survives on a chord: in its own fixture the chord between two crossings runs 17 mm from a boundary while
+  both of its ends are 23 mm away, because the chord is a straight cut across a region that bulges
+  between them. Subdividing straight pieces to a sub-micron step would be sampling dressed as a proof, so
+  the answer is the exact minimum distance between two segments — line/line, line/arc and arc/arc all have
+  closed forms built from a handful of candidates (endpoints against the other curve, the perpendicular
+  foot inside the segment, the circle centre line) — and the proof becomes one comparison per (piece,
+  original) pair with no resolution knob at all. K6 builds it.
 - **D-RB-7 — No UI in this feature.** Same boundary as D-M4-8: the authoring surface is
   `cam-cli toolpath`. The shell keeps its M2 authoring surface and gains nothing here.
 
@@ -159,6 +171,9 @@ One line per task: ID — acceptance criteria — route — commit.
 - **K4** — A6, A7 — writer — `feat(geom): region offset with the distance proof, and raster spans`
 - **K5** — A6 correction: the proof must be sound for arcs, not only for vertices — writer —
   `fix(geom): a distance proof that holds for the whole piece, not its ends`
+- **K6** — A6 correction: the proof must be sound for straight pieces too, which needs an exact
+  segment-to-segment distance rather than a finer subdivision — writer —
+  `feat(geom): exact segment-to-segment distance, and a proof that uses it`
 - **P1** — A9, A10 — inline — `feat(model): explicit islands and c2d/document@2`
 - **P2** — A11 — inline — `feat(cli): islands on the toolpath command`
 - **P3** — A12 — writer — `feat(toolpath): offset pocket over a region with islands`
@@ -313,6 +328,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K4 | `49e2dc8` | 14 tests. A 100 mm square inset by 10 → bounds (10,10)–(90,90), area 6400, every vertex 10.0 mm from its wall. A square with a centred r10 island inset by 8 → outer ring 84 mm wide, island ring r18 (area 1017.876), every vertex clearing both originals. An odd-depth hole grows: area 314.159 → 706.858. Nested parity (square / hole / boss) → 90, 70, 10 mm widths. Over-shrink and wider-than-material both refused where a naive `offset_contour` returns a well-formed gouging ring (the D-M4-9 evidence). A row crossing the island → spans at `50 ± √91`; a tangent row → `None`; a row along a boundary → `None`; `Some(vec![])` when the row misses. A U bracket's narrow arms flatten and say so |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
+| K5 | `cee70de` | 17 cam-geom tests (3 new: the lens case with the old proof reproduced from the public API and its 23 mm ends against a 17 mm apex, plus two property tests that no surviving piece comes closer than its stage distance, arcs and nested regions) and 7 tightened `pocket_islands` tests. The 4 mm fixture now gives the analytic **14** rings instead of 16, and the pocket test measures the closest approach over the emitted moves: 3.0000 mm at the first stage, 23.0000 mm at the crossing stage where the dropped lenses reached 17 mm. The new CLI assertion counts arc blocks (0 without the island, 14 with it) instead of comparing line counts, which was only passing while the gouging pieces were cut |
 | P3 | `a2d8736` | 8 tests. `PocketRequest::islands: &[&Contour]`; rings from `Region::offset(inset + k*stepover)`, so the wall shrinks and the island grows; the strategy's own proof deleted (D-RB-6); `Pocketpath::flattened` reported. 8 mm stepover → 6 rings (3 stages × wall + island) ending at `d = 27`; 4 mm stepover → stages 3, 7, 11, 15, 19, 23 with the wall ring at `3..97` and the island ring at `r = 13`; a region that leaves nothing and a 3 mm pocket with a 4 mm tool are both `OffsetCollapsed` carrying the kernel's reason; a narrow neck reports `flattened`; two runs are identical. **All 12 M4 pocket tests passed with their expectations untouched**, and a base-vs-change dump over seven island-free fixtures in both strategies is move-for-move identical except the wording of one refusal reason the spec asks for |
 | P4 | _pending_ | |
 | P5 | _pending_ | |
@@ -331,6 +347,18 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L10** — K5 evidence: 17 + 7 tests, 682 in the workspace, gates green. Two corrections of my own
+  reasoning, both worth having found. First, D-RB-10 as I wrote it was **unsound**: it budgeted the
+  subdivision by the piece's sagitta, but the farthest interior point of an arc stretch is about half a
+  chord — hundreds of times its sagitta — so a sagitta budget does not pay for the Lipschitz step. The
+  budget is the stretch's arc **length**, which bounds the travel directly and is strictly finer.
+  Second, K5 found that the same defect class survives on **straight** pieces: the chord between two
+  crossings can cut across a bulge that none of its ends sees (17 mm against ends at 23 mm in K5's own
+  fixture). Subdividing straight pieces to a sub-micron step is sampling pretending to be a proof, so
+  D-RB-11 records the real answer — the exact segment-to-segment distance, which has a closed form for
+  every pair the kernel has — and K6 is the task. The out-of-scope CLI assertion was repaired by the
+  parent, and the replacement asserts what the island actually adds (arc blocks: 0 without it, 14 with
+  it) instead of a line count that only held while the gouging pieces were still cut.
 - **L9** — P3 evidence and the defect it surfaced: 8 tests, 679 in the workspace, gates green, P3 merged
   at `a2d8736`. The offset pocket now cuts a region and island-free output is move-for-move M4's. The
   worker also found something the feature has to fix before it can close: at a crossing stage the
