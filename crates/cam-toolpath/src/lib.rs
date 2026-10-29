@@ -492,7 +492,7 @@ fn sub_segment(segment: Segment, from: f64, to: f64) -> Segment {
 }
 
 /// Append a horizontal move, as an arc when the piece is one.
-fn push_horizontal(
+pub(crate) fn push_horizontal(
   moves: &mut Vec<Move>,
   job: &Job,
   segment: Segment,
