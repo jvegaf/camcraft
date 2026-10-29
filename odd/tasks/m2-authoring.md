@@ -210,7 +210,8 @@ context across a slice:
 | 4 | T11–T13 | Text, shell wiring, docs |
 
 Slice boundaries are recorded here as they close, per the review-workload rule: `2a11db6` + `e59f484`
-(plan + T1, 778 lines), `2a0bc5d` (T2, 325), `74b55a6` (T3, 486). Slices 1 closes with T1–T3.
+(plan + T1, 778 lines), `2a0bc5d` (T2, 325), `74b55a6` (T3, 486), `96138d9` (T4, 603), `8697242` (T5, 400), `bea2ed6` (T6, 350), T7 (~470).
+Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 
 ## Evidence — commit per task
 
@@ -222,7 +223,7 @@ Slice boundaries are recorded here as they close, per the review-workload rule: 
 | T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
 | T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
 | T6 | `HEAD` | 12 tests; forks, two-chain groups and closed inputs refused by name |
-| T7 | — | pending |
+| T7 | `HEAD` | 7 tests; arcs split exactly; four refusal classes by name |
 | T8 | — | pending |
 | T9 | — | pending |
 | T10 | — | pending |

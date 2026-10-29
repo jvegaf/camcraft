@@ -25,6 +25,7 @@ mod point;
 pub mod primitive;
 mod segment;
 pub mod transform;
+pub mod trim;
 
 pub use arc::Arc;
 pub use chain::{chain, Chained};
