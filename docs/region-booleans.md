@@ -56,7 +56,11 @@ Consequences, in the order they matter:
   `Region::subtract(hole)` is literally that append followed by normalization (A5). There is no
   boolean kernel entry point that a caller has to pick over another.
 - **A boss inside a hole needs no third concept.** Appending the boss's boundary flips the parity a
-  third time, so `square / hole / boss` is three boundaries and one rule. A nested region's offset
+  third time, so `square / hole / boss` is three boundaries and one rule. Read the consequence
+  carefully, because "islands are the contours to leave standing" stops being a safe shorthand at the
+  second nesting level: the boss disk is inside three boundaries, which is odd, so it is **material and
+  is cut**, and what stands is the annulus between the boss and the hole. Its rings shrink to `r9` and
+  `r2` in the golden program for exactly that reason. A nested region's offset
   signs alternate with depth for the same reason (see [the pocket contract](#the-pocket-contract)).
 - **Orientation is deliberately not part of the model** (D-RB-2). A reversed or mirrored import, a
   contour builder that emits clockwise where another emits counter-clockwise, a DXF written by a

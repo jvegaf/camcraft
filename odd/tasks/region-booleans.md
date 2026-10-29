@@ -97,7 +97,11 @@ no new scope.
 - **A13** — Raster pocket over a region with islands clips each row against the outer boundary and the
   islands through A7, so a row that crosses an island is cut as two spans and never as one.
 - **A14** — Golden G-code for a pocket with an island (offset and raster) and for an island nested in an
-  island (a boss), byte-identical across runs and across a save/load round trip.
+  island (a boss), byte-identical across runs and across a save/load round trip. Clarified while
+  implementing (L13): under parity a nested island is **material again and is cut**, so the boss disk is
+  removed and what stands is the annulus between it and the hole. "Boss" is the shape's name, not a
+  promise that it survives, and the golden states the arithmetic that proves it (the boss ring shrinks to
+  `r9` and `r2`, i.e. it is cut inside its own boundary; a protected boss would ring at `r15`/`r18`).
 - **A15** — Every earlier milestone is unchanged: gates green, `emit` output for island-free documents
   byte-identical, and an existing `@1` document loads and cuts exactly as before.
 
@@ -335,7 +339,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K5 | `cee70de` | 17 cam-geom tests (3 new: the lens case with the old proof reproduced from the public API and its 23 mm ends against a 17 mm apex, plus two property tests that no surviving piece comes closer than its stage distance, arcs and nested regions) and 7 tightened `pocket_islands` tests. The 4 mm fixture now gives the analytic **14** rings instead of 16, and the pocket test measures the closest approach over the emitted moves: 3.0000 mm at the first stage, 23.0000 mm at the crossing stage where the dropped lenses reached 17 mm. The new CLI assertion counts arc blocks (0 without the island, 14 with it) instead of comparing line counts, which was only passing while the gouging pieces were cut |
 | P3 | `a2d8736` | 8 tests. `PocketRequest::islands: &[&Contour]`; rings from `Region::offset(inset + k*stepover)`, so the wall shrinks and the island grows; the strategy's own proof deleted (D-RB-6); `Pocketpath::flattened` reported. 8 mm stepover → 6 rings (3 stages × wall + island) ending at `d = 27`; 4 mm stepover → stages 3, 7, 11, 15, 19, 23 with the wall ring at `3..97` and the island ring at `r = 13`; a region that leaves nothing and a 3 mm pocket with a 4 mm tool are both `OffsetCollapsed` carrying the kernel's reason; a narrow neck reports `flattened`; two runs are identical. **All 12 M4 pocket tests passed with their expectations untouched**, and a base-vs-change dump over seven island-free fixtures in both strategies is move-for-move identical except the wording of one refusal reason the spec asks for |
 | P4 | `4b47ae7` | 5 tests. 100 mm square + centred r10 island, 3 mm stepover → **32 rows, 40 spans**: the 8 rows at y = 39…60 cross the island and cut two spans ending at `50 ± √(13² − (y−50)²)`, the other 24 cut one span `3…97`, and the row at y = 63 is exactly tangent so the kernel answers `None` and the retry resolves it just outside. A full-width island band → 24 rows / 24 spans (the grown island crosses the shrunken wall and the kernel normalizes the region into two bands, so those rows get no material). A narrow strip at 7 mm stepover → 14 rows / 24 spans with no unpaired span. Every cutting move stays ≥ 3 − 1e-6 mm from the island. **`tests/pocket.rs` needed no edit at all** (12/12) and a differential over eight island-free raster fixtures is 875 identical output lines |
-| P5 | _pending_ | |
+| P5 | `b7910f3` | 5 whole-program goldens plus 2 model cases, 707 in the workspace. Offset island (45 lines: three stages, wall squares 3..97 / 11..89 / 19..81, island rings r13/r21/r29 as `G03` half turns, no stage at d = 27 because the kernel proves it gouges), its save/load round trip, raster island (45 lines, 6 rows / 9 spans with gaps at `30 ± √(13² − (y−30)²)`), the `@1` round trip emitting identical bytes, and the nested boss (43 lines, three rings per stage at d = 3 and d = 10, hole growing to r27/r34 and boss shrinking to r9/r2, no stage at d = 17). Fixing the nesting rule was P1's defect: `check_islands` refused every pair that was not `Disjoint`, so the boss golden could not be authored at all |
 | P6 | _pending_ | |
 
 ## Log
@@ -351,6 +355,14 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L13** — P5 evidence and the last correction: 5 goldens, 2 model cases, 707 in the workspace, gates
+  green, merged at `b7910f3`. The nested case needed P1's rule fixed rather than tested around, and the
+  worker also corrected **my instruction**, which had the parity backwards: I wrote that the boss "is
+  material and the pocket leaves it standing", but three boundaries is odd, so the boss disk is material
+  **and therefore cut**, while the annulus between boss and hole is inside two and stands. The worker
+  matched the program and the spec, refused to encode the inverted sentence, and said so — the golden's
+  `r9`/`r2` rings are only consistent with cutting. A14 now says this in the open, because a user reading
+  "islands are contours to leave standing" will not expect the innermost one to be removed.
 - **L12** — Two corrections after P6 read the feature document against the code. P6's own review found the
   first two in **my** text, and they matter because the document is what a later session trusts: K3's
   evidence row claimed a self-crossing boundary is "refused by name" while `region.rs` documents it as
