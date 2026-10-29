@@ -1420,6 +1420,81 @@ fn an_island_outside_the_pocket_exits_two_and_leaves_the_document_untouched() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+// --- P3: the offset pocket cuts around its islands (A12) ---
+
+#[test]
+fn a_pocket_with_an_island_emits_a_different_program_and_inspect_names_the_islands() {
+  // The same pocket authored twice through `cam-cli toolpath`, once without the island and once with
+  // it, so the island reaches the strategy the way a user's would: through the document.
+  let directory = scratch("pocket-island-emit");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let vectors = || {
+    vec![
+      rectangle_contour(100.0, 100.0),
+      cam_geom::primitive::circle(Point2::new(50.0, 50.0), 10.0).expect("island"),
+    ]
+  };
+  let without = write_vectors(&directory, "without.c2d", vectors());
+  let with = write_vectors(&directory, "with.c2d", vectors());
+
+  let author = |document: &Path, islands: Option<&str>| {
+    let document = document.to_str().expect("utf8");
+    let mut arguments = vec![
+      "toolpath",
+      document,
+      "--kind",
+      "pocket",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--stepover",
+      "4",
+      "--pass-depth",
+      "6",
+      "--cut-depth",
+      "6",
+    ];
+    if let Some(islands) = islands {
+      arguments.push("--islands");
+      arguments.push(islands);
+    }
+    let outcome = run(&arguments);
+    assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  };
+
+  author(&without, None);
+  let plain = emit_program(&directory, &without, &library, &post);
+
+  author(&with, Some("E2"));
+  let islanded = emit_program(&directory, &with, &library, &post);
+
+  assert_ne!(
+    plain, islanded,
+    "the island adds rings, so the program cannot be the same"
+  );
+  assert!(
+    islanded.lines().count() > plain.lines().count(),
+    "the island's rings are cut: {} lines with the island, {} without",
+    islanded.lines().count(),
+    plain.lines().count()
+  );
+  assert!(
+    !plain.contains("island"),
+    "the island-free program says nothing about islands"
+  );
+
+  let outcome = run(&["inspect", with.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains(", 1 island(s)"),
+    "inspect names the island count: {}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 #[test]
 fn islands_on_a_profile_exit_two_naming_the_flag() {
   let directory = scratch("toolpath-island-kind");

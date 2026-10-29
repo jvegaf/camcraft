@@ -1251,12 +1251,31 @@ fn build_segment(
       }
     }
     Operation::Pocket(params) => {
-      // Each selected contour is its own region: islands are out of scope (D-M4-2), so a nested
-      // selection pockets both contours instead of silently clearing the wrong area.
+      // Each selected contour is its own outer boundary, and the toolpath's islands are holes in
+      // every one of them (A9, D-RB-1: the document names the islands, nothing is inferred from
+      // nesting). A nested selection therefore still pockets both contours, without the inner one
+      // silently becoming a hole.
       for entity_id in &toolpath.entity_ids {
         let contour = contour_of(document, &toolpath.id, entity_id)?;
+        let mut islands = Vec::with_capacity(toolpath.island_ids.len());
+        for island_id in &toolpath.island_ids {
+          // `Document::validate` already refuses an island that does not resolve, but a toolpath
+          // reaching `emit` without having been validated must fail by name, not panic.
+          let island = document.entity(island_id).ok_or_else(|| {
+            Failure::input(format!(
+              "toolpath {:?} cites unknown island {island_id:?}",
+              toolpath.id
+            ))
+          })?;
+          let island = island
+            .kind
+            .as_contour()
+            .ok_or_else(|| Failure::input(format!("island {island_id:?} is not a contour")))?;
+          islands.push(island);
+        }
         let path = pocket(&PocketRequest {
           contour,
+          islands: &islands,
           params,
           tool: &spec,
           job: &document.job,
