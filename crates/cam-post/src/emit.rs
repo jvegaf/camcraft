@@ -81,6 +81,13 @@ struct Writer<'a> {
   line_number: i64,
   last_emitted: BTreeMap<String, String>,
   previous: Point3,
+  /// Whether the line currently being expanded referenced the line-number field.
+  line_number_referenced: bool,
+  /// Formatting rules indexed by the field a block references.
+  ///
+  /// A block writes `[X]`, not `[X_POSITION]`: placeholders name the source field and the `VAR` name
+  /// is the human label for that rule. Indexing by source is what makes a real post-processor work.
+  by_source: BTreeMap<String, VarSpec>,
 }
 
 /// What the current block is being emitted for.
@@ -110,6 +117,8 @@ impl<'a> Writer<'a> {
       line_number: post.line_number_start.unwrap_or(0),
       last_emitted: BTreeMap::new(),
       previous: home,
+      line_number_referenced: false,
+      by_source: index_by_source(post),
     }
   }
 
@@ -264,13 +273,14 @@ impl<'a> Writer<'a> {
   fn emit_block(&mut self, kind: BlockKind, site: &Site) -> Result<(), EmitError> {
     let template: Vec<String> = self.post.block(kind).to_vec();
     for line in &template {
+      self.line_number_referenced = false;
       let expanded = self.expand(line, kind, site)?;
       if expanded.trim().is_empty() {
         continue;
       }
-      if self.post.line_number_increment.is_some() {
-        // Numbering advances per emitted line, so a post that numbers its blocks stays consistent
-        // even when conditional variables empty a line out.
+      // Only a line that actually carries the block number consumes one: a comment line without
+      // `[N]` must not advance the sequence.
+      if self.line_number_referenced && self.post.line_number_increment.is_some() {
         self.advance_line_number();
       }
       self.out.push_str(&expanded);
@@ -340,14 +350,17 @@ impl<'a> Writer<'a> {
 
   /// Resolve one variable reference for one block.
   fn resolve(&mut self, name: &str, kind: BlockKind, site: &Site) -> Result<String, EmitError> {
-    if let Some(spec) = self.post.variables.get(name) {
-      let value =
-        self
-          .numeric_source(&spec.source, site)
-          .ok_or_else(|| EmitError::UnknownVariable {
-            block: kind,
-            name: spec.source.clone(),
-          })?;
+    let key = name.trim().to_ascii_uppercase();
+    if let Some(spec) = self.by_source.get(&key).cloned() {
+      let value = self
+        .numeric_source(&key, site)
+        .ok_or_else(|| EmitError::UnknownVariable {
+          block: kind,
+          name: key.clone(),
+        })?;
+      if key == "N" {
+        self.line_number_referenced = true;
+      }
       let scaled = value * spec.scale;
       let text = format!(
         "{}{}",
@@ -357,11 +370,11 @@ impl<'a> Writer<'a> {
       return Ok(match spec.mode {
         EmissionMode::Always => text,
         EmissionMode::OnChange => {
-          let previous = self.last_emitted.get(name).cloned();
+          let previous = self.last_emitted.get(&key).cloned();
           if previous.as_deref() == Some(text.as_str()) {
             String::new()
           } else {
-            self.last_emitted.insert(name.to_owned(), text.clone());
+            self.last_emitted.insert(key, text.clone());
             text
           }
         }
@@ -444,6 +457,20 @@ impl<'a> Writer<'a> {
       blocks: self.blocks,
     }
   }
+}
+
+/// Index the post-processor's `VAR` declarations by the field their blocks reference.
+///
+/// If a post declares the same source twice, the first declaration in name order wins: deterministic,
+/// and equivalent for every post-processor that declares one rule per field.
+fn index_by_source(post: &PostProcessor) -> BTreeMap<String, VarSpec> {
+  let mut index: BTreeMap<String, VarSpec> = BTreeMap::new();
+  for spec in post.variables.values() {
+    index
+      .entry(spec.source.trim().to_ascii_uppercase())
+      .or_insert_with(|| spec.clone());
+  }
+  index
 }
 
 /// True when the move descends without changing XY, which the dialect calls a plunge.

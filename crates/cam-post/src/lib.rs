@@ -24,6 +24,8 @@
 //!   (`[FC|A||1.0|0.0166]` converts a per-minute rate to a per-second one).
 //! * Mode `A` always emits the variable; mode `C` emits it only when it changed, which is what
 //!   produces `G1X10.000Y20.000` instead of repeating `F` on every line.
+//! * A block placeholder names the **source field**, not the `VAR`: blocks write `[X]` while the
+//!   declaration is `VAR X_POSITION = [X|C|X|1.4]`. The `VAR` name is a human label for the rule.
 //!
 //! Must not depend on `cam-toolpath`, `cam-model`, `cam-store` or any UI crate.
 
