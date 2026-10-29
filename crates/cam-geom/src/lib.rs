@@ -15,6 +15,7 @@
 #![warn(missing_docs)]
 
 mod arc;
+pub mod boolean;
 mod chain;
 mod contour;
 pub mod edit;
@@ -23,6 +24,7 @@ pub mod join;
 pub mod offset;
 mod point;
 pub mod primitive;
+pub mod region;
 mod segment;
 pub mod text;
 pub mod transform;
