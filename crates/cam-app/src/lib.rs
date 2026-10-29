@@ -15,7 +15,11 @@
 
 #![warn(missing_docs)]
 
+pub mod camera;
+
 use std::collections::{BTreeSet, VecDeque};
+
+pub use camera::{Camera, ScreenPoint, Viewport, MAX_PIXELS_PER_MM, MIN_PIXELS_PER_MM};
 
 use cam_model::{Document, ModelError};
 use serde_json::Value;
@@ -144,6 +148,7 @@ impl History {
 #[derive(Clone, Debug)]
 pub struct AppState {
   document: Document,
+  camera: Camera,
   selection: Selection,
   history: History,
   dirty: bool,
@@ -155,11 +160,27 @@ impl AppState {
   pub fn new(document: Document) -> Self {
     Self {
       document,
+      camera: Camera::default(),
       selection: Selection::default(),
       history: History::default(),
       dirty: false,
       next_entity: 1,
     }
+  }
+
+  /// The viewport camera.
+  pub fn camera(&self) -> &Camera {
+    &self.camera
+  }
+
+  /// The viewport camera, for pan, zoom and fit.
+  pub fn camera_mut(&mut self) -> &mut Camera {
+    &mut self.camera
+  }
+
+  /// Frame the given world bounds in the viewport.
+  pub fn fit_camera(&mut self, bounds: cam_geom::Bounds, margin_px: f64) {
+    self.camera.zoom_to_fit(bounds, margin_px);
   }
 
   /// The document being edited.

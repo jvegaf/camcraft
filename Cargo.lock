@@ -138,6 +138,7 @@ dependencies = [
  "cam-geom",
  "cam-model",
  "cam-units",
+ "proptest",
  "serde_json",
  "thiserror",
 ]
