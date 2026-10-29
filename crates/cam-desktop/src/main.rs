@@ -1,18 +1,25 @@
-//! Native window binary: opens the editor with a sample document and its 3D preview.
+//! Native window binary: opens the editor with a sample document and plays its 3D preview.
 //!
 //! The window itself needs a display, so it is verified by building rather than by automation; the
 //! behaviour it exposes lives in `cam-app`, `cam-sim`, `cam-view` and `cam-ui`, all tested headless.
 //!
-//! The sample preview is a demonstrator, not a feature (M5 V2): a toolpath authored here the way
-//! `cam-cli` authors one — the strategy plus its `ToolSpec` — simulated with `cam-sim` and handed to
-//! the shell, which only draws it (D-M5-9). Small and deterministic on purpose: the same moves every
-//! launch, so the picture a reviewer sees is the picture the tests describe.
+//! The sample preview is a demonstrator, not a feature (M5 V3): a toolpath authored here the way
+//! `cam-cli` authors one — the strategy plus its `ToolSpec` — handed to the shell as the stock it has
+//! not cut yet plus the program that cuts it. The shell plays it, which is what makes the stock
+//! disappear as it cuts (A10); the window never authors a toolpath and never touches the document
+//! (D-M5-9). Small and deterministic on purpose: the same moves every launch, so the picture a
+//! reviewer sees is the picture the tests describe.
+//!
+//! The window opens **playing** from the first move: same start, same speed and same moves on every
+//! launch, so "deterministic" survives the animation. [`cam_ui::Preview3d`] itself opens paused,
+//! which is what a test wants; the demonstrator opts into motion explicitly with
+//! [`cam_ui::Preview3d::set_playing`].
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2, Vertex};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, PocketParams, PocketStrategy};
 use cam_move::{MoveStream, Segment};
-use cam_sim::{sweep, Heightfield, DEFAULT_CELL};
+use cam_sim::{Heightfield, DEFAULT_CELL};
 use cam_toolpath::{pocket, PocketRequest, ToolSpec};
 use cam_ui::Shell;
 use cam_units::Length;
@@ -42,12 +49,18 @@ impl Editor {
   fn new() -> Self {
     let mut shell = Shell::new();
     let app = AppState::new(sample_document());
-    let (field, program) = sample_preview(app.document());
-    // The window hands the shell a finished simulation: the preview never authors toolpaths and
-    // never touches the document (M5 D-M5-9).
-    shell.set_preview(field, program, &app.document().job);
+    let (stock, program) = sample_preview(app.document());
+    // The window hands the shell the stock and the program: the preview plays them, and never
+    // authors a toolpath or touches the document (M5 D-M5-9).
+    shell.set_preview(stock, program, &app.document().job);
+    if let Some(preview) = shell.preview_mut() {
+      // Open playing from the first move: the sample cuts itself, which is the point of A10. The
+      // start state is the same on every launch, so the animation is as deterministic as the moves.
+      preview.set_playing(true);
+    }
     shell.status =
-      "sample document — click an edge to select it, drag the 3D view to orbit".to_owned();
+      "sample document — click an edge to select it, drag the 3D view to orbit, pause to inspect"
+        .to_owned();
     Self { app, shell }
   }
 }
@@ -120,11 +133,12 @@ fn sample_tool() -> ToolSpec {
   }
 }
 
-/// The sample program, and the stock it leaves behind: the rectangle pocketed 6 mm deep.
+/// The sample's stock and program: the stock untouched, and the moves that pocket it 6 mm deep.
 ///
 /// This is the whole of what the window demonstrates: a toolpath built the way `cam-cli` builds one,
-/// simulated with `cam-sim`, and handed to the shell to draw. Deterministic on purpose — same tool,
-/// same parameters, same moves on every launch.
+/// handed to the shell with the stock it has not cut yet. The shell plays it (M5 V3), and because
+/// playback applies whole moves as the cursor crosses them, the surface on screen ends up cell for
+/// cell the field `sweep::apply` gives the report (A10) — which is the demo's own test below.
 ///
 /// The `expect`s are this file's own contract: the sample geometry, tool and parameters are
 /// constants, so a failure here is a defect in the demonstrator rather than a user's mistake (the
@@ -164,16 +178,18 @@ fn sample_preview(document: &Document) -> (Heightfield, MoveStream) {
   });
 
   // The default cell keeps the demonstrator at the resolution the M5 oracle is written for; the
-  // window's cell count is bounded by `cam-sim`'s own cap rather than by this call.
-  let mut field = Heightfield::new(&document.job, Length::from_mm(DEFAULT_CELL))
+  // window's cell count is bounded by `cam-sim`'s own cap rather than by this call. The field is the
+  // untouched stock: the preview cuts it as it plays, and `reset` returns to exactly this.
+  let stock = Heightfield::new(&document.job, Length::from_mm(DEFAULT_CELL))
     .expect("the sample stock fits the cell cap");
-  sweep::apply(&program, &mut field);
-  (field, program)
+  (stock, program)
 }
 
 #[cfg(test)]
 mod tests {
   use super::{sample_document, sample_preview};
+  use cam_sim::{sweep, Heightfield, DEFAULT_CELL};
+  use cam_units::Length;
 
   #[test]
   fn the_sample_document_is_valid_and_worth_looking_at() {
@@ -192,22 +208,52 @@ mod tests {
   }
 
   #[test]
-  fn the_sample_preview_actually_cuts_the_sample_stock() {
+  fn the_sample_stock_is_untouched_and_the_preview_that_plays_it_cuts_it() {
     let document = sample_document();
-    let (field, program) = sample_preview(&document);
+    let (stock, program) = sample_preview(&document);
 
     assert!(
       program.move_count() > 0,
       "the window must have a program to preview"
     );
-    assert!(
-      field.volumes().removed > 0.0,
-      "a preview of an uncut stock would show nothing in 3D"
+    assert_eq!(
+      stock.volumes().removed,
+      0.0,
+      "the window hands the shell the stock before the first move"
     );
     assert_eq!(
-      field.thickness(),
+      stock.thickness(),
       document.job.thickness,
       "the preview is simulated over the document's own stock"
     );
+
+    // Playing the sample is what cuts it (A10).
+    let mut preview = cam_ui::Preview3d::new(stock, program.clone(), &document.job);
+    preview.set_playing(true);
+    preview.advance(3_600.0);
+    assert!(
+      preview.finished(),
+      "the sample program must play to its end"
+    );
+    assert!(
+      preview.field().volumes().removed > 0.0,
+      "a preview of an uncut stock would show nothing in 3D"
+    );
+
+    // And the animation cannot disagree with the report: the preview's end state is the
+    // whole-program simulation, cell for cell.
+    let mut expected = Heightfield::new(&document.job, Length::from_mm(DEFAULT_CELL))
+      .expect("the sample stock fits the cell cap");
+    sweep::apply(&program, &mut expected);
+    let grid = expected.grid();
+    for row in 0..grid.rows {
+      for column in 0..grid.columns {
+        assert_eq!(
+          preview.field().surface(column, row),
+          expected.surface(column, row),
+          "cell ({column}, {row}) must match the simulation the report is written from"
+        );
+      }
+    }
   }
 }
