@@ -344,6 +344,11 @@ pub struct ActionReport {
   pub max_radial_error: Option<f64>,
   /// How many arcs the action lost to tessellation (M2 A5).
   pub lost_arcs: usize,
+  /// What the action did beyond its command outcome, for actions that are not one command.
+  ///
+  /// An import reports its own counts here (`12 contours from part.dxf, 0 curves flattened,
+  /// 1 skipped`); every other action leaves it empty, so their sentences stay exactly as they were.
+  pub note: Option<String>,
 }
 
 impl ActionReport {
@@ -361,6 +366,9 @@ impl ActionReport {
     }
     if self.lost_arcs > 0 {
       details.push(format!("{} arc(s) lost to tessellation", self.lost_arcs));
+    }
+    if let Some(note) = &self.note {
+      details.push(note.clone());
     }
     if details.is_empty() {
       self.label.to_owned()
@@ -440,6 +448,14 @@ pub enum UiAction {
     /// The layer to change.
     layer_id: String,
   },
+  /// Import a file and replace the drawing with it, undoably (M3 A17).
+  ///
+  /// The path comes from the caller: there is no file dialog in this milestone (M3 D-M3-6), which is
+  /// what keeps the shell testable without a display.
+  ImportFile {
+    /// The file to read; its extension decides the format.
+    path: String,
+  },
 }
 
 impl UiAction {
@@ -471,6 +487,7 @@ impl UiAction {
       Self::DeleteSelection => "delete selection",
       Self::SetSelection(_) => "select",
       Self::ToggleLayerVisible { .. } => "layer visibility",
+      Self::ImportFile { .. } => "import file",
     }
   }
 }
@@ -1658,6 +1675,38 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionRepo
         ..ActionReport::default()
       })
     }
+    UiAction::ImportFile { path } => {
+      let imported = cam_import::import_path(
+        std::path::Path::new(path),
+        &cam_import::ImportOptions::default(),
+      )
+      .map_err(|error| error.to_string())?;
+      let document =
+        cam_import::into_document(&imported, None).map_err(|error| error.to_string())?;
+      let created_entities: Vec<String> = document
+        .entities()
+        .map(|entity| entity.id.clone())
+        .collect();
+      let file_name = std::path::Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+      let note = format!(
+        "{} contour(s) from {file_name}, {} curve(s) flattened, {} skipped",
+        imported.report.contours,
+        imported.report.flattened_curves,
+        imported.report.skipped_count()
+      );
+      app.replace_document_undoable(document);
+      app.select(created_entities.clone());
+      Ok(ActionReport {
+        label: action.label(),
+        created: created_entities.len(),
+        created_entities,
+        note: Some(note),
+        ..ActionReport::default()
+      })
+    }
     UiAction::AddRectangle { width, height } => {
       let layer_id = drawing_layer(app)?;
       let centre = app.camera().center();
@@ -1848,6 +1897,7 @@ fn apply_command(app: &mut AppState, command: Command) -> Result<ActionReport, S
     created_entities: outcome.created_entities,
     max_radial_error: outcome.max_radial_error,
     lost_arcs: outcome.lost_arcs,
+    note: None,
   };
   if !report.created_entities.is_empty() {
     app.select(report.created_entities.clone());

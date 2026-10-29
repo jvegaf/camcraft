@@ -1112,3 +1112,89 @@ fn every_tool_can_be_armed_and_the_shell_still_runs_headless() {
     assert!(joined(&texts).contains("Properties"));
   }
 }
+
+/// A two-line DXF, written to a scratch directory, so the shell test drives a real importer.
+fn write_dxf(directory: &std::path::Path) -> std::path::PathBuf {
+  let dxf = "0\nSECTION\n2\nENTITIES\n\
+0\nLINE\n8\n0\n10\n0.0\n20\n0.0\n11\n100.0\n21\n0.0\n\
+0\nLINE\n8\n0\n10\n100.0\n20\n0.0\n11\n100.0\n21\n60.0\n\
+0\nENDSEC\n0\nEOF\n";
+  let path = directory.join("part.dxf");
+  std::fs::write(&path, dxf).expect("dxf written");
+  path
+}
+
+fn scratch(name: &str) -> std::path::PathBuf {
+  let directory = std::env::temp_dir().join(format!("campilot-ui-{}-{name}", std::process::id()));
+  let _ = std::fs::remove_dir_all(&directory);
+  std::fs::create_dir_all(&directory).expect("scratch directory");
+  directory
+}
+
+#[test]
+fn importing_a_file_replaces_the_drawing_and_says_what_arrived() {
+  let directory = scratch("import");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+
+  assert_eq!(app.document().entities().count(), 2);
+  assert_eq!(
+    shell.status,
+    "import file — 2 entities created, 2 contour(s) from part.dxf, 0 curve(s) flattened, 0 skipped"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_failed_import_leaves_the_drawing_untouched() {
+  let mut app = AppState::new(document_with_rectangle());
+  let before = app.document_json();
+  let mut shell = Shell::new();
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: "/nonexistent/part.dxf".to_owned(),
+    },
+  );
+
+  assert_eq!(app.document_json(), before);
+  assert_eq!(app.history_depth(), 0);
+  assert!(!app.is_dirty());
+  assert!(shell.status.starts_with("refused: "), "{}", shell.status);
+  assert!(
+    shell.status.contains("/nonexistent/part.dxf"),
+    "{}",
+    shell.status
+  );
+}
+
+#[test]
+fn one_undo_after_an_import_brings_the_previous_drawing_back() {
+  let directory = scratch("import-undo");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let original = app.document_json();
+  let mut shell = Shell::new();
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  assert_eq!(app.document().entities().count(), 2);
+
+  shell.apply_action(&mut app, &UiAction::Undo);
+
+  assert_eq!(app.document_json(), original);
+  std::fs::remove_dir_all(&directory).ok();
+}

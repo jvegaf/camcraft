@@ -153,6 +153,19 @@ impl AppState {
     self.dirty = false;
   }
 
+  /// Replace the document but keep the previous one in history, so one undo brings it back.
+  ///
+  /// This is the import path (M3 A17): the drawing on screen changes, but the user did not ask to
+  /// lose it, so the replacement is a step like any other command. [`AppState::replace_document`]
+  /// stays the open-a-file path, where a fresh history is the correct behaviour.
+  pub fn replace_document_undoable(&mut self, document: Document) {
+    let previous = std::mem::replace(&mut self.document, document);
+    self.next_entity = next_free_entity_number(&self.document);
+    self.selection = Selection::default();
+    self.history.record(previous);
+    self.dirty = true;
+  }
+
   /// The current selection.
   pub fn selection(&self) -> &Selection {
     &self.selection

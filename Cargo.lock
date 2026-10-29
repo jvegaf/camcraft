@@ -734,6 +734,7 @@ version = "0.0.1"
 dependencies = [
  "cam-app",
  "cam-geom",
+ "cam-import",
  "cam-model",
  "cam-view",
  "egui",
