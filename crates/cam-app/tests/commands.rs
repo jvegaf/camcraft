@@ -1,6 +1,6 @@
 //! Behaviour tests for the editing commands (A1, A5, A8).
 
-use cam_app::{AlignMode, AppState, Command, CommandError, Transform};
+use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit};
 use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::{primitive, transform, Point2, Vec2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer};
@@ -2052,6 +2052,815 @@ fn undoing_an_align_restores_the_document_exactly() {
     Command::AlignEntities {
       entity_ids: vec!["E1".to_owned(), "E2".to_owned()],
       mode: AlignMode::Right,
+    },
+  );
+}
+
+/// Draw an open line on `layer_id` and return its id.
+fn draw_line_on(app: &mut AppState, layer_id: &str, from: Point2, to: Point2) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddLine {
+      layer_id: layer_id.to_owned(),
+      entity_id: id.clone(),
+      from,
+      to,
+    })
+    .expect("the line is drawn");
+  id
+}
+
+fn draw_line(app: &mut AppState, from: Point2, to: Point2) -> String {
+  draw_line_on(app, "L1", from, to)
+}
+
+/// Draw an open polyline through `points` and return its id.
+fn draw_polyline(app: &mut AppState, points: &[Point2]) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddPolyline {
+      layer_id: "L1".to_owned(),
+      entity_id: id.clone(),
+      points: points.to_vec(),
+      closed: false,
+    })
+    .expect("the polyline is drawn");
+  id
+}
+
+fn offset_command(entity_id: &str, distance: f64, first_entity_index: u32) -> Command {
+  Command::OffsetContour {
+    entity_id: entity_id.to_owned(),
+    distance,
+    first_entity_index,
+  }
+}
+
+fn trim_command(target_id: &str, cutter_id: &str, first_entity_index: u32) -> Command {
+  Command::TrimEntity {
+    target_id: target_id.to_owned(),
+    cutter_id: cutter_id.to_owned(),
+    tolerance: 1.0e-6,
+    first_entity_index,
+  }
+}
+
+/// The kernel's own offset of `contour`, so a test compares stored geometry to the kernel, not to
+/// a number copied out of it.
+fn kernel_offset(contour: &cam_geom::Contour, distance: f64) -> cam_geom::Contour {
+  cam_geom::offset::offset_contour(
+    contour,
+    distance,
+    &cam_geom::offset::OffsetOptions::default(),
+  )
+  .expect("the kernel offsets the fixture")
+  .contour
+}
+
+fn vertex_points(contour: &cam_geom::Contour) -> Vec<Point2> {
+  contour
+    .vertices()
+    .iter()
+    .map(|vertex| vertex.point)
+    .collect()
+}
+
+#[test]
+fn offsetting_a_circle_by_two_millimetres_adds_a_new_arc_contour() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::new(50.0, 20.0), 10.0);
+  let before = entity_contour(&app, &source).clone();
+
+  let outcome = app
+    .execute_with_outcome(offset_command(&source, 2.0, 2))
+    .expect("the offset is applied");
+
+  assert!(app.is_dirty(), "an offset marks the document dirty");
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E2".to_owned()],
+    "the offset entity is minted from first_entity_index"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the source is kept and the offset is a second entity"
+  );
+  assert_eq!(layer_holding(&app, "E2"), "L1");
+
+  let created = entity_contour(&app, "E2");
+  assert!(
+    created.is_closed(),
+    "an offset of a closed entity is closed"
+  );
+  assert!(created.is_ccw(), "the offset keeps the winding");
+  assert!(
+    created.has_arcs(),
+    "an offset circle stays arcs, not a polygon"
+  );
+  assert_eq!(created.segments().len(), 2, "two half-turn arcs");
+  let expected_area = std::f64::consts::PI * 12.0 * 12.0;
+  let area = created.signed_area();
+  assert!(
+    (area - expected_area).abs() / expected_area < 1.0e-9,
+    "the offset circle has radius r + 2, so area {expected_area}, got {area}"
+  );
+  assert_bounds(created, (38.0, 8.0), (62.0, 32.0), ARC_BOUNDS_TOLERANCE);
+  assert_eq!(
+    created,
+    &kernel_offset(&before, 2.0),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  assert_eq!(
+    entity_contour(&app, &source),
+    &before,
+    "the source entity must not move or change"
+  );
+}
+
+#[test]
+fn a_collapsing_offset_is_refused_with_the_kernel_reason_and_no_document_change() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+
+  let error = assert_refused_atomically(&mut app, offset_command(&source, -12.0, 2));
+
+  let CommandError::Geometry(message) = error else {
+    panic!("an offset collapse must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("offset collapsed"),
+    "the refusal must name the collapse: {message}"
+  );
+  assert!(
+    message.contains("arc radius would collapse"),
+    "the kernel's reason must survive: {message}"
+  );
+  assert!(
+    app.document().entity("E2").is_none(),
+    "a refused offset must not store an entity"
+  );
+  assert_bounds(
+    entity_contour(&app, &source),
+    (-10.0, -10.0),
+    (10.0, 10.0),
+    ARC_BOUNDS_TOLERANCE,
+  );
+}
+
+#[test]
+fn joining_two_touching_lines_yields_one_entity_and_removes_the_other() {
+  let mut app = state_with_layer();
+  let first = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let second = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+  assert_eq!((first.as_str(), second.as_str()), ("E1", "E2"));
+  let parts = [
+    entity_contour(&app, &first).clone(),
+    entity_contour(&app, &second).clone(),
+  ];
+
+  let outcome = app
+    .execute_with_outcome(Command::JoinEntities {
+      entity_ids: vec![first.clone(), second.clone()],
+      tolerance: 1.0e-6,
+    })
+    .expect("the two lines join");
+
+  assert!(app.is_dirty(), "a join marks the document dirty");
+  assert!(
+    outcome.created_entities.is_empty(),
+    "a join reuses the first id and mints nothing"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    1,
+    "the joined contour replaces the selection instead of adding to it"
+  );
+  assert!(
+    app.document().entity(&second).is_none(),
+    "the other selected entity is removed"
+  );
+
+  let joined = entity_contour(&app, &first);
+  assert!(!joined.is_closed(), "two lines joined end to end stay open");
+  assert_eq!(joined.len(), 3, "two lines become one three-vertex chain");
+  assert_eq!(joined.perimeter(), 20.0, "joining loses no length");
+  assert_eq!(
+    joined,
+    &cam_geom::join::join(&parts, 1.0e-6).expect("kernel join"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+}
+
+#[test]
+fn an_ambiguous_join_is_refused_atomically_naming_the_fork() {
+  let mut app = state_with_layer();
+  let a = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let b = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(20.0, 0.0));
+  let c = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![a.clone(), b.clone(), c.clone()],
+      tolerance: 1.0e-6,
+    },
+  );
+
+  let CommandError::Geometry(message) = error else {
+    panic!("an ambiguous join must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("three or more endpoints"),
+    "the refusal must name the fork: {message}"
+  );
+  assert!(
+    message.contains("ambiguous"),
+    "the refusal must say the chain is ambiguous: {message}"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    3,
+    "a refused join removes nothing"
+  );
+  for id in [&a, &b, &c] {
+    assert!(
+      app.document().entity(id).is_some(),
+      "{id} must survive a refused join"
+    );
+  }
+}
+
+#[test]
+fn trimming_a_rectangle_with_a_crossing_line_replaces_it_with_one_open_entity() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(10.0, -5.0), Point2::new(10.0, 15.0));
+  let before_target = entity_contour(&app, &target).clone();
+  let before_cutter = entity_contour(&app, &cutter).clone();
+  let kernel =
+    cam_geom::trim::trim(&before_target, &before_cutter, 1.0e-6).expect("two clear cuts");
+  assert_eq!(kernel.kept.len(), 1, "a closed target is opened by one cut");
+
+  let outcome = app
+    .execute_with_outcome(trim_command(&target, &cutter, 3))
+    .expect("the rectangle is trimmed");
+
+  assert!(app.is_dirty(), "a trim marks the document dirty");
+  assert!(
+    app.document().entity(&target).is_none(),
+    "the closed target is replaced by its kept piece"
+  );
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E3".to_owned()],
+    "one entity per kept piece, minted from first_entity_index"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the kept piece and the untouched cutter"
+  );
+  assert_eq!(
+    entity_contour(&app, &cutter),
+    &before_cutter,
+    "the cutter is untouched"
+  );
+  assert_eq!(layer_holding(&app, "E3"), "L1");
+
+  let piece = entity_contour(&app, "E3");
+  assert!(!piece.is_closed(), "the surviving piece is open");
+  assert_eq!(
+    piece, &kernel.kept[0],
+    "cam-app must store exactly the piece the kernel returned"
+  );
+  let removed = kernel.removed.perimeter();
+  assert!(
+    (removed - 30.0).abs() < 1.0e-9,
+    "the removed span is half the 60 mm perimeter, got {removed}"
+  );
+  assert!(
+    (piece.perimeter() + removed - before_target.perimeter()).abs() < 1.0e-9,
+    "the kept piece plus the removed span must equal the original perimeter"
+  );
+}
+
+#[test]
+fn trimming_an_open_line_mints_one_entity_per_kept_piece() {
+  let mut app = state_with_layer();
+  let target = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = app.next_entity_id();
+  app
+    .execute(Command::AddCircle {
+      layer_id: "L1".to_owned(),
+      entity_id: cutter.clone(),
+      at: Point2::new(5.0, 0.0),
+      radius: 1.0,
+    })
+    .expect("the cutter circle is drawn");
+
+  let outcome = app
+    .execute_with_outcome(trim_command(&target, &cutter, 3))
+    .expect("the line is trimmed");
+
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E3".to_owned(), "E4".to_owned()],
+    "both kept ends are minted, in the kernel's order along the contour"
+  );
+  assert!(
+    app.document().entity(&target).is_none(),
+    "the trimmed line is replaced by its kept pieces"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    3,
+    "two pieces and the cutter"
+  );
+  let first = entity_contour(&app, "E3");
+  let second = entity_contour(&app, "E4");
+  assert!(!first.is_closed() && !second.is_closed());
+  assert!(
+    (first.perimeter() + second.perimeter() - 8.0).abs() < 1.0e-9,
+    "the two kept ends measure 8 mm around the 2 mm cut"
+  );
+  assert_bounds(first, (0.0, 0.0), (4.0, 0.0), 1.0e-9);
+  assert_bounds(second, (6.0, 0.0), (10.0, 0.0), 1.0e-9);
+  assert!(
+    entity_contour(&app, &cutter).has_arcs(),
+    "the cutter keeps its arcs"
+  );
+}
+
+#[test]
+fn a_trim_whose_cutter_misses_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(100.0, -5.0), Point2::new(100.0, 15.0));
+  let before_target = entity_contour(&app, &target).clone();
+
+  let error = assert_refused_atomically(&mut app, trim_command(&target, &cutter, 3));
+
+  let CommandError::Geometry(message) = error else {
+    panic!("a missed cut must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("exactly two cut points"),
+    "the refusal must name what a trim needs: {message}"
+  );
+  assert!(
+    app.document().entity("E3").is_none(),
+    "a refused trim must not mint an entity"
+  );
+  assert_eq!(
+    entity_contour(&app, &target),
+    &before_target,
+    "a refused trim must leave the target exactly as it was"
+  );
+}
+
+#[test]
+fn a_taken_minted_id_refuses_an_offset_and_a_trim_without_storing_anything() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  let _taken = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 5.0, 5.0);
+  assert!(app.document().entity("E2").is_some(), "E2 is taken");
+
+  let error = assert_refused_atomically(&mut app, offset_command(&source, 2.0, 2));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+
+  // A trim that would mint several ids is refused when one of them, late in the batch, is taken.
+  let mut app = state_with_layer();
+  let target = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = app.next_entity_id();
+  app
+    .execute(Command::AddCircle {
+      layer_id: "L1".to_owned(),
+      entity_id: cutter.clone(),
+      at: Point2::new(5.0, 0.0),
+      radius: 1.0,
+    })
+    .expect("the cutter circle is drawn");
+  let _taken = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 5.0, 5.0);
+  let _also_taken = draw_rectangle(&mut app, Point2::new(60.0, 50.0), 5.0, 5.0);
+  assert!(app.document().entity("E4").is_some(), "E4 is taken");
+
+  // Two kept pieces minted from 4 would be E4 and E5, and E4 is the second one: a collision must be
+  // caught before the target is removed, not after the first piece is stored.
+  let error = assert_refused_atomically(&mut app, trim_command(&target, &cutter, 4));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+  assert!(
+    app.document().entity(&target).is_some(),
+    "not one piece may be stored, and the target must survive"
+  );
+  assert!(
+    app.document().entity("E5").is_none(),
+    "the second minted id must not be stored either"
+  );
+}
+
+#[test]
+fn moving_a_vertex_keeps_the_rest_of_the_contour() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+  let to = Point2::new(5.0, 5.0);
+
+  let outcome = app
+    .execute_with_outcome(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Move { index: 1, to },
+    })
+    .expect("the vertex moves");
+
+  assert!(app.is_dirty(), "a node edit marks the document dirty");
+  assert!(outcome.created_entities.is_empty(), "no entity is created");
+  let contour = entity_contour(&app, &id);
+  assert_eq!(
+    contour,
+    &cam_geom::edit::move_vertex(&before, 1, to).expect("kernel move"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  assert_eq!(
+    vertex_points(contour),
+    vec![Point2::new(0.0, 0.0), to, Point2::new(10.0, 10.0)],
+    "only the named vertex moves"
+  );
+  assert!(!contour.is_closed(), "the contour stays open");
+}
+
+#[test]
+fn inserting_a_vertex_on_an_arc_yields_two_arcs_on_the_same_circle() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  let before = entity_contour(&app, &id).clone();
+  // The top of the circle is the midpoint of the first half-turn arc.
+  let at = Point2::new(10.0, 15.0);
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at,
+      },
+    })
+    .expect("the vertex is inserted");
+
+  let contour = entity_contour(&app, &id);
+  assert!(contour.is_closed(), "the circle stays closed");
+  assert_eq!(
+    contour.len(),
+    3,
+    "one vertex per arc half plus the far vertex"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::insert_vertex(&before, 0, at).expect("kernel insert"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  let segments = contour.segments();
+  assert_eq!(segments.len(), 3, "the split arc contributes two segments");
+  for segment in &segments {
+    let arc = segment.as_arc().expect("the circle stays arcs");
+    assert!(
+      (arc.radius() - 5.0).abs() < 1.0e-9,
+      "a radial insertion keeps the radius, got {}",
+      arc.radius()
+    );
+    assert!(
+      arc.center().is_near(Point2::new(10.0, 10.0), 1.0e-9),
+      "both halves stay on the same circle"
+    );
+  }
+  let area = contour.signed_area();
+  assert!(
+    (area - std::f64::consts::PI * 25.0).abs() < 1.0e-9,
+    "splitting an arc keeps the circle's area, got {area}"
+  );
+}
+
+#[test]
+fn inserting_a_vertex_on_a_straight_segment_keeps_it_straight() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(&mut app, &[Point2::new(0.0, 0.0), Point2::new(20.0, 0.0)]);
+  let before = entity_contour(&app, &id).clone();
+  let at = Point2::new(5.0, 3.0);
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at,
+      },
+    })
+    .expect("the vertex is inserted");
+
+  let contour = entity_contour(&app, &id);
+  assert_eq!(contour.len(), 3, "one segment becomes two");
+  assert!(!contour.has_arcs(), "a straight segment stays straight");
+  assert_eq!(
+    vertex_points(contour),
+    vec![
+      Point2::new(0.0, 0.0),
+      Point2::new(5.0, 0.0),
+      Point2::new(20.0, 0.0)
+    ],
+    "the click is projected onto the segment"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::insert_vertex(&before, 0, at).expect("kernel insert")
+  );
+  assert_eq!(contour.perimeter(), 20.0, "the length is unchanged");
+}
+
+#[test]
+fn deleting_a_vertex_stores_the_remaining_contour() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Delete { index: 1 },
+    })
+    .expect("the vertex is deleted");
+
+  let contour = entity_contour(&app, &id);
+  assert_eq!(
+    vertex_points(contour),
+    vec![Point2::new(0.0, 0.0), Point2::new(10.0, 10.0)],
+    "the named vertex is gone and the others stay"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::delete_vertex(&before, 1).expect("kernel delete")
+  );
+}
+
+#[test]
+fn an_out_of_range_vertex_edit_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+  let cases = [
+    (
+      VertexEdit::Move {
+        index: 99,
+        to: Point2::new(1.0, 1.0),
+      },
+      "no vertex at that index",
+    ),
+    (
+      VertexEdit::Insert {
+        segment_index: 99,
+        at: Point2::new(1.0, 1.0),
+      },
+      "no segment at that index",
+    ),
+    (VertexEdit::Delete { index: 99 }, "no vertex at that index"),
+  ];
+
+  for (edit, reason) in cases {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::EditVertex {
+        entity_id: id.clone(),
+        edit,
+      },
+    );
+    let CommandError::Geometry(message) = error else {
+      panic!("{edit:?} must surface the kernel's message, got {error:?}");
+    };
+    assert!(
+      message.contains(reason),
+      "{edit:?} must be refused naming why: {message}"
+    );
+    assert_eq!(
+      entity_contour(&app, &id),
+      &before,
+      "{edit:?} must leave the contour untouched"
+    );
+  }
+}
+
+#[test]
+fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
+  let mut app = state_with_layer();
+  let line = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = draw_rectangle(&mut app, Point2::new(20.0, 0.0), 5.0, 5.0);
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::OffsetContour {
+      entity_id: "E-none".to_owned(),
+      distance: 1.0,
+      first_entity_index: 3,
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  let error = assert_refused_atomically(&mut app, offset_command(&line, f64::NAN, 3));
+  assert!(
+    matches!(error, CommandError::OutOfRange { .. }),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::OffsetContour {
+      entity_id: line.clone(),
+      distance: 1.0,
+      first_entity_index: 3,
+    },
+  );
+  assert!(
+    matches!(error, CommandError::Geometry(_)),
+    "an open contour cannot be offset: {error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: Vec::new(),
+      tolerance: 1.0e-6,
+    },
+  );
+  assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![line.clone()],
+      tolerance: 0.0,
+    },
+  );
+  assert!(
+    matches!(
+      error,
+      CommandError::NonPositiveSize {
+        kind: "join tolerance",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::TrimEntity {
+      target_id: line.clone(),
+      cutter_id: "E-none".to_owned(),
+      tolerance: 1.0e-6,
+      first_entity_index: 3,
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::TrimEntity {
+      target_id: line.clone(),
+      cutter_id: cutter.clone(),
+      tolerance: f64::INFINITY,
+      first_entity_index: 3,
+    },
+  );
+  assert!(
+    matches!(
+      error,
+      CommandError::NonPositiveSize {
+        kind: "trim tolerance",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::EditVertex {
+      entity_id: "E-none".to_owned(),
+      edit: VertexEdit::Delete { index: 0 },
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  assert_eq!(app.document().entities().count(), 2);
+}
+
+#[test]
+fn the_new_edit_commands_have_human_labels() {
+  assert_eq!(offset_command("E1", 2.0, 2).label(), "offset contour");
+  assert_eq!(
+    Command::JoinEntities {
+      entity_ids: vec!["E1".to_owned()],
+      tolerance: 1.0e-6,
+    }
+    .label(),
+    "join entities"
+  );
+  assert_eq!(trim_command("E1", "E2", 3).label(), "trim entity");
+  let edits = [
+    (
+      VertexEdit::Move {
+        index: 0,
+        to: Point2::ORIGIN,
+      },
+      "move vertex",
+    ),
+    (
+      VertexEdit::Insert {
+        segment_index: 0,
+        at: Point2::ORIGIN,
+      },
+      "insert vertex",
+    ),
+    (VertexEdit::Delete { index: 0 }, "delete vertex"),
+  ];
+  for (edit, label) in edits {
+    assert_eq!(
+      Command::EditVertex {
+        entity_id: "E1".to_owned(),
+        edit,
+      }
+      .label(),
+      label
+    );
+  }
+}
+
+#[test]
+fn undoing_an_offset_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  assert_single_undo_restores(&mut app, offset_command(&source, 2.0, 2));
+}
+
+#[test]
+fn undoing_a_join_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let first = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let second = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+  assert_single_undo_restores(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![first, second],
+      tolerance: 1.0e-6,
+    },
+  );
+}
+
+#[test]
+fn undoing_a_trim_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(10.0, -5.0), Point2::new(10.0, 15.0));
+  assert_single_undo_restores(&mut app, trim_command(&target, &cutter, 3));
+}
+
+#[test]
+fn undoing_a_vertex_edit_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  assert_single_undo_restores(
+    &mut app,
+    Command::EditVertex {
+      entity_id: id,
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at: Point2::new(10.0, 15.0),
+      },
     },
   );
 }

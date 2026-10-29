@@ -8,8 +8,12 @@
 //! applying a command is a pure function of its arguments. That is what makes golden tests and bug
 //! reports reproducible.
 
+use cam_geom::edit::{delete_vertex, insert_vertex, move_vertex};
+use cam_geom::join::join;
+use cam_geom::offset::{offset_contour, OffsetOptions};
 use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::transform;
+use cam_geom::trim::trim;
 use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
 use cam_model::{Document, Entity, EntityKind, ModelError};
 
@@ -74,6 +78,34 @@ pub enum AlignMode {
   HorizontalCentre,
   /// Put every selected entity's vertical centre on the horizontal centre line of those bounds.
   VerticalCentre,
+}
+
+/// One node edit applied to a single entity's contour.
+///
+/// The geometry comes from [`cam_geom::edit`] (D-M2-3): `cam-app` resolves the entity, hands the
+/// kernel the edit and stores what came back. Insertion projects onto the segment, so clicking near
+/// a straight segment keeps it straight and clicking near an arc splits the arc on its own circle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VertexEdit {
+  /// Move the vertex at `index` to `to`, keeping every surrounding bulge.
+  Move {
+    /// Index of the vertex to move.
+    index: usize,
+    /// New position, in millimetres.
+    to: Point2,
+  },
+  /// Insert a vertex inside segment `segment_index`, projecting `at` onto that segment.
+  Insert {
+    /// Index of the segment to split.
+    segment_index: usize,
+    /// Requested position, in millimetres; the kernel projects it onto the segment.
+    at: Point2,
+  },
+  /// Remove the vertex at `index`; refused when fewer than two vertices would remain.
+  Delete {
+    /// Index of the vertex to remove.
+    index: usize,
+  },
 }
 
 /// One user-visible edit.
@@ -278,6 +310,67 @@ pub enum Command {
     /// Which edge or centre line to line up on.
     mode: AlignMode,
   },
+  /// Offset a closed entity by `distance` and store the result as a **new** entity.
+  ///
+  /// The geometry comes from [`cam_geom::offset::offset_contour`] and nowhere else (D-M2-3), which
+  /// keeps arcs as arcs and refuses a collapse instead of handing back a self-intersecting contour.
+  /// The source entity stays exactly where it was: an offset adds a contour, it never replaces one.
+  ///
+  /// The new id is `E{first_entity_index}`, taken literally as [`Command::AddText`] takes it, and
+  /// it is checked for a collision before the kernel runs, so a taken id refuses the whole command
+  /// and the document never gains the offset of anything (M2 A12). The number is supplied by the
+  /// caller rather than generated here so that applying the command stays a pure function of its
+  /// arguments.
+  OffsetContour {
+    /// Entity to offset; it must be a closed contour.
+    entity_id: String,
+    /// Distance in millimetres. Positive grows the enclosed region of a counter-clockwise contour,
+    /// which is why the sign always means "away from the material".
+    distance: f64,
+    /// Number in the minted id: `1` mints `E1`, zero mints `E0`. The index is taken literally, and
+    /// the guarantee that matters — the minted id is free — is checked before anything is stored.
+    first_entity_index: u32,
+  },
+  /// Join the selected open entities into one contour, replacing the first and removing the rest.
+  ///
+  /// The chain is built by [`cam_geom::join::join`] and is refused, naming why, when the group is
+  /// ambiguous (three or more ends at one point) or does not form exactly one chain. All of it is
+  /// one undo step, so a join is undone in one press rather than one per removed entity (M2 A12).
+  JoinEntities {
+    /// Entities to join, in selection order; the joined contour takes the first one's id and layer.
+    entity_ids: Vec<String>,
+    /// How close two endpoints must be to count as touching, in millimetres.
+    tolerance: f64,
+  },
+  /// Remove the span of `target_id` between its two crossings with `cutter_id`.
+  ///
+  /// [`cam_geom::trim::trim`] decides which span goes and returns the pieces that survive; the
+  /// removed span is discarded. The target is replaced by those pieces: one entity per kept piece,
+  /// each minted from `first_entity_index` in the kernel's order along the original contour, so a
+  /// closed target opened by one cut becomes exactly one entity and an open target cut in the
+  /// middle becomes two. The target id is freed, and the cutter is never touched.
+  TrimEntity {
+    /// Entity to trim; it must cross the cutter at exactly two usable points.
+    target_id: String,
+    /// The cutting contour.
+    cutter_id: String,
+    /// How close a crossing must be to count, in millimetres.
+    tolerance: f64,
+    /// Number in the first minted id: `1` starts at `E1`, zero starts at `E0`. Every id the batch
+    /// needs is checked for a collision before the target is removed, so a taken id leaves both
+    /// entities exactly as they were (M2 A12).
+    first_entity_index: u32,
+  },
+  /// Apply one [`VertexEdit`] to a single entity's contour.
+  ///
+  /// The kernel's refusal is the command's refusal, message included, and a refused edit leaves the
+  /// contour byte for byte as it was.
+  EditVertex {
+    /// Entity to edit.
+    entity_id: String,
+    /// Which node edit to apply.
+    edit: VertexEdit,
+  },
   /// Show or hide a layer.
   SetLayerVisible {
     /// Layer to change.
@@ -311,6 +404,14 @@ impl Command {
       },
       Self::ArrayCopy { .. } => "array copy",
       Self::AlignEntities { .. } => "align entities",
+      Self::OffsetContour { .. } => "offset contour",
+      Self::JoinEntities { .. } => "join entities",
+      Self::TrimEntity { .. } => "trim entity",
+      Self::EditVertex { edit, .. } => match edit {
+        VertexEdit::Move { .. } => "move vertex",
+        VertexEdit::Insert { .. } => "insert vertex",
+        VertexEdit::Delete { .. } => "delete vertex",
+      },
     }
   }
 
@@ -462,7 +563,7 @@ impl Command {
         // checked here — and every one of them is checked before a single entity is stored, which
         // is what makes a collision an all-or-nothing refusal instead of a half-drawn word.
         let ids: Vec<String> = (0..contours.len())
-          .map(|offset| format!("E{}", u64::from(*first_entity_index) + offset as u64))
+          .map(|offset| minted_entity_id(*first_entity_index, offset))
           .collect();
         for id in &ids {
           ensure_id_is_free(document, id)?;
@@ -477,17 +578,8 @@ impl Command {
         })
       }
       Self::DeleteEntity { entity_id } => {
-        for layer in &mut document.layers {
-          if let Some(index) = layer
-            .entities
-            .iter()
-            .position(|entity| entity.id == *entity_id)
-          {
-            layer.entities.remove(index);
-            return Ok(CommandOutcome::default());
-          }
-        }
-        Err(CommandError::UnknownEntity(entity_id.clone()))
+        remove_entity(document, entity_id)?;
+        Ok(CommandOutcome::default())
       }
       Self::TransformEntities {
         entity_ids,
@@ -510,6 +602,28 @@ impl Command {
         *first_entity_index,
       ),
       Self::AlignEntities { entity_ids, mode } => align_entities(document, entity_ids, *mode),
+      Self::OffsetContour {
+        entity_id,
+        distance,
+        first_entity_index,
+      } => offset_entity(document, entity_id, *distance, *first_entity_index),
+      Self::JoinEntities {
+        entity_ids,
+        tolerance,
+      } => join_entities(document, entity_ids, *tolerance),
+      Self::TrimEntity {
+        target_id,
+        cutter_id,
+        tolerance,
+        first_entity_index,
+      } => trim_entity(
+        document,
+        target_id,
+        cutter_id,
+        *tolerance,
+        *first_entity_index,
+      ),
+      Self::EditVertex { entity_id, edit } => edit_vertex(document, entity_id, *edit),
       Self::SetLayerVisible { layer_id, visible } => {
         let layer = document
           .layers
@@ -841,13 +955,13 @@ fn array_copy(
   // Plan the whole grid — ids and geometry — before storing any of it, so an id taken late in the
   // run refuses the command instead of leaving the first copies behind (M2 A12).
   let mut planned: Vec<(usize, String, Contour)> = Vec::new();
-  let mut next = u64::from(first_entity_index);
+  let mut minted = 0;
   for row in 0..rows {
     for column in 0..columns {
       let delta = Vec2::new(column as f64 * dx, row as f64 * dy);
       for (site, contour) in &sources {
-        let id = format!("E{next}");
-        next += 1;
+        let id = minted_entity_id(first_entity_index, minted);
+        minted += 1;
         ensure_id_is_free(document, &id)?;
         let copy = transform::translate(contour, delta).map_err(geometry_error)?;
         planned.push((site.0, id, copy));
@@ -905,6 +1019,149 @@ fn align_entities(
   for (site, contour) in planned {
     replace_contour_at(document, site, contour);
   }
+  Ok(CommandOutcome::default())
+}
+
+/// The `offset`th id a batch command mints from `first_entity_index`.
+///
+/// The index is used literally (D-M2-4): `0` mints `E0`, because an id is an opaque string and the
+/// guarantee that matters is that every minted id is free. Callers check that for the whole batch
+/// before storing anything, which is what keeps a refusal atomic.
+fn minted_entity_id(first_entity_index: u32, offset: usize) -> String {
+  format!("E{}", u64::from(first_entity_index) + offset as u64)
+}
+
+/// Resolve one id to the site where its entity lives.
+fn resolve_site(document: &Document, entity_id: &str) -> Result<EntitySite, CommandError> {
+  let ids = [entity_id.to_owned()];
+  Ok(resolve_sites(document, &ids)?[0])
+}
+
+/// Remove the entity with `entity_id` from whichever layer holds it.
+///
+/// Every command that drops entities goes through here, so "the entity is gone" means the same
+/// thing everywhere: the layer stays, the id becomes free, and the entity is not silently skipped.
+fn remove_entity(document: &mut Document, entity_id: &str) -> Result<(), CommandError> {
+  for layer in &mut document.layers {
+    if let Some(index) = layer
+      .entities
+      .iter()
+      .position(|entity| entity.id == entity_id)
+    {
+      layer.entities.remove(index);
+      return Ok(());
+    }
+  }
+  Err(CommandError::UnknownEntity(entity_id.to_owned()))
+}
+
+/// Offset one entity and store the result as a fresh entity on the source's layer.
+fn offset_entity(
+  document: &mut Document,
+  entity_id: &str,
+  distance: f64,
+  first_entity_index: u32,
+) -> Result<CommandOutcome, CommandError> {
+  require_finite("offset distance", distance)?;
+  let site = resolve_site(document, entity_id)?;
+  let source = contour_at(document, site).clone();
+  let id = minted_entity_id(first_entity_index, 0);
+  ensure_id_is_free(document, &id)?;
+
+  // The kernel owns the geometry (D-M2-3) and its refusal names what collapsed: that message is
+  // the command's message, so "the offset passed through the shape" reaches the caller intact.
+  let offset =
+    offset_contour(&source, distance, &OffsetOptions::default()).map_err(geometry_error)?;
+  let layer_id = document.layers[site.0].id.clone();
+  push_entity(document, &layer_id, &id, offset.contour)?;
+  Ok(CommandOutcome {
+    created_entities: vec![id],
+    ..CommandOutcome::default()
+  })
+}
+
+/// Join a selection into one contour, which replaces the first selected entity.
+fn join_entities(
+  document: &mut Document,
+  entity_ids: &[String],
+  tolerance: f64,
+) -> Result<CommandOutcome, CommandError> {
+  require_positive("join tolerance", tolerance)?;
+  require_selection(entity_ids)?;
+  let sites = resolve_sites(document, entity_ids)?;
+  let contours: Vec<Contour> = sites
+    .iter()
+    .map(|site| contour_at(document, *site).clone())
+    .collect();
+
+  // The kernel builds and validates the whole chain before anything is written, so an ambiguous
+  // group refuses with nothing removed and nothing replaced.
+  let joined = join(&contours, tolerance).map_err(geometry_error)?;
+
+  replace_contour_at(document, sites[0], joined);
+  for id in &entity_ids[1..] {
+    remove_entity(document, id)?;
+  }
+  Ok(CommandOutcome::default())
+}
+
+/// Trim one entity with another and store the surviving pieces as fresh entities.
+fn trim_entity(
+  document: &mut Document,
+  target_id: &str,
+  cutter_id: &str,
+  tolerance: f64,
+  first_entity_index: u32,
+) -> Result<CommandOutcome, CommandError> {
+  require_positive("trim tolerance", tolerance)?;
+  let target_site = resolve_site(document, target_id)?;
+  let cutter_site = resolve_site(document, cutter_id)?;
+  let target = contour_at(document, target_site).clone();
+  let cutter = contour_at(document, cutter_site).clone();
+
+  let trimmed = trim(&target, &cutter, tolerance).map_err(geometry_error)?;
+
+  // Every id the batch needs is checked before the target is removed, so an id taken late in the
+  // batch refuses the trim instead of leaving a target deleted and half of its pieces stored.
+  let ids: Vec<String> = (0..trimmed.kept.len())
+    .map(|offset| minted_entity_id(first_entity_index, offset))
+    .collect();
+  for id in &ids {
+    ensure_id_is_free(document, id)?;
+  }
+
+  let layer_id = document.layers[target_site.0].id.clone();
+  remove_entity(document, target_id)?;
+  for (id, piece) in ids.iter().zip(trimmed.kept) {
+    push_entity(document, &layer_id, id, piece)?;
+  }
+  Ok(CommandOutcome {
+    created_entities: ids,
+    ..CommandOutcome::default()
+  })
+}
+
+/// Apply one node edit to one entity's contour.
+fn edit_vertex(
+  document: &mut Document,
+  entity_id: &str,
+  edit: VertexEdit,
+) -> Result<CommandOutcome, CommandError> {
+  let site = resolve_site(document, entity_id)?;
+  let contour = contour_at(document, site);
+  let edited = match edit {
+    VertexEdit::Move { index, to } => {
+      require_finite_point("vertex position", to)?;
+      move_vertex(contour, index, to)
+    }
+    VertexEdit::Insert { segment_index, at } => {
+      require_finite_point("insertion point", at)?;
+      insert_vertex(contour, segment_index, at)
+    }
+    VertexEdit::Delete { index } => delete_vertex(contour, index),
+  }
+  .map_err(geometry_error)?;
+  replace_contour_at(document, site, edited);
   Ok(CommandOutcome::default())
 }
 
