@@ -72,7 +72,9 @@ pub fn offset_contour(
   options: &OffsetOptions,
 ) -> Result<Offset, GeomError> {
   if !contour.is_closed() {
-    return Err(GeomError::OffsetCollapsed {
+    // A precondition, not a collapse: the input was never offsettable, so callers must be able to
+    // tell "wrong input" from "the geometry collapsed" and report the right thing to the user.
+    return Err(GeomError::EditRefused {
       reason: "only closed contours can be offset",
     });
   }

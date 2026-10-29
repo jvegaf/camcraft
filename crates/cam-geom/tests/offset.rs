@@ -218,3 +218,24 @@ proptest! {
         prop_assert!(offset.warnings.is_empty() || offset.warnings == vec![OffsetWarning::Flattened]);
     }
 }
+
+#[test]
+fn offsetting_an_open_contour_is_a_refusal_not_a_collapse() {
+  // The input was never offsettable. Reporting it as a collapse told the user their geometry
+  // collapsed, which it did not.
+  let open = cam_geom::primitive::line(
+    cam_geom::Point2::new(0.0, 0.0),
+    cam_geom::Point2::new(10.0, 0.0),
+  )
+  .expect("valid line");
+  let error = offset_contour(&open, 1.0, &OffsetOptions::default())
+    .expect_err("an open contour has no inside to offset towards");
+  assert!(
+    matches!(error, cam_geom::GeomError::EditRefused { .. }),
+    "the refusal class must say the input was refused, not that it collapsed: {error:?}"
+  );
+  assert!(
+    error.to_string().contains("only closed contours"),
+    "the reason must name the precondition: {error}"
+  );
+}

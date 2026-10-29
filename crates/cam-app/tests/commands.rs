@@ -1,8 +1,9 @@
 //! Behaviour tests for the editing commands (A1, A5, A8).
 
-use cam_app::{AppState, Command, CommandError};
-use cam_geom::{primitive, Point2};
-use cam_model::{Document, EntityKind, Job, Layer};
+use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit};
+use cam_geom::text::{text_outlines, SingleStrokeFont};
+use cam_geom::{primitive, transform, Point2, Vec2};
+use cam_model::{Document, Entity, EntityKind, Job, Layer};
 
 fn state_with_layers(layer_ids: &[&str]) -> AppState {
   let mut document = Document::new(Job::default_sheet());
@@ -417,6 +418,31 @@ fn every_command_has_a_label_for_the_interface() {
       inner_radius: 1.0,
       points: 5,
       rotation: 0.0,
+    },
+    Command::AddText {
+      layer_id: "L1".to_owned(),
+      first_entity_index: 1,
+      text: "A".to_owned(),
+      origin: Point2::ORIGIN,
+      height: 1.0,
+    },
+    Command::TransformEntities {
+      entity_ids: vec!["E1".to_owned()],
+      transform: Transform::Translate {
+        delta: Vec2::new(1.0, 1.0),
+      },
+    },
+    Command::ArrayCopy {
+      entity_ids: vec!["E1".to_owned()],
+      rows: 2,
+      columns: 3,
+      dx: 10.0,
+      dy: 20.0,
+      first_entity_index: 2,
+    },
+    Command::AlignEntities {
+      entity_ids: vec!["E1".to_owned()],
+      mode: AlignMode::Left,
     },
   ];
   for command in commands {
@@ -953,6 +979,1888 @@ fn undoing_an_added_star_restores_the_document_exactly() {
       inner_radius: 8.0,
       points: 5,
       rotation: 0.0,
+    },
+  );
+}
+
+// --- M2 text command (A14) --------------------------------------------------------------------
+
+fn text_origin() -> Point2 {
+  Point2::new(10.0, 20.0)
+}
+
+fn text_height() -> f64 {
+  5.0
+}
+
+/// The contours the kernel lays `text` out into, for comparison with what the document stores.
+fn kernel_text(text: &str) -> Vec<cam_geom::Contour> {
+  text_outlines(text, text_origin(), text_height(), &SingleStrokeFont::new())
+    .expect("the kernel lays the text out")
+}
+
+fn add_text_command(layer_id: &str, first_entity_index: u32, text: &str) -> Command {
+  Command::AddText {
+    layer_id: layer_id.to_owned(),
+    first_entity_index,
+    text: text.to_owned(),
+    origin: text_origin(),
+    height: text_height(),
+  }
+}
+
+#[test]
+fn adding_text_creates_one_entity_per_glyph_stroke_on_the_layer() {
+  let mut app = state_with_layers(&["L1", "L2"]);
+  let kernel = kernel_text("AB");
+  assert!(
+    kernel.len() > 1,
+    "the word must become more than one stroke-contour"
+  );
+
+  let outcome = app
+    .execute_with_outcome(add_text_command("L2", 1, "AB"))
+    .expect("text added");
+
+  assert!(app.is_dirty(), "drawing text marks the document dirty");
+  assert_eq!(
+    app.document().entities().count(),
+    kernel.len(),
+    "one entity per stroke-contour and nothing extra"
+  );
+  let expected: Vec<String> = (1..=kernel.len()).map(|n| format!("E{n}")).collect();
+  assert_eq!(
+    outcome.created_entities, expected,
+    "ids run E1..En from first_entity_index in text_outlines order"
+  );
+  for (id, contour) in expected.iter().zip(&kernel) {
+    assert_eq!(
+      layer_holding(&app, id),
+      "L2",
+      "{id} is on the requested layer"
+    );
+    let stored = entity_contour(&app, id);
+    assert_eq!(
+      stored, contour,
+      "cam-app must store the kernel's contours unchanged"
+    );
+    assert_eq!(
+      stored.len(),
+      contour.len(),
+      "{id} keeps the kernel's vertex count"
+    );
+    assert_eq!(stored.is_closed(), contour.is_closed(), "{id}");
+  }
+}
+
+#[test]
+fn text_entity_ids_start_at_the_requested_index() {
+  let mut app = state_with_layer();
+  let kernel = kernel_text("AB");
+
+  app
+    .execute(add_text_command("L1", 7, "AB"))
+    .expect("text added");
+
+  assert_eq!(
+    app.document().entities().count(),
+    kernel.len(),
+    "no entity was dropped or duplicated"
+  );
+  for offset in 0..kernel.len() {
+    let id = format!("E{}", 7 + offset);
+    assert!(
+      app.document().entity(&id).is_some(),
+      "{id} must exist, in text_outlines order"
+    );
+  }
+  assert!(
+    app.document().entity("E1").is_none(),
+    "no id below the start"
+  );
+  assert!(
+    app.document().entity("E0").is_none(),
+    "the index is taken literally, not clamped"
+  );
+}
+
+#[test]
+fn text_with_a_colliding_id_is_refused_atomically() {
+  let mut app = state_with_layer();
+  prime_with_line(&mut app);
+  prime_with_line(&mut app);
+  assert_eq!(app.document().entities().count(), 2);
+
+  // "AB" is several strokes, so starting at 2 collides on E2 — the second id, not the first.
+  // That is what proves no entity is stored before the last id is checked.
+  let error = assert_refused_atomically(&mut app, add_text_command("L1", 2, "AB"));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "a refused word leaves no partial entities behind"
+  );
+  assert!(
+    app.document().entity("E3").is_none(),
+    "no idle entity either"
+  );
+
+  // A collision on the very first id is refused the same way.
+  let error = assert_refused_atomically(&mut app, add_text_command("L1", 1, "AB"));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn text_with_an_unsupported_character_is_refused_atomically_and_names_it() {
+  let mut app = state_with_layer();
+  prime_with_line(&mut app);
+
+  let error = assert_refused_atomically(&mut app, add_text_command("L1", 9, "A\u{2603}B"));
+
+  assert!(matches!(error, CommandError::Geometry(_)), "{error:?}");
+  let message = error.to_string();
+  assert!(
+    message.contains('\u{2603}'),
+    "the refusal must name the character: {message}"
+  );
+  assert!(
+    app.document().entity("E9").is_none(),
+    "refusing a character must not leave the earlier glyphs drawn"
+  );
+}
+
+#[test]
+fn text_that_draws_nothing_is_refused() {
+  let mut app = state_with_layer();
+  prime_with_line(&mut app);
+
+  for text in ["", "   ", "\n"] {
+    let error = assert_refused_atomically(&mut app, add_text_command("L1", 9, text));
+    assert!(
+      matches!(error, CommandError::EmptyText),
+      "{text:?} must be refused as text that draws nothing: {error:?}"
+    );
+  }
+}
+
+#[test]
+fn text_with_a_non_positive_height_is_refused() {
+  let mut app = state_with_layer();
+  prime_with_line(&mut app);
+
+  for height in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::AddText {
+        layer_id: "L1".to_owned(),
+        first_entity_index: 9,
+        text: "AB".to_owned(),
+        origin: text_origin(),
+        height,
+      },
+    );
+    assert!(
+      matches!(error, CommandError::NonPositiveSize { .. }),
+      "{height}: {error:?}"
+    );
+  }
+}
+
+#[test]
+fn undoing_added_text_removes_the_whole_word_in_one_step() {
+  let mut app = state_with_layer();
+  let before = document_text(&app);
+  let depth = app.history_depth();
+
+  app
+    .execute(add_text_command("L1", 1, "AB"))
+    .expect("text added");
+  assert_eq!(app.history_depth(), depth + 1);
+
+  assert!(app.undo(), "one undo must be available");
+  assert_eq!(
+    before,
+    document_text(&app),
+    "one undo must restore the document byte for byte"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    0,
+    "the whole word is gone"
+  );
+  assert_eq!(app.history_depth(), depth);
+
+  assert!(app.redo(), "the word can come back");
+  assert!(
+    app.document().entity("E1").is_some(),
+    "redo restores the first stroke"
+  );
+}
+
+#[test]
+fn the_outcome_reports_created_entities_and_only_text_creates_them() {
+  let mut app = state_with_layer();
+  let kernel = kernel_text("AB");
+
+  let outcome = app
+    .execute_with_outcome(Command::AddRectangle {
+      layer_id: "L1".to_owned(),
+      entity_id: "E1".to_owned(),
+      at: Point2::ORIGIN,
+      width: 10.0,
+      height: 10.0,
+    })
+    .expect("rectangle added");
+  assert!(
+    outcome.created_entities.is_empty(),
+    "a single-entity command reports nothing new"
+  );
+  assert_eq!(outcome.max_radial_error, None);
+  assert_eq!(outcome.lost_arcs, 0, "drawing a rectangle drops no arcs");
+
+  let outcome = app
+    .execute_with_outcome(add_text_command("L1", 2, "AB"))
+    .expect("text added");
+  assert_eq!(
+    outcome.created_entities.len(),
+    kernel.len(),
+    "every stroke-contour is reported"
+  );
+  assert_eq!(
+    outcome.created_entities.first().map(String::as_str),
+    Some("E2"),
+    "the report starts at the requested index"
+  );
+  assert_eq!(
+    outcome.max_radial_error, None,
+    "text approximates nothing with arcs"
+  );
+  assert_eq!(outcome.lost_arcs, 0, "text approximates nothing with arcs");
+}
+
+// --- M2 transform, array copy and align commands (A11, A12) -----------------------------------
+
+/// A state whose single layer already holds the given entities, one 10×10 rectangle each.
+///
+/// Built directly rather than through commands so the ids can have a gap, which `next_entity_id`
+/// never produces; a gap is what lets a test place a collision in the middle of a minted id run.
+fn state_with_entities(ids: &[&str]) -> AppState {
+  let mut document = Document::new(Job::default_sheet());
+  let entities = ids
+    .iter()
+    .enumerate()
+    .map(|(n, id)| Entity {
+      id: (*id).to_owned(),
+      kind: EntityKind::Contour {
+        contour: primitive::rectangle(Point2::new(n as f64 * 20.0, 0.0), 10.0, 10.0)
+          .expect("the test fixture rectangle is valid"),
+      },
+    })
+    .collect();
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "L1".to_owned(),
+    visible: true,
+    entities,
+  });
+  AppState::new(document)
+}
+
+fn draw_rectangle_on(
+  app: &mut AppState,
+  layer_id: &str,
+  at: Point2,
+  width: f64,
+  height: f64,
+) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddRectangle {
+      layer_id: layer_id.to_owned(),
+      entity_id: id.clone(),
+      at,
+      width,
+      height,
+    })
+    .expect("the rectangle is drawn");
+  id
+}
+
+fn draw_rectangle(app: &mut AppState, at: Point2, width: f64, height: f64) -> String {
+  draw_rectangle_on(app, "L1", at, width, height)
+}
+
+fn draw_circle(app: &mut AppState, at: Point2, radius: f64) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddCircle {
+      layer_id: "L1".to_owned(),
+      entity_id: id.clone(),
+      at,
+      radius,
+    })
+    .expect("the circle is drawn");
+  id
+}
+
+fn array_copy(
+  entity_ids: Vec<String>,
+  rows: usize,
+  columns: usize,
+  dx: f64,
+  dy: f64,
+  first_entity_index: u32,
+) -> Command {
+  Command::ArrayCopy {
+    entity_ids,
+    rows,
+    columns,
+    dx,
+    dy,
+    first_entity_index,
+  }
+}
+
+fn assert_bounds(contour: &cam_geom::Contour, min: (f64, f64), max: (f64, f64), slack: f64) {
+  let bounds = contour.bounds();
+  assert!(
+    (bounds.min.x - min.0).abs() < slack,
+    "min.x {} != {}",
+    bounds.min.x,
+    min.0
+  );
+  assert!(
+    (bounds.min.y - min.1).abs() < slack,
+    "min.y {} != {}",
+    bounds.min.y,
+    min.1
+  );
+  assert!(
+    (bounds.max.x - max.0).abs() < slack,
+    "max.x {} != {}",
+    bounds.max.x,
+    max.0
+  );
+  assert!(
+    (bounds.max.y - max.1).abs() < slack,
+    "max.y {} != {}",
+    bounds.max.y,
+    max.1
+  );
+}
+
+#[test]
+fn translating_a_circle_moves_it_and_keeps_its_arcs() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 20.0), 5.0);
+  let before = entity_contour(&app, &id).clone();
+  let delta = Vec2::new(100.0, -50.0);
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![id.clone()],
+      transform: Transform::Translate { delta },
+    })
+    .expect("translated");
+
+  assert!(app.is_dirty(), "an edit marks the document dirty");
+  assert_eq!(outcome.lost_arcs, 0, "a translation is exact");
+  assert!(
+    outcome.created_entities.is_empty(),
+    "a transform creates nothing"
+  );
+
+  let contour = entity_contour(&app, &id);
+  assert_eq!(contour.len(), 2, "a translated circle is still two arcs");
+  assert!(contour.is_closed());
+  assert!(contour.has_arcs(), "a translation never tessellates");
+  assert!(contour.is_ccw());
+  assert_bounds(
+    contour,
+    (105.0, -35.0),
+    (115.0, -25.0),
+    ARC_BOUNDS_TOLERANCE,
+  );
+  let area = contour.signed_area();
+  assert!(
+    (area - std::f64::consts::PI * 25.0).abs() < 1.0e-9,
+    "a translation keeps the area, got {area}"
+  );
+  assert_eq!(
+    contour,
+    &transform::translate(&before, delta).expect("kernel translate"),
+    "cam-app must store the contour the kernel returned"
+  );
+}
+
+#[test]
+fn rotating_a_rectangle_turns_it_about_the_pivot() {
+  let mut app = state_with_layer();
+  // 10..14 by 0..2, turned a quarter turn about the origin.
+  let id = draw_rectangle(&mut app, Point2::new(10.0, 0.0), 4.0, 2.0);
+  let before = entity_contour(&app, &id).clone();
+  let radians = std::f64::consts::FRAC_PI_2;
+  let about = Point2::ORIGIN;
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![id.clone()],
+      transform: Transform::Rotate { radians, about },
+    })
+    .expect("rotated");
+
+  assert!(app.is_dirty());
+  assert_eq!(outcome.lost_arcs, 0, "a rotation is exact");
+  let contour = entity_contour(&app, &id);
+  assert_eq!(
+    contour.len(),
+    4,
+    "a rotated rectangle is still four corners"
+  );
+  assert!(contour.is_closed());
+  assert!(!contour.has_arcs(), "a rectangle has no arcs to lose");
+  assert!(contour.is_ccw());
+  // (10,0) -> (0,10), (14,2) -> (-2,14): the rectangle now stands at -2..0 by 10..14.
+  assert_bounds(contour, (-2.0, 10.0), (0.0, 14.0), 1.0e-9);
+  let area = contour.signed_area();
+  assert!((area - 8.0).abs() < 1.0e-9, "area {area}");
+  assert_eq!(
+    contour,
+    &transform::rotate(&before, radians, about).expect("kernel rotate")
+  );
+}
+
+#[test]
+fn a_uniform_scale_grows_a_circle_and_keeps_its_arcs() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  let before = entity_contour(&app, &id).clone();
+  let tolerance = 0.01;
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![id.clone()],
+      transform: Transform::Scale {
+        sx: 2.0,
+        sy: 2.0,
+        about: Point2::ORIGIN,
+        tolerance,
+      },
+    })
+    .expect("scaled");
+
+  assert!(app.is_dirty());
+  assert_eq!(outcome.lost_arcs, 0, "a uniform scale is exact");
+  let contour = entity_contour(&app, &id);
+  assert_eq!(contour.len(), 2, "a scaled circle is still two arcs");
+  assert!(contour.is_closed());
+  assert!(contour.has_arcs(), "a uniform scale never tessellates");
+  assert_bounds(contour, (10.0, 10.0), (30.0, 30.0), ARC_BOUNDS_TOLERANCE);
+  let area = contour.signed_area();
+  assert!(
+    (area - std::f64::consts::PI * 100.0).abs() < 1.0e-9,
+    "the area must quadruple, got {area}"
+  );
+  assert_eq!(
+    contour,
+    &transform::scale(&before, 2.0, 2.0, Point2::ORIGIN, tolerance)
+      .expect("kernel scale")
+      .contour
+  );
+}
+
+#[test]
+fn mirroring_a_circle_reflects_it_and_keeps_its_arcs() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  let before = entity_contour(&app, &id).clone();
+  let point = Point2::ORIGIN;
+  let direction = Vec2::Y_AXIS;
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![id.clone()],
+      transform: Transform::Mirror { point, direction },
+    })
+    .expect("mirrored");
+
+  assert!(app.is_dirty());
+  assert_eq!(outcome.lost_arcs, 0, "a mirror is exact");
+  let contour = entity_contour(&app, &id);
+  assert_eq!(contour.len(), 2, "a mirrored circle is still two arcs");
+  assert!(contour.is_closed());
+  assert!(contour.has_arcs(), "a mirror never tessellates");
+  assert!(contour.is_ccw(), "winding is normalised after the mirror");
+  // The centre lands on the reflected side of x = 0 with its radius untouched.
+  assert_bounds(contour, (-15.0, 5.0), (-5.0, 15.0), ARC_BOUNDS_TOLERANCE);
+  let area = contour.signed_area();
+  assert!(
+    (area - std::f64::consts::PI * 25.0).abs() < 1.0e-9,
+    "a mirror keeps the area, got {area}"
+  );
+  assert_eq!(
+    contour,
+    &transform::mirror(&before, point, direction).expect("kernel mirror")
+  );
+}
+
+#[test]
+fn a_non_uniform_scale_over_a_circle_reports_the_lost_arcs() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  let before = entity_contour(&app, &id).clone();
+  let tolerance = 0.01;
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![id.clone()],
+      transform: Transform::Scale {
+        sx: 2.0,
+        sy: 1.0,
+        about: Point2::ORIGIN,
+        tolerance,
+      },
+    })
+    .expect("scaled");
+
+  assert!(
+    outcome.lost_arcs >= 1,
+    "the caller must learn the arcs are gone, got {}",
+    outcome.lost_arcs
+  );
+  let contour = entity_contour(&app, &id);
+  assert!(
+    !contour.has_arcs(),
+    "a non-uniform scale cannot keep a circle's arcs"
+  );
+  assert!(contour.is_closed());
+  assert!(contour.is_ccw());
+  // An ellipse 2r wide and r tall, tessellated within the declared tolerance.
+  assert_bounds(contour, (-20.0, -10.0), (20.0, 10.0), tolerance);
+  assert_eq!(
+    contour,
+    &transform::scale(&before, 2.0, 1.0, Point2::ORIGIN, tolerance)
+      .expect("kernel scale")
+      .contour,
+    "cam-app must store exactly the tessellated contour the kernel returned"
+  );
+}
+
+#[test]
+fn the_lost_arc_count_is_aggregated_over_the_selection() {
+  let mut app = state_with_layer();
+  let circle = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  let rectangle = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 10.0, 10.0);
+  let before_circle = entity_contour(&app, &circle).clone();
+  let before_rectangle = entity_contour(&app, &rectangle).clone();
+  let tolerance = 0.01;
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: vec![circle.clone(), rectangle.clone()],
+      transform: Transform::Scale {
+        sx: 2.0,
+        sy: 1.0,
+        about: Point2::ORIGIN,
+        tolerance,
+      },
+    })
+    .expect("scaled");
+
+  assert_eq!(
+    outcome.lost_arcs, 2,
+    "a circle has two arcs and a rectangle none, so the outcome sums to two"
+  );
+  let stored_rectangle = entity_contour(&app, &rectangle);
+  assert!(
+    !stored_rectangle.has_arcs(),
+    "an arc-free contour stays arc free"
+  );
+  assert_eq!(
+    stored_rectangle.len(),
+    4,
+    "an arc-free contour stays exact: four corners, no tessellation"
+  );
+  assert_eq!(
+    stored_rectangle,
+    &transform::scale(&before_rectangle, 2.0, 1.0, Point2::ORIGIN, tolerance)
+      .expect("kernel scale")
+      .contour
+  );
+  assert_eq!(
+    entity_contour(&app, &circle),
+    &transform::scale(&before_circle, 2.0, 1.0, Point2::ORIGIN, tolerance)
+      .expect("kernel scale")
+      .contour
+  );
+}
+
+#[test]
+fn a_scale_with_a_zero_or_undefined_factor_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  for (sx, sy) in [
+    (0.0, 1.0),
+    (1.0, 0.0),
+    (f64::NAN, 1.0),
+    (1.0, f64::INFINITY),
+  ] {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::TransformEntities {
+        entity_ids: vec![id.clone()],
+        transform: Transform::Scale {
+          sx,
+          sy,
+          about: Point2::ORIGIN,
+          tolerance: 0.01,
+        },
+      },
+    );
+    assert!(
+      matches!(error, CommandError::OutOfRange { .. }),
+      "{sx} x {sy} must be refused: {error:?}"
+    );
+  }
+  assert_bounds(
+    entity_contour(&app, &id),
+    (-10.0, -10.0),
+    (10.0, 10.0),
+    ARC_BOUNDS_TOLERANCE,
+  );
+}
+
+#[test]
+fn a_transform_naming_an_unknown_entity_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::TransformEntities {
+      entity_ids: vec![id.clone(), "E-none".to_owned()],
+      transform: Transform::Translate {
+        delta: Vec2::new(1.0, 1.0),
+      },
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+  assert_bounds(
+    entity_contour(&app, &id),
+    (-10.0, -10.0),
+    (10.0, 10.0),
+    ARC_BOUNDS_TOLERANCE,
+  );
+}
+
+#[test]
+fn a_transform_over_an_empty_selection_is_refused_atomically() {
+  let mut app = state_with_layer();
+  prime_with_line(&mut app);
+  for transform in [
+    Transform::Translate {
+      delta: Vec2::new(1.0, 1.0),
+    },
+    Transform::Rotate {
+      radians: 0.5,
+      about: Point2::ORIGIN,
+    },
+    Transform::Scale {
+      sx: 2.0,
+      sy: 2.0,
+      about: Point2::ORIGIN,
+      tolerance: 0.01,
+    },
+    Transform::Mirror {
+      point: Point2::ORIGIN,
+      direction: Vec2::Y_AXIS,
+    },
+  ] {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::TransformEntities {
+        entity_ids: Vec::new(),
+        transform: transform.clone(),
+      },
+    );
+    assert!(
+      matches!(error, CommandError::EmptySelection),
+      "{transform:?} must be refused: {error:?}"
+    );
+  }
+}
+
+#[test]
+fn a_two_by_three_array_copies_the_selection_in_row_major_order() {
+  let mut app = state_with_layers(&["L1", "L2"]);
+  let wide = draw_rectangle_on(&mut app, "L1", Point2::new(0.0, 0.0), 10.0, 10.0);
+  let small = draw_rectangle_on(&mut app, "L2", Point2::new(20.0, 0.0), 5.0, 5.0);
+  assert_eq!((wide.as_str(), small.as_str()), ("E1", "E2"));
+
+  let outcome = app
+    .execute_with_outcome(array_copy(
+      vec![wide.clone(), small.clone()],
+      2,
+      3,
+      100.0,
+      200.0,
+      3,
+    ))
+    .expect("array copied");
+
+  assert!(app.is_dirty());
+  let expected: Vec<String> = (3..=14).map(|n| format!("E{n}")).collect();
+  assert_eq!(
+    outcome.created_entities, expected,
+    "ids run E3.. in row-major order: rows outer, columns inner, selection order inside a cell"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    14,
+    "six cells of two entities, and the two originals stay put"
+  );
+  assert_eq!(outcome.lost_arcs, 0, "an array copy translates exactly");
+
+  let cells = [
+    (0.0, 0.0),
+    (100.0, 0.0),
+    (200.0, 0.0),
+    (0.0, 200.0),
+    (100.0, 200.0),
+    (200.0, 200.0),
+  ];
+  let mut index = 0;
+  for (x, y) in cells {
+    let wide_copy = &expected[index];
+    assert_bounds(
+      entity_contour(&app, wide_copy),
+      (x, y),
+      (x + 10.0, y + 10.0),
+      1.0e-9,
+    );
+    assert_eq!(
+      layer_holding(&app, wide_copy),
+      "L1",
+      "a copy stays on its source's layer"
+    );
+    index += 1;
+    let small_copy = &expected[index];
+    assert_bounds(
+      entity_contour(&app, small_copy),
+      (x + 20.0, y),
+      (x + 25.0, y + 5.0),
+      1.0e-9,
+    );
+    assert_eq!(layer_holding(&app, small_copy), "L2");
+    index += 1;
+  }
+
+  // Every copy is a full duplicate of its source, not a running accumulation.
+  let wide_source = primitive::rectangle(Point2::new(0.0, 0.0), 10.0, 10.0).expect("rectangle");
+  assert_eq!(
+    entity_contour(&app, &expected[2]),
+    &transform::translate(&wide_source, Vec2::new(100.0, 0.0)).expect("translate"),
+    "cell (0,1) is the source moved by one X step"
+  );
+  assert_bounds(
+    entity_contour(&app, &wide),
+    (0.0, 0.0),
+    (10.0, 10.0),
+    1.0e-9,
+  );
+  assert_bounds(
+    entity_contour(&app, &small),
+    (20.0, 0.0),
+    (25.0, 5.0),
+    1.0e-9,
+  );
+}
+
+#[test]
+fn an_array_with_a_zero_count_or_non_finite_spacing_is_refused_atomically() {
+  let mut app = state_with_entities(&["E1", "E2"]);
+  let selection = vec!["E1".to_owned(), "E2".to_owned()];
+
+  let error =
+    assert_refused_atomically(&mut app, array_copy(selection.clone(), 0, 3, 10.0, 10.0, 3));
+  assert!(
+    matches!(
+      error,
+      CommandError::TooFew {
+        kind: "array rows",
+        minimum: 1,
+        value: 0
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error =
+    assert_refused_atomically(&mut app, array_copy(selection.clone(), 2, 0, 10.0, 10.0, 3));
+  assert!(
+    matches!(
+      error,
+      CommandError::TooFew {
+        kind: "array columns",
+        minimum: 1,
+        value: 0
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    array_copy(selection.clone(), 2, 3, f64::NAN, 10.0, 3),
+  );
+  assert!(
+    matches!(error, CommandError::OutOfRange { .. }),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    array_copy(selection.clone(), 2, 3, 10.0, f64::INFINITY, 3),
+  );
+  assert!(
+    matches!(error, CommandError::OutOfRange { .. }),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(&mut app, array_copy(Vec::new(), 2, 3, 10.0, 10.0, 3));
+  assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
+}
+
+#[test]
+fn a_zero_index_is_taken_literally_by_both_id_minting_commands() {
+  // An id is an opaque string: what has to hold is that every minted id is free, not that the
+  // counter would have produced it. ArrayCopy and AddText therefore behave the same way.
+  let mut app = state_with_layers(&["L1"]);
+  let outcome = app.execute_with_outcome(array_copy(vec!["E1".to_owned()], 1, 2, 5.0, 0.0, 0));
+  // E1 does not exist yet, so the selection is refused for a different reason: prime it first.
+  assert!(
+    outcome.is_err(),
+    "an unknown selection is refused: {outcome:?}"
+  );
+
+  let mut app = state_with_layers(&["L1"]);
+  app
+    .execute(Command::AddRectangle {
+      layer_id: "L1".to_owned(),
+      entity_id: "E1".to_owned(),
+      at: Point2::new(0.0, 0.0),
+      width: 1.0,
+      height: 1.0,
+    })
+    .expect("the source rectangle is drawn");
+
+  let outcome = app
+    .execute_with_outcome(array_copy(vec!["E1".to_owned()], 1, 1, 5.0, 0.0, 0))
+    .expect("a zero index is minted literally");
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E0".to_owned()],
+    "the index is taken literally, so the first minted id is E0"
+  );
+  assert!(app.document().entity("E0").is_some(), "E0 was stored");
+}
+
+#[test]
+fn an_array_colliding_late_in_the_grid_is_refused_without_storing_anything() {
+  let mut app = state_with_entities(&["E1", "E2", "E9"]);
+
+  // A 2x3 grid over two entities starting at 3 mints E3..E14, so the seventh minted id - E9 -
+  // collides with an entity that already exists. Nothing may be stored before that check.
+  let error = assert_refused_atomically(
+    &mut app,
+    array_copy(
+      vec!["E1".to_owned(), "E2".to_owned()],
+      2,
+      3,
+      100.0,
+      200.0,
+      3,
+    ),
+  );
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    3,
+    "not one copy may be stored"
+  );
+  for id in ["E3", "E4", "E5", "E6", "E7", "E8"] {
+    assert!(
+      app.document().entity(id).is_none(),
+      "{id} must not exist after a refused grid"
+    );
+  }
+}
+
+/// The bounding coordinate an align mode is supposed to line up.
+fn coordinate(contour: &cam_geom::Contour, axis: &str) -> f64 {
+  let bounds = contour.bounds();
+  match axis {
+    "min.x" => bounds.min.x,
+    "max.x" => bounds.max.x,
+    "min.y" => bounds.min.y,
+    "max.y" => bounds.max.y,
+    "centre.x" => bounds.center().x,
+    "centre.y" => bounds.center().y,
+    other => panic!("unknown axis {other}"),
+  }
+}
+
+#[test]
+fn every_align_mode_moves_the_selection_to_its_combined_edge_or_centre() {
+  // A occupies 10..20 x 10..20 and B occupies 40..60 x 50..60, so the selection's own combined
+  // bounds are 10..60 x 10..60 with centre (35, 35). The job is 2438 mm wide, so an alignment
+  // that used the job instead of the selection could not land on any of these numbers.
+  let cases = [
+    (AlignMode::Left, "min.x", 10.0),
+    (AlignMode::Right, "max.x", 60.0),
+    (AlignMode::Bottom, "min.y", 10.0),
+    (AlignMode::Top, "max.y", 60.0),
+    (AlignMode::HorizontalCentre, "centre.x", 35.0),
+    (AlignMode::VerticalCentre, "centre.y", 35.0),
+  ];
+
+  for (mode, axis, expected) in cases {
+    let mut app = state_with_layer();
+    let a = draw_rectangle(&mut app, Point2::new(10.0, 10.0), 10.0, 10.0);
+    let b = draw_rectangle(&mut app, Point2::new(40.0, 50.0), 20.0, 10.0);
+
+    let outcome = app
+      .execute_with_outcome(Command::AlignEntities {
+        entity_ids: vec![a.clone(), b.clone()],
+        mode,
+      })
+      .expect("aligned");
+
+    assert!(app.is_dirty(), "{mode:?} marks the document dirty");
+    assert_eq!(outcome.lost_arcs, 0, "{mode:?} only translates");
+    assert_eq!(
+      coordinate(entity_contour(&app, &a), axis),
+      expected,
+      "{mode:?} must put A on {axis} = {expected}"
+    );
+    assert_eq!(
+      coordinate(entity_contour(&app, &b), axis),
+      expected,
+      "{mode:?} must put B on {axis} = {expected}"
+    );
+
+    // Only the aligned axis moves; a rectangle's bounds are exact, so this is an exact assertion.
+    let a_bounds = entity_contour(&app, &a).bounds();
+    let b_bounds = entity_contour(&app, &b).bounds();
+    if axis.ends_with('x') {
+      assert_eq!(
+        (a_bounds.min.y, a_bounds.max.y),
+        (10.0, 20.0),
+        "{mode:?} must not move A in Y"
+      );
+      assert_eq!(
+        (b_bounds.min.y, b_bounds.max.y),
+        (50.0, 60.0),
+        "{mode:?} must not move B in Y"
+      );
+    } else {
+      assert_eq!(
+        (a_bounds.min.x, a_bounds.max.x),
+        (10.0, 20.0),
+        "{mode:?} must not move A in X"
+      );
+      assert_eq!(
+        (b_bounds.min.x, b_bounds.max.x),
+        (40.0, 60.0),
+        "{mode:?} must not move B in X"
+      );
+    }
+  }
+}
+
+#[test]
+fn align_refuses_an_empty_selection_and_an_unknown_id_atomically() {
+  let mut app = state_with_entities(&["E1", "E2"]);
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::AlignEntities {
+      entity_ids: Vec::new(),
+      mode: AlignMode::Left,
+    },
+  );
+  assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::AlignEntities {
+      entity_ids: vec!["E1".to_owned(), "E-none".to_owned()],
+      mode: AlignMode::Right,
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+  // E1 is still where the fixture put it: 0..10 by 0..10.
+  assert_bounds(entity_contour(&app, "E1"), (0.0, 0.0), (10.0, 10.0), 1.0e-9);
+}
+
+#[test]
+fn undoing_a_transform_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  assert_single_undo_restores(
+    &mut app,
+    Command::TransformEntities {
+      entity_ids: vec![id],
+      transform: Transform::Rotate {
+        radians: 0.5,
+        about: Point2::new(3.0, 4.0),
+      },
+    },
+  );
+}
+
+#[test]
+fn undoing_an_array_copy_restores_the_document_exactly() {
+  let mut app = state_with_entities(&["E1", "E2"]);
+  assert_single_undo_restores(
+    &mut app,
+    array_copy(
+      vec!["E1".to_owned(), "E2".to_owned()],
+      2,
+      3,
+      100.0,
+      200.0,
+      3,
+    ),
+  );
+}
+
+#[test]
+fn undoing_an_align_restores_the_document_exactly() {
+  let mut app = state_with_entities(&["E1", "E2"]);
+  assert_single_undo_restores(
+    &mut app,
+    Command::AlignEntities {
+      entity_ids: vec!["E1".to_owned(), "E2".to_owned()],
+      mode: AlignMode::Right,
+    },
+  );
+}
+
+/// Draw an open line on `layer_id` and return its id.
+fn draw_line_on(app: &mut AppState, layer_id: &str, from: Point2, to: Point2) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddLine {
+      layer_id: layer_id.to_owned(),
+      entity_id: id.clone(),
+      from,
+      to,
+    })
+    .expect("the line is drawn");
+  id
+}
+
+fn draw_line(app: &mut AppState, from: Point2, to: Point2) -> String {
+  draw_line_on(app, "L1", from, to)
+}
+
+/// Draw an open polyline through `points` and return its id.
+fn draw_polyline(app: &mut AppState, points: &[Point2]) -> String {
+  let id = app.next_entity_id();
+  app
+    .execute(Command::AddPolyline {
+      layer_id: "L1".to_owned(),
+      entity_id: id.clone(),
+      points: points.to_vec(),
+      closed: false,
+    })
+    .expect("the polyline is drawn");
+  id
+}
+
+fn offset_command(entity_id: &str, distance: f64, first_entity_index: u32) -> Command {
+  Command::OffsetContour {
+    entity_id: entity_id.to_owned(),
+    distance,
+    first_entity_index,
+  }
+}
+
+fn trim_command(target_id: &str, cutter_id: &str, first_entity_index: u32) -> Command {
+  Command::TrimEntity {
+    target_id: target_id.to_owned(),
+    cutter_id: cutter_id.to_owned(),
+    tolerance: 1.0e-6,
+    first_entity_index,
+  }
+}
+
+/// The kernel's own offset of `contour`, so a test compares stored geometry to the kernel, not to
+/// a number copied out of it.
+fn kernel_offset(contour: &cam_geom::Contour, distance: f64) -> cam_geom::Contour {
+  cam_geom::offset::offset_contour(
+    contour,
+    distance,
+    &cam_geom::offset::OffsetOptions::default(),
+  )
+  .expect("the kernel offsets the fixture")
+  .contour
+}
+
+fn vertex_points(contour: &cam_geom::Contour) -> Vec<Point2> {
+  contour
+    .vertices()
+    .iter()
+    .map(|vertex| vertex.point)
+    .collect()
+}
+
+#[test]
+fn offsetting_a_circle_by_two_millimetres_adds_a_new_arc_contour() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::new(50.0, 20.0), 10.0);
+  let before = entity_contour(&app, &source).clone();
+
+  let outcome = app
+    .execute_with_outcome(offset_command(&source, 2.0, 2))
+    .expect("the offset is applied");
+
+  assert!(app.is_dirty(), "an offset marks the document dirty");
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E2".to_owned()],
+    "the offset entity is minted from first_entity_index"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the source is kept and the offset is a second entity"
+  );
+  assert_eq!(layer_holding(&app, "E2"), "L1");
+
+  let created = entity_contour(&app, "E2");
+  assert!(
+    created.is_closed(),
+    "an offset of a closed entity is closed"
+  );
+  assert!(created.is_ccw(), "the offset keeps the winding");
+  assert!(
+    created.has_arcs(),
+    "an offset circle stays arcs, not a polygon"
+  );
+  assert_eq!(created.segments().len(), 2, "two half-turn arcs");
+  let expected_area = std::f64::consts::PI * 12.0 * 12.0;
+  let area = created.signed_area();
+  assert!(
+    (area - expected_area).abs() / expected_area < 1.0e-9,
+    "the offset circle has radius r + 2, so area {expected_area}, got {area}"
+  );
+  assert_bounds(created, (38.0, 8.0), (62.0, 32.0), ARC_BOUNDS_TOLERANCE);
+  assert_eq!(
+    created,
+    &kernel_offset(&before, 2.0),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  assert_eq!(
+    entity_contour(&app, &source),
+    &before,
+    "the source entity must not move or change"
+  );
+}
+
+#[test]
+fn a_collapsing_offset_is_refused_with_the_kernel_reason_and_no_document_change() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+
+  let error = assert_refused_atomically(&mut app, offset_command(&source, -12.0, 2));
+
+  let CommandError::Geometry(message) = error else {
+    panic!("an offset collapse must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("offset collapsed"),
+    "the refusal must name the collapse: {message}"
+  );
+  assert!(
+    message.contains("arc radius would collapse"),
+    "the kernel's reason must survive: {message}"
+  );
+  assert!(
+    app.document().entity("E2").is_none(),
+    "a refused offset must not store an entity"
+  );
+  assert_bounds(
+    entity_contour(&app, &source),
+    (-10.0, -10.0),
+    (10.0, 10.0),
+    ARC_BOUNDS_TOLERANCE,
+  );
+}
+
+#[test]
+fn joining_two_touching_lines_yields_one_entity_and_removes_the_other() {
+  let mut app = state_with_layer();
+  let first = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let second = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+  assert_eq!((first.as_str(), second.as_str()), ("E1", "E2"));
+  let parts = [
+    entity_contour(&app, &first).clone(),
+    entity_contour(&app, &second).clone(),
+  ];
+
+  let outcome = app
+    .execute_with_outcome(Command::JoinEntities {
+      entity_ids: vec![first.clone(), second.clone()],
+      tolerance: 1.0e-6,
+    })
+    .expect("the two lines join");
+
+  assert!(app.is_dirty(), "a join marks the document dirty");
+  assert!(
+    outcome.created_entities.is_empty(),
+    "a join reuses the first id and mints nothing"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    1,
+    "the joined contour replaces the selection instead of adding to it"
+  );
+  assert!(
+    app.document().entity(&second).is_none(),
+    "the other selected entity is removed"
+  );
+
+  let joined = entity_contour(&app, &first);
+  assert!(!joined.is_closed(), "two lines joined end to end stay open");
+  assert_eq!(joined.len(), 3, "two lines become one three-vertex chain");
+  assert_eq!(joined.perimeter(), 20.0, "joining loses no length");
+  assert_eq!(
+    joined,
+    &cam_geom::join::join(&parts, 1.0e-6).expect("kernel join"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+}
+
+#[test]
+fn an_ambiguous_join_is_refused_atomically_naming_the_fork() {
+  let mut app = state_with_layer();
+  let a = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let b = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(20.0, 0.0));
+  let c = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![a.clone(), b.clone(), c.clone()],
+      tolerance: 1.0e-6,
+    },
+  );
+
+  let CommandError::Geometry(message) = error else {
+    panic!("an ambiguous join must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("three or more endpoints"),
+    "the refusal must name the fork: {message}"
+  );
+  assert!(
+    message.contains("ambiguous"),
+    "the refusal must say the chain is ambiguous: {message}"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    3,
+    "a refused join removes nothing"
+  );
+  for id in [&a, &b, &c] {
+    assert!(
+      app.document().entity(id).is_some(),
+      "{id} must survive a refused join"
+    );
+  }
+}
+
+#[test]
+fn trimming_a_rectangle_with_a_crossing_line_replaces_it_with_one_open_entity() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(10.0, -5.0), Point2::new(10.0, 15.0));
+  let before_target = entity_contour(&app, &target).clone();
+  let before_cutter = entity_contour(&app, &cutter).clone();
+  let kernel =
+    cam_geom::trim::trim(&before_target, &before_cutter, 1.0e-6).expect("two clear cuts");
+  assert_eq!(kernel.kept.len(), 1, "a closed target is opened by one cut");
+
+  let outcome = app
+    .execute_with_outcome(trim_command(&target, &cutter, 3))
+    .expect("the rectangle is trimmed");
+
+  assert!(app.is_dirty(), "a trim marks the document dirty");
+  assert!(
+    app.document().entity(&target).is_none(),
+    "the closed target is replaced by its kept piece"
+  );
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E3".to_owned()],
+    "one entity per kept piece, minted from first_entity_index"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the kept piece and the untouched cutter"
+  );
+  assert_eq!(
+    entity_contour(&app, &cutter),
+    &before_cutter,
+    "the cutter is untouched"
+  );
+  assert_eq!(layer_holding(&app, "E3"), "L1");
+
+  let piece = entity_contour(&app, "E3");
+  assert!(!piece.is_closed(), "the surviving piece is open");
+  assert_eq!(
+    piece, &kernel.kept[0],
+    "cam-app must store exactly the piece the kernel returned"
+  );
+  let removed = kernel.removed.perimeter();
+  assert!(
+    (removed - 30.0).abs() < 1.0e-9,
+    "the removed span is half the 60 mm perimeter, got {removed}"
+  );
+  assert!(
+    (piece.perimeter() + removed - before_target.perimeter()).abs() < 1.0e-9,
+    "the kept piece plus the removed span must equal the original perimeter"
+  );
+}
+
+#[test]
+fn trimming_an_open_line_mints_one_entity_per_kept_piece() {
+  let mut app = state_with_layer();
+  let target = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = app.next_entity_id();
+  app
+    .execute(Command::AddCircle {
+      layer_id: "L1".to_owned(),
+      entity_id: cutter.clone(),
+      at: Point2::new(5.0, 0.0),
+      radius: 1.0,
+    })
+    .expect("the cutter circle is drawn");
+
+  let outcome = app
+    .execute_with_outcome(trim_command(&target, &cutter, 3))
+    .expect("the line is trimmed");
+
+  assert_eq!(
+    outcome.created_entities,
+    vec!["E3".to_owned(), "E4".to_owned()],
+    "both kept ends are minted, in the kernel's order along the contour"
+  );
+  assert!(
+    app.document().entity(&target).is_none(),
+    "the trimmed line is replaced by its kept pieces"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    3,
+    "two pieces and the cutter"
+  );
+  let first = entity_contour(&app, "E3");
+  let second = entity_contour(&app, "E4");
+  assert!(!first.is_closed() && !second.is_closed());
+  assert!(
+    (first.perimeter() + second.perimeter() - 8.0).abs() < 1.0e-9,
+    "the two kept ends measure 8 mm around the 2 mm cut"
+  );
+  assert_bounds(first, (0.0, 0.0), (4.0, 0.0), 1.0e-9);
+  assert_bounds(second, (6.0, 0.0), (10.0, 0.0), 1.0e-9);
+  assert!(
+    entity_contour(&app, &cutter).has_arcs(),
+    "the cutter keeps its arcs"
+  );
+}
+
+#[test]
+fn a_trim_whose_cutter_misses_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(100.0, -5.0), Point2::new(100.0, 15.0));
+  let before_target = entity_contour(&app, &target).clone();
+
+  let error = assert_refused_atomically(&mut app, trim_command(&target, &cutter, 3));
+
+  let CommandError::Geometry(message) = error else {
+    panic!("a missed cut must surface the kernel's message, got {error:?}");
+  };
+  assert!(
+    message.contains("exactly two cut points"),
+    "the refusal must name what a trim needs: {message}"
+  );
+  assert!(
+    app.document().entity("E3").is_none(),
+    "a refused trim must not mint an entity"
+  );
+  assert_eq!(
+    entity_contour(&app, &target),
+    &before_target,
+    "a refused trim must leave the target exactly as it was"
+  );
+}
+
+#[test]
+fn a_taken_minted_id_refuses_an_offset_and_a_trim_without_storing_anything() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  let _taken = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 5.0, 5.0);
+  assert!(app.document().entity("E2").is_some(), "E2 is taken");
+
+  let error = assert_refused_atomically(&mut app, offset_command(&source, 2.0, 2));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+
+  // A trim that would mint several ids is refused when one of them, late in the batch, is taken.
+  let mut app = state_with_layer();
+  let target = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = app.next_entity_id();
+  app
+    .execute(Command::AddCircle {
+      layer_id: "L1".to_owned(),
+      entity_id: cutter.clone(),
+      at: Point2::new(5.0, 0.0),
+      radius: 1.0,
+    })
+    .expect("the cutter circle is drawn");
+  let _taken = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 5.0, 5.0);
+  let _also_taken = draw_rectangle(&mut app, Point2::new(60.0, 50.0), 5.0, 5.0);
+  assert!(app.document().entity("E4").is_some(), "E4 is taken");
+
+  // Two kept pieces minted from 4 would be E4 and E5, and E4 is the second one: a collision must be
+  // caught before the target is removed, not after the first piece is stored.
+  let error = assert_refused_atomically(&mut app, trim_command(&target, &cutter, 4));
+  assert!(
+    matches!(error, CommandError::DuplicateEntity(_)),
+    "{error:?}"
+  );
+  assert!(
+    app.document().entity(&target).is_some(),
+    "not one piece may be stored, and the target must survive"
+  );
+  assert!(
+    app.document().entity("E5").is_none(),
+    "the second minted id must not be stored either"
+  );
+}
+
+#[test]
+fn moving_a_vertex_keeps_the_rest_of_the_contour() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+  let to = Point2::new(5.0, 5.0);
+
+  let outcome = app
+    .execute_with_outcome(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Move { index: 1, to },
+    })
+    .expect("the vertex moves");
+
+  assert!(app.is_dirty(), "a node edit marks the document dirty");
+  assert!(outcome.created_entities.is_empty(), "no entity is created");
+  let contour = entity_contour(&app, &id);
+  assert_eq!(
+    contour,
+    &cam_geom::edit::move_vertex(&before, 1, to).expect("kernel move"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  assert_eq!(
+    vertex_points(contour),
+    vec![Point2::new(0.0, 0.0), to, Point2::new(10.0, 10.0)],
+    "only the named vertex moves"
+  );
+  assert!(!contour.is_closed(), "the contour stays open");
+}
+
+#[test]
+fn inserting_a_vertex_on_an_arc_yields_two_arcs_on_the_same_circle() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  let before = entity_contour(&app, &id).clone();
+  // The top of the circle is the midpoint of the first half-turn arc.
+  let at = Point2::new(10.0, 15.0);
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at,
+      },
+    })
+    .expect("the vertex is inserted");
+
+  let contour = entity_contour(&app, &id);
+  assert!(contour.is_closed(), "the circle stays closed");
+  assert_eq!(
+    contour.len(),
+    3,
+    "one vertex per arc half plus the far vertex"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::insert_vertex(&before, 0, at).expect("kernel insert"),
+    "cam-app must store exactly the contour the kernel returned"
+  );
+  let segments = contour.segments();
+  assert_eq!(segments.len(), 3, "the split arc contributes two segments");
+  for segment in &segments {
+    let arc = segment.as_arc().expect("the circle stays arcs");
+    assert!(
+      (arc.radius() - 5.0).abs() < 1.0e-9,
+      "a radial insertion keeps the radius, got {}",
+      arc.radius()
+    );
+    assert!(
+      arc.center().is_near(Point2::new(10.0, 10.0), 1.0e-9),
+      "both halves stay on the same circle"
+    );
+  }
+  let area = contour.signed_area();
+  assert!(
+    (area - std::f64::consts::PI * 25.0).abs() < 1.0e-9,
+    "splitting an arc keeps the circle's area, got {area}"
+  );
+}
+
+#[test]
+fn inserting_a_vertex_on_a_straight_segment_keeps_it_straight() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(&mut app, &[Point2::new(0.0, 0.0), Point2::new(20.0, 0.0)]);
+  let before = entity_contour(&app, &id).clone();
+  let at = Point2::new(5.0, 3.0);
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at,
+      },
+    })
+    .expect("the vertex is inserted");
+
+  let contour = entity_contour(&app, &id);
+  assert_eq!(contour.len(), 3, "one segment becomes two");
+  assert!(!contour.has_arcs(), "a straight segment stays straight");
+  assert_eq!(
+    vertex_points(contour),
+    vec![
+      Point2::new(0.0, 0.0),
+      Point2::new(5.0, 0.0),
+      Point2::new(20.0, 0.0)
+    ],
+    "the click is projected onto the segment"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::insert_vertex(&before, 0, at).expect("kernel insert")
+  );
+  assert_eq!(contour.perimeter(), 20.0, "the length is unchanged");
+}
+
+#[test]
+fn deleting_a_vertex_stores_the_remaining_contour() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+
+  app
+    .execute(Command::EditVertex {
+      entity_id: id.clone(),
+      edit: VertexEdit::Delete { index: 1 },
+    })
+    .expect("the vertex is deleted");
+
+  let contour = entity_contour(&app, &id);
+  assert_eq!(
+    vertex_points(contour),
+    vec![Point2::new(0.0, 0.0), Point2::new(10.0, 10.0)],
+    "the named vertex is gone and the others stay"
+  );
+  assert_eq!(
+    contour,
+    &cam_geom::edit::delete_vertex(&before, 1).expect("kernel delete")
+  );
+}
+
+#[test]
+fn an_out_of_range_vertex_edit_is_refused_atomically() {
+  let mut app = state_with_layer();
+  let id = draw_polyline(
+    &mut app,
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(10.0, 0.0),
+      Point2::new(10.0, 10.0),
+    ],
+  );
+  let before = entity_contour(&app, &id).clone();
+  let cases = [
+    (
+      VertexEdit::Move {
+        index: 99,
+        to: Point2::new(1.0, 1.0),
+      },
+      "no vertex at that index",
+    ),
+    (
+      VertexEdit::Insert {
+        segment_index: 99,
+        at: Point2::new(1.0, 1.0),
+      },
+      "no segment at that index",
+    ),
+    (VertexEdit::Delete { index: 99 }, "no vertex at that index"),
+  ];
+
+  for (edit, reason) in cases {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::EditVertex {
+        entity_id: id.clone(),
+        edit,
+      },
+    );
+    let CommandError::Geometry(message) = error else {
+      panic!("{edit:?} must surface the kernel's message, got {error:?}");
+    };
+    assert!(
+      message.contains(reason),
+      "{edit:?} must be refused naming why: {message}"
+    );
+    assert_eq!(
+      entity_contour(&app, &id),
+      &before,
+      "{edit:?} must leave the contour untouched"
+    );
+  }
+}
+
+#[test]
+fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
+  let mut app = state_with_layer();
+  let line = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let cutter = draw_rectangle(&mut app, Point2::new(20.0, 0.0), 5.0, 5.0);
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::OffsetContour {
+      entity_id: "E-none".to_owned(),
+      distance: 1.0,
+      first_entity_index: 3,
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  let error = assert_refused_atomically(&mut app, offset_command(&line, f64::NAN, 3));
+  assert!(
+    matches!(error, CommandError::OutOfRange { .. }),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::OffsetContour {
+      entity_id: line.clone(),
+      distance: 1.0,
+      first_entity_index: 3,
+    },
+  );
+  assert!(
+    matches!(error, CommandError::Geometry(_)),
+    "an open contour cannot be offset: {error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: Vec::new(),
+      tolerance: 1.0e-6,
+    },
+  );
+  assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![line.clone()],
+      tolerance: 0.0,
+    },
+  );
+  assert!(
+    matches!(
+      error,
+      CommandError::NonPositiveSize {
+        kind: "join tolerance",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::TrimEntity {
+      target_id: line.clone(),
+      cutter_id: "E-none".to_owned(),
+      tolerance: 1.0e-6,
+      first_entity_index: 3,
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::TrimEntity {
+      target_id: line.clone(),
+      cutter_id: cutter.clone(),
+      tolerance: f64::INFINITY,
+      first_entity_index: 3,
+    },
+  );
+  assert!(
+    matches!(
+      error,
+      CommandError::NonPositiveSize {
+        kind: "trim tolerance",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::EditVertex {
+      entity_id: "E-none".to_owned(),
+      edit: VertexEdit::Delete { index: 0 },
+    },
+  );
+  assert!(matches!(error, CommandError::UnknownEntity(_)), "{error:?}");
+
+  assert_eq!(app.document().entities().count(), 2);
+}
+
+#[test]
+fn the_new_edit_commands_have_human_labels() {
+  assert_eq!(offset_command("E1", 2.0, 2).label(), "offset contour");
+  assert_eq!(
+    Command::JoinEntities {
+      entity_ids: vec!["E1".to_owned()],
+      tolerance: 1.0e-6,
+    }
+    .label(),
+    "join entities"
+  );
+  assert_eq!(trim_command("E1", "E2", 3).label(), "trim entity");
+  let edits = [
+    (
+      VertexEdit::Move {
+        index: 0,
+        to: Point2::ORIGIN,
+      },
+      "move vertex",
+    ),
+    (
+      VertexEdit::Insert {
+        segment_index: 0,
+        at: Point2::ORIGIN,
+      },
+      "insert vertex",
+    ),
+    (VertexEdit::Delete { index: 0 }, "delete vertex"),
+  ];
+  for (edit, label) in edits {
+    assert_eq!(
+      Command::EditVertex {
+        entity_id: "E1".to_owned(),
+        edit,
+      }
+      .label(),
+      label
+    );
+  }
+}
+
+#[test]
+fn undoing_an_offset_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let source = draw_circle(&mut app, Point2::ORIGIN, 10.0);
+  assert_single_undo_restores(&mut app, offset_command(&source, 2.0, 2));
+}
+
+#[test]
+fn undoing_a_join_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let first = draw_line(&mut app, Point2::ORIGIN, Point2::new(10.0, 0.0));
+  let second = draw_line(&mut app, Point2::new(10.0, 0.0), Point2::new(10.0, 10.0));
+  assert_single_undo_restores(
+    &mut app,
+    Command::JoinEntities {
+      entity_ids: vec![first, second],
+      tolerance: 1.0e-6,
+    },
+  );
+}
+
+#[test]
+fn undoing_a_trim_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let target = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  let cutter = draw_line(&mut app, Point2::new(10.0, -5.0), Point2::new(10.0, 15.0));
+  assert_single_undo_restores(&mut app, trim_command(&target, &cutter, 3));
+}
+
+#[test]
+fn undoing_a_vertex_edit_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
+  assert_single_undo_restores(
+    &mut app,
+    Command::EditVertex {
+      entity_id: id,
+      edit: VertexEdit::Insert {
+        segment_index: 0,
+        at: Point2::new(10.0, 15.0),
+      },
     },
   );
 }

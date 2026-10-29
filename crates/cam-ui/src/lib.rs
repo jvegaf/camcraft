@@ -8,16 +8,28 @@
 //! frame with a synthetic input, inspects the actions and the painted text, then applies the actions
 //! and asserts on the resulting state.
 //!
+//! # Authoring (M2)
+//!
+//! Every M2 command is one [`UiAction`] handled by [`handle_action`]: [`UiAction::Draw`] carries the
+//! shape a canvas drag described, and [`UiAction::Transform`], [`UiAction::Array`],
+//! [`UiAction::Align`], [`UiAction::Offset`], [`UiAction::Join`], [`UiAction::Trim`],
+//! [`UiAction::EditVertex`] and [`UiAction::AddText`] carry the edit. The editing groups read their
+//! operands from the selection, so the selection *is* the operand of every edit and no command needs
+//! a wizard. Numbers the user does not type during a gesture come from [`Shell`]'s documented fields
+//! and from [`DEFAULT_TOLERANCE_MM`] / [`JOIN_TOLERANCE_MM`]; [`Shell::apply_action`] then puts what
+//! the command produced — entity count, ellipse error, lost arcs, or the kernel's refusal — in the
+//! status bar.
+//!
 //! Arcs are flattened **here**, at half a pixel, and nowhere earlier.
 //!
 //! Must not contain geometry, toolpath or document rules.
 
 #![warn(missing_docs)]
 
-use cam_app::{AppState, Camera, Command, ScreenPoint, Viewport};
-use cam_geom::Point2;
+use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
+use cam_geom::{Point2, Vec2};
 use cam_view::{
-  box_select, build_grid, build_scene, choose_snap, pick, SceneItem, SnapKind, Style,
+  box_select, build_grid, build_scene, choose_snap, pick, SceneItem, Snap, SnapKind, Style,
   PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
 };
 use egui::{Context, Pos2, Sense, Stroke};
@@ -28,6 +40,27 @@ use egui::{Context, Pos2, Sense, Stroke};
 /// their widths. Fitting that geometry zooms the drawing out by an order of magnitude and looks like a
 /// broken viewport, so anything smaller than this is ignored and retried next frame.
 pub const MIN_FRAME_CANVAS: f64 = 200.0;
+
+/// The largest radial error the shell asks the kernel for when it approximates an arc.
+///
+/// Two M2 features approximate: an ellipse (A3) and a non-uniform scale over contours that hold arcs
+/// (A5, decision D-M2-2). The kernel takes the tolerance as a parameter and has no default of its own,
+/// so the number the user gets is chosen here, once, instead of being sprinkled through the callers.
+/// Both callers report what the approximation actually cost, so this is a request, not a promise.
+pub const DEFAULT_TOLERANCE_MM: f64 = 0.01;
+
+/// How close two endpoints must be for the shell's join and trim commands to count them as touching.
+///
+/// This is the kernel's own chaining tolerance ([`cam_geom::DEFAULT_TOLERANCE`], one micrometre)
+/// rather than a second number invented here: whether two ends meet is a tolerance problem, and the
+/// kernel already owns the answer.
+pub const JOIN_TOLERANCE_MM: f64 = cam_geom::DEFAULT_TOLERANCE;
+
+/// How far a drag must travel before it is a shape rather than a click, in pixels.
+///
+/// A press and release in the same place is a cancel: a zero-size rectangle or a zero-length line is
+/// not something the user can see, select or undo on purpose, so it is never submitted.
+pub const MIN_DRAW_DRAG_PX: f64 = 3.0;
 
 /// Colours, in one place so the picture stays consistent.
 mod palette {
@@ -47,6 +80,296 @@ mod palette {
   pub const SNAP: Color32 = Color32::from_rgb(120, 220, 160);
 }
 
+/// The tool armed on the canvas.
+///
+/// [`Tool::Select`] keeps M1's behaviour: a click picks, a drag marquees. Every other tool turns a
+/// primary press-drag-release into exactly one drawing command, and is therefore also the shell's
+/// "active tool" state: there is no modal command loop, only which gesture the canvas interprets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tool {
+  /// Click to pick, drag to marquee. Draws nothing.
+  Select,
+  /// Drag a line from the press point to the release point.
+  Line,
+  /// Drag two opposite corners of a rectangle.
+  Rectangle,
+  /// Drag one straight segment, stored as an open polyline.
+  Polyline,
+  /// Drag a chord; the arc passes through the gesture box corner `(start.x, end.y)`.
+  Arc,
+  /// Drag the bounding box of a circle.
+  Circle,
+  /// Drag the bounding box of an ellipse.
+  Ellipse,
+  /// Drag the bounding box of a regular polygon.
+  Polygon,
+  /// Drag the bounding box of a star.
+  Star,
+}
+
+impl Tool {
+  /// Every tool, in the order the tool list shows them.
+  pub const ALL: [Tool; 9] = [
+    Tool::Select,
+    Tool::Line,
+    Tool::Rectangle,
+    Tool::Polyline,
+    Tool::Arc,
+    Tool::Circle,
+    Tool::Ellipse,
+    Tool::Polygon,
+    Tool::Star,
+  ];
+
+  /// The label on the tool button.
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Select => "Select",
+      Self::Line => "Line",
+      Self::Rectangle => "Rectangle",
+      Self::Polyline => "Polyline",
+      Self::Arc => "Arc",
+      Self::Circle => "Circle",
+      Self::Ellipse => "Ellipse",
+      Self::Polygon => "Polygon",
+      Self::Star => "Star",
+    }
+  }
+
+  /// Whether this tool draws on a canvas drag instead of selecting.
+  pub fn draws(self) -> bool {
+    self != Tool::Select
+  }
+}
+
+/// One drawing command, with every number the kernel needs, in world millimetres.
+///
+/// The shell builds these from a canvas drag, and [`handle_action`] turns one into exactly one
+/// [`Command`]. Carrying the geometry in the action is what lets a test drive a drag and then assert
+/// on the command it produced without a display, and it is why a shape is committed once, on release,
+/// rather than once per mouse move.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DrawShape {
+  /// A rectangle with its lower-left corner at `at`.
+  Rectangle {
+    /// Lower-left corner, in millimetres.
+    at: Point2,
+    /// Width in millimetres; it must be positive.
+    width: f64,
+    /// Height in millimetres; it must be positive.
+    height: f64,
+  },
+  /// A straight line, stored as an open contour.
+  Line {
+    /// Start point, in millimetres.
+    from: Point2,
+    /// End point, in millimetres.
+    to: Point2,
+  },
+  /// A chain of straight segments.
+  Polyline {
+    /// Points to pass through, in millimetres.
+    points: Vec<Point2>,
+    /// Whether the last point joins the first.
+    closed: bool,
+  },
+  /// A single arc through three ordered points.
+  Arc {
+    /// Start point, in millimetres.
+    start: Point2,
+    /// A point the arc passes through, in millimetres.
+    through: Point2,
+    /// End point, in millimetres.
+    end: Point2,
+  },
+  /// An ellipse approximated by arcs within `tolerance`.
+  Ellipse {
+    /// Centre, in millimetres.
+    at: Point2,
+    /// Radius along X, in millimetres.
+    rx: f64,
+    /// Radius along Y, in millimetres.
+    ry: f64,
+    /// Largest radial error the caller accepts, in millimetres.
+    tolerance: f64,
+  },
+  /// A circle, stored as two half-turn arcs.
+  Circle {
+    /// Centre, in millimetres.
+    at: Point2,
+    /// Radius in millimetres.
+    radius: f64,
+  },
+  /// A regular polygon.
+  Polygon {
+    /// Centre, in millimetres.
+    at: Point2,
+    /// Circumscribed radius, in millimetres.
+    radius: f64,
+    /// Number of sides, at least three.
+    sides: usize,
+    /// Angle of the first vertex, in radians from the positive X axis.
+    rotation: f64,
+  },
+  /// A star alternating `points` tips and valleys.
+  Star {
+    /// Centre, in millimetres.
+    at: Point2,
+    /// Radius of the outer tips, in millimetres.
+    outer_radius: f64,
+    /// Radius of the inner valleys, in millimetres.
+    inner_radius: f64,
+    /// Number of tips, at least three.
+    points: usize,
+    /// Angle of the first tip, in radians from the positive X axis.
+    rotation: f64,
+  },
+}
+
+impl DrawShape {
+  /// The status-bar label for this shape.
+  pub fn label(&self) -> &'static str {
+    match self {
+      Self::Rectangle { .. } => "add rectangle",
+      Self::Line { .. } => "add line",
+      Self::Polyline { .. } => "add polyline",
+      Self::Arc { .. } => "add arc",
+      Self::Ellipse { .. } => "add ellipse",
+      Self::Circle { .. } => "add circle",
+      Self::Polygon { .. } => "add polygon",
+      Self::Star { .. } => "add star",
+    }
+  }
+
+  /// The one command this shape becomes on `layer_id` as `entity_id`.
+  pub fn to_command(&self, layer_id: &str, entity_id: &str) -> Command {
+    let layer_id = layer_id.to_owned();
+    let entity_id = entity_id.to_owned();
+    match self {
+      Self::Rectangle { at, width, height } => Command::AddRectangle {
+        layer_id,
+        entity_id,
+        at: *at,
+        width: *width,
+        height: *height,
+      },
+      Self::Line { from, to } => Command::AddLine {
+        layer_id,
+        entity_id,
+        from: *from,
+        to: *to,
+      },
+      Self::Polyline { points, closed } => Command::AddPolyline {
+        layer_id,
+        entity_id,
+        points: points.clone(),
+        closed: *closed,
+      },
+      Self::Arc {
+        start,
+        through,
+        end,
+      } => Command::AddArc {
+        layer_id,
+        entity_id,
+        start: *start,
+        through: *through,
+        end: *end,
+      },
+      Self::Ellipse {
+        at,
+        rx,
+        ry,
+        tolerance,
+      } => Command::AddEllipse {
+        layer_id,
+        entity_id,
+        at: *at,
+        rx: *rx,
+        ry: *ry,
+        tolerance: *tolerance,
+      },
+      Self::Circle { at, radius } => Command::AddCircle {
+        layer_id,
+        entity_id,
+        at: *at,
+        radius: *radius,
+      },
+      Self::Polygon {
+        at,
+        radius,
+        sides,
+        rotation,
+      } => Command::AddPolygon {
+        layer_id,
+        entity_id,
+        at: *at,
+        radius: *radius,
+        sides: *sides,
+        rotation: *rotation,
+      },
+      Self::Star {
+        at,
+        outer_radius,
+        inner_radius,
+        points,
+        rotation,
+      } => Command::AddStar {
+        layer_id,
+        entity_id,
+        at: *at,
+        outer_radius: *outer_radius,
+        inner_radius: *inner_radius,
+        points: *points,
+        rotation: *rotation,
+      },
+    }
+  }
+}
+
+/// What one action produced, as the status bar reports it.
+///
+/// The command layer hands back a [`cam_app::CommandOutcome`]; this is that outcome, labelled and
+/// ready to read. It exists so a refusal and a successful-but-lossy command can both reach the user
+/// instead of being swallowed by the shell.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ActionReport {
+  /// The command's own label, for example "add rectangle".
+  pub label: &'static str,
+  /// How many entities the action created.
+  pub created: usize,
+  /// The ids of the entities it created, in creation order.
+  pub created_entities: Vec<String>,
+  /// The largest radial error of an arc approximation, when one was made.
+  pub max_radial_error: Option<f64>,
+  /// How many arcs the action lost to tessellation (M2 A5).
+  pub lost_arcs: usize,
+}
+
+impl ActionReport {
+  /// The sentence the status bar shows.
+  pub fn message(&self) -> String {
+    let mut details: Vec<String> = Vec::new();
+    if self.created > 0 {
+      details.push(match self.created {
+        1 => "1 entity created".to_owned(),
+        count => format!("{count} entities created"),
+      });
+    }
+    if let Some(error) = self.max_radial_error {
+      details.push(format!("radial error {error:.4} mm"));
+    }
+    if self.lost_arcs > 0 {
+      details.push(format!("{} arc(s) lost to tessellation", self.lost_arcs));
+    }
+    if details.is_empty() {
+      self.label.to_owned()
+    } else {
+      format!("{} — {}", self.label, details.join(", "))
+    }
+  }
+}
+
 /// Everything the user can ask for. Every button, click and shortcut becomes one of these.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UiAction {
@@ -56,12 +379,57 @@ pub enum UiAction {
   Redo,
   /// Frame the whole drawing.
   ZoomToFit,
-  /// Add a rectangle, centred on the current view.
+  /// Add a rectangle of an explicit size, centred on the current view.
+  ///
+  /// This is the parameter-driven path M1 shipped and the command bar still offers; the canvas
+  /// gesture path is [`UiAction::Draw`].
   AddRectangle {
     /// Width in millimetres.
     width: f64,
     /// Height in millimetres.
     height: f64,
+  },
+  /// Draw one shape, in world millimetres.
+  Draw(DrawShape),
+  /// Apply one transform to the selection.
+  Transform(Transform),
+  /// Copy the selection into a grid of duplicates.
+  Array {
+    /// Number of rows, at least one.
+    rows: usize,
+    /// Number of columns, at least one.
+    columns: usize,
+    /// Spacing between columns, in millimetres along X.
+    dx: f64,
+    /// Spacing between rows, in millimetres along Y.
+    dy: f64,
+  },
+  /// Align the selection on an edge or centre line of its own bounds.
+  Align(AlignMode),
+  /// Offset the first selected entity by `distance` and store the result as a new entity.
+  Offset {
+    /// Distance in millimetres; positive grows a counter-clockwise contour.
+    distance: f64,
+  },
+  /// Join the selection into one contour.
+  Join,
+  /// Trim `target` against `cutter`, keeping the piece the kernel returns.
+  Trim {
+    /// Entity to trim.
+    target: String,
+    /// The cutting contour.
+    cutter: String,
+  },
+  /// Apply one node edit to the first selected entity.
+  EditVertex(VertexEdit),
+  /// Draw `text` as one entity per glyph stroke.
+  AddText {
+    /// The string to lay out.
+    text: String,
+    /// Cap height in millimetres.
+    height: f64,
+    /// Baseline start of the first line, in millimetres.
+    origin: Point2,
   },
   /// Delete the selected geometry.
   DeleteSelection,
@@ -82,6 +450,24 @@ impl UiAction {
       Self::Redo => "redo",
       Self::ZoomToFit => "zoom to fit",
       Self::AddRectangle { .. } => "add rectangle",
+      Self::Draw(shape) => shape.label(),
+      Self::Transform(transform) => match transform {
+        Transform::Translate { .. } => "move entities",
+        Transform::Rotate { .. } => "rotate entities",
+        Transform::Scale { .. } => "scale entities",
+        Transform::Mirror { .. } => "mirror entities",
+      },
+      Self::Array { .. } => "array copy",
+      Self::Align(_) => "align entities",
+      Self::Offset { .. } => "offset contour",
+      Self::Join => "join entities",
+      Self::Trim { .. } => "trim entity",
+      Self::EditVertex(edit) => match edit {
+        VertexEdit::Move { .. } => "move vertex",
+        VertexEdit::Insert { .. } => "insert vertex",
+        VertexEdit::Delete { .. } => "delete vertex",
+      },
+      Self::AddText { .. } => "add text",
       Self::DeleteSelection => "delete selection",
       Self::SetSelection(_) => "select",
       Self::ToggleLayerVisible { .. } => "layer visibility",
@@ -160,10 +546,49 @@ impl Default for CanvasRect {
 }
 
 /// The shell's own state: widget values and transient view flags.
+///
+/// # Where the numeric arguments come from
+///
+/// Authoring needs numbers the user does not type during a gesture: how many sides a polygon has, how
+/// far an array copies, how deep an offset goes, how tall the text is. There is no wizard; each one is
+/// an explicit field below with a documented default, editable in the tools area, and every button
+/// reads the field into the [`UiAction`] it pushes. Tolerances are constants
+/// ([`DEFAULT_TOLERANCE_MM`], [`JOIN_TOLERANCE_MM`]) because they are a promise about the result, not
+/// a per-shape taste.
 #[derive(Clone, Debug)]
 pub struct Shell {
-  /// Size used by the "Add rectangle" button.
+  /// The tool armed on the canvas. Default [`Tool::Select`], which keeps M1's click-to-pick gesture.
+  pub active_tool: Tool,
+  /// Size used by the "Add rectangle" button. Default 100 x 60 mm.
   pub rectangle_size: (f64, f64),
+  /// Side count used by the polygon tool. Default 6: a hexagon reads as a regular polygon at a glance.
+  pub polygon_sides: usize,
+  /// Tip count used by the star tool. Default 5.
+  pub star_points: usize,
+  /// Inner/outer radius ratio used by the star tool. Default 0.5, the classic five-point star.
+  pub star_inner_ratio: f64,
+  /// Rows and columns the array command uses. Default 2 x 3.
+  pub array_grid: (usize, usize),
+  /// Column and row spacing the array command uses, in millimetres. Default 50 x 25 mm.
+  pub array_spacing: (f64, f64),
+  /// Distance the offset command uses, in millimetres. Default 2 mm.
+  pub offset_distance: f64,
+  /// Displacement the move command uses, in millimetres. Default 10 x 0 mm.
+  pub move_delta: (f64, f64),
+  /// Rotation the rotate command uses, in degrees counter-clockwise. Default 15.
+  pub rotate_degrees: f64,
+  /// Factors the scale command uses. Default 2 x 2, which stays exact on arcs.
+  pub scale_factors: (f64, f64),
+  /// Vertex index the node-edit commands use. Default 0, the first vertex.
+  pub vertex_index: usize,
+  /// Segment index the insert-node command uses. Default 0, the first segment.
+  pub segment_index: usize,
+  /// Position the node-edit commands use, in millimetres. Default the origin.
+  pub vertex_position: (f64, f64),
+  /// String the text command draws. Default "CAM".
+  pub text: String,
+  /// Cap height the text command uses, in millimetres. Default 10 mm.
+  pub text_height: f64,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -176,6 +601,10 @@ pub struct Shell {
   pub snapping: bool,
   /// The snap point found for the cursor this frame, if any.
   pub snap_marker: Option<(SnapKind, Point2)>,
+  /// Where a draw gesture started, in world millimetres, while one is in progress.
+  pub draw_start: Option<Point2>,
+  /// Where a draw gesture's cursor is, in world millimetres, for the preview.
+  pub draw_current: Option<Point2>,
   /// Origin of a box selection in progress, in canvas-local pixels.
   drag_box: Option<ScreenPoint>,
   /// Whether the view still belongs to the application.
@@ -200,7 +629,22 @@ pub struct Shell {
 impl Default for Shell {
   fn default() -> Self {
     Self {
+      active_tool: Tool::Select,
       rectangle_size: (100.0, 60.0),
+      polygon_sides: 6,
+      star_points: 5,
+      star_inner_ratio: 0.5,
+      array_grid: (2, 3),
+      array_spacing: (50.0, 25.0),
+      offset_distance: 2.0,
+      move_delta: (10.0, 0.0),
+      rotate_degrees: 15.0,
+      scale_factors: (2.0, 2.0),
+      vertex_index: 0,
+      segment_index: 0,
+      vertex_position: (0.0, 0.0),
+      text: "CAM".to_owned(),
+      text_height: 10.0,
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -212,6 +656,8 @@ impl Default for Shell {
       grid_spacing: 0.0,
       snapping: true,
       snap_marker: None,
+      draw_start: None,
+      draw_current: None,
       drag_box: None,
       auto_frame: true,
       framed: false,
@@ -224,6 +670,19 @@ impl Shell {
   /// A shell with default widget values.
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// Apply one action and show what it produced in the status bar.
+  ///
+  /// This is what a host calls for every action [`Self::show`] returned. It keeps the one-command
+  /// rule — the work itself happens in [`handle_action`] — and turns the outcome the command layer
+  /// reports (entity count, ellipse radial error, arcs lost to tessellation) and any refusal, with the
+  /// kernel's own message, into the sentence the user reads.
+  pub fn apply_action(&mut self, app: &mut AppState, action: &UiAction) {
+    self.status = match handle_action(app, action) {
+      Ok(report) => report.message(),
+      Err(message) => format!("refused: {message}"),
+    };
   }
 
   /// Build one frame.
@@ -247,6 +706,7 @@ impl Shell {
     self.layer_dock(app, ui, &mut output);
     self.properties(app, ui, &mut output);
     self.status_bar(app, ui, &mut output);
+    self.authoring(app, ui, &mut output);
     self.canvas(app, ui, &mut output);
     output
   }
@@ -387,6 +847,228 @@ impl Shell {
       });
   }
 
+  /// The authoring dock: which tool is armed, and the numbers the commands use.
+  ///
+  /// Every button here reads a field of [`Shell`] into one [`UiAction`]; none of them talks to
+  /// [`AppState`]. It is its own dock rather than a corner of the properties panel because a reviewer
+  /// has to be able to see every command at once: egui culls widgets that fall outside their panel, so
+  /// a panel that cannot fit them all would hide half of them.
+  fn authoring(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+    let centre = app.camera().center();
+    let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+
+    egui::Panel::right("authoring")
+      .default_size(240.0)
+      .show(ui, |ui| {
+        // A short window scrolls the dock instead of hiding the last rows: egui culls widgets that
+        // fall outside their panel, so without this a 600 px tall window would silently lose the
+        // node-edit and text controls.
+        egui::ScrollArea::vertical().show(ui, |ui| {
+          ui.heading("Authoring");
+          ui.separator();
+          ui.horizontal_wrapped(|ui| {
+            for tool in Tool::ALL {
+              if ui
+                .selectable_label(self.active_tool == tool, tool.label())
+                .clicked()
+              {
+                self.active_tool = tool;
+              }
+            }
+            ui.label(if self.active_tool.draws() {
+              "drag on the canvas to draw"
+            } else {
+              "click to select, drag to marquee"
+            });
+          });
+
+          ui.horizontal_wrapped(|ui| {
+            ui.label("Polygon sides");
+            ui.add(egui::DragValue::new(&mut self.polygon_sides).range(3..=64));
+            ui.label("Star tips");
+            ui.add(egui::DragValue::new(&mut self.star_points).range(3..=64));
+            ui.label("inner ratio");
+            ui.add(
+              egui::DragValue::new(&mut self.star_inner_ratio)
+                .speed(0.05)
+                .range(0.05..=0.95),
+            );
+            ui.separator();
+            ui.label("Text");
+            ui.add(egui::TextEdit::singleline(&mut self.text).desired_width(70.0));
+            ui.add(
+              egui::DragValue::new(&mut self.text_height)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            if ui.button("Add text").clicked() {
+              output.actions.push(UiAction::AddText {
+                text: self.text.clone(),
+                height: self.text_height,
+                origin: centre,
+              });
+            }
+          });
+
+          ui.horizontal_wrapped(|ui| {
+            ui.label("Move");
+            ui.add(
+              egui::DragValue::new(&mut self.move_delta.0)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            ui.add(
+              egui::DragValue::new(&mut self.move_delta.1)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            if ui.button("Move").clicked() {
+              output
+                .actions
+                .push(UiAction::Transform(Transform::Translate {
+                  delta: Vec2::new(self.move_delta.0, self.move_delta.1),
+                }));
+            }
+            ui.separator();
+            ui.label("Rotate");
+            ui.add(
+              egui::DragValue::new(&mut self.rotate_degrees)
+                .speed(1.0)
+                .suffix("°"),
+            );
+            if ui.button("Rotate").clicked() {
+              output.actions.push(UiAction::Transform(Transform::Rotate {
+                radians: self.rotate_degrees.to_radians(),
+                about: centre,
+              }));
+            }
+            ui.separator();
+            ui.label("Scale");
+            ui.add(egui::DragValue::new(&mut self.scale_factors.0).speed(0.05));
+            ui.add(egui::DragValue::new(&mut self.scale_factors.1).speed(0.05));
+            if ui.button("Scale").clicked() {
+              output.actions.push(UiAction::Transform(Transform::Scale {
+                sx: self.scale_factors.0,
+                sy: self.scale_factors.1,
+                about: centre,
+                tolerance: DEFAULT_TOLERANCE_MM,
+              }));
+            }
+            if ui.button("Mirror").clicked() {
+              output.actions.push(UiAction::Transform(Transform::Mirror {
+                point: centre,
+                direction: Vec2::Y_AXIS,
+              }));
+            }
+          });
+
+          ui.horizontal_wrapped(|ui| {
+            ui.label("Array");
+            ui.add(egui::DragValue::new(&mut self.array_grid.0).range(1..=64));
+            ui.add(egui::DragValue::new(&mut self.array_grid.1).range(1..=64));
+            ui.add(
+              egui::DragValue::new(&mut self.array_spacing.0)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            ui.add(
+              egui::DragValue::new(&mut self.array_spacing.1)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            if ui.button("Array").clicked() {
+              output.actions.push(UiAction::Array {
+                rows: self.array_grid.0,
+                columns: self.array_grid.1,
+                dx: self.array_spacing.0,
+                dy: self.array_spacing.1,
+              });
+            }
+            ui.separator();
+            ui.label("Align");
+            for (label, mode) in [
+              ("Left", AlignMode::Left),
+              ("Right", AlignMode::Right),
+              ("Top", AlignMode::Top),
+              ("Bottom", AlignMode::Bottom),
+              ("Centre H", AlignMode::HorizontalCentre),
+              ("Centre V", AlignMode::VerticalCentre),
+            ] {
+              if ui.button(label).clicked() {
+                output.actions.push(UiAction::Align(mode));
+              }
+            }
+          });
+
+          ui.horizontal_wrapped(|ui| {
+            ui.label("Offset");
+            ui.add(
+              egui::DragValue::new(&mut self.offset_distance)
+                .speed(0.5)
+                .suffix(" mm"),
+            );
+            if ui.button("Offset").clicked() {
+              output.actions.push(UiAction::Offset {
+                distance: self.offset_distance,
+              });
+            }
+            if ui.button("Join").clicked() {
+              output.actions.push(UiAction::Join);
+            }
+            // Trim needs to know which of the two selected entities is the target and which the cutter;
+            // the selection is ordered by id, so the first id is the target and the second the cutter.
+            if ui
+              .add_enabled(selected.len() >= 2, egui::Button::new("Trim"))
+              .clicked()
+            {
+              if let [target, cutter, ..] = selected.as_slice() {
+                output.actions.push(UiAction::Trim {
+                  target: target.clone(),
+                  cutter: cutter.clone(),
+                });
+              }
+            }
+            ui.separator();
+            ui.label("Node edit");
+            ui.add(egui::DragValue::new(&mut self.vertex_index));
+            ui.add(egui::DragValue::new(&mut self.segment_index));
+            ui.add(
+              egui::DragValue::new(&mut self.vertex_position.0)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            ui.add(
+              egui::DragValue::new(&mut self.vertex_position.1)
+                .speed(1.0)
+                .suffix(" mm"),
+            );
+            let vertex_at = Point2::new(self.vertex_position.0, self.vertex_position.1);
+            if ui.button("Move node").clicked() {
+              output.actions.push(UiAction::EditVertex(VertexEdit::Move {
+                index: self.vertex_index,
+                to: vertex_at,
+              }));
+            }
+            if ui.button("Insert node").clicked() {
+              output
+                .actions
+                .push(UiAction::EditVertex(VertexEdit::Insert {
+                  segment_index: self.segment_index,
+                  at: vertex_at,
+                }));
+            }
+            if ui.button("Delete node").clicked() {
+              output
+                .actions
+                .push(UiAction::EditVertex(VertexEdit::Delete {
+                  index: self.vertex_index,
+                }));
+            }
+          });
+        });
+      });
+  }
+
   fn status_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
@@ -519,20 +1201,166 @@ impl Shell {
     }
 
     self.cursor_world = Some(app.camera().screen_to_world(local));
-    self.snap_marker = None;
-    if self.snapping {
-      let scene = build_scene(app.document(), app.selection());
-      if let Some(snap) = choose_snap(
-        &scene,
-        app.camera(),
-        local,
-        SNAP_TOLERANCE_PX,
-        &self.snap_kinds,
-        self.grid_spacing,
-      ) {
-        self.snap_marker = Some((snap.kind, snap.point));
-        self.cursor_world = Some(snap.point);
+    self.snap_marker = self
+      .snap_point(app, local)
+      .map(|snap| (snap.kind, snap.point));
+    if let Some((_, point)) = self.snap_marker {
+      self.cursor_world = Some(point);
+    }
+  }
+
+  /// The snap point within range of a canvas-local position, when snapping is on.
+  ///
+  /// One implementation for the hover readout and for the draw gesture: a gesture that snapped
+  /// differently from the marker the user is looking at would be a lie.
+  fn snap_point(&self, app: &AppState, local: ScreenPoint) -> Option<Snap> {
+    if !self.snapping {
+      return None;
+    }
+    let scene = build_scene(app.document(), app.selection());
+    choose_snap(
+      &scene,
+      app.camera(),
+      local,
+      SNAP_TOLERANCE_PX,
+      &self.snap_kinds,
+      self.grid_spacing,
+    )
+  }
+
+  /// The world position of a window position, snapped when a snap point is in range.
+  fn world_at(&self, app: &AppState, canvas: &CanvasRect, position: Pos2) -> Point2 {
+    let local = canvas.to_screen(position);
+    let world = app.camera().screen_to_world(local);
+    self
+      .snap_point(app, local)
+      .map(|snap| snap.point)
+      .unwrap_or(world)
+  }
+
+  /// Turn a primary press, drag and release into exactly one drawing command.
+  ///
+  /// The gesture is in world millimetres: the press point is one corner and the release point the
+  /// opposite one. Nothing is submitted until the release, and a gesture shorter than
+  /// [`MIN_DRAW_DRAG_PX`] is a cancel — a zero-size shape is not something the user can see, select
+  /// or undo on purpose, so it never becomes a command.
+  fn draw_gesture(
+    &mut self,
+    app: &AppState,
+    ui: &egui::Ui,
+    response: &egui::Response,
+    canvas: &CanvasRect,
+    output: &mut ShellOutput,
+  ) {
+    let pointer = response
+      .hover_pos()
+      .or_else(|| response.interact_pointer_pos());
+
+    if response.drag_started_by(egui::PointerButton::Primary) {
+      self.draw_start = ui
+        .ctx()
+        .input(|input| input.pointer.press_origin())
+        .map(|origin| self.world_at(app, canvas, origin));
+    }
+    if response.dragged_by(egui::PointerButton::Primary) {
+      if self.draw_start.is_none() {
+        // A drag that began outside the canvas still has a current point.
+        self.draw_start = pointer.map(|position| self.world_at(app, canvas, position));
       }
+      self.draw_current = pointer.map(|position| self.world_at(app, canvas, position));
+    }
+    if response.drag_stopped_by(egui::PointerButton::Primary) {
+      let start = self.draw_start.take();
+      let end = pointer
+        .map(|position| self.world_at(app, canvas, position))
+        .or(self.draw_current);
+      self.draw_current = None;
+      if let (Some(start), Some(end)) = (start, end) {
+        let dragged_px = start.distance_to(end) * app.camera().pixels_per_mm();
+        if dragged_px >= MIN_DRAW_DRAG_PX {
+          match self.draw_shape(start, end) {
+            Some(shape) => output.actions.push(UiAction::Draw(shape)),
+            // A drag along one axis only: a rectangle, ellipse, arc or star with no height is a
+            // zero-size shape, so it is cancelled and the status bar says why.
+            None => {
+              self.status = format!(
+                "{}: drag in both directions to size the shape",
+                self.active_tool.label()
+              )
+            }
+          }
+        }
+      }
+    }
+    // A plain click with a drawing tool armed draws nothing and selects nothing: press and release in
+    // the same place is a cancel.
+    if response.clicked() {
+      self.draw_start = None;
+      self.draw_current = None;
+    }
+  }
+
+  /// The shape a drag from `start` to `end` describes, or `None` when the gesture has no size.
+  ///
+  /// The two points are opposite corners of the gesture's box. Rectangles and polylines use them
+  /// directly; circles, ellipses, polygons and stars are inscribed in that box, so the centre is the
+  /// box centre and the size comes from the smaller side (circle, polygon, star) or from both sides
+  /// (ellipse). An arc runs from the start corner to the end corner through the box corner
+  /// `(start.x, end.y)`, which is the only third point a two-point drag names unambiguously.
+  fn draw_shape(&self, start: Point2, end: Point2) -> Option<DrawShape> {
+    let min_x = start.x.min(end.x);
+    let max_x = start.x.max(end.x);
+    let min_y = start.y.min(end.y);
+    let max_y = start.y.max(end.y);
+    let width = max_x - min_x;
+    let height = max_y - min_y;
+    let centre = Point2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
+    let half_smaller = width.min(height) * 0.5;
+
+    match self.active_tool {
+      Tool::Select => None,
+      // A straight line only needs a direction, so a horizontal or vertical drag is a line.
+      Tool::Line => Some(DrawShape::Line {
+        from: start,
+        to: end,
+      }),
+      Tool::Polyline => Some(DrawShape::Polyline {
+        points: vec![start, end],
+        closed: false,
+      }),
+      Tool::Rectangle => (width > 0.0 && height > 0.0).then_some(DrawShape::Rectangle {
+        at: Point2::new(min_x, min_y),
+        width,
+        height,
+      }),
+      Tool::Arc => (width > 0.0 && height > 0.0).then_some(DrawShape::Arc {
+        start,
+        end,
+        through: Point2::new(start.x, end.y),
+      }),
+      Tool::Circle => (half_smaller > 0.0).then_some(DrawShape::Circle {
+        at: centre,
+        radius: half_smaller,
+      }),
+      Tool::Ellipse => (width > 0.0 && height > 0.0).then_some(DrawShape::Ellipse {
+        at: centre,
+        rx: width * 0.5,
+        ry: height * 0.5,
+        tolerance: DEFAULT_TOLERANCE_MM,
+      }),
+      Tool::Polygon => (half_smaller > 0.0).then_some(DrawShape::Polygon {
+        at: centre,
+        radius: half_smaller,
+        sides: self.polygon_sides,
+        rotation: 0.0,
+      }),
+      Tool::Star => (half_smaller > 0.0).then_some(DrawShape::Star {
+        at: centre,
+        outer_radius: half_smaller,
+        inner_radius: half_smaller * self.star_inner_ratio,
+        points: self.star_points,
+        rotation: 0.0,
+      }),
     }
   }
 
@@ -574,38 +1402,44 @@ impl Shell {
         .pan_by_pixels(f64::from(delta.x), f64::from(delta.y));
     }
 
-    // Primary drag draws a selection marquee.
-    if response.drag_started_by(egui::PointerButton::Primary) {
-      if let Some(origin) = ui.ctx().input(|input| input.pointer.press_origin()) {
-        self.drag_box = Some(canvas.to_screen(origin));
+    if self.active_tool.draws() {
+      // A drawing tool owns the primary button: press, move and release become one command, and the
+      // selection gestures stay out of the way so a draw never clears the selection it just made.
+      self.draw_gesture(app, ui, response, canvas, output);
+    } else {
+      // Primary drag draws a selection marquee.
+      if response.drag_started_by(egui::PointerButton::Primary) {
+        if let Some(origin) = ui.ctx().input(|input| input.pointer.press_origin()) {
+          self.drag_box = Some(canvas.to_screen(origin));
+        }
       }
-    }
-    if response.drag_stopped_by(egui::PointerButton::Primary) {
-      if let (Some(start), Some(end)) = (self.drag_box, pointer.map(|p| canvas.to_screen(p))) {
-        let scene = build_scene(app.document(), app.selection());
-        let hits = box_select(&scene, app.camera(), start, end);
-        output.actions.push(UiAction::SetSelection(hits));
+      if response.drag_stopped_by(egui::PointerButton::Primary) {
+        if let (Some(start), Some(end)) = (self.drag_box, pointer.map(|p| canvas.to_screen(p))) {
+          let scene = build_scene(app.document(), app.selection());
+          let hits = box_select(&scene, app.camera(), start, end);
+          output.actions.push(UiAction::SetSelection(hits));
+        }
+        self.drag_box = None;
       }
-      self.drag_box = None;
-    }
-    if response.dragged_by(egui::PointerButton::Primary) && self.drag_box.is_none() {
-      // A drag that started outside the canvas still deserves a marquee.
-      self.drag_box = pointer.map(|position| canvas.to_screen(position));
-    }
+      if response.dragged_by(egui::PointerButton::Primary) && self.drag_box.is_none() {
+        // A drag that started outside the canvas still deserves a marquee.
+        self.drag_box = pointer.map(|position| canvas.to_screen(position));
+      }
 
-    // A plain click selects what is under the cursor, or clears the selection.
-    if response.clicked() {
-      if let Some(position) = response.interact_pointer_pos() {
-        let scene = build_scene(app.document(), app.selection());
-        let hit = pick(
-          &scene,
-          app.camera(),
-          canvas.to_screen(position),
-          PICK_TOLERANCE_PX,
-        );
-        output.actions.push(UiAction::SetSelection(
-          hit.map(|hit| vec![hit.entity]).unwrap_or_default(),
-        ));
+      // A plain click selects what is under the cursor, or clears the selection.
+      if response.clicked() {
+        if let Some(position) = response.interact_pointer_pos() {
+          let scene = build_scene(app.document(), app.selection());
+          let hit = pick(
+            &scene,
+            app.camera(),
+            canvas.to_screen(position),
+            PICK_TOLERANCE_PX,
+          );
+          output.actions.push(UiAction::SetSelection(
+            hit.map(|hit| vec![hit.entity]).unwrap_or_default(),
+          ));
+        }
       }
     }
 
@@ -697,6 +1531,24 @@ impl Shell {
       }
     }
 
+    // The draw gesture's preview: the segment for the line-like tools, the gesture box for the rest.
+    // It is the gesture's bounds, not the shape, because the shape itself is built by the command
+    // layer on release and the shell must not own geometry rules.
+    if let (Some(start), Some(current)) = (self.draw_start, self.draw_current) {
+      let from = canvas.to_window(camera.world_to_screen(start));
+      let to = canvas.to_window(camera.world_to_screen(current));
+      if matches!(self.active_tool, Tool::Line | Tool::Polyline) {
+        painter.line_segment([from, to], Stroke::new(1.5, palette::SELECTED));
+      } else {
+        painter.rect_stroke(
+          egui::Rect::from_two_pos(from, to),
+          0.0,
+          Stroke::new(1.5, palette::SELECTED),
+          egui::StrokeKind::Inside,
+        );
+      }
+    }
+
     painter.text(
       Pos2::new(canvas.x as f32 + 8.0, canvas.y as f32 + 8.0),
       egui::Align2::LEFT_TOP,
@@ -776,16 +1628,23 @@ fn paint_world_rect(
 /// Apply one action to the application state.
 ///
 /// The only place the shell touches [`AppState`], so a test can drive the whole interface by feeding
-/// actions.
-pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<(), String> {
+/// actions. Every authoring arm builds exactly one [`Command`] and runs it through
+/// [`apply_command`]; nothing here mutates the document itself.
+pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionReport, String> {
   match action {
     UiAction::Undo => {
       app.undo();
-      Ok(())
+      Ok(ActionReport {
+        label: action.label(),
+        ..ActionReport::default()
+      })
     }
     UiAction::Redo => {
       app.redo();
-      Ok(())
+      Ok(ActionReport {
+        label: action.label(),
+        ..ActionReport::default()
+      })
     }
     UiAction::ZoomToFit => {
       let scene = build_scene(app.document(), app.selection());
@@ -794,28 +1653,114 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<(), String
         return Err("nothing to frame: the document holds no geometry".to_owned());
       }
       app.fit_camera(bounds.expand(5.0), 24.0);
-      Ok(())
+      Ok(ActionReport {
+        label: action.label(),
+        ..ActionReport::default()
+      })
     }
     UiAction::AddRectangle { width, height } => {
-      let layer_id = app
-        .document()
-        .layers
-        .first()
-        .map(|layer| layer.id.clone())
-        .ok_or_else(|| "the document has no layer to draw into".to_owned())?;
+      let layer_id = drawing_layer(app)?;
       let centre = app.camera().center();
       let id = app.next_entity_id();
-      app
-        .execute(Command::AddRectangle {
-          layer_id,
-          entity_id: id.clone(),
-          at: Point2::new(centre.x - width / 2.0, centre.y - height / 2.0),
-          width: *width,
-          height: *height,
-        })
-        .map_err(|error| error.to_string())?;
-      app.select(vec![id]);
-      Ok(())
+      let command = Command::AddRectangle {
+        layer_id,
+        entity_id: id.clone(),
+        at: Point2::new(centre.x - width / 2.0, centre.y - height / 2.0),
+        width: *width,
+        height: *height,
+      };
+      apply_draw(app, command, &id)
+    }
+    UiAction::Draw(shape) => {
+      let layer_id = drawing_layer(app)?;
+      let id = app.next_entity_id();
+      apply_draw(app, shape.to_command(&layer_id, &id), &id)
+    }
+    UiAction::Transform(transform) => {
+      let entity_ids = selected_ids(app)?;
+      apply_command(
+        app,
+        Command::TransformEntities {
+          entity_ids,
+          transform: transform.clone(),
+        },
+      )
+    }
+    UiAction::Array {
+      rows,
+      columns,
+      dx,
+      dy,
+    } => {
+      let entity_ids = selected_ids(app)?;
+      apply_minting(app, |first_entity_index| Command::ArrayCopy {
+        entity_ids: entity_ids.clone(),
+        rows: *rows,
+        columns: *columns,
+        dx: *dx,
+        dy: *dy,
+        first_entity_index,
+      })
+    }
+    UiAction::Align(mode) => {
+      let entity_ids = selected_ids(app)?;
+      apply_command(
+        app,
+        Command::AlignEntities {
+          entity_ids,
+          mode: *mode,
+        },
+      )
+    }
+    UiAction::Offset { distance } => {
+      let entity_id = single_selection(app)?;
+      apply_minting(app, |first_entity_index| Command::OffsetContour {
+        entity_id: entity_id.clone(),
+        distance: *distance,
+        first_entity_index,
+      })
+    }
+    UiAction::Join => {
+      let entity_ids = selected_ids(app)?;
+      apply_command(
+        app,
+        Command::JoinEntities {
+          entity_ids,
+          tolerance: JOIN_TOLERANCE_MM,
+        },
+      )
+    }
+    UiAction::Trim { target, cutter } => {
+      apply_minting(app, |first_entity_index| Command::TrimEntity {
+        target_id: target.clone(),
+        cutter_id: cutter.clone(),
+        tolerance: JOIN_TOLERANCE_MM,
+        first_entity_index,
+      })
+    }
+    UiAction::EditVertex(edit) => {
+      let entity_id = single_selection(app)?;
+      apply_command(
+        app,
+        Command::EditVertex {
+          entity_id,
+          edit: *edit,
+        },
+      )
+    }
+    UiAction::AddText {
+      text,
+      height,
+      origin,
+    } => {
+      let layer_id = drawing_layer(app)?;
+      apply_minting(app, |first_entity_index| Command::AddText {
+        layer_id: layer_id.clone(),
+        first_entity_index,
+        text: text.clone(),
+        origin: *origin,
+        height: *height,
+      })
     }
     UiAction::DeleteSelection => {
       let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
@@ -825,11 +1770,17 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<(), String
           .map_err(|error| error.to_string())?;
       }
       app.clear_selection();
-      Ok(())
+      Ok(ActionReport {
+        label: action.label(),
+        ..ActionReport::default()
+      })
     }
     UiAction::SetSelection(ids) => {
       app.select(ids.clone());
-      Ok(())
+      Ok(ActionReport {
+        label: action.label(),
+        ..ActionReport::default()
+      })
     }
     UiAction::ToggleLayerVisible { layer_id } => {
       let layer = app
@@ -839,12 +1790,110 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<(), String
         .find(|layer| layer.id == *layer_id)
         .ok_or_else(|| format!("layer {layer_id:?} does not exist"))?;
       let visible = !layer.visible;
-      app
-        .execute(Command::SetLayerVisible {
+      apply_command(
+        app,
+        Command::SetLayerVisible {
           layer_id: layer_id.clone(),
           visible,
-        })
-        .map_err(|error| error.to_string())
+        },
+      )
     }
   }
+}
+
+/// The layer new geometry is drawn into: the first one.
+///
+/// The shell never asks the user for a layer, so a document with no layer is a refusal the status bar
+/// explains instead of a silent no-op.
+fn drawing_layer(app: &AppState) -> Result<String, String> {
+  app
+    .document()
+    .layers
+    .first()
+    .map(|layer| layer.id.clone())
+    .ok_or_else(|| "the document has no layer to draw into".to_owned())
+}
+
+/// The selection, refusing an empty one.
+fn selected_ids(app: &AppState) -> Result<Vec<String>, String> {
+  let ids: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+  if ids.is_empty() {
+    return Err("nothing is selected".to_owned());
+  }
+  Ok(ids)
+}
+
+/// The first selected entity: the operand of every single-target editing command.
+///
+/// A [`cam_app::Selection`] is ordered by id, so "first" is deterministic rather than pick order.
+fn single_selection(app: &AppState) -> Result<String, String> {
+  selected_ids(app)?
+    .into_iter()
+    .next()
+    .ok_or_else(|| "nothing is selected".to_owned())
+}
+
+/// Apply one command and describe what it produced.
+///
+/// The command layer already guarantees a refusal leaves the document, the history and the dirty flag
+/// untouched; this adds the label, the outcome and the selection of whatever the command created.
+fn apply_command(app: &mut AppState, command: Command) -> Result<ActionReport, String> {
+  let label = command.label();
+  let outcome = app
+    .execute_with_outcome(command)
+    .map_err(|error| error.to_string())?;
+  let report = ActionReport {
+    label,
+    created: outcome.created_entities.len(),
+    created_entities: outcome.created_entities,
+    max_radial_error: outcome.max_radial_error,
+    lost_arcs: outcome.lost_arcs,
+  };
+  if !report.created_entities.is_empty() {
+    app.select(report.created_entities.clone());
+  }
+  Ok(report)
+}
+
+/// Apply a drawing command that created exactly the one entity it was handed an id for.
+///
+/// [`cam_app::CommandOutcome::created_entities`] is only filled by commands that mint their own ids, so
+/// a single-entity draw reports its count here instead of claiming nothing was created.
+fn apply_draw(
+  app: &mut AppState,
+  command: Command,
+  entity_id: &str,
+) -> Result<ActionReport, String> {
+  let mut report = apply_command(app, command)?;
+  report.created = 1;
+  report.created_entities = vec![entity_id.to_owned()];
+  app.select(vec![entity_id.to_owned()]);
+  Ok(report)
+}
+
+/// Apply a command that mints its own `E<n>` ids from a first index, keeping the id counter in step.
+///
+/// Batch commands (`ArrayCopy`, `OffsetContour`, `TrimEntity`, `AddText`) take a numeric first index
+/// instead of an id, because how many ids they need is an output of the command. The shell therefore
+/// reads the next free number from [`AppState::next_entity_id`] and, once the command has run,
+/// consumes the rest of the ids it actually minted. Without that top-up the next draw would mint an id
+/// the batch already took and be refused as a duplicate. A refused batch leaves one number unused,
+/// which is invisible: ids are opaque strings.
+fn apply_minting(
+  app: &mut AppState,
+  mint: impl FnOnce(u32) -> Command,
+) -> Result<ActionReport, String> {
+  let first_entity_index = entity_number(&app.next_entity_id())?;
+  let report = apply_command(app, mint(first_entity_index))?;
+  for _ in 1..report.created {
+    app.next_entity_id();
+  }
+  Ok(report)
+}
+
+/// The number in an `E<n>` id, so a batch command can be handed its first index.
+fn entity_number(id: &str) -> Result<u32, String> {
+  id.strip_prefix('E')
+    .and_then(|rest| rest.parse::<u32>().ok())
+    .ok_or_else(|| format!("entity id {id:?} is not of the form E<number>"))
 }
