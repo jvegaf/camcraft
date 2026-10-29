@@ -202,8 +202,8 @@ source and its limitation. Roadmap M2 row marked delivered with the evidence tab
 | Task | Commit | Notes |
 | --- | --- | --- |
 | T1 | `e59f484` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
-| T2 | — | pending |
-| T3 | — | pending |
+| T2 | `2a0bc5d` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
+| T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
 | T4 | — | pending |
 | T5 | — | pending |
 | T6 | — | pending |
