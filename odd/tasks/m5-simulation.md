@@ -167,10 +167,25 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
   at a convex corner the mitered band claims material the disc never touches, at most `4(r² − πr²/4)`
   per right-angled corner, so a perfect cut reports `≈7.73 mm² × depth` of uncut per corner at a 6 mm
   tool (measured: 24 mm³ over 4 cells on a 100 mm square profile at a 1 mm cell, converging to the
-  analytic limit as the grid refines). The alternative — a round-join offset — is a kernel feature this
-  milestone does not add, and a tolerance tuned to corners would be exactly the resolution knob D-M5-3
-  refuses. Recorded as a limit, with the circular-contour oracle as the case where the statement is
-  exact.
+  analytic limit as the grid refines). The same arithmetic explains a pocket's four corners, and P1's
+  end-to-end run measured exactly it: a mitered ring's corner stands `r√2` from the region's corner while
+  the disc reaches only `r`, so a clean offset pocket also reports `24 mm³` over the same 4 cells at a
+  1 mm cell. Every region with a right angle therefore reports it, in both strategies, and it is the
+  miter that would have to become a round join to remove it. The alternative — a round-join offset — is a
+  kernel feature this milestone does not add, and a tolerance tuned to corners would be exactly the
+  resolution knob D-M5-3 refuses. Recorded as a limit, with the circular-contour oracle as the case where
+  the statement is exact.
+- **D-M5-12 — A raster lattice that stops short of the far edge is left as recorded, not fixed.** S6
+  rescued the row that lands *on* a boundary; it did not make the lattice *reach* the boundary. On a
+  100 mm square pocketed with a 6 mm tool at a 4 mm stepover the rows run 13, 17, … 85 while the offset
+  region's far edge is 87, so the last row's disc reaches 88 and the 2 mm strip `88…90` is never cut:
+  `simulate` reports `uncut: 984.000 mm3 over 164 cell(s)` on a program no user would call wrong. The fix
+  is a boundary pass — one row at the offset region's far edge — and it is deliberately **not** taken
+  here: M4's raster contract says "rows on the `min.y + k·stepover` grid" and pins "32 rows at y = 3, 6,
+  … 96" (`odd/tasks/m4-toolpaths.md`), so adding a finishing row changes a documented contract and
+  belongs to a decision the owner takes, not to a milestone that was asked for simulation and a preview.
+  Recorded with its measurement so the report's `uncut` figure on a plain raster pocket is understood as
+  the strategy's outline showing through, not as a broken simulation.
 - **D-M5-6 — A simulation that finds defects exits `6`.** The CLI's existing codes are `0` ok, `2`
   invalid input, `3` unsupported schema, `4` post error, `5` vector issues; `5` sets the precedent that
   a *found defect* is its own code rather than "invalid input". Crash, gouge and uncut therefore exit
@@ -431,7 +446,7 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
 | V2 | `1c3d3bf` | 9 tests (`crates/cam-ui/tests/view3d.rs`), `cam-ui` at 61. An open panel paints triangles and exactly 16 3D lines (12 box edges + the program's 4); a drag orbits yaw and pitch with the target fixed and the wheel zooms about it; a camera the projection rejects paints nothing instead of panicking; a closed panel paints no 3D at all; the surface reaches the painter as one `egui::Mesh` of exactly three vertices per painted triangle, so A11's "no new crate" is pinned at the painter; the 2D canvas still paints its 4 items and its grid while the panel is open; and a closed panel leaves `canvas`, `painted_items` and `painted_grid_lines` equal to a second shell that holds no preview at all — the 52 pre-existing shell tests are untouched. Deviations: a top panel rather than a central split, `show_3d` as shell state rather than a `UiAction` (a view is not a document command, D-M5-9), and arcs flattened at half a pixel before projecting so the picture shows the cut the machine made |
 | V3 | `2d479d4` | 10 tests (`crates/cam-ui/tests/view3d.rs`), `cam-ui` at 71, `cam-desktop` at 2. Playback is a pure function of the injected delta: six deltas at speed 1 walk `cursor` 0→1→2→2→2→4 with fractions 0.5/0.25/0.2/0.6/0.9/1.0 and `elapsed` equal to their sum; the field's volumes equal the closed form of the same prefix simulated independently; a partly consumed move cuts nothing; a zero delta and a paused frame change nothing; a step advances exactly one move and applies it; `reset` restores the untouched stock cell for cell; the final field equals `sweep::apply` over the whole stream twice (one 10 s call and 40 × 0.03 s frames) on a 2 mm grid; playback stops at the end and never loops; and `DrawnState::preview_progress` is 0.0 paused, strictly between 0 and 1 after one playing frame (which proves the shell feeds the real delta), and exactly 1.0 at the end. The window's own sample is pinned the same way: untouched before playing, cut after, cell-for-cell equal to `sweep::apply`. Contract change recorded: `set_preview` now takes the untouched stock, because `reset` needs a pristine field and nothing can un-cut one |
 | D1 | _pending_ |  |
-| P1 | _pending_ |  |
+| P1 | `THIS_COMMIT` | The differential over every pre-existing subcommand, run against a copy of `master` at `0d96b36` in a scratch sandbox and against the branch in an identical one: `import`, `tools add`, `tools list`, `toolpath` for profile, offset and raster, `validate`, `inspect`, `check`, `postp validate`, and `emit` twice are byte-identical in exit code, stdout, stderr and the files they produce (the authored `.c2d`, the tool library and the emitted G-code). Exactly two differences, both additive and both asked for: `--help` gained the `simulate` block and exit code 6, and `simulate` itself exists. Running it on the mixed fixture was the milestone's first end-to-end report, and it attributed its `uncut: 48.000 mm3 over 8 cell(s)` to the two limits already recorded: the profile's four mitered corners (24 mm³ over 4 cells) and the pocket's four mitered corners (the same 24 mm³, measured by running each toolpath alone), with D-M5-12's raster strip found the same way (`uncut: 984.000 mm3 over 164 cell(s)` on a 4 mm stepover) |
 
 
 ## Log
@@ -526,3 +541,17 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   `y = 57` row (45 to 49 lines, 9 spans to 10, `N390G00Y57.0000` through `N420G00Z5.0000`). The offset
   strategy, drilling, profiles and every non-raster golden are byte-identical, which is what says the
   defect was where S5 measured it and nowhere else.
+- **L10 (execution, P1, the closing differential, and one decision left to the owner).** Every
+  pre-existing subcommand was run against a copy of `master` at `0d96b36` and against this branch in an
+  identical sandbox: twelve commands byte-identical in exit code, stdout, stderr and produced files
+  (`import`, `tools add`, `tools list`, three `toolpath` runs, `validate`, `inspect`, `check`,
+  `postp validate` and `emit` twice, including the authored `.c2d`, the SQLite library and the emitted
+  G-code), and exactly two differences — `--help` gaining the `simulate` block and exit code 6, and
+  `simulate` existing at all. The first attempt of that script measured nothing (a relative `mktemp`
+  path put the base binary where the script did not look, so every base run exited 127); it was
+  corrected and re-run rather than reported. The end-to-end report on the mixed fixture then paid for
+  itself: `uncut: 48.000 mm3 over 8 cell(s)` decomposed into the profile's four mitered corners and the
+  pocket's four, 24 mm³ each at a 1 mm cell, which is D-M5-11's arithmetic measured on a real document;
+  and the same run exposed D-M5-12, a raster lattice that stops 2 mm short of the far edge and leaves
+  `984 mm³` standing. That one is recorded and not fixed, because finishing the far edge changes M4's
+  documented raster contract — a decision for the owner, not for a simulation milestone.
