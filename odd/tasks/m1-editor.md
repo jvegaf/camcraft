@@ -1,7 +1,21 @@
 # Feature: the reference CAM application-class CAM application — Milestone M1 (2D editor shell)
 
 Program plan: `odd/roadmap.md` (M1 = "2D editor shell"). This document is the executable
-specification for M1 only. Read this file until `## Log` before implementing any task.
+specification for M1 only. Read this file until `## Evidence — commit per task
+
+| Task | Commit | Notes |
+| --- | --- | --- |
+| T1 | `45170b5` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
+| T2 | `38166d4` | camera; 11 tests incl. a round-trip property test |
+| T3 | `64e9701` | commands; 10 tests, every refusal named |
+| T4 | `ad82fac` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
+| T5 | `c9ec68f` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
+| T6 | `a83cf80` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
+| T7 | `c5ecf44` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
+| T8 | `8ecf315` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T9 | `dabe910` | this documentation close-out |
+
+## Log` before implementing any task.
 
 M0 (merged to `master` as `bbabbb2`) delivered the domain: geometry, document format, tool library,
 post-processor and the headless CLI. M1 adds the window — and only the window.
@@ -133,6 +147,20 @@ marks M1 delivered with the same evidence table style as M0, and this file recor
   GPU. Revisit trigger: entity counts that stall the CPU painter, or M5's heightfield view — whichever
   comes first. Recorded as a deviation from the roadmap's crate description in the Log (L2).
 
+## Evidence — commit per task
+
+| Task | Commit | Notes |
+| --- | --- | --- |
+| T1 | `45170b5` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
+| T2 | `38166d4` | camera; 11 tests incl. a round-trip property test |
+| T3 | `64e9701` | commands; 10 tests, every refusal named |
+| T4 | `ad82fac` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
+| T5 | `c9ec68f` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
+| T6 | `a83cf80` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
+| T7 | `c5ecf44` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
+| T8 | `8ecf315` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T9 | `dabe910` | this documentation close-out |
+
 ## Log
 
 - **L1 (user, verbatim):** "dale con m1" — authorizing this milestone after "mergea primero lo que
@@ -143,3 +171,34 @@ marks M1 delivered with the same evidence table style as M0, and this file recor
   contradicted: it stays "Rust + wgpu/egui", and the wgpu backend arrives with the 3D renderer that
   needs it, consuming the same `Scene`.
 - **L3 (plan):** this document. Base: `master` at `bbabbb2` (M0 merged), branch `feat/m1-editor`.
+- **L4 (execution, T1–T8).** Inline by the parent: the tasks form a strict dependency chain, so no two
+  are independent units of behaviour, and the writer subagent was already proven unusable in M0 rather
+  than merely unexamined — retrying it was not warranted. Every task landed as its own commit with all
+  gates green before the commit (`.scripts/check.sh`: `fmt --check`, `clippy -D warnings`,
+  `cargo test`). The suite stands at **208 tests across 17 suites**, up from 123.
+- **L5 (egui 0.37 rework).** The 0.37 line moved panels onto a root `Ui` (`egui::Panel::left(...)`
+  plus `ctx.root_ui`, and `eframe::App::ui` instead of `update`). The shell was written against the
+  current API rather than pinning an older one, and it exposes both `show(app, ctx)` for hosts that
+  only hold a context and `show_in(app, ui)` for hosts that already hold the root `Ui`.
+- **L6 (defects found during M1, all fixed at the root).**
+  (a) `AppState` started its entity counter at 1 regardless of the document, so drawing into a loaded
+  file produced a duplicate `E1`; the counter is now seeded from the document's own ids and re-seeded
+  on open.
+  (b) `Arc` bounds were obtained by tessellation, so a circle's bounds were short by the chord
+  tolerance and the viewport re-tessellated every arc every frame; bounds are now exact (endpoints
+  plus the axis extremes the sweep crosses) and a property test pins it.
+  (c) The status bar showed the previous frame's cursor, because panels are laid out before the
+  central area; pointer tracking now runs first, using the previous frame's canvas rectangle.
+  (d) Auto-framing fitted a provisional canvas reported on the first frames, leaving the drawing off
+  centre; it now waits for the canvas size to stop changing.
+- **L7 (verification honesty).** The window is the one thing automation cannot cover in this
+  environment. It was verified by building and by launching it under the running Wayland compositor
+  (`timeout` exit 124, i.e. still alive), then screenshotting it: `docs/images/editor-m1.png` shows the
+  docks, the grid, the stock outline and the sample geometry, with the circle drawn as a smooth arc.
+  That is evidence of rendering, not proof against every window-system variation, and the file records
+  it as such.
+- **L8 (test-side corrections, not implementation fixes).** Three input tests assumed the camera was
+  still at 1 px/mm after auto-framing, so their world coordinates fell outside the canvas; the
+  coordinates now sit inside the framed view. And `egui::RawInput` has no `modifiers` field: modifier
+  state reaches `InputState` only through `Event::ModifiersChanged`, which the harness now emits the
+  way a real backend does.

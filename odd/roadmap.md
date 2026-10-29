@@ -135,7 +135,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | M | Milestone | Deliverable (verifiable) | Why here |
 | --- | --- | --- | --- |
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
-| **M1** | 2D editor shell | Interactive viewport: pan/zoom/snap, entity picking, undo/redo, layer dock | Geometry only becomes usable with a viewport; all of it rides on `cam-app` already proven headless |
+| **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
 | **M2** | Vector authoring & editing | Line/polyline/arc/circle/ellipse/rectangle/polygon/star, text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy, align | The authoring half of "similar to the reference CAM application"; pure `cam-geom` work |
 | **M3** | Import & interchange | DXF, SVG, PDF, EPS, raster trace; validation report of open/self-intersecting vectors | Users bring geometry; the original's own filter list is the target set |
 | **M4** | Core toolpaths | Profile (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing; they exercise every post-processor block |
@@ -178,6 +178,29 @@ Known M0 limits, recorded so they are not discovered later: offsetting is not ar
 shrinking offset that would pass through the shape is refused, not topologically resolved); tabs split
 arcs into sub-arcs but the tab boundary itself is a straight Z move; `FEED_RATE_CHANGE` is parsed but
 never emitted because no M0 strategy changes feed mid-segment.
+
+### 4.3 M1 delivered (evidence)
+
+| Deliverable | Where | Proof |
+| --- | --- | --- |
+| Application state with exact snapshot undo/redo, bounded history | `crates/cam-app` | 12 tests; a command sequence undone five times equals the original document byte for byte |
+| Camera: world/screen mapping, zoom about the cursor, clamping, fit | `crates/cam-app` | 11 tests incl. a property test over the round trip |
+| Commands: job size, rectangle, circle, delete, layer visibility | `crates/cam-app` | 10 tests; refusals never reach the document |
+| Backend-agnostic scene and grid | `crates/cam-view` | 10 tests; arcs stay arcs, hidden layers disappear from scene and picking |
+| Picking, marquee and snapping in screen pixels | `crates/cam-view` | 13 tests incl. tie-breaks and zoom independence |
+| egui shell: panels, canvas, properties, status | `crates/cam-ui` | 16 tests running real `egui` frames headless and reading back painted text |
+| Pointer, wheel and keyboard wiring | `crates/cam-ui` | 10 tests with synthetic clicks, drags, wheel and keys |
+| Native window for Windows and Linux | `crates/cam-desktop` | builds; launched under a compositor, screenshot in `docs/images/editor-m1.png` |
+
+M1 defects found and fixed at the root: the entity id counter ignored ids already in the opened
+document (duplicate `E1`); arc bounds were computed by tessellation, so a circle's bounds were off by
+the chord tolerance and every frame re-tessellated every arc; the status bar showed the previous
+frame's cursor because panels are laid out before the central area; and auto-framing fitted a
+provisional canvas before the panel widths settled.
+
+Recorded deviation from this roadmap's crate description: `cam-view` computes a backend-agnostic
+`Scene` and the shell paints it with `egui`; a `wgpu` backend will consume the same `Scene` when the
+3D simulation (M5) needs the GPU. See the M1 feature document, decision D-M1-2.
 
 ## 5. Verification strategy
 
