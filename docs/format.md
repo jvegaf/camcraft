@@ -64,7 +64,7 @@ part.c2d
 | Schema | `schema` must equal `c2d/document@1`. Anything else is rejected naming both the found and the supported version. |
 | Geometry | A contour is an ordered list of vertices; `bulge` is the DXF bulge of the segment leaving that vertex (`0` = straight, `tan(sweep/4)` = arc, positive counter-clockwise). A full circle is two half-turn arcs. |
 | Validation | Contours are validated **on deserialisation**: too few vertices, coincident consecutive vertices and impossible bulges fail the load instead of producing geometry. |
-| References | Toolpath `entity_ids` must resolve. Profile toolpaths must reference closed contours. Ids are unique within their kind. |
+| References | Toolpath `entity_ids` must resolve. Every operation that cuts a closed contour — `profile`, `pocket`, `drilling` — must reference closed contours, and an open one is refused by name. Ids are unique within their kind. |
 | Job | `width`, `height` and `thickness` must be positive and finite. |
 | Origin | `bottom_left`, `top_left` or `center`. The mapping onto machine coordinates happens once, in the toolpath layer. |
 | Extensibility | `EntityKind` and `Operation` are internally tagged enums. An unknown tag is a **hard error**: a document written by a newer build never half-loads, it is refused by name. Because of that, adding a variant is additive and keeps the schema tag; changing what an existing field means, or its units, is what makes a `@2`. |
