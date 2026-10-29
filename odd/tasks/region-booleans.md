@@ -277,7 +277,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K3 | _pending_ | |
 | K4 | _pending_ | |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
-| P2 | _pending_ | |
+| P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
 | P3 | _pending_ | |
 | P4 | _pending_ | |
 | P5 | _pending_ | |

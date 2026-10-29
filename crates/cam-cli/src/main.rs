@@ -44,6 +44,7 @@ COMMANDS:
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
         --kind <kind>         profile, pocket or drilling (required)
         --entities <ids>      Comma-separated entity ids (required)
+    --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
         --side <side>         profile: inside, outside or on (default outside)
         --allowance <mm>      profile, pocket: material left on the vector
@@ -234,8 +235,13 @@ fn inspect(rest: &[String]) -> Result<(), Failure> {
   let mut total_length = 0.0;
   for toolpath in &document.toolpaths {
     let kind = operation_label(&toolpath.operation);
+    let islands = if toolpath.island_ids.is_empty() {
+      String::new()
+    } else {
+      format!(", {} island(s)", toolpath.island_ids.len())
+    };
     println!(
-      "  {} {:?}: {kind}, tool T{}, {} entity(ies)",
+      "  {} {:?}: {kind}, tool T{}, {} entity(ies){islands}",
       toolpath.id,
       toolpath.name,
       toolpath.tool_number,
@@ -560,6 +566,7 @@ struct ToolpathArgs {
   library: Option<PathBuf>,
   kind: Option<String>,
   entities: Option<String>,
+  islands: Option<String>,
   tool: Option<u32>,
   id: Option<String>,
   name: Option<String>,
@@ -592,6 +599,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       "--library" => args.library = Some(PathBuf::from(take("--library")?)),
       "--kind" => args.kind = Some(take("--kind")?),
       "--entities" => args.entities = Some(take("--entities")?),
+      "--islands" => args.islands = Some(take("--islands")?),
       "--tool" => args.tool = Some(parse_count(&take("--tool")?, "--tool")?),
       "--id" => args.id = Some(take("--id")?),
       "--name" => args.name = Some(take("--name")?),
@@ -654,6 +662,23 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     .collect();
   if entity_ids.is_empty() {
     return Err(Failure::input("--entities names no entity"));
+  }
+  let island_ids: Vec<String> = args
+    .islands
+    .as_deref()
+    .map(|ids| {
+      ids
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect()
+    })
+    .unwrap_or_default();
+  if !island_ids.is_empty() && kind != "pocket" {
+    return Err(Failure::input(format!(
+      "--islands is only valid with --kind pocket, not {kind:?}"
+    )));
   }
   let tool_number = args
     .tool
@@ -826,7 +851,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     id: id.clone(),
     name,
     entity_ids: entity_ids.clone(),
-    island_ids: Vec::new(),
+    island_ids: island_ids.clone(),
     tool_number,
     operation: operation.clone(),
   });
@@ -838,8 +863,13 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   cam_store::document::save_document(&destination, &document)
     .map_err(|error| Failure::input(error.to_string()))?;
 
+  let islands = if island_ids.is_empty() {
+    String::new()
+  } else {
+    format!(", {} island(s)", island_ids.len())
+  };
   println!(
-    "added {id} {}, tool T{tool_number}, {} entity(ies)",
+    "added {id} {}, tool T{tool_number}, {} entity(ies){islands}",
     operation_label(&operation),
     entity_ids.len()
   );

@@ -1342,3 +1342,107 @@ fn a_drilling_toolpath_over_a_non_circle_exits_two_and_leaves_the_document_untou
   );
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// --- P2: islands on the toolpath command (A11) ---
+
+#[test]
+fn a_pocket_records_the_islands_it_must_leave_standing() {
+  let directory = scratch("toolpath-islands");
+  let document = write_document(&directory, rectangle_contour(100.0, 100.0), None);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.layers[0].entities.push(Entity {
+    id: "E2".to_owned(),
+    kind: EntityKind::Contour {
+      contour: cam_geom::primitive::circle(Point2::new(50.0, 50.0), 10.0).expect("circle"),
+    },
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--islands",
+    "E2",
+    "--tool",
+    "1",
+    "--stepover",
+    "3",
+    "--pass-depth",
+    "6",
+    "--cut-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let reloaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(reloaded.toolpaths[1].island_ids, vec!["E2".to_owned()]);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_island_outside_the_pocket_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-island-outside");
+  let document = write_document(&directory, rectangle_contour(100.0, 100.0), None);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.layers[0].entities.push(Entity {
+    id: "E2".to_owned(),
+    kind: EntityKind::Contour {
+      contour: cam_geom::primitive::circle(Point2::new(500.0, 500.0), 10.0).expect("circle"),
+    },
+  });
+  save_document(&document, &loaded).expect("saved");
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--islands",
+    "E2",
+    "--tool",
+    "1",
+    "--stepover",
+    "3",
+    "--pass-depth",
+    "6",
+    "--cut-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert!(outcome.stderr.contains("E2"), "{}", outcome.stderr);
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn islands_on_a_profile_exit_two_naming_the_flag() {
+  let directory = scratch("toolpath-island-kind");
+  let document = write_document(&directory, rectangle_contour(100.0, 100.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "profile",
+    "--entities",
+    "E1",
+    "--islands",
+    "E1",
+    "--tool",
+    "1",
+    "--pass-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("--islands") && outcome.stderr.contains("pocket"),
+    "the refusal names the flag and the operation it belongs to: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
