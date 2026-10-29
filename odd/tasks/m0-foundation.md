@@ -39,13 +39,32 @@ against.
   formatting, and the 15 output blocks (`HEADER`, `FOOTER`, `INITIAL_RAPID_MOVE`, `RAPID_MOVE`,
   `FIRST_RAPID_MOVE`, `PLUNGE_MOVE`, `FIRST_FEED_MOVE`, `FEED_MOVE`, `RETRACT_MOVE`,
   `FIRST_CW_ARC_MOVE`, `CW_ARC_MOVE`, `FIRST_CCW_ARC_MOVE`, `CCW_ARC_MOVE`, `FEED_RATE_CHANGE`,
-  `NEW_SEGMENT`, `TOOLCHANGE`). Malformed input fails with a `line:column` diagnostic, never silently.
+  `NEW_SEGMENT`, `TOOLCHANGE` — **16 blocks**; the earlier "15" in this document was a miscount, and
+  the `VAR` form also carries an optional fifth scale field, both corrected during T8/T9 and recorded
+  in the analysis report §6). Malformed input fails with a `line:column` diagnostic, never silently.
 - **A6** — Rounding and number formatting happen **only** in the emitter, driven by the `decimals`
   field of each `VAR` declaration.
 - **A7** — No the vendor `.pp` file is committed to this repository; fixtures are authored by us.
 - **A8** — The whole M0 behaviour is reachable through `cam-cli` with a stable exit-code and stdout
   contract, so every check runs headless on Windows and Linux.
 - **A9** — Identical input produces byte-identical G-code across runs and across platforms.
+
+## Evidence — commit per task
+
+| Task | Commit | Notes |
+| --- | --- | --- |
+| T1 | `9405bb8` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0 |
+| T2 | `3a0aaae` | `cam-units`; 10 tests green, incl. 3 property tests |
+| T3 | `7ffbd98` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
+| T4 | `6b15cad` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
+| T5 | `3d298f6` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected |
+| T6 | `3e0758c` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite |
+| T7 | `62fd277` | SQLite tool library; 7 tests green, incl. a real v1→v2 migration of a hand-built legacy file |
+| T8 | `83dead6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line |
+| T9 | `a3cb385` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal |
+| T10 | `1621854` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping) |
+| T11 | `78ad9e9` | CLI + end-to-end golden program through the real binary; 12 tests green |
+| T12 | `HEAD` | `README.md`, `docs/format.md`, roadmap status, corrected evidence |
 
 ## Tasks
 
@@ -70,11 +89,13 @@ library) and at T12 (docs) if either grows beyond a single reviewable unit.
 
 ### Task detail
 
-**T1 — Workspace skeleton.** `cargo` workspace with `crates/cam-units`, `cam-geom`, `cam-model`,
-`cam-store`, `cam-post`, `cam-toolpath`, `cam-cli`. Each crate has a doc comment stating its
-responsibility and what it must not depend on (`cam-geom` must not depend on `cam-store`; nothing in
-M0 depends on a UI crate). `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check` green.
-Checks: the three commands above, exit code 0.
+**T1 — Workspace skeleton.** `cargo` workspace with `crates/cam-units`, `cam-geom`, `cam-move`,
+`cam-model`, `cam-store`, `cam-post`, `cam-toolpath`, `cam-cli`. Each crate has a doc comment stating
+its responsibility and what it must not depend on (`cam-geom` must not depend on `cam-store`; nothing
+in M0 depends on a UI crate). Dependency direction: `cam-units` < `cam-geom` < `cam-move` <
+`cam-model` < `cam-store`; `cam-post` depends on `cam-move`; `cam-toolpath` on `cam-geom` +
+`cam-move`; `cam-cli` on all. `cargo test`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo fmt --check` green. Checks: the three commands above, exit code 0.
 
 **T2 — Units.** `Length` (millimetres `f64`), `Angle`, `UnitSystem::{Mm, Inch}`, conversion helpers
 used only at the document boundary, and a `Format` type that produces fixed-decimal text without
@@ -165,3 +186,49 @@ record the commit holding each task. No behaviour change.
   the other depth-variant strategies, so those are scheduled as M6–M8 rather than folded into the
   core toolpath milestone; nesting (D4) is M9. M0 deliberately contains no strategy beyond `profile`
   so the vertical slice stays reviewable.
+- **L6 (deviation from the roadmap crate list):** a ninth crate, `cam-move`, holds the canonical
+  move vocabulary (`Rapid`, `Feed`, `Arc`, `Plunge`, `Retract`, `ToolChange`, `MoveStream`). Without
+  it, either `cam-post` would depend on the whole `cam-toolpath` engine or the move types would live
+  inside the emitter, and both invert the intended dependency direction: the toolpath produces the
+  stream, the emitter consumes it, and each must be testable alone. The roadmap's crate list is
+  amended accordingly rather than left contradicting the code.
+- **L7 (execution, T1–T2):** delegation unavailable — `gentle-ai-worker` failed twice with
+  "assistant reported an error" and no detail, so both tasks were executed inline by the parent. T2
+  produced two RED observations, and both were defects in the *tests*, not the implementation:
+  (a) `Format::fixed(2).apply(1.005)` cannot be `1.01` because 1.005 is 1.00499999999999989 in
+  binary — the expectation assumed decimal semantics; (b) the negative-zero property rejected 1024
+  generated cases, so the strategy was rebuilt with `prop_flat_map` to generate only values that
+  provably round to zero. Both corrected and the binary-value behaviour is now pinned by
+  `format_rounds_the_binary_value_not_the_decimal_literal`.
+- **L8 (slice boundary):** the T1+T2 slice measured 493 authored changed lines (mostly the crate
+  scaffolds). Recorded here per the review-workload rule; T3 and T4 are split into their own
+  commits so the geometry review stays small.
+- **L9 (execution, T3–T4).** T3 came in at 1,390 lines and T4 at ~690: both are past the ~400-line
+  review slice, so the review-workload risk is named here rather than discovered later. Mitigation
+  applied from T5 on: one task per commit, and the remaining tasks are individually smaller. T3 can
+  still be reviewed per file, since `point`/`arc`/`contour`/`chain` have no cross-dependencies beyond
+  the shared error type.
+  T4 exposed two genuine defects that the tests caught and that the implementation now explains:
+  (a) `Contour::tessellate` did not close the ring, leaving a duplicated final vertex, which became
+  a zero-length segment and then a *spurious* self-intersection that flattened every offset; (b)
+  offsetting a circle built from two half arcs tried to intersect a circle with itself, because two
+  concentric offsets are a smooth continuation, not a corner. Both are now handled at the root,
+  with the reasoning recorded in the source. clippy also caught `Option::is_none_or` (stable in
+  1.82) against the workspace MSRV of 1.80, which was the only lint failure.
+- **L10 (execution, T5–T11).** Every task landed as its own commit with all gates green before the
+  commit was made (`scripts/check.sh`: `fmt --check`, `clippy -D warnings`, `cargo test`). The suite
+  stands at **123 tests across 13 suites**. Three implementation findings worth keeping:
+  (a) T10 exposed a genuine kernel defect — shrinking a contour past its own inradius returned a
+  valid-looking *mirrored* contour, so a tool that does not fit would have cut the wrong path; the
+  offset now refuses when a shrinking offset's vertices sit far closer to the original boundary than
+  the offset distance, and the reason is recorded in the source as a guard rather than a topological
+  solution.
+  (b) T11 pinned a property that matters for leads and tabs: the offset contour starts at the corner
+  nearest the authored start vertex, so a lead-in does not move to a different corner when a tool
+  radius is applied. A cam-geom test now locks that.
+  (c) The `emit` contract refuses to invent a tool: without a library or `tools_ref` it exits 2
+  naming the missing tool data, instead of defaulting to some diameter.
+- **L11 (scope note).** M0 shipped exactly the acceptance criteria A1–A9 and no more: one strategy,
+  no UI crate, no importers. The 16-block dialect is implemented but `FEED_RATE_CHANGE` is never
+  emitted yet, because no M0 strategy changes feed rate inside a segment; the block is parsed and
+  documented so M4 does not have to re-open the format.

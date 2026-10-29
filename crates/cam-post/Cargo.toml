@@ -1,0 +1,13 @@
+[package]
+name = "cam-post"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-move.workspace = true
+cam-units.workspace = true
+cam-geom.workspace = true
+thiserror.workspace = true
