@@ -12,9 +12,8 @@
 //! Geometry is never tessellated here: offset rings keep their arcs, and a raster row's ends are true
 //! line/arc intersections.
 
-use cam_geom::intersect::{intersect, Intersections};
 use cam_geom::region::Region;
-use cam_geom::{Bounds, Contour, LineSeg, Point2, Segment, DEFAULT_TOLERANCE};
+use cam_geom::{Bounds, Contour, Point2, DEFAULT_TOLERANCE};
 use cam_model::{Job, PocketParams, PocketStrategy};
 use cam_move::{Move, Point3};
 use cam_units::Length;
@@ -124,7 +123,7 @@ pub fn pocket(request: &PocketRequest<'_>) -> Result<Pocketpath, ToolpathError> 
       }
     }
     PocketStrategy::Raster => {
-      let (rows, flattened) = raster_rows(request.contour, inset, stepover)?;
+      let (rows, flattened) = raster_rows(request.contour, request.islands, inset, stepover)?;
       Geometry::Rows { rows, flattened }
     }
   };
@@ -280,36 +279,25 @@ fn offset_rings(
 ///
 /// The inset region comes from the kernel too, so the distance proof is the same one the ring path
 /// uses and a pocket wider than the tool is never rastered over material it should leave standing.
-/// Islands do not reach this path yet: a raster request's islands are not clipped, which is the next
-/// task's contract, not a silent acceptance here.
+/// The rows themselves are the kernel's [`Region::raster_spans`] (A13), which clips a row against
+/// **every** boundary of the region and pairs the crossings even-odd: a row that crosses an island is
+/// therefore cut as two spans, never as one, and a contour the inset split into pieces is clipped
+/// against every piece. The region is the same one the ring path cuts — the boundary plus the
+/// request's islands — because an island *is* a boundary of it (A3), not a separate mode.
+///
+/// An island-free pocket is clipped exactly the way M4's single-contour path clipped it (A15).
 fn raster_rows(
-  contour: &Contour,
+  boundary: &Contour,
+  islands: &[&Contour],
   inset: f64,
   stepover: f64,
 ) -> Result<(Vec<Row>, bool), ToolpathError> {
-  let offset = pocket_region(contour, &[])?
+  let offset = pocket_region(boundary, islands)?
     .offset(inset, DEFAULT_TOLERANCE)
     .map_err(|error| ToolpathError::OffsetCollapsed {
       reason: error.to_string(),
     })?;
   let bounds = region_bounds(&offset.region);
-  // Clipping against every boundary, not against one contour: the kernel may hand back more than
-  // one piece, and a row that crosses a second piece must be cut as two spans, never as one.
-  let segments: Vec<Segment> = offset
-    .region
-    .boundaries
-    .iter()
-    .flat_map(|boundary| boundary.segments())
-    .collect();
-  // The raster line reaches well past the region on both sides so it always crosses the boundary
-  // instead of ending on it.
-  let reach = bounds.width().max(bounds.height()) + 10.0;
-  let line = |y: f64| {
-    LineSeg::new(
-      Point2::new(bounds.min.x - reach, y),
-      Point2::new(bounds.max.x + reach, y),
-    )
-  };
 
   let mut rows = Vec::new();
   let mut index = 0usize;
@@ -318,18 +306,43 @@ fn raster_rows(
     if y > bounds.max.y {
       break;
     }
-    // An ambiguous clipping is retried once just inside the region, then dropped: half a row is
-    // worse than no row, because it leaves the tool in material it cannot reach from the other side.
-    let spans =
-      row_spans(&segments, line(y)).or_else(|| row_spans(&segments, line(y + ROW_RETRY_NUDGE)));
-    if let Some(spans) = spans {
+    // A row that misses the material is an empty span list, not an ambiguous one: nothing is cut,
+    // and neither an empty nor a dropped row is emitted — half a row is worse than no row, because
+    // it leaves the tool in material it cannot reach from the other side.
+    if let Some((row_y, spans)) = row_spans(&offset.region, y) {
       if !spans.is_empty() {
-        rows.push(spans);
+        rows.push(
+          spans
+            .into_iter()
+            .map(|(left, right)| (Point2::new(left, row_y), Point2::new(right, row_y)))
+            .collect(),
+        );
       }
     }
     index += 1;
   }
   Ok((rows, offset.flattened))
+}
+
+/// The spans of one raster row, and the `y` they were really clipped at.
+///
+/// The ends are true intersections with the region's boundaries, never tessellated approximations,
+/// and the parity rule is the kernel's (A7): every crossing's x is collected, sorted, deduped and
+/// paired even-odd, so one row across an island is two spans.
+///
+/// A row that lands on a boundary edge or on a tangency comes back from the kernel as ambiguous
+/// (`None`): a leftover odd crossing cannot be paired honestly. That row is retried once a hair
+/// inside ([`ROW_RETRY_NUDGE`]) and dropped if the retry is ambiguous too. The **retried** height is
+/// returned with the spans, because that is the height they honestly lie on — emitting a tangent
+/// row's ends at the nominal `y` would put them off the curve they were clipped against.
+fn row_spans(region: &Region, y: f64) -> Option<(f64, Vec<(f64, f64)>)> {
+  if let Some(spans) = region.raster_spans(y, DEFAULT_TOLERANCE) {
+    return Some((y, spans));
+  }
+  let retried = y + ROW_RETRY_NUDGE;
+  region
+    .raster_spans(retried, DEFAULT_TOLERANCE)
+    .map(|spans| (retried, spans))
 }
 
 /// The box containing every boundary of a region.
@@ -340,46 +353,6 @@ fn region_bounds(region: &Region) -> Bounds {
     .fold(Bounds::empty(), |bounds, boundary| {
       bounds.union(boundary.bounds())
     })
-}
-
-/// Clip one raster row against the region, or `None` when the clipping is ambiguous.
-///
-/// The ends are true intersections with the boundary segments, never tessellated approximations:
-/// every crossing point's x is collected, sorted, deduped within the offset tolerance and paired
-/// even-odd into spans. A leftover odd point is a tangency and a `Coincident` result is a row lying
-/// along a straight boundary; neither can be paired, so neither is cut.
-fn row_spans(segments: &[Segment], line: LineSeg) -> Option<Row> {
-  let mut xs = Vec::with_capacity(segments.len());
-  for segment in segments {
-    match intersect(Segment::Line(line), *segment, DEFAULT_TOLERANCE) {
-      Intersections::Coincident => return None,
-      intersections => xs.extend(intersections.points().into_iter().map(|point| point.x)),
-    }
-  }
-  xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-  // Two segments meeting at a vertex both report that vertex, so the shared crossing is deduped
-  // before pairing.
-  let mut unique: Vec<f64> = Vec::with_capacity(xs.len());
-  for x in xs {
-    if unique
-      .last()
-      .map_or(true, |last| (x - last).abs() > DEFAULT_TOLERANCE)
-    {
-      unique.push(x);
-    }
-  }
-  if unique.len() % 2 != 0 {
-    return None;
-  }
-
-  let y = line.start.y;
-  Some(
-    unique
-      .chunks(2)
-      .map(|pair| (Point2::new(pair[0], y), Point2::new(pair[1], y)))
-      .collect(),
-  )
 }
 
 /// Cut one closed ring, keeping its arcs as arcs (S8).
