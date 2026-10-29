@@ -19,6 +19,7 @@ mod chain;
 mod contour;
 pub mod offset;
 mod point;
+pub mod primitive;
 mod segment;
 
 pub use arc::Arc;
@@ -57,6 +58,12 @@ pub enum GeomError {
   #[error("offset collapsed the contour: {reason}")]
   OffsetCollapsed {
     /// What collapsed.
+    reason: &'static str,
+  },
+  /// A builder was asked for a shape that cannot exist.
+  #[error("invalid primitive: {reason}")]
+  InvalidPrimitive {
+    /// What made the request impossible.
     reason: &'static str,
   },
 }

@@ -8,7 +8,7 @@
 //! applying a command is a pure function of its arguments. That is what makes golden tests and bug
 //! reports reproducible.
 
-use cam_geom::{Contour, Point2, Vertex};
+use cam_geom::{primitive, Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, ModelError};
 
 /// One user-visible edit.
@@ -96,7 +96,8 @@ impl Command {
         require_positive("rectangle width", *width)?;
         require_positive("rectangle height", *height)?;
         ensure_id_is_free(document, entity_id)?;
-        let contour = rectangle_contour(*at, *width, *height)?;
+        let contour = primitive::rectangle(*at, *width, *height)
+          .map_err(|error| CommandError::Geometry(error.to_string()))?;
         push_entity(document, layer_id, entity_id, contour)
       }
       Self::AddCircle {
@@ -107,7 +108,8 @@ impl Command {
       } => {
         require_positive("circle radius", *radius)?;
         ensure_id_is_free(document, entity_id)?;
-        let contour = circle_contour(*at, *radius)?;
+        let contour = primitive::circle(*at, *radius)
+          .map_err(|error| CommandError::Geometry(error.to_string()))?;
         push_entity(document, layer_id, entity_id, contour)
       }
       Self::DeleteEntity { entity_id } => {
@@ -194,30 +196,4 @@ fn push_entity(
     kind: EntityKind::Contour { contour },
   });
   Ok(())
-}
-
-/// A counter-clockwise rectangle starting at `at`.
-fn rectangle_contour(at: Point2, width: f64, height: f64) -> Result<Contour, CommandError> {
-  Contour::from_points(
-    &[
-      at,
-      Point2::new(at.x + width, at.y),
-      Point2::new(at.x + width, at.y + height),
-      Point2::new(at.x, at.y + height),
-    ],
-    true,
-  )
-  .map_err(|error| CommandError::Geometry(error.to_string()))
-}
-
-/// A circle expressed as two half-turn arcs, because an arc may never be a full turn.
-fn circle_contour(center: Point2, radius: f64) -> Result<Contour, CommandError> {
-  Contour::new(
-    vec![
-      Vertex::new(Point2::new(center.x + radius, center.y), 1.0),
-      Vertex::new(Point2::new(center.x - radius, center.y), 1.0),
-    ],
-    true,
-  )
-  .map_err(|error| CommandError::Geometry(error.to_string()))
 }
