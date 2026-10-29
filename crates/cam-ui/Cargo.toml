@@ -9,8 +9,10 @@ publish.workspace = true
 [dependencies]
 egui.workspace = true
 cam-app.workspace = true
+cam-geom.workspace = true
 cam-view.workspace = true
 
 [dev-dependencies]
+egui.workspace = true
 cam-geom.workspace = true
 cam-model.workspace = true

@@ -219,3 +219,61 @@ fn replacing_the_document_resets_history_and_selection() {
   assert!(app.selection().is_empty());
   assert!(!app.is_dirty());
 }
+
+#[test]
+fn entity_ids_continue_after_the_ids_already_in_the_document() {
+  // Opening a document that already contains E1..E3 and then drawing must not reuse an id.
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(cam_model::Layer {
+    id: "L1".to_owned(),
+    name: "Layer".to_owned(),
+    visible: true,
+    entities: (1..=3)
+      .map(|index| cam_model::Entity {
+        id: format!("E{index}"),
+        kind: cam_model::EntityKind::Contour {
+          contour: cam_geom::Contour::from_points(
+            &[
+              cam_geom::Point2::new(0.0, 0.0),
+              cam_geom::Point2::new(10.0, 0.0),
+              cam_geom::Point2::new(10.0, 10.0),
+            ],
+            true,
+          )
+          .expect("triangle"),
+        },
+      })
+      .collect(),
+  });
+  let mut app = AppState::new(document);
+  assert_eq!(app.next_entity_id(), "E4");
+  assert_eq!(app.next_entity_id(), "E5");
+}
+
+#[test]
+fn replacing_the_document_also_ressets_the_id_counter() {
+  let mut app = state();
+  assert_eq!(app.next_entity_id(), "E1");
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(cam_model::Layer {
+    id: "L1".to_owned(),
+    name: "Layer".to_owned(),
+    visible: true,
+    entities: vec![cam_model::Entity {
+      id: "E41".to_owned(),
+      kind: cam_model::EntityKind::Contour {
+        contour: cam_geom::Contour::from_points(
+          &[
+            cam_geom::Point2::new(0.0, 0.0),
+            cam_geom::Point2::new(10.0, 0.0),
+            cam_geom::Point2::new(10.0, 10.0),
+          ],
+          true,
+        )
+        .expect("triangle"),
+      },
+    }],
+  });
+  app.replace_document(document);
+  assert_eq!(app.next_entity_id(), "E42");
+}

@@ -113,13 +113,14 @@ pub struct AppState {
 impl AppState {
   /// Start editing `document` with an empty history.
   pub fn new(document: Document) -> Self {
+    let next_entity = next_free_entity_number(&document);
     Self {
       document,
       camera: Camera::default(),
       selection: Selection::default(),
       history: History::default(),
       dirty: false,
-      next_entity: 1,
+      next_entity,
     }
   }
 
@@ -145,6 +146,7 @@ impl AppState {
 
   /// Replace the document wholesale, clearing history and selection. Used when opening a file.
   pub fn replace_document(&mut self, document: Document) {
+    self.next_entity = next_free_entity_number(&document);
     self.document = document;
     self.selection = Selection::default();
     self.history = History::default();
@@ -256,4 +258,22 @@ impl AppState {
   pub fn document_json(&self) -> Value {
     serde_json::to_value(&self.document).unwrap_or(Value::Null)
   }
+}
+
+/// The first `E<n>` identifier not already used by `document`.
+///
+/// Starting the counter at 1 regardless of what the file already contains is how a drawing session
+/// ends up with two entities called `E1` and a silently broken selection.
+fn next_free_entity_number(document: &Document) -> u64 {
+  let highest = document
+    .entities()
+    .filter_map(|entity| {
+      entity
+        .id
+        .strip_prefix('E')
+        .and_then(|rest| rest.parse::<u64>().ok())
+    })
+    .max()
+    .unwrap_or(0);
+  highest + 1
 }
