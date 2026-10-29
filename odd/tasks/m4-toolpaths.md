@@ -62,10 +62,19 @@ against.
 - **A4** — Offset pocket emits one closed ring per stepover, outermost first, until the inward offset
   collapses; rings keep their arcs as arcs (S8) and the ring count is reported. A tool that does not
   fit the region at all is refused by name (`OffsetCollapsed`), never emitted as a degenerate path.
+  Corrected while implementing (L8): the offset kernel's own refusals do not end the ringing. A shrink
+  wider than a feature can come back as a well-formed smaller ring with unchanged winding, after which
+  the rings grow — a gouging ring and an endless loop. A ring therefore also has to prove that every
+  vertex really sits the requested distance inside the boundary (D-M4-9).
 - **A5** — Raster pocket emits parallel rows at `stepover` spacing spanning the region's extent, each
   row clipped to the region exactly: span ends are true line/arc intersections, not tessellated
   approximations, and a row whose clipping is ambiguous (tangent, or collinear with a boundary segment)
-  is nudged and retried once or skipped — never emitted with an unpaired span.
+  is nudged and retried once or skipped — never emitted with an unpaired span. Two details settled by
+  the implementation (L8): rows sit on the grid `min.y + k*stepover` and the last one is the last grid
+  line that fits, so a 94 mm-tall region at 3 mm gives 32 rows ending at `min.y + 93` (the "…97" this
+  criterion first stated was arithmetic that cannot be reached on that grid); and the retry nudge is
+  `1e-5` mm, ten times the kernel tolerance, because retrying exactly at the ambiguity band's edge can
+  come back ambiguous again.
 - **A6** — Both pocket modes chunk depth with the same rule profile already uses (equal steps of
   `pass_depth`, the last pass exactly at `cut_depth`) and cut every ring/row at each depth, shallow to
   deep, retracting to `safe_z` between them.
@@ -139,6 +148,18 @@ against.
   rapids than a hand-written program.
 - **D-M4-7 — Raster rows run along X at the given stepover; no raster angle in M4.** S2 names "raster +
   offset", not raster direction. A `raster_angle` is an additive parameter for a later milestone.
+- **D-M4-9 — A ring must prove it is the offset it claims to be.** `cam-geom`'s offsetter refuses an
+  offset that crosses the shape's interior, but not every over-shrink is refused: a 3 mm square inset
+  by 2 mm comes back as a well-formed 1 mm ring with its winding unchanged, and the next ring grows.
+  Trusting that would emit a ring that cuts the wall and never terminate. Every ring is therefore
+  checked against the original boundary (each vertex at least `distance − 0.002 mm` away, the slack
+  being one chord sagitta of the kernel's 0.001 mm flattening tolerance), and the same check decides
+  whether the raster inset region is usable. This is a guard in the strategy, not a fix in the kernel:
+  the kernel limit stays recorded in the roadmap (§4.2) and belongs to whoever builds arrangement-based
+  offsetting.
+- **D-M4-10 — A raster row with several spans retracts between spans, not only between rows.** A row
+  crossing a non-convex region twice cannot link its spans at depth without crossing material, so
+  D-M4-6's rule applies inside a row as well. Cost: more rapids on concave pockets.
 - **D-M4-8 — No toolpath UI in M4.** The roadmap's deliverable for M4 is the strategies and their
   blocks, and S6 makes the CLI the contract; the toolpath panel is UI work that rides on `cam-app`
   commands, which do not exist for toolpaths yet. Recorded so the missing panel is a decision, not a
@@ -258,7 +279,7 @@ Tests (every one asserts moves, not internals): a 100x100 square with a 6 mm too
 yields 12 offset rings at insets 3, 7, … 47, each a rectangle of side `100 - 2*inset`; the same square
 rastered gives 32 rows at y = 3, 6, … 97 spanning x 3…97; a 5 mm pass depth on an 12 mm cut gives passes
 `[5, 10, 12]` and every ring/row appears once per pass; `allowance = 1.0` moves every transition 1 mm
-inward; a 4 mm tool in a 5 mm pocket is refused as `OffsetCollapsed`; a circle's raster spans match the
+inward; a 4 mm tool in a 3 mm pocket is refused as `OffsetCollapsed`; a circle's raster spans match the
 analytic chord length of the inset circle within 1e-6; a raster row exactly tangent to a circle produces
 no unpaired span; an arc-bearing rounded rectangle keeps `Move::Arc` moves in its offset rings and none
 in its raster rows; a zero stepover is refused as `InvalidStepover`; an open contour is refused; the
@@ -320,7 +341,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 | Task | Commit | Notes |
 | --- | --- | --- |
 | T1 | `a263b28`, `9eb1326` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `61e1df5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
-| T2 | _pending_ | |
+| T2 | `35cdf4f` (merge `432e0d4`) | 12 tests. 12 rings at insets 3, 7, … 47 and 32 rows at y = 3, 6, … 96 on a 100 mm square with a 6 mm tool; `[5, 10, 12]` pass chunking with every ring once per pass; allowance shifts every ring and row by exactly 1 mm; analytic chord widths on a circle within 1e-6; arcs kept in rings and absent from rows; tangent row emits no unpaired span; refusals by name. Four spec disagreements found and fixed in the spec rather than worked around (L8) |
 | T3 | `1382e97` (merge `5201ab4`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
 | T4 | `9fa671e` (merge `229a68d`) | 7 bank tests added, the T3 placeholder `a_drill_bank_is_ignored_in_this_task` removed because it pinned exactly what T4 reverses; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm, `bank_travel = 60 mm` against `rapid_length = 120 mm`. A differential check against the base commit showed the un-banked program byte-identical through `toolpath`, `emit` and `inspect`, with banked `emit` differing only in the compensated X |
 | T5 | _pending_ | |
@@ -363,6 +384,20 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   have made the report lie. The CLI's selection summary is best-effort by construction: it prints the
   real strategy's answer when the tool and geometry allow it and says why otherwise, while the append
   itself cannot fail on it.
+- **L8** — Slice 2 evidence, pocket: T2 in `35cdf4f`, merged `432e0d4`; 12 tests, 604 total, gates
+  green. RED was real (all 12 failed against the stub). Four spec defects were found by implementing
+  rather than by reading, and all four are corrected above instead of quietly satisfied:
+  (a) the ring stop rules were insufficient — a shrink wider than a feature returns a valid smaller
+  ring with unchanged winding and the rings then grow, so D-M4-9 adds a distance proof, without which
+  a 3 mm square pocketed by a 4 mm tool emits a wall-gouging ring and loops forever;
+  (b) the raster row example said "32 rows at y = 3, 6, … 97", arithmetic that cannot hold on the
+  declared grid (32 rows end at 96);
+  (c) the retry nudge `1e-6` equalled the kernel tolerance, so a retried row could land back on the
+  ambiguity band and be dropped for nothing — it is now `1e-5`;
+  (d) "a 4 mm tool in a 5 mm pocket is refused" is false: a 2 mm inset leaves a 1 mm region the tool
+  fits, which is an ordinary pocket with uncleared corners. The refusal test uses a 3 mm pocket.
+  Also recorded: rows sit exactly on the inset region's lower edge, so the first row is the one that
+  needs the retry, and `Pocketpath.rings` counts rows that emitted at least one span.
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
