@@ -67,6 +67,11 @@ no new scope.
   boundaries inward, holes outward (their `offset_contour` sign is the opposite), then normalizes and
   drops every piece that is closer than `|distance|` to any **original** boundary. The distance proof is
   D-M4-9's rule generalised from one contour to a region, and it is what makes the shrinking terminate.
+  Settled while implementing (L8, D-RB-9): the sign comes from the **parity of the boundary's nesting
+  depth**, and "any original boundary" is literal — a 100 mm square offset by 55 mm does not fail in
+  `offset_contour` at all, it comes back as a well-formed 10 mm ring whose vertices are 45 mm from two of
+  the walls, so measuring the proof against the piece's own boundary keeps a ring that gouges the far
+  wall.
 - **A7** — `Region::raster_spans(y, tolerance) -> Vec<(f64, f64)>` returns the x spans of material at
   height `y`, computed by intersecting the row against every boundary and pairing crossings even-odd —
   the same rule M4's raster pocket already implements against one contour, now against a region.
@@ -125,6 +130,14 @@ no new scope.
   This does not weaken the pocket: an island that overlaps its boundary, and two islands that overlap,
   are refused by validation (A9), so a valid pocket never needs a union — it needs subtraction, which
   parity gives for free.
+- **D-RB-9 — The offset distance proof is measured against every original boundary, and it is the only
+  thing that ends a shrink.** `offset_contour` refuses an offset that crosses the shape's *interior*, but
+  an over-shrink of a square by more than half its width comes back as a well-formed smaller ring whose
+  vertices sit the requested distance from two walls and much less from the other two. The proof
+  therefore tests each surviving piece against all original boundaries, not against the one it came
+  from, and a piece that fails is dropped whole (M4's per-ring granularity). Refusing rather than
+  trimming at the vertex level is the recorded limit: finer trimming would keep more material and is a
+  later refinement.
 - **D-RB-7 — No UI in this feature.** Same boundary as D-M4-8: the authoring surface is
   `cam-cli toolpath`. The shell keeps its M2 authoring surface and gains nothing here.
 
@@ -287,7 +300,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K1 | this commit | 9 tests (`crates/cam-geom/tests/winding.rs`). Analytic winding with arcs, `Membership::{Outside, OnBoundary, Inside}`, tolerance-driven boundary test, open contours enclose nothing, and a property test against a fine tessellation over three shapes (a circle, a four-bulge shape, a three-arc shape) |
 | K2 | this commit | 11 tests (`crates/cam-geom/tests/relation.rs`): circle in square and the inverse, arc in arc, overlapping squares, plate crossing a circle, disjoint squares, shared edge, internal tangency, identical contours, the C notch (bounds contain, geometry does not), the tolerance changing "meeting" into "apart", and a property test for antisymmetry |
 | K3 | `85b4b6e` | 15 tests. Overlapping squares → 2 contours, 6 vertices, 75 mm² each (parity, D-RB-8); touching squares → 1 contour of 200 mm² whose perimeter is 60 mm, so the shared edge is not doubled; square + edge-crossing circle → 74.867 + 25.133 mm² with every surviving arc at radius 4 and its original centre; a plus sign (4 crossings) → 4 contours of 100 mm²; a bulge the model cannot hold is rebuilt and `flattened` says so; determinism vertex-for-vertex; a property test that a normalized region's `contains` agrees with the original's. Two decidability limits are refused by name instead of guessed: an arrangement finer than the tolerance, and a boundary that crosses itself (A4 only asks about crossings between boundaries) |
-| K4 | _pending_ | |
+| K4 | `49e2dc8` | 14 tests. A 100 mm square inset by 10 → bounds (10,10)–(90,90), area 6400, every vertex 10.0 mm from its wall. A square with a centred r10 island inset by 8 → outer ring 84 mm wide, island ring r18 (area 1017.876), every vertex clearing both originals. An odd-depth hole grows: area 314.159 → 706.858. Nested parity (square / hole / boss) → 90, 70, 10 mm widths. Over-shrink and wider-than-material both refused where a naive `offset_contour` returns a well-formed gouging ring (the D-M4-9 evidence). A row crossing the island → spans at `50 ± √91`; a tangent row → `None`; a row along a boundary → `None`; `Some(vec![])` when the row misses. A U bracket's narrow arms flatten and say so |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
 | P3 | _pending_ | |
@@ -308,6 +321,16 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L8** — K4 evidence: 14 tests, 671 in the workspace, gates green. One decision was genuinely missing
+  from the spec and the answer is the most valuable thing this task produced: the distance proof has to
+  be measured against **every** original boundary (D-RB-9), because the offset kernel happily returns a
+  well-formed ring for a shrink wider than the material. Three more recorded: crossing input is refused
+  rather than normalized internally, since the proof needs the boundaries to *be* the material boundary
+  (D-RB-8 made a crossing list a parity statement, not an outline); `Some(empty)` means the row misses
+  the material while `None` means the row is ambiguous, which keeps M4's retry policy where it belongs;
+  and the flattening fixture had to become a U bracket because a dumbbell's neck makes `offset_contour`
+  refuse with `DegenerateArc` before self-intersection removal runs — a kernel limit, recorded, not
+  fixed, because `offset.rs` is outside this feature.
 - **L7** — K3 evidence: 15 tests, 657 in the workspace, gates green. Three spec corrections, none of them
   cosmetic. (1) The task text asked for overlapping squares to normalize to "one contour with the
   expected area" and a crossing configuration to reach "the analytic union area" — with even-odd
