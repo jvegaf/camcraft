@@ -180,6 +180,7 @@ Text variables need no declaration: `TOOLPATH_NAME`, `PATHNAME`, `FILE_NAME`, `F
 | `tools add <library> --id --diameter --number` | Add or replace a tool |
 | `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> [--islands <ids>] --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); `--islands` is a pocket-only list of contours to leave standing; see [m4-toolpaths.md](m4-toolpaths.md) and [region-booleans.md](region-booleans.md) |
 | `emit <document> --post <file> [--out <path>] [--library <path>]` | Compute toolpaths and write the program |
+| `simulate <document> [--library <path>] [--resolution <mm>]` | Simulate the program's material removal over the stock and print the report: removed volume, through-cut cells, gouge, uncut material and every crash. `--resolution` is the cell size in mm (default 1); the deviation tolerance that separates "gouge" from "uncut" is an eighth of a cell |
 
 Machine output goes to **stdout**, diagnostics to **stderr**.
 
@@ -190,3 +191,4 @@ Machine output goes to **stdout**, diagnostics to **stderr**.
 | `3` | Unsupported document schema |
 | `4` | Post-processor error, including a program the post cannot express |
 | `5` | The document has vector issues (`check` only): open, self-intersecting or degenerate geometry |
+| `6` | The simulation found gouge, uncut material or a crash (`simulate` only); the report says which |
