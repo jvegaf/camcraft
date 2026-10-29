@@ -107,6 +107,7 @@ dependencies = [
  "cam-store",
  "cam-toolpath",
  "cam-units",
+ "zip",
 ]
 
 [[package]]

@@ -34,6 +34,26 @@ fn options() -> OffsetOptions {
 }
 
 #[test]
+fn the_offset_starts_at_the_corner_nearest_the_authored_start() {
+  // Lead-ins and tab positions are measured from the start of the contour, so the offset has to keep
+  // pointing at the same place instead of silently rotating the path.
+  let contour = rect(40.0, 20.0);
+  let offset = offset_contour(&contour, 3.0, &options()).expect("offset");
+  let start = contour.vertices()[0].point;
+  let nearest = offset
+    .contour
+    .vertices()
+    .iter()
+    .map(|vertex| vertex.point.distance_to(start))
+    .fold(f64::INFINITY, f64::min);
+  let first = offset.contour.vertices()[0].point.distance_to(start);
+  assert!(
+    (first - nearest).abs() < 1.0e-9,
+    "start drifted: {first} vs {nearest}"
+  );
+}
+
+#[test]
 fn zero_distance_is_the_identity() {
   let contour = rect(40.0, 20.0);
   let offset = offset_contour(&contour, 0.0, &options()).expect("identity offset");

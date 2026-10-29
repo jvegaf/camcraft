@@ -200,6 +200,15 @@ pub struct Machine {
   pub max_height: Option<Length>,
 }
 
+/// A tool as the library stores it: geometry plus the cutting data it is linked to.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredTool {
+  /// The tool's shape.
+  pub geometry: ToolGeometry,
+  /// The feeds and speeds it is linked to.
+  pub cutting: CuttingData,
+}
+
 /// An open tool library.
 pub struct ToolLibrary {
   connection: Connection,
@@ -495,6 +504,70 @@ impl ToolLibrary {
     match cutting_id {
       Some(id) => self.cutting_data(&id),
       None => Ok(None),
+    }
+  }
+
+  /// Every tool in the library, geometry paired with its cutting data.
+  pub fn tools(&self) -> Result<Vec<StoredTool>, StoreError> {
+    let mut statement = self
+      .connection
+      .prepare("SELECT tool_geometry_id, tool_cutting_data_id FROM tool_entity ORDER BY id")
+      .map_err(|source| StoreError::ToolLibrary {
+        path: self.path.clone(),
+        reason: source.to_string(),
+      })?;
+    let pairs = statement
+      .query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+      })
+      .map_err(|source| StoreError::ToolLibrary {
+        path: self.path.clone(),
+        reason: source.to_string(),
+      })?;
+    let mut tools = Vec::new();
+    for pair in pairs {
+      let (geometry_id, cutting_id) = pair.map_err(|source| StoreError::ToolLibrary {
+        path: self.path.clone(),
+        reason: source.to_string(),
+      })?;
+      if let (Some(geometry), Some(cutting)) = (
+        self.geometry(&geometry_id)?,
+        self.cutting_data(&cutting_id)?,
+      ) {
+        tools.push(StoredTool { geometry, cutting });
+      }
+    }
+    Ok(tools)
+  }
+
+  /// The tool whose cutting data carries this program number.
+  pub fn tool_for_number(
+    &self,
+    number: u32,
+  ) -> Result<Option<(ToolGeometry, CuttingData)>, StoreError> {
+    let pair: Option<(String, String)> = self
+      .connection
+      .query_row(
+        "SELECT tool_entity.tool_geometry_id, tool_entity.tool_cutting_data_id
+         FROM tool_entity
+         JOIN tool_cutting_data ON tool_cutting_data.id = tool_entity.tool_cutting_data_id
+         WHERE tool_cutting_data.tool_number = ?1
+         ORDER BY tool_entity.id
+         LIMIT 1",
+        params![number],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+      )
+      .optional()
+      .map_err(|source| self.error(source))?;
+    let Some((geometry_id, cutting_id)) = pair else {
+      return Ok(None);
+    };
+    match (
+      self.geometry(&geometry_id)?,
+      self.cutting_data(&cutting_id)?,
+    ) {
+      (Some(geometry), Some(cutting)) => Ok(Some((geometry, cutting))),
+      _ => Ok(None),
     }
   }
 
