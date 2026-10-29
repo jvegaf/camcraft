@@ -75,8 +75,11 @@ impl Harness {
       app: AppState::new(document()),
       output: ShellOutput::default(),
     };
-    // One quiet frame so the camera learns the canvas size and the panels settle.
-    harness.frame(Vec::new());
+    // A few quiet frames: the first lays the panels out, the next settles their width, and the shell
+    // then frames the document. Only after that are world-to-screen positions stable.
+    for _ in 0..3 {
+      harness.frame(Vec::new());
+    }
     harness
   }
 
@@ -156,7 +159,9 @@ fn clicking_empty_space_clears_the_selection() {
   let mut harness = Harness::new();
   harness.app.select(vec!["E1".to_owned()]);
   harness.frame(Vec::new());
-  let position = harness.at(Point2::new(300.0, 200.0));
+  // The shell frames the drawing, so the visible area is roughly 30 mm around the 100x60 rectangle.
+  // This point is inside that view and well clear of every edge.
+  let position = harness.at(Point2::new(-10.0, 90.0));
   harness.click(position);
   assert!(
     harness.app.selection().is_empty(),
@@ -167,8 +172,9 @@ fn clicking_empty_space_clears_the_selection() {
 #[test]
 fn dragging_a_box_selects_what_it_touches() {
   let mut harness = Harness::new();
-  let from = harness.at(Point2::new(-20.0, -20.0));
-  let to = harness.at(Point2::new(50.0, 30.0));
+  // A box whose edges cross the rectangle's left edge (x = 0) and bottom edge (y = 0).
+  let from = harness.at(Point2::new(-12.0, -30.0));
+  let to = harness.at(Point2::new(30.0, 30.0));
   let modifiers = egui::Modifiers::default();
 
   harness.frame(vec![

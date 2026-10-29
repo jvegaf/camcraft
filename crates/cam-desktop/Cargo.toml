@@ -11,3 +11,5 @@ cam-app.workspace = true
 cam-view.workspace = true
 cam-ui.workspace = true
 cam-model.workspace = true
+cam-geom.workspace = true
+eframe.workspace = true

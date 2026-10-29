@@ -171,6 +171,12 @@ pub struct Shell {
   pub snap_marker: Option<(SnapKind, Point2)>,
   /// Origin of a box selection in progress, in canvas-local pixels.
   drag_box: Option<ScreenPoint>,
+  /// Whether the first frame has framed the document yet.
+  ///
+  /// A camera centred on the origin with 1 px/mm leaves a 1219 mm job almost entirely off screen, so
+  /// the first frame that knows its canvas size frames the drawing. Motion is view state: it is not
+  /// an undoable edit.
+  framed: bool,
   /// The canvas rectangle from the previous frame.
   ///
   /// Panels are laid out before the central area, so the status bar can only show this frame's cursor
@@ -195,6 +201,7 @@ impl Default for Shell {
       snapping: true,
       snap_marker: None,
       drag_box: None,
+      framed: false,
       last_canvas: CanvasRect::default(),
     }
   }
@@ -211,16 +218,23 @@ impl Shell {
   /// Actions are returned rather than applied: one frame of latency is invisible, and a pure shell
   /// is what makes the interface testable.
   pub fn show(&mut self, app: &mut AppState, ctx: &Context) -> ShellOutput {
-    let mut output = ShellOutput::default();
-    self.track_pointer(app, ctx);
     // egui 0.37 stacks panels on the root `Ui`; every panel of one frame goes through one borrow.
-    ctx.root_ui(|ui| {
-      self.command_bar(app, ui, &mut output);
-      self.layer_dock(app, ui, &mut output);
-      self.properties(app, ui, &mut output);
-      self.status_bar(app, ui, &mut output);
-      self.canvas(app, ui, &mut output);
-    });
+    ctx.root_ui(|ui| self.show_in(app, ui))
+  }
+
+  /// Build one frame into an existing root [`egui::Ui`].
+  ///
+  /// `eframe` hands the application a root `Ui` directly, and calling [`Self::show`] from inside that
+  /// callback would try to borrow the root twice. Hosts that already hold one use this.
+  pub fn show_in(&mut self, app: &mut AppState, ui: &mut egui::Ui) -> ShellOutput {
+    let mut output = ShellOutput::default();
+    let ctx = ui.ctx().clone();
+    self.track_pointer(app, &ctx);
+    self.command_bar(app, ui, &mut output);
+    self.layer_dock(app, ui, &mut output);
+    self.properties(app, ui, &mut output);
+    self.status_bar(app, ui, &mut output);
+    self.canvas(app, ui, &mut output);
     output
   }
 
@@ -394,13 +408,43 @@ impl Shell {
           width: f64::from(response.rect.width()),
           height: f64::from(response.rect.height()),
         };
+        let previous_canvas = self.last_canvas;
         output.canvas = canvas;
         self.last_canvas = canvas;
         app.camera_mut().set_viewport(canvas.viewport());
 
+        // Panels settle their width over the first frames, so framing waits for a canvas that did not
+        // change size: fitting a provisional one would leave the drawing slightly off centre.
+        let settled = previous_canvas.width > 0.0
+          && (previous_canvas.width - canvas.width).abs() < 0.5
+          && (previous_canvas.height - canvas.height).abs() < 0.5;
+        if !self.framed && settled {
+          self.frame_document(app, &canvas);
+        }
+
         self.handle_input(app, ui, &response, &canvas, output);
         self.paint(painter, &canvas, app, output);
       });
+  }
+
+  /// Frame the document on the first frame that knows the canvas size.
+  fn frame_document(&mut self, app: &mut AppState, canvas: &CanvasRect) {
+    if canvas.width <= 0.0 || canvas.height <= 0.0 {
+      return;
+    }
+    let scene = build_scene(app.document(), app.selection());
+    let mut bounds = scene.bounds();
+    if bounds.is_empty() {
+      let job = &app.document().job;
+      bounds = cam_geom::Bounds::from_points(&[
+        Point2::new(0.0, 0.0),
+        Point2::new(job.width.mm(), job.height.mm()),
+      ]);
+    }
+    if !bounds.is_empty() {
+      app.fit_camera(bounds.expand(10.0), 32.0);
+    }
+    self.framed = true;
   }
 
   /// Follow the pointer: cursor world position and the snap point it is near.
