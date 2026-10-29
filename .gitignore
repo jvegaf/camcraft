@@ -1,0 +1,7 @@
+# Third-party installer payload and derived text: never committed.
+/etc/
+/evidence/installer-extract/
+/evidence/derived/
+
+# Rust
+/target/
