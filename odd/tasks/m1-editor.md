@@ -1,0 +1,145 @@
+# Feature: the reference CAM application-class CAM application — Milestone M1 (2D editor shell)
+
+Program plan: `odd/roadmap.md` (M1 = "2D editor shell"). This document is the executable
+specification for M1 only. Read this file until `## Log` before implementing any task.
+
+M0 (merged to `master` as `bbabbb2`) delivered the domain: geometry, document format, tool library,
+post-processor and the headless CLI. M1 adds the window — and only the window.
+
+## Specs
+
+Owner requirements in force (verbatim, unchanged from M0):
+
+- **S1** — "quiero crear una aplicacion similar a the reference CAM application"
+- **S2** — "quiero que sea cross platform Windows/Linux"
+- **S3** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)"
+- **S4** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import
+  DXF/SVG/PDF/EPS"
+- **S5** — (this milestone's instruction, verbatim): "mergea primero lo que tenemos a master, y de
+  master te sacas la de m1" then "dale con m1"
+
+M1 delivers the interactive editor the roadmap names: *"Interactive viewport: pan/zoom/snap, entity
+picking, undo/redo, layer dock"*.
+
+### Derived acceptance criteria (M1)
+
+- **A1** — `cam-app` owns application state (document, camera, selection, history, dirty flag) and
+  depends on **no UI crate**. Every command is applied through it.
+- **A2** — Undo and redo restore the document **exactly**: any command sequence followed by the same
+  number of undos yields a document identical to the original, and redo re-applies it.
+- **A3** — History is bounded (a documented maximum) and reports when old steps are dropped; it never
+  grows without limit while the user works.
+- **A4** — The camera maps world millimetres to screen points and back; the round trip is stable, zoom
+  is clamped to documented limits, and zoom-to-fit frames the job with a margin.
+- **A5** — A viewport click selects the entity **nearest** to the cursor within a pixel tolerance, not
+  merely one whose bounding box contains it; ties resolve deterministically.
+- **A6** — Snapping proposes candidates (endpoint, midpoint, centre, grid) within a pixel tolerance and
+  picks the nearest of the enabled kinds; the snapping decision is pure math, testable headless.
+- **A7** — The shell renders the layer dock, a property view of the selected entity, a command bar and
+  a status bar, and drives the canvas from camera + scene state.
+- **A8** — Every user-visible action in the shell is expressible as a `UiAction` handled by one
+  function, so the shell's behaviour is testable without a display.
+- **A9** — The whole shell runs **headless**: a test builds a full frame with a synthetic `RawInput`
+  and asserts the resulting state change, so UI behaviour is verified in CI without a GPU.
+- **A10** — The 2D draw list is **backend-agnostic**: what to paint is computed in `cam-view`
+  independently of the painter, so a future `wgpu` backend consumes the same list unchanged.
+- **A11** — A native window binary builds for Windows and Linux and opens the editor on a sample
+  document. Launching it requires a display and is therefore verified by build + wiring, not by
+  automation.
+- **A12** — All M0 behaviour is unchanged: the existing 123 tests stay green and the CLI contract is
+  untouched.
+
+## Tasks
+
+One line per task: ID — acceptance criteria — route — commit.
+
+- **T1** — A1, A2, A3 — inline — `feat(app): application state with snapshot undo and redo`
+- **T2** — A1, A4 — inline — `feat(app): camera with pan, zoom, clamping and fit`
+- **T3** — A1, A5, A8 — inline — `feat(app): commands for job setup, drawing and layer edits`
+- **T4** — A10 — inline — `feat(view): backend-agnostic scene built from the document`
+- **T5** — A5, A6 — inline — `feat(view): pick, box select and snap candidates`
+- **T6** — A7, A8, A9 — inline — `feat(ui): egui shell with dock, canvas, properties and status bar`
+- **T7** — A8, A9 — inline — `feat(ui): pointer, wheel and keyboard wiring through UiAction`
+- **T8** — A11 — inline — `feat(desktop): native window binary for windows and linux`
+- **T9** — A7, A11 — inline — `docs: m1 quickstart for the editor`
+
+Route notes: M1 is a dependency chain (T1→T2→T3→T4/T5→T6→T7→T8), so no two tasks are independent units
+of behaviour; parallel writers do not apply.
+
+### Task detail
+
+**T1 — `cam-app` state and history.** `AppState { document, camera, selection, history, dirty }`.
+`Command` enum with `apply(&mut self, &mut Document)`; `AppState::execute(command)` records a snapshot
+before the change; `undo`/`redo` move along a bounded ring with `MAX_HISTORY` (documented, 128) and a
+`history_dropped` counter; a `dirty` flag that clears on mark-saved. Undo/redo must be exact: a test
+applies five commands, undoes five, and compares with the original document byte for byte via
+`serde_json`.
+
+**T2 — Camera.** `Camera { center: Point2, pixels_per_mm: f64, viewport: Vec2 }` with
+`world_to_screen`, `screen_to_world`, `pan_by_pixels`, `zoom_at(anchor_screen, factor)`,
+`zoom_to_fit(bounds, margin)`, `MIN_PIXELS_PER_MM`, `MAX_PIXELS_PER_MM`. Tests: round trip within
+1e-9 screen points at several zoom levels; zoom-at-anchor keeps the world point under the cursor fixed;
+clamping at both limits; fit frames the job inside the viewport with the margin.
+
+**T3 — Commands.** At least: `SetJob { width, height, thickness }`, `AddRectangle { layer, at, size }`,
+`AddCircle { layer, at, radius }`, `DeleteEntity { id }`, `SetLayerVisible { id, visible }`,
+`SetEntityLayer` is out of scope. Each validates through `Document::validate` after applying; an invalid
+result is refused and the document restored. Deterministic id generation: `E<n>` with a counter in
+`AppState`, not a random UUID, so tests and golden files are stable.
+
+**T4 — Scene.** `cam_view::Scene` = ordered `Vec<SceneItem>` where an item is a polyline (world points)
+or an arc (centre, radius, start, sweep) plus a style token (`Selected`, `Normal`, `Construction`,
+`Grid`). `build_scene(document, selection) -> Scene`, and `Scene::bounds`. Arcs stay arcs in the scene;
+only the painter flattens them. Tests: entity count, arc preservation, selection styling, bounds.
+
+**T5 — Picking and snapping.** `pick(scene, camera, screen_pos, tolerance_px) -> Option<EntityId>` by
+point-to-segment distance over the scene's items, deterministic on ties (lowest id). `box_select` by
+rectangle intersection. `snap_candidates(document, camera, world_pos, tolerance_px, kinds) -> Vec<Snap>`
+with `SnapKind::{Endpoint, Midpoint, Center, Grid}` and `Snap::choose` picking the nearest. Tests: a click
+just off an edge within tolerance selects it, just beyond does not, ties pick the lowest id, box select
+catches only intersecting entities, snap picks the nearest candidate of the enabled kinds.
+
+**T6 — Shell.** `cam_ui::Shell` with `show(&mut self, app: &mut AppState, ctx: &egui::Context) ->
+ShellOutput { canvas_rect, actions }`. Panels: top command bar (New, Undo, Redo, Zoom to fit), left
+layer dock (visibility toggles, entity counts), right properties (selected entity id, kind, area/perimeter),
+bottom status bar (cursor world position, zoom, history depth), centre canvas. No business logic inside
+widgets: they emit `UiAction` and `handle_action(app, action)` performs it. Test: run one frame headless
+via `egui::Context::run` with an empty `RawInput` and assert the panels reported content.
+
+**T7 — Input wiring.** Pointer primary click → pick → select; drag with primary from empty space → box
+select; middle drag or space+drag → pan; wheel → zoom at cursor; `Ctrl+Z`/`Ctrl+Shift+Z` → undo/redo;
+`Delete` → delete selection; `F` → zoom to fit. Test: synthetic `RawInput` with pointer press/release at
+a screen position computed through the camera selects the expected entity; wheel event changes zoom at
+the anchor; a `Ctrl+Z` key event reverts the last command.
+
+**T8 — Desktop binary.** `cam-desktop` with `eframe`, opening a sample document (a job with a rectangle
+and a circle) so the window shows something on first launch. Must build on Linux; the Windows build is
+the CI's job once a pipeline exists.
+
+**T9 — Docs.** README gains an "editor" section (how to run, what works, what does not), the roadmap
+marks M1 delivered with the same evidence table style as M0, and this file records the commits.
+
+### Decisions taken at plan time
+
+- **D-M1-1 — Undo by document snapshot, not inverse commands.** Documents are kilobytes; a snapshot per
+  command is simple and provably exact (A2), while inverse commands across geometry edits are the exact
+  place where "undo left something behind" bugs are born. Bounded ring with a dropped counter covers A3.
+  Revisit trigger: if documents exceed a few MB (imported dense DXF), switch to a persistent data
+  structure or a command journal, keeping the same `Command` API.
+- **D-M1-2 — The canvas is painted with `egui`'s painter in M1; the draw list is backend-agnostic.**
+  The roadmap named `wgpu` for `cam-view`. Splitting the *scene* (which is testable math) from the
+  *painter* keeps the wgpu decision intact while making M1 verifiable without a GPU: `cam-view` emits
+  `Scene`, and a wgpu backend consumes the same `Scene` when the 3D simulation (M5) actually needs the
+  GPU. Revisit trigger: entity counts that stall the CPU painter, or M5's heightfield view — whichever
+  comes first. Recorded as a deviation from the roadmap's crate description in the Log (L2).
+
+## Log
+
+- **L1 (user, verbatim):** "dale con m1" — authorizing this milestone after "mergea primero lo que
+  tenemos a master, y de master te sacas la de m1".
+- **L2 (deviation from the roadmap crate description):** the roadmap described `cam-view` as the `wgpu`
+  renderer. M1 splits it: `cam-view` computes a backend-agnostic `Scene` (testable headless) and the
+  shell paints it with `egui`'s painter. Rationale in D-M1-2. The user's stack decision (D1) is not
+  contradicted: it stays "Rust + wgpu/egui", and the wgpu backend arrives with the 3D renderer that
+  needs it, consuming the same `Scene`.
+- **L3 (plan):** this document. Base: `master` at `bbabbb2` (M0 merged), branch `feat/m1-editor`.
