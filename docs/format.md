@@ -162,6 +162,8 @@ Text variables need no declaration: `TOOLPATH_NAME`, `PATHNAME`, `FILE_NAME`, `F
 | --- | --- |
 | `validate <document>` | Schema plus referential invariants |
 | `inspect <document>` | Stable summary of job, layers and toolpaths |
+| `import <input> [--out <document>] [--layer <name>]` | Import DXF, SVG, PDF, EPS or PNG into a new document and print the report; see [m3-import.md](m3-import.md) |
+| `check <document>` | Vector validation report: open contours, self-intersections, degenerate segments |
 | `postp validate <file>` | Parse a post-processor and print a summary |
 | `tools list <library>` | List tools |
 | `tools add <library> --id --diameter --number` | Add or replace a tool |
@@ -175,3 +177,4 @@ Machine output goes to **stdout**, diagnostics to **stderr**.
 | `2` | Invalid input: unusable path, malformed document, missing tool data, a cut the geometry refuses |
 | `3` | Unsupported document schema |
 | `4` | Post-processor error, including a program the post cannot express |
+| `5` | The document has vector issues (`check` only): open, self-intersecting or degenerate geometry |

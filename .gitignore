@@ -6,3 +6,5 @@
 # Rust
 /target/
 .worktrees/
+.m3-brief.md
+.t9-brief.md
