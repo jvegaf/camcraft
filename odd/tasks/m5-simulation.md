@@ -211,20 +211,21 @@ impl Heightfield {
   pub fn grid(&self) -> Grid;
   pub fn surface(&self, column: usize, row: usize) -> f64;
   pub fn lower(&mut self, column: usize, row: usize, z: f64);      // min(current, z), clamped
-  pub fn volumes(&self, thickness: Length) -> Volumes;
+  pub fn volumes(&self) -> Volumes;
   pub fn cell_centre(&self, column: usize, row: usize) -> Point2;
 }
 pub struct Volumes { pub removed: f64, pub remaining: f64, pub through_cells: usize }
 ```
 
 Semantics to pin with tests: `grid_for` covers the job extent with `columns = ceil(width / cell)`,
-`rows = ceil(height / cell)`, and a cell's centre is `origin + (i + 0.5) * cell`; a job whose extent is
-not a whole number of cells keeps its last column/row partly outside, which the removal loop never
-addresses. `Heightfield::new` starts at the stock top (`0`), `lower` never raises a cell and clamps at
-`-thickness`. `volumes(thickness)` sums in row-major order (`removed = Σ -z * cell²` over cut cells,
-`remaining = width * height * thickness - removed`, `through_cells` counts cells at exactly
-`-thickness`). `MAX_CELLS` is enforced before allocation, with the error carrying all three numbers
-(A6). Tests: a default sheet at the default cell size stays under the cap; a 0.1 mm request for the same
+`rows = ceil(height / cell)`, and a cell's centre is `origin + (i + 0.5) * cell`; the grid is whole
+cells, so its area can exceed the job's by less than one cell in each direction, and every volume is
+measured on the grid rather than on the nominal rectangle (the published coverage bound of D-M5-3).
+`Heightfield::new` starts at the stock top (`0`), `lower` never raises a cell and clamps at
+`-thickness`, and `volumes()` sums in row-major order (`removed = Σ -z * cell²` over cut cells,
+`remaining = grid volume - removed`, `through_cells` counts cells at exactly `-thickness`).
+`MAX_CELLS` is enforced before allocation, with the error carrying the cell, the grid it implies and
+the cap (A6). Tests: a default sheet at the default cell size stays under the cap; a 0.1 mm request for the same
 sheet is `TooFine` and names `cap`; a 10 mm square at 1 mm is 10 × 10 cells with centres at 0.5 … 9.5;
 lowering a cell twice keeps the deeper value; `volumes` of an untouched field is zero removed /
 `width*height*thickness` remaining; lowering a whole field to `-thickness` reports every cell through
@@ -391,7 +392,7 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| S1 | _pending_ | |
+| S1 | `THIS_COMMIT` | 11 tests (`crates/cam-sim/tests/heightfield.rs`). The default sheet at the default cell is 1219 x 2438 = 2,971,922 cells, under the 4,000,000 cap; a 0.1 mm request names 12190 x 24380, the product and the cap in one message; a zero-sized job and a zero cell are `Degenerate`, not a panic; a 10 mm square at 1 mm has 100 cells whose centres run 0.5 … 9.5; lowering twice keeps the deeper value; a cell clamped at `-thickness` counts as through; a whole field to the bottom reports 500 mm³ removed, 0 remaining and 100 through cells; 25 cells at 2 mm deep report 50 mm³; a 10.2 mm wide job gets 11 columns whose last centre is outside the nominal width, which is the coverage bound stated rather than hidden; and a property test asserts `removed + remaining` equals the grid volume for random cut sequences |
 | S2 | _pending_ | |
 | S3 | _pending_ | |
 | S4 | _pending_ | |

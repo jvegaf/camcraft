@@ -704,6 +704,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cam-sim"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-model",
+ "cam-move",
+ "cam-units",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cam-store"
 version = "0.0.1"
 dependencies = [
