@@ -21,7 +21,7 @@ pub mod command;
 use std::collections::{BTreeSet, VecDeque};
 
 pub use camera::{Camera, ScreenPoint, Viewport, MAX_PIXELS_PER_MM, MIN_PIXELS_PER_MM};
-pub use command::{Command, CommandError};
+pub use command::{Command, CommandError, CommandOutcome};
 
 use cam_model::Document;
 use serde_json::Value;
@@ -173,13 +173,23 @@ impl AppState {
   /// The command is applied to a copy and validated; an invalid result is refused and the document,
   /// the history and the dirty flag are left untouched.
   pub fn execute(&mut self, command: Command) -> Result<(), CommandError> {
+    self.execute_with_outcome(command).map(|_| ())
+  }
+
+  /// Apply a command and report what it produced beyond "it worked".
+  ///
+  /// Same contract as [`Self::execute`], which is this call with the report discarded: the command
+  /// is applied to a copy, validated, and refused atomically. The report is how a drawing command
+  /// hands back something the caller needs — today the radial error of an approximated ellipse
+  /// (M2 A3) — without every other variant having to invent one.
+  pub fn execute_with_outcome(&mut self, command: Command) -> Result<CommandOutcome, CommandError> {
     let mut candidate = self.document.clone();
-    command.apply(&mut candidate)?;
+    let outcome = command.apply_with_outcome(&mut candidate)?;
     candidate.validate()?;
     let previous = std::mem::replace(&mut self.document, candidate);
     self.history.record(previous);
     self.dirty = true;
-    Ok(())
+    Ok(outcome)
   }
 
   /// Undo the last command. Returns false when there is nothing to undo.

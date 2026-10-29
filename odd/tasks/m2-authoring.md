@@ -224,10 +224,10 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 | T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
 | T6 | `HEAD` | 12 tests; forks, two-chain groups and closed inputs refused by name |
 | T7 | `HEAD` | 7 tests; arcs split exactly; four refusal classes by name |
-| T8 | — | pending |
+| T8 | `HEAD` | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome` |
 | T9 | — | pending |
 | T10 | — | pending |
-| T11 | — | pending |
+| T11 | in progress | cam-geom half delegated |
 | T12 | — | pending |
 | T13 | — | pending |
 
