@@ -24,6 +24,7 @@ pub mod offset;
 mod point;
 pub mod primitive;
 mod segment;
+pub mod text;
 pub mod transform;
 pub mod trim;
 
@@ -76,5 +77,11 @@ pub enum GeomError {
   EditRefused {
     /// Why the edit could not be applied.
     reason: &'static str,
+  },
+  /// A glyph source cannot draw a character.
+  #[error("the glyph source has no glyph for {character:?}")]
+  UnsupportedCharacter {
+    /// The character that could not be drawn.
+    character: char,
   },
 }
