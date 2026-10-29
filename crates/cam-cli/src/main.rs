@@ -1,4 +1,5 @@
-//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools` and `emit`.
+//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`
+//! and `emit`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -15,7 +16,11 @@ use cam_move::{MoveStream, Segment};
 use cam_post::{emit, parse_post, ProgramMeta};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
-use cam_toolpath::{profile, ProfileRequest, ToolSpec};
+use cam_toolpath::{
+  circle_centre, drill, pocket, profile, DrillHole, DrillRequest, PocketRequest, ProfileRequest,
+  ToolSpec, ToolpathError,
+};
+use cam_units::Length;
 
 const HELP: &str = "\
 cam-cli — headless CAM pipeline
@@ -36,6 +41,25 @@ COMMANDS:
         --min-area <mm2>      Drop traced regions smaller than this area
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
+    toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
+        --kind <kind>         profile, pocket or drilling (required)
+        --entities <ids>      Comma-separated entity ids (required)
+        --tool <number>       Tool number in the library (required)
+        --side <side>         profile: inside, outside or on (default outside)
+        --allowance <mm>      profile, pocket: material left on the vector
+        --strategy <mode>     pocket: offset or raster (default offset)
+        --stepover <mm>       pocket: ring or row spacing; defaults to the tool's stepover
+        --clear               pocket: take the default from the tool's clear stepover
+        --peck-depth <mm>     drilling: depth per peck, 0 for one plunge
+        --retract <mode>      drilling: full (default) or amount
+        --retract-amount <mm> drilling: lift above the peck when --retract amount
+        --bank <count:pitch>  drilling: a gang of drills spaced along X
+        --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
+        --start-depth <mm>    depth at which cutting starts
+        --cut-depth <mm>      total cut depth (default 18)
+        --lead-in <mm>        profile: straight lead-in
+        --lead-out <mm>       profile: straight lead-out
+        --tab <pos:width:height>  profile: repeatable holding tab
     postp validate <file>     Parse a post-processor and print a summary
     tools list <library>      List the tools in a SQLite tool library
     tools add <library>       Add or replace a tool: --id, --diameter, --number, [--name-format]
@@ -131,6 +155,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "postp" => postp(rest),
     "import" => import_command(rest),
     "check" => check(rest),
+    "toolpath" => toolpath_command(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     other => Err(Failure::input(format!(
@@ -208,9 +233,7 @@ fn inspect(rest: &[String]) -> Result<(), Failure> {
   println!("toolpaths: {}", document.toolpaths.len());
   let mut total_length = 0.0;
   for toolpath in &document.toolpaths {
-    let kind = match toolpath.operation {
-      Operation::Profile(_) => "profile",
-    };
+    let kind = operation_label(&toolpath.operation);
     println!(
       "  {} {:?}: {kind}, tool T{}, {} entity(ies)",
       toolpath.id,
@@ -529,6 +552,410 @@ fn tools(rest: &[String]) -> Result<(), Failure> {
   }
 }
 
+/// Everything `cam-cli toolpath` accepts, before it is turned into one [`Operation`].
+#[derive(Default)]
+struct ToolpathArgs {
+  path: Option<PathBuf>,
+  out: Option<PathBuf>,
+  library: Option<PathBuf>,
+  kind: Option<String>,
+  entities: Option<String>,
+  tool: Option<u32>,
+  id: Option<String>,
+  name: Option<String>,
+  side: Option<String>,
+  strategy: Option<String>,
+  stepover: Option<f64>,
+  clear: bool,
+  allowance: Option<f64>,
+  pass_depth: Option<f64>,
+  start_depth: Option<f64>,
+  cut_depth: Option<f64>,
+  lead_in: Option<f64>,
+  lead_out: Option<f64>,
+  tabs: Vec<(f64, f64, f64)>,
+  peck_depth: Option<f64>,
+  retract: Option<String>,
+  retract_amount: Option<f64>,
+  bank: Option<(u32, f64)>,
+}
+
+fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
+  let mut args = ToolpathArgs::default();
+  let mut index = 0;
+  while index < rest.len() {
+    let flag = rest[index].as_str();
+    // Every option takes exactly one value except `--clear`.
+    let take = |what: &str| value_at(rest, index, what);
+    match flag {
+      "--out" => args.out = Some(PathBuf::from(take("--out")?)),
+      "--library" => args.library = Some(PathBuf::from(take("--library")?)),
+      "--kind" => args.kind = Some(take("--kind")?),
+      "--entities" => args.entities = Some(take("--entities")?),
+      "--tool" => args.tool = Some(parse_count(&take("--tool")?, "--tool")?),
+      "--id" => args.id = Some(take("--id")?),
+      "--name" => args.name = Some(take("--name")?),
+      "--side" => args.side = Some(take("--side")?),
+      "--strategy" => args.strategy = Some(take("--strategy")?),
+      "--retract" => args.retract = Some(take("--retract")?),
+      "--stepover" => args.stepover = Some(parse_mm(&take("--stepover")?, "--stepover")?),
+      "--allowance" => args.allowance = Some(parse_mm(&take("--allowance")?, "--allowance")?),
+      "--pass-depth" => args.pass_depth = Some(parse_mm(&take("--pass-depth")?, "--pass-depth")?),
+      "--start-depth" => {
+        args.start_depth = Some(parse_mm(&take("--start-depth")?, "--start-depth")?)
+      }
+      "--cut-depth" => args.cut_depth = Some(parse_mm(&take("--cut-depth")?, "--cut-depth")?),
+      "--lead-in" => args.lead_in = Some(parse_mm(&take("--lead-in")?, "--lead-in")?),
+      "--lead-out" => args.lead_out = Some(parse_mm(&take("--lead-out")?, "--lead-out")?),
+      "--peck-depth" => args.peck_depth = Some(parse_mm(&take("--peck-depth")?, "--peck-depth")?),
+      "--retract-amount" => {
+        args.retract_amount = Some(parse_mm(&take("--retract-amount")?, "--retract-amount")?)
+      }
+      "--bank" => args.bank = Some(parse_bank(&take("--bank")?)?),
+      "--tab" => args.tabs.push(parse_tab(&take("--tab")?)?),
+      "--clear" => {
+        args.clear = true;
+        index += 1;
+        continue;
+      }
+      other if other.starts_with('-') => {
+        return Err(Failure::input(format!("unknown toolpath option {other:?}")))
+      }
+      other => {
+        if args.path.is_some() {
+          return Err(Failure::input(
+            "toolpath takes exactly one document, before its options",
+          ));
+        }
+        args.path = Some(PathBuf::from(other));
+        index += 1;
+        continue;
+      }
+    }
+    index += 2;
+  }
+
+  let path = args
+    .path
+    .clone()
+    .ok_or_else(|| Failure::input("toolpath requires a document path"))?;
+  let kind = args
+    .kind
+    .clone()
+    .ok_or_else(|| Failure::input("toolpath requires --kind"))?;
+  let entity_ids: Vec<String> = args
+    .entities
+    .as_deref()
+    .ok_or_else(|| Failure::input("toolpath requires --entities"))?
+    .split(',')
+    .map(str::trim)
+    .filter(|id| !id.is_empty())
+    .map(str::to_owned)
+    .collect();
+  if entity_ids.is_empty() {
+    return Err(Failure::input("--entities names no entity"));
+  }
+  let tool_number = args
+    .tool
+    .ok_or_else(|| Failure::input("toolpath requires --tool"))?;
+
+  let mut document = open(&path)?;
+  let library = open_library_hint(&document, &path, args.library.as_deref())?;
+  let cutting = library
+    .as_ref()
+    .and_then(|library| library.tool_for_number(tool_number).ok().flatten())
+    .map(|(_geometry, cutting)| cutting);
+
+  let operation = match kind.as_str() {
+    "profile" => {
+      let side = match args.side.as_deref() {
+        None | Some("outside") => cam_model::ProfileSide::Outside,
+        Some("inside") => cam_model::ProfileSide::Inside,
+        Some("on") => cam_model::ProfileSide::On,
+        Some(other) => {
+          return Err(Failure::input(format!(
+            "unknown --side {other:?}; expected inside, outside or on"
+          )))
+        }
+      };
+      Operation::Profile(cam_model::ProfileParams {
+        side,
+        allowance: mm(args.allowance.unwrap_or(0.0)),
+        pass_depth: mm(default_pass_depth(
+          args.pass_depth,
+          cutting.as_ref().and_then(|cutting| cutting.stepdown),
+          "profile",
+        )?),
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+        lead_in: mm(args.lead_in.unwrap_or(0.0)),
+        lead_out: mm(args.lead_out.unwrap_or(0.0)),
+        tabs: args
+          .tabs
+          .iter()
+          .map(|(position, width, height)| cam_model::Tab {
+            position: *position,
+            width: mm(*width),
+            height: mm(*height),
+          })
+          .collect(),
+      })
+    }
+    "pocket" => {
+      let strategy = match args.strategy.as_deref() {
+        None | Some("offset") => cam_model::PocketStrategy::Offset,
+        Some("raster") => cam_model::PocketStrategy::Raster,
+        Some(other) => {
+          return Err(Failure::input(format!(
+            "unknown --strategy {other:?}; expected offset or raster"
+          )))
+        }
+      };
+      let library_stepover = cutting.as_ref().and_then(|cutting| {
+        if args.clear {
+          cutting.clear_stepover
+        } else {
+          cutting.stepover
+        }
+      });
+      let stepover = match (args.stepover, library_stepover) {
+        (Some(stepover), _) => stepover,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "a pocket needs --stepover: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      Operation::Pocket(cam_model::PocketParams {
+        strategy,
+        allowance: mm(args.allowance.unwrap_or(0.0)),
+        stepover: mm(stepover),
+        pass_depth: mm(default_pass_depth(
+          args.pass_depth,
+          cutting.as_ref().and_then(|cutting| cutting.stepdown),
+          "pocket",
+        )?),
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
+    "drilling" => {
+      let retract = match args.retract.as_deref() {
+        None | Some("full") => cam_model::RetractMode::Full,
+        Some("amount") => cam_model::RetractMode::Amount {
+          amount: mm(
+            args
+              .retract_amount
+              .ok_or_else(|| Failure::input("--retract amount requires --retract-amount"))?,
+          ),
+        },
+        Some(other) => {
+          return Err(Failure::input(format!(
+            "unknown --retract {other:?}; expected full or amount"
+          )))
+        }
+      };
+      Operation::Drilling(cam_model::DrillParams {
+        peck_depth: mm(args.peck_depth.unwrap_or(0.0)),
+        retract,
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+        bank: args.bank.map(|(count, pitch)| cam_model::DrillBank {
+          count,
+          pitch: mm(pitch),
+        }),
+      })
+    }
+    other => {
+      return Err(Failure::input(format!(
+        "unknown toolpath kind {other:?}; expected profile, pocket or drilling"
+      )))
+    }
+  };
+
+  let id = match args.id.clone() {
+    Some(id) => id,
+    None => {
+      let mut number = document.toolpaths.len() + 1;
+      while document
+        .toolpaths
+        .iter()
+        .any(|toolpath| toolpath.id == format!("TP{number}"))
+      {
+        number += 1;
+      }
+      format!("TP{number}")
+    }
+  };
+  let name = match args.name.clone() {
+    Some(name) => name,
+    None => {
+      let base = match operation {
+        Operation::Profile(_) => "Profile",
+        Operation::Pocket(_) => "Pocket",
+        Operation::Drilling(_) => "Drilling",
+      };
+      let ordinal = document.toolpaths.len() + 1;
+      format!("{base} {ordinal}")
+    }
+  };
+
+  document.toolpaths.push(Toolpath {
+    id: id.clone(),
+    name,
+    entity_ids: entity_ids.clone(),
+    tool_number,
+    operation: operation.clone(),
+  });
+  document
+    .validate()
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  let destination = args.out.clone().unwrap_or(path);
+  cam_store::document::save_document(&destination, &document)
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  println!(
+    "added {id} {}, tool T{tool_number}, {} entity(ies)",
+    operation_label(&operation),
+    entity_ids.len()
+  );
+  Ok(())
+}
+
+/// The tool library to read defaults from, if the caller named one or the document references one.
+///
+/// A `tools_ref` that does not exist is not an error here: the strategy may not need a default, and
+/// opening it would create an empty library as a side effect of asking.
+fn open_library_hint(
+  document: &Document,
+  document_path: &Path,
+  explicit: Option<&Path>,
+) -> Result<Option<ToolLibrary>, Failure> {
+  let candidate = explicit.map(Path::to_path_buf).or_else(|| {
+    document.tools_ref.as_ref().map(|reference| {
+      document_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(reference)
+    })
+  });
+  match candidate {
+    Some(path) if path.exists() => ToolLibrary::open(&path)
+      .map(Some)
+      .map_err(|error| Failure::input(error.to_string())),
+    Some(path) if explicit.is_some() => Err(Failure::input(format!(
+      "{}: no such tool library",
+      path.display()
+    ))),
+    _ => Ok(None),
+  }
+}
+
+fn default_pass_depth(
+  given: Option<f64>,
+  library: Option<Length>,
+  kind: &str,
+) -> Result<f64, Failure> {
+  match (given, library) {
+    (Some(pass_depth), _) => Ok(pass_depth),
+    (None, Some(stepdown)) => Ok(stepdown.mm()),
+    (None, None) => Err(Failure::input(format!(
+      "a {kind} needs --pass-depth: the tool library has no stepdown for that tool"
+    ))),
+  }
+}
+
+fn default_cut_depth(given: Option<f64>) -> f64 {
+  given.unwrap_or_else(|| cam_model::ProfileParams::default().cut_depth.mm())
+}
+
+fn operation_label(operation: &Operation) -> String {
+  match operation {
+    Operation::Profile(_) => "profile".to_owned(),
+    Operation::Pocket(params) => match params.strategy {
+      cam_model::PocketStrategy::Raster => "pocket (raster)".to_owned(),
+      cam_model::PocketStrategy::Offset => "pocket (offset)".to_owned(),
+    },
+    Operation::Drilling(params) => {
+      if params.bank.is_some() {
+        "drilling (bank)".to_owned()
+      } else {
+        "drilling".to_owned()
+      }
+    }
+  }
+}
+
+fn mm(value: f64) -> Length {
+  Length::from_mm(value)
+}
+
+fn value_at(rest: &[String], index: usize, what: &str) -> Result<String, Failure> {
+  rest
+    .get(index + 1)
+    .filter(|value| !value.starts_with("--"))
+    .cloned()
+    .ok_or_else(|| Failure::input(format!("{what} requires a value")))
+}
+
+fn parse_mm(value: &str, option: &str) -> Result<f64, Failure> {
+  value.parse::<f64>().map_err(|_| {
+    Failure::input(format!(
+      "{option} expects a number of millimetres, got {value:?}"
+    ))
+  })
+}
+
+fn parse_count(value: &str, option: &str) -> Result<u32, Failure> {
+  value
+    .parse::<u32>()
+    .map_err(|_| Failure::input(format!("{option} expects a whole number, got {value:?}")))
+}
+
+fn parse_bank(value: &str) -> Result<(u32, f64), Failure> {
+  let (count, pitch) = value
+    .split_once(':')
+    .ok_or_else(|| Failure::input(format!("--bank expects <count>:<pitch> mm, got {value:?}")))?;
+  Ok((parse_count(count, "--bank")?, parse_mm(pitch, "--bank")?))
+}
+
+fn parse_tab(value: &str) -> Result<(f64, f64, f64), Failure> {
+  let parts: Vec<&str> = value.split(':').collect();
+  match parts.as_slice() {
+    [position, width, height] => Ok((
+      position.parse::<f64>().map_err(|_| {
+        Failure::input(format!(
+          "--tab position must be a fraction, got {position:?}"
+        ))
+      })?,
+      parse_mm(width, "--tab")?,
+      parse_mm(height, "--tab")?,
+    )),
+    _ => Err(Failure::input(format!(
+      "--tab expects <position>:<width>:<height>, got {value:?}"
+    ))),
+  }
+}
+
+/// The contour of an entity, or the refusal that names why it is not one.
+fn contour_of<'a>(
+  document: &'a Document,
+  toolpath_id: &str,
+  entity_id: &str,
+) -> Result<&'a cam_geom::Contour, Failure> {
+  let entity = document.entity(entity_id).ok_or_else(|| {
+    Failure::input(format!(
+      "toolpath {toolpath_id:?} cites unknown entity {entity_id:?}"
+    ))
+  })?;
+  entity
+    .kind
+    .as_contour()
+    .ok_or_else(|| Failure::input(format!("entity {entity_id:?} is not a contour")))
+}
+
 fn emit_command(rest: &[String]) -> Result<(), Failure> {
   let mut document_path: Option<PathBuf> = None;
   let mut post_path: Option<PathBuf> = None;
@@ -674,6 +1101,48 @@ fn build_segment(
           .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
         );
       }
+    }
+    Operation::Pocket(params) => {
+      // Each selected contour is its own region: islands are out of scope (D-M4-2), so a nested
+      // selection pockets both contours instead of silently clearing the wrong area.
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        let path = pocket(&PocketRequest {
+          contour,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
+        moves.extend(path.moves);
+      }
+    }
+    Operation::Drilling(params) => {
+      let mut holes = Vec::with_capacity(toolpath.entity_ids.len());
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        let centre = circle_centre(contour).ok_or_else(|| {
+          Failure::input(format!(
+            "toolpath {:?}: {}",
+            toolpath.id,
+            ToolpathError::NotACircle {
+              entity: entity_id.clone()
+            }
+          ))
+        })?;
+        holes.push(DrillHole {
+          entity: entity_id.clone(),
+          centre,
+        });
+      }
+      let path = drill(&DrillRequest {
+        holes: &holes,
+        params,
+        tool: &spec,
+        job: &document.job,
+      })
+      .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
+      moves.extend(path.moves);
     }
   }
 

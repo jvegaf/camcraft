@@ -674,3 +674,371 @@ fn check_still_exits_two_for_a_missing_document() {
   assert_eq!(outcome.code, 2);
   assert!(outcome.stderr.contains("error:"), "{}", outcome.stderr);
 }
+
+// --- M4 T1: the `toolpath` command and the new operation kinds (A10, A11) ---
+
+fn write_library_with_pocket_rates(directory: &Path) -> PathBuf {
+  let path = directory.join("rates.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G2".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(6.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "C2".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(5.0)),
+      stepover: Some(Length::from_mm(2.4)),
+      clear_stepover: Some(Length::from_mm(4.8)),
+      tool_number: Some(2),
+      notes: None,
+    })
+    .expect("cutting data");
+  library.link("E2", "G2", "C2", None, None).expect("link");
+  path
+}
+
+#[test]
+fn toolpath_appends_a_profile_and_the_document_reloads_with_two() {
+  let directory = scratch("toolpath-profile");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "profile",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--side",
+    "inside",
+    "--cut-depth",
+    "9",
+    "--pass-depth",
+    "3",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert_eq!(
+    outcome.stdout, "added TP2 profile, tool T1, 1 entity(ies)\n",
+    "{}",
+    outcome.stdout
+  );
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths.len(), 2);
+  match &loaded.toolpaths[1].operation {
+    Operation::Profile(params) => {
+      assert_eq!(params.side, ProfileSide::Inside);
+      assert_eq!(params.cut_depth, Length::from_mm(9.0));
+      assert_eq!(params.pass_depth, Length::from_mm(3.0));
+    }
+    other => panic!("expected a profile, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_toolpath_gets_the_next_free_id() {
+  let directory = scratch("toolpath-ids");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "profile",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--pass-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(outcome.stdout.contains("added TP2"), "{}", outcome.stdout);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_unknown_toolpath_kind_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-kind");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "laser_cut",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("laser_cut"),
+    "the refusal names the kind: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn toolpath_naming_a_missing_entity_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-entity");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E9",
+    "--tool",
+    "1",
+    "--stepover",
+    "3",
+    "--pass-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(outcome.stderr.contains("E9"), "{}", outcome.stderr);
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_takes_its_stepover_and_pass_depth_from_the_tool_library() {
+  let directory = scratch("toolpath-defaults");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_document(
+    &directory,
+    rectangle_contour(50.0, 25.0),
+    Some(library.to_str().expect("utf8")),
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--cut-depth",
+    "5",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[1].operation {
+    Operation::Pocket(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(2.4),
+        "the tool's stepover is the default"
+      );
+      assert_eq!(
+        params.pass_depth,
+        Length::from_mm(5.0),
+        "the tool's stepdown is the default"
+      );
+    }
+    other => panic!("expected a pocket, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_clearing_pocket_takes_its_stepover_from_clear_stepover() {
+  let directory = scratch("toolpath-clear");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_document(
+    &directory,
+    rectangle_contour(50.0, 25.0),
+    Some(library.to_str().expect("utf8")),
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--clear",
+    "--cut-depth",
+    "5",
+    "--pass-depth",
+    "5",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[1].operation {
+    Operation::Pocket(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(4.8),
+        "a clearing pocket uses clear_stepover"
+      );
+    }
+    other => panic!("expected a pocket, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_without_a_stepover_anywhere_exits_two_naming_the_option() {
+  let directory = scratch("toolpath-nostepover");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+  ]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("--stepover"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_drilling_toolpath_accepts_a_bank_and_an_out_path() {
+  let directory = scratch("toolpath-bank");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let out = directory.join("drilled.c2d");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E1",
+    "--tool",
+    "3",
+    "--peck-depth",
+    "2",
+    "--retract",
+    "amount",
+    "--retract-amount",
+    "1",
+    "--bank",
+    "3:32",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&out).expect("loads");
+  assert_eq!(
+    loaded.toolpaths.len(),
+    2,
+    "the source document still has its profile"
+  );
+  match &loaded.toolpaths[1].operation {
+    Operation::Drilling(params) => {
+      assert_eq!(params.peck_depth, Length::from_mm(2.0));
+      assert_eq!(
+        params.retract,
+        cam_model::RetractMode::Amount {
+          amount: Length::from_mm(1.0)
+        }
+      );
+      assert_eq!(
+        params.bank,
+        Some(cam_model::DrillBank {
+          count: 3,
+          pitch: Length::from_mm(32.0)
+        })
+      );
+    }
+    other => panic!("expected drilling, got {other:?}"),
+  }
+  let original = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(original.toolpaths.len(), 1, "--out leaves the input alone");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn inspect_names_each_toolpath_kind_and_its_strategy() {
+  let directory = scratch("inspect-kinds");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  let offset = cam_model::PocketParams {
+    strategy: cam_model::PocketStrategy::Offset,
+    ..cam_model::PocketParams::default()
+  };
+  let raster = cam_model::PocketParams {
+    strategy: cam_model::PocketStrategy::Raster,
+    ..cam_model::PocketParams::default()
+  };
+  let banked = cam_model::DrillParams {
+    bank: Some(cam_model::DrillBank {
+      count: 2,
+      pitch: Length::from_mm(32.0),
+    }),
+    ..cam_model::DrillParams::default()
+  };
+  loaded.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "Pocket offset".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Pocket(offset),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP3".to_owned(),
+    name: "Pocket raster".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Pocket(raster),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP4".to_owned(),
+    name: "Drill".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Drilling(cam_model::DrillParams::default()),
+  });
+  loaded.toolpaths.push(Toolpath {
+    id: "TP5".to_owned(),
+    name: "Drill bank".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Drilling(banked),
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let outcome = run(&["inspect", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let stdout = &outcome.stdout;
+  assert!(stdout.contains("profile, tool T1"), "{stdout}");
+  assert!(stdout.contains("pocket (offset), tool T1"), "{stdout}");
+  assert!(stdout.contains("pocket (raster), tool T1"), "{stdout}");
+  assert!(stdout.contains("drilling, tool T1"), "{stdout}");
+  assert!(stdout.contains("drilling (bank), tool T1"), "{stdout}");
+  std::fs::remove_dir_all(&directory).ok();
+}
