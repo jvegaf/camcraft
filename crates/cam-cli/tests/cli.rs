@@ -462,3 +462,83 @@ fn an_unknown_command_is_invalid_input() {
     outcome.stderr
   );
 }
+
+#[test]
+fn import_refuses_an_extension_it_cannot_read() {
+  let directory = scratch("import-unsupported");
+  let input = directory.join("part.dwg");
+  std::fs::write(&input, b"not a vector").expect("input written");
+  let outcome = run(&["import", input.to_str().expect("path")]);
+  assert_eq!(outcome.code, 2);
+  assert_eq!(outcome.stdout, "");
+  assert!(
+    outcome.stderr.contains("unsupported format dwg"),
+    "stderr: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("dxf, svg, pdf, eps, png"),
+    "stderr: {}",
+    outcome.stderr
+  );
+}
+
+#[test]
+fn import_without_an_input_exits_2() {
+  let outcome = run(&["import"]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("import requires an input file"),
+    "stderr: {}",
+    outcome.stderr
+  );
+}
+
+#[test]
+fn import_refuses_a_non_positive_tolerance() {
+  let directory = scratch("import-tolerance");
+  let input = directory.join("part.dwg");
+  std::fs::write(&input, b"x").expect("input written");
+  let outcome = run(&["import", input.to_str().expect("path"), "--tolerance", "0"]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome
+      .stderr
+      .contains("--tolerance must be a positive length in mm"),
+    "stderr: {}",
+    outcome.stderr
+  );
+}
+
+#[test]
+fn import_refuses_an_unknown_option() {
+  let directory = scratch("import-option");
+  let input = directory.join("part.dwg");
+  std::fs::write(&input, b"x").expect("input written");
+  let outcome = run(&["import", input.to_str().expect("path"), "--nope"]);
+  assert_eq!(outcome.code, 2);
+  assert!(
+    outcome.stderr.contains("unknown import option"),
+    "stderr: {}",
+    outcome.stderr
+  );
+}
+
+#[test]
+fn the_help_lists_the_import_command_and_its_trace_options() {
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "import <input>",
+    "--tolerance <mm>",
+    "--threshold <0-255>",
+    "--min-area <mm2>",
+    "--simplify <mm>",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected}:\n{}",
+      outcome.stdout
+    );
+  }
+}

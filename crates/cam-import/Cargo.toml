@@ -1,0 +1,17 @@
+[package]
+name = "cam-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-geom.workspace = true
+cam-model.workspace = true
+cam-units.workspace = true
+flate2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

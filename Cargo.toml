@@ -10,6 +10,7 @@ members = [
     "crates/cam-toolpath",
     "crates/cam-cli",
     "crates/cam-app",
+    "crates/cam-import",
     "crates/cam-view",
     "crates/cam-ui",
     "crates/cam-desktop",
@@ -31,6 +32,7 @@ cam-store = { path = "crates/cam-store" }
 cam-post = { path = "crates/cam-post" }
 cam-toolpath = { path = "crates/cam-toolpath" }
 cam-app = { path = "crates/cam-app" }
+cam-import = { path = "crates/cam-import" }
 cam-view = { path = "crates/cam-view" }
 cam-ui = { path = "crates/cam-ui" }
 serde = { version = "1", features = ["derive"] }
@@ -40,6 +42,9 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Already in the tree as `zip`'s DEFLATE backend; promoted for PDF `FlateDecode` and PNG `IDAT` (M3
+# D-M3-1). It is the only dependency the importer adds.
+flate2 = "1"
 proptest = "1"
 egui = "0.37"
 eframe = "0.37"
