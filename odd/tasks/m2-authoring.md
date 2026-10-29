@@ -221,7 +221,7 @@ Slice boundaries are recorded here as they close, per the review-workload rule: 
 | T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
 | T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
 | T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
-| T6 | — | pending |
+| T6 | `HEAD` | 12 tests; forks, two-chain groups and closed inputs refused by name |
 | T7 | — | pending |
 | T8 | — | pending |
 | T9 | — | pending |

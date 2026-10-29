@@ -19,6 +19,7 @@ mod chain;
 mod contour;
 pub mod edit;
 pub mod intersect;
+pub mod join;
 pub mod offset;
 mod point;
 pub mod primitive;
