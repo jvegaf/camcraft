@@ -15,6 +15,7 @@ cam-store.workspace = true
 cam-post.workspace = true
 cam-toolpath.workspace = true
 cam-import.workspace = true
+cam-sim.workspace = true
 
 [dev-dependencies]
 cam-units.workspace = true

@@ -1,11 +1,12 @@
-//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`
-//! and `emit`.
+//! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`,
+//! `emit` and `simulate`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
 //!
 //! Contract: machine output on stdout, human diagnostics on stderr, and these exit codes:
-//! `0` success, `2` invalid input, `3` unsupported schema, `4` post-processor error.
+//! `0` success, `2` invalid input, `3` unsupported schema, `4` post-processor error, `5` vector
+//! issues, `6` a simulation that found gouge, uncut material or a crash (D-M5-6).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,13 +15,14 @@ use cam_geom::Point2;
 use cam_model::{Document, Operation, Toolpath};
 use cam_move::{MoveStream, Segment};
 use cam_post::{emit, parse_post, ProgramMeta};
+use cam_sim::{deviations, sweep, target_for, Heightfield, ToolDiameters};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
   circle_centre, drill, pocket, profile, DrillHole, DrillRequest, PocketRequest, ProfileRequest,
   ToolSpec, ToolpathError,
 };
-use cam_units::Length;
+use cam_units::{Format, Length};
 
 const HELP: &str = "\
 cam-cli — headless CAM pipeline
@@ -68,6 +70,9 @@ COMMANDS:
         --post <file>         Post-processor to use (required)
         --out <path>          Write the program here instead of stdout
         --library <path>      Tool library; defaults to the document's tools_ref
+    simulate <document>       Simulate the program and report removed, gouge, uncut and crashes
+        --library <path>      Tool library; defaults to the document's tools_ref
+        --resolution <mm>     Cell size of the removal grid (default 1)
 
 OPTIONS:
     -h, --help                Show this help
@@ -78,6 +83,7 @@ EXIT CODES:
     3   unsupported document schema
     4   post-processor error, including a program the post cannot express
     5   the document has vector issues (check only)
+    6   the simulation found gouge, uncut material or a crash (simulate only)
 ";
 
 fn main() -> ExitCode {
@@ -136,6 +142,14 @@ impl Failure {
       message: message.into(),
     }
   }
+
+  /// A simulated program that does not cut what the document authorised (D-M5-6).
+  fn simulation(message: impl Into<String>) -> Self {
+    Self {
+      code: 6,
+      message: message.into(),
+    }
+  }
 }
 
 fn run(arguments: &[String]) -> Result<(), Failure> {
@@ -159,6 +173,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "toolpath" => toolpath_command(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
+    "simulate" => simulate_command(rest),
     other => Err(Failure::input(format!(
       "unknown command {other:?}; see --help"
     ))),
@@ -1316,9 +1331,206 @@ fn build_segment(
   Ok(Segment {
     name: toolpath.name.clone(),
     tool_number: number,
+    tool_diameter: spec.diameter,
     feed_rate: spec.feed_rate,
     plunge_rate: spec.plunge_rate,
     spindle_speed: spec.spindle_speed,
     moves,
   })
+}
+
+/// The cell size, as a fraction of which the deviation tolerance is stated.
+///
+/// An eighth of a cell is small enough that the test S6 names — a pocket cut a whole millimetre
+/// shallow or deep — is still reported at a 1 mm cell, and large enough to stay above the sweep's
+/// own sampling noise: the union of discs sampled at half a cell misses a boundary by at most
+/// `cell² / (32 * tool radius)`, which is a hundredth of a millimetre for a 1 mm cell and a 3 mm
+/// tool.
+const TOLERANCE_PER_CELL: f64 = 8.0;
+
+/// `simulate`: run the document's program over a heightfield and report what it did to the stock.
+///
+/// The report is the contract (A7): the same document prints the same bytes, and a program that
+/// gouges, leaves material standing or rams the tool exits `6` rather than `0` (D-M5-6). Nothing is
+/// written: a simulation is a question about the document, not a change to it.
+fn simulate_command(rest: &[String]) -> Result<(), Failure> {
+  let mut document_path: Option<PathBuf> = None;
+  let mut library_path: Option<PathBuf> = None;
+  let mut resolution = cam_sim::DEFAULT_CELL;
+
+  let mut index = 0;
+  while index < rest.len() {
+    match rest[index].as_str() {
+      "--library" => {
+        library_path = Some(PathBuf::from(option_value(rest, index, "--library")?));
+        index += 2;
+      }
+      "--resolution" => {
+        resolution = parse_mm(option_value(rest, index, "--resolution")?, "--resolution")?;
+        index += 2;
+      }
+      other if other.starts_with('-') => {
+        return Err(Failure::input(format!("unknown simulate option {other:?}")))
+      }
+      other => {
+        if document_path.is_some() {
+          return Err(Failure::input("simulate takes exactly one document"));
+        }
+        document_path = Some(PathBuf::from(other));
+        index += 1;
+      }
+    }
+  }
+
+  let document_path =
+    document_path.ok_or_else(|| Failure::input("simulate requires a document path"))?;
+  let document = open(&document_path)?;
+
+  // The library resolves exactly as `emit`'s does: `--library`, else the document's own `tools_ref`
+  // relative to the document.
+  let library_path =
+    match library_path.or_else(|| {
+      document.tools_ref.as_ref().map(|reference| {
+        document_path
+          .parent()
+          .unwrap_or_else(|| Path::new("."))
+          .join(reference)
+      })
+    }) {
+      Some(path) => path,
+      None => return Err(Failure::input(
+        "simulate needs a tool library to know the tool sizes: pass --library or set tools_ref in \
+         the document",
+      )),
+    };
+  let library =
+    ToolLibrary::open(&library_path).map_err(|error| Failure::input(error.to_string()))?;
+
+  // The program is the one `emit` would run (D-M5-1): the same segments, built by the same
+  // function, so the simulation cannot disagree with the machine about what was cut.
+  let mut stream = MoveStream::new(document.job.safe_z, Point2::new(0.0, 0.0));
+  for toolpath in &document.toolpaths {
+    stream
+      .segments
+      .push(build_segment(&document, toolpath, &library)?);
+  }
+
+  let cell = Length::from_mm(resolution);
+  let mut field =
+    Heightfield::new(&document.job, cell).map_err(|error| Failure::input(error.to_string()))?;
+  // Every tool the program uses, at the diameter the library gives it: a profile's target band is
+  // the material its tool sweeps, and the segment already carries the size that built it.
+  let tools = ToolDiameters::new(
+    stream
+      .segments
+      .iter()
+      .map(|segment| (segment.tool_number, segment.tool_diameter)),
+  );
+  let target =
+    target_for(&document, cell, &tools).map_err(|error| Failure::input(error.to_string()))?;
+
+  let removal = sweep::apply(&stream, &mut field);
+  let deviation = deviations(
+    &field,
+    &target,
+    Length::from_mm(cell.mm() / TOLERANCE_PER_CELL),
+  )
+  .map_err(|error| Failure::input(error.to_string()))?;
+
+  print_report(&document, &stream, &field, &deviation, &removal);
+
+  let mut defects = Vec::new();
+  if deviation.gouge > 0.0 {
+    defects.push(format!("gouge {} mm3", decimal(deviation.gouge)));
+  }
+  if deviation.uncut > 0.0 {
+    defects.push(format!("uncut {} mm3", decimal(deviation.uncut)));
+  }
+  if !removal.crashes.is_empty() {
+    defects.push(format!("{} crash(es)", removal.crashes.len()));
+  }
+  if defects.is_empty() {
+    Ok(())
+  } else {
+    Err(Failure::simulation(format!(
+      "the simulation found defects: {}",
+      defects.join(", ")
+    )))
+  }
+}
+
+/// The six-line report, in one order and one decimal count, so two runs print the same bytes (S9).
+fn print_report(
+  document: &Document,
+  stream: &MoveStream,
+  field: &Heightfield,
+  deviation: &cam_sim::Deviation,
+  removal: &cam_sim::Removal,
+) {
+  let grid = field.grid();
+  let volumes = field.volumes();
+  let cell = short_decimal(grid.cell.mm());
+  println!(
+    "simulate: {} x {} x {} mm, {cell} x {cell} mm cells ({} x {}), {} toolpath(s)",
+    decimal(document.job.width.mm()),
+    decimal(document.job.height.mm()),
+    decimal(document.job.thickness.mm()),
+    grid.columns,
+    grid.rows,
+    document.toolpaths.len()
+  );
+  println!(
+    "program: {} move(s), {} mm cutting length",
+    stream.move_count(),
+    decimal(stream.cut_length().mm())
+  );
+  println!(
+    "removed: {} mm3 of {} mm3, {} through cell(s)",
+    decimal(volumes.removed),
+    decimal(grid.volume(document.job.thickness)),
+    volumes.through_cells
+  );
+  println!(
+    "gouge: {} mm3 over {} cell(s)",
+    decimal(deviation.gouge),
+    deviation.gouge_cells
+  );
+  println!(
+    "uncut: {} mm3 over {} cell(s)",
+    decimal(deviation.uncut),
+    deviation.uncut_cells
+  );
+  if removal.crashes.is_empty() {
+    println!("crash: none");
+  }
+  for crash in &removal.crashes {
+    println!(
+      "crash: {} move {} at ({}, {}, {})",
+      crash.toolpath,
+      crash.move_index,
+      decimal(crash.at.x.mm()),
+      decimal(crash.at.y.mm()),
+      decimal(crash.at.z.mm())
+    );
+  }
+}
+
+/// A millimetre figure with the report's three decimals, through `cam-units` so it is locale-free.
+fn decimal(value: f64) -> String {
+  Format::fixed(3).apply(value)
+}
+
+/// A cell size without trailing zeroes: `1` and `0.5`, not `1.000` and `0.500`.
+///
+/// A resolution of one millimetre is the default and reads as `1 x 1 mm cells`; a fractional one
+/// keeps as many decimals as it needs. The trimming is deterministic text manipulation on a value
+/// `Format` already rounded, so the line stays byte-stable.
+fn short_decimal(value: f64) -> String {
+  let text = decimal(value);
+  let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+  if trimmed.is_empty() || trimmed == "-" {
+    "0".to_owned()
+  } else {
+    trimmed.to_owned()
+  }
 }

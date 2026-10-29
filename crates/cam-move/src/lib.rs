@@ -93,6 +93,12 @@ pub struct Segment {
   pub name: String,
   /// Tool number.
   pub tool_number: u32,
+  /// Cutting diameter of the tool, in millimetres.
+  ///
+  /// The emitter ignores it — a post-processor has no block that states a tool's diameter — but the
+  /// simulation needs the footprint a move sweeps, and taking it from the segment keeps the tool
+  /// joined to the moves that use it (M5 S2).
+  pub tool_diameter: Length,
   /// Cutting feed rate in millimetres per second.
   pub feed_rate: f64,
   /// Plunge feed rate in millimetres per second.

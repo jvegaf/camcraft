@@ -632,6 +632,7 @@ dependencies = [
  "cam-model",
  "cam-move",
  "cam-post",
+ "cam-sim",
  "cam-store",
  "cam-toolpath",
  "cam-units",
@@ -645,7 +646,11 @@ dependencies = [
  "cam-app",
  "cam-geom",
  "cam-model",
+ "cam-move",
+ "cam-sim",
+ "cam-toolpath",
  "cam-ui",
+ "cam-units",
  "cam-view",
  "eframe",
 ]
@@ -704,6 +709,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cam-sim"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-model",
+ "cam-move",
+ "cam-units",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cam-store"
 version = "0.0.1"
 dependencies = [
@@ -736,6 +753,9 @@ dependencies = [
  "cam-geom",
  "cam-import",
  "cam-model",
+ "cam-move",
+ "cam-sim",
+ "cam-units",
  "cam-view",
  "egui",
 ]
@@ -756,6 +776,8 @@ dependencies = [
  "cam-app",
  "cam-geom",
  "cam-model",
+ "cam-move",
+ "cam-sim",
  "cam-units",
  "proptest",
 ]

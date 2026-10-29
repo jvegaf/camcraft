@@ -22,17 +22,36 @@
 //!
 //! Arcs are flattened **here**, at half a pixel, and nowhere earlier.
 //!
+//! # The 3D preview (M5 V2, V3)
+//!
+//! [`view3d`] adds the stock's 3D picture to the shell: a top panel that paints a simulated
+//! [`cam_sim::Heightfield`] through `egui::Mesh`, orbit and wheel-zoom on the same painter, and the
+//! program's moves as projected 3D lines. It is **additive**: [`Shell::show`] keeps its 2D path when
+//! the panel is closed (A12), and the panel never authors geometry or touches the document
+//! (D-M5-9) — the caller hands in the untouched stock and the program, and the panel plays it (A10).
+//!
+//! Playback is the one thing in this crate that needs a clock, and [`Shell::show_in`] is the only
+//! place that reads one: `ctx.input(|input| input.stable_dt)` becomes the delta
+//! [`Preview3d::advance`] consumes, so the arithmetic itself stays a pure function a test drives.
+//!
 //! Must not contain geometry, toolpath or document rules.
 
 #![warn(missing_docs)]
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::{Point2, Vec2};
+use cam_model::Job;
+use cam_move::MoveStream;
+use cam_sim::Heightfield;
 use cam_view::{
   box_select, build_grid, build_scene, choose_snap, pick, SceneItem, Snap, SnapKind, Style,
   PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
 };
 use egui::{Context, Pos2, Sense, Stroke};
+
+pub mod view3d;
+
+pub use view3d::Preview3d;
 
 /// The smallest canvas that auto-framing will act on.
 ///
@@ -538,6 +557,19 @@ pub struct DrawnState {
   pub painted_items: usize,
   /// Grid lines painted on the canvas.
   pub painted_grid_lines: usize,
+  /// Triangles the 3D panel painted, `0` when the panel is closed.
+  ///
+  /// A triangle counts once it reached the `egui::Mesh`, so a triangle this backend refuses — one
+  /// with a vertex behind the camera — is not counted (M5 A9, A11).
+  pub painted_triangles: usize,
+  /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
+  pub painted_3d_lines: usize,
+  /// How much of the previewed program has played, in `0.0..=1.0`.
+  ///
+  /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
+  /// move and exactly `1.0` once the program has finished (M5 A10). Stays `0.0` when the panel is
+  /// closed, because a closed panel is not a clock.
+  pub preview_progress: f64,
 }
 
 /// What one frame produced.
@@ -606,6 +638,14 @@ pub struct Shell {
   pub text: String,
   /// Cap height the text command uses, in millimetres. Default 10 mm.
   pub text_height: f64,
+  /// Whether the 3D preview panel is open.
+  ///
+  /// View state, not document state: like the camera, opening the panel is not an edit and is not
+  /// in the undo history (M5 A12). [`Shell::set_preview`] opens it, and the command bar's button
+  /// toggles it.
+  pub show_3d: bool,
+  /// The program preview the 3D panel draws, once a caller has handed one in.
+  preview: Option<Preview3d>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -662,6 +702,8 @@ impl Default for Shell {
       vertex_position: (0.0, 0.0),
       text: "CAM".to_owned(),
       text_height: 10.0,
+      show_3d: false,
+      preview: None,
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -702,6 +744,41 @@ impl Shell {
     };
   }
 
+  /// Hand the 3D panel a program to preview: the stock it cuts, the program itself, and the stock box.
+  ///
+  /// `field` must be the **untouched** stock — [`Heightfield::new`] for `job`, at the cell size the
+  /// caller chose — and `program` the moves to cut it with. The panel plays it (M5 A10): as the
+  /// cursor advances, whole moves are applied to the field, so the surface a viewer watches is the
+  /// same simulation [`cam_sim::sweep::apply`] gives the report, cell for cell.
+  ///
+  /// This method reads no document and returns no [`UiAction`], which is what keeps the preview off
+  /// the document's authoring path (M5 D-M5-9, A12): the window shows the preview of a program
+  /// authored through the CLI, it never authors one.
+  ///
+  /// The panel opens with the first preview, because a caller that hands one in means to look at it;
+  /// [`Shell::show_3d`] closes it again without discarding the preview or its cursor, and
+  /// [`Self::clear_preview`] discards both.
+  pub fn set_preview(&mut self, field: Heightfield, program: MoveStream, job: &Job) {
+    self.preview = Some(Preview3d::new(field, program, job));
+    self.show_3d = true;
+  }
+
+  /// Drop the preview and close the panel.
+  pub fn clear_preview(&mut self) {
+    self.preview = None;
+    self.show_3d = false;
+  }
+
+  /// The preview the 3D panel draws, when a caller has handed one in.
+  pub fn preview(&self) -> Option<&Preview3d> {
+    self.preview.as_ref()
+  }
+
+  /// The preview, for a caller that frames the camera directly instead of by a gesture.
+  pub fn preview_mut(&mut self) -> Option<&mut Preview3d> {
+    self.preview.as_mut()
+  }
+
   /// Build one frame.
   ///
   /// Actions are returned rather than applied: one frame of latency is invisible, and a pure shell
@@ -718,8 +795,14 @@ impl Shell {
   pub fn show_in(&mut self, app: &mut AppState, ui: &mut egui::Ui) -> ShellOutput {
     let mut output = ShellOutput::default();
     let ctx = ui.ctx().clone();
+    // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
+    // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
+    // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
+    // breakpoint) must not jump the animation forward by the length of the stall.
+    let dt = f64::from(ctx.input(|input| input.stable_dt));
     self.track_pointer(app, &ctx);
     self.command_bar(app, ui, &mut output);
+    self.view3d(ui, &mut output, dt);
     self.layer_dock(app, ui, &mut output);
     self.properties(app, ui, &mut output);
     self.status_bar(app, ui, &mut output);
@@ -749,6 +832,12 @@ impl Shell {
         ui.separator();
         if ui.button("Zoom to fit").clicked() {
           output.actions.push(UiAction::ZoomToFit);
+        }
+        ui.separator();
+        // The 3D panel is view state, so the button toggles it here rather than pushing an action:
+        // an action is a document command, and the preview never edits the document (M5 D-M5-9).
+        if ui.selectable_label(self.show_3d, "3D").clicked() {
+          self.show_3d = !self.show_3d;
         }
         ui.separator();
 
@@ -782,6 +871,49 @@ impl Shell {
           output.actions.push(UiAction::DeleteSelection);
         }
       });
+    });
+  }
+
+  fn view3d(&mut self, ui: &mut egui::Ui, output: &mut ShellOutput, dt: f64) {
+    if !self.show_3d {
+      return;
+    }
+    egui::Panel::top("preview_3d").show(ui, |ui| {
+      ui.horizontal(|ui| {
+        ui.heading("Preview");
+        ui.separator();
+        if let Some(preview) = self.preview.as_mut() {
+          // Playback advances only while the panel is open: a closed panel is not a hidden clock, and
+          // the 2D path pays nothing for a preview nobody is looking at (A12).
+          preview.advance(dt);
+          if preview.playing() {
+            // Without this the window would only repaint on input, and a program that plays to its
+            // end would appear to play only when the mouse moves.
+            ui.ctx().request_repaint();
+          }
+          preview.controls(ui);
+          ui.separator();
+          ui.label(format!(
+            "{} move(s), {} x {} cells, stride {}",
+            preview.program().move_count(),
+            preview.field().grid().columns,
+            preview.field().grid().rows,
+            preview.stride()
+          ));
+          output.drawn.preview_progress = preview.progress();
+        } else {
+          ui.label("no program to preview: simulate one with `cam-cli` and hand it in");
+        }
+      });
+      match self.preview.as_mut() {
+        Some(preview) => preview.show(ui, &mut output.drawn),
+        None => {
+          // An open panel with nothing to show still needs its region allocated, or the panel would
+          // collapse and the user's next click would land on the canvas instead.
+          let size = egui::vec2(ui.available_width(), view3d::PREVIEW_HEIGHT);
+          ui.allocate_space(size);
+        }
+      }
     });
   }
 

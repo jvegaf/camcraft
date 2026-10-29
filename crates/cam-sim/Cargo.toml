@@ -1,0 +1,17 @@
+[package]
+name = "cam-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-units.workspace = true
+cam-geom.workspace = true
+cam-move.workspace = true
+cam-model.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

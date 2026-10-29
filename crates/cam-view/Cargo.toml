@@ -10,6 +10,8 @@ publish.workspace = true
 cam-units.workspace = true
 cam-geom.workspace = true
 cam-model.workspace = true
+cam-move.workspace = true
+cam-sim.workspace = true
 cam-app.workspace = true
 
 [dev-dependencies]

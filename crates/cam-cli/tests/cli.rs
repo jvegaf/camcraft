@@ -1723,9 +1723,14 @@ fn the_island_golden_program_survives_a_document_save_and_load_round_trip() {
 /// byte: 9 mm stepover over a 6 mm tool, no allowance, one 6 mm pass.
 ///
 /// The inset region is `3…57` in both axes and the island grows to `r = 13` about (30, 30), so the
-/// row grid is `y = 3, 12, 21, 30, 39, 48` (the next grid height, 57, lies on the region's own top
-/// edge, comes back ambiguous and then misses the material, so it is dropped). The rows alternate
-/// direction, which is why the odd ones start at x = 57 and cut right to left:
+/// row grid is `y = 3, 12, 21, 30, 39, 48, 57` — seven rows, the last one lying exactly on the
+/// region's own top edge. A row on a boundary is the row the edge sits on, so it is cut a hair inside
+/// rather than dropped (S6): at `y = 57` the retry upward is outside the region and clips nothing, and
+/// the retry downward at `56.99999` clips the full span `3…57`, which is why the row is cut left to
+/// right as the seventh row. Dropping it — what the strategy did before S6 — left the tool's last row
+/// at `y = 48`, whose 3 mm radius reaches 51, so the 9 mm strip from 51 to the square's 60 mm edge was
+/// never cut. The rows alternate direction, which is why the odd ones start at x = 57 and cut right to
+/// left:
 ///
 /// - `y = 3` — retried from `3.00001` because it lies along the region's bottom edge; one span
 ///   `3…57` (N50).
@@ -1736,9 +1741,11 @@ fn the_island_golden_program_survives_a_document_save_and_load_round_trip() {
 ///   `57…43` and `17…3` (N210, N250).
 /// - `y = 39` — the mirror of `y = 21`: two spans `3…20.6192` and `39.3808…57` (N290, N330).
 /// - `y = 48` — misses the island, one span `57…3` (N370).
+/// - `y = 57` — the region's far edge: `|57 - 30| = 27 > 13`, so one span `3…57` (N410), cut left to
+///   right because the row index is even.
 ///
-/// That is nine spans, and a row crossing the island is **never** one span (A13). The gap is the
-/// circle's true intersection, not a tessellation of it. 45 lines, CRLF as above.
+/// That is ten spans, and a row crossing the island is **never** one span (A13). The gap is the
+/// circle's true intersection, not a tessellation of it. 49 lines, CRLF as above.
 const ISLAND_RASTER_PROGRAM: &str = "\
 ( Pocket )\r\n\
 ( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
@@ -1781,10 +1788,14 @@ N350G00Y48.0000\r\n\
 N360G01Z-6.0000\r\n\
 N370G01X3.0000\r\n\
 N380G00Z5.0000\r\n\
-N390G00Z5.0000\r\n\
-N400G00X0.0000Y0.0000\r\n\
-N410M05\r\n\
-N420M30\r\n";
+N390G00Y57.0000\r\n\
+N400G01Z-6.0000\r\n\
+N410G01X57.0000\r\n\
+N420G00Z5.0000\r\n\
+N430G00Z5.0000\r\n\
+N440G00X0.0000Y0.0000\r\n\
+N450M05\r\n\
+N460M30\r\n";
 
 #[test]
 fn a_raster_pocket_with_an_island_emits_the_golden_program() {
@@ -1943,4 +1954,541 @@ fn a_pocket_with_a_boss_inside_an_island_emits_the_golden_program() {
     BOSS_OFFSET_PROGRAM
   );
   std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- M5 S4: the `simulate` command, its report and its exit code (A7, D-M5-6) ---
+
+/// A tool library holding one tool at T1 with the given diameter, authored by `tools add`.
+///
+/// The command is the real one, so the feed rates and the stepdown the strategies take their
+/// defaults from are the ones a user's library carries.
+fn write_sim_library(directory: &Path, diameter: f64) -> PathBuf {
+  let path = directory.join("sim-tools.sqlite");
+  let diameter = diameter.to_string();
+  let outcome = run(&[
+    "tools",
+    "add",
+    path.to_str().expect("utf8"),
+    "--id",
+    "SIM",
+    "--diameter",
+    &diameter,
+    "--number",
+    "1",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  path
+}
+
+/// Rewrite a saved document's job: the stock the simulation places `z = 0` and the floor at.
+fn set_job(document: &Path, edit: impl Fn(&mut Job)) {
+  let mut loaded = cam_store::document::load_document(document).expect("loads");
+  edit(&mut loaded.job);
+  save_document(document, &loaded).expect("saved");
+}
+
+/// Author a pocket on `E1` through the real `toolpath` command, as a user's document carries one.
+fn author_pocket(document: &Path, library: &Path, name: &str, stepover: f64, cut_depth: f64) {
+  author_pocket_with(document, library, name, "offset", stepover, cut_depth);
+}
+
+/// The same, with the clearing strategy named: `offset` or `raster`.
+fn author_pocket_with(
+  document: &Path,
+  library: &Path,
+  name: &str,
+  strategy: &str,
+  stepover: f64,
+  cut_depth: f64,
+) {
+  let stepover = stepover.to_string();
+  let cut_depth = cut_depth.to_string();
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "pocket",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--name",
+    name,
+    "--strategy",
+    strategy,
+    "--stepover",
+    &stepover,
+    "--pass-depth",
+    "6",
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+}
+
+/// Author a drilling toolpath on the circle `E1` through the real `toolpath` command.
+fn author_drill(document: &Path, library: &Path, name: &str, cut_depth: f64) {
+  let cut_depth = cut_depth.to_string();
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--name",
+    name,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+}
+
+/// Run `simulate` on a document and its library.
+fn simulate(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
+  let mut arguments = vec![
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ];
+  arguments.extend_from_slice(extra);
+  run(&arguments)
+}
+
+/// The first millimetre figure on the report line that starts with `prefix`.
+fn report_volume(stdout: &str, prefix: &str) -> f64 {
+  let line = stdout
+    .lines()
+    .find(|line| line.starts_with(prefix))
+    .unwrap_or_else(|| panic!("no {prefix:?} line in:\n{stdout}"));
+  line
+    .split_whitespace()
+    .find_map(|word| word.parse::<f64>().ok())
+    .unwrap_or_else(|| panic!("no number on {line:?}"))
+}
+
+/// The whole report a 100 mm square pocket prints, byte for byte.
+///
+/// The fixture is a pocket the tool really clears: a 2 mm tool in 1 mm cells reaches every cell the
+/// document authorises — a cell centre 0.707 mm from the square's corner is inside the 1 mm disc the
+/// tool sweeps there — and no cell outside it. So `gouge` and `uncut` are zero and the report is
+/// clean, which is what makes everything else in it pinned rather than counted.
+///
+/// The program is `emit`'s own stream: 25 rings at insets 1, 3, … 49 mm (a 6 mm pass, 2 mm
+/// stepover, no allowance), each cut as a rapid, a plunge, four sides and a retract — 25 x 7 = 175
+/// moves. The cutting length is the sum of the four sides of every ring: `sum(4 * (100 - 2k))` for
+/// k = 1, 3, … 49 = 5000 mm. The removed volume is the region's area times the depth,
+/// 100 x 100 x 6 = 60000 mm3, on the 200 x 100 x 18 mm stock the fixture declares.
+const CLEAN_POCKET_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 175 move(s), 5000.000 mm cutting length
+removed: 60000.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_pins_the_whole_report_of_a_pocket_that_cuts_what_it_claimed() {
+  let directory = scratch("simulate-report");
+  let document = write_vectors(
+    &directory,
+    "pocket.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket(&document, &library, "Pocket", 2.0, 6.0);
+
+  let before = std::fs::read(&document).expect("read");
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_POCKET_REPORT);
+
+  // A8's oracle: the reported volume is the analytic area times depth, within the coverage bound
+  // of a boundary at most half a cell wide — `perimeter x cell / 2`, in volume.
+  let removed = report_volume(&outcome.stdout, "removed:");
+  let analytic = 100.0 * 100.0 * 6.0;
+  let bound = 4.0 * 100.0 * 1.0 / 2.0 * 6.0;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a simulation writes nothing to the document"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole report a 100 mm square raster pocket prints, byte for byte.
+///
+/// The same region as the offset pocket above, cleared the other way: a 2 mm tool in 1 mm cells,
+/// inset 1 mm from the square's edges, so the rows span x = 1 .. 99 (98 mm) and start at y = 1 one
+/// stepover apart. The stepover is **2 mm** — the strategy's own stepover, not a tuned one — which
+/// puts 50 rows at y = 1, 3, … 99: the last row lies exactly on the inset region's far edge, and that
+/// row is the fixture's point. A row on a boundary is the row the edge sits on, not an empty row, so
+/// it is cut a hair inside (S6); before that fix the far-edge row was dropped, the last row sat at
+/// y = 97, and a 2 mm tool there reaches y = 98 — leaving the 2 mm strip from 98 to the square's edge
+/// standing as 200 cells (two rows of 100) at 6 mm deep, 1200 mm3, and exit 6 (the defect M5's oracle
+/// measured).
+///
+/// With the row cut, every cell centre of the square is within the 1 mm the tool reaches: rows are 2
+/// apart and cell centres are half-integers, so a centre is 0.5 mm from a row, and 0.5 mm from a row
+/// end at worst — `sqrt(0.5^2 + 0.5^2)` = 0.707 mm, inside the radius. The raster therefore clears the
+/// whole 100 x 100 square: 10000 cells at 6 mm deep is 60000 mm3, gouge 0 and uncut 0. Four moves a
+/// row (rapid, plunge, feed, retract) is 50 x 4 = 200 moves, and the cutting length is 50 rows x 98 mm
+/// = 4900 mm.
+///
+/// What this pins is the row lattice's far edge, not a claim that holds at every resolution: a 2 mm
+/// stepover under a 2 mm tool leaves adjacent rows exactly tangent, so the same program at
+/// `--resolution 0.5` reports `uncut: 300.000 mm3 over 200 cell(s)` — the centres between two tangent
+/// rows are 0.75 + 0.75 mm from a row end, past the radius. The stepover is the defect's own number
+/// (S6), and 1 mm cells are the resolution the oracle's bound is written for.
+const CLEAN_RASTER_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 200 move(s), 4900.000 mm cutting length
+removed: 60000.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_pins_the_whole_report_of_a_raster_pocket_that_cuts_what_it_claimed() {
+  let directory = scratch("simulate-raster");
+  let document = write_vectors(
+    &directory,
+    "raster.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket_with(&document, &library, "Pocket", "raster", 2.0, 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_RASTER_REPORT);
+
+  // A8's oracle for the second strategy: the same region, the same analytic volume, the same bound —
+  // the region's perimeter times half a cell times the depth.
+  let removed = report_volume(&outcome.stdout, "removed:");
+  let analytic = 100.0 * 100.0 * 6.0;
+  let bound = 4.0 * 100.0 * 1.0 / 2.0 * 6.0;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole report a drilling toolpath prints, byte for byte.
+///
+/// One r3 hole drilled 6 mm deep with a 6 mm tool: the tool is the hole, so the document's target and
+/// the program's sweep are the same disc. 32 cells of 1 mm2 have their centre inside it, which is
+/// 32 x 1 x 6 = 192 mm3 — against the analytic `pi r^2 depth` = 169.646 mm3, inside the hole's own
+/// bound of `2 pi r x cell / 2 x depth` = 56.549 mm3. The program is a rapid, one plunge (the peck
+/// depth is zero, so the hole is one plunge) and a retract: 3 moves, no cutting length.
+const CLEAN_DRILL_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 3 move(s), 0.000 mm cutting length
+removed: 192.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_pins_the_whole_report_of_a_hole_the_drill_matches() {
+  let directory = scratch("simulate-drill");
+  let document = write_vectors(&directory, "hole.c2d", vec![circle_contour(3.0)]);
+  let library = write_sim_library(&directory, 6.0);
+  author_drill(&document, &library, "Drill", 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_DRILL_REPORT);
+
+  // A8's oracle for drilling: the removed volume is `pi r^2 depth` per hole, inside the hole's
+  // perimeter times half a cell times the depth.
+  let removed = report_volume(&outcome.stdout, "removed:");
+  let analytic = PI * 3.0 * 3.0 * 6.0;
+  let bound = 2.0 * PI * 3.0 * 1.0 / 2.0 * 6.0;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_finer_resolution_reduces_the_coverage_error() {
+  // A6: refinement is monotone on a fixed fixture. The region is 120.4 x 90.4 mm, so its edges do
+  // not land on the cell lattice and the reported volume is the cell count's: the volume error
+  // against `area x depth` is exactly the coverage error the bound is written for. The tool is 1 mm
+  // wide and the rings step over 0.6 mm, which keeps the sweep covering the whole region at both
+  // resolutions — the innermost ring's leftover is 0.3 mm, inside the 0.5 mm the tool reaches — so
+  // the two runs differ in the reported volume and in nothing else.
+  let directory = scratch("simulate-refine");
+  let document = write_vectors(
+    &directory,
+    "refine.c2d",
+    vec![rectangle_contour(120.4, 90.4)],
+  );
+  let library = write_sim_library(&directory, 1.0);
+  author_pocket(&document, &library, "Pocket", 0.6, 6.0);
+
+  let coarse = simulate(&document, &library, &[]);
+  let fine = simulate(&document, &library, &["--resolution", "0.5"]);
+  assert_eq!(coarse.code, 0, "{}{}", coarse.stdout, coarse.stderr);
+  assert_eq!(fine.code, 0, "{}{}", fine.stdout, fine.stderr);
+  assert!(
+    coarse
+      .stdout
+      .starts_with("simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells"),
+    "{}",
+    coarse.stdout
+  );
+  assert!(
+    fine
+      .stdout
+      .starts_with("simulate: 200.000 x 100.000 x 18.000 mm, 0.5 x 0.5 mm cells"),
+    "{}",
+    fine.stdout
+  );
+
+  let analytic = 120.4 * 90.4 * 6.0;
+  let coarse_error = (report_volume(&coarse.stdout, "removed:") - analytic).abs();
+  let fine_error = (report_volume(&fine.stdout, "removed:") - analytic).abs();
+  let bound = |cell: f64| 2.0 * (120.4 + 90.4) * cell / 2.0 * 6.0;
+  assert!(
+    coarse_error <= bound(1.0),
+    "1 mm error {coarse_error} mm3 over the {} mm3 bound:\n{}",
+    bound(1.0),
+    coarse.stdout
+  );
+  assert!(
+    fine_error <= bound(0.5),
+    "0.5 mm error {fine_error} mm3 over the {} mm3 bound:\n{}",
+    bound(0.5),
+    fine.stdout
+  );
+  assert!(
+    fine_error < coarse_error,
+    "0.5 mm cells must be closer than 1 mm cells: {fine_error} vs {coarse_error}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_pocket_deeper_than_the_stock_reports_uncut_and_exits_six() {
+  // S6's too-shallow case, stated so the document is the defect: it asks for 6 mm of material out of
+  // a 5 mm stock, so the deepest millimetre of the claim is material the program never removes.
+  let directory = scratch("simulate-uncut");
+  let document = write_vectors(
+    &directory,
+    "shallow.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  set_job(&document, |job| job.thickness = Length::from_mm(5.0));
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket(&document, &library, "Pocket", 2.0, 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 6, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+simulate: 200.000 x 100.000 x 5.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 175 move(s), 5000.000 mm cutting length
+removed: 50000.000 mm3 of 100000.000 mm3, 10000 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 10000.000 mm3 over 10000 cell(s)
+crash: none
+";
+  assert_eq!(outcome.stdout, expected);
+  assert!(outcome.stderr.contains("uncut"), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_drill_wider_than_its_hole_reports_gouge_and_exits_six() {
+  // S6's too-deep direction. A pocket cannot be too deep through a document that validates — the
+  // target is derived from the same `cut_depth` the pass sequence lands on — so the gouge is stated
+  // the way a document can express it: a 4 mm hole drilled with a 6 mm tool removes a disc a
+  // millimetre wider on every side than the hole the document authorised.
+  //
+  // The arithmetic: 32 cells of 1 mm2 have their centre inside the 3 mm disc the tool sweeps, and 12
+  // of them are inside the 2 mm circle the document authorised, so the 20 cells outside the hole are
+  // 6 mm of material nobody asked to lose: 20 x 1 x 6 = 120 mm3 of gouge, over 20 cells. Every cell
+  // the document did claim was reached, so uncut is zero — the same volume reported with the sign the
+  // defect has, and not the other one.
+  let directory = scratch("simulate-gouge");
+  let document = write_vectors(
+    &directory,
+    "gouge.c2d",
+    vec![cam_geom::primitive::circle(Point2::new(50.0, 50.0), 2.0).expect("hole")],
+  );
+  let library = write_sim_library(&directory, 6.0);
+  author_drill(&document, &library, "Drill", 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 6, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 3 move(s), 0.000 mm cutting length
+removed: 192.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 120.000 mm3 over 20 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+  assert_eq!(outcome.stdout, expected);
+  assert!(outcome.stderr.contains("gouge"), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_rapid_at_depth_exits_six_and_names_the_toolpath_and_move() {
+  // D-M5-4: a clearance height below the stock top is a program that rams the tool. The crash rule
+  // reports it instead of cutting with it, and the report names where.
+  let directory = scratch("simulate-crash");
+  let document = write_vectors(
+    &directory,
+    "crash.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  set_job(&document, |job| job.safe_z = Length::from_mm(-3.0));
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket(&document, &library, "Pocket", 2.0, 6.0);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 6, "{}{}", outcome.stdout, outcome.stderr);
+  let crashes: Vec<&str> = outcome
+    .stdout
+    .lines()
+    .filter(|line| line.starts_with("crash: ") && *line != "crash: none")
+    .collect();
+  assert_eq!(
+    crashes.first().copied(),
+    Some("crash: Pocket move 0 at (1.000, 1.000, -3.000)"),
+    "the first crash is the rapid onto the first ring:\n{}",
+    outcome.stdout
+  );
+  assert!(
+    crashes.len() > 1,
+    "every rapid below the surface is reported, not only the first:\n{}",
+    outcome.stdout
+  );
+  let mut previous = None;
+  for line in &crashes {
+    let index: usize = line
+      .split_once(" move ")
+      .and_then(|(_, rest)| rest.split_once(' '))
+      .and_then(|(index, _)| index.parse().ok())
+      .unwrap_or_else(|| panic!("no move index on {line:?}"));
+    assert!(
+      line.starts_with("crash: Pocket move "),
+      "each crash names its toolpath:\n{line}"
+    );
+    if let Some(previous) = previous {
+      assert!(
+        previous < index,
+        "crash lines are in program order:\n{}",
+        outcome.stdout
+      );
+    }
+    previous = Some(index);
+  }
+  assert!(outcome.stderr.contains("crash"), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_simulations_of_one_document_print_identical_bytes() {
+  // A7 and S9: the report is the contract, so the same document prints the same text every time.
+  let directory = scratch("simulate-determinism");
+  let document = write_vectors(
+    &directory,
+    "twice.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket(&document, &library, "Pocket", 2.0, 6.0);
+
+  let first = simulate(&document, &library, &[]);
+  let second = simulate(&document, &library, &[]);
+  assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+  assert_eq!(first.code, second.code);
+  assert_eq!(first.stdout, second.stdout);
+  assert_eq!(first.stderr, second.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_resolution_over_the_cell_cap_exits_two_naming_the_cell_the_grid_and_the_cap() {
+  // A6: the request is refused by name, never allocated.
+  let directory = scratch("simulate-cap");
+  let document = write_vectors(&directory, "cap.c2d", vec![rectangle_contour(100.0, 100.0)]);
+  let library = write_sim_library(&directory, 2.0);
+  author_pocket(&document, &library, "Pocket", 2.0, 6.0);
+
+  let outcome = simulate(&document, &library, &["--resolution", "0.01"]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stdout.is_empty(), "no report when nothing ran");
+  for needle in ["0.01", "20000", "10000", "4000000"] {
+    assert!(
+      outcome.stderr.contains(needle),
+      "the refusal names {needle:?}: {}",
+      outcome.stderr
+    );
+  }
+  assert!(
+    outcome.stderr.contains("--resolution"),
+    "the refusal says what to change: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn simulate_without_a_tool_library_exits_two_and_says_so() {
+  let directory = scratch("simulate-no-library");
+  let document = write_vectors(
+    &directory,
+    "bare.c2d",
+    vec![rectangle_contour(100.0, 100.0)],
+  );
+  let outcome = run(&["simulate", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("--library"),
+    "the refusal names the flag: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_help_lists_the_simulate_command_its_flags_and_its_exit_code() {
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for needle in [
+    "simulate <document>",
+    "--library <path>",
+    "--resolution <mm>",
+    "the simulation found",
+  ] {
+    assert!(
+      outcome.stdout.contains(needle),
+      "help is missing {needle:?}:\n{}",
+      outcome.stdout
+    );
+  }
 }

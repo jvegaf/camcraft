@@ -7,6 +7,7 @@ members = [
     "crates/cam-model",
     "crates/cam-store",
     "crates/cam-post",
+    "crates/cam-sim",
     "crates/cam-toolpath",
     "crates/cam-cli",
     "crates/cam-app",
@@ -30,6 +31,7 @@ cam-move = { path = "crates/cam-move" }
 cam-model = { path = "crates/cam-model" }
 cam-store = { path = "crates/cam-store" }
 cam-post = { path = "crates/cam-post" }
+cam-sim = { path = "crates/cam-sim" }
 cam-toolpath = { path = "crates/cam-toolpath" }
 cam-app = { path = "crates/cam-app" }
 cam-import = { path = "crates/cam-import" }

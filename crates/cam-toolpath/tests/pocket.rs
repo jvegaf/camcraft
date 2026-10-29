@@ -175,6 +175,32 @@ fn xy_bounds(points: &[Point2]) -> (f64, f64, f64, f64) {
   bounds
 }
 
+/// The distance from a point to a straight span of material: the tool's reach is a disc about it.
+fn distance_to_span(point: Point2, start: Point2, end: Point2) -> f64 {
+  let clamped_x = point.x.clamp(start.x.min(end.x), start.x.max(end.x));
+  Point2::new(clamped_x, start.y).distance_to(point)
+}
+
+/// How many cell centres of an `extent` square at a 1 mm lattice lie within `radius` of a span the
+/// toolpath cuts: the area the tool really clears, counted the way the simulation counts it.
+fn covered_cells(units: &[Vec<Move>], radius: f64, extent: usize) -> usize {
+  let mut count = 0;
+  for row in 0..extent {
+    for column in 0..extent {
+      let centre = Point2::new(column as f64 + 0.5, row as f64 + 0.5);
+      let covered = units.iter().any(|unit| {
+        cut_spans(unit)
+          .iter()
+          .any(|(start, end)| distance_to_span(centre, *start, *end) <= radius)
+      });
+      if covered {
+        count += 1;
+      }
+    }
+  }
+  count
+}
+
 fn arc_moves(unit: &[Move]) -> usize {
   unit
     .iter()
@@ -262,6 +288,63 @@ fn raster_square_cuts_rows_at_stepover_spacing() {
     "the last row sits at y = 96, got {}",
     start.y
   );
+}
+
+#[test]
+fn a_raster_row_on_the_region_far_edge_is_cut() {
+  // A 2 mm tool at a 2 mm stepover on a 100 mm square, no allowance: the tool centre rides 1 mm
+  // inside the square, so the region it rasters is 1…99 in both axes, and the row lattice from its
+  // low edge is 1, 3, … 99 — **50** rows, the last one lying exactly on the region's far edge.
+  //
+  // A row on a boundary is material the region's edge sits on, not an empty row: it is the row that
+  // clears the strip the edge is the end of. Dropping it puts the last row at 97, and a 2 mm tool at
+  // y = 97 reaches y = 98 — so the 2 mm strip from 98 to the square's edge is left standing, which
+  // on a 1 mm lattice is 200 cells at 6 mm deep = 1200 mm3 (what M5's simulation oracle measured:
+  // `removed: 58800.000 mm3`, `uncut: 1200.000 mm3 over 200 cell(s)`, exit 6).
+  let path = run_with(
+    &square(100.0),
+    &params(PocketStrategy::Raster, 0.0, 2.0, 20.0, 6.0),
+    &tool(2.0),
+  );
+
+  assert_eq!(path.rings, 50, "a 98 mm span at a 2 mm stepover: 50 rows");
+  let units = work_units(&path.moves);
+  assert_eq!(units.len(), 50, "one span per row on a convex square");
+
+  for (index, unit) in units.iter().enumerate() {
+    let y = 1.0 + 2.0 * index as f64;
+    let spans = cut_spans(unit);
+    assert_eq!(spans.len(), 1, "row {index} is one straight piece");
+    let (start, end) = spans[0];
+    assert!(
+      (start.y - y).abs() < ROW_TOLERANCE && (end.y - y).abs() < ROW_TOLERANCE,
+      "row {index} should lie at y = {y}, got {} and {}",
+      start.y,
+      end.y
+    );
+    let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
+    assert!(
+      (min_x - 1.0).abs() < TOLERANCE && (max_x - 99.0).abs() < TOLERANCE,
+      "row {index} should span x 1…99, got {min_x}…{max_x}"
+    );
+  }
+
+  // The last row is the far edge itself, cut a hair inside it rather than dropped.
+  let last = units.last().expect("at least one row");
+  let (start, _) = cut_spans(last)[0];
+  assert!(
+    (start.y - 99.0).abs() < ROW_TOLERANCE,
+    "the last row sits on the region's far edge at y = 99, got {}",
+    start.y
+  );
+
+  // And the pocket covers the whole square: every one of the 10000 cell centres of a 1 mm lattice is
+  // within the 1 mm the tool reaches, so the covered area is 100 x 100 = 10000 mm2 and the analytic
+  // volume at 6 mm deep is 60000 mm3. Without the far-edge row it is 9800 cells and 58800 mm3.
+  let covered = covered_cells(&units, 1.0, 100);
+  assert_eq!(covered, 10_000, "the raster clears the whole 100 mm square");
+  let volume = covered as f64 * 1.0 * 1.0 * 6.0;
+  assert_eq!(volume, 60_000.0, "10000 cells x 1 mm2 x 6 mm deep");
 }
 
 #[test]
