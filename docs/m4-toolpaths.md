@@ -216,7 +216,7 @@ what it gives the program is the compensated head position. `cam-cli inspect` ca
 
 | Error | Raised by | Message |
 | --- | --- | --- |
-| `OpenContour` | pocket (and profile) | `profile toolpaths need closed geometry` |
+| `OpenContour` | profile, pocket, drilling | `cutting toolpaths need closed geometry` |
 | `InvalidToolDiameter` | pocket, drilling | `tool diameter must be greater than zero` |
 | `InvalidPassDepth` | pocket (and profile) | `pass depth must be greater than zero` |
 | `InvalidStepover` | pocket | `stepover 0 mm must be greater than zero` |

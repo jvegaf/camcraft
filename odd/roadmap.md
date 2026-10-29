@@ -281,7 +281,8 @@ fill, because a clip discards the path.
 | Drilling: circle-only holes, nearest-neighbour tour, pecks, both retract modes | `crates/cam-toolpath::drill` | 13 tests; `order = [h1, h2, h3, h4]` and `rapid_length = 110 mm` on a 20 mm square; a 3 mm peck on a 7 mm cut plunges at −3, −6, −7; `Full` reaches safe Z and `Amount(1)` does not |
 | Drill bank as selection with head compensation, and no machine command | `crates/cam-toolpath::drill` | 7 tests; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm; `bank_travel = 60 mm` against `rapid_length = 120 mm`; a one-drill bank emits the un-banked program move for move |
 | `cam-cli toolpath`, plus `inspect` and `emit` for the new kinds | `crates/cam-cli` | 9 tests; appends and reloads, ids are deterministic, the library's `stepover`/`clear_stepover`/`stepdown` supply the defaults, every refusal exits `2` with the file byte-identical, `--out` leaves the input alone, `inspect` names each kind and strategy |
-| 55 tests over four slices, 604 in the workspace before M4's golden G-code | `crates/` | `cargo test --workspace` green: 23 + 12 + 13 + 7 added, one T3 placeholder removed with them |
+| Golden G-code for pocket and drilling, and a closed error set | `crates/cam-cli`, `crates/cam-toolpath` | 5 tests; a 42-line program asserted whole three ways (as built, after a c2d round trip, and with both toolpaths authored through `cam-cli toolpath`); an exhaustive `match` over every `ToolpathError` with its exact text, so a stub cannot return as a contract |
+| 61 tests over four slices, **610 in the workspace** | `crates/` | `cargo test --workspace` green: 23 + 12 + 13 + 7 + 5 added, one T3 placeholder removed with them |
 
 M4 defects found and fixed at the root: `RetractMode` could not be a tagged newtype over a length, because
 a bare number cannot carry the tag, so it is a struct-like variant with a named `amount` field; the first
@@ -291,7 +292,12 @@ document path swallowed its first option; and the offset kernel's own refusals d
 shrink wider than a feature comes back as a well-formed smaller ring with unchanged winding after which the
 rings grow, so a ring now proves every vertex sits the requested distance inside the original boundary
 (D-M4-9), without which a 3 mm square pocketed by a 4 mm tool emitted a wall-gouging ring and looped
-forever. This narrows §4.2's M0 wording: the kernel refuses an offset that crosses the shape's interior, but
+forever. Three more were fixed after both writers reported them: `OpenContour` said "profile toolpaths
+need closed geometry" while pocket and drilling return it too, so the message now names no single
+operation; `cam-cli toolpath --kind drilling` accepted a rectangle and left the refusal to `emit`, so the
+append now resolves every entity through `circle_centre` and exits `2` before writing; and the golden
+program pinned a bare `G00` the fixture post emits between toolpaths as `NEW_SEGMENT`, which is
+pre-existing post behaviour now covered by a test rather than left to chance. This narrows §4.2's M0 wording: the kernel refuses an offset that crosses the shape's interior, but
 not every over-shrink, and the guard lives in the strategy while the kernel limit stays recorded for
 arrangement-based offsetting.
 

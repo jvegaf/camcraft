@@ -55,7 +55,7 @@ fn every_variant_keeps_its_message() {
     // Exhaustive on purpose (A14): a new variant does not compile until it is named here with the
     // sentence it shows the operator.
     let expected = match &error {
-      ToolpathError::OpenContour => "profile toolpaths need closed geometry".to_owned(),
+      ToolpathError::OpenContour => "cutting toolpaths need closed geometry".to_owned(),
       ToolpathError::InvalidToolDiameter => "tool diameter must be greater than zero".to_owned(),
       ToolpathError::InvalidPassDepth => "pass depth must be greater than zero".to_owned(),
       ToolpathError::InvalidDepthRange {

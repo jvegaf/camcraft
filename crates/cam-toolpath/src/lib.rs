@@ -37,8 +37,8 @@ pub struct ToolSpec {
 /// Why a toolpath could not be computed.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
 pub enum ToolpathError {
-  /// Profile cuts need a closed contour.
-  #[error("profile toolpaths need closed geometry")]
+  /// Every cutting operation needs a closed contour.
+  #[error("cutting toolpaths need closed geometry")]
   OpenContour,
   /// The tool has no usable diameter.
   #[error("tool diameter must be greater than zero")]

@@ -42,6 +42,10 @@ fn rectangle_contour(width: f64, height: f64) -> Contour {
   .expect("rectangle")
 }
 
+fn circle_contour(radius: f64) -> Contour {
+  cam_geom::primitive::circle(Point2::new(25.0, 15.0), radius).expect("circle")
+}
+
 fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -> PathBuf {
   let mut document = Document::new(Job {
     width: Length::from_mm(200.0),
@@ -931,7 +935,7 @@ fn a_pocket_without_a_stepover_anywhere_exits_two_naming_the_option() {
 #[test]
 fn a_drilling_toolpath_accepts_a_bank_and_an_out_path() {
   let directory = scratch("toolpath-bank");
-  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let document = write_document(&directory, circle_contour(5.0), None);
   let out = directory.join("drilled.c2d");
   let outcome = run(&[
     "toolpath",
@@ -1297,6 +1301,37 @@ fn a_pocket_and_a_drilling_toolpath_authored_through_the_cli_emit_the_golden_pro
   assert_eq!(
     emit_program(&directory, &document, &library, &post),
     GOLDEN_PROGRAM
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_drilling_toolpath_over_a_non_circle_exits_two_and_leaves_the_document_untouched() {
+  let directory = scratch("toolpath-noncircle");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "drilling",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "6",
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert!(
+    outcome.stderr.contains("E1") && outcome.stderr.contains("not a circle"),
+    "the refusal names the entity and the reason: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused append writes nothing"
   );
   std::fs::remove_dir_all(&directory).ok();
 }

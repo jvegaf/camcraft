@@ -805,6 +805,23 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     }
   };
 
+  // A drilling toolpath cuts circles only (D-M4-5), and a pocket needs a closed region. Appending a
+  // toolpath that can never be computed would leave a document whose only failure mode is a later
+  // `emit`, so the selection is checked here, while the command can still say no and change nothing.
+  if matches!(operation, Operation::Drilling(_)) {
+    for entity_id in &entity_ids {
+      let contour = contour_of(&document, &id, entity_id)?;
+      if circle_centre(contour).is_none() {
+        return Err(Failure::input(
+          ToolpathError::NotACircle {
+            entity: entity_id.clone(),
+          }
+          .to_string(),
+        ));
+      }
+    }
+  }
+
   document.toolpaths.push(Toolpath {
     id: id.clone(),
     name,

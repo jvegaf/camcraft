@@ -277,7 +277,7 @@ Both:  moves = for each depth in pass_depths(start_depth, cut_depth, pass_depth)
 
 Tests (every one asserts moves, not internals): a 100x100 square with a 6 mm tool and 4 mm stepover
 yields 12 offset rings at insets 3, 7, … 47, each a rectangle of side `100 - 2*inset`; the same square
-rastered gives 32 rows at y = 3, 6, … 97 spanning x 3…97; a 5 mm pass depth on an 12 mm cut gives passes
+rastered gives 32 rows at y = 3, 6, … 96 spanning x 3…97; a 5 mm pass depth on an 12 mm cut gives passes
 `[5, 10, 12]` and every ring/row appears once per pass; `allowance = 1.0` moves every transition 1 mm
 inward; a 4 mm tool in a 3 mm pocket is refused as `OffsetCollapsed`; a circle's raster spans match the
 analytic chord length of the inset circle within 1e-6; a raster row exactly tangent to a circle produces
@@ -344,8 +344,8 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 | T2 | `35cdf4f` (merge `432e0d4`) | 12 tests. 12 rings at insets 3, 7, … 47 and 32 rows at y = 3, 6, … 96 on a 100 mm square with a 6 mm tool; `[5, 10, 12]` pass chunking with every ring once per pass; allowance shifts every ring and row by exactly 1 mm; analytic chord widths on a circle within 1e-6; arcs kept in rings and absent from rows; tangent row emits no unpaired span; refusals by name. Four spec disagreements found and fixed in the spec rather than worked around (L8) |
 | T3 | `1382e97` (merge `5201ab4`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
 | T4 | `9fa671e` (merge `229a68d`) | 7 bank tests added, the T3 placeholder `a_drill_bank_is_ignored_in_this_task` removed because it pinned exactly what T4 reverses; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm, `bank_travel = 60 mm` against `rapid_length = 120 mm`. A differential check against the base commit showed the un-banked program byte-identical through `toolpath`, `emit` and `inspect`, with banked `emit` differing only in the compensated X |
-| T5 | _pending_ | |
-| T6 | _pending_ | |
+| T5 | `11ce793` | 5 tests: `tests/errors.rs` (exhaustive `match`, exact `Display` per variant, "no refusal says not implemented") and three whole-program goldens (as built, after a save/load round trip, and with both toolpaths authored through `cam-cli toolpath`). `NotImplemented` deleted; the M0 profile golden untouched. Its RED for A14 was observed by re-adding the variant twice — once to break exhaustiveness, once to break the message rule |
+| T6 | `7c61d80` | `docs/m4-toolpaths.md` (318 lines: operations, parameter mapping, inset/ring/raster/depth/linking rules, drilling, drill bank, six known limits with their decisions, the error table, the `toolpath` synopsis with every default's source, three worked examples); roadmap M4 row marked delivered plus §4.6 with the evidence table and the corrections; `docs/format.md`'s `References` row generalised from profile to all three cutting operations. Every CLI transcript in the doc was replayed against the real binary |
 
 ## Log
 
@@ -390,7 +390,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   (a) the ring stop rules were insufficient — a shrink wider than a feature returns a valid smaller
   ring with unchanged winding and the rings then grow, so D-M4-9 adds a distance proof, without which
   a 3 mm square pocketed by a 4 mm tool emits a wall-gouging ring and loops forever;
-  (b) the raster row example said "32 rows at y = 3, 6, … 97", arithmetic that cannot hold on the
+  (b) the raster row example said "32 rows at y = 3, 6, … 96", arithmetic that cannot hold on the
   declared grid (32 rows end at 96);
   (c) the retry nudge `1e-6` equalled the kernel tolerance, so a retried row could land back on the
   ambiguity band and be dropped for nothing — it is now `1e-5`;
@@ -398,6 +398,21 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   fits, which is an ordinary pocket with uncleared corners. The refusal test uses a 3 mm pocket.
   Also recorded: rows sit exactly on the inset region's lower edge, so the first row is the one that
   needs the retry, and `Pocketpath.rings` counts rows that emitted at least one span.
+- **L9** — Slice 3 evidence: T5 `11ce793` (the stub deleted, the error contract, three whole-program
+  goldens: 609 tests) and T6 `7c61d80` (the guide and the roadmap evidence), both merged. The golden
+  program is pinned as one 42-line string asserted whole, and it was read line by line against the
+  geometry before being pinned — ring insets 3 and 9, arc centres equal to the contour's, both rings at
+  Z-6.0000, holes in tour order with pecks at -3 and -6.
+- **L10** — Three gaps the writers flagged were closed at the root rather than documented as warts.
+  (1) `ToolpathError::OpenContour` said "profile toolpaths need closed geometry" while pocket and
+  drilling return it too; it now says "cutting toolpaths need closed geometry", which is a deliberate
+  reword of an observable message, recorded here because A13 asks earlier behaviour to stay unchanged —
+  a message about the wrong operation is the same class of defect M0 and M3 both fixed at the root.
+  (2) A drilling toolpath over a rectangle was accepted by `toolpath` and refused only later by `emit`,
+  so A10's "bad input exits 2" did not cover it; the append now resolves every entity through
+  `circle_centre` and refuses before writing (D-M4-5), with a test that fails if the check is removed.
+  (3) The feature document's own task text still carried the two examples its criteria had corrected
+  (the 4 mm tool in a 5 mm pocket, and the bank's head-to-hole bound); both now match L7 and L8.
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
