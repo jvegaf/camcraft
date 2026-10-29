@@ -406,8 +406,7 @@ material as one subtraction with two signs (D-M5-2). `cam-cli simulate` is that 
 shows the same field as a depth-shaded 3D surface it can play. The feature document is
 `odd/tasks/m5-simulation.md`; the model, the report's exact shape, the exit codes and every
 recorded limit are in [docs/m5-simulation.md](../docs/m5-simulation.md). The workspace stands at **795
-tests**, measured with `cargo test --workspace`; the final `./scripts/check.sh` is the milestone's closing
-task (P1).
+tests**, green under `./scripts/check.sh` (`fmt --check`, `clippy -D warnings`, the whole suite).
 
 | Deliverable | Where | Proof |
 | --- | --- | --- |
