@@ -70,6 +70,7 @@ part.c2d
 | Extensibility | `EntityKind` and `Operation` are internally tagged enums. An unknown tag is a **hard error**: a document written by a newer build never half-loads, it is refused by name. Because of that, adding a variant is additive and keeps the schema tag; changing what an existing field means, or its units, is what makes a `@2`. |
 | `RetractMode` | `{"mode":"full"}` or `{"mode":"amount","amount":1.0}`. A tagged **newtype** over a bare number cannot carry the tag, so the amount is a named field. |
 | `bank` | Omitted when the machine has no drill gang, so a document that does not use one is byte-identical to one written before banks existed. |
+| `island_ids` | Omitted when empty. Names the closed contours to leave standing inside a `pocket`'s region; nothing is inferred from the drawing, so the field *is* the island list. The model refuses an island that is not a closed contour, that is not strictly inside one of the toolpath's boundaries, that is not disjoint from another island, that repeats an id, or that belongs to any operation other than a pocket. See [region-booleans.md](region-booleans.md). |
 
 `tools_ref` and `postp` are optional references resolved relative to the document.
 
@@ -177,7 +178,7 @@ Text variables need no declaration: `TOOLPATH_NAME`, `PATHNAME`, `FILE_NAME`, `F
 | `postp validate <file>` | Parse a post-processor and print a summary |
 | `tools list <library>` | List tools |
 | `tools add <library> --id --diameter --number` | Add or replace a tool |
-| `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); see [m4-toolpaths.md](m4-toolpaths.md) |
+| `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> [--islands <ids>] --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); `--islands` is a pocket-only list of contours to leave standing; see [m4-toolpaths.md](m4-toolpaths.md) and [region-booleans.md](region-booleans.md) |
 | `emit <document> --post <file> [--out <path>] [--library <path>]` | Compute toolpaths and write the program |
 
 Machine output goes to **stdout**, diagnostics to **stderr**.
