@@ -277,3 +277,24 @@ fn replacing_the_document_also_ressets_the_id_counter() {
   app.replace_document(document);
   assert_eq!(app.next_entity_id(), "E42");
 }
+
+#[test]
+fn redo_depth_tracks_the_future_stack() {
+  let mut app = state();
+  assert_eq!(app.redo_depth(), 0);
+  app.execute(resize(600.0, 400.0, 12.0)).expect("applies");
+  app.execute(resize(700.0, 400.0, 12.0)).expect("applies");
+  assert_eq!(app.redo_depth(), 0);
+
+  app.undo();
+  assert_eq!(app.redo_depth(), 1);
+  app.undo();
+  assert_eq!(app.redo_depth(), 2);
+
+  app.redo();
+  assert_eq!(app.redo_depth(), 1);
+
+  // A new command discards the abandoned branch, so nothing remains to redo.
+  app.execute(resize(800.0, 800.0, 9.0)).expect("applies");
+  assert_eq!(app.redo_depth(), 0);
+}

@@ -343,3 +343,140 @@ fn selecting_through_an_action_updates_the_properties_panel() {
     .join(" ")
     .contains("E1: contour"));
 }
+
+#[test]
+fn a_degenerate_canvas_is_never_framed() {
+  // The first frames of a real window can report a canvas of a few dozen pixels while the panels take
+  // their room. Fitting that geometry zoomed the drawing out by an order of magnitude.
+  let mut app = AppState::new(document_with_rectangle());
+  app
+    .camera_mut()
+    .set_viewport(cam_app::Viewport::new(1200.0, 700.0));
+  let mut shell = Shell::new();
+
+  let tiny = cam_ui::CanvasRect {
+    x: 0.0,
+    y: 0.0,
+    width: 24.0,
+    height: 18.0,
+  };
+  let _ = shell.frame_if_needed(&mut app, &tiny);
+  assert_eq!(
+    app.camera().pixels_per_mm(),
+    1.0,
+    "a 24x18 canvas must not be framed"
+  );
+  assert!(app.camera().center().is_near(Point2::ORIGIN, 1.0e-9));
+
+  // The real layout arrives and the drawing is framed.
+  let real = cam_ui::CanvasRect {
+    x: 220.0,
+    y: 30.0,
+    width: 1000.0,
+    height: 700.0,
+  };
+  // A canvas that changes size before the user touches the view is reframed for the new size.
+  assert!(
+    shell.frame_if_needed(&mut app, &real),
+    "the first real canvas must be framed"
+  );
+  assert!(
+    app.camera().pixels_per_mm() > 3.0,
+    "framing a 100x60 drawing in 1000x700 must zoom in, got {}",
+    app.camera().pixels_per_mm()
+  );
+  let centre = app.camera().center();
+  assert!(
+    (centre.x - 50.0).abs() < 1.0 && (centre.y - 30.0).abs() < 1.0,
+    "the view must centre on the geometry, not the stock: {centre:?}"
+  );
+}
+
+#[test]
+fn a_view_the_user_owns_is_not_refitted() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let canvas = cam_ui::CanvasRect {
+    x: 0.0,
+    y: 0.0,
+    width: 1000.0,
+    height: 700.0,
+  };
+  assert!(shell.frame_if_needed(&mut app, &canvas));
+  let zoom = app.camera().pixels_per_mm();
+
+  // The user takes the view; the shell must not steal it back.
+  shell.release_view();
+  app
+    .camera_mut()
+    .zoom_at(cam_app::ScreenPoint::new(400.0, 300.0), 3.0);
+  let manual = app.camera().pixels_per_mm();
+  assert!(
+    !shell.frame_if_needed(&mut app, &canvas),
+    "a view the user owns must not be refitted"
+  );
+  assert_eq!(app.camera().pixels_per_mm(), manual);
+  assert!(manual != zoom);
+}
+
+#[test]
+fn a_frame_of_the_real_shell_ends_up_framed_on_the_geometry() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  // Framing happens on the frame that measures the canvas, so one frame is enough.
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(output.canvas.width > cam_ui::MIN_FRAME_CANVAS);
+  let centre = app.camera().center();
+  assert!(
+    (centre.x - 50.0).abs() < 5.0 && (centre.y - 30.0).abs() < 5.0,
+    "the shell must frame the geometry, got {centre:?} at {} px/mm",
+    app.camera().pixels_per_mm()
+  );
+  assert!(
+    app.camera().pixels_per_mm() > 2.0,
+    "a 100x60 rectangle in a large canvas must not be tiny: {} px/mm",
+    app.camera().pixels_per_mm()
+  );
+}
+
+#[test]
+fn the_status_bar_distinguishes_undo_from_redo() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame(&mut shell, &mut app);
+  handle_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("added");
+  handle_action(&mut app, &UiAction::Undo).expect("undone");
+
+  let (output, _) = frame(&mut shell, &mut app);
+  let line = &output.drawn.status_line;
+  assert!(line.contains("undo 0 / redo 1"), "{line}");
+  assert!(!line.contains("dropped"), "{line}");
+}
+
+#[test]
+fn dropped_history_is_reported_separately_from_redo() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame(&mut shell, &mut app);
+  for _ in 0..(cam_app::MAX_HISTORY + 3) {
+    handle_action(&mut app, &UiAction::SetSelection(Vec::new())).expect("no-op");
+    app
+      .execute(cam_app::Command::SetJob {
+        width: 100.0,
+        height: 100.0,
+        thickness: 10.0,
+      })
+      .expect("applies");
+  }
+  let (output, _) = frame(&mut shell, &mut app);
+  let line = &output.drawn.status_line;
+  assert!(line.contains("3 step(s) dropped"), "{line}");
+  assert!(line.contains("redo 0"), "{line}");
+}

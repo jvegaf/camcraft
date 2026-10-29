@@ -22,6 +22,13 @@ use cam_view::{
 };
 use egui::{Context, Pos2, Sense, Stroke};
 
+/// The smallest canvas that auto-framing will act on.
+///
+/// The first frames of a real window can report a canvas of a few dozen pixels while the panels settle
+/// their widths. Fitting that geometry zooms the drawing out by an order of magnitude and looks like a
+/// broken viewport, so anything smaller than this is ignored and retried next frame.
+pub const MIN_FRAME_CANVAS: f64 = 200.0;
+
 /// Colours, in one place so the picture stays consistent.
 mod palette {
   use egui::Color32;
@@ -171,7 +178,12 @@ pub struct Shell {
   pub snap_marker: Option<(SnapKind, Point2)>,
   /// Origin of a box selection in progress, in canvas-local pixels.
   drag_box: Option<ScreenPoint>,
-  /// Whether the first frame has framed the document yet.
+  /// Whether the view still belongs to the application.
+  ///
+  /// Stays true until the user pans or zooms: opening the window, resizing it, or the panels settling
+  /// must all end with the drawing framed, and only an explicit view gesture should take that away.
+  auto_frame: bool,
+  /// Whether a document has been framed at least once.
   ///
   /// A camera centred on the origin with 1 px/mm leaves a 1219 mm job almost entirely off screen, so
   /// the first frame that knows its canvas size frames the drawing. Motion is view state: it is not
@@ -201,6 +213,7 @@ impl Default for Shell {
       snapping: true,
       snap_marker: None,
       drag_box: None,
+      auto_frame: true,
       framed: false,
       last_canvas: CanvasRect::default(),
     }
@@ -382,11 +395,19 @@ impl Shell {
           None => "—".to_owned(),
         };
         let dirty = if app.is_dirty() { "modified" } else { "saved" };
+        // "undo / redo" are the steps available in each direction; dropped steps are reported
+        // separately because they are a warning, not a redo count.
+        let dropped = app.history_dropped();
+        let dropped = if dropped > 0 {
+          format!("   {dropped} step(s) dropped")
+        } else {
+          String::new()
+        };
         let line = format!(
-          "{cursor}   zoom {:.2} px/mm   {dirty}   undo {} / redo {}   {}",
+          "{cursor}   zoom {:.2} px/mm   {dirty}   undo {} / redo {}{dropped}   {}",
           app.camera().pixels_per_mm(),
           app.history_depth(),
-          app.history_dropped(),
+          app.redo_depth(),
           self.status
         );
         ui.monospace(&line);
@@ -408,18 +429,14 @@ impl Shell {
           width: f64::from(response.rect.width()),
           height: f64::from(response.rect.height()),
         };
-        let previous_canvas = self.last_canvas;
         output.canvas = canvas;
         self.last_canvas = canvas;
         app.camera_mut().set_viewport(canvas.viewport());
-
-        // Panels settle their width over the first frames, so framing waits for a canvas that did not
-        // change size: fitting a provisional one would leave the drawing slightly off centre.
-        let settled = previous_canvas.width > 0.0
-          && (previous_canvas.width - canvas.width).abs() < 0.5
-          && (previous_canvas.height - canvas.height).abs() < 0.5;
-        if !self.framed && settled {
-          self.frame_document(app, &canvas);
+        // Fit against the canvas measured this frame. The status bar has already rendered with the
+        // previous zoom, so a fit asks for one more frame; egui is lazy and would otherwise leave the
+        // readout disagreeing with the canvas until the next mouse move.
+        if self.frame_if_needed(app, &canvas) {
+          ui.ctx().request_repaint();
         }
 
         self.handle_input(app, ui, &response, &canvas, output);
@@ -427,7 +444,35 @@ impl Shell {
       });
   }
 
-  /// Frame the document on the first frame that knows the canvas size.
+  /// Hand the view to the user: auto-framing stops until the shell is asked again.
+  ///
+  /// Called by pan and zoom gestures, and available to hosts and tests that move the camera directly.
+  pub fn release_view(&mut self) {
+    self.auto_frame = false;
+  }
+
+  /// Frame the document while the view still belongs to the application.
+  ///
+  /// Refits on every frame the canvas is plausible, which makes the result exact for the canvas that is
+  /// really there: a window that opens small and is then resized ends up framed for its final size
+  /// instead of for whatever it measured on the first frame. Returns true when the camera moved, so the
+  /// caller can ask for one more frame — the status bar has already drawn with the old zoom.
+  pub fn frame_if_needed(&mut self, app: &mut AppState, canvas: &CanvasRect) -> bool {
+    if !self.auto_frame || canvas.width <= 0.0 || canvas.height <= 0.0 {
+      return false;
+    }
+    if canvas.width < MIN_FRAME_CANVAS || canvas.height < MIN_FRAME_CANVAS {
+      // Too small to be a real layout: the panels have not taken their room yet.
+      return false;
+    }
+    let before_zoom = app.camera().pixels_per_mm();
+    let before_centre = app.camera().center();
+    self.frame_document(app, canvas);
+    (app.camera().pixels_per_mm() - before_zoom).abs() > 1.0e-6
+      || !app.camera().center().is_near(before_centre, 1.0e-6)
+  }
+
+  /// Frame the document for this canvas.
   fn frame_document(&mut self, app: &mut AppState, canvas: &CanvasRect) {
     if canvas.width <= 0.0 || canvas.height <= 0.0 {
       return;
@@ -511,6 +556,7 @@ impl Shell {
     if response.hovered() {
       let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
       if scroll.abs() > 0.01 {
+        self.release_view();
         let anchor = pointer
           .map(|position| canvas.to_screen(position))
           .unwrap_or_else(|| canvas.viewport().center());
@@ -521,6 +567,7 @@ impl Shell {
 
     // Middle drag pans; the content follows the cursor.
     if response.dragged_by(egui::PointerButton::Middle) {
+      self.release_view();
       let delta = response.drag_delta();
       app
         .camera_mut()
