@@ -10,6 +10,9 @@
 
 pub mod grid;
 pub mod heightfield;
+pub mod sweep;
+pub mod target;
 
 pub use grid::{grid_for, Grid, GridError, DEFAULT_CELL, MAX_CELLS};
 pub use heightfield::{Heightfield, Volumes};
+pub use sweep::{apply, apply_move, Crash, Removal};

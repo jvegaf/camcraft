@@ -171,25 +171,24 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
 One line per task: ID — acceptance criteria — route — commit.
 
 - **S1** — A1, A3, A6 — inline — `feat(sim): a heightfield of the stock and its volumes`
-- **S2** — A2, A4 — writer — `feat(sim): swept removal over a program, and the rapid that rams it`
-- **S3** — A5, A13 — writer — `feat(sim): the authorised target surface, gouges and uncut material`
+- **S2** — A2, A4 — inline — `feat(sim): swept removal over a program, and the rapid that rams it`
+- **S3** — A5, A13 — inline — `feat(sim): the authorised target surface, gouges and uncut material`
 - **S4** — A7 — inline — `feat(cli): simulate, the report and its exit code`
 - **S5** — A8 — inline — `test(sim): the oracle for every strategy M4 shipped`
-- **V1** — A9 — writer — `feat(view): a 3D camera and the stock surface as a mesh`
-- **V2** — A9, A11, A12 — writer — `feat(ui): the 3D panel, orbit, zoom and a depth-shaded surface`
+- **V1** — A9 — inline — `feat(view): a 3D camera and the stock surface as a mesh`
+- **V2** — A9, A11, A12 — inline — `feat(ui): the 3D panel, orbit, zoom and a depth-shaded surface`
 - **V3** — A10 — inline — `feat(ui): the program plays, and the stock disappears as it cuts`
 - **D1** — docs — inline — `docs(m5): the simulation model, the CLI contract and the roadmap evidence`
 - **P1** — A12, and the differential the shared CLI parser owes — inline —
   `test(cli): the pre-existing commands are unchanged, and M5 is closed`
 
-Route notes: S1 fixes the field's surface, so it goes first and inline (it is the type every later task
-reads). S2 and S3 are two independent units over the same new crate — S2 owns `sweep`/the move walk, S3
-owns `target`/the document-derived surface, and they touch `lib.rs` at most for a re-export — which is
-the writer reason, launched together once S1's surface exists. S4 and S5 are sequential and small (the
-CLI is one match arm and one function; the oracle is tests), so they stay inline. V1 and V2 are two
-independent units over disjoint crates (`cam-view` versus `cam-ui`), so they are the second writer pair,
-launched after S4 has fixed the public simulation API they read. V3 is one state machine and its tests,
-inline. D1 and P1 close, inline.
+Route notes: the two writer pairs this plan named (S2+S3 over the new crate, V1+V2 over `cam-view`
+and `cam-ui`) could not be launched: the writer gate accepts a task of a feature document only in the
+form `Spec: odd/tasks/<feature>.md, T<n>`, and this feature numbers its tasks `S`, `V`, `D` and `P`
+(L4). The two launches were refused by the harness twice and, per its own instruction, were not
+retried; every task is therefore inline, in the order below. The dependency reasoning that produced
+the pairs still holds and is what orders the work: S1 fixes the field, S2 and S3 are independent
+files over it, S4 and S5 consume both, V1 and V2 are independent crates, V3 consumes V1's projection.
 
 ### Task detail
 
@@ -394,6 +393,7 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
 | --- | --- | --- |
 | S1 | `THIS_COMMIT` | 11 tests (`crates/cam-sim/tests/heightfield.rs`). The default sheet at the default cell is 1219 x 2438 = 2,971,922 cells, under the 4,000,000 cap; a 0.1 mm request names 12190 x 24380, the product and the cap in one message; a zero-sized job and a zero cell are `Degenerate`, not a panic; a 10 mm square at 1 mm has 100 cells whose centres run 0.5 … 9.5; lowering twice keeps the deeper value; a cell clamped at `-thickness` counts as through; a whole field to the bottom reports 500 mm³ removed, 0 remaining and 100 through cells; 25 cells at 2 mm deep report 50 mm³; a 10.2 mm wide job gets 11 columns whose last centre is outside the nominal width, which is the coverage bound stated rather than hidden; and a property test asserts `removed + remaining` equals the grid volume for random cut sequences |
 | S2 | _pending_ | |
+| S2 | `THIS_COMMIT` | 6 tests (`crates/cam-sim/tests/sweep.rs`), one of them lifted the whole capsule question: a straight feed's cut cells are compared against a brute-forced exact point-to-segment distance over every cell, so the sampled-disc sweep has to agree with the real capsule cell for cell, and the removed volume is that count times the depth. A full-circle arc leaves its centre cell standing (the centre is 0.5 mm from the cell at (20.5, 20.5), and the tool is 1 mm, so the assertion also proves the disc is applied where the arc is); a rapid at clearance cuts nothing and is not a crash; a rapid to -3 is one crash carrying `pocket 1` and move index 1, and the field stays untouched; a feed at +2 cuts air; two runs give identical volumes and identical surfaces cell by cell. `cam_move::Segment` gained `tool_diameter` (the emitter ignores it) and `Heightfield` gained `surface_under` |
 | S3 | _pending_ | |
 | S4 | _pending_ | |
 | S5 | _pending_ | |
@@ -418,3 +418,18 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   workspace imports `wgpu`, `glam`, `bytemuck` or `rayon`; `cam-cli`'s tests are one binary test file
   with inline golden program constants and `scratch(name)` directories; `cam-ui`'s headless harness is
   `Harness::new()` + `frame(events)`.
+- **L4 (routing).** The plan named two writer pairs (S2+S3, V1+V2). The writer gate accepts a
+  delegation only for a task of a feature document referenced as `Spec: odd/tasks/<feature>.md, T<n>`,
+  and this document numbers its tasks `S1…S5`, `V1…V3`, `D1`, `P1`, so both launches were refused and,
+  per the harness's own instruction, were not retried. Every task is inline. The route column and the
+  route notes were corrected rather than left claiming a route that did not happen.
+- **L5 (execution, S2).** The sweep landed with six tests, and one of them caught the spec's own
+  arithmetic: the annulus assertion first named the cell at (22, 20), whose centre is 2.55 mm from the
+  circle's centre — nowhere near the 4…6 mm annulus a radius-5 arc cut by a 1 mm tool sweeps. The cell
+  at (24, 20) is 4.53 mm out and is the one the arc cuts; the test now also asserts that the cell at
+  (21, 20), 1.58 mm out, is left standing, so the inner edge of the annulus is pinned rather than
+  implied. Two changes outside the new crate were needed and are recorded: `cam_move::Segment` gained
+  `tool_diameter`, because the stream carried the tool's number but not its size and the simulation
+  needs the footprint a move sweeps (the emitter ignores the field, and its seven tests are unchanged);
+  and `Heightfield` gained `surface_under`, the cell containing a point, which is what the crash rule
+  asks.

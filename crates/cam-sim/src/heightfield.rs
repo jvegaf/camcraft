@@ -67,6 +67,21 @@ impl Heightfield {
     Some(self.surface[row * self.grid.columns + column])
   }
 
+  /// The remaining surface height at the cell containing `point`, or `None` outside the grid.
+  pub fn surface_under(&self, point: Point2) -> Option<f64> {
+    let cell = self.grid.cell.mm();
+    let column = ((point.x - self.grid.origin.x) / cell).floor();
+    let row = ((point.y - self.grid.origin.y) / cell).floor();
+    if !column.is_finite() || !row.is_finite() || column < 0.0 || row < 0.0 {
+      return None;
+    }
+    let (column, row) = (column as usize, row as usize);
+    if column >= self.grid.columns || row >= self.grid.rows {
+      return None;
+    }
+    Some(self.surface[row * self.grid.columns + column])
+  }
+
   /// The centre of a cell in world millimetres.
   pub fn cell_centre(&self, column: usize, row: usize) -> Point2 {
     self.grid.centre(column, row)

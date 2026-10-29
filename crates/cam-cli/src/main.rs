@@ -1316,6 +1316,7 @@ fn build_segment(
   Ok(Segment {
     name: toolpath.name.clone(),
     tool_number: number,
+    tool_diameter: spec.diameter,
     feed_rate: spec.feed_rate,
     plunge_rate: spec.plunge_rate,
     spindle_speed: spec.spindle_speed,
