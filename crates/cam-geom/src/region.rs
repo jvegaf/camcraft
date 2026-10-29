@@ -20,6 +20,8 @@ use crate::point::Point2;
 use crate::winding::{classify, Membership};
 use crate::GeomError;
 
+pub use crate::region_offset::RegionOffset;
+
 /// Material in the plane, as closed boundaries under the even-odd membership rule.
 ///
 /// Build one with [`Region::new`]; `boundaries` is public because reading a region is a legitimate

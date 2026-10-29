@@ -25,6 +25,7 @@ pub mod offset;
 mod point;
 pub mod primitive;
 pub mod region;
+pub mod region_offset;
 mod segment;
 pub mod text;
 pub mod transform;
