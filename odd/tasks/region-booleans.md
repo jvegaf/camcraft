@@ -138,6 +138,14 @@ no new scope.
   from, and a piece that fails is dropped whole (M4's per-ring granularity). Refusing rather than
   trimming at the vertex level is the recorded limit: finer trimming would keep more material and is a
   later refinement.
+- **D-RB-10 — The distance proof is sound for the whole piece, not for its ends.** The vertices-only proof
+  D-RB-9 described is unsound for an arc: a lens-shaped piece at a crossing stage has its two crossings as
+  its only vertices, both exactly the requested distance away, while the arc between them bulges inside the
+  material. Found by P3, which produced two such pieces 6 mm too close to the wall (L9). The fix is a
+  Lipschitz argument rather than sampling: the distance to a set changes by at most the distance travelled,
+  so if a piece is cut into sub-pieces whose interior stays within `s` of an endpoint (its sagitta) and
+  every endpoint clears `distance - slack + s`, then every interior point clears `distance - slack`. The
+  subdivision is chosen from the sagitta, so it is a proof and not a resolution knob.
 - **D-RB-7 — No UI in this feature.** Same boundary as D-M4-8: the authoring surface is
   `cam-cli toolpath`. The shell keeps its M2 authoring surface and gains nothing here.
 
@@ -149,6 +157,8 @@ One line per task: ID — acceptance criteria — route — commit.
 - **K2** — A2 — inline — `feat(geom): contour relation by intersection and interior point`
 - **K3** — A3, A4, A5, A8 — writer — `feat(geom): region model, normalization and subtraction`
 - **K4** — A6, A7 — writer — `feat(geom): region offset with the distance proof, and raster spans`
+- **K5** — A6 correction: the proof must be sound for arcs, not only for vertices — writer —
+  `fix(geom): a distance proof that holds for the whole piece, not its ends`
 - **P1** — A9, A10 — inline — `feat(model): explicit islands and c2d/document@2`
 - **P2** — A11 — inline — `feat(cli): islands on the toolpath command`
 - **P3** — A12 — writer — `feat(toolpath): offset pocket over a region with islands`
@@ -303,7 +313,7 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
 | K4 | `49e2dc8` | 14 tests. A 100 mm square inset by 10 → bounds (10,10)–(90,90), area 6400, every vertex 10.0 mm from its wall. A square with a centred r10 island inset by 8 → outer ring 84 mm wide, island ring r18 (area 1017.876), every vertex clearing both originals. An odd-depth hole grows: area 314.159 → 706.858. Nested parity (square / hole / boss) → 90, 70, 10 mm widths. Over-shrink and wider-than-material both refused where a naive `offset_contour` returns a well-formed gouging ring (the D-M4-9 evidence). A row crossing the island → spans at `50 ± √91`; a tangent row → `None`; a row along a boundary → `None`; `Some(vec![])` when the row misses. A U bracket's narrow arms flatten and say so |
 | P1 | this commit | 9 model tests plus 1 store test. `island_ids` round-trips and is omitted when empty; an island outside the boundary, one in a C-shaped pocket's notch (bounds contain it, material does not), two overlapping islands, a repeated island, an open island and islands on a profile toolpath are each refused by name; a `@1` document loads, keeps its toolpaths byte-identical and saves as `@2`; `@3` is still refused naming both |
 | P2 | this commit | 3 binary tests: a pocket records its islands and reloads with them; an island outside the boundary exits `2` with the file byte-identical (the model's refusal surfaced, not a second copy of the rule); `--islands` on a profile exits `2` naming the flag and the operation it belongs to. `inspect` appends `, N island(s)` and the island-free line is unchanged |
-| P3 | _pending_ | |
+| P3 | `a2d8736` | 8 tests. `PocketRequest::islands: &[&Contour]`; rings from `Region::offset(inset + k*stepover)`, so the wall shrinks and the island grows; the strategy's own proof deleted (D-RB-6); `Pocketpath::flattened` reported. 8 mm stepover → 6 rings (3 stages × wall + island) ending at `d = 27`; 4 mm stepover → stages 3, 7, 11, 15, 19, 23 with the wall ring at `3..97` and the island ring at `r = 13`; a region that leaves nothing and a 3 mm pocket with a 4 mm tool are both `OffsetCollapsed` carrying the kernel's reason; a narrow neck reports `flattened`; two runs are identical. **All 12 M4 pocket tests passed with their expectations untouched**, and a base-vs-change dump over seven island-free fixtures in both strategies is move-for-move identical except the wording of one refusal reason the spec asks for |
 | P4 | _pending_ | |
 | P5 | _pending_ | |
 | P6 | _pending_ | |
@@ -321,6 +331,15 @@ kernel capability and removes D-M4-2's restriction from M4's known limits, point
   `Contour::{signed_area, bounds, reverse, tessellate}`, `Segment::{point_at, distance_to_point}`.
   Missing: parameters from intersections, point-in-contour, region model, arrangement, region offset.
   That is why K1 and K2 exist before any boolean.
+- **L9** — P3 evidence and the defect it surfaced: 8 tests, 679 in the workspace, gates green, P3 merged
+  at `a2d8736`. The offset pocket now cuts a region and island-free output is move-for-move M4's. The
+  worker also found something the feature has to fix before it can close: at a crossing stage the
+  vertices-only distance proof of D-RB-9 is **unsound for arcs** — a lens-shaped piece whose only vertices
+  are the two crossings clears the proof while its arc bulges 6 mm into the wall, and two of the 16 pieces
+  the 4 mm fixture produced were exactly that. The worker's test asserts a floor (`rings >= 14`) instead of
+  pinning the artefact, which is the right call for a task that could not fix the kernel, and K5 exists to
+  make the proof sound and tighten that assertion to the analytic 14. Recorded rather than absorbed,
+  because a ring that gouges is the one class of bug this project treats as unacceptable.
 - **L8** — K4 evidence: 14 tests, 671 in the workspace, gates green. One decision was genuinely missing
   from the spec and the answer is the most valuable thing this task produced: the distance proof has to
   be measured against **every** original boundary (D-RB-9), because the offset kernel happily returns a
