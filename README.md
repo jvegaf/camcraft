@@ -4,12 +4,14 @@ A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, built a
 answer to a simple question: *what would the reference CAM application look like if it were designed today, in Rust,
 with the domain separated from the window?*
 
-**Status: M4 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
+**Status: M5 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
 post-processor produce real G-code, byte for byte tested — for **profile**, **pocket** (offset rings
 and raster rows, with islands) and **drilling** (pecks, both retract modes, drill-bank selection).
 Around it: M1 built the editor shell, M2 the vector authoring and editing commands, M3 the DXF, SVG,
-PDF, EPS and raster importers, and M4 the toolpaths, authored headlessly through `cam-cli toolpath`.
-Simulation is next (M5).
+PDF, EPS and raster importers, M4 the toolpaths, authored headlessly through `cam-cli toolpath`, and
+M5 the simulation that checks them — the emitted program swept over a heightfield of the stock, a
+report of removed, gouge and uncut material and of every crash, and a 3D preview the shell plays.
+Depth-variant strategies are next (M6).
 
 ## What works today
 
@@ -17,7 +19,9 @@ Simulation is next (M5).
 dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move stream ──▶ post-processor ──▶ part.nc
      (cam-import)        (c2d/document@2)   profile/     (Rapid/Feed/     (.pp dialect)
                           (validated)       pocket/       Arc/Retract)
-                                            drilling
+                                            drilling    │
+                                                        ▼
+                                            cam-sim heightfield ──▶ report · 3D preview
 ```
 
 - **Arc geometry end to end.** Arcs are first-class from the document through the offset to the
@@ -26,6 +30,11 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   (offset rings or raster rows, allowance, stepover, nesting islands) and drilling (peck depth, both
   retract modes, drill-bank selection). Each is authored by `cam-cli toolpath` and reaches G-code
   through `cam-cli emit`, so the test surface is the program a machine would run.
+- **A simulation, and every strategy measured against it.** `cam-cli simulate` sweeps the emitted
+  program over a heightfield of the stock and reports the removed material, the through-cut cells,
+  the gouge, the uncut material and every crash that rams the tool. The error bound is the
+  simulation's own documented coverage bound (`perimeter × cell / 2`), and the same sweep, on the
+  field a caller hands in, drives a depth-shaded 3D preview the shell plays.
 - **Region geometry, arc-native.** Point-in-contour is an exact winding number, not a tessellated
   guess; a region is a boundary list under even-odd parity with normalization and subtraction; and the
   offset that cuts it keeps a distance proof measured exactly against every original boundary, which is
@@ -65,10 +74,10 @@ history, layer visibility, and the authoring half of the product — line, polyl
 rectangle, polygon and star by dragging, single-stroke text, node editing, join, trim, offset,
 mirror/rotate/scale, array copy and align, plus importing a file by path as one undoable step.
 
-What is not there yet: **toolpath forms** (M4's strategies are authored through `cam-cli toolpath`;
-the window gains forms with M5, when a simulation can show what they cut), simulation and the 3D stock
-view (M5), and a file menu for saving and opening (the formats and the CLI exist; the window still takes
-documents from its caller).
+What is not there yet: **toolpath forms** (M4's strategies are still authored through
+`cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`
+authors one — rather than a panel that creates one), and a file menu for saving and opening (the
+formats and the CLI exist; the window still takes documents from its caller).
 
 Known cosmetic detail: auto-framing fits the canvas as measured when the panel layout settles, so the
 first fit can be a few percent tighter than `Zoom to fit` (`F`), which is exact.
@@ -81,6 +90,7 @@ Every recipe below also exists in the `justfile`; `just` on its own lists them.
 just check                 # the three gates: fmt --check, clippy -D warnings, all tests
 just run                   # the editor window
 just cli emit part.c2d --post my_machine.pp --out part.nc
+just cli simulate part.c2d --library tools.sqlite   # removed, gouge, uncut, crashes
 just status                # branch, sync with origin, uncommitted files
 ```
 
@@ -118,6 +128,7 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | `cam-store` | `.c2d` documents and the SQLite tool library, both with migrations |
 | `cam-post` | `.pp` parser and the data-driven G-code emitter |
 | `cam-toolpath` | Machining strategies: profile, pocket (offset and raster, with islands), drilling |
+| `cam-sim` | Material-removal simulation: the stock's heightfield, swept removal, gouge and uncut reporting |
 | `cam-cli` | Headless pipeline and the verification surface |
 | `cam-import` | DXF, SVG, PDF, EPS and PNG raster import, with a report of what was converted or skipped |
 | `cam-app` | Application state machine: commands, selection, undo/redo. No UI dependencies |
@@ -126,8 +137,8 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | `cam-desktop` | The native window for Windows and Linux |
 
 Dependency direction is one-way: units → geom → move → model → store, with `post` and `toolpath` on the
-move vocabulary; `app` on model + geom; `view` on app + geom; `ui` on view; `desktop` and `cli` on
-everything. Nothing below `cam-ui` knows that `egui` exists.
+move vocabulary; `sim` on geom, move and model; `app` on model + geom; `view` on app, geom and sim; `ui`
+on view and sim; `desktop` and `cli` on everything. Nothing below `cam-ui` knows that `egui` exists.
 
 ## Why the design looks like this
 
@@ -148,7 +159,7 @@ The program plan, milestone sequence and risk register are in [odd/roadmap.md](o
 
 ## Testing
 
-707 tests across 56 test targets, all deterministic — including the editor, which runs real `egui`
+795 tests across 64 test targets, all deterministic — including the editor, which runs real `egui`
 frames headless and asserts on both the actions they produce and the text they paint:
 
 ```bash
@@ -158,10 +169,12 @@ cargo test --workspace
 They cover, in order of what they protect: golden G-code (byte for byte, through the real binary,
 including pocket-with-island and drilling programs), property tests on the geometry kernel (offset
 simplicity, arc fidelity, area monotonicity, winding against a fine tessellation, a distance proof that
-never keeps a piece it has not measured), the document and tool-library round trips and migrations
-(including `c2d/document@1` loading and saving as `@2`), every parser diagnostic by line and column, and
-the editor's behaviour — undo restoring a document exactly, picking measured in pixels at any zoom,
-snapping, and synthetic clicks, drags, wheel and keys driving the real shell.
+never keeps a piece it has not measured), the simulation's oracle for every strategy M4 ships (a pocket's
+removed volume against its analytic area within the coverage bound, a program cut a millimetre shallow
+reported as uncut and one cut a millimetre deep reported as gouge), the document and tool-library round
+trips and migrations (including `c2d/document@1` loading and saving as `@2`), every parser diagnostic by
+line and column, and the editor's behaviour — undo restoring a document exactly, picking measured in
+pixels at any zoom, snapping, and synthetic clicks, drags, wheel and keys driving the real shell.
 
 The native window itself is the one thing not covered by automation: it needs a display. It is
 verified by building and by launching it under a compositor, which is how the screenshot in
@@ -169,8 +182,9 @@ verified by building and by launching it under a compositor, which is how the sc
 
 ## Next
 
-M5 is simulation: heightfield material removal, gouge and uncut reporting, a 3D stock view and an
-animated preview. It is the only honest acceptance test for the strategies that already ship — a green
-suite says the toolpath satisfies its rules, not that the part came out right — and it is what the
-deliberately conservative linking between rings and rows was waiting for. See
-[odd/roadmap.md](odd/roadmap.md) §4 and §4.6–4.7 for what M4 and the region work delivered.
+M6 is the depth-variant strategies — Quick Engrave, Chamfer, Fluting, Texture, Thread Milling and the
+Inlay pair — profile and pocket variants with a different Z law, cheap once M4's strategies and M5's
+simulation exist. M5 delivered the simulation, the `cam-cli simulate` contract and the 3D preview, and
+found a real defect in M4 while proving it: the raster row a region's far edge sits on was dropped, so a
+2 mm strip along that edge was never cut. See [odd/roadmap.md](odd/roadmap.md) §4 and §4.6–4.8 for what
+M4, the region work and M5 delivered.
