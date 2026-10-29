@@ -1,4 +1,4 @@
-//! Behaviour tests for the drilling toolpath (A7, A8).
+//! Behaviour tests for the drilling toolpath (A7, A8, A9).
 //!
 //! A drill program is only right if it goes to the right place, in the right order, and never leaves
 //! the tool down between holes. Every test here asserts the emitted moves, never internals.
@@ -49,6 +49,26 @@ fn params(peck_depth: f64, retract: RetractMode, cut_depth: f64) -> DrillParams 
     cut_depth: Length::from_mm(cut_depth),
     bank: None,
   }
+}
+
+/// The same request with a gang of `count` drills `pitch` millimetres apart along X.
+fn banked_params(count: u32, pitch: f64) -> DrillParams {
+  DrillParams {
+    bank: Some(DrillBank {
+      count,
+      pitch: Length::from_mm(pitch),
+    }),
+    ..params(0.0, RetractMode::Full, 7.0)
+  }
+}
+
+/// One row of holes at y = 20 mm, left to right, so the tour is the listing order and the bank is the
+/// only thing that can move the head.
+fn row(xs: &[f64]) -> Vec<DrillHole> {
+  xs.iter()
+    .enumerate()
+    .map(|(index, x)| hole(&format!("h{index}"), *x, 20.0))
+    .collect()
 }
 
 fn run(holes: &[DrillHole], params: &DrillParams, job: &Job) -> Drillpath {
@@ -104,7 +124,7 @@ fn four_holes_on_a_square_follow_the_nearest_neighbour_tour() {
   assert_eq!(
     path.drill_index,
     vec![None, None, None, None],
-    "the drill bank is a later task"
+    "no bank was asked for, so no hole names a drill"
   );
   assert_eq!(
     path.moves,
@@ -362,23 +382,159 @@ fn holes_are_drilled_at_their_machine_position() {
 }
 
 #[test]
-fn a_drill_bank_is_ignored_in_this_task() {
-  let holes = square();
-  let plain = run(&holes, &params(0.0, RetractMode::Full, 7.0), &job());
-  let mut banked_params = params(0.0, RetractMode::Full, 7.0);
-  banked_params.bank = Some(DrillBank {
-    count: 3,
-    pitch: Length::from_mm(32.0),
-  });
-  let banked = run(&holes, &banked_params, &job());
+fn a_bank_of_three_drills_picks_the_nearest_index_and_compensates_x() {
+  let holes = row(&[0.0, 10.0, 40.0, 100.0]);
+  let path = run(&holes, &banked_params(3, 32.0), &job());
 
   assert_eq!(
-    banked.moves, plain.moves,
-    "drill-bank head compensation is T4's job, not this task's"
+    path.order,
+    vec!["h0", "h1", "h2", "h3"],
+    "the bank must not renegotiate the tour"
   );
-  assert_eq!(banked.order, plain.order);
-  assert_eq!(banked.drill_index, vec![None, None, None, None]);
-  assert_eq!(banked.rapid_length, plain.rapid_length);
+  assert_eq!(
+    path.drill_index,
+    vec![Some(0), Some(0), Some(1), Some(2)],
+    "from x = 0, 10, 40 and 100 the nearest head is 0, 0, -24 and -64 mm from the hole"
+  );
+  assert_eq!(
+    rapid_positions(&path.moves),
+    vec![
+      Point3::new(0.0, 20.0, 5.0),
+      Point3::new(10.0, 20.0, 5.0),
+      Point3::new(8.0, 20.0, 5.0),
+      Point3::new(36.0, 20.0, 5.0),
+    ],
+    "drill k goes over the hole by parking the head k*pitch to the left of it"
+  );
+
+  // The whole hole is cut at the compensated position, so the drill lands on it.
+  let plunge_x: Vec<f64> = path
+    .moves
+    .iter()
+    .filter_map(|movement| match movement {
+      Move::Feed { to } => Some(to.x.mm()),
+      _ => None,
+    })
+    .collect();
+  assert_eq!(plunge_x, vec![0.0, 10.0, 8.0, 36.0]);
+  for movement in &path.moves {
+    assert!(
+      (movement.destination().y.mm() - 20.0).abs() < 1.0e-9,
+      "a bank compensates along X only: {movement:?}"
+    );
+  }
+
+  // Origin -> (0, 20) -> 10 -> 2 -> 28: the head travels 60 mm instead of the 120 mm the holes
+  // themselves are apart.
+  assert!(
+    (path.bank_travel.mm() - 60.0).abs() < 1.0e-9,
+    "{}",
+    path.bank_travel.mm()
+  );
+  assert!(
+    (path.rapid_length.mm() - 120.0).abs() < 1.0e-9,
+    "{}",
+    path.rapid_length.mm()
+  );
+}
+
+#[test]
+fn head_travel_stays_within_half_the_bank_width() {
+  // Three drills 32 mm apart span (count - 1) * pitch = 64 mm, so lining one up never asks the head
+  // to move more than half of that along X between two holes. Holes 40 mm apart would make an
+  // uncompensated head take 40 mm steps, i.e. more than the half bank.
+  let count = 3;
+  let pitch = 32.0;
+  let holes = row(&[0.0, 40.0, 80.0]);
+  let path = run(&holes, &banked_params(count, pitch), &job());
+  let half_bank = f64::from(count - 1) * pitch / 2.0;
+
+  let mut previous = Point2::new(0.0, 0.0);
+  for position in rapid_positions(&path.moves) {
+    let step = (position.x.mm() - previous.x).abs();
+    assert!(
+      step <= half_bank + 1.0e-9,
+      "the head moved {step} mm along X, more than the {half_bank} mm half bank"
+    );
+    previous = position.xy();
+  }
+
+  // Every compensation is a whole number of pitches below count * pitch, which is what puts a drill
+  // over the hole rather than near it.
+  for (position, hole_x) in rapid_positions(&path.moves).iter().zip([0.0, 40.0, 80.0]) {
+    let rest = hole_x - position.x.mm();
+    assert!(
+      (-1.0e-9..f64::from(count) * pitch).contains(&rest),
+      "hole at {hole_x} has its head at {}, which is not a drill in the bank",
+      position.x.mm()
+    );
+    let pitches = rest / pitch;
+    assert!(
+      (pitches - pitches.round()).abs() < 1.0e-9,
+      "{rest} mm is not a whole number of {pitch} mm pitches"
+    );
+  }
+}
+
+#[test]
+fn two_banked_runs_on_the_same_input_are_identical() {
+  let holes = row(&[0.0, 10.0, 40.0, 100.0]);
+  let request = banked_params(3, 32.0);
+  let job = job();
+  let first = run(&holes, &request, &job);
+  let second = run(&holes, &request, &job);
+  assert_eq!(first.moves, second.moves);
+  assert_eq!(first.order, second.order);
+  assert_eq!(first.drill_index, second.drill_index);
+  assert_eq!(first.bank_travel, second.bank_travel);
+  assert_eq!(first.rapid_length, second.rapid_length);
+}
+
+#[test]
+fn a_bank_with_no_drills_is_refused() {
+  let error = refuse(&row(&[0.0, 10.0]), &banked_params(0, 32.0));
+  assert!(matches!(error, ToolpathError::InvalidBank), "{error:?}");
+}
+
+#[test]
+fn a_bank_without_a_positive_pitch_is_refused() {
+  for pitch in [0.0, -32.0] {
+    let error = refuse(&row(&[0.0, 10.0]), &banked_params(3, pitch));
+    assert!(
+      matches!(error, ToolpathError::InvalidBank),
+      "pitch {pitch}: {error:?}"
+    );
+  }
+}
+
+#[test]
+fn a_bank_of_one_drill_emits_the_un_banked_program() {
+  let holes = row(&[0.0, 10.0, 40.0, 100.0]);
+  let plain = run(&holes, &params(0.0, RetractMode::Full, 7.0), &job());
+
+  for pitch in [1.0, 32.0, 250.0] {
+    let banked = run(&holes, &banked_params(1, pitch), &job());
+    assert_eq!(
+      banked.moves, plain.moves,
+      "one drill at {pitch} mm pitch cannot move the head"
+    );
+    assert_eq!(banked.order, plain.order);
+    assert_eq!(banked.drill_index, vec![Some(0); 4]);
+    assert_eq!(banked.rapid_length, plain.rapid_length);
+    assert_eq!(banked.bank_travel, plain.bank_travel);
+  }
+}
+
+#[test]
+fn without_a_bank_no_hole_names_a_drill_and_the_travels_agree() {
+  let holes = square();
+  let path = run(&holes, &params(0.0, RetractMode::Full, 7.0), &job());
+
+  assert_eq!(path.drill_index, vec![None, None, None, None]);
+  assert_eq!(
+    path.bank_travel, path.rapid_length,
+    "with no compensation the head is the hole, so both travel figures are the same"
+  );
 }
 
 #[test]

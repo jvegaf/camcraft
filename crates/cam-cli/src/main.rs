@@ -661,10 +661,14 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
 
   let mut document = open(&path)?;
   let library = open_library_hint(&document, &path, args.library.as_deref())?;
-  let cutting = library
+  // The bank summary below needs the tool the same way `emit` does, so read the whole tool here.
+  let tool_data = library
     .as_ref()
-    .and_then(|library| library.tool_for_number(tool_number).ok().flatten())
-    .map(|(_geometry, cutting)| cutting);
+    .and_then(|library| library.tool_for_number(tool_number).ok().flatten());
+  let diameter = tool_data
+    .as_ref()
+    .and_then(|(geometry, _cutting)| geometry.diameter);
+  let cutting = tool_data.map(|(_geometry, cutting)| cutting);
 
   let operation = match kind.as_str() {
     "profile" => {
@@ -821,7 +825,103 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     operation_label(&operation),
     entity_ids.len()
   );
+  // A drill bank is selection only (A9): say which drill cuts each hole so the gang can be loaded.
+  // Nothing of it reaches the program, and a selection that cannot be computed says why.
+  let bank_report = match &operation {
+    Operation::Drilling(params) if params.bank.is_some() => Some(bank_summary(
+      &document,
+      &entity_ids,
+      tool_number,
+      params,
+      diameter,
+      cutting.as_ref(),
+    )),
+    _ => None,
+  };
+  if let Some(report) = bank_report {
+    println!("{report}");
+  }
   Ok(())
+}
+
+/// The bank selection a banked drilling toolpath will produce, for whoever loads the gang.
+///
+/// The selection is computed by the real strategy, so the report is exactly what `emit` will cut. A
+/// bank emits no machine command (S9, A9), so this report is all the operator gets from the document.
+/// When there is nothing to select from — no tool diameter in the library, or an entity that is not a
+/// circle — the reason is reported instead of a guess.
+fn bank_summary(
+  document: &Document,
+  entity_ids: &[String],
+  tool_number: u32,
+  params: &cam_model::DrillParams,
+  diameter: Option<Length>,
+  cutting: Option<&CuttingData>,
+) -> String {
+  let Some(bank) = params.bank else {
+    return String::new();
+  };
+  let headline = format!(
+    "bank of {} drill(s) at {} mm pitch",
+    bank.count,
+    bank.pitch.mm()
+  );
+  let Some(diameter) = diameter else {
+    return format!(
+      "{headline}: no selection to report, the tool library has no diameter for T{tool_number}"
+    );
+  };
+  let spec = ToolSpec {
+    number: tool_number,
+    diameter,
+    feed_rate: cutting.and_then(|cutting| cutting.feed_rate).unwrap_or(0.0),
+    plunge_rate: cutting
+      .and_then(|cutting| cutting.plunge_rate)
+      .unwrap_or(0.0),
+    spindle_speed: cutting
+      .and_then(|cutting| cutting.spindle_speed)
+      .unwrap_or(0),
+  };
+
+  let mut holes = Vec::with_capacity(entity_ids.len());
+  for entity_id in entity_ids {
+    let centre = document
+      .entity(entity_id)
+      .and_then(|entity| entity.kind.as_contour())
+      .and_then(circle_centre);
+    let Some(centre) = centre else {
+      return format!("{headline}: no selection to report, entity {entity_id:?} is not a circle");
+    };
+    holes.push(DrillHole {
+      entity: entity_id.clone(),
+      centre,
+    });
+  }
+
+  match drill(&DrillRequest {
+    holes: &holes,
+    params,
+    tool: &spec,
+    job: &document.job,
+  }) {
+    Ok(path) => {
+      let picks: Vec<String> = path
+        .order
+        .iter()
+        .zip(&path.drill_index)
+        .map(|(entity, index)| match index {
+          Some(index) => format!("D{index} cuts {entity}"),
+          None => entity.clone(),
+        })
+        .collect();
+      format!(
+        "{headline}: {}; head travel {:.3} mm",
+        picks.join(", "),
+        path.bank_travel.mm()
+      )
+    }
+    Err(error) => format!("{headline}: no selection to report, {error}"),
+  }
 }
 
 /// The tool library to read defaults from, if the caller named one or the document references one.
