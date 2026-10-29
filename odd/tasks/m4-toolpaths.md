@@ -78,7 +78,10 @@ against.
   Between holes the tool always rapids at `safe_z`.
 - **A9** — Drill bank (S2, bounded by S9): when `DrillBank { count, pitch }` is set, each hole names the
   bank drill that cuts it and the emitted head position is the hole compensated by that drill's offset;
-  the selection minimises head travel, is deterministic, and is reported per hole. Machine-specific
+  the selection keeps the head nearest the previous head position, is deterministic, and is reported per
+  hole. Corrected while implementing (L7): the head offsets only upwards from the hole, so what is
+  bounded is the incremental head step, not the head-to-hole distance — a hole farther than
+  `(count-1)*pitch` from every drill is served by the last one. Machine-specific
   bank commands (a `G` code, an `M` code, a toolchange per drill) are **not** emitted: S9 defers
   drill-bank hardware integration, and the move vocabulary of `cam-move` has no bank command.
 - **A10** — `cam-cli toolpath <doc.c2d> --kind profile|pocket|drilling …` appends one toolpath to an
@@ -319,7 +322,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 | T1 | `a263b28`, `9eb1326` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `61e1df5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
 | T2 | _pending_ | |
 | T3 | `1382e97` (merge `5201ab4`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
-| T4 | _pending_ | |
+| T4 | `9fa671e` (merge `229a68d`) | 7 bank tests added, the T3 placeholder `a_drill_bank_is_ignored_in_this_task` removed because it pinned exactly what T4 reverses; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm, `bank_travel = 60 mm` against `rapid_length = 120 mm`. A differential check against the base commit showed the un-banked program byte-identical through `toolpath`, `emit` and `inspect`, with banked `emit` differing only in the compensated X |
 | T5 | _pending_ | |
 | T6 | _pending_ | |
 
@@ -349,6 +352,17 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   resolution actually happens, in `tests/drill_targets.rs` and the CLI layer. The tour's seed is taken
   in document space, which differs from machine space only for `TopLeft`, and only for which hole goes
   first — distances are identical under any origin transform.
+- **L7** — Slice 2 evidence, drill bank: T4 in `9fa671e`, merged `229a68d`; 7 tests, 592 total, gates
+  green. Two spec wordings were wrong and are corrected in place rather than worked around: A9's
+  "the head never moves further than `(count-1)*pitch/2` from a hole" cannot hold when the emitted
+  position is `centre.x - k*pitch` with `k >= 0` (a hole 92 mm from the origin with 2×32 mm reaches the
+  last drill 64 mm away), so the bound tested is the incremental head step; and the T3 test that
+  asserted a bank is ignored had to be deleted, not adapted, because it pinned the behaviour this task
+  exists to reverse. `Drillpath` also grew `bank_travel`, because with a bank `rapid_length` (distance
+  between holes) and the program's actual rapid travel are different numbers, and conflating them would
+  have made the report lie. The CLI's selection summary is best-effort by construction: it prints the
+  real strategy's answer when the tool and geometry allow it and says why otherwise, while the append
+  itself cannot fail on it.
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
