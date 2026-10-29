@@ -92,12 +92,6 @@ pub enum ToolpathError {
   /// A drill bank was described with no drills, or with drills that overlap.
   #[error("drill bank needs at least one drill and a positive pitch")]
   InvalidBank,
-  /// A strategy this build does not implement yet was asked for.
-  ///
-  /// Temporary: the M4 strategies are built in isolated worktrees, and T5 removes this variant and
-  /// the test that pins it so a stub can never survive as a contract (M3's L6 defect).
-  #[error("not implemented yet")]
-  NotImplemented,
 }
 
 /// Everything a profile pass needs.

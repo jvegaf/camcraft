@@ -1,0 +1,96 @@
+//! The error contract: which [`ToolpathError`]s exist, and what each one says (A14).
+//!
+//! M3's L6 defect was a placeholder surviving as a contract: the strategies were stubs returning
+//! "not implemented yet", and nothing failed when they stayed stubs. This file is the guard against
+//! a repeat. The `match` below has no wildcard arm, so Rust's exhaustiveness check makes a new
+//! variant a compile error until it is described here, and no refusal may tell the operator that a
+//! strategy is missing: an unimplemented strategy is a build error or a red test, never a message.
+//!
+//! It pins the *text* as well as the set, because the text is observable: `cam-cli` prints it
+//! verbatim to stderr and exits `2`, so a reworded refusal is a behaviour change and should be a
+//! deliberate edit here.
+
+use cam_toolpath::ToolpathError;
+
+/// One value of every variant the strategies can produce.
+///
+/// The length assertion in the message test keeps this list honest: a variant that is described
+/// below but missing from the list would otherwise never be checked.
+fn every_variant() -> Vec<ToolpathError> {
+  vec![
+    ToolpathError::OpenContour,
+    ToolpathError::InvalidToolDiameter,
+    ToolpathError::InvalidPassDepth,
+    ToolpathError::InvalidDepthRange {
+      cut_depth: 6.0,
+      start_depth: 0.0,
+    },
+    ToolpathError::OffsetCollapsed {
+      reason: "the offset has no area".to_owned(),
+    },
+    ToolpathError::TabOutOfRange {
+      index: 2,
+      position: 1.5,
+    },
+    ToolpathError::InvalidStepover { stepover: 0.0 },
+    ToolpathError::InvalidPeckDepth { peck_depth: -1.0 },
+    ToolpathError::NotACircle {
+      entity: "E7".to_owned(),
+    },
+    ToolpathError::NoHoles,
+    ToolpathError::InvalidBank,
+  ]
+}
+
+#[test]
+fn every_variant_keeps_its_message() {
+  let variants = every_variant();
+  assert_eq!(
+    variants.len(),
+    11,
+    "every variant must be listed exactly once"
+  );
+
+  for error in variants {
+    // Exhaustive on purpose (A14): a new variant does not compile until it is named here with the
+    // sentence it shows the operator.
+    let expected = match &error {
+      ToolpathError::OpenContour => "profile toolpaths need closed geometry".to_owned(),
+      ToolpathError::InvalidToolDiameter => "tool diameter must be greater than zero".to_owned(),
+      ToolpathError::InvalidPassDepth => "pass depth must be greater than zero".to_owned(),
+      ToolpathError::InvalidDepthRange {
+        cut_depth,
+        start_depth,
+      } => format!("cut depth {cut_depth} mm must be greater than start depth {start_depth} mm"),
+      ToolpathError::OffsetCollapsed { reason } => format!("the tool does not fit: {reason}"),
+      ToolpathError::TabOutOfRange { index, position } => {
+        format!("tab {index} position {position} must be within [0, 1)")
+      }
+      ToolpathError::InvalidStepover { stepover } => {
+        format!("stepover {stepover} mm must be greater than zero")
+      }
+      ToolpathError::InvalidPeckDepth { peck_depth } => {
+        format!("peck depth {peck_depth} mm must not be negative")
+      }
+      ToolpathError::NotACircle { entity } => {
+        format!("entity {entity:?} is not a circle, so it has no drill centre")
+      }
+      ToolpathError::NoHoles => "drilling needs at least one hole".to_owned(),
+      ToolpathError::InvalidBank => {
+        "drill bank needs at least one drill and a positive pitch".to_owned()
+      }
+    };
+    assert_eq!(error.to_string(), expected, "{error:?}");
+  }
+}
+
+#[test]
+fn no_refusal_says_a_strategy_is_not_implemented() {
+  for error in every_variant() {
+    let message = error.to_string().to_ascii_lowercase();
+    assert!(
+      !message.contains("not implemented"),
+      "{error:?} still tells the operator the strategy is missing: {message}"
+    );
+  }
+}
