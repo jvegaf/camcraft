@@ -17,6 +17,7 @@
 mod arc;
 mod chain;
 mod contour;
+pub mod edit;
 pub mod intersect;
 pub mod offset;
 mod point;
@@ -66,6 +67,12 @@ pub enum GeomError {
   #[error("invalid primitive: {reason}")]
   InvalidPrimitive {
     /// What made the request impossible.
+    reason: &'static str,
+  },
+  /// An edit was refused because it would break the contour.
+  #[error("edit refused: {reason}")]
+  EditRefused {
+    /// Why the edit could not be applied.
     reason: &'static str,
   },
 }

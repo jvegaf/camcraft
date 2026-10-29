@@ -220,7 +220,7 @@ Slice boundaries are recorded here as they close, per the review-workload rule: 
 | T2 | `2a0bc5d` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
 | T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
 | T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
-| T5 | — | pending |
+| T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
 | T6 | — | pending |
 | T7 | — | pending |
 | T8 | — | pending |
