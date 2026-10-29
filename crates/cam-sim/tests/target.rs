@@ -1,8 +1,12 @@
 //! The authorised target surface, and the two ways a field deviates from it (M5 A5, D-M5-2,
-//! D-M5-5, A13).
+//! D-M5-5, D-M5-10, A13).
 //!
 //! Every number is written as arithmetic in the test: the cell edge, the area and the depth are
-//! visible in the assertion, so a failure says which of the three moved.
+//! visible in the assertion, so a failure says which of the three moved. The profile band is
+//! `allowance … 2·radius + allowance` away from the vector, because the emitter offsets the tool
+//! *centre* by `radius + allowance` and the disc of the tool reaches one more radius past it
+//! (`crates/cam-toolpath/src/lib.rs:249-258`); the pocket band is the region inset by the allowance
+//! (`crates/cam-toolpath/src/pocket.rs:113-115`), because the wall it keeps is asked for.
 
 use std::f64::consts::{PI, TAU};
 
@@ -11,6 +15,8 @@ use cam_model::{
   Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner, PocketParams,
   PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
 };
+use cam_move::{Move, MoveStream, Point3, Segment};
+use cam_sim::sweep::apply;
 use cam_sim::target::{
   deviations, target_for, Deviation, DeviationError, Target, TargetError, ToolDiameters,
 };
@@ -74,6 +80,17 @@ fn circle(center: Point2, radius: f64) -> Contour {
 }
 
 fn pocket(id: &str, entities: &[&str], islands: &[&str], start: f64, cut: f64) -> Toolpath {
+  pocket_with(id, entities, islands, start, cut, 0.0)
+}
+
+fn pocket_with(
+  id: &str,
+  entities: &[&str],
+  islands: &[&str],
+  start: f64,
+  cut: f64,
+  allowance: f64,
+) -> Toolpath {
   Toolpath {
     id: id.to_owned(),
     name: "Pocket".to_owned(),
@@ -84,6 +101,7 @@ fn pocket(id: &str, entities: &[&str], islands: &[&str], start: f64, cut: f64) -
       strategy: PocketStrategy::Offset,
       start_depth: Length::from_mm(start),
       cut_depth: Length::from_mm(cut),
+      allowance: Length::from_mm(allowance),
       ..PocketParams::default()
     }),
   }
@@ -259,18 +277,22 @@ fn a_profile_authorises_the_kerf_band_outside_the_contour() {
   );
   let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
 
-  // The tool centre rides radius + allowance = 3 mm outside the vector, and that is the band
-  // (D-M5-5): a cell 1.5 mm outside the edge is authorised, a cell 4.5 mm out is not.
+  // The emitter puts the tool centre radius + allowance = 3 mm outside the vector, and the 6 mm tool
+  // reaches one more radius past it, so the kerf spans 0 .. 2 * 3 + 0 = 6 mm outside (D-M5-5): a cell
+  // 1.5 mm out and a cell 4.5 mm out are both authorised, and a cell 6.5 mm out is not.
   assert_eq!(target.authorised(111, 60), 6.0, "centre at (111.5, 60.5)");
-  assert_eq!(target.authorised(114, 60), 0.0, "centre at (114.5, 60.5)");
-  // The keep side is authorised nothing: the middle of the part stays standing.
+  assert_eq!(target.authorised(114, 60), 6.0, "centre at (114.5, 60.5)");
+  assert_eq!(target.authorised(116, 60), 0.0, "centre at (116.5, 60.5)");
+  // The keep side is authorised nothing: the middle of the part stays standing, and so does the half
+  // cell just inside the vector at (10.5, 60.5).
   assert_eq!(target.authorised(60, 60), 0.0);
+  assert_eq!(target.authorised(10, 60), 0.0, "centre at (10.5, 60.5)");
 
-  // The band is the 3 mm annulus: a 106 x 106 square outside a 100 x 100 one. Both land on cell
-  // edges, so the cell count is 106^2 - 100^2 exactly, 1 mm2 each, 6 mm deep.
+  // The band is the 6 mm annulus: a 112 x 112 square outside a 100 x 100 one. Both land on cell
+  // edges, so the cell count is 112^2 - 100^2 exactly, 1 mm2 each, 6 mm deep.
   assert_eq!(
     authorised_volume(&target),
-    (106.0 * 106.0 - 100.0 * 100.0) * 6.0
+    (112.0 * 112.0 - 100.0 * 100.0) * 6.0
   );
 }
 
@@ -290,16 +312,19 @@ fn an_inside_profile_authorises_the_band_inside_the_contour() {
   );
   let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
 
-  // The band is inside the vector: a cell 1.5 mm inside the edge is authorised, the middle of the
-  // part and the material outside the vector are not.
+  // The same band mirrored: 0 .. 2 * 3 = 6 mm inside the vector. A cell 1.5 mm inside the edge is
+  // authorised, a cell 6.5 mm inside it, the middle of the part and the material outside the vector
+  // are not.
   assert_eq!(target.authorised(11, 60), 6.0, "centre at (11.5, 60.5)");
+  assert_eq!(target.authorised(15, 60), 6.0, "centre at (15.5, 60.5)");
+  assert_eq!(target.authorised(16, 60), 0.0, "centre at (16.5, 60.5)");
   assert_eq!(target.authorised(60, 60), 0.0, "the middle of the part");
   assert_eq!(target.authorised(5, 60), 0.0, "outside the vector");
 
-  // The annulus is a 100 x 100 square less a 94 x 94 one: 100^2 - 94^2 cells at 6 mm deep.
+  // The annulus is a 100 x 100 square less an 88 x 88 one: 100^2 - 88^2 cells at 6 mm deep.
   assert_eq!(
     authorised_volume(&target),
-    (100.0 * 100.0 - 94.0 * 94.0) * 6.0
+    (100.0 * 100.0 - 88.0 * 88.0) * 6.0
   );
 }
 
@@ -325,11 +350,12 @@ fn a_tab_keeps_its_height_back_across_the_whole_band() {
   let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
 
   // The contour's first vertex is (10, 10), so position 0.0 is the first 10 mm of the bottom edge.
-  // A cell under that span is authorised 6 - 4 = 2 across the whole 3 mm band, not only hard against
-  // the vector: columns 10..=19 (centres 10.5 .. 19.5, arc length 0.5 .. 9.5) of the three band rows,
-  // plus the 3 x 3 block at the corner, whose nearest point on the perimeter is the first vertex.
-  for row in 7..=9 {
-    for column in 7..=19 {
+  // A cell under that span is authorised 6 - 4 = 2 across the whole 6 mm band, not only hard against
+  // the vector: columns 4..=19 (centres 4.5 .. 19.5) of the six band rows 4..=9. The three rows below
+  // the vector are the corner block, whose nearest point on the perimeter is the first vertex, and
+  // the three rows between are the first 10 mm of the bottom edge itself.
+  for row in 4..=9 {
+    for column in 4..=19 {
       assert_eq!(
         target.authorised(column, row),
         2.0,
@@ -337,12 +363,20 @@ fn a_tab_keeps_its_height_back_across_the_whole_band() {
       );
     }
   }
-  // Past the tab's 10 mm span on the same edge, and on the far side of the square: both cut full.
-  assert_eq!(target.authorised(25, 8), 6.0, "centres at (25.5, 8.5)");
+  // The far edge of the band under the tab keeps its height too: 5.5 mm out on the bottom edge.
+  assert_eq!(target.authorised(12, 4), 2.0, "centre at (12.5, 4.5)");
+  // Past the tab's 10 mm span on the same edge — at the vector and at the band's outer edge — and on
+  // the far side of the square: all cut full.
+  assert_eq!(target.authorised(25, 8), 6.0, "centre at (25.5, 8.5)");
+  assert_eq!(target.authorised(25, 4), 6.0, "centre at (25.5, 4.5)");
   assert_eq!(target.authorised(60, 111), 6.0, "centre at (60.5, 111.5)");
 
-  // 39 cells keep 4 mm back (13 columns x 3 rows): the 1236 band cells at 6 mm, less 4 mm on each.
-  assert_eq!(authorised_volume(&target), 1236.0 * 6.0 - 39.0 * 4.0);
+  // 96 cells keep 4 mm back (16 columns x 6 rows): the 2544 band cells at 6 mm, less 4 mm on each.
+  assert_eq!(
+    authorised_volume(&target),
+    2544.0 * 6.0 - 96.0 * 4.0,
+    "112^2 - 100^2 band cells, 16 x 6 of them under the tab"
+  );
 }
 
 #[test]
@@ -350,7 +384,8 @@ fn a_tab_on_a_circular_profile_follows_the_arc_length() {
   // An r10 circle built by `primitive::circle` starts at (60, 50) and runs counter-clockwise, so its
   // 2 pi r = 62.8 mm perimeter maps straight onto the arc angle. A 10 mm tab at position 0.0 covers
   // the first 10 mm of that arc: a cell just outside the start point keeps 6 - 4 = 2, a cell on the
-  // opposite side of the circle, at about 31 mm of arc, is cut to the full 6.
+  // opposite side of the circle, at about 31 mm of arc, is cut to the full 6 — 3.5 mm out, which is
+  // inside the 0 .. 6 mm band.
   let tab = Tab {
     position: 0.0,
     width: Length::from_mm(10.0),
@@ -380,6 +415,214 @@ fn a_tab_on_a_circular_profile_follows_the_arc_length() {
     6.0,
     "centre (38.5, 50.5), 31 mm of arc"
   );
+  assert_eq!(
+    target.authorised(36, 50),
+    6.0,
+    "centre (36.5, 50.5), 3.5 mm out: in the band, past the tab"
+  );
+  assert_eq!(
+    target.authorised(33, 50),
+    0.0,
+    "centre (33.5, 50.5), 6.5 mm out: past the band"
+  );
+}
+
+#[test]
+fn an_inside_profile_allowance_keeps_its_wall() {
+  // The mirror of the outside case, with the emitter's negative offset: the kerf spans 1 .. 7 mm
+  // *inside* the vector, so the first millimetre inwards is the wall the allowance keeps.
+  let document = document(
+    120.0,
+    &[("square", square(10.0, 110.0))],
+    vec![profile(
+      "profile 1",
+      &["square"],
+      ProfileSide::Inside,
+      1.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  assert_eq!(target.authorised(10, 60), 0.0, "centre at (10.5, 60.5)");
+  assert_eq!(target.authorised(11, 60), 6.0, "centre at (11.5, 60.5)");
+  assert_eq!(target.authorised(17, 60), 0.0, "centre at (17.5, 60.5)");
+
+  // The band is the 11 .. 109 square between offsets 1 and 7, less the 17 .. 103 it does not claim:
+  // 98^2 - 86^2 cells at 6 mm deep.
+  assert_eq!(
+    authorised_volume(&target),
+    (98.0 * 98.0 - 86.0 * 86.0) * 6.0
+  );
+}
+
+#[test]
+fn a_clean_outside_cut_through_the_sweep_leaves_no_gouge_and_no_uncut() {
+  // The amendment's whole point (D-M5-5, L6): a profile that cuts its own declared band cleanly must
+  // deviate by nothing. A r10 boss profiled Outside with a 6 mm tool has its centre on the r13
+  // circle, so the disc the tool drags around covers the annulus 10 .. 16 mm from the centre — which
+  // is exactly the band the target authorises. The narrow reading of the band authorised 0 .. 3 mm
+  // and reported the outer half of this perfect cut as gouge.
+  let document = document(
+    100.0,
+    &[("boss", circle(Point2::new(50.0, 50.0), 10.0))],
+    vec![profile(
+      "profile 1",
+      &["boss"],
+      ProfileSide::Outside,
+      0.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  // The program the emitter would write for that band: rapid to the start above the stock, plunge
+  // there, and sweep the circle once at depth.
+  let start = Point3::new(63.0, 50.0, -6.0);
+  let program = MoveStream {
+    segments: vec![Segment {
+      name: "profile 1".to_owned(),
+      tool_number: 1,
+      tool_diameter: Length::from_mm(6.0),
+      feed_rate: 1000.0,
+      plunge_rate: 300.0,
+      spindle_speed: 18_000,
+      moves: vec![
+        Move::Rapid {
+          to: Point3::new(63.0, 50.0, 5.0),
+        },
+        Move::Feed { to: start },
+        Move::Arc {
+          to: start,
+          center: Point2::new(50.0, 50.0),
+          ccw: true,
+        },
+      ],
+    }],
+    safe_z: Length::from_mm(5.0),
+    home: Point2::new(0.0, 0.0),
+  };
+  let mut field = Heightfield::new(&document.job, cell()).expect("a field");
+  let removal = apply(&program, &mut field);
+  assert!(
+    removal.crashes.is_empty(),
+    "a rapid at safe_z is not a crash, got {:?}",
+    removal.crashes
+  );
+
+  assert_eq!(
+    deviations(&field, &target, Length::ZERO).expect("the same grid"),
+    Deviation::default()
+  );
+  assert_eq!(
+    field.volumes().removed,
+    authorised_volume(&target),
+    "the cut removed exactly what the document authorised"
+  );
+}
+
+#[test]
+fn a_profile_allowance_leaves_its_first_millimetre_unauthorised() {
+  // Outside with a 1 mm allowance and a 6 mm tool: the tool centre rides 3 + 1 = 4 mm out and the
+  // kerf spans 1 .. 2 * 3 + 1 = 7 mm outside the vector. The wall the allowance keeps is material the
+  // document asked for, so the target does not authorise it (D-M5-5, D-M5-10).
+  let document = document(
+    120.0,
+    &[("square", square(10.0, 110.0))],
+    vec![profile(
+      "profile 1",
+      &["square"],
+      ProfileSide::Outside,
+      1.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  // 0.5 mm out is inside the wall the allowance keeps.
+  assert_eq!(target.authorised(9, 60), 0.0, "centre at (9.5, 60.5)");
+  // 1.5 mm out is the kerf, at the profile's full depth.
+  assert_eq!(target.authorised(8, 60), 6.0, "centre at (8.5, 60.5)");
+  // 7.5 mm out is past the kerf's outer edge.
+  assert_eq!(target.authorised(2, 60), 0.0, "centre at (2.5, 60.5)");
+
+  // The band is the 114 x 114 square between offsets 7 and 1, less the 102 x 102 it does not claim:
+  // 114^2 - 102^2 cells at 6 mm deep.
+  assert_eq!(
+    authorised_volume(&target),
+    (114.0 * 114.0 - 102.0 * 102.0) * 6.0
+  );
+}
+
+#[test]
+fn a_pocket_allowance_keeps_its_wall() {
+  // The emitter insets the outermost ring by radius + allowance, so a 1 mm allowance leaves a 1 mm
+  // wall standing on purpose: the target is the region inset by the allowance (D-M5-10).
+  let document = document(
+    100.0,
+    &[("square", square(20.0, 40.0))],
+    vec![pocket_with("pocket 1", &["square"], &[], 0.0, 6.0, 1.0)],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  // The wall's first millimetre: the cell 0.5 mm inside the boundary is not authorised.
+  assert_eq!(target.authorised(20, 30), 0.0, "centre at (20.5, 30.5)");
+  // Past the wall: the full depth.
+  assert_eq!(target.authorised(21, 30), 6.0, "centre at (21.5, 30.5)");
+  assert_eq!(target.authorised(10, 30), 0.0, "outside the pocket");
+
+  // 18 x 18 cells of 1 mm2 at 6 mm: the 20 x 20 pocket less the 1 mm wall on every side.
+  assert_eq!(authorised_volume(&target), 18.0 * 18.0 * 6.0);
+}
+
+#[test]
+fn a_pocket_allowance_grows_its_islands() {
+  // The inset is one parity operation, so the island grows by the allowance while the boundary
+  // shrinks: the same wall in both directions (D-M5-10).
+  let entities = [
+    ("square", square(0.0, 100.0)),
+    ("island", circle(Point2::new(50.0, 50.0), 10.0)),
+  ];
+  let with_allowance = document(
+    100.0,
+    &entities,
+    vec![pocket_with(
+      "pocket 1",
+      &["square"],
+      &["island"],
+      0.0,
+      6.0,
+      1.0,
+    )],
+  );
+  let target = target_for(&with_allowance, cell(), &tools(6.0)).expect("a target");
+  let without = document(
+    100.0,
+    &entities,
+    vec![pocket("pocket 1", &["square"], &["island"], 0.0, 6.0)],
+  );
+  let narrow = target_for(&without, cell(), &tools(6.0)).expect("a target");
+
+  // 10.51 mm from the centre: outside the r10 island, inside the r11 the allowance grows it to. The
+  // same cell is authorised the full depth when the allowance is zero.
+  assert_eq!(
+    target.authorised(60, 50),
+    0.0,
+    "centre at (60.5, 50.5), 10.51 mm from the centre"
+  );
+  assert_eq!(
+    narrow.authorised(60, 50),
+    6.0,
+    "the same cell, no allowance"
+  );
+  // 11.51 mm out: past the grown island, so the full depth.
+  assert_eq!(target.authorised(61, 50), 6.0, "centre at (61.5, 50.5)");
+  // The wall at the region's own boundary: 0.5 mm in is not authorised, 1.5 mm in is.
+  assert_eq!(target.authorised(0, 50), 0.0, "centre at (0.5, 50.5)");
+  assert_eq!(target.authorised(1, 50), 6.0, "centre at (1.5, 50.5)");
 }
 
 #[test]

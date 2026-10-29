@@ -1,10 +1,11 @@
 //! What the document authorised each cell to lose, and the two ways a program deviates from it
 //! (M5 A5).
 //!
-//! One target surface, derived from the document alone: a pocket authorises its region to the
-//! pocket's final depth, a drilling toolpath authorises each hole's circle, a profile authorises its
-//! kerf band (less whatever a tab declares it keeps), and every cell nothing claims is authorised to
-//! lose nothing. Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than
+//! One target surface, derived from the document alone: a pocket authorises its region inset by the
+//! wall its allowance keeps (D-M5-10), a drilling toolpath authorises each hole's circle, a profile
+//! authorises the band its tool *sweeps* — `allowance … 2·radius + allowance` from the vector, less
+//! whatever a tab declares it keeps (D-M5-5) — and every cell nothing claims is authorised to lose
+//! nothing. Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than
 //! authorised, and authorised deeper than removed.
 //!
 //! The tool's diameter is not in the document — it is in the tool library — so a caller that wants
@@ -177,6 +178,9 @@ fn claim_toolpath(
         boundaries.push(contour_of(document, toolpath, id)?.clone());
       }
       let region = region_of(&toolpath.id, boundaries)?;
+      // The wall the allowance keeps is material the document asked to leave standing, so it is not
+      // authorised (D-M5-10).
+      let region = inset_by(&toolpath.id, region, params.allowance.mm())?;
       claim_region(target, &region, authorised_depth(params.cut_depth), None);
     }
     Operation::Drilling(params) => {
@@ -222,7 +226,32 @@ fn authorised_depth(cut_depth: Length) -> f64 {
   cut_depth.mm()
 }
 
-/// The kerf band a profile declares it cuts, as a parity region (D-M5-5).
+/// A region inset by `distance`, islands grown by the same amount (D-M5-10).
+///
+/// One call does the whole region: [`Region::offset`] takes each boundary's nesting depth from the
+/// kernel, so the enclosing boundaries shrink and the islands grow, which is exactly the wall an
+/// allowance keeps. A zero distance returns the region unchanged — the default allowance is zero and
+/// must not perturb a single cell.
+fn inset_by(toolpath: &str, region: Region, distance: f64) -> Result<Region, TargetError> {
+  if distance == 0.0 {
+    return Ok(region);
+  }
+  region
+    .offset(distance, DEFAULT_TOLERANCE)
+    .map(|offset| offset.region)
+    .map_err(|error| TargetError::Geometry {
+      toolpath: toolpath.to_owned(),
+      reason: error.to_string(),
+    })
+}
+
+/// The kerf band a profile's tool sweeps, as a parity region (D-M5-5).
+///
+/// The emitter offsets the tool **centre** by `radius + allowance`
+/// (`lateral_offset`, `crates/cam-toolpath/src/lib.rs:249-258`), so the disc of the tool reaches from
+/// `allowance` to `2·radius + allowance` away from the vector: that is the material a clean profile
+/// removes, and therefore what it is authorised to remove. Authorising `0 … radius + allowance`
+/// instead reported the outer half of a perfect kerf as gouge.
 fn kerf_band(
   toolpath: &str,
   contour: &Contour,
@@ -230,6 +259,11 @@ fn kerf_band(
   radius: f64,
 ) -> Result<Region, TargetError> {
   let offset = |distance: f64| -> Result<Contour, TargetError> {
+    if distance == 0.0 {
+      // Offsetting by nothing is the contour itself; asking the kernel to walk a zero offset only
+      // risks it reporting a collapse for a question nobody asked.
+      return Ok(contour.clone());
+    }
     offset_contour(contour, distance, &OffsetOptions::default())
       .map(|offset| offset.contour)
       .map_err(|error| TargetError::Geometry {
@@ -238,11 +272,11 @@ fn kerf_band(
       })
   };
   let allowance = params.allowance.mm();
+  // The kerf's outer edge: the tool centre's offset plus one radius of the tool that rides there.
+  let reach = 2.0 * radius + allowance;
   let boundaries = match params.side {
-    // The tool centre rides `radius + allowance` away from the vector, and that is how far the kerf
-    // it declares reaches.
-    ProfileSide::Outside => vec![offset(radius + allowance)?, contour.clone()],
-    ProfileSide::Inside => vec![contour.clone(), offset(-(radius + allowance))?],
+    ProfileSide::Outside => vec![offset(reach)?, offset(allowance)?],
+    ProfileSide::Inside => vec![offset(-allowance)?, offset(-reach)?],
     // The emitter runs the tool centre *on* the vector whatever the allowance says
     // (`lateral_offset`: `ProfileSide::On => Length::ZERO`), so the band is the tool's own width on
     // both sides of it and the keep side is on neither.
@@ -275,7 +309,9 @@ fn contour_of<'a>(
 /// The tab spans of a profile, in arc length along the contour.
 ///
 /// A tab is a length of the perimeter the tool lifts over, so the whole kerf band under that span
-/// keeps `height` millimetres of material — not only a half-cell halo around the vector.
+/// keeps `height` millimetres of material — not only a half-cell halo around the vector. The band's
+/// own bounds are what confine it: a cell outside the band is never claimed, so a tab can only
+/// reduce a depth that the band already authorises.
 #[derive(Clone, Debug)]
 struct Tabs {
   /// Each of the contour's segments, with the arc length at which it starts.
