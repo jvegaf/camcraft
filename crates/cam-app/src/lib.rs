@@ -16,63 +16,18 @@
 #![warn(missing_docs)]
 
 pub mod camera;
+pub mod command;
 
 use std::collections::{BTreeSet, VecDeque};
 
 pub use camera::{Camera, ScreenPoint, Viewport, MAX_PIXELS_PER_MM, MIN_PIXELS_PER_MM};
+pub use command::{Command, CommandError};
 
-use cam_model::{Document, ModelError};
+use cam_model::Document;
 use serde_json::Value;
 
 /// How many undo steps are kept before the oldest is dropped.
 pub const MAX_HISTORY: usize = 128;
-
-/// One user-visible edit.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Command {
-  /// Change the stock size. Values are millimetres.
-  SetJob {
-    /// Stock size along X.
-    width: f64,
-    /// Stock size along Y.
-    height: f64,
-    /// Stock thickness.
-    thickness: f64,
-  },
-}
-
-impl Command {
-  /// A short human label, used by the status bar and the undo tooltip.
-  pub fn label(&self) -> &'static str {
-    match self {
-      Self::SetJob { .. } => "set job size",
-    }
-  }
-
-  /// Apply the command to a document. The caller validates the result before committing.
-  fn apply(&self, document: &mut Document) -> Result<(), CommandError> {
-    match *self {
-      Self::SetJob {
-        width,
-        height,
-        thickness,
-      } => {
-        document.job.width = cam_units::Length::from_mm(width);
-        document.job.height = cam_units::Length::from_mm(height);
-        document.job.thickness = cam_units::Length::from_mm(thickness);
-        Ok(())
-      }
-    }
-  }
-}
-
-/// Why a command was refused.
-#[derive(Clone, Debug, PartialEq, thiserror::Error)]
-pub enum CommandError {
-  /// The document would have become invalid, so the command was not applied.
-  #[error("the command was refused: {0}")]
-  Invalid(#[from] ModelError),
-}
 
 /// The set of selected entities, ordered so iteration is deterministic.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
