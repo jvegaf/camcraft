@@ -9,8 +9,72 @@
 //! reports reproducible.
 
 use cam_geom::text::{text_outlines, SingleStrokeFont};
-use cam_geom::{primitive, Contour, Point2};
+use cam_geom::transform;
+use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
 use cam_model::{Document, Entity, EntityKind, ModelError};
+
+/// One geometric transform applied to a whole selection.
+///
+/// The geometry comes from [`cam_geom::transform`] and nowhere else (D-M2-3): `cam-app` validates the
+/// input, stores what the kernel returned, and reports what that cost. That split is what keeps the
+/// kernel usable by a future importer without going through the command layer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Transform {
+  /// Move every selected entity by `delta`.
+  Translate {
+    /// Displacement, in millimetres.
+    delta: Vec2,
+  },
+  /// Turn every selected entity `radians` counter-clockwise about `about`.
+  Rotate {
+    /// Angle in radians, counter-clockwise about the positive Z axis.
+    radians: f64,
+    /// Pivot, in millimetres.
+    about: Point2,
+  },
+  /// Scale every selected entity about `about`, tessellating at `tolerance` when it must.
+  ///
+  /// A uniform factor, or an arc-free selection, stays exact. A non-uniform factor over arcs
+  /// cannot keep them: those contours come back tessellated within `tolerance` and the command's
+  /// [`CommandOutcome::lost_arcs`] says how many arcs the selection lost (M2 A5, D-M2-2).
+  Scale {
+    /// Factor along X; it must be finite and non-zero.
+    sx: f64,
+    /// Factor along Y; it must be finite and non-zero.
+    sy: f64,
+    /// Anchor point, in millimetres.
+    about: Point2,
+    /// Largest deviation the caller accepts when arcs must be tessellated, in millimetres.
+    tolerance: f64,
+  },
+  /// Reflect every selected entity about the line through `point` with direction `direction`.
+  Mirror {
+    /// A point on the mirror line, in millimetres.
+    point: Point2,
+    /// Direction of the mirror line; it must have a non-zero length.
+    direction: Vec2,
+  },
+}
+
+/// Which edge or centre line of the selection's own combined bounds an alignment uses.
+///
+/// The target is a coordinate of the selection, never of the job: `Left` means "on the left edge of
+/// this group", not "on the left edge of the sheet".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AlignMode {
+  /// Put every selected entity's left edge on the left edge of the selection's combined bounds.
+  Left,
+  /// Put every selected entity's right edge on the right edge of those bounds.
+  Right,
+  /// Put every selected entity's top edge on the top edge of those bounds.
+  Top,
+  /// Put every selected entity's bottom edge on the bottom edge of those bounds.
+  Bottom,
+  /// Put every selected entity's horizontal centre on the vertical centre line of those bounds.
+  HorizontalCentre,
+  /// Put every selected entity's vertical centre on the horizontal centre line of those bounds.
+  VerticalCentre,
+}
 
 /// One user-visible edit.
 #[derive(Clone, Debug, PartialEq)]
@@ -164,6 +228,56 @@ pub enum Command {
     /// Identifier of the entity to remove.
     entity_id: String,
   },
+  /// Apply one [`Transform`] to every entity in `entity_ids`, as a single undo step.
+  ///
+  /// Refused atomically (M2 A12): when any id is unknown or repeated, when the transform's own
+  /// numbers are invalid, or when the kernel refuses the geometry, not one entity moves. An empty
+  /// selection is refused too, because a transform of nothing would record an undo step for no
+  /// change the user can see.
+  TransformEntities {
+    /// Entities to transform, in selection order.
+    entity_ids: Vec<String>,
+    /// The transform to apply to each one.
+    transform: Transform,
+  },
+  /// Copy the selection into an explicit `rows` × `columns` grid of duplicates.
+  ///
+  /// Every cell is a **full duplicate of the selection**, not something accumulated from the
+  /// previous cell, so a copy is exactly its source moved by `(column * dx, row * dy)`. Each copy
+  /// lands on the layer its source came from and the originals stay where they are.
+  ///
+  /// The ids are `E{first_entity_index}`, `E{first_entity_index + 1}`, … in a documented order:
+  /// **row-major — rows outer, columns inner, and inside a cell the order of `entity_ids`**. A 2×3
+  /// array of a two-entity selection therefore mints twelve ids, `E3..=E14` when it starts at 3,
+  /// and reports them through [`CommandOutcome::created_entities`]. Every one of them is checked
+  /// for a collision before the first entity is stored, so a taken id refuses the whole grid
+  /// instead of leaving half of it behind (M2 A12).
+  ArrayCopy {
+    /// Entities to copy; the selection must not be empty.
+    entity_ids: Vec<String>,
+    /// Number of rows, at least one.
+    rows: usize,
+    /// Number of columns, at least one.
+    columns: usize,
+    /// Spacing between columns, in millimetres along X; it must be finite.
+    dx: f64,
+    /// Spacing between rows, in millimetres along Y; it must be finite.
+    dy: f64,
+    /// Number in the first minted id: `1` starts at `E1`, zero starts at `E0`. The index is taken
+    /// literally, as [`Command::AddText`] takes it: an id is an opaque string, and the guarantee
+    /// that matters is that every minted id is free, which is checked before anything is stored.
+    first_entity_index: u32,
+  },
+  /// Move the selection so it lines up on an edge or centre line of its own combined bounds.
+  ///
+  /// The target coordinate comes from the selection, not from the job, so aligning a group left
+  /// puts every entity's left edge on the group's leftmost edge and leaves the other axis alone.
+  AlignEntities {
+    /// Entities to align; the selection must not be empty.
+    entity_ids: Vec<String>,
+    /// Which edge or centre line to line up on.
+    mode: AlignMode,
+  },
   /// Show or hide a layer.
   SetLayerVisible {
     /// Layer to change.
@@ -189,6 +303,14 @@ impl Command {
       Self::AddText { .. } => "add text",
       Self::DeleteEntity { .. } => "delete entity",
       Self::SetLayerVisible { .. } => "change layer visibility",
+      Self::TransformEntities { transform, .. } => match transform {
+        Transform::Translate { .. } => "move entities",
+        Transform::Rotate { .. } => "rotate entities",
+        Transform::Scale { .. } => "scale entities",
+        Transform::Mirror { .. } => "mirror entities",
+      },
+      Self::ArrayCopy { .. } => "array copy",
+      Self::AlignEntities { .. } => "align entities",
     }
   }
 
@@ -367,6 +489,27 @@ impl Command {
         }
         Err(CommandError::UnknownEntity(entity_id.clone()))
       }
+      Self::TransformEntities {
+        entity_ids,
+        transform,
+      } => transform_entities(document, entity_ids, transform),
+      Self::ArrayCopy {
+        entity_ids,
+        rows,
+        columns,
+        dx,
+        dy,
+        first_entity_index,
+      } => array_copy(
+        document,
+        entity_ids,
+        *rows,
+        *columns,
+        *dx,
+        *dy,
+        *first_entity_index,
+      ),
+      Self::AlignEntities { entity_ids, mode } => align_entities(document, entity_ids, *mode),
       Self::SetLayerVisible { layer_id, visible } => {
         let layer = document
           .layers
@@ -395,6 +538,12 @@ pub struct CommandOutcome {
   ///
   /// Empty for every command that creates nothing or creates a single entity it already named.
   pub created_entities: Vec<String>,
+  /// How many arcs the command cost the document, because a non-uniform scale had to tessellate
+  /// them (M2 A5).
+  ///
+  /// Summed over the whole selection, so a caller can report "n arcs lost" without asking each
+  /// entity. Zero for every command that approximates nothing this way.
+  pub lost_arcs: usize,
 }
 
 /// Why a command was refused before the document was even validated.
@@ -409,6 +558,9 @@ pub enum CommandError {
   /// The target entity does not exist.
   #[error("entity {0:?} does not exist")]
   UnknownEntity(String),
+  /// The command needs at least one entity and was given none.
+  #[error("no entities were selected")]
+  EmptySelection,
   /// An entity with that identifier already exists.
   #[error("entity {0:?} already exists")]
   DuplicateEntity(String),
@@ -481,6 +633,279 @@ fn ensure_layer_exists(document: &Document, layer_id: &str) -> Result<(), Comman
     return Ok(());
   }
   Err(CommandError::UnknownLayer(layer_id.to_owned()))
+}
+
+/// Where an entity lives: its layer index and its index inside that layer.
+///
+/// Indexes rather than a reference, because a command has to read every contour of the selection
+/// before it writes any of them back: that is what makes a multi-entity edit all or nothing.
+type EntitySite = (usize, usize);
+
+/// Refuse a command that was given nothing to act on.
+fn require_selection(entity_ids: &[String]) -> Result<(), CommandError> {
+  if entity_ids.is_empty() {
+    return Err(CommandError::EmptySelection);
+  }
+  Ok(())
+}
+
+/// Resolve every id to a site, refusing an unknown or repeated id.
+///
+/// A repeated id is refused rather than silently applied twice: a "move selection" listing one
+/// entity twice would otherwise move it twice, which no caller can mean.
+fn resolve_sites(
+  document: &Document,
+  entity_ids: &[String],
+) -> Result<Vec<EntitySite>, CommandError> {
+  let mut seen = std::collections::BTreeSet::new();
+  let mut sites = Vec::with_capacity(entity_ids.len());
+  for id in entity_ids {
+    if !seen.insert(id.as_str()) {
+      return Err(CommandError::DuplicateEntity(id.clone()));
+    }
+    let site = document
+      .layers
+      .iter()
+      .enumerate()
+      .find_map(|(layer_index, layer)| {
+        layer
+          .entities
+          .iter()
+          .position(|entity| entity.id == *id)
+          .map(|entity_index| (layer_index, entity_index))
+      })
+      .ok_or_else(|| CommandError::UnknownEntity(id.clone()))?;
+    sites.push(site);
+  }
+  Ok(sites)
+}
+
+/// The contour at a resolved site.
+fn contour_at(document: &Document, (layer_index, entity_index): EntitySite) -> &Contour {
+  let EntityKind::Contour { contour } = &document.layers[layer_index].entities[entity_index].kind;
+  contour
+}
+
+fn replace_contour_at(
+  document: &mut Document,
+  (layer_index, entity_index): EntitySite,
+  contour: Contour,
+) {
+  document.layers[layer_index].entities[entity_index].kind = EntityKind::Contour { contour };
+}
+
+fn geometry_error(error: cam_geom::GeomError) -> CommandError {
+  CommandError::Geometry(error.to_string())
+}
+
+fn require_finite(kind: &'static str, value: f64) -> Result<(), CommandError> {
+  if !value.is_finite() {
+    return Err(CommandError::OutOfRange {
+      kind,
+      requirement: "a finite number",
+      value,
+    });
+  }
+  Ok(())
+}
+
+fn require_finite_point(kind: &'static str, point: Point2) -> Result<(), CommandError> {
+  require_finite(kind, point.x)?;
+  require_finite(kind, point.y)
+}
+
+fn require_finite_vector(kind: &'static str, vector: Vec2) -> Result<(), CommandError> {
+  require_finite(kind, vector.x)?;
+  require_finite(kind, vector.y)
+}
+
+fn require_scale_factor(kind: &'static str, value: f64) -> Result<(), CommandError> {
+  if !value.is_finite() || value == 0.0 {
+    return Err(CommandError::OutOfRange {
+      kind,
+      requirement: "a finite, non-zero factor",
+      value,
+    });
+  }
+  Ok(())
+}
+
+/// Check a transform's own numbers before any geometry is touched.
+///
+/// The kernel refuses the same inputs, but doing it here keeps the refusal a property of the
+/// command rather than of whichever contour happened to be reached first, and stops a `NaN` from
+/// ever reaching the document.
+fn validate_transform(transform: &Transform) -> Result<(), CommandError> {
+  match transform {
+    Transform::Translate { delta } => require_finite_vector("translate delta", *delta),
+    Transform::Rotate { radians, about } => {
+      require_finite("rotation angle", *radians)?;
+      require_finite_point("rotate pivot", *about)
+    }
+    Transform::Scale {
+      sx,
+      sy,
+      about,
+      tolerance,
+    } => {
+      require_scale_factor("scale X factor", *sx)?;
+      require_scale_factor("scale Y factor", *sy)?;
+      require_positive("scale tolerance", *tolerance)?;
+      require_finite_point("scale anchor", *about)
+    }
+    Transform::Mirror { point, direction } => {
+      require_finite_point("mirror line point", *point)?;
+      require_finite_vector("mirror line direction", *direction)
+    }
+  }
+}
+
+/// Run one contour through the kernel, returning it with the arcs it lost.
+fn apply_transform(
+  transform: &Transform,
+  contour: &Contour,
+) -> Result<(Contour, usize), CommandError> {
+  match transform {
+    Transform::Translate { delta } => Ok((
+      transform::translate(contour, *delta).map_err(geometry_error)?,
+      0,
+    )),
+    Transform::Rotate { radians, about } => Ok((
+      transform::rotate(contour, *radians, *about).map_err(geometry_error)?,
+      0,
+    )),
+    Transform::Scale {
+      sx,
+      sy,
+      about,
+      tolerance,
+    } => {
+      let scaled =
+        transform::scale(contour, *sx, *sy, *about, *tolerance).map_err(geometry_error)?;
+      Ok((scaled.contour, scaled.lost_arcs))
+    }
+    Transform::Mirror { point, direction } => Ok((
+      transform::mirror(contour, *point, *direction).map_err(geometry_error)?,
+      0,
+    )),
+  }
+}
+
+fn transform_entities(
+  document: &mut Document,
+  entity_ids: &[String],
+  transform: &Transform,
+) -> Result<CommandOutcome, CommandError> {
+  require_selection(entity_ids)?;
+  validate_transform(transform)?;
+  let sites = resolve_sites(document, entity_ids)?;
+
+  // Every contour is transformed before any of them is stored, so a refusal part way through
+  // leaves the selection untouched instead of half moved.
+  let mut planned = Vec::with_capacity(sites.len());
+  let mut lost_arcs = 0;
+  for site in sites {
+    let (contour, lost) = apply_transform(transform, contour_at(document, site))?;
+    lost_arcs += lost;
+    planned.push((site, contour));
+  }
+  for (site, contour) in planned {
+    replace_contour_at(document, site, contour);
+  }
+  Ok(CommandOutcome {
+    lost_arcs,
+    ..CommandOutcome::default()
+  })
+}
+
+fn array_copy(
+  document: &mut Document,
+  entity_ids: &[String],
+  rows: usize,
+  columns: usize,
+  dx: f64,
+  dy: f64,
+  first_entity_index: u32,
+) -> Result<CommandOutcome, CommandError> {
+  require_at_least("array rows", rows, 1)?;
+  require_at_least("array columns", columns, 1)?;
+  require_finite("array X spacing", dx)?;
+  require_finite("array Y spacing", dy)?;
+  // Zero is refused: it would mint `E0`, which the drawing counter never produces.
+  require_selection(entity_ids)?;
+  let sources: Vec<(EntitySite, Contour)> = resolve_sites(document, entity_ids)?
+    .into_iter()
+    .map(|site| (site, contour_at(document, site).clone()))
+    .collect();
+
+  // Plan the whole grid — ids and geometry — before storing any of it, so an id taken late in the
+  // run refuses the command instead of leaving the first copies behind (M2 A12).
+  let mut planned: Vec<(usize, String, Contour)> = Vec::new();
+  let mut next = u64::from(first_entity_index);
+  for row in 0..rows {
+    for column in 0..columns {
+      let delta = Vec2::new(column as f64 * dx, row as f64 * dy);
+      for (site, contour) in &sources {
+        let id = format!("E{next}");
+        next += 1;
+        ensure_id_is_free(document, &id)?;
+        let copy = transform::translate(contour, delta).map_err(geometry_error)?;
+        planned.push((site.0, id, copy));
+      }
+    }
+  }
+
+  let created: Vec<String> = planned.iter().map(|(_, id, _)| id.clone()).collect();
+  for (layer_index, id, contour) in planned {
+    // Reuse the drawing path's insert so a copy is stored exactly like a drawn entity.
+    let layer_id = document.layers[layer_index].id.clone();
+    push_entity(document, &layer_id, &id, contour)?;
+  }
+  Ok(CommandOutcome {
+    created_entities: created,
+    ..CommandOutcome::default()
+  })
+}
+
+/// The displacement that brings one entity's bounds onto the selection's aligned coordinate.
+fn alignment_offset(mode: AlignMode, combined: Bounds, entity: Bounds) -> Vec2 {
+  match mode {
+    AlignMode::Left => Vec2::new(combined.min.x - entity.min.x, 0.0),
+    AlignMode::Right => Vec2::new(combined.max.x - entity.max.x, 0.0),
+    AlignMode::Bottom => Vec2::new(0.0, combined.min.y - entity.min.y),
+    AlignMode::Top => Vec2::new(0.0, combined.max.y - entity.max.y),
+    AlignMode::HorizontalCentre => Vec2::new(combined.center().x - entity.center().x, 0.0),
+    AlignMode::VerticalCentre => Vec2::new(0.0, combined.center().y - entity.center().y),
+  }
+}
+
+fn align_entities(
+  document: &mut Document,
+  entity_ids: &[String],
+  mode: AlignMode,
+) -> Result<CommandOutcome, CommandError> {
+  require_selection(entity_ids)?;
+  let sites = resolve_sites(document, entity_ids)?;
+  // The target is the selection's own combined bounds, computed before anything moves.
+  let combined = sites
+    .iter()
+    .map(|site| contour_at(document, *site).bounds())
+    .reduce(Bounds::union)
+    .unwrap_or_default();
+
+  let mut planned = Vec::with_capacity(sites.len());
+  for site in sites {
+    let contour = contour_at(document, site);
+    let delta = alignment_offset(mode, combined, contour.bounds());
+    planned.push((
+      site,
+      transform::translate(contour, delta).map_err(geometry_error)?,
+    ));
+  }
+  for (site, contour) in planned {
+    replace_contour_at(document, site, contour);
+  }
+  Ok(CommandOutcome::default())
 }
 
 /// Build one contour with the kernel, refuse a taken id, and store it on `layer_id`.

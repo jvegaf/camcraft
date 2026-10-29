@@ -21,7 +21,7 @@ pub mod command;
 use std::collections::{BTreeSet, VecDeque};
 
 pub use camera::{Camera, ScreenPoint, Viewport, MAX_PIXELS_PER_MM, MIN_PIXELS_PER_MM};
-pub use command::{Command, CommandError, CommandOutcome};
+pub use command::{AlignMode, Command, CommandError, CommandOutcome, Transform};
 
 use cam_model::Document;
 use serde_json::Value;

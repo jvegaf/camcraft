@@ -78,6 +78,11 @@ against.
   reports the number of entities that lost arcs (S5). Uniform scale and arc-free geometry stay exact.
 - **D-M2-3** — Authoring builders live in `cam-geom`, not in `cam-app`: `cam-app` owns validation,
   ids, history and refusal, never geometry. This keeps the kernel usable by M3 importers.
+- **D-M2-4** — `first_entity_index` is taken literally by both id-minting commands (`AddText` and
+  `ArrayCopy`): an id is an opaque string, so index `0` mints `E0` and is not special-cased. The
+  guarantee that matters — every minted id is free — is checked for the whole batch before anything
+  is stored, which is what keeps a refusal atomic. Raised while reviewing T9, which had refused index
+  zero on an argument no other command made.
 
 ## Tasks
 
@@ -225,7 +230,7 @@ Slice 1 closes with T1–T3; slice 2 closes with T4–T7.
 | T6 | `HEAD` | 12 tests; forks, two-chain groups and closed inputs refused by name |
 | T7 | `HEAD` | 7 tests; arcs split exactly; four refusal classes by name |
 | T8 | `HEAD` | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome` |
-| T9 | — | pending |
+| T9 | `HEAD` | 18 tests (36 → 54); `lost_arcs` aggregated from the kernel; array copies are full-duplicate per cell |
 | T10 | — | pending |
 | T11 | `d053640` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
 | T12 | — | pending |
