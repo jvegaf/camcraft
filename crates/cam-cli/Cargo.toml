@@ -1,0 +1,16 @@
+[package]
+name = "cam-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-units.workspace = true
+cam-geom.workspace = true
+cam-move.workspace = true
+cam-model.workspace = true
+cam-store.workspace = true
+cam-post.workspace = true
+cam-toolpath.workspace = true
