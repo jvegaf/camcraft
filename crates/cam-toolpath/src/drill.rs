@@ -2,11 +2,19 @@
 //!
 //! The centre of a hole is the shared centre of its contour's arcs, so a circle drills where the user
 //! drew it and anything else is refused by name instead of being drilled at a guessed point.
+//!
+//! A drill bank ([`DrillParams::bank`]) is a gang of drills mounted a fixed `pitch` apart along X. The
+//! machine cannot swap drills, so the head moves instead: drill `k` is put over a hole at `x` by
+//! parking the head at `x - k * pitch`. Picking `k` for a hole is therefore *selection*, not a machine
+//! command, and this module emits nothing else for it — no `G` or `M` code, no toolchange, no tool
+//! number — because [`cam_move`] has no bank vocabulary at all and drill-bank hardware integration is
+//! deferred by the plan (S9, A9). What a caller gets instead is the per-hole drill index and the head
+//! travel that selection costs.
 
 use std::f64::consts::TAU;
 
 use cam_geom::{Contour, Point2, Segment};
-use cam_model::{DrillParams, Job, RetractMode};
+use cam_model::{DrillBank, DrillParams, Job, RetractMode};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 
@@ -43,8 +51,13 @@ pub struct Drillpath {
   pub order: Vec<String>,
   /// Bank drill that cut each hole, parallel to [`Self::order`]. `None` without a bank.
   pub drill_index: Vec<Option<u32>>,
-  /// Total XY distance the tool travels between holes.
+  /// Total XY distance the holes are apart, in cutting order, counted from the machine origin.
   pub rapid_length: Length,
+  /// Total XY distance the *head* travels between holes, counted from machine `(0, 0)` for the first.
+  ///
+  /// Without a bank the head visits the holes themselves, so this equals [`Self::rapid_length`].
+  /// With a bank it is what the compensated program actually costs, and it is smaller.
+  pub bank_travel: Length,
 }
 
 /// Compute the moves for a drilling pass.
@@ -53,14 +66,25 @@ pub struct Drillpath {
 /// `Vec` scans only: the same input always produces the same moves (S7). Every hole is entered at
 /// the job's safe Z, plunged in pecks, and left at safe Z, so the tool is never down while it travels
 /// between holes (A7, A8, D-M4-6).
+///
+/// With a drill bank, each hole in that tour picks the drill whose head position is nearest the
+/// previous head, and the moves name the compensated head position instead of the hole (A9). The
+/// order the holes are drilled in is unchanged: a bank selects, it does not re-plan.
 pub fn drill(request: &DrillRequest<'_>) -> Result<Drillpath, ToolpathError> {
+  let params = request.params;
+  // A bank of no drills, or of drills sitting on top of each other, has nothing to select from, so
+  // it is refused before a single move exists.
+  if let Some(bank) = params.bank {
+    if bank.count == 0 || bank.pitch.mm() <= 0.0 {
+      return Err(ToolpathError::InvalidBank);
+    }
+  }
   if request.holes.is_empty() {
     return Err(ToolpathError::NoHoles);
   }
   if request.tool.diameter.mm() <= 0.0 {
     return Err(ToolpathError::InvalidToolDiameter);
   }
-  let params = request.params;
   let peck = params.peck_depth.mm();
   if peck < 0.0 {
     return Err(ToolpathError::InvalidPeckDepth { peck_depth: peck });
@@ -87,13 +111,37 @@ pub fn drill(request: &DrillRequest<'_>) -> Result<Drillpath, ToolpathError> {
     .collect();
   let tour = tour(request.holes, &machine);
 
-  let safe_z = request.job.safe_z;
-  let mut moves = Vec::new();
+  // Where the head goes for each hole in the tour, and which drill that puts over it. Without a bank
+  // the head goes to the hole itself, which is why `bank_travel == rapid_length` there.
+  let mut heads = Vec::with_capacity(tour.order.len());
+  let mut drill_index = Vec::with_capacity(tour.order.len());
+  let mut head_travel = 0.0;
+  let mut previous_head = Point2::new(0.0, 0.0);
   for &index in &tour.order {
     let centre = machine[index];
+    let (head, drill) = match params.bank {
+      None => (centre, None),
+      Some(bank) => {
+        let chosen = nearest_drill(centre.x - previous_head.x, &bank);
+        (
+          Point2::new(centre.x - f64::from(chosen) * bank.pitch.mm(), centre.y),
+          Some(chosen),
+        )
+      }
+    };
+    // Counted from the machine origin, so the head pays for the travel onto the part.
+    head_travel += previous_head.distance_to(head);
+    previous_head = head;
+    heads.push(head);
+    drill_index.push(drill);
+  }
+
+  let safe_z = request.job.safe_z;
+  let mut moves = Vec::new();
+  for head in &heads {
     let at = Point3 {
-      x: Length::from_mm(centre.x),
-      y: Length::from_mm(centre.y),
+      x: Length::from_mm(head.x),
+      y: Length::from_mm(head.y),
       z: safe_z,
     };
     moves.push(Move::Rapid { to: at });
@@ -128,12 +176,36 @@ pub fn drill(request: &DrillRequest<'_>) -> Result<Drillpath, ToolpathError> {
     .map(|&index| request.holes[index].entity.clone())
     .collect();
   Ok(Drillpath {
-    // The drill bank is T4's task: every hole is cut by the head as drawn.
-    drill_index: vec![None; order.len()],
     moves,
     order,
+    drill_index,
     rapid_length: Length::from_mm(tour.travel),
+    bank_travel: Length::from_mm(head_travel),
   })
+}
+
+/// The bank drill whose head position is nearest to a hole `dx` millimetres along X from the head.
+///
+/// Drill `k` sits `k * pitch` to the left of the head's reference drill, so cutting a hole `dx` ahead
+/// asks for the whole number of pitches nearest `dx`, clamped to the drills the bank actually has. A
+/// tie keeps the lower index, so the choice depends on the numbers and nothing else (S7).
+fn nearest_drill(dx: f64, bank: &DrillBank) -> u32 {
+  let pitch = bank.pitch.mm();
+  let last = f64::from(bank.count.saturating_sub(1));
+  let pitches = dx / pitch;
+  let chosen = if pitches <= 0.0 {
+    0.0
+  } else if pitches >= last {
+    last
+  } else {
+    let below = pitches.floor();
+    if pitches - below > 0.5 {
+      below + 1.0
+    } else {
+      below
+    }
+  };
+  chosen as u32
 }
 
 /// The order the holes are drilled in, and the head travel that order costs.
