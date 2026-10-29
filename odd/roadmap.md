@@ -137,7 +137,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
 | **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
 | **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | The authoring half of "similar to the reference CAM application"; all of it rides on `cam-geom`, proven headless |
-| **M3** ⚠️ | Import & interchange | **Delivered on four of five formats.** DXF, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document and `cam-cli check` reports open, self-intersecting and degenerate vectors. **SVG is deferred to its own session** by owner decision (see §4.5) | Users bring geometry; the original's own filter list is the target set |
+| **M3** ✅ | Import & interchange | **Delivered.** DXF, SVG, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document, `cam-cli check` reports open, self-intersecting and degenerate vectors, and the shell imports undoably (see §4.5) | Users bring geometry; the original's own filter list is the target set |
 | **M4** | Core toolpaths | Profile (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing; they exercise every post-processor block |
 | **M5** | Simulation & 3D preview | Heightfield material removal, gouge/uncut reporting, 3D stock view, animated preview | G-code without simulation is unverifiable by the user; also the only honest acceptance test for M4–M7 |
 | **M6** | Depth-variant strategies | Quick Engrave, Chamfer, Fluting, Texture, Thread Milling, Inlay (male/female pair) | All are profile/pocket variants with a different Z law — cheap once M4 and M5 exist |
@@ -232,13 +232,14 @@ acceptance criteria. Known limit carried forward: `Contour::bounds()` still samp
 tessellation, so bounds, align and the lost-arc counts are accurate to about 1e-6 mm on arc-bearing
 selections rather than exact.
 
-### 4.5 M3 partially delivered (evidence)
+### 4.5 M3 delivered (evidence)
 
 | Deliverable | Where | Proof |
 | --- | --- | --- |
 | Import contract: bytes + options in, millimetre contours + report out, no filesystem and no document mutation | `crates/cam-import` | 10 tests; detection by extension then by content signature; the report renders whole and identically every time |
 | Document assembly: stock fitted to the imported bounds plus a 10 mm placement margin, `L1..Ln`, `E1..En` | `cam-import::into_document` | 3 tests; exact placement and job size, single-layer override, `validate()` runs on the result |
 | DXF: `LINE`, `LWPOLYLINE`/`POLYLINE` with bulges, `ARC`, `CIRCLE`, `ELLIPSE`, layers, `$INSUNITS`/`$MEASUREMENT` | `cam-import::dxf` | 25 tests; a bulge is an exact arc, a full ellipse is rotated exactly, a partial one is flattened and counted, skipped entities carry their line number |
+| SVG: hand-written XML reader, the shape set, inherited `transform`, `viewBox` scaling, exact circular arcs, y inversion (D-M3-10) | `cam-import::svg` | 30 tests; a circular `A` stays an `Arc` and an elliptical one is flattened and counted, the path grammar covers relative and implicit repeats, `viewBox` + `width` gives the exact millimetre size, the reflection keeps both of a circle's arcs, a mismatched tag is located |
 | PDF: tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, content-stream paths through `cm` | `cam-import::pdf` | 16 tests; compressed and uncompressed streams give identical contours, two pages import in order, encryption is refused by name |
 | EPS: PostScript path subset with a transformation stack | `cam-import::eps` | 26 tests; `arc` of 360° is a closed circle of two arcs, `curveto` is flattened and counted, `%%BoundingBox` places the drawing |
 | Raster trace: hand-written PNG decoder plus deterministic contour extraction | `cam-import::raster` | 16 tests; all five scanline filters, holes wound the opposite way, `--min-area`/`--simplify` reported, same bytes give the same contours |
@@ -252,12 +253,17 @@ not the contract; every importer now returns an empty layer set and the spine re
 (`d93fd01`). Recorded, not fixed: `replace_document` clears history, so the import path needed
 `replace_document_undoable` rather than reusing it.
 
-**Deferred: SVG (T4).** By owner decision, SVG moves to its own session; the work parked on branch
-`import/svg` is the starting point. Its worker died mid-implementation and what it left fails 14 of its own
-29 tests and hangs on 11 of them (a non-advancing loop in the path-data scanner), so it was not merged. The
-session that picks it up has one thing already decided: SVG user space is y-down, so it is mapped to
-millimetres with **Y inverted** (as the raster tracer does; DXF/PDF/EPS are y-up already), through
-`cam_geom::transform::mirror`, which is exact on arcs and normalises winding.
+**SVG (T4) closed in a later session.** The parked work on branch `import/svg` was the starting point, and
+its three real defects were found and fixed at the root: the path-data reader scanned each coordinate pair
+into a throwaway cursor, so it never advanced and every `d` attribute hung; a unitless number was read as a
+CSS pixel on shape attributes too, so a 100 mm page came out at 26.46 mm; and `point()` borrowed `self`
+immutably, which is what made the first defect possible. The owner's decision that SVG user space is
+**y-down** is now D-M3-10: the root mapping composes a reflection, which is an isometry, so arcs stay exact
+with their bulge sign flipped and no curve is flattened for it. One parked test asserted both that a
+mismatched tag is located at the *closing* tag and that an unclosed one is located at the *opening* tag; the
+two now test their own case, and a genuinely unclosed element at end of input points at the line it opened
+on. The parked suite's y expectations were written before the flip and now state it through an `up()`
+helper, so no assertion hides the convention.
 
 Recorded deviation: PDF imports one user unit as one millimetre with a warning, because a PDF path carries
 no physical size and A9 names no scale. Known limit carried forward: a `W f` clip-and-fill in PDF loses the

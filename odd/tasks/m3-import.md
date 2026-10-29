@@ -132,7 +132,7 @@ One line per task: ID — acceptance criteria — route — commit.
 - **T1** — A1, A2, A3, A14 — inline — `feat(import): cam-import crate, format detection and cli import`
 - **T2** — A16 — inline — `feat(geom): vector validation for open and self-intersecting contours`
 - **T3** — A4, A5 — writer — `feat(import): dxf entities, layers and units`
-- **T4** — A6, A7, A8 — **deferred to a new session** (owner, L10; work parked on branch `import/svg`, unmerged) — `feat(import): svg shapes, paths, transforms and units`
+- **T4** — A6, A7, A8, D-M3-10 — writer (parked work finished in a later session, L11) — `feat(import): svg shapes, paths, transforms and units`
 - **T5** — A9, A10 — writer — `feat(import): pdf content stream path import`
 - **T6** — A11 — writer — `feat(import): eps postscript path import`
 - **T7** — A12, A13 — writer — `feat(import): png raster trace`
@@ -288,13 +288,18 @@ with the evidence table and the deviations.
 | Slice | Tasks | Subject |
 | --- | --- | --- |
 | 1 | T1–T2 | Crate spine, report, CLI `import`; kernel validation |
-| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered; T4 deferred to a new session** |
+| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered in this session; T4 delivered in a later one (L12)** |
 | 3 | T8–T10 | `check`, shell import, docs — **delivered** |
 
 Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `22c255f`, 1705 authored lines across
 three commits (plan `2bd7440`, `1d46e51`, `22c255f`). Like M2 the milestone overtakes the ~400-line review
 unit deliberately: the plan and the two foundation tasks are separate units, and each later task is its own
 commit with its own tests, to be reviewed per slice.
+
+Slice 2 keeps that boundary for the same reason, which is scope and independence, not line count: T3
+`655ead6` (1660 lines), T5 `48cab49` (2137), T6 `546374e` (1809), T7 `984bd61` (1539) and T4 `d197c80`
+(2517) are five different formats over five disjoint module + test surfaces, so the review unit is one
+format at a time, and no reader has to hold two grammars in their head to review either.
 
 ## Evidence — commit per task
 
@@ -303,7 +308,7 @@ commit with its own tests, to be reviewed per slice.
 | T1 | `1d46e51` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
 | T2 | `22c255f` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
 | T3 | `655ead6` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
-| T4 | **deferred** | Not delivered in this session. Work orphaned on branch `import/svg` when its worker died: 14 of 29 tests fail and 11 hang (a non-advancing loop in the path-data scanner), so it was not merged. Owner moved it to a new session (L10) and settled the Y convention (D-M3-10). See L7 |
+| T4 | `d197c80` | 30 tests; XML reader with located errors, the full path grammar, every shape element, inherited transforms, `viewBox` with `xMidYMid meet`, exact circular arcs. The parked work's three root defects fixed (non-advancing path cursor, unitless attribute read as px, contradictory tag-location tests) and the owner's Y convention applied as a reflection in the root mapping (D-M3-10). See L11, L12 |
 | T5 | `48cab49` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
 | T6 | `546374e` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`d93fd01`) |
 | T7 | `984bd61` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
@@ -348,6 +353,23 @@ commit with its own tests, to be reviewed per slice.
   (D-M3-10), and T4 leaves this milestone's scope by the owner's choice — the branch `import/svg` and the
   worktree stay as the starting point for that session. M3 therefore closes delivered on four of the five
   formats S2 names.
+- **L11** — Owner instruction (verbatim, this session): "vamos terminar de completar m3". Read as: finish the
+  one task M3 still owes — T4, the SVG importer — on `feat/m3-import`, starting from the work parked on
+  branch `import/svg`.
+- **L12** — T4 evidence: `d197c80`. The parked branch was rebased onto the current tip by copying its two
+  files (`src/svg.rs`, `tests/svg.rs`) into a fresh worktree; of its 29 tests, 5 passed, 14 failed and 10
+  hung. Reproduced each hang under a debugger: `PathReader::point` scanned both coordinates into a local copy
+  of the cursor, so the run loop never advanced — the scanner's own, not the parser's, defect. Fixed, then
+  the 14 assertion failures collapsed to three causes: shape attributes were converted px→mm on a page whose
+  user unit is not a pixel (a bare number on a shape is a user unit; only in the root viewport is it px,
+  D-M3-4), so a 100 mm page came out at 26.46 mm; and the two tag-location tests contradicted each other, so
+  the unclosed-at-end-of-input case keeps the opening line and the mismatched case names both tags at the
+  closing line. D-M3-10 was applied as a reflection composed into the root mapping: exact on arcs, winding
+  normalised when each contour is built, and the test file now writes the flip down through an `up()` helper
+  instead of inheriting y-down expectations. Gates green: `fmt`, `clippy -D warnings`, 550 tests. End-to-end
+  through the contract (S6): `cam-cli import` on a 120x80 mm drawing with a rounded rect, a circle, a
+  triangle and a `<text>` reports `contours: 3`, one skipped `<text>`, writes the document, `inspect` shows a
+  120x95 mm job (bounds plus the 10 mm margin) and `check` prints `all vectors valid`.
 - **L9** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
   `zip` to a direct one for `cam-import` (PDF `FlateDecode`, PNG `IDAT`); nothing else added, so no
   parser, XML or image crate enters the tree (D-M3-1).
