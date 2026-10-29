@@ -168,6 +168,7 @@ name = "cam-toolpath"
 version = "0.0.1"
 dependencies = [
  "cam-geom",
+ "cam-model",
  "cam-move",
  "cam-units",
  "thiserror",

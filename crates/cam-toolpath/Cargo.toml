@@ -10,4 +10,5 @@ publish.workspace = true
 cam-units.workspace = true
 cam-geom.workspace = true
 cam-move.workspace = true
+cam-model.workspace = true
 thiserror.workspace = true

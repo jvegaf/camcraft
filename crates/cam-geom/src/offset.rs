@@ -136,6 +136,25 @@ pub fn offset_contour(
     });
   }
 
+  // Guard against the classic offset failure: shrinking past the shape's own width produces a
+  // valid-looking contour that has passed *through* the shape and come out mirrored. Every vertex of
+  // a shrinking offset must remain at a sensible distance from the original boundary; a vertex far
+  // closer than the offset distance means the offset crossed the shape.
+  //
+  // This is a safety guard, not a topological solution: a full arrangement-based offset with
+  // skeleton handling is future work, and refusing loudly is the correct M0 behaviour.
+  if signed < 0.0 {
+    let boundary = contour.tessellate(options.tolerance.max(1.0e-6));
+    let threshold = signed.abs() * 0.5;
+    for vertex in candidate.vertices() {
+      if distance_to_boundary(vertex.point, &boundary) < threshold {
+        return Err(GeomError::OffsetCollapsed {
+          reason: "the offset passed through the shape instead of inside it",
+        });
+      }
+    }
+  }
+
   let sampled = candidate.tessellate(options.tolerance);
   match remove_self_intersections(&sampled, options.tolerance) {
     Some(cleaned) => {
@@ -466,6 +485,31 @@ fn segment_intersection(
     return None;
   }
   Some(a1 + r * t)
+}
+
+/// Shortest distance from a point to a closed polyline.
+fn distance_to_boundary(point: Point2, boundary: &[Point2]) -> f64 {
+  if boundary.len() < 2 {
+    return f64::INFINITY;
+  }
+  let mut best = f64::INFINITY;
+  for index in 0..boundary.len() {
+    let from = boundary[index];
+    let to = boundary[(index + 1) % boundary.len()];
+    best = best.min(distance_to_segment(point, from, to));
+  }
+  best
+}
+
+/// Shortest distance from a point to a finite segment.
+fn distance_to_segment(point: Point2, from: Point2, to: Point2) -> f64 {
+  let span = to - from;
+  let length_squared = span.length_squared();
+  if length_squared <= 0.0 {
+    return point.distance_to(from);
+  }
+  let projection = ((point - from).dot(span) / length_squared).clamp(0.0, 1.0);
+  point.distance_to(from + span * projection)
 }
 
 /// Shoelace area of a polygon.
