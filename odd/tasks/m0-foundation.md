@@ -39,7 +39,9 @@ against.
   formatting, and the 15 output blocks (`HEADER`, `FOOTER`, `INITIAL_RAPID_MOVE`, `RAPID_MOVE`,
   `FIRST_RAPID_MOVE`, `PLUNGE_MOVE`, `FIRST_FEED_MOVE`, `FEED_MOVE`, `RETRACT_MOVE`,
   `FIRST_CW_ARC_MOVE`, `CW_ARC_MOVE`, `FIRST_CCW_ARC_MOVE`, `CCW_ARC_MOVE`, `FEED_RATE_CHANGE`,
-  `NEW_SEGMENT`, `TOOLCHANGE`). Malformed input fails with a `line:column` diagnostic, never silently.
+  `NEW_SEGMENT`, `TOOLCHANGE` — **16 blocks**; the earlier "15" in this document was a miscount, and
+  the `VAR` form also carries an optional fifth scale field, both corrected during T8/T9 and recorded
+  in the analysis report §6). Malformed input fails with a `line:column` diagnostic, never silently.
 - **A6** — Rounding and number formatting happen **only** in the emitter, driven by the `decimals`
   field of each `VAR` declaration.
 - **A7** — No the vendor `.pp` file is committed to this repository; fixtures are authored by us.
@@ -55,6 +57,14 @@ against.
 | T2 | `3a0aaae` | `cam-units`; 10 tests green, incl. 3 property tests |
 | T3 | `7ffbd98` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
 | T4 | `6b15cad` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
+| T5 | `3d298f6` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected |
+| T6 | `3e0758c` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite |
+| T7 | `62fd277` | SQLite tool library; 7 tests green, incl. a real v1→v2 migration of a hand-built legacy file |
+| T8 | `83dead6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line |
+| T9 | `a3cb385` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal |
+| T10 | `1621854` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping) |
+| T11 | `78ad9e9` | CLI + end-to-end golden program through the real binary; 12 tests green |
+| T12 | `HEAD` | `README.md`, `docs/format.md`, roadmap status, corrected evidence |
 
 ## Tasks
 
@@ -205,3 +215,20 @@ record the commit holding each task. No behaviour change.
   concentric offsets are a smooth continuation, not a corner. Both are now handled at the root,
   with the reasoning recorded in the source. clippy also caught `Option::is_none_or` (stable in
   1.82) against the workspace MSRV of 1.80, which was the only lint failure.
+- **L10 (execution, T5–T11).** Every task landed as its own commit with all gates green before the
+  commit was made (`scripts/check.sh`: `fmt --check`, `clippy -D warnings`, `cargo test`). The suite
+  stands at **123 tests across 13 suites**. Three implementation findings worth keeping:
+  (a) T10 exposed a genuine kernel defect — shrinking a contour past its own inradius returned a
+  valid-looking *mirrored* contour, so a tool that does not fit would have cut the wrong path; the
+  offset now refuses when a shrinking offset's vertices sit far closer to the original boundary than
+  the offset distance, and the reason is recorded in the source as a guard rather than a topological
+  solution.
+  (b) T11 pinned a property that matters for leads and tabs: the offset contour starts at the corner
+  nearest the authored start vertex, so a lead-in does not move to a different corner when a tool
+  radius is applied. A cam-geom test now locks that.
+  (c) The `emit` contract refuses to invent a tool: without a library or `tools_ref` it exits 2
+  naming the missing tool data, instead of defaulting to some diameter.
+- **L11 (scope note).** M0 shipped exactly the acceptance criteria A1–A9 and no more: one strategy,
+  no UI crate, no importers. The 16-block dialect is implemented but `FEED_RATE_CHANGE` is never
+  emitted yet, because no M0 strategy changes feed rate inside a segment; the block is parsed and
+  documented so M4 does not have to re-open the format.
