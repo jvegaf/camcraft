@@ -19,12 +19,12 @@ round trip.
 
 ```
 part.c2d
-└── document.json      pretty-printed JSON, schema c2d/document@1
+└── document.json      pretty-printed JSON, schema c2d/document@2
 ```
 
 ```json
 {
-  "schema": "c2d/document@1",
+  "schema": "c2d/document@2",
   "job": {
     "width": 1219.0, "height": 2438.0, "thickness": 18.0,
     "units": "mm", "origin": "bottom_left", "safe_z": 5.0
@@ -61,7 +61,7 @@ part.c2d
 | Topic | Rule |
 | --- | --- |
 | Units | Every length in the document is **millimetres**. `job.units` records the unit the user works in and nothing else converts on read. |
-| Schema | `schema` must equal `c2d/document@1`. Anything else is rejected naming both the found and the supported version. |
+| Schema | This build **writes** `c2d/document@2` and still **reads** `c2d/document@1`, upgrading it in memory on load so a save never writes the old tag back. Anything else is rejected naming both the found and the supported version. `@2` only added `Toolpath.island_ids`: the bump exists because an older build ignores a field it does not know, so keeping the tag would let it pocket straight through an island. |
 | Geometry | A contour is an ordered list of vertices; `bulge` is the DXF bulge of the segment leaving that vertex (`0` = straight, `tan(sweep/4)` = arc, positive counter-clockwise). A full circle is two half-turn arcs. |
 | Validation | Contours are validated **on deserialisation**: too few vertices, coincident consecutive vertices and impossible bulges fail the load instead of producing geometry. |
 | References | Toolpath `entity_ids` must resolve. Every operation that cuts a closed contour — `profile`, `pocket`, `drilling` — must reference closed contours, and an open one is refused by name. Ids are unique within their kind. |
@@ -70,6 +70,7 @@ part.c2d
 | Extensibility | `EntityKind` and `Operation` are internally tagged enums. An unknown tag is a **hard error**: a document written by a newer build never half-loads, it is refused by name. Because of that, adding a variant is additive and keeps the schema tag; changing what an existing field means, or its units, is what makes a `@2`. |
 | `RetractMode` | `{"mode":"full"}` or `{"mode":"amount","amount":1.0}`. A tagged **newtype** over a bare number cannot carry the tag, so the amount is a named field. |
 | `bank` | Omitted when the machine has no drill gang, so a document that does not use one is byte-identical to one written before banks existed. |
+| `island_ids` | Omitted when empty. Names the closed contours to leave standing inside a `pocket`'s region; nothing is inferred from the drawing, so the field *is* the island list. The model refuses an island that is not a closed contour, that is not strictly inside one of the toolpath's boundaries, that is not disjoint from another island, that repeats an id, or that belongs to any operation other than a pocket. See [region-booleans.md](region-booleans.md). |
 
 `tools_ref` and `postp` are optional references resolved relative to the document.
 
@@ -177,7 +178,7 @@ Text variables need no declaration: `TOOLPATH_NAME`, `PATHNAME`, `FILE_NAME`, `F
 | `postp validate <file>` | Parse a post-processor and print a summary |
 | `tools list <library>` | List tools |
 | `tools add <library> --id --diameter --number` | Add or replace a tool |
-| `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); see [m4-toolpaths.md](m4-toolpaths.md) |
+| `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> [--islands <ids>] --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); `--islands` is a pocket-only list of contours to leave standing; see [m4-toolpaths.md](m4-toolpaths.md) and [region-booleans.md](region-booleans.md) |
 | `emit <document> --post <file> [--out <path>] [--library <path>]` | Compute toolpaths and write the program |
 
 Machine output goes to **stdout**, diagnostics to **stderr**.

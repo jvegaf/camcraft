@@ -34,6 +34,7 @@ fn document_with_square() -> Document {
     id: "TP1".to_owned(),
     name: "Outside profile".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Profile(ProfileParams::default()),
   });
@@ -45,7 +46,7 @@ fn a_new_document_carries_the_schema_tag_and_millimetre_job() {
   let document = Document::new(Job::default_sheet());
   assert_eq!(document.schema, DOCUMENT_SCHEMA);
   let json = serde_json::to_string(&document).expect("serialises");
-  assert!(json.contains("\"schema\":\"c2d/document@1\""), "{json}");
+  assert!(json.contains("\"schema\":\"c2d/document@2\""), "{json}");
   assert!(json.contains("\"units\":\"mm\""), "{json}");
   document.validate().expect("valid empty document");
 }
@@ -273,4 +274,225 @@ fn an_unknown_operation_kind_is_a_hard_error() {
   }"#;
   let error = serde_json::from_str::<Document>(json).expect_err("must not load");
   assert!(error.to_string().contains("laser_cut"), "{error}");
+}
+
+// --- P1: islands and the c2d/document@2 migration (A9, A10) ---
+
+fn add_circle(document: &mut Document, id: &str, centre: Point2, radius: f64) {
+  document.layers[0].entities.push(Entity {
+    id: id.to_owned(),
+    kind: EntityKind::Contour {
+      contour: cam_geom::primitive::circle(centre, radius).expect("circle"),
+    },
+  });
+}
+
+fn pocket_document_with_island() -> Document {
+  let mut document = document_with(Operation::Pocket(PocketParams::default()));
+  add_circle(&mut document, "E2", Point2::new(50.0, 50.0), 10.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned()];
+  document
+}
+
+#[test]
+fn an_island_round_trips_and_is_omitted_when_there_is_none() {
+  let document = pocket_document_with_island();
+  document.validate().expect("an island inside the pocket");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"island_ids\":[\"E2\"]"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+
+  let without = document_with(Operation::Pocket(PocketParams::default()));
+  let plain = serde_json::to_string(&without).expect("serialises");
+  assert!(
+    !plain.contains("island_ids"),
+    "a document without islands is written as before: {plain}"
+  );
+}
+
+#[test]
+fn an_island_outside_its_pocket_is_rejected() {
+  let mut document = pocket_document_with_island();
+  document.toolpaths[0].island_ids = vec!["E2".to_owned()];
+  // Move the island outside the 100 mm square the pocket is cut from.
+  add_circle(&mut document, "E3", Point2::new(400.0, 400.0), 10.0);
+  document.toolpaths[0].island_ids = vec!["E3".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandOutsideBoundary { ref island, .. } if island == "E3"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_island_in_the_notch_of_a_c_shaped_pocket_is_rejected() {
+  // The island's bounds are inside the pocket's bounds, and the material is not: containment is the
+  // winding question, not a bounds question.
+  let mut document = document_with(Operation::Pocket(PocketParams::default()));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(
+      &[
+        Point2::new(0.0, 0.0),
+        Point2::new(100.0, 0.0),
+        Point2::new(100.0, 30.0),
+        Point2::new(40.0, 30.0),
+        Point2::new(40.0, 70.0),
+        Point2::new(100.0, 70.0),
+        Point2::new(100.0, 100.0),
+        Point2::new(0.0, 100.0),
+      ],
+      true,
+    )
+    .expect("c shaped pocket"),
+  };
+  add_circle(&mut document, "E2", Point2::new(70.0, 50.0), 8.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandOutsideBoundary { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn two_overlapping_islands_are_rejected() {
+  let mut document = pocket_document_with_island();
+  add_circle(&mut document, "E3", Point2::new(56.0, 50.0), 10.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E3".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandsOverlap { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_island_nested_inside_another_is_a_boss_and_is_accepted() {
+  // A boss inside a hole: the r12 island sits strictly inside the r24 one, so a point in the boss is
+  // inside three boundaries — the pocket's, the hole's and the boss's — which is odd, and the parity
+  // rule therefore makes the boss material again (D-RB-2). The pair is *nested*, not overlapping, so
+  // `validate` must accept it rather than refuse it as an overlap.
+  let mut document = pocket_document_with_island();
+  document.layers[0].entities[1].kind = EntityKind::Contour {
+    contour: cam_geom::primitive::circle(Point2::new(50.0, 50.0), 24.0).expect("hole"),
+  };
+  add_circle(&mut document, "E3", Point2::new(50.0, 50.0), 12.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E3".to_owned()];
+
+  document.validate().expect("a boss inside a hole is legal");
+
+  // What the islands are to each other, asked the way validation asks it: the boss is strictly
+  // inside the hole, so the pair reports a nesting and never a crossing.
+  let hole = document.layers[0].entities[1]
+    .kind
+    .as_contour()
+    .expect("contour");
+  let boss = document.layers[0].entities[2]
+    .kind
+    .as_contour()
+    .expect("contour");
+  assert_eq!(
+    cam_geom::winding::relation(hole, boss, cam_geom::DEFAULT_TOLERANCE),
+    cam_geom::winding::Relation::SecondInside,
+    "the boss is nested inside the hole"
+  );
+}
+
+#[test]
+fn two_islands_that_touch_are_rejected() {
+  // Two rectangles sharing the edge x = 40: they are not disjoint and not nested either, so the wall
+  // between them has no width and there is no region to cut.
+  let mut document = pocket_document_with_island();
+  document.layers[0].entities[1].kind = EntityKind::Contour {
+    contour: cam_geom::primitive::rectangle(Point2::new(20.0, 40.0), 20.0, 20.0).expect("island"),
+  };
+  document.layers[0].entities.push(Entity {
+    id: "E3".to_owned(),
+    kind: EntityKind::Contour {
+      contour: cam_geom::primitive::rectangle(Point2::new(40.0, 40.0), 20.0, 20.0).expect("island"),
+    },
+  });
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E3".to_owned()];
+
+  let first = document.layers[0].entities[1]
+    .kind
+    .as_contour()
+    .expect("contour");
+  let second = document.layers[0].entities[2]
+    .kind
+    .as_contour()
+    .expect("contour");
+  assert_eq!(
+    cam_geom::winding::relation(first, second, cam_geom::DEFAULT_TOLERANCE),
+    cam_geom::winding::Relation::Touching,
+    "the pair shares an edge"
+  );
+
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandsOverlap { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_repeated_island_is_rejected() {
+  let mut document = pocket_document_with_island();
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E2".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::DuplicateId { kind: "island", .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_open_island_is_rejected() {
+  let mut document = pocket_document_with_island();
+  document.layers[0].entities[1].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(40.0, 50.0), Point2::new(60.0, 50.0)], false)
+      .expect("open line"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandNotClosed { ref island, .. } if island == "E2"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn islands_on_a_profile_toolpath_are_rejected() {
+  let mut document = document_with_square();
+  add_circle(&mut document, "E2", Point2::new(50.0, 50.0), 10.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandsRequirePocket { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_legacy_schema_tag_is_migrated_and_an_unknown_one_is_not() {
+  let mut document = pocket_document_with_island();
+  document.schema = "c2d/document@1".to_owned();
+  assert!(
+    document.migrate(),
+    "a legacy document reports the migration"
+  );
+  assert_eq!(document.schema, DOCUMENT_SCHEMA);
+  assert!(
+    !document.migrate(),
+    "a current document is not migrated again"
+  );
+
+  let mut unknown = document.clone();
+  unknown.schema = "c2d/document@3".to_owned();
+  assert!(!unknown.migrate());
+  let error = unknown.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::UnsupportedSchema { .. }),
+    "{error:?}"
+  );
 }

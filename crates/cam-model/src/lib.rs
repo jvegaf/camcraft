@@ -22,8 +22,18 @@ use cam_geom::Contour;
 use cam_units::{Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
-/// The only document schema this build understands.
-pub const DOCUMENT_SCHEMA: &str = "c2d/document@1";
+/// The document schema this build writes.
+pub const DOCUMENT_SCHEMA: &str = "c2d/document@2";
+
+/// Schema tags this build still reads, newest first.
+///
+/// `@2` added `Toolpath::island_ids`. Nothing else changed, so reading an `@1` document is not a
+/// transformation: the field is simply absent and therefore empty. The bump exists because the
+/// alternative — keeping `@1` and adding an optional field — is the exactly wrong behaviour here: an
+/// older build ignores a field it does not know, so it would pocket straight through an island the user
+/// asked to keep, and a ruined part is far worse than a refusal (D-RB-3's analogue for the schema,
+/// A10).
+pub const LEGACY_DOCUMENT_SCHEMAS: &[&str] = &["c2d/document@1"];
 
 /// Which corner of the job the machine's XY origin sits on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,6 +295,16 @@ pub struct Toolpath {
   pub name: String,
   /// Entities the toolpath is computed from.
   pub entity_ids: Vec<String>,
+  /// Closed contours inside the region that must be left standing, such as a pocket's islands.
+  ///
+  /// Explicit, never inferred: a contour drawn inside another may be an island or may simply be a
+  /// separate feature, and guessing would reverse the user's intent (D-RB-1). Islands may be
+  /// **nested**: an island strictly inside another is legal and is how a boss inside a hole is
+  /// expressed, since the region's parity rule turns a boundary at an odd nesting depth back into
+  /// material (D-RB-2). An island pair that crosses or touches is refused instead. Omitted when empty,
+  /// so a document without islands is byte-identical to one written before they existed.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub island_ids: Vec<String>,
   /// Tool number, matched against the tool library at emission time.
   pub tool_number: u32,
   /// The operation and its parameters.
@@ -348,6 +368,43 @@ pub enum ModelError {
   /// Geometry stored in the document failed the kernel's validation.
   #[error("invalid geometry: {0}")]
   InvalidGeometry(String),
+  /// A toolpath names an island that is not a closed contour.
+  #[error("toolpath {toolpath:?} island {island:?} is not a closed contour")]
+  IslandNotClosed {
+    /// The toolpath id.
+    toolpath: String,
+    /// The island entity id.
+    island: String,
+  },
+  /// An island is not strictly inside any of the toolpath's boundaries.
+  #[error("toolpath {toolpath:?} island {island:?} is not inside any of its boundaries")]
+  IslandOutsideBoundary {
+    /// The toolpath id.
+    toolpath: String,
+    /// The island entity id.
+    island: String,
+  },
+  /// Two islands of the same toolpath overlap or touch.
+  ///
+  /// Nesting is not an overlap: an island strictly inside another is legal, and is how a boss inside
+  /// a hole is expressed — the region's parity rule makes a boundary at an odd nesting depth
+  /// material again (D-RB-2). What is refused is an island pair whose boundaries **cross** or
+  /// **touch**, because neither leaves a region the parity rule can describe.
+  #[error("toolpath {toolpath:?} islands {first:?} and {second:?} overlap or touch")]
+  IslandsOverlap {
+    /// The toolpath id.
+    toolpath: String,
+    /// The first island entity id.
+    first: String,
+    /// The second island entity id.
+    second: String,
+  },
+  /// Islands were given to an operation that does not clear a region.
+  #[error("toolpath {toolpath:?} takes islands only for a pocket")]
+  IslandsRequirePocket {
+    /// The toolpath id.
+    toolpath: String,
+  },
   /// A cutting toolpath was assigned an open contour.
   #[error("toolpath {toolpath:?} needs closed geometry, entity {entity:?} is open")]
   OpenContourNotCuttable {
@@ -379,6 +436,18 @@ impl Document {
   /// Look an entity up by id.
   pub fn entity(&self, id: &str) -> Option<&Entity> {
     self.entities().find(|entity| entity.id == id)
+  }
+
+  /// Rewrite a schema tag this build still reads into the one it writes.
+  ///
+  /// Returns true when the document was written by an older build, so a caller can report it. The
+  /// migration is an identity: `@1` only lacks `island_ids`, which is absent-and-therefore-empty.
+  pub fn migrate(&mut self) -> bool {
+    if LEGACY_DOCUMENT_SCHEMAS.contains(&self.schema.as_str()) {
+      self.schema = DOCUMENT_SCHEMA.to_owned();
+      return true;
+    }
+    false
   }
 
   /// Check the document's schema tag and every referential invariant.
@@ -454,8 +523,101 @@ impl Document {
           }
         }
       }
+      check_islands(self, toolpath)?;
     }
 
     Ok(())
   }
+}
+
+/// Check a toolpath's islands: closed, strictly inside a boundary, and never crossing or touching
+/// each other.
+///
+/// Nested islands are legal, unlike crossing or touching ones: a boss inside a hole is an island
+/// inside an island, and the region's parity rule is what makes it material again (D-RB-2).
+fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelError> {
+  if toolpath.island_ids.is_empty() {
+    return Ok(());
+  }
+  if !matches!(toolpath.operation, Operation::Pocket(_)) {
+    return Err(ModelError::IslandsRequirePocket {
+      toolpath: toolpath.id.clone(),
+    });
+  }
+
+  let mut seen = std::collections::BTreeSet::new();
+  for island_id in &toolpath.island_ids {
+    if !seen.insert(island_id.as_str()) {
+      return Err(ModelError::DuplicateId {
+        kind: "island",
+        id: island_id.clone(),
+      });
+    }
+  }
+
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  let mut islands = Vec::with_capacity(toolpath.island_ids.len());
+  for island_id in &toolpath.island_ids {
+    let entity = document
+      .entity(island_id)
+      .ok_or_else(|| ModelError::UnknownEntity {
+        toolpath: toolpath.id.clone(),
+        entity: island_id.clone(),
+      })?;
+    let island = entity
+      .kind
+      .as_contour()
+      .filter(|contour| contour.is_closed())
+      .ok_or_else(|| ModelError::IslandNotClosed {
+        toolpath: toolpath.id.clone(),
+        island: island_id.clone(),
+      })?;
+
+    // The island has to sit strictly inside one of the boundaries. "Inside" is the exact winding
+    // question, not a bounds test: a contour in a C-shaped pocket's notch is inside its bounds and
+    // outside the material.
+    let inside = toolpath.entity_ids.iter().any(|boundary_id| {
+      self_boundary(document, boundary_id).is_some_and(|boundary| {
+        // Asked island-first on purpose: `relation` is directional, and the pocket's boundary holds
+        // the island rather than the other way round.
+        matches!(
+          cam_geom::winding::relation(island, boundary, tolerance),
+          cam_geom::winding::Relation::FirstInside
+        )
+      })
+    });
+    if !inside {
+      return Err(ModelError::IslandOutsideBoundary {
+        toolpath: toolpath.id.clone(),
+        island: island_id.clone(),
+      });
+    }
+    islands.push((island_id, island));
+  }
+
+  for (index, (first_id, first)) in islands.iter().enumerate() {
+    for (second_id, second) in &islands[index + 1..] {
+      // Nesting is allowed and is the boss case: `SecondInside` means `second` sits strictly within
+      // `first`, and parity makes the inner boundary material again (D-RB-2). Crossing and touching
+      // are refused by name instead, because where two islands intersect the material between them
+      // is not a region any parity describes, and where they touch the wall between them has no width.
+      if matches!(
+        cam_geom::winding::relation(first, second, tolerance),
+        cam_geom::winding::Relation::Crossing | cam_geom::winding::Relation::Touching
+      ) {
+        return Err(ModelError::IslandsOverlap {
+          toolpath: toolpath.id.clone(),
+          first: (*first_id).clone(),
+          second: (*second_id).clone(),
+        });
+      }
+    }
+  }
+
+  Ok(())
+}
+
+/// The contour of an entity, when the entity is one.
+fn self_boundary<'a>(document: &'a Document, id: &str) -> Option<&'a cam_geom::Contour> {
+  document.entity(id)?.kind.as_contour()
 }
