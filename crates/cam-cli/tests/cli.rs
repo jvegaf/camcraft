@@ -1723,9 +1723,14 @@ fn the_island_golden_program_survives_a_document_save_and_load_round_trip() {
 /// byte: 9 mm stepover over a 6 mm tool, no allowance, one 6 mm pass.
 ///
 /// The inset region is `3…57` in both axes and the island grows to `r = 13` about (30, 30), so the
-/// row grid is `y = 3, 12, 21, 30, 39, 48` (the next grid height, 57, lies on the region's own top
-/// edge, comes back ambiguous and then misses the material, so it is dropped). The rows alternate
-/// direction, which is why the odd ones start at x = 57 and cut right to left:
+/// row grid is `y = 3, 12, 21, 30, 39, 48, 57` — seven rows, the last one lying exactly on the
+/// region's own top edge. A row on a boundary is the row the edge sits on, so it is cut a hair inside
+/// rather than dropped (S6): at `y = 57` the retry upward is outside the region and clips nothing, and
+/// the retry downward at `56.99999` clips the full span `3…57`, which is why the row is cut left to
+/// right as the seventh row. Dropping it — what the strategy did before S6 — left the tool's last row
+/// at `y = 48`, whose 3 mm radius reaches 51, so the 9 mm strip from 51 to the square's 60 mm edge was
+/// never cut. The rows alternate direction, which is why the odd ones start at x = 57 and cut right to
+/// left:
 ///
 /// - `y = 3` — retried from `3.00001` because it lies along the region's bottom edge; one span
 ///   `3…57` (N50).
@@ -1736,9 +1741,11 @@ fn the_island_golden_program_survives_a_document_save_and_load_round_trip() {
 ///   `57…43` and `17…3` (N210, N250).
 /// - `y = 39` — the mirror of `y = 21`: two spans `3…20.6192` and `39.3808…57` (N290, N330).
 /// - `y = 48` — misses the island, one span `57…3` (N370).
+/// - `y = 57` — the region's far edge: `|57 - 30| = 27 > 13`, so one span `3…57` (N410), cut left to
+///   right because the row index is even.
 ///
-/// That is nine spans, and a row crossing the island is **never** one span (A13). The gap is the
-/// circle's true intersection, not a tessellation of it. 45 lines, CRLF as above.
+/// That is ten spans, and a row crossing the island is **never** one span (A13). The gap is the
+/// circle's true intersection, not a tessellation of it. 49 lines, CRLF as above.
 const ISLAND_RASTER_PROGRAM: &str = "\
 ( Pocket )\r\n\
 ( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
@@ -1781,10 +1788,14 @@ N350G00Y48.0000\r\n\
 N360G01Z-6.0000\r\n\
 N370G01X3.0000\r\n\
 N380G00Z5.0000\r\n\
-N390G00Z5.0000\r\n\
-N400G00X0.0000Y0.0000\r\n\
-N410M05\r\n\
-N420M30\r\n";
+N390G00Y57.0000\r\n\
+N400G01Z-6.0000\r\n\
+N410G01X57.0000\r\n\
+N420G00Z5.0000\r\n\
+N430G00Z5.0000\r\n\
+N440G00X0.0000Y0.0000\r\n\
+N450M05\r\n\
+N460M30\r\n";
 
 #[test]
 fn a_raster_pocket_with_an_island_emits_the_golden_program() {
@@ -2122,18 +2133,29 @@ fn simulate_pins_the_whole_report_of_a_pocket_that_cuts_what_it_claimed() {
 ///
 /// The same region as the offset pocket above, cleared the other way: a 2 mm tool in 1 mm cells,
 /// inset 1 mm from the square's edges, so the rows span x = 1 .. 99 (98 mm) and start at y = 1 one
-/// stepover apart. The stepover is 1.58 mm, which puts 63 rows at y = 1, 2.58, ... 98.96, and that
-/// last row is what the fixture turns on. A row ends 1 mm inside the square's edge, so a cell centre
-/// half a cell further out is `sqrt(1^2 - 0.5^2)` = 0.866 mm away across the row: the last row has to
-/// be within that of the top row of centres at 99.5 mm, and short of the inset region's far edge at
-/// 99 mm, where the kernel reports a row lying on a boundary as ambiguous and the strategy drops it —
-/// the row-lattice finding recorded in the task's return. Between rows the discs overlap by 0.79 mm at
-/// the row ends, inside that 0.866 mm, so the raster clears the whole 100 x 100 square: 10000 cells at
-/// 6 mm deep is 60000 mm3. Four moves a row (rapid, plunge, feed, retract) is 63 x 4 = 252 moves, and
-/// the cutting length is 63 rows x 98 mm = 6174 mm.
+/// stepover apart. The stepover is **2 mm** — the strategy's own stepover, not a tuned one — which
+/// puts 50 rows at y = 1, 3, … 99: the last row lies exactly on the inset region's far edge, and that
+/// row is the fixture's point. A row on a boundary is the row the edge sits on, not an empty row, so
+/// it is cut a hair inside (S6); before that fix the far-edge row was dropped, the last row sat at
+/// y = 97, and a 2 mm tool there reaches y = 98 — leaving the 2 mm strip from 98 to the square's edge
+/// standing as 200 cells (two rows of 100) at 6 mm deep, 1200 mm3, and exit 6 (the defect M5's oracle
+/// measured).
+///
+/// With the row cut, every cell centre of the square is within the 1 mm the tool reaches: rows are 2
+/// apart and cell centres are half-integers, so a centre is 0.5 mm from a row, and 0.5 mm from a row
+/// end at worst — `sqrt(0.5^2 + 0.5^2)` = 0.707 mm, inside the radius. The raster therefore clears the
+/// whole 100 x 100 square: 10000 cells at 6 mm deep is 60000 mm3, gouge 0 and uncut 0. Four moves a
+/// row (rapid, plunge, feed, retract) is 50 x 4 = 200 moves, and the cutting length is 50 rows x 98 mm
+/// = 4900 mm.
+///
+/// What this pins is the row lattice's far edge, not a claim that holds at every resolution: a 2 mm
+/// stepover under a 2 mm tool leaves adjacent rows exactly tangent, so the same program at
+/// `--resolution 0.5` reports `uncut: 300.000 mm3 over 200 cell(s)` — the centres between two tangent
+/// rows are 0.75 + 0.75 mm from a row end, past the radius. The stepover is the defect's own number
+/// (S6), and 1 mm cells are the resolution the oracle's bound is written for.
 const CLEAN_RASTER_REPORT: &str = "\
 simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
-program: 252 move(s), 6174.000 mm cutting length
+program: 200 move(s), 4900.000 mm cutting length
 removed: 60000.000 mm3 of 360000.000 mm3, 0 through cell(s)
 gouge: 0.000 mm3 over 0 cell(s)
 uncut: 0.000 mm3 over 0 cell(s)
@@ -2149,7 +2171,7 @@ fn simulate_pins_the_whole_report_of_a_raster_pocket_that_cuts_what_it_claimed()
     vec![rectangle_contour(100.0, 100.0)],
   );
   let library = write_sim_library(&directory, 2.0);
-  author_pocket_with(&document, &library, "Pocket", "raster", 1.58, 6.0);
+  author_pocket_with(&document, &library, "Pocket", "raster", 2.0, 6.0);
 
   let outcome = simulate(&document, &library, &[]);
   assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);

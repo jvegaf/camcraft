@@ -308,7 +308,9 @@ fn raster_rows(
     }
     // A row that misses the material is an empty span list, not an ambiguous one: nothing is cut,
     // and neither an empty nor a dropped row is emitted — half a row is worse than no row, because
-    // it leaves the tool in material it cannot reach from the other side.
+    // it leaves the tool in material it cannot reach from the other side. A row that lands **on** a
+    // boundary is the other case, and it is material: `row_spans` retries it to either side, which
+    // is what keeps the region's far edge from being the one row the lattice never cuts.
     if let Some((row_y, spans)) = row_spans(&offset.region, y) {
       if !spans.is_empty() {
         rows.push(
@@ -331,18 +333,28 @@ fn raster_rows(
 /// paired even-odd, so one row across an island is two spans.
 ///
 /// A row that lands on a boundary edge or on a tangency comes back from the kernel as ambiguous
-/// (`None`): a leftover odd crossing cannot be paired honestly. That row is retried once a hair
-/// inside ([`ROW_RETRY_NUDGE`]) and dropped if the retry is ambiguous too. The **retried** height is
-/// returned with the spans, because that is the height they honestly lie on — emitting a tangent
-/// row's ends at the nominal `y` would put them off the curve they were clipped against.
+/// (`None`): a leftover odd crossing cannot be paired honestly. A row on a boundary is **not** an
+/// empty row — it is the row the region's edge sits on, and the material it clears is the strip that
+/// edge ends — so the row is retried a hair to either side ([`ROW_RETRY_NUDGE`]) and the first side
+/// that clips any material wins. Both sides are needed: the near edge of the region has material
+/// above it and the far edge has material below it, so nudging one way only drops whichever edge the
+/// row lattice happens to land on (the far edge of a 100 mm square at a 2 mm stepover, S6). The
+/// candidates are tried in a fixed order — the nominal height, then up, then down — so the retry is a
+/// function of the region and the height alone and never of the order the boundaries were cut.
+///
+/// A row that clips nothing on any of the three heights is dropped: it misses the material. The
+/// **retried** height is returned with the spans, because that is the height they honestly lie on —
+/// emitting a tangent row's ends at the nominal `y` would put them off the curve they were clipped
+/// against.
 fn row_spans(region: &Region, y: f64) -> Option<(f64, Vec<(f64, f64)>)> {
-  if let Some(spans) = region.raster_spans(y, DEFAULT_TOLERANCE) {
-    return Some((y, spans));
+  for candidate in [y, y + ROW_RETRY_NUDGE, y - ROW_RETRY_NUDGE] {
+    if let Some(spans) = region.raster_spans(candidate, DEFAULT_TOLERANCE) {
+      if !spans.is_empty() {
+        return Some((candidate, spans));
+      }
+    }
   }
-  let retried = y + ROW_RETRY_NUDGE;
-  region
-    .raster_spans(retried, DEFAULT_TOLERANCE)
-    .map(|spans| (retried, spans))
+  None
 }
 
 /// The box containing every boundary of a region.
