@@ -27,6 +27,7 @@ mod segment;
 pub mod text;
 pub mod transform;
 pub mod trim;
+pub mod validate;
 
 pub use arc::Arc;
 pub use chain::{chain, Chained};
