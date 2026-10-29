@@ -287,12 +287,17 @@ with the evidence table and the deviations.
 | 2 | T3–T7 | The five importers, in parallel on disjoint surfaces |
 | 3 | T8–T10 | `check`, shell import, docs |
 
+Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `22c255f`, 1705 authored lines across
+three commits (plan `2bd7440`, `1d46e51`, `22c255f`). Like M2 the milestone overtakes the ~400-line review
+unit deliberately: the plan and the two foundation tasks are separate units, and each later task is its own
+commit with its own tests, to be reviewed per slice.
+
 ## Evidence — commit per task
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | pending | |
-| T2 | pending | |
+| T1 | `1d46e51` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
+| T2 | `22c255f` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
 | T3 | pending | |
 | T4 | pending | |
 | T5 | pending | |
@@ -308,6 +313,10 @@ with the evidence table and the deviations.
   feature document under ODD and start implementing it, on a feature branch off `master`.
 - **L2** — Plan: 10 tasks, branch `feat/m3-import` from `master` (`2371204`), baseline suite
   recorded from `scripts/check.sh` before the first write.
-- **L3** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
+- **L3** — Slice 1 evidence: T1 `1d46e51` (crate, detection, report, `import` CLI), T2 `22c255f`
+  (`cam_geom::validate`). Gates green after both (`./scripts/check.sh`). One correction found by the
+  second gate run: `assert!(len >= 1)` fails clippy's `len_zero`, so the degenerate-contour test asserts
+  `!is_empty()`.
+- **L4** — Dependency decision taken while planning: `flate2` promoted from a transitive dependency of
   `zip` to a direct one for `cam-import` (PDF `FlateDecode`, PNG `IDAT`); nothing else added, so no
   parser, XML or image crate enters the tree (D-M3-1).
