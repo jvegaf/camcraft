@@ -333,8 +333,8 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 | Slice | Tasks | Subject |
 | --- | --- | --- |
 | 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs — **delivered** (`61e1df5`, `a263b28`, `9eb1326`) |
-| 2 | T2, T3 | The two strategies, in parallel over isolated worktrees |
-| 3 | T4, T5, T6 | Drill bank, golden G-code, docs |
+| 2 | T2, T3, T4 | The two strategies plus the drill bank, in parallel over isolated worktrees — **delivered** (`432e0d4`, `5201ab4`, `229a68d`) |
+| 3 | T5, T6 | Golden G-code, docs — **delivered** (`11ce793`, `7c61d80`), plus the closing fixes in `26b23f7` |
 
 ## Evidence — commit per task
 
