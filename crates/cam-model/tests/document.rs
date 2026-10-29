@@ -368,6 +368,75 @@ fn two_overlapping_islands_are_rejected() {
 }
 
 #[test]
+fn an_island_nested_inside_another_is_a_boss_and_is_accepted() {
+  // A boss inside a hole: the r12 island sits strictly inside the r24 one, so a point in the boss is
+  // inside three boundaries — the pocket's, the hole's and the boss's — which is odd, and the parity
+  // rule therefore makes the boss material again (D-RB-2). The pair is *nested*, not overlapping, so
+  // `validate` must accept it rather than refuse it as an overlap.
+  let mut document = pocket_document_with_island();
+  document.layers[0].entities[1].kind = EntityKind::Contour {
+    contour: cam_geom::primitive::circle(Point2::new(50.0, 50.0), 24.0).expect("hole"),
+  };
+  add_circle(&mut document, "E3", Point2::new(50.0, 50.0), 12.0);
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E3".to_owned()];
+
+  document.validate().expect("a boss inside a hole is legal");
+
+  // What the islands are to each other, asked the way validation asks it: the boss is strictly
+  // inside the hole, so the pair reports a nesting and never a crossing.
+  let hole = document.layers[0].entities[1]
+    .kind
+    .as_contour()
+    .expect("contour");
+  let boss = document.layers[0].entities[2]
+    .kind
+    .as_contour()
+    .expect("contour");
+  assert_eq!(
+    cam_geom::winding::relation(hole, boss, cam_geom::DEFAULT_TOLERANCE),
+    cam_geom::winding::Relation::SecondInside,
+    "the boss is nested inside the hole"
+  );
+}
+
+#[test]
+fn two_islands_that_touch_are_rejected() {
+  // Two rectangles sharing the edge x = 40: they are not disjoint and not nested either, so the wall
+  // between them has no width and there is no region to cut.
+  let mut document = pocket_document_with_island();
+  document.layers[0].entities[1].kind = EntityKind::Contour {
+    contour: cam_geom::primitive::rectangle(Point2::new(20.0, 40.0), 20.0, 20.0).expect("island"),
+  };
+  document.layers[0].entities.push(Entity {
+    id: "E3".to_owned(),
+    kind: EntityKind::Contour {
+      contour: cam_geom::primitive::rectangle(Point2::new(40.0, 40.0), 20.0, 20.0).expect("island"),
+    },
+  });
+  document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E3".to_owned()];
+
+  let first = document.layers[0].entities[1]
+    .kind
+    .as_contour()
+    .expect("contour");
+  let second = document.layers[0].entities[2]
+    .kind
+    .as_contour()
+    .expect("contour");
+  assert_eq!(
+    cam_geom::winding::relation(first, second, cam_geom::DEFAULT_TOLERANCE),
+    cam_geom::winding::Relation::Touching,
+    "the pair shares an edge"
+  );
+
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandsOverlap { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
 fn a_repeated_island_is_rejected() {
   let mut document = pocket_document_with_island();
   document.toolpaths[0].island_ids = vec!["E2".to_owned(), "E2".to_owned()];
