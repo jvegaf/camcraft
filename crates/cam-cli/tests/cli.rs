@@ -148,6 +148,39 @@ fn run(arguments: &[&str]) -> Outcome {
   }
 }
 
+/// The JSON payload inside a saved document's archive.
+fn document_payload(document: &Path) -> String {
+  let bytes = std::fs::read(document).expect("read");
+  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("zip");
+  let mut payload = String::new();
+  std::io::Read::read_to_string(
+    &mut archive.by_name("document.json").expect("entry"),
+    &mut payload,
+  )
+  .expect("utf8");
+  payload
+}
+
+/// Rewrite the schema tag inside a saved document's archive.
+///
+/// Saving always stamps [`cam_model::DOCUMENT_SCHEMA`], so a test that needs the bytes an earlier
+/// build would have written has to reach past the writer into the archive.
+fn rewrite_schema_tag(document: &Path, tag: &str) {
+  let payload = document_payload(document);
+  let broken = payload.replace(cam_model::DOCUMENT_SCHEMA, tag);
+  assert_ne!(
+    broken, payload,
+    "the archive carries the current schema tag"
+  );
+  let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+  writer
+    .start_file("document.json", zip::write::SimpleFileOptions::default())
+    .expect("start");
+  std::io::Write::write_all(&mut writer, broken.as_bytes()).expect("write");
+  let raw = writer.finish().expect("finish").into_inner();
+  std::fs::write(document, raw).expect("write document");
+}
+
 #[test]
 fn validate_reports_counts_and_succeeds() {
   let directory = scratch("validate");
@@ -165,25 +198,8 @@ fn validate_reports_counts_and_succeeds() {
 fn an_unsupported_schema_exits_three_and_names_both_versions() {
   let directory = scratch("schema");
   let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
-  let mut loaded = cam_store::document::load_document(&document).expect("loads");
-  loaded.schema = "c2d/document@42".to_owned();
-  // Save bypasses validation only through the raw file writer, so rewrite the JSON directly.
-  let bytes = std::fs::read(&document).expect("read");
-  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("zip");
-  let mut payload = String::new();
-  std::io::Read::read_to_string(
-    &mut archive.by_name("document.json").expect("entry"),
-    &mut payload,
-  )
-  .expect("utf8");
-  let broken = payload.replace("c2d/document@2", "c2d/document@42");
-  let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-  writer
-    .start_file("document.json", zip::write::SimpleFileOptions::default())
-    .expect("start");
-  std::io::Write::write_all(&mut writer, broken.as_bytes()).expect("write");
-  let raw = writer.finish().expect("finish").into_inner();
-  std::fs::write(&document, raw).expect("write document");
+  // Save always stamps the current schema tag, so rewrite the JSON inside the archive directly.
+  rewrite_schema_tag(&document, "c2d/document@42");
 
   let outcome = run(&["validate", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 3, "{}", outcome.stderr);
@@ -1534,6 +1550,397 @@ fn islands_on_a_profile_exit_two_naming_the_flag() {
     outcome.stderr.contains("--islands") && outcome.stderr.contains("pocket"),
     "the refusal names the flag and the operation it belongs to: {}",
     outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- P5: golden G-code for pockets with islands (A14, A15) ---
+
+/// A document whose `E1` is the pocket boundary and whose `E2..` are its islands.
+///
+/// One pocket toolpath on `E1` with the 6 mm tool [`write_library`] provides: no allowance, one 6 mm
+/// pass, and the stepover the caller picks. The islands reach the strategy the way a user's do —
+/// through `island_ids` in the document — so the program a strategy emits depends only on the
+/// outline and the islands around it.
+fn write_island_pocket(
+  directory: &Path,
+  name: &str,
+  contours: Vec<Contour>,
+  strategy: PocketStrategy,
+  stepover: f64,
+) -> PathBuf {
+  let path = write_vectors(directory, name, contours);
+  let mut document = cam_store::document::load_document(&path).expect("loads");
+  let island_ids: Vec<String> = (2..=document.layers[0].entities.len())
+    .map(|index| format!("E{index}"))
+    .collect();
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Pocket".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids,
+    tool_number: 1,
+    operation: Operation::Pocket(PocketParams {
+      strategy,
+      allowance: Length::ZERO,
+      stepover: Length::from_mm(stepover),
+      pass_depth: Length::from_mm(6.0),
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+    }),
+  });
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// The 100 mm square and the r10 island at (50, 50) that the offset golden clears.
+fn islanded_square() -> Vec<Contour> {
+  vec![
+    rectangle_contour(100.0, 100.0),
+    cam_geom::primitive::circle(Point2::new(50.0, 50.0), 10.0).expect("island"),
+  ]
+}
+
+/// The whole program a 100 mm square with a centred r10 island emits as an offset pocket, byte for
+/// byte: 8 mm stepover over a 6 mm tool, no allowance, one 6 mm pass.
+///
+/// The grid is `inset + k * stepover` with `inset = 3`, so the stages are `d = 3, 11, 19` and each
+/// stage cuts **two** rings — the wall shrinking inward and the island growing outward (A12):
+///
+/// - `d = 3` — the wall is the square `3…97` cut as **four straight moves** (`X97`, `Y97`, `X3`,
+///   `Y3`, N50–N80: no arcs on a wall), and the island is the circle at `r = 10 + 3 = 13` about
+///   (50, 50) cut as **two ccw half turns** (N120 `G03 X37 I-13 J0` from (63, 50), N130
+///   `G03 X63 I13 J0` back: `I` is the centre offset `50 - 63` and every arc is `G03` because both
+///   builders are counter-clockwise).
+/// - `d = 11` — the wall is `11…89` (N170–N200: `97 - 8`), the island `r = 21` (N240/N250, `I∓21`).
+/// - `d = 19` — the wall is `19…81` (N290–N320), the island `r = 29` (N360/N370, `I∓29`).
+/// - `d = 27` — refused by the kernel, so the loop stops: the shrunken wall ring's corner (27, 27)
+///   is only `√(23² + 23²) - 10 = 22.5` mm from the island, and the grown island ring passes 13 mm
+///   from the wall, so neither piece can prove the 27 mm it claims and the offset leaves no
+///   material. That is why there are exactly six rings and nothing that gouges.
+///
+/// Ordering is the kernel's own (lowest `(bounds.min.y, bounds.min.x)` first), so the wall ring of a
+/// stage always precedes its island ring. Every line ends with CRLF because the fixture
+/// post-processor declares `LINE_ENDING = "[13][10]"`; the program is 45 lines.
+const ISLAND_OFFSET_PROGRAM: &str = "\
+( Pocket )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X3.0000Y3.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X97.0000\r\n\
+N60G01Y97.0000\r\n\
+N70G01X3.0000\r\n\
+N80G01Y3.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00X63.0000Y50.0000\r\n\
+N110G01Z-6.0000\r\n\
+N120G03X37.0000I-13.0000J0.0000\r\n\
+N130G03X63.0000I13.0000J0.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00X11.0000Y11.0000\r\n\
+N160G01Z-6.0000\r\n\
+N170G01X89.0000\r\n\
+N180G01Y89.0000\r\n\
+N190G01X11.0000\r\n\
+N200G01Y11.0000\r\n\
+N210G00Z5.0000\r\n\
+N220G00X71.0000Y50.0000\r\n\
+N230G01Z-6.0000\r\n\
+N240G03X29.0000I-21.0000J0.0000\r\n\
+N250G03X71.0000I21.0000J0.0000\r\n\
+N260G00Z5.0000\r\n\
+N270G00X19.0000Y19.0000\r\n\
+N280G01Z-6.0000\r\n\
+N290G01X81.0000\r\n\
+N300G01Y81.0000\r\n\
+N310G01X19.0000\r\n\
+N320G01Y19.0000\r\n\
+N330G00Z5.0000\r\n\
+N340G00X79.0000Y50.0000\r\n\
+N350G01Z-6.0000\r\n\
+N360G03X21.0000I-29.0000J0.0000\r\n\
+N370G03X79.0000I29.0000J0.0000\r\n\
+N380G00Z5.0000\r\n\
+N390G00Z5.0000\r\n\
+N400G00X0.0000Y0.0000\r\n\
+N410M05\r\n\
+N420M30\r\n";
+
+#[test]
+fn a_pocket_with_a_circular_island_emits_the_golden_program() {
+  let directory = scratch("golden-island-offset");
+  let document = write_island_pocket(
+    &directory,
+    "island.c2d",
+    islanded_square(),
+    PocketStrategy::Offset,
+    8.0,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, ISLAND_OFFSET_PROGRAM);
+  // A14: the same input emits the same bytes on the next run too.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_island_golden_program_survives_a_document_save_and_load_round_trip() {
+  let directory = scratch("golden-island-round-trip");
+  let document = write_island_pocket(
+    &directory,
+    "island.c2d",
+    islanded_square(),
+    PocketStrategy::Offset,
+    8.0,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  // Saving an island-carrying toolpath again is the round trip A9 asks for: `island_ids` survives
+  // the archive and the strategy cuts the bytes it cut before.
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths[0].island_ids, vec!["E2".to_owned()]);
+  save_document(&reloaded, &loaded).expect("saved");
+
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &post),
+    ISLAND_OFFSET_PROGRAM
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole program a 60 mm square with a centred r10 island emits as a raster pocket, byte for
+/// byte: 9 mm stepover over a 6 mm tool, no allowance, one 6 mm pass.
+///
+/// The inset region is `3…57` in both axes and the island grows to `r = 13` about (30, 30), so the
+/// row grid is `y = 3, 12, 21, 30, 39, 48` (the next grid height, 57, lies on the region's own top
+/// edge, comes back ambiguous and then misses the material, so it is dropped). The rows alternate
+/// direction, which is why the odd ones start at x = 57 and cut right to left:
+///
+/// - `y = 3` — retried from `3.00001` because it lies along the region's bottom edge; one span
+///   `3…57` (N50).
+/// - `y = 12` — misses the island (`|12 - 30| = 18 > 13`), one span `57…3` (N90) cut right to left.
+/// - `y = 21` — **crosses the island**: `|21 - 30| = 9`, so the material's x ends are the analytic
+///   `30 ± √(13² - 9²) = 30 ± 9.3808`, i.e. two spans `3…20.6192` and `39.3808…57` (N130, N170).
+/// - `y = 30` — crosses the island through its centre: the gap is exactly `30 ± 13`, two spans
+///   `57…43` and `17…3` (N210, N250).
+/// - `y = 39` — the mirror of `y = 21`: two spans `3…20.6192` and `39.3808…57` (N290, N330).
+/// - `y = 48` — misses the island, one span `57…3` (N370).
+///
+/// That is nine spans, and a row crossing the island is **never** one span (A13). The gap is the
+/// circle's true intersection, not a tessellation of it. 45 lines, CRLF as above.
+const ISLAND_RASTER_PROGRAM: &str = "\
+( Pocket )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X3.0000Y3.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X57.0000\r\n\
+N60G00Z5.0000\r\n\
+N70G00Y12.0000\r\n\
+N80G01Z-6.0000\r\n\
+N90G01X3.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00Y21.0000\r\n\
+N120G01Z-6.0000\r\n\
+N130G01X20.6192\r\n\
+N140G00Z5.0000\r\n\
+N150G00X39.3808\r\n\
+N160G01Z-6.0000\r\n\
+N170G01X57.0000\r\n\
+N180G00Z5.0000\r\n\
+N190G00Y30.0000\r\n\
+N200G01Z-6.0000\r\n\
+N210G01X43.0000\r\n\
+N220G00Z5.0000\r\n\
+N230G00X17.0000\r\n\
+N240G01Z-6.0000\r\n\
+N250G01X3.0000\r\n\
+N260G00Z5.0000\r\n\
+N270G00Y39.0000\r\n\
+N280G01Z-6.0000\r\n\
+N290G01X20.6192\r\n\
+N300G00Z5.0000\r\n\
+N310G00X39.3808\r\n\
+N320G01Z-6.0000\r\n\
+N330G01X57.0000\r\n\
+N340G00Z5.0000\r\n\
+N350G00Y48.0000\r\n\
+N360G01Z-6.0000\r\n\
+N370G01X3.0000\r\n\
+N380G00Z5.0000\r\n\
+N390G00Z5.0000\r\n\
+N400G00X0.0000Y0.0000\r\n\
+N410M05\r\n\
+N420M30\r\n";
+
+#[test]
+fn a_raster_pocket_with_an_island_emits_the_golden_program() {
+  let directory = scratch("golden-island-raster");
+  let document = write_island_pocket(
+    &directory,
+    "island.c2d",
+    vec![
+      rectangle_contour(60.0, 60.0),
+      cam_geom::primitive::circle(Point2::new(30.0, 30.0), 10.0).expect("island"),
+    ],
+    PocketStrategy::Raster,
+    9.0,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    ISLAND_RASTER_PROGRAM
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_c2d_document_at_schema_one_emits_the_same_program_as_its_schema_two_original() {
+  // A15's migration guarantee, observed the only way it can be: the same document written under the
+  // older tag hands the post-processor the same bytes.
+  let directory = scratch("golden-schema-one");
+  let document = write_island_pocket(
+    &directory,
+    "island.c2d",
+    islanded_square(),
+    PocketStrategy::Offset,
+    8.0,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let current = emit_program(&directory, &document, &library, &post);
+  assert_eq!(current, ISLAND_OFFSET_PROGRAM, "the @2 original");
+
+  rewrite_schema_tag(&document, "c2d/document@1");
+  let payload = document_payload(&document);
+  assert!(
+    payload.contains("c2d/document@1"),
+    "the archive really carries the older tag: {payload}"
+  );
+  assert!(
+    !payload.contains(cam_model::DOCUMENT_SCHEMA),
+    "and no longer the current one: {payload}"
+  );
+
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    current,
+    "a @1 document cuts exactly as it did before the schema moved"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole program a 100 mm square with an r24 island and an r12 island nested inside it emits as
+/// an offset pocket, byte for byte: 7 mm stepover over a 6 mm tool, no allowance, one 6 mm pass.
+///
+/// The nested island is a **boss**, and the parity rule is what makes it material again (A3, D-RB-2):
+/// a point at the centre is inside three boundaries — the pocket's square, the r24 hole and the r12
+/// boss — and three is odd, so the boss disk is material and the pocket **clears** it, while the
+/// annulus between the boss and the hole is inside two boundaries and is left standing. The kernel
+/// therefore offsets each boundary the way that grows the material: the square inward, the hole
+/// outward (`r = 24 + d`) and the boss inward (`r = 12 - d`).
+///
+/// The grid is `inset + k * stepover` with `inset = 3`, so the stages are `d = 3, 10` and each cuts
+/// **three** rings — wall, hole, boss, in the kernel's order (lowest `(bounds.min.y, bounds.min.x)`):
+///
+/// - `d = 3` — the wall is the square `3…97` as four straight moves (N50–N80); the hole ring is
+///   `r = 27` about (50, 50), cut as two ccw half turns from (77, 50) (N120/N130, `I∓27`); the boss
+///   ring is `r = 9` from (59, 50) (N170/N180, `I∓9`) — *inside* the boss's own boundary, because
+///   that disk is what the tool is clearing, not what it must avoid.
+/// - `d = 10` — the wall is `10…90` (N220–N250), the hole `r = 34` from (84, 50) (N290/N300), the
+///   boss `r = 2` from (52, 50) (N340/N350).
+/// - `d = 17` — refused by the kernel, so the loop stops: the boss ring would have to shrink to
+///   `12 - 17 = -5` mm, a radius that does not exist, and the whole stage is refused rather than
+///   returned half-built. That is why there are three rings per stage and none that gouges the
+///   annulus the pocket must leave.
+///
+/// All eight arc blocks are `G03`: parity decides an offset's **sign**, never its orientation, and
+/// both islands are counter-clockwise circles built by `cam_geom::primitive::circle`. 43 lines, CRLF
+/// as above.
+const BOSS_OFFSET_PROGRAM: &str = "\
+( Pocket )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X3.0000Y3.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X97.0000\r\n\
+N60G01Y97.0000\r\n\
+N70G01X3.0000\r\n\
+N80G01Y3.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00X77.0000Y50.0000\r\n\
+N110G01Z-6.0000\r\n\
+N120G03X23.0000I-27.0000J0.0000\r\n\
+N130G03X77.0000I27.0000J0.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00X59.0000\r\n\
+N160G01Z-6.0000\r\n\
+N170G03X41.0000I-9.0000J0.0000\r\n\
+N180G03X59.0000I9.0000J0.0000\r\n\
+N190G00Z5.0000\r\n\
+N200G00X10.0000Y10.0000\r\n\
+N210G01Z-6.0000\r\n\
+N220G01X90.0000\r\n\
+N230G01Y90.0000\r\n\
+N240G01X10.0000\r\n\
+N250G01Y10.0000\r\n\
+N260G00Z5.0000\r\n\
+N270G00X84.0000Y50.0000\r\n\
+N280G01Z-6.0000\r\n\
+N290G03X16.0000I-34.0000J0.0000\r\n\
+N300G03X84.0000I34.0000J0.0000\r\n\
+N310G00Z5.0000\r\n\
+N320G00X52.0000\r\n\
+N330G01Z-6.0000\r\n\
+N340G03X48.0000I-2.0000J0.0000\r\n\
+N350G03X52.0000I2.0000J0.0000\r\n\
+N360G00Z5.0000\r\n\
+N370G00Z5.0000\r\n\
+N380G00X0.0000Y0.0000\r\n\
+N390M05\r\n\
+N400M30\r\n";
+
+#[test]
+fn a_pocket_with_a_boss_inside_an_island_emits_the_golden_program() {
+  // The model allows a nested island pair (a boss inside a hole) and the strategy clears the boss,
+  // so the whole path from the document to the post is observable here: two stages of three rings,
+  // with the boss ring shrinking from r9 to r2 instead of the annulus between the islands.
+  let directory = scratch("golden-boss");
+  let document = write_island_pocket(
+    &directory,
+    "boss.c2d",
+    vec![
+      rectangle_contour(100.0, 100.0),
+      cam_geom::primitive::circle(Point2::new(50.0, 50.0), 24.0).expect("hole"),
+      cam_geom::primitive::circle(Point2::new(50.0, 50.0), 12.0).expect("boss"),
+    ],
+    PocketStrategy::Offset,
+    7.0,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    BOSS_OFFSET_PROGRAM
   );
   std::fs::remove_dir_all(&directory).ok();
 }

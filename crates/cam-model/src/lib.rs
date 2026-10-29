@@ -298,8 +298,11 @@ pub struct Toolpath {
   /// Closed contours inside the region that must be left standing, such as a pocket's islands.
   ///
   /// Explicit, never inferred: a contour drawn inside another may be an island or may simply be a
-  /// separate feature, and guessing would reverse the user's intent (D-RB-1). Omitted when empty, so a
-  /// document without islands is byte-identical to one written before they existed.
+  /// separate feature, and guessing would reverse the user's intent (D-RB-1). Islands may be
+  /// **nested**: an island strictly inside another is legal and is how a boss inside a hole is
+  /// expressed, since the region's parity rule turns a boundary at an odd nesting depth back into
+  /// material (D-RB-2). An island pair that crosses or touches is refused instead. Omitted when empty,
+  /// so a document without islands is byte-identical to one written before they existed.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub island_ids: Vec<String>,
   /// Tool number, matched against the tool library at emission time.
@@ -382,6 +385,11 @@ pub enum ModelError {
     island: String,
   },
   /// Two islands of the same toolpath overlap or touch.
+  ///
+  /// Nesting is not an overlap: an island strictly inside another is legal, and is how a boss inside
+  /// a hole is expressed — the region's parity rule makes a boundary at an odd nesting depth
+  /// material again (D-RB-2). What is refused is an island pair whose boundaries **cross** or
+  /// **touch**, because neither leaves a region the parity rule can describe.
   #[error("toolpath {toolpath:?} islands {first:?} and {second:?} overlap or touch")]
   IslandsOverlap {
     /// The toolpath id.
@@ -522,7 +530,11 @@ impl Document {
   }
 }
 
-/// Check a toolpath's islands: closed, strictly inside a boundary, and disjoint from each other.
+/// Check a toolpath's islands: closed, strictly inside a boundary, and never crossing or touching
+/// each other.
+///
+/// Nested islands are legal, unlike crossing or touching ones: a boss inside a hole is an island
+/// inside an island, and the region's parity rule is what makes it material again (D-RB-2).
 fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelError> {
   if toolpath.island_ids.is_empty() {
     return Ok(());
@@ -585,9 +597,14 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
 
   for (index, (first_id, first)) in islands.iter().enumerate() {
     for (second_id, second) in &islands[index + 1..] {
-      if cam_geom::winding::relation(first, second, tolerance)
-        != cam_geom::winding::Relation::Disjoint
-      {
+      // Nesting is allowed and is the boss case: `SecondInside` means `second` sits strictly within
+      // `first`, and parity makes the inner boundary material again (D-RB-2). Crossing and touching
+      // are refused by name instead, because where two islands intersect the material between them
+      // is not a region any parity describes, and where they touch the wall between them has no width.
+      if matches!(
+        cam_geom::winding::relation(first, second, tolerance),
+        cam_geom::winding::Relation::Crossing | cam_geom::winding::Relation::Touching
+      ) {
         return Err(ModelError::IslandsOverlap {
           toolpath: toolpath.id.clone(),
           first: (*first_id).clone(),
