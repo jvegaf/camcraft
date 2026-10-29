@@ -645,7 +645,11 @@ dependencies = [
  "cam-app",
  "cam-geom",
  "cam-model",
+ "cam-move",
+ "cam-sim",
+ "cam-toolpath",
  "cam-ui",
+ "cam-units",
  "cam-view",
  "eframe",
 ]
@@ -748,6 +752,9 @@ dependencies = [
  "cam-geom",
  "cam-import",
  "cam-model",
+ "cam-move",
+ "cam-sim",
+ "cam-units",
  "cam-view",
  "egui",
 ]
