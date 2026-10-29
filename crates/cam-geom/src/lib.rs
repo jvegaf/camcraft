@@ -18,6 +18,7 @@ mod arc;
 pub mod boolean;
 mod chain;
 mod contour;
+pub mod distance;
 pub mod edit;
 pub mod intersect;
 pub mod join;
@@ -36,6 +37,7 @@ pub mod winding;
 pub use arc::Arc;
 pub use chain::{chain, Chained};
 pub use contour::{Contour, Vertex};
+pub use distance::segment_to_segment;
 pub use point::{Bounds, Point2, Vec2};
 pub use segment::{LineSeg, Segment};
 
