@@ -7,23 +7,24 @@
 //! never plunges at full depth into the end of a visible flute. `ramp = 0` is the plain groove, a
 //! plunge in place at the start and a retract in place at the end.
 //!
-//! The entry and the exit are **real moves**, and each is **one** linear move: the tool descends from
-//! the surface to the cut depth while it travels the first `ramp` millimetres of the vector, and climbs
-//! back over the last. A real controller interpolates a linear move, and `cam-sim` does too
-//! (`D-M6-12`), so the program says exactly what the machine does — the floor of the ramp is a slope
-//! and the simulation reports it as one.
+//! The entry and the exit are **real moves**, and each follows the vector rather than cutting across it:
+//! the tool descends from the surface to the cut depth over the first `ramp` millimetres of the vector,
+//! and climbs back over the last. On a straight run that is one linear move; on a vector that contains an
+//! arc it is one **helical** move per arc (`Move::Helix`), because a ramped move that rode on a
+//! constant-Z arc would be cut as a straight chord — `ramp² / (8·r)` inside the vector, half a millimetre
+//! for a 10 mm ramp on a 25 mm circle. T4 refused the arc case for exactly that reason and T7 lifts the
+//! refusal now that the helix exists; `ramp = 0` never had a problem, because a constant-depth pass along
+//! an arc *is* what `Move::Arc` is for.
 //!
-//! A linear move is also why a ramp is refused on a contour that contains an **arc**: the move
-//! vocabulary's only curved move is constant-Z, so a ramped arc has nothing to ride on and would be cut
-//! as a straight chord. T7's helical move lifts that refusal; until then `ramp = 0` is the way to flute
-//! an arc, which needs nothing new because it *is* constant-Z.
+//! A real controller interpolates both, and `cam-sim` does too (`D-M6-12`), so the program says exactly
+//! what the machine does: the floor of the ramp is a slope, and the simulation reports it as one.
 
 use cam_geom::Contour;
 use cam_model::{FlutingParams, Job};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 
-use crate::{machine_point, point_at_arc, walk_contour, walk_range, ToolSpec, ToolpathError};
+use crate::{machine_point, ramp_range, walk_contour, walk_range, ToolSpec, ToolpathError};
 
 /// Everything a flute needs.
 #[derive(Clone, Copy, Debug)]
@@ -51,13 +52,13 @@ pub struct FlutingRequest<'a> {
 /// first `ramp` millimetres, cuts the plateau between the two ramps, ramps back up over the last
 /// `ramp` millimetres and retracts from the surface — so nothing in the program plunges into material.
 ///
-/// Four things are refused here, and all four are input errors rather than clamps: a `cut_depth` at or
+/// Three things are refused here, and all three are input errors rather than clamps: a `cut_depth` at or
 /// below `start_depth` (`InvalidDepthRange`, the rule an engrave inherits from the profile), a negative
-/// `ramp` (`InvalidRamp`), a `ramp` on a contour that contains an arc (`RampOnArc` — a ramped move
-/// cannot ride on `Move::Arc`, and chording it would put the move vocabulary's limit into the program),
-/// and a `ramp` longer than half the vector (`RampTooLong`), because the entry and the exit have to fit
-/// on it and a silently shortened ramp cuts both ends at a depth nobody authored (A4). The vector's
-/// length is its perimeter, so a closed contour measures the groove it actually cuts.
+/// `ramp` (`InvalidRamp`), and a `ramp` longer than half the vector (`RampTooLong`), because the entry and
+/// the exit have to fit on it and a silently shortened ramp cuts both ends at a depth nobody authored
+/// (A4). The vector's length is its perimeter, so a closed contour measures the groove it actually cuts.
+/// A contour that contains an arc is **not** refused: its ramp rides the arc as a helix (see the module
+/// doc).
 pub fn fluting(request: &FlutingRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
   let params = request.params;
   if params.cut_depth.mm() <= params.start_depth.mm() {
@@ -70,15 +71,6 @@ pub fn fluting(request: &FlutingRequest<'_>) -> Result<Vec<Move>, ToolpathError>
   if !ramp.is_finite() || ramp < 0.0 {
     return Err(ToolpathError::InvalidRamp { ramp });
   }
-  // A ramped move cannot follow an arc: `Move::Arc` is documented constant-Z (S9) and the move
-  // vocabulary has no helical move yet (T7 adds one). Chording the ramp to a sagitta would put the
-  // vocabulary's limit into the program — `ramp² / (8·r)` inside the vector, half a millimetre for a
-  // 10 mm ramp on a 25 mm circle — so the ramp is refused by name instead, and `ramp = 0` on the same
-  // contour is left alone: a constant-depth pass along an arc is exactly what `Move::Arc` is for.
-  if ramp > 0.0 && request.contour.has_arcs() {
-    return Err(ToolpathError::RampOnArc { ramp });
-  }
-
   // Every contour a document can hold has at least two vertices (`cam_geom::Contour::new` refuses
   // fewer), so this guard is the boundary's own, and it reuses `OpenContour` for the same reason an
   // engrave does: an empty contour is not closed either.
@@ -133,8 +125,16 @@ pub fn fluting(request: &FlutingRequest<'_>) -> Result<Vec<Move>, ToolpathError>
         z: Length::ZERO,
       },
     });
-    // The entry: one linear move over the ramp's length, descending from the surface to the cut depth.
-    moves.push(feed_at(request, ramp, -depth)?);
+    // The entry: the first `ramp` millimetres of the vector, descending from the surface to the cut
+    // depth as it goes. One linear move on a straight run, one helical move per arc otherwise.
+    moves.extend(ramp_range(
+      request.contour,
+      request.job,
+      0.0,
+      ramp,
+      0.0,
+      -depth,
+    ));
     // The plateau between the two ramps, arcs preserved.
     moves.extend(walk_range(
       request.contour,
@@ -143,8 +143,15 @@ pub fn fluting(request: &FlutingRequest<'_>) -> Result<Vec<Move>, ToolpathError>
       length - ramp,
       -depth,
     ));
-    // The exit: the mirror move, back up to the surface over the last `ramp` millimetres.
-    moves.push(feed_at(request, length, 0.0)?);
+    // The exit: the mirror of the entry, back up to the surface over the last `ramp` millimetres.
+    moves.extend(ramp_range(
+      request.contour,
+      request.job,
+      length - ramp,
+      length,
+      -depth,
+      0.0,
+    ));
   }
 
   let last = moves
@@ -159,17 +166,4 @@ pub fn fluting(request: &FlutingRequest<'_>) -> Result<Vec<Move>, ToolpathError>
     },
   });
   Ok(moves)
-}
-
-/// A feed to the point `along` millimetres along the contour, at depth `z`.
-fn feed_at(request: &FlutingRequest<'_>, along: f64, z: f64) -> Result<Move, ToolpathError> {
-  let point = point_at_arc(request.contour, along).ok_or(ToolpathError::OpenContour)?;
-  let machine = machine_point(request.job, point);
-  Ok(Move::Feed {
-    to: Point3 {
-      x: Length::from_mm(machine.x),
-      y: Length::from_mm(machine.y),
-      z: Length::from_mm(z),
-    },
-  })
 }

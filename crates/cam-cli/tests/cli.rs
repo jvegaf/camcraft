@@ -275,7 +275,7 @@ fn postp_validate_summarises_and_rejects_with_line_and_column() {
   let good = write_post(&directory);
   let outcome = run(&["postp", "validate", good.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 0, "{}", outcome.stderr);
-  assert!(outcome.stdout.contains("blocks: 16"), "{}", outcome.stdout);
+  assert!(outcome.stdout.contains("blocks: 20"), "{}", outcome.stdout);
 
   let bad = directory.join("bad.pp");
   std::fs::write(&bad, "POST_NAME = \"x\"\nNOT_A_DIRECTIVE = \"y\"\n").expect("write");
@@ -3638,51 +3638,100 @@ fn a_six_millimetre_flute_over_a_one_millimetre_ramp_simulates_with_no_gouge_and
 }
 
 #[test]
-fn a_ramped_flute_on_an_arc_is_refused_by_name_and_writes_nothing() {
-  // The defect this closes, measured before the refusal: an imported circle of radius 25 fluted 6 mm deep
-  // with a 10 mm ramp was authored happily and then simulated as a chord — `gouge 33.228 mm3 over 22
-  // cell(s), uncut 30.093 mm3 over 34 cell(s)`, exit 6 — because a ramped move cannot ride on `Move::Arc`
-  // and the move vocabulary has no helix yet. It is now an input error where it is authored, naming the
-  // reason, and the document is left as it was.
+fn a_ramped_flute_on_an_arc_is_authored_as_a_helix_and_simulates_clean() {
+  // The defect T4 refused and T7 lifts, measured before the refusal and again now: an imported circle of
+  // radius 25 fluted 6 mm deep with a 10 mm ramp used to be cut as a chord — `gouge 33.228 mm3 over 22
+  // cell(s), uncut 30.093 mm3 over 34 cell(s)`, exit 6 — because a ramped move could not ride on
+  // `Move::Arc`. With `Move::Helix` the ramp rides the arc itself, so the program is clean at the
+  // judgement M5 fixed: an eighth of a cell.
   let directory = scratch("fluting-arc-ramp");
   let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
   let library = write_library(&directory);
-  let before = std::fs::read(&document).expect("read");
+  let post = write_post(&directory);
 
-  let ramp = "10".to_owned();
-  let outcome = run(&[
-    "toolpath",
-    document.to_str().expect("utf8"),
-    "--kind",
-    "fluting",
-    "--entities",
-    "E1",
-    "--tool",
-    "1",
-    "--ramp",
-    &ramp,
-    "--cut-depth",
-    "6",
-    "--library",
-    library.to_str().expect("utf8"),
-  ]);
-  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
-  assert!(
-    outcome.stderr.contains("arc") && outcome.stderr.contains("helical"),
-    "the refusal names the arc and what is missing: {}",
-    outcome.stderr
-  );
+  let added = author_fluting(&document, &library, 10.0, 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  let helix_lines = program
+    .lines()
+    .filter(|line| (line.contains("G02") || line.contains("G03")) && line.contains('Z'))
+    .count();
   assert_eq!(
-    std::fs::read(&document).expect("read"),
-    before,
-    "nothing is written"
+    helix_lines, 2,
+    "the ramped entry and the ramped exit are the program's only helixes:\n{program}"
+  );
+  assert!(
+    program.contains("G02") || program.contains("G03"),
+    "and the plateau is still cut along the circle's arcs:\n{program}"
+  );
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_document_that_already_carries_a_ramped_flute_on_an_arc_emits_a_helical_program() {
+  // A document written before T7's lift (or by hand) is not refused any more: the strategy emits the
+  // same helix through `emit` and `simulate` that the command now authors. This is the fixture that
+  // used to exit 2 at both doors, and before T4's refusal, exit 6 with tens of cubic millimetres of
+  // gouge and uncut material.
+  let directory = scratch("fluting-arc-ramp-document");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Fluting 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Fluting(FlutingParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+      ramp: Length::from_mm(10.0),
+    }),
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program
+      .lines()
+      .any(|line| (line.contains("G02") || line.contains("G03")) && line.contains('Z')),
+    "the ramps reach the program as helical moves:\n{program}"
+  );
+
+  let simulated = simulate(&document, &library, &[]);
+  assert_eq!(
+    simulated.code, 0,
+    "{}{}",
+    simulated.stdout, simulated.stderr
+  );
+  assert!(
+    simulated.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)")
+      && simulated.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    simulated.stdout
   );
   std::fs::remove_dir_all(&directory).ok();
 }
 
 #[test]
 fn a_flute_without_a_ramp_still_cuts_an_arc_as_an_arc_through_the_cli() {
-  // The other half of the refusal: `ramp = 0` on the same arc contour is exactly what `Move::Arc` exists
+  // The other half of the lifted refusal: `ramp = 0` on the same arc contour is exactly what `Move::Arc`
   // for, so it is authored, emitted with arc blocks and simulated clean. Refusing it would have been a
   // regression dressed as safety.
   let directory = scratch("fluting-arc-flat");
@@ -3707,55 +3756,6 @@ fn a_flute_without_a_ramp_still_cuts_an_arc_as_an_arc_through_the_cli() {
     "{}",
     outcome.stdout
   );
-  std::fs::remove_dir_all(&directory).ok();
-}
-
-#[test]
-fn a_document_that_already_carries_a_ramped_flute_on_an_arc_exits_two_naming_the_reason() {
-  // A build before this refusal could have written it, so the strategy refuses at `emit` and `simulate`
-  // as well as at authoring: this is the fixture that used to exit 6 with a gouge and uncut of tens of
-  // cubic millimetres, and the program is never written.
-  let directory = scratch("fluting-arc-ramp-document");
-  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
-  let library = write_library(&directory);
-  let post = write_post(&directory);
-  let mut loaded = cam_store::document::load_document(&document).expect("loads");
-  loaded.toolpaths.push(Toolpath {
-    id: "TP1".to_owned(),
-    name: "Fluting 1".to_owned(),
-    entity_ids: vec!["E1".to_owned()],
-    island_ids: Vec::new(),
-    tool_number: 1,
-    operation: Operation::Fluting(FlutingParams {
-      start_depth: Length::ZERO,
-      cut_depth: Length::from_mm(6.0),
-      ramp: Length::from_mm(10.0),
-    }),
-  });
-  save_document(&document, &loaded).expect("saved");
-
-  let out = directory.join("program.nc");
-  let emitted = run(&[
-    "emit",
-    document.to_str().expect("utf8"),
-    "--post",
-    post.to_str().expect("utf8"),
-    "--library",
-    library.to_str().expect("utf8"),
-    "--out",
-    out.to_str().expect("utf8"),
-  ]);
-  assert_eq!(emitted.code, 2, "{}", emitted.stdout);
-  assert!(
-    emitted.stderr.contains("arc") && emitted.stderr.contains("helical"),
-    "{}",
-    emitted.stderr
-  );
-  assert!(!out.exists(), "a refused program writes nothing");
-
-  let simulated = simulate(&document, &library, &[]);
-  assert_eq!(simulated.code, 2, "{}", simulated.stdout);
-  assert!(simulated.stderr.contains("helical"), "{}", simulated.stderr);
   std::fs::remove_dir_all(&directory).ok();
 }
 
@@ -4700,5 +4700,400 @@ fn an_inlay_on_an_open_contour_exits_two_naming_the_geometry() {
     "the refusal says what is wrong: {}",
     outcome.stderr
   );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- thread milling (M6 A7, A9, D-M6-8) -------------------------------------------------------
+
+/// Author a thread on `E1` through the real `toolpath` command.
+fn author_thread(
+  document: &Path,
+  library: &Path,
+  pitch: f64,
+  direction: &str,
+  cut_depth: f64,
+) -> Outcome {
+  let pitch = pitch.to_string();
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "thread",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--pitch",
+    &pitch,
+    "--thread-direction",
+    direction,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+/// The whole program one internal thread emits, byte for byte.
+///
+/// A 16 mm circle milled by a 6 mm tool at a 1.5 mm pitch, 6 mm deep: the tool centre orbits at
+/// `(D − t)/2 = 5` mm, so it enters over `(30, 15)` — the circle's centre is `(25, 15)` — and the descent
+/// is `6 / 1.5 = 4` whole revolutions, one **helical** block each, `G03` with its incremental centre and
+/// the Z it has reached. Four turns of exactly one pitch, and a retract.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_THREAD_PROGRAM: &str = "\
+( Thread 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X30.0000Y15.0000\r\n\
+N40G01Z0.0000F100.0\r\n\
+N50G03Z-1.5000I-5.0000J0.0000\r\n\
+N60G03Z-3.0000I-5.0000J0.0000\r\n\
+N70G03Z-4.5000I-5.0000J0.0000\r\n\
+N80G03Z-6.0000I-5.0000J0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn a_thread_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-thread");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 thread (1.5 mm pitch, internal), tool T1, 1 entity(ies)\n"
+  );
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_THREAD_PROGRAM);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_thread_runs_emit_identical_bytes() {
+  // S6: identical input, identical output. Two fresh documents, the same command twice, the same
+  // document bytes and the same program bytes.
+  let directory = scratch("thread-determinism");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let first = write_vectors(&directory, "first.c2d", vec![circle_contour(8.0)]);
+  let second = write_vectors(&directory, "second.c2d", vec![circle_contour(8.0)]);
+  assert_eq!(
+    author_thread(&first, &library, 1.5, "internal", 6.0).code,
+    0
+  );
+  assert_eq!(
+    author_thread(&second, &library, 1.5, "internal", 6.0).code,
+    0
+  );
+  assert_eq!(
+    std::fs::read(&first).expect("read"),
+    std::fs::read(&second).expect("read"),
+    "the two documents are identical"
+  );
+  assert_eq!(
+    emit_program(&directory, &first, &library, &post),
+    emit_program(&directory, &second, &library, &post),
+    "and so are the two programs"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_external_thread_orbits_outside_the_circle() {
+  // The same circle as a boss: the orbit is `(D + t)/2 = 11` mm, so the entry is over `x = 36` and every
+  // helical block's incremental centre offset is `I-11.0000` — the tool is outside the wall it cuts.
+  let directory = scratch("thread-external");
+  let document = write_vectors(&directory, "boss.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_thread(&document, &library, 2.0, "external", 8.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 thread (2 mm pitch, external), tool T1, 1 entity(ies)\n"
+  );
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program.contains("N30G00X36.0000Y15.0000"),
+    "the orbit is (D + t)/2 outside the circle:\n{program}"
+  );
+  assert!(
+    program.contains("I-11.0000"),
+    "and the tool centre is 11 mm from the circle's centre:\n{program}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_refuses_by_name_the_flags_its_own_law_does_not_have() {
+  // A thread is one helical descent at a pitch: a side, a pass law, a tab, a lead, a stepover, an
+  // allowance, a ramp, a bevel's width, a clearing strategy and an inlay's allowance all describe a cut
+  // it does not make. Each is refused by name, and nothing is written.
+  let directory = scratch("thread-flags");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  for (flag, value) in [
+    ("--side", "inside"),
+    ("--pass-depth", "2"),
+    ("--stepover", "2"),
+    ("--allowance", "1"),
+    ("--ramp", "4"),
+    ("--chamfer-width", "3"),
+    ("--strategy", "raster"),
+    ("--inlay-allowance", "0.5"),
+  ] {
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "thread",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--pitch",
+      "1.5",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains(flag) && outcome.stderr.contains("takes no"),
+      "the refusal names {flag}: {}",
+      outcome.stderr
+    );
+  }
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_without_a_pitch_or_with_a_pitch_that_descends_nowhere_is_refused_by_name() {
+  let directory = scratch("thread-pitch");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let missing = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "thread",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(missing.code, 2, "{}", missing.stderr);
+  assert!(
+    missing.stderr.contains("--pitch"),
+    "the refusal names the flag: {}",
+    missing.stderr
+  );
+
+  for pitch in ["0", "-1.5"] {
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "thread",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--pitch",
+      pitch,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "pitch {pitch}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains("pitch") && outcome.stderr.contains(pitch),
+      "the refusal names the pitch and its value: {}",
+      outcome.stderr
+    );
+  }
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_on_geometry_that_is_not_a_circle_is_refused_by_name() {
+  let directory = scratch("thread-square");
+  let document = write_vectors(
+    &directory,
+    "square.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("E1") && outcome.stderr.contains("not a circle"),
+    "the refusal names the entity and what is wrong with it: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_internal_thread_whose_tool_is_wider_than_the_hole_is_refused_by_name() {
+  // A 4 mm hole with the library's 6 mm tool: `(D − t)/2` is negative, so there is no orbit to run the
+  // tool centre on. Refused while the command can still say no, naming both diameters.
+  let directory = scratch("thread-too-wide");
+  let document = write_vectors(&directory, "hole.c2d", vec![circle_contour(2.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("6") && outcome.stderr.contains("4"),
+    "the refusal names the tool and the hole: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("orbit"),
+    "and why they cannot be combined: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+
+  // The same tool outside the same circle is a thread that fits by construction: the orbit only grows.
+  let external = author_thread(&document, &library, 1.5, "external", 6.0);
+  assert_eq!(external.code, 0, "{}", external.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_coarse_thread_simulates_with_no_gouge_and_no_uncut() {
+  // **The acceptance criterion of the exact-claim round.** A real thread: 6 mm deep at a 1.5 mm pitch — four
+  // revolutions — with a 6 mm tool in a 16 mm hole, on 1 mm cells and the judgement's eighth of a cell. The
+  // material a helix leaves between two revolutions is the **thread**, not material standing: the claim is
+  // the spiral the descent leaves, per cell, so a correct coarse thread reports nothing on either sign.
+  // Before the claim was exact this document exited 6 with tens of cubic millimetres of uncut.
+  let directory = scratch("thread-simulate");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_help_lists_the_thread_kind_and_its_two_options() {
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "texture, inlay or\n                              thread",
+    "--pitch <mm>",
+    "--thread-direction <d>",
+    "helical descent",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected}:\n{}",
+      outcome.stdout
+    );
+  }
+}
+
+#[test]
+fn a_post_without_helical_blocks_refuses_a_thread_by_name_and_writes_nothing() {
+  // A7's other half: the program expresses the helix as a helical arc, so a post that cannot express one
+  // **refuses** it — naming the post and the move kind — instead of emitting a flat circle at the wrong
+  // depth. M4's arc precedent, at the CLI's own door: exit 4, and no program file.
+  let directory = scratch("thread-post-refusal");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let arcs_only = directory.join("arcs-only.pp");
+  std::fs::write(
+    &arcs_only,
+    "POST_NAME = \"arcs only\"\n\
+     VAR X_POSITION = [X|C|X|1.4]\n\
+     VAR Z_POSITION = [Z|C|Z|1.4]\n\
+     VAR ARC_CENTRE_I_INC_POSITION = [I|A|I|1.4]\n\
+     VAR ARC_CENTRE_J_INC_POSITION = [J|A|J|1.4]\n\
+     begin FIRST_CW_ARC_MOVE\n\"G02[X][I][J]\"\n\
+     begin CW_ARC_MOVE\n\"G02[X][I][J]\"\n",
+  )
+  .expect("post written");
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    arcs_only.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 4, "{}", outcome.stderr);
+  assert!(
+    outcome.stderr.contains("arcs only")
+      && outcome.stderr.contains("Move::Helix")
+      && outcome.stderr.contains("refusing to emit an approximation"),
+    "the refusal names the post, the move kind and the refusal to approximate: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
   std::fs::remove_dir_all(&directory).ok();
 }

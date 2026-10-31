@@ -20,8 +20,8 @@ use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
   chamfer, circle_centre, drill, engrave, female, fluting, inlay, male, pocket, profile, texture,
-  ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest, InlayRequest,
-  PocketRequest, ProfileRequest, TextureRequest, ToolSpec, ToolpathError,
+  thread, ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest, InlayRequest,
+  PocketRequest, ProfileRequest, TextureRequest, ThreadRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -45,10 +45,11 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting, texture or inlay
-                              (required); a texture cuts grooves only, so the material between
+        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or
+                              thread (required); a texture cuts grooves only, so the material between
                               them stands and the region is never cleared; an inlay appends **two**
-                              toolpaths, a female cavity and the male plug that fits it
+                              toolpaths, a female cavity and the male plug that fits it; a thread
+                              mills one helical descent around each circle, one pitch per revolution
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -69,10 +70,13 @@ COMMANDS:
         --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
         --pass-depth <mm>     depth per pass; profile, pocket and inlay, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
-        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave,
-                              fluting and texture cut their one pass at it
+        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
+                              and texture cut their one pass at it, fluting ramps to it, and a thread's
+                              helix descends to it
         --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
                               to plunge in place; longer than half the vector is an error
+        --pitch <mm>          thread: how far the helix descends each revolution (required)
+        --thread-direction <d>  thread: internal (default) inside a hole, or external around a boss
         --lead-in <mm>        profile: straight lead-in
         --lead-out <mm>       profile: straight lead-out
         --tab <pos:width:height>  profile: repeatable holding tab
@@ -618,6 +622,8 @@ struct ToolpathArgs {
   spacing: Option<f64>,
   angle: Option<f64>,
   inlay_allowance: Option<f64>,
+  pitch: Option<f64>,
+  thread_direction: Option<String>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -658,6 +664,8 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       }
       "--ramp" => args.ramp = Some(parse_mm(&take("--ramp")?, "--ramp")?),
       "--spacing" => args.spacing = Some(parse_mm(&take("--spacing")?, "--spacing")?),
+      "--pitch" => args.pitch = Some(parse_mm(&take("--pitch")?, "--pitch")?),
+      "--thread-direction" => args.thread_direction = Some(take("--thread-direction")?),
       "--inlay-allowance" => {
         args.inlay_allowance = Some(parse_mm(&take("--inlay-allowance")?, "--inlay-allowance")?)
       }
@@ -1052,10 +1060,55 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         cut_depth: mm(default_cut_depth(args.cut_depth)),
       })
     }
+    "thread" => {
+      // A thread is one helical descent around a circle (A7), so every flag that belongs to another
+      // cutting law has no meaning here: a side, a pass law, a tab, a lead, a stepover, an allowance, a
+      // ramp, a bevel's width and a clearing strategy each describe a cut a thread does not make.
+      // Refused by name, so nothing that was never applied looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--stepover", args.stepover.is_some()),
+        ("--allowance", args.allowance.is_some()),
+        ("--ramp", args.ramp.is_some()),
+        ("--chamfer-width", args.chamfer_width.is_some()),
+        ("--strategy", args.strategy.is_some()),
+        ("--inlay-allowance", args.inlay_allowance.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind thread takes no {flag}: a thread is one helical descent around each circle, one \
+             --pitch per revolution, so it takes no side, no pass law, no tab, no lead, no stepover, no \
+             allowance and no other strategy's geometry"
+          )));
+        }
+      }
+      let pitch = args
+        .pitch
+        .ok_or_else(|| Failure::input("a thread needs --pitch, in millimetres"))?;
+      let direction = match args.thread_direction.as_deref() {
+        None | Some("internal") => cam_model::ThreadDirection::Internal,
+        Some("external") => cam_model::ThreadDirection::External,
+        Some(other) => {
+          return Err(Failure::input(format!(
+            "unknown --thread-direction {other:?}; expected internal or external"
+          )))
+        }
+      };
+      Operation::Thread(cam_model::ThreadParams {
+        pitch: mm(pitch),
+        direction,
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
         "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave, \
-         fluting, texture or inlay"
+         fluting, texture, inlay or thread"
       )))
     }
   };
@@ -1101,6 +1154,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Fluting(_) => "Fluting",
         Operation::Texture(_) => "Texture",
         Operation::Inlay(_) => "Inlay",
+        Operation::Thread(_) => "Thread",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -1124,22 +1178,40 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     }
   }
 
-  // A ramped flute cannot follow an arc: a ramped move cannot ride on `Move::Arc`, which is constant-Z,
-  // and the move vocabulary has no helical move yet (T7 adds one). Appending one would leave a document
-  // whose only outcome is a later refusal — or, before this rule, a program that cut the ramp as a chord
-  // `ramp² / (8·r)` inside the vector — so the selection is refused here, while the command can still say
-  // no and change nothing. A constant-depth flute on the same arc is untouched.
-  if let Operation::Fluting(params) = &operation {
-    if params.ramp.mm() > 0.0 {
+  // A thread runs on a circle and nowhere else (A7): its diameter is what `(D ± t)/2` is measured from, so
+  // a selection that is not a circle is refused here, while the command can still say no and change
+  // nothing, rather than left for a later `emit` to discover. The strategy is then asked for the whole
+  // path, because one of its refusals — a tool that does not fit inside the hole — needs the tool's
+  // diameter from the library and cannot be answered by the geometry alone.
+  if let Operation::Thread(params) = &operation {
+    if let Some(diameter) = diameter {
+      let spec = ToolSpec {
+        number: tool_number,
+        diameter,
+        included_angle: None,
+        feed_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.feed_rate)
+          .unwrap_or(0.0),
+        plunge_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.plunge_rate)
+          .unwrap_or(0.0),
+        spindle_speed: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.spindle_speed)
+          .unwrap_or(0),
+      };
       for entity_id in &entity_ids {
-        if contour_of(&document, &id, entity_id)?.has_arcs() {
-          return Err(Failure::input(
-            ToolpathError::RampOnArc {
-              ramp: params.ramp.mm(),
-            }
-            .to_string(),
-          ));
-        }
+        let contour = contour_of(&document, &id, entity_id)?;
+        thread(&ThreadRequest {
+          entity: entity_id,
+          contour,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(error.to_string()))?;
       }
     }
   }
@@ -1439,6 +1511,14 @@ fn operation_label(operation: &Operation) -> String {
     Operation::Engrave(_) => "engrave".to_owned(),
     Operation::Fluting(_) => "fluting".to_owned(),
     Operation::Inlay(_) => "inlay".to_owned(),
+    Operation::Thread(params) => format!(
+      "thread ({} mm pitch, {})",
+      params.pitch.mm(),
+      match params.direction {
+        cam_model::ThreadDirection::Internal => "internal",
+        cam_model::ThreadDirection::External => "external",
+      }
+    ),
     Operation::Texture(params) => format!(
       "texture ({} mm at {} degrees)",
       params.spacing.mm(),
@@ -1839,6 +1919,23 @@ fn build_segment(
         })
         .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
       );
+    }
+    Operation::Thread(params) => {
+      // One descent per selected circle, and each is its own thread: a thread's diameter is the entity's
+      // own, so two circles are two threads with two orbits and never one shared one (M6 A7).
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          thread(&ThreadRequest {
+            entity: entity_id,
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
     }
     Operation::Inlay(params) => {
       // One half per toolpath, and the document says which half it is (see

@@ -7,8 +7,10 @@
 //! included angle instead of authored, `engrave`, one authored-depth pass along open or closed
 //! vectors with no pass law at all, `fluting`, one pass along a vector that ramps in over its
 //! first millimetres and out over its last, `texture`, one authored-depth pass along each groove
-//! of a pattern clipped to a closed region, and `inlay`, the male/female pair of pockets one command
-//! appends: a cavity grown by the allowance and a plug of the region itself.
+//! of a pattern clipped to a closed region, `inlay`, the male/female pair of pockets one command
+//! appends: a cavity grown by the allowance and a plug of the region itself, and `thread`, one helical
+//! descent around a circle at a pitch per revolution — the one strategy whose program is not a stack of
+//! constant-Z moves.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -21,6 +23,7 @@ pub mod fluting;
 pub mod inlay;
 pub mod pocket;
 pub mod texture;
+pub mod thread;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
@@ -29,6 +32,7 @@ pub use fluting::{fluting, FlutingRequest};
 pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 pub use texture::{texture, TextureRequest};
+pub use thread::{thread, ThreadRequest};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
@@ -106,8 +110,8 @@ pub enum ToolpathError {
     /// The offending peck depth in millimetres.
     peck_depth: f64,
   },
-  /// A hole is not a circle, so it has no centre to drill.
-  #[error("entity {entity:?} is not a circle, so it has no drill centre")]
+  /// A hole is not a circle, so it has no centre to drill or to orbit.
+  #[error("entity {entity:?} is not a circle, so it has no centre to work from")]
   NotACircle {
     /// Id of the offending entity.
     entity: String,
@@ -147,21 +151,31 @@ pub enum ToolpathError {
     /// The vector's length in millimetres.
     length: f64,
   },
-  /// A flute's ramp runs along a contour that contains an arc.
+  /// A thread's pitch is zero or negative, so one revolution descends nowhere.
   ///
-  /// A ramped move cannot ride on `Move::Arc`, which is documented constant-Z (S9), and the move
-  /// vocabulary has no helical move yet — T7 adds one, and with it this refusal goes. Chording the ramp
-  /// to a sagitta would put the vocabulary's limit into the program the machine runs, which is the trade
-  /// the staircase already lost, so the strategy refuses by name instead: on a 25 mm circle a 10 mm chord
-  /// sits half a millimetre inside the vector. A constant-depth flute along the same arc is untouched.
+  /// The document model refuses it as the document loads, but a caller that hands the strategy its
+  /// parameters directly reaches it without passing through there. A pitch with no distance behind it
+  /// is an input error and never a helix that stays at one depth (M6 A7).
+  #[error("thread pitch {pitch} mm must be greater than zero")]
+  InvalidPitch {
+    /// The offending pitch in millimetres.
+    pitch: f64,
+  },
+  /// An internal thread's tool is at least as wide as the hole it is meant to cut inside.
+  ///
+  /// The tool centre orbited at `(D − t)/2`, which is not a radius when `t ≥ D`: the tool's centre would
+  /// have to sit on the hole's axis or outside it. Refused by name rather than collapsed into a plunge on
+  /// the axis, and the same tool outside the same circle is the external case, where it fits by
+  /// construction (M6 A7).
   #[error(
-    "fluting ramp {ramp} mm would run along a contour with arcs, and a ramped move cannot follow one: \
-     the move vocabulary has no helical move, and its only curved move is constant-Z, so a ramped arc \
-     would be cut as a straight chord. Cut this contour with ramp 0, or ramp a polyline"
+    "tool diameter {diameter} mm does not fit a {hole} mm hole: an internal thread's tool centre orbits \
+     at (D - t)/2, which has no radius when the tool is as wide as the hole"
   )]
-  RampOnArc {
-    /// The offending ramp in millimetres.
-    ramp: f64,
+  ThreadToolTooWide {
+    /// The tool's diameter in millimetres.
+    diameter: f64,
+    /// The hole's diameter in millimetres.
+    hole: f64,
   },
   /// A texture's spacing is not a positive number of millimetres.
   ///
@@ -589,29 +603,6 @@ fn tab_spans(tabs: &[Tab], total: f64) -> Vec<Span> {
   spans
 }
 
-/// The point `along` millimetres along the contour's arc length, clamped to its ends.
-///
-/// The inverse of the walk: a flute's ramp is a length along the vector, so it is a position that has
-/// to be found on whichever segment holds it, arcs included.
-pub(crate) fn point_at_arc(contour: &Contour, along: f64) -> Option<Point2> {
-  let segments = contour.segments();
-  let mut walked = 0.0;
-  for (index, segment) in segments.iter().enumerate() {
-    let length = segment.length();
-    let last = index + 1 == segments.len();
-    if along <= walked + length || last {
-      let fraction = if length <= 0.0 {
-        0.0
-      } else {
-        ((along - walked) / length).clamp(0.0, 1.0)
-      };
-      return Some(piece_endpoints(*segment, fraction, fraction).0);
-    }
-    walked += length;
-  }
-  None
-}
-
 /// Walk the contour from arc length `from` to `to` at a constant `z`, keeping arcs as arcs.
 ///
 /// [`walk_contour`] walks the whole contour; a flute's plateau is the middle of one, between the two
@@ -642,6 +633,89 @@ pub(crate) fn walk_range(contour: &Contour, job: &Job, from: f64, to: f64, z: f6
       from_point,
       to_point,
       z,
+    );
+  }
+  moves
+}
+
+/// Append a cutting move along `segment` whose Z is `z`, as an arc when the piece is one.
+///
+/// The helical sibling of [`push_horizontal`], and the reason T4's ramp refusal could go: a piece of an
+/// arc that also changes Z is a [`Move::Helix`], so a ramp riding on a curve is expressed by the move
+/// vocabulary itself instead of being chorded (M6 A7, D-M6-8). A line stays a line.
+pub(crate) fn push_ramp(moves: &mut Vec<Move>, job: &Job, segment: Segment, to: Point2, z: f64) {
+  let destination = machine_point(job, to);
+  match segment {
+    Segment::Line(_) => moves.push(Move::Feed {
+      to: Point3 {
+        x: Length::from_mm(destination.x),
+        y: Length::from_mm(destination.y),
+        z: Length::from_mm(z),
+      },
+    }),
+    Segment::Arc(arc) => {
+      let center = machine_point(job, arc.center());
+      moves.push(Move::Helix {
+        to: Point3 {
+          x: Length::from_mm(destination.x),
+          y: Length::from_mm(destination.y),
+          z: Length::from_mm(z),
+        },
+        center,
+        ccw: arc.is_ccw(),
+      });
+    }
+  }
+}
+
+/// Walk the contour from arc length `from` to `to`, with `z` running linearly between `z_from` and
+/// `z_to` along it: a ramp that follows the vector instead of chording across it.
+///
+/// The plateau's [`walk_range`] at a constant `z` is the same walk with both ends equal. Each piece's Z
+/// is interpolated by **arc length**, so the depth the tool has reached depends on how far along the ramp
+/// it is and on nothing else — which is exactly the law `cam-sim`'s flute claim authorises, and the law
+/// the sweep applies to the moves this emits (D-M6-12).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ramp_range(
+  contour: &Contour,
+  job: &Job,
+  from: f64,
+  to: f64,
+  z_from: f64,
+  z_to: f64,
+) -> Vec<Move> {
+  let total = to - from;
+  let mut moves = Vec::new();
+  let mut walked = 0.0;
+  for segment in contour.segments() {
+    let length = segment.length();
+    let start = walked;
+    walked += length;
+    if length <= 0.0 {
+      continue;
+    }
+    let piece_from = from.max(start);
+    let piece_to = to.min(start + length);
+    if piece_to <= piece_from + 1.0e-12 {
+      continue;
+    }
+    let first = (piece_from - start) / length;
+    let last = (piece_to - start) / length;
+    let (_from_point, to_point) = piece_endpoints(segment, first, last);
+    // The fraction of the whole ramp this piece ends at, which is where its Z is read. Written as
+    // `z_from + (z_to − z_from) · t` so the first and last pieces land exactly on the two ends instead
+    // of on an expression that can round away from them.
+    let t = if total > 0.0 {
+      (piece_to - from) / total
+    } else {
+      1.0
+    };
+    push_ramp(
+      &mut moves,
+      job,
+      sub_segment(segment, first, last),
+      to_point,
+      z_from + (z_to - z_from) * t,
     );
   }
   moves

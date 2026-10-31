@@ -9,7 +9,8 @@
 //! cuts along the vector (M6 A3, D-M6-4), a flute authorises the ramp law *along* the vector rather
 //! than at a distance from it (M6 A4, D-M6-5), a texture authorises the same band along every groove of
 //! the document's own pattern (M6 A5, D-M6-6), an inlay authorises the half it is — the region grown by
-//! the allowance for the female, the job rectangle minus the region for the male (M6 A6, D-M6-7) — and
+//! the allowance for the female, the job rectangle minus the region for the male (M6 A6, D-M6-7) — a thread authorises the **spiral** its helical descent
+//! leaves in the annulus its tool sweeps, cell by cell (M6 A7) — and
 //! every cell nothing claims is authorised to lose nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
@@ -27,7 +28,7 @@
 //! not need it.
 
 use std::collections::BTreeMap;
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 use std::ops::Range;
 
 use cam_geom::offset::{offset_contour, OffsetOptions};
@@ -368,6 +369,52 @@ fn claim_toolpath(
         claim_flute(target, contour, tool, depth, params.ramp.mm());
       }
     }
+    Operation::Thread(params) => {
+      // A thread's claim is the **spiral its helix leaves**, cell by cell — see [`claim_helix`] for the
+      // law and its two degenerate cases. It is not the flat annulus: a helical descent leaves the
+      // material between two revolutions standing, and that material is the thread, so a claim that
+      // authorised `cut_depth` across the whole annulus reported a correct coarse thread as uncut
+      // everywhere the last revolution had not yet reached.
+      let depth = authorised_depth(params.cut_depth);
+      let pitch = params.pitch.mm();
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
+      // A thread mills with a cylinder, so its footprint is one radius at every depth.
+      let tool_radius = tool.radius_at(depth);
+      for id in &toolpath.entity_ids {
+        let contour = contour_of(document, toolpath, id)?;
+        let (centre, diameter) = circle_geometry(contour).ok_or_else(|| TargetError::Geometry {
+          toolpath: toolpath.id.clone(),
+          reason: format!(
+            "entity {id:?} is not a circle, so it has no diameter to mill a thread on"
+          ),
+        })?;
+        let half = diameter / 2.0;
+        // The orbit is the number the strategy derives from the same three quantities, and the annulus is
+        // what the tool's own disc sweeps around it: `orbit ± t/2`, i.e. `D/2 − t` to `D/2` inside a hole
+        // and `D/2` to `D/2 + t` around a boss (M6 A7).
+        let orbit = match params.direction {
+          cam_model::ThreadDirection::Internal => half - tool_radius,
+          cam_model::ThreadDirection::External => half + tool_radius,
+        };
+        let inner = orbit - tool_radius;
+        if !orbit.is_finite() || orbit <= 0.0 || inner < 0.0 {
+          return Err(TargetError::Geometry {
+            toolpath: toolpath.id.clone(),
+            reason: format!(
+              "a {} mm tool leaves no orbit on entity {id:?}: the tool centre runs at (D - t)/2 = \
+               {orbit} mm from the circle's centre, which is not a radius",
+              2.0 * tool_radius
+            ),
+          });
+        }
+        claim_helix(target, centre, orbit, tool_radius, depth, pitch);
+      }
+    }
     Operation::Texture(params) => {
       // The pattern is the document's, derived once in `cam-model` (`TextureParams::grooves`) and cut by
       // `cam-toolpath::texture` from the same vertices. This claim reads that pattern and never the
@@ -396,6 +443,166 @@ fn claim_toolpath(
     }
   }
   Ok(())
+}
+
+/// Claim the spiral a thread's helical descent leaves in the annulus its tool sweeps (M6 A7).
+///
+/// # The law
+///
+/// The descent is a helix: one continuous revolution around the orbit, `pitch` millimetres lower each
+/// turn, from the surface to `-cut_depth`, which is `turns = cut_depth / pitch` revolutions. Parameterise
+/// it by the **unwrapped** angle `Φ ∈ [0, 2π·turns]` the tool centre has travelled, measured from the
+/// seam — the orbit's `+x` point, where `cam-toolpath::thread` starts its descent and where every
+/// revolution turns over. The depth the tip has reached at `Φ` is `pitch · Φ / 2π`, and that is the
+/// strategy's own law read from the same two numbers (`cut_depth` and `pitch`), not a second derivation
+/// of it: a claim and a program that disagreed about the seam would disagree about every cell in the
+/// annulus.
+///
+/// A cell at radius `r` and angle `θ` (about the circle's centre, from the same `+x` axis) is inside the
+/// tool's footprint whenever the tool centre is within `t/2` of it, which is for every angle within the
+/// half-window
+///
+/// ```text
+/// α(r) = acos((orbit² + r² − (t/2)²) / (2 · orbit · r))
+/// ```
+///
+/// of `θ` — the law of cosines, the same one `Nearest::reach_offsets` solves along an arc. The cell's
+/// floor is the **deepest pass that covers it**:
+///
+/// ```text
+/// authorised = pitch · Φ_last / 2π,   Φ_last = max { Φ ≤ 2π·turns : |(Φ mod 2π) − θ| ≤ α }
+/// ```
+///
+/// The tip's own law evaluated at the cell's angle — `cut_depth − pitch · ((θ_end − θ) mod 2π) / 2π`,
+/// with `θ_end = 2π · (turns mod 1)` where the descent ends — is this with `α = 0`, and it is too tight:
+/// a tool reaches a cell from angles up to `α` *later* than the cell's own, and the later pass is the
+/// deeper one, so the tip-only law would report a correct thread as a gouge by up to `α/2π · pitch`. It is
+/// the correction [`claim_flute`] makes along a ramp, for the same reason: the claim is what the tool
+/// could have removed, not what its tip alone would have.
+///
+/// The maximum has two cases, written out rather than left to the arithmetic:
+///
+/// - **The seam covers the cell.** When the end of the descent is within `α` of the cell's own angle
+///   (`θ_end − θ` taken circularly), the last pass over the cell *is* the end, and the claim is
+///   `cut_depth` itself. A cell exactly on the seam has `(θ_end − θ) mod 2π = 0` and takes this branch,
+///   so the seam's own cell is the deepest in the annulus — which is what a descent ending there does.
+/// - **Otherwise** the last pass is the far edge of the footprint's window in the final revolution that
+///   reaches the cell: `θ + α + 2π·⌊(2π·turns − θ − α) / 2π⌋`. When that floor is negative the descent
+///   never reaches the cell's window at all — a descent of less than a revolution sweeps only the sector
+///   it travels — and the cell is left unauthorised, which is the honest answer: nothing cuts it.
+///
+/// A **tool as wide as the hole** has no orbit (`(D − t)/2 ≤ 0`) and is refused by name before this
+/// function is called, at the same numbers `cam-toolpath::thread` refuses. A tool whose annulus reaches
+/// the axis (`D = 2t`, so `D/2 − t`, the inner radius, is exactly `0`) is the degenerate disc: every cell
+/// inside it is claimed, and a cell at the centre — where `α`'s law of cosines divides by zero, the cell
+/// being tangent to the footprint at every instant — is covered at every pass, so its deepest is the last
+/// one, `cut_depth`.
+///
+/// # Why this is still an oracle
+///
+/// The law is read from the document (`cut_depth`, `pitch`, the circle and the tool) and from the seam
+/// convention the strategy states, never from the emitted moves: a claim built from the program would
+/// agree with it by construction, including where both are wrong (M6 A5's rule for a texture's pattern,
+/// applied to a thread's floor).
+fn claim_helix(
+  target: &mut Target,
+  centre: Point2,
+  orbit: f64,
+  tool_radius: f64,
+  depth: f64,
+  pitch: f64,
+) {
+  let grid = target.grid;
+  let columns = grid.columns;
+  let outer = orbit + tool_radius;
+  let bounds = cam_geom::Bounds {
+    min: Point2::new(centre.x - outer, centre.y - outer),
+    max: Point2::new(centre.x + outer, centre.y + outer),
+  };
+  let Some(window) = bounds_window(bounds, grid) else {
+    return;
+  };
+  let turns = depth / pitch;
+  let end = TAU * turns;
+  let theta_end = end.rem_euclid(TAU);
+  for row in window.rows {
+    for column in window.columns.clone() {
+      let cell = grid.centre(column, row);
+      let offset = cell - centre;
+      let radius = offset.length();
+      if !radius.is_finite() || (radius - orbit).abs() > tool_radius + REACH_SLACK {
+        continue;
+      }
+      // The footprint's angular half-window at this cell's radius. A cell at the circle's own centre is
+      // tangent to the disc at every pass when the annulus reaches the axis, and unreachable otherwise
+      // (the radius test above has already dropped that case).
+      let spread = if radius <= 1.0e-12 {
+        PI
+      } else {
+        let cosine =
+          (orbit * orbit + radius * radius - tool_radius * tool_radius) / (2.0 * orbit * radius);
+        cosine.clamp(-1.0, 1.0).acos()
+      };
+      let angle = offset.angle().rem_euclid(TAU);
+      // How far the end of the descent lies past the cell's own angle, the short way round: the seam
+      // covers the cell when that is inside the footprint's window.
+      let gap = (theta_end - angle).rem_euclid(TAU);
+      let reach = if gap.min(TAU - gap) <= spread {
+        // The end of the descent passes over this cell at the full depth.
+        end
+      } else {
+        // The far edge of the window, `spread` past the cell's own angle, in the last revolution that
+        // reaches it.
+        let edge = angle + spread;
+        let fitted = ((end - edge) / TAU).floor();
+        if fitted < 0.0 {
+          continue;
+        }
+        edge + TAU * fitted
+      };
+      let authorised = (pitch * reach / TAU).clamp(0.0, depth);
+      let slot = &mut target.authorised[row * columns + column];
+      if authorised > *slot {
+        *slot = authorised;
+      }
+    }
+  }
+}
+
+/// The centre and diameter of a contour that is a circle, or `None` when it is any other shape.
+///
+/// A thread's claim needs the diameter the tool orbits, and only a circle has one. The test is the same
+/// one a drill's centre passes: closed, made only of arcs, all sharing a centre, sweeping a full turn in
+/// total — so a shape that merely *has* a bounding box the right size is not mistaken for a circle.
+fn circle_geometry(contour: &Contour) -> Option<(Point2, f64)> {
+  if !contour.is_closed() {
+    return None;
+  }
+  let mut centre: Option<Point2> = None;
+  let mut radius: Option<f64> = None;
+  let mut sweep = 0.0;
+  for segment in contour.segments() {
+    let Segment::Arc(arc) = segment else {
+      return None;
+    };
+    match centre {
+      None => {
+        centre = Some(arc.center());
+        radius = Some(arc.radius());
+      }
+      Some(known) => {
+        if known.distance_to(arc.center()) > 1.0e-9 {
+          return None;
+        }
+      }
+    }
+    sweep += arc.sweep();
+  }
+  let (centre, radius) = (centre?, radius?);
+  if (sweep.abs() - TAU).abs() > 1.0e-6 || !radius.is_finite() || radius <= 0.0 {
+    return None;
+  }
+  Some((centre, 2.0 * radius))
 }
 
 /// The depth below the stock surface a toolpath's last pass reaches.

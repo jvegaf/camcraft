@@ -140,7 +140,7 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         points.push(to);
         previous = Some(to);
       }
-      Move::Feed { .. } | Move::Arc { .. } => {
+      Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
         if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
           points.push(to);
           previous = Some(to);
@@ -620,7 +620,7 @@ fn every_cutting_move_is_at_its_pass_depth() {
     seen_depths.push(depth);
     for movement in &unit {
       match movement {
-        Move::Feed { to } | Move::Arc { to, .. } => {
+        Move::Feed { to } | Move::Arc { to, .. } | Move::Helix { to, .. } => {
           let z = to.z.mm();
           assert!(
             (z - depth).abs() < 1.0e-9,

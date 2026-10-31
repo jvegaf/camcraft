@@ -186,6 +186,16 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   cutting move removes, at each sampled point along it, the depth interpolated between where it started and
   where it ends. Fluting's ramp is then one linear move per end, the fluting claim keeps its footprint
   envelope (which is independent of this), and T7's helix can be swept honestly.
+- **D-M6-14 — A thread's target is the spiral, not the annulus.** The swept floor of a helix is not a
+  flat disc: the last revolution passes each point at that point's own angle, so the material the program
+  was entitled to remove at a cell is the deepest pass whose footprint covers it, `pitch·Φ_last/2π` over
+  the unwrapped angle `Φ`. Authorising the whole annulus at `cut_depth` instead was T7's first claim, and
+  it is an upper bound of up to one pitch — which makes `simulate` exit 6 on **every** correct thread
+  whose pitch is coarser than `cell/8`, i.e. on nearly every real thread. A gate that fails every correct
+  program is not conservative, it is broken. The claim takes the maximum over the tool's angular window
+  `α(r)` rather than at the cell's own angle, because a cell is reached from angles up to `α` later than
+  its own and the later pass is the deeper one — the tip-only form reports `gouge 8.697 mm³` on a correct
+  thread, the same one-sided error `claim_flute` was amended for.
 - **D-M6-13 — The two inlay halves are told apart by the ids they carry, and the male cuts rows.** A6
   says both halves share one `InlayParams`, so the half cannot live in the parameters without adding a
   field the spec does not have; it lives in the vocabulary the document already has. The female names the
@@ -228,8 +238,8 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `76eb4e1` |
 | T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `76eb4e1` |
 | T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `6a6676a` |
-| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | pending |
-| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | inline, test-first, own commit (Risk item 3) | |
+| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `6167f37` |
+| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | pending |
 | T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
 
 ## Recorded out of scope
@@ -396,3 +406,21 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   which is the pocket's published coverage bound (`crates/cam-toolpath/src/pocket.rs`), pinned in the
   oracle with its arithmetic rather than absorbed into a tolerance. T6 closes at **341 tests** in the four
   crates (cam-model 43, cam-toolpath 114, cam-sim 90, cam-cli 94).
+- **L17 (review, T7, the milestone's riskiest unit and what it found).** T7 changed the post contract —
+  `Move::Helix`, four helical block kinds carrying `[Z]`, and a post without them refusing by name — and it
+  lifted T4's `RampOnArc` refusal, so a ramped flute now follows an arc helically instead of chording it:
+  the fixture that gouged 33.228 mm³ simulates with **gouge 0.000 / uncut 0.000**. Two rounds went into the
+  claim. The first shipped the annulus at full depth; the acceptance criterion (a 6 mm deep, 1.5 mm pitch
+  thread reporting clean at `cell/8`) failed with `uncut: 106.452 mm³ over 151 cells`, which is what a gate
+  that fails every real thread looks like, and D-M6-14 replaces it with the spiral. The second round also
+  found that the tip-only spiral is too tight — a correct thread reports `gouge 8.697 mm³`, because a cell
+  is reached from angles up to `α(r)` later than its own — so the claim takes the maximum over the
+  footprint's angular window, exactly as `claim_flute` takes the maximum over the reachable stretch.
+  Numbers worth keeping: on the oracle's fixture the claim authorises 542.288 mm³, the program removes
+  541.000, the tip-only spiral would authorise 527.788, and the analytic `π·t·(D − t)·d` is 603.186 — the
+  gap to the analytic is the crest, which is the thread, not a defect. T7 also **discovered a pre-existing
+  defect it did not fix**: `grid_for` builds the field from `job.width/height` at origin `(0, 0)` while
+  programs are emitted in machine coordinates, so for any origin corner other than bottom-left the field
+  and the program disagree about *where* everything is — for every strategy since M5, not for threads. It
+  is recorded here, with its severity, and it needs its own slice; every fixture and the default sheet are
+  bottom-left, which is why nothing caught it.

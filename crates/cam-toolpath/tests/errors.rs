@@ -45,7 +45,11 @@ fn every_variant() -> Vec<ToolpathError> {
       ramp: 51.0,
       length: 100.0,
     },
-    ToolpathError::RampOnArc { ramp: 10.0 },
+    ToolpathError::InvalidPitch { pitch: 0.0 },
+    ToolpathError::ThreadToolTooWide {
+      diameter: 14.0,
+      hole: 12.0,
+    },
     ToolpathError::InvalidSpacing { spacing: 0.0 },
     ToolpathError::NoGroove {
       spacing: 500.0,
@@ -67,7 +71,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    19,
+    20,
     "every variant must be listed exactly once"
   );
 
@@ -93,7 +97,7 @@ fn every_variant_keeps_its_message() {
         format!("peck depth {peck_depth} mm must not be negative")
       }
       ToolpathError::NotACircle { entity } => {
-        format!("entity {entity:?} is not a circle, so it has no drill centre")
+        format!("entity {entity:?} is not a circle, so it has no centre to work from")
       }
       ToolpathError::NoHoles => "drilling needs at least one hole".to_owned(),
       ToolpathError::InvalidBank => {
@@ -108,11 +112,13 @@ fn every_variant_keeps_its_message() {
       ToolpathError::RampTooLong { ramp, length } => {
         format!("fluting ramp {ramp} mm is longer than half of the vector's {length} mm length")
       }
-      ToolpathError::RampOnArc { ramp } => {
+      ToolpathError::InvalidPitch { pitch } => {
+        format!("thread pitch {pitch} mm must be greater than zero")
+      }
+      ToolpathError::ThreadToolTooWide { diameter, hole } => {
         format!(
-          "fluting ramp {ramp} mm would run along a contour with arcs, and a ramped move cannot follow \
-           one: the move vocabulary has no helical move, and its only curved move is constant-Z, so a \
-           ramped arc would be cut as a straight chord. Cut this contour with ramp 0, or ramp a polyline"
+          "tool diameter {diameter} mm does not fit a {hole} mm hole: an internal thread's tool centre \
+           orbits at (D - t)/2, which has no radius when the tool is as wide as the hole"
         )
       }
       ToolpathError::InvalidSpacing { spacing } => {

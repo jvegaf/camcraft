@@ -830,3 +830,61 @@ fn the_panel_offers_play_step_and_reset() {
     );
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// M6 — a helical move (A7): the preview times it along its own spiral and draws it descending.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
+  // The preview's clock is a story about progress, and a helix travels the hypotenuse of a turn rather
+  // than the turn itself: one full revolution of radius 10 descending 2 mm is
+  // `sqrt((2π·10)² + 2²) = 62.8638` mm, which at the segment's 100 mm/s feed is 0.628638 s — where an
+  // arc's own timing, the turn alone, would say 0.628319. The fixture's four moves are therefore a
+  // rapid of 20 mm (0.2 s), a plunge of 10 mm at 50 mm/s (0.2 s), the helix, and a retract of 12 mm
+  // (0.12 s): `1.148638` s in all, and the program must reach its end.
+  let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(10.0, 0.0));
+  stream.segments.push(Segment {
+    name: "thread".to_owned(),
+    tool_number: 1,
+    tool: ToolShape::cylinder(Length::from_mm(4.0)),
+    feed_rate: 100.0,
+    plunge_rate: 50.0,
+    spindle_speed: 18_000,
+    moves: vec![
+      Move::Rapid {
+        to: Point3::new(10.0, 20.0, 5.0),
+      },
+      Move::Feed {
+        to: Point3::new(10.0, 20.0, -5.0),
+      },
+      Move::Helix {
+        to: Point3::new(10.0, 20.0, -7.0),
+        center: Point2::new(20.0, 20.0),
+        ccw: true,
+      },
+      Move::Retract {
+        to: Point3::new(10.0, 20.0, 5.0),
+      },
+    ],
+  });
+
+  let spiral = ((std::f64::consts::TAU * 10.0_f64).powi(2) + 4.0).sqrt();
+  let expected = 0.2 + 0.2 + spiral / 100.0 + 12.0 / 100.0;
+
+  let mut preview = Preview3d::new(untouched(), stream, &job());
+  preview.set_speed(1.0);
+  preview.set_playing(true);
+  preview.advance(10.0);
+  assert!(preview.finished(), "the program plays to its end");
+  assert!(
+    (preview.elapsed() - expected).abs() < 1.0e-9,
+    "the program's own time is {expected} s, the preview says {} s",
+    preview.elapsed()
+  );
+  assert_eq!(
+    preview.cursor(),
+    4,
+    "four moves: the helix is one of them, not a staircase"
+  );
+}

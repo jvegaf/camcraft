@@ -7,6 +7,10 @@
 //! depth over its whole travel, exactly as M5's destination-`z` rule did, and a ramping move removes a
 //! *graded* floor instead of a step (D-M6-12, which amends D-M5-3).
 //!
+//! A **helical** move — an arc that also descends — is swept by the arc's own code for the same reason:
+//! its Z is interpolated by angle, so a thread's floor is the helix it was cut with, and a helix that
+//! completes its revolutions leaves its deepest pass everywhere on the annulus it swept.
+//!
 //! A `Rapid` never cuts. A rapid that ends below the surface is a crash, reported and not simulated
 //! (D-M5-4): a program that rams the tool has a defect, and hiding it inside a plausible volume number
 //! is the one thing this module must not do.
@@ -155,6 +159,13 @@ pub fn apply_move(
       None
     }
     Move::Arc { to, center, ccw } => {
+      sweep_arc(field, from, to, center, ccw, tool);
+      None
+    }
+    // A helix is an arc that descends, so it is swept by the arc's own code: the one thing the two do
+    // not share is the Z, and `sweep_arc` interpolates that by angle already (D-M6-12). Nothing about
+    // the footprint changes, which is exactly why a thread's floor is graded rather than stepped.
+    Move::Helix { to, center, ccw } => {
       sweep_arc(field, from, to, center, ccw, tool);
       None
     }

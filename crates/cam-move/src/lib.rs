@@ -62,7 +62,30 @@ pub enum Move {
     to: Point3,
   },
   /// Circular cutting move in the XY plane at constant Z.
+  ///
+  /// Constant-Z is the contract, not a habit: a post-processor's arc blocks carry `[X][Y][I][J]` and no
+  /// `[Z]`, so an arc that also descended would be emitted at one depth whatever its destination said.
+  /// A curved move that descends is [`Move::Helix`].
   Arc {
+    /// Destination.
+    to: Point3,
+    /// Arc centre in XY.
+    center: Point2,
+    /// True for counter-clockwise.
+    ccw: bool,
+  },
+  /// A circular cutting move that **also descends**: the XY path is an arc about `center`, and its Z
+  /// runs from where the move started to `to.z`.
+  ///
+  /// It is [`Move::Arc`]'s helical sibling, and it exists because a thread is one continuous descent
+  /// around a circle: `Arc` is constant-Z by contract, so a helix cannot ride on it, and cutting one as
+  /// a chord would put the vocabulary's limit into the program the machine runs (A7, D-M6-8).
+  ///
+  /// One helical move covers **at most one turn**. A move whose start and end XY are the same point is
+  /// exactly one full revolution, which is the same reading [`Move::Arc`] already has — so a descent of
+  /// several turns is several helical moves, one per revolution, and the last one carries the fraction
+  /// of a turn that reaches the depth.
+  Helix {
     /// Destination.
     to: Point3,
     /// Arc centre in XY.
@@ -81,7 +104,11 @@ impl Move {
   /// The position this move ends at.
   pub fn destination(self) -> Point3 {
     match self {
-      Self::Rapid { to } | Self::Feed { to } | Self::Arc { to, .. } | Self::Retract { to } => to,
+      Self::Rapid { to }
+      | Self::Feed { to }
+      | Self::Arc { to, .. }
+      | Self::Helix { to, .. }
+      | Self::Retract { to } => to,
     }
   }
 }
@@ -231,6 +258,12 @@ impl MoveStream {
   }
 
   /// Total cutting length in XY, ignoring rapids and retracts.
+  ///
+  /// A helix is measured **along its own circle** rather than by its chord, which is the one place this
+  /// number is not a chord: a full revolution's destination is its start point, so a chord would report
+  /// a thread — nothing but full revolutions — as zero millimetres of cutting. An arc keeps the chord it
+  /// has always been measured as, because that number is pinned by every report written before helixes
+  /// existed.
   pub fn cut_length(&self) -> Length {
     let mut total = 0.0;
     for segment in &self.segments {
@@ -238,8 +271,15 @@ impl MoveStream {
       for movement in &segment.moves {
         let destination = movement.destination();
         if let Some(from) = previous {
-          if matches!(movement, Move::Feed { .. } | Move::Arc { .. }) {
-            total += from.xy().distance_to(destination.xy());
+          match movement {
+            Move::Feed { .. } | Move::Arc { .. } => {
+              total += from.xy().distance_to(destination.xy());
+            }
+            Move::Helix { center, ccw, .. } => {
+              let radius = center.distance_to(destination.xy());
+              total += radius * sweep_of(from.xy(), destination.xy(), *center, *ccw).abs();
+            }
+            Move::Rapid { .. } | Move::Retract { .. } => {}
           }
         }
         previous = Some(destination);
@@ -247,4 +287,25 @@ impl MoveStream {
     }
     Length::from_mm(total)
   }
+}
+
+/// The signed angle a circular move sweeps from `from` to `to` about `center`.
+///
+/// The ends of an arc the move does not state are read the one way an arc can be read: a move whose
+/// destination is its start point is **one** full turn in the direction it is going, which is the same
+/// reading the sweep and the preview take.
+fn sweep_of(from: Point2, to: Point2, center: Point2, ccw: bool) -> f64 {
+  let start = (from.y - center.y).atan2(from.x - center.x);
+  let end = (to.y - center.y).atan2(to.x - center.x);
+  let mut delta = end - start;
+  if ccw {
+    while delta <= 0.0 {
+      delta += std::f64::consts::TAU;
+    }
+  } else {
+    while delta >= 0.0 {
+      delta -= std::f64::consts::TAU;
+    }
+  }
+  delta
 }

@@ -577,6 +577,55 @@ fn rotated_region(contours: &[&Contour], radians: f64) -> Option<cam_geom::regio
   cam_geom::region::Region::new(boundaries).ok()
 }
 
+/// Which side of the circle a milled thread runs on.
+///
+/// An **internal** thread is cut inside a hole — the wall the tool approaches from within — and an
+/// **external** one on a boss's outside. The direction decides one number, the radius of the tool
+/// centre's own circle: `(D − t) / 2` for an internal thread and `(D + t) / 2` for an external one, `D`
+/// being the selected circle's diameter and `t` the tool's (M6 A7).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadDirection {
+  /// A thread inside a hole: the tool centre runs inside the circle.
+  #[default]
+  Internal,
+  /// A thread on a boss's outside: the tool centre runs outside the circle.
+  External,
+}
+
+/// Parameters of a thread-milling toolpath.
+///
+/// A thread milled on a circle is one **helical** descent: the tool orbits the selected circle at a
+/// fixed radius and drops one `pitch` per revolution, from the surface to `-cut_depth`, then retracts
+/// (M6 A7). Nothing about the circle's diameter is stored here, and nothing about the tool either: the
+/// circle is the entity the toolpath names and the tool is the library's, so a document cannot disagree
+/// with the geometry it was written against.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ThreadParams {
+  /// Distance the tool descends per revolution, in millimetres.
+  ///
+  /// A pitch that is zero or negative has no descent per revolution behind it, so it is refused by
+  /// name when the document is validated and never clamped into a thread.
+  pub pitch: Length,
+  /// Whether the thread is cut inside the circle or around its outside.
+  pub direction: ThreadDirection,
+  /// Depth at which the descent starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface: the depth the helix reaches before it retracts.
+  pub cut_depth: Length,
+}
+
+impl Default for ThreadParams {
+  fn default() -> Self {
+    Self {
+      pitch: Length::from_mm(1.5),
+      direction: ThreadDirection::Internal,
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -597,6 +646,8 @@ pub enum Operation {
   Texture(TextureParams),
   /// Cut one half of a male/female inlay pair; the pair is two toolpaths sharing one `InlayParams`.
   Inlay(InlayParams),
+  /// Mill a thread: one helical descent around each selected circle, one `pitch` per revolution.
+  Thread(ThreadParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -817,6 +868,36 @@ pub enum ModelError {
     /// The toolpath id.
     toolpath: String,
   },
+  /// A thread's pitch is zero, negative or not a finite number.
+  ///
+  /// The pitch is how far the helix drops each revolution, so a pitch with no distance behind it asks
+  /// for a descent that never descends. Refused here, as the document loads, and again by
+  /// `cam-toolpath::thread`, which sees a caller that bypassed the CLI (M6 A7).
+  #[error(
+    "toolpath {toolpath:?} thread pitch must be a positive number of millimetres, got {value} mm"
+  )]
+  ThreadPitchNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending pitch in millimetres.
+    value: f64,
+  },
+  /// A thread's cut depth does not extend below its start depth.
+  ///
+  /// The rule every one-pass strategy inherits from the profile: a helix whose cut depth is not below
+  /// its start depth has no descent behind it (M6 A7).
+  #[error(
+    "toolpath {toolpath:?} thread cut depth {cut_depth} mm must be greater than its start depth \
+     {start_depth} mm"
+  )]
+  ThreadDepthRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The requested cut depth in millimetres.
+    cut_depth: f64,
+    /// The requested start depth in millimetres.
+    start_depth: f64,
+  },
 }
 
 impl Document {
@@ -919,7 +1000,9 @@ impl Document {
           | Operation::Texture(_)
           // An inlay grows a region and leaves it standing as an island, so its selection must bound
           // one: an open vector bounds none (M6 A6).
-          | Operation::Inlay(_) => true,
+          | Operation::Inlay(_)
+          // A thread runs around a circle, and an open vector bounds no circle (M6 A7).
+          | Operation::Thread(_) => true,
           // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
           // vector and stops at its last vertex. Fluting is that same walk with a ramp at each end,
           // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
@@ -944,6 +1027,7 @@ impl Document {
       check_fluting(toolpath)?;
       check_texture(toolpath)?;
       check_inlay(toolpath)?;
+      check_thread(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
@@ -1042,6 +1126,33 @@ fn check_inlay(toolpath: &Toolpath) -> Result<(), ModelError> {
   if !toolpath.island_ids.is_empty() && !toolpath.entity_ids.is_empty() {
     return Err(ModelError::InlayMaleTakesNoEntities {
       toolpath: toolpath.id.clone(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a thread's own parameters: a helix needs a pitch to descend by and a depth to descend to.
+///
+/// Both are refused here, at the boundary that sees the document before any toolpath exists, and again
+/// by `cam-toolpath::thread`. Whether the selection is a **circle** is not asked here: the model has no
+/// opinion about a shape's identity beyond closed-or-open, and the strategy names the entity that is
+/// not a circle (M6 A7).
+fn check_thread(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Thread(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let pitch = params.pitch.mm();
+  if !pitch.is_finite() || pitch <= 0.0 {
+    return Err(ModelError::ThreadPitchNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: pitch,
+    });
+  }
+  if params.cut_depth.mm() <= params.start_depth.mm() {
+    return Err(ModelError::ThreadDepthRange {
+      toolpath: toolpath.id.clone(),
+      cut_depth: params.cut_depth.mm(),
+      start_depth: params.start_depth.mm(),
     });
   }
   Ok(())

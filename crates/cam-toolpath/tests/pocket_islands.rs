@@ -161,7 +161,7 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         points.push(to);
         previous = Some(to);
       }
-      Move::Feed { .. } | Move::Arc { .. } => {
+      Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
         if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
           points.push(to);
           previous = Some(to);
@@ -205,7 +205,7 @@ fn cut_points(unit: &[Move]) -> Vec<Point2> {
       Move::Retract { .. } => {
         cutting = false;
       }
-      Move::Feed { .. } => {
+      Move::Feed { .. } | Move::Helix { .. } => {
         if cutting {
           let span = previous.distance_to(to);
           let steps = ((span / CUT_STEP).ceil() as usize).max(1);

@@ -1886,3 +1886,269 @@ fn an_inlay_one_millimetre_shallow_is_uncut_and_one_deep_is_gouge() {
     );
   }
 }
+
+// --- thread milling (M6 A7, A9, D-M6-8) -------------------------------------------------------
+
+/// The moves one thread emits, stated here move by move: the orbit's `+x` point at safe Z, a feed down to
+/// the surface in place, one **helical** move per whole revolution of `pitch`, one carrying the fraction
+/// of a turn that reaches the depth, and a retract (M6 A7).
+///
+/// The fixture is the strategy's own geometry, and it is the reason this file needs a helical move at
+/// all: a thread is one continuous descent around a circle, so it cannot be built out of constant-Z arcs.
+fn thread_moves(centre: Point2, orbit: f64, pitch: f64, depth: f64) -> Vec<Move> {
+  let start = Point2::new(centre.x + orbit, centre.y);
+  let mut moves = vec![
+    Move::Rapid {
+      to: Point3::new(start.x, start.y, SAFE_Z),
+    },
+    Move::Feed {
+      to: Point3::new(start.x, start.y, 0.0),
+    },
+  ];
+  let turns = depth / pitch;
+  let whole = turns.floor();
+  for turn in 0..whole as usize {
+    moves.push(Move::Helix {
+      to: Point3::new(start.x, start.y, -pitch * (turn + 1) as f64),
+      center: centre,
+      ccw: true,
+    });
+  }
+  let remainder = depth - pitch * whole;
+  if remainder > 1.0e-9 {
+    let angle = (remainder / pitch) * TAU;
+    moves.push(Move::Helix {
+      to: Point3::new(
+        centre.x + orbit * angle.cos(),
+        centre.y + orbit * angle.sin(),
+        -depth,
+      ),
+      center: centre,
+      ccw: true,
+    });
+  }
+  let last = moves.last().expect("a move").destination();
+  moves.push(Move::Retract {
+    to: Point3::new(last.x.mm(), last.y.mm(), SAFE_Z),
+  });
+  moves
+}
+
+/// The thread fixture's hole: 12 mm across, centred clear of the sheet's edges.
+const THREAD_HOLE: f64 = 12.0;
+/// The tool the thread oracles mill with.
+const THREAD_TOOL: f64 = 4.0;
+/// The depth every thread fixture is cut to.
+const THREAD_DEPTH: f64 = 6.0;
+/// The pitch every thread fixture descends by.
+const THREAD_PITCH: f64 = 1.5;
+
+fn thread_fixture(pitch: f64, direction: cam_model::ThreadDirection, depth: f64) -> Document {
+  document(
+    STOCK,
+    &[("hole", circle(Point2::new(50.0, 50.0), THREAD_HOLE / 2.0))],
+    vec![Toolpath {
+      id: "thread 1".to_owned(),
+      name: "Thread".to_owned(),
+      entity_ids: vec!["hole".to_owned()],
+      island_ids: Vec::new(),
+      tool_number: 1,
+      operation: Operation::Thread(cam_model::ThreadParams {
+        pitch: Length::from_mm(pitch),
+        direction,
+        start_depth: Length::ZERO,
+        cut_depth: Length::from_mm(depth),
+      }),
+    }],
+  )
+}
+
+/// The orbit a thread runs on: `(D − t)/2` inside the circle, `(D + t)/2` outside it.
+fn thread_orbit(direction: cam_model::ThreadDirection) -> f64 {
+  match direction {
+    cam_model::ThreadDirection::Internal => (THREAD_HOLE - THREAD_TOOL) / 2.0,
+    cam_model::ThreadDirection::External => (THREAD_HOLE + THREAD_TOOL) / 2.0,
+  }
+}
+
+#[test]
+fn an_internal_thread_removes_the_annulus_between_d_minus_t_and_d() {
+  // A9's arithmetic for thread milling, from M6 A7's geometry: the tool orbits at `(D − t)/2` with a
+  // radius of `t/2`, so its disc sweeps the annulus between `D/2 − t = 2` and `D/2 = 6` mm, and the
+  // analytic volume is that annulus times the depth:
+  //
+  //   π · ((D/2)² − (D/2 − t)²) · d = π · t · (D − t) · d = π · 4 · 8 · 6 = 603.186 mm3
+  //
+  // The published bound is the annulus's perimeter times half a cell times the depth, both circles
+  // included: `(2π·6 + 2π·2) · 1/2 · 6 = 150.796` mm3.
+  //
+  // The measurement is 541.000 mm3 rather than 603.186, and the 62.186 mm3 between them is not slack: it
+  // is the **crest** a helical descent leaves. The floor of the swept annulus is a spiral — one pitch per
+  // revolution — so the material a thread leaves standing between two revolutions is real, and the
+  // analytic above is the *full annulus at `cut_depth`*, which no helix can remove. Three numbers state
+  // the whole of it, and none of them is a tolerance:
+  //
+  // - `603.186` — the analytic: the annulus at one depth, i.e. what a flat-bottomed cut would remove.
+  // - `542.288` — what the claim authorises, measured by summing it over the grid: the spiral, which
+  //   averages `cut_depth − pitch/2 = 5.25` mm deep (`527.788` mm3), deepened by the angular window of
+  //   the tool's own footprint — a cell is reached from angles up to `α` past its own, and the later pass
+  //   is the deeper one — and quantised onto 1 mm cells.
+  // - `541.000` — what the program removes: the same spiral, sampled. The `1.288` mm3 between this and
+  //   the claim is the sampling (`cell²/(32·r)` per cell, the published coverage bound), and it is why
+  //   the claim is taken as the maximum over the footprint rather than at the tip: the tip's law alone
+  //   would authorise *less* than the program removes and report a correct thread as a gouge.
+  let direction = cam_model::ThreadDirection::Internal;
+  let moves = thread_moves(
+    Point2::new(50.0, 50.0),
+    thread_orbit(direction),
+    THREAD_PITCH,
+    THREAD_DEPTH,
+  );
+  assert_eq!(
+    moves.len(),
+    2 + 4 + 1,
+    "two entries, four whole revolutions at a 1.5 mm pitch over 6 mm, and a retract"
+  );
+  let field = cut(STOCK, CELL, THREAD_TOOL, moves);
+
+  let analytic = PI * THREAD_TOOL * (THREAD_HOLE - THREAD_TOOL) * THREAD_DEPTH;
+  let bound = (2.0 * PI * THREAD_HOLE / 2.0 + 2.0 * PI * (THREAD_HOLE / 2.0 - THREAD_TOOL)) * CELL
+    / 2.0
+    * THREAD_DEPTH;
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+
+  // And the target authorises exactly the spiral the helix leaves, per cell, so a correct **coarse**
+  // thread is clean on both signs — the acceptance this claim exists for. The claim is the maximum the
+  // law allows anywhere the tool could have removed the cell, so it can only be tighter than the sweep by
+  // one sampling interval of angle, well inside the judgement's eighth of a cell.
+  let document = thread_fixture(THREAD_PITCH, direction, THREAD_DEPTH);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(THREAD_TOOL))
+    .expect("the spiral's claim derives");
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a 1.5 mm pitch on a 1 mm cell is the spacing a real thread uses, and it is clean: {deviation:?}"
+  );
+}
+
+#[test]
+fn an_external_thread_removes_the_annulus_between_d_and_d_plus_t() {
+  // The same arithmetic outside the circle: the orbit is `(D + t)/2 = 8`, the annulus runs from
+  // `D/2 = 6` to `D/2 + t = 10`, and the analytic volume is `π · t · (D + t) · d = π · 4 · 16 · 6 =
+  // 1206.372` mm3. The bound is `(2π·10 + 2π·6) · 1/2 · 6 = 301.593` mm3.
+  let direction = cam_model::ThreadDirection::External;
+  let moves = thread_moves(
+    Point2::new(50.0, 50.0),
+    thread_orbit(direction),
+    THREAD_PITCH,
+    THREAD_DEPTH,
+  );
+  let field = cut(STOCK, CELL, THREAD_TOOL, moves);
+
+  let analytic = PI * THREAD_TOOL * (THREAD_HOLE + THREAD_TOOL) * THREAD_DEPTH;
+  let bound = (2.0 * PI * (THREAD_HOLE / 2.0 + THREAD_TOOL) + 2.0 * PI * THREAD_HOLE / 2.0) * CELL
+    / 2.0
+    * THREAD_DEPTH;
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+
+  let document = thread_fixture(THREAD_PITCH, direction, THREAD_DEPTH);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(THREAD_TOOL))
+    .expect("the spiral's claim derives");
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a clean external thread is clean on both signs, as an internal one is: {deviation:?}"
+  );
+}
+
+#[test]
+fn a_thread_cut_a_millimetre_shallow_is_uncut_and_a_millimetre_deep_is_a_gouge() {
+  // A9's second sign, both ways, at the fixture's own coarse pitch: a descent that stops a millimetre
+  // short leaves the spiral shallow everywhere — uncut, never gouge — and one that runs a millimetre past
+  // cuts deeper than the spiral everywhere, because the exact claim tracks the crest instead of levelling
+  // it at the depth. (The pitch no longer has to be squeezed under the tolerance for the deep case to read
+  // as a gouge at every cell; the claim's own one-pitch generosity is gone.)
+  let pitch = THREAD_PITCH;
+  let direction = cam_model::ThreadDirection::Internal;
+  let centre = Point2::new(50.0, 50.0);
+  let orbit = thread_orbit(direction);
+  let target = target_for(
+    &thread_fixture(pitch, direction, THREAD_DEPTH),
+    Length::from_mm(CELL),
+    &tools(THREAD_TOOL),
+  )
+  .expect("the annulus claim derives");
+  let tolerance = Length::from_mm(CELL / 8.0);
+
+  let shallow = cut(
+    STOCK,
+    CELL,
+    THREAD_TOOL,
+    thread_moves(centre, orbit, pitch, THREAD_DEPTH - 1.0),
+  );
+  let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+  assert_eq!(shallow.gouge, 0.0, "a millimetre shallow gouges nothing");
+  assert_eq!(shallow.gouge_cells, 0);
+  assert!(
+    shallow.uncut > 0.0 && shallow.uncut_cells > 0,
+    "a millimetre shallow is uncut: {shallow:?}"
+  );
+
+  let deep = cut(
+    STOCK,
+    CELL,
+    THREAD_TOOL,
+    thread_moves(centre, orbit, pitch, THREAD_DEPTH + 1.0),
+  );
+  let deep = deviations(&deep, &target, tolerance).expect("one grid");
+  assert_eq!(deep.uncut, 0.0, "a millimetre deep leaves nothing uncut");
+  assert_eq!(deep.uncut_cells, 0);
+  assert!(
+    deep.gouge > 0.0 && deep.gouge_cells > 0,
+    "a millimetre deep is a gouge: {deep:?}"
+  );
+}
+
+#[test]
+fn a_coarse_thread_is_clean_and_a_fine_one_is_too() {
+  // The claim is exact for every pitch, so the sub-tolerance fixture the upper-bound claim needed is
+  // gone: what used to be "clean only when the pitch is inside the judgement" is now "clean at a real
+  // pitch", and a pitch of a twentieth of a millimetre is clean for the same reason. Two pitches, four
+  // times apart, no deviation on either sign.
+  for pitch in [THREAD_PITCH, 0.05] {
+    let direction = cam_model::ThreadDirection::Internal;
+    let target = target_for(
+      &thread_fixture(pitch, direction, THREAD_DEPTH),
+      Length::from_mm(CELL),
+      &tools(THREAD_TOOL),
+    )
+    .expect("the spiral's claim derives");
+    let field = cut(
+      STOCK,
+      CELL,
+      THREAD_TOOL,
+      thread_moves(
+        Point2::new(50.0, 50.0),
+        thread_orbit(direction),
+        pitch,
+        THREAD_DEPTH,
+      ),
+    );
+    let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+    assert_eq!(
+      deviation,
+      Deviation::default(),
+      "a {pitch} mm pitch leaves nothing to report"
+    );
+  }
+}

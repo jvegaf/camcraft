@@ -606,3 +606,146 @@ fn a_ramp_is_sampled_finely_enough_that_its_floor_is_within_a_sixteenth_of_a_cel
     "the entry's first cell: ramp {sup_near_end}, removed {removed_near_end}"
   );
 }
+
+// --- helical moves (M6 A7, D-M6-8, D-M6-12) ----------------------------------------------------
+
+/// The depth the sweep removed at the cell nearest `point`.
+fn removal_at(field: &Heightfield, point: Point2) -> f64 {
+  let grid = field.grid();
+  let mut best: Option<(f64, f64)> = None;
+  for row in 0..grid.rows {
+    for column in 0..grid.columns {
+      let centre = field.cell_centre(column, row);
+      let distance = centre.distance_to(point);
+      if best.map_or(true, |(_, nearest)| distance < nearest) {
+        best = Some((-field.surface(column, row), distance));
+      }
+    }
+  }
+  best.expect("a grid with cells").0
+}
+
+#[test]
+fn a_helical_move_descends_along_its_arc() {
+  // Half a turn of a 10 mm circle, from the surface to `-4`, cut by a 2 mm tool. D-M6-12's
+  // interpolation is what makes this a *descending* path rather than a step: at each sampled point the
+  // sweep removes the depth the move has reached **there**, so the floor is graded by the angle and the
+  // deepest cell is at the end of the turn.
+  let mut field = field(40.0, 1.0);
+  let centre = Point2::new(20.0, 20.0);
+  let radius = 10.0;
+  let depth = 4.0;
+  let start = Point2::new(centre.x + radius, centre.y);
+
+  sweep::apply_move(
+    &mut field,
+    Point3::new(start.x, start.y, 0.0),
+    Move::Helix {
+      to: Point3::new(centre.x - radius, centre.y, -depth),
+      center: centre,
+      ccw: true,
+    },
+    ToolShape::cylinder(Length::from_mm(2.0)),
+  );
+
+  for (fraction, degrees) in [
+    (0.0, 0.0),
+    (0.25, 45.0),
+    (0.5, 90.0),
+    (0.75, 135.0),
+    (1.0, 180.0),
+  ] {
+    let angle = fraction * std::f64::consts::PI;
+    let point = Point2::new(
+      centre.x + radius * angle.cos(),
+      centre.y + radius * angle.sin(),
+    );
+    let expected = depth * fraction;
+    let removed = removal_at(&field, point);
+    assert!(
+      (removed - expected).abs() < 0.2,
+      "at {degrees} degrees of the turn the tool has descended {expected} mm, and the sweep recorded \
+       {removed} mm"
+    );
+  }
+  // The middle of the circle is never touched: a helical move is an arc that descends, not a disc.
+  assert_eq!(removal_at(&field, centre), 0.0, "the arc's interior stands");
+}
+
+#[test]
+fn a_full_turn_helix_is_one_revolution_and_grades_one_pitch_around_it() {
+  // A full turn's destination is its own start point, which is one revolution — the same reading a
+  // full-circle arc has — and the one revolution descends the whole of its pitch around it. So the floor
+  // is a spiral: the depth at each angle is that angle's share of the descent, and after one turn every
+  // angle has been passed exactly once by this move.
+  //
+  // The fraction the probe is *behind* the tool is not tested, and the reason is the geometry rather
+  // than convenience: a 2 mm tool on a 10 mm circle covers a cell half a hundredth of a turn ahead of its
+  // own centre, so the start point itself is passed once more at the very end of the revolution — a full
+  // turn ends where it began — and reads the final depth. Every other angle reads its own share.
+  let mut field = field(40.0, 1.0);
+  let centre = Point2::new(20.0, 20.0);
+  let radius = 10.0;
+  let depth = 2.0;
+  let point = Point2::new(centre.x + radius, centre.y);
+
+  sweep::apply_move(
+    &mut field,
+    Point3::new(point.x, point.y, 0.0),
+    Move::Helix {
+      to: Point3::new(point.x, point.y, -depth),
+      center: centre,
+      ccw: true,
+    },
+    ToolShape::cylinder(Length::from_mm(2.0)),
+  );
+
+  let probe_at = |field: &Heightfield, fraction: f64| {
+    let angle = fraction * std::f64::consts::TAU;
+    removal_at(
+      field,
+      Point2::new(
+        centre.x + radius * angle.cos(),
+        centre.y + radius * angle.sin(),
+      ),
+    )
+  };
+  for fraction in [0.25_f64, 0.5, 0.75] {
+    let expected = depth * fraction;
+    let removed = probe_at(&field, fraction);
+    assert!(
+      (removed - expected).abs() < 0.2,
+      "at {fraction} of the turn the tool has descended {expected} mm, and the sweep recorded {removed}"
+    );
+  }
+  assert!(
+    (probe_at(&field, 0.0) - depth).abs() < 0.2,
+    "the start point is passed again where the revolution ends, at the final depth"
+  );
+
+  // A second revolution of the same pitch passes every angle again, a pitch deeper: the deepest pass at
+  // any angle is the later one, which is why a thread's descent is several moves and not one.
+  sweep::apply_move(
+    &mut field,
+    Point3::new(point.x, point.y, -depth),
+    Move::Helix {
+      to: Point3::new(point.x, point.y, -2.0 * depth),
+      center: centre,
+      ccw: true,
+    },
+    ToolShape::cylinder(Length::from_mm(2.0)),
+  );
+  for fraction in [0.25_f64, 0.5, 0.75] {
+    let expected = depth + depth * fraction;
+    let removed = probe_at(&field, fraction);
+    assert!(
+      (removed - expected).abs() < 0.2,
+      "after the second revolution {fraction} of the turn is at {expected} mm, recorded {removed}"
+    );
+  }
+  assert_eq!(
+    removal_at(&field, centre),
+    0.0,
+    "and the middle is still standing"
+  );
+}

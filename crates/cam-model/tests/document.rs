@@ -1010,3 +1010,89 @@ fn the_job_outline_is_one_rectangle_in_document_coordinates() {
   };
   assert_eq!(top_left.outline(), outline);
 }
+
+// --- thread milling (M6 A7, D-M6-8) ----------------------------------------------------------
+
+/// A thread toolpath on the square's one entity: `pitch` millimetres a turn, `cut` deep, from `start`.
+fn thread_document(pitch: f64, direction: ThreadDirection, start: f64, cut: f64) -> Document {
+  document_with(Operation::Thread(ThreadParams {
+    pitch: Length::from_mm(pitch),
+    direction,
+    start_depth: Length::from_mm(start),
+    cut_depth: Length::from_mm(cut),
+  }))
+}
+
+#[test]
+fn a_thread_toolpath_round_trips_with_its_direction() {
+  // `ThreadDirection` is a snake_case tag like every other enum in the schema, and the operation is
+  // additive under the existing `kind` tag (A1): the schema stays `c2d/document@2`.
+  let document = thread_document(1.5, ThreadDirection::External, 1.0, 9.0);
+  document
+    .validate()
+    .expect("a thread on closed geometry is valid");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"thread\""), "{json}");
+  assert!(json.contains("\"direction\":\"external\""), "{json}");
+  assert!(json.contains("\"pitch\":1.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  assert!(
+    json.contains(DOCUMENT_SCHEMA),
+    "the schema tag is unchanged"
+  );
+}
+
+#[test]
+fn a_threads_pitch_must_be_a_positive_number_of_millimetres() {
+  // A pitch of zero is a descent of zero per revolution, which is not a thread: it is refused naming the
+  // toolpath and the value rather than clamped into one.
+  for pitch in [0.0, -1.5] {
+    let document = thread_document(pitch, ThreadDirection::Internal, 0.0, 6.0);
+    let error = document
+      .validate()
+      .expect_err("must refuse a pitch with no thread behind it");
+    assert_eq!(
+      error,
+      ModelError::ThreadPitchNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: pitch,
+      }
+    );
+    assert!(
+      error.to_string().contains(&pitch.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_threads_cut_depth_must_extend_below_its_start_depth() {
+  let document = thread_document(1.5, ThreadDirection::Internal, 6.0, 6.0);
+  let error = document.validate().expect_err("nothing to cut");
+  assert_eq!(
+    error,
+    ModelError::ThreadDepthRange {
+      toolpath: "TP1".to_owned(),
+      cut_depth: 6.0,
+      start_depth: 6.0,
+    }
+  );
+}
+
+#[test]
+fn a_thread_needs_closed_geometry() {
+  // A thread runs around a circle, and an open vector bounds no circle. The model refuses the open
+  // vector before the strategy has to, and `cam-toolpath::thread` refuses a closed non-circle too.
+  let mut document = thread_document(1.5, ThreadDirection::Internal, 0.0, 6.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("an open vector"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}

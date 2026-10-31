@@ -439,28 +439,71 @@ fn a_cut_depth_at_or_below_the_start_depth_is_refused() {
 }
 
 #[test]
-fn a_ramp_across_an_arc_is_refused_rather_than_chorded() {
-  // A ramped move cannot ride on `Move::Arc`, which is documented constant Z, and the move vocabulary has
-  // no helical move yet (T7 adds one). Chording the ramp to a sagitta would put the move vocabulary's
-  // limit into the program the machine runs — the trade the staircase already lost — so the strategy
-  // refuses by name instead: on this 25 mm circle a 10 mm chord sits `10² / (8 · 25) = 0.5` mm inside the
-  // vector, which is a gouge on one side of the ramp and uncut material on the other.
+fn a_ramped_arc_is_cut_as_a_helix_along_the_arc() {
+  // T4 refused this: a ramped move cannot ride on `Move::Arc`, which is constant-Z, so the ramp would
+  // have been cut as a straight chord — `ramp² / (8·r) = 10² / (8 · 25) = 0.5` mm inside the vector on
+  // this 25 mm circle, a gouge on one side of the ramp and uncut material on the other. T7's helical
+  // move lifts the refusal: the ramp now rides on the contour's own arc and descends as it goes, so its
+  // XY radius is the contour's radius and never a chord's.
   let contour = circle(25.0);
-  let refused = fluting(&request(
-    &contour,
-    &params(6.0, 0.0, 10.0),
-    &tool(6.0),
-    &job(),
-  ));
-  assert_eq!(refused, Err(ToolpathError::RampOnArc { ramp: 10.0 }));
-  let message = refused.expect_err("refused").to_string();
-  assert!(
-    message.contains("ramp") && message.contains("arc"),
-    "the refusal names the ramp and the arc: {message}"
+  let moves = run(&contour, &params(6.0, 0.0, 10.0), &tool(6.0));
+
+  let helixes: Vec<&Move> = moves
+    .iter()
+    .filter(|movement| matches!(movement, Move::Helix { .. }))
+    .collect();
+  assert_eq!(
+    helixes.len(),
+    2,
+    "the entry and the exit are helixes, and nothing else is: {moves:?}"
   );
+  for movement in &helixes {
+    let Move::Helix { center, to, .. } = movement else {
+      unreachable!("filtered")
+    };
+    assert!(
+      (center.distance_to(to.xy()) - 25.0).abs() < 1.0e-9,
+      "each ramp rides the vector's own circle rather than its chord: {movement:?}"
+    );
+    assert!(
+      center.is_near(Point2::new(25.0, 40.0), 1.0e-9),
+      "about the circle's own centre: {movement:?}"
+    );
+  }
+  // Ten millimetres of arc on a 25 mm circle is `10 / 25` radians, which is where the entry ends and the
+  // plateau begins: the ramp is measured along the vector, exactly as it is on a line.
+  let Move::Helix { to: entered, .. } = *helixes[0] else {
+    unreachable!("filtered")
+  };
+  let angle: f64 = 10.0 / 25.0;
   assert!(
-    message.contains("helical") && message.contains("chord"),
-    "and the reason it cannot follow one, and what it would otherwise become: {message}"
+    entered.xy().is_near(
+      Point2::new(25.0 + 25.0 * angle.cos(), 40.0 + 25.0 * angle.sin()),
+      1.0e-9
+    ),
+    "the entry covers exactly the ramp's arc length: {entered:?}"
+  );
+  assert_eq!(entered.z.mm(), -6.0, "and reaches the depth at its end");
+
+  // The plateau between the two ramps is still ordinary constant-Z arcs, and the program is still one
+  // pass: the Z sequence descends once and ascends once.
+  let arcs = moves
+    .iter()
+    .filter(|movement| matches!(movement, Move::Arc { .. }))
+    .count();
+  assert_eq!(arcs, 2, "the plateau keeps the circle's arcs: {moves:?}");
+  assert!(
+    one_trough(&moves),
+    "one pass: the Z sequence descends once and ascends once, got {:?}",
+    depths(&moves)
+  );
+  let Move::Helix { to: left, .. } = *helixes[1] else {
+    unreachable!("filtered")
+  };
+  assert_eq!(left.z.mm(), 0.0, "the exit ramp ends at the surface");
+  assert!(
+    left.xy().is_near(Point2::new(50.0, 40.0), 1.0e-9),
+    "and lands back on the vertex the loop opened at: {left:?}"
   );
 }
 

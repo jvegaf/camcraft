@@ -78,6 +78,10 @@ the tool sweeps there:
 - **Arc moves are swept as arcs.** The circle comes from the move's own centre and radius, so a full circle
   leaves the middle of the circle standing. A chord sweep would cut the hole solid, and the test that
   proves it is a full-circle arc whose centre cell is still at `0`.
+- **A helical move is swept by the same code**, because it is an arc that descends: the footprint is the
+  arc's, and only the Z differs — interpolated by angle, which is what makes a thread's floor the spiral
+  the descent leaves instead of a step. A full turn's destination is its own start point, so one
+  revolution is one move.
 - **A `Rapid` never cuts.** A rapid or a retract at or above the surface removes nothing and is not a
   crash. A rapid that ends **below** the surface at its destination cell is a crash: it is reported with
   its toolpath, its move index and its position, and it does not cut. M4's conservative linking retracts
@@ -107,6 +111,7 @@ Sampling is deterministic and a function of the move's own numbers:
 | --- | --- |
 | Line | A step of `cell / 2` along its length, a disc of the tool radius at each sample, of the depth it has reached there |
 | Arc | An angular step of `cell / (2 · r)` radians, `r` being the arc's own radius, a disc at each sample, of the depth the angle has reached |
+| Helix | The same angular step as an arc's, at the arc's own radius: a full turn is one revolution and its Z is read at the angle, exactly as an arc's constant Z is |
 
 Either count is then raised, if the move's `z` asks for it, to `16 · |Δz| / cell` samples: two neighbouring
 samples differ in depth by `grade · step`, and a cell's footprint reaches past the last sample inside it,
@@ -122,9 +127,10 @@ why every constant-depth result is bit-identical to M5's.
 Sampling at half a cell is what makes the union of discs cover the swept capsule within one cell, which is
 inside the coverage bound above. The stream carries no explicit start position, so a segment's first move
 starts where it ends: a plunge is a single disc rather than an approach the program never declared. The
-tool radius comes from the `Segment`'s own `tool_diameter`, which M5 added to the move vocabulary because
-the stream carried the tool's number but not its size — the emitter ignores the field, and its tests are
-unchanged.
+tool's footprint comes from the `Segment`'s own `tool` shape — a cylinder's diameter or a V-bit's cone —
+which M5 added to the move vocabulary because the stream carried the tool's number but not its size, and
+which M6 widened to a shape once a chamfer needed a cone (`ToolShape::radius_at` and `rise_at_radius`).
+The emitter ignores it, and its tests are unchanged.
 
 ## The target surface
 
@@ -136,7 +142,23 @@ everywhere the document claims nothing. Each operation's form of it:
 | `pocket` | Its region — boundaries minus islands — inset by `allowance` | `cut_depth` |
 | `drilling` | Each selected hole's circle | `cut_depth` |
 | `profile` | The band the tool **sweeps**: `allowance … 2·radius + allowance` outside the vector, the same band inwards for `inside`, and `±radius` for `on` | `cut_depth`, less a tab's `height` inside the tab's span |
+| `chamfer` | The vector's band out to the cone's own reach at its depth | `depth − rise(distance)`, capped at the chamfer's derived depth (M6 A8) |
+| `engrave`, `texture` | The tool's footprint band **along** each vector or groove | `cut_depth − rise(distance)`, clamped at zero |
+| `fluting` | That same band along the vector | The ramp's law along the path: `min(depth, depth·s/ramp, depth·(L − s)/ramp)`, less the tool's rise, and the maximum of it anywhere the footprint could have removed the cell |
+| `inlay` | The female's region grown by the allowance, and the male's job rectangle with the region standing | `cut_depth` |
+| `thread` | The **annulus the helix sweeps**: `D/2 − t … D/2` for an internal thread and `D/2 … D/2 + t` for an external one, `D` the selected circle's diameter and `t` the tool's | The **spiral the descent leaves**, cell by cell: `cut_depth − pitch · ((θ_end − θ) mod 2π) / 2π`, deepened to the last pass the tool's own footprint reaches that cell at — see the paragraph below the table |
 | Anything else | — | `0` |
+
+The `thread` row is the one law in that table that is not a depth at a distance but a depth **at an
+angle**: the descent is a helix, so the material a cell is authorised to lose depends on where the descent
+has reached when it passes that cell's own angle. With `turns = cut_depth / pitch` revolutions from the
+seam — the orbit's `+x` point, where the strategy starts and where every revolution turns over — the depth
+at unwrapped angle `Φ` is `pitch · Φ / 2π`, and a cell at angle `θ` is authorised the deepest pass that
+covers it, which is the last one within the tool's angular footprint window (or `cut_depth` itself when
+the seam covers the cell, which is what makes the seam's own cell the deepest in the annulus). Two
+consequences worth stating: a descent of **less than one revolution** sweeps only the sector it travels
+and leaves the rest of the annulus unauthorised, and a **tool as wide as the hole** has no orbit at all and
+is refused by name rather than clamped.
 
 Three of those rows are decisions rather than arithmetic:
 
@@ -229,6 +251,19 @@ program, no cache, and the file on disk is compared before and after by the test
   `uncut: 300.000 mm3 over 200 cell(s)`: the cell centres between two tangent rows are past the radius.
   The raster fixture pins the row lattice at 1 mm cells, which is the resolution the coverage bound is
   written for. It is not a resolution-independent claim, and it is stated rather than implied.
+- **A thread's claim is the spiral its helix leaves — this entry was a limit, and is now a resolved one.**
+  (M6 A7.) A helical descent leaves the material between two revolutions standing, and that material *is*
+  the thread, so its floor is one pitch per revolution rather than flat. The first version of the claim
+  authorised `cut_depth` across the whole annulus, on the argument that every point of it is passed by
+  every revolution and the last pass is the deepest one: true, but the last revolution passes each point
+  at that point's own angle, so the claim was an **upper bound** short by up to one pitch, and a correct
+  thread with a pitch coarser than a cell's eighth was reported as **uncut** and exited `6` — which no
+  real pitch escapes. The claim is now the floor itself, computed per cell as the deepest pass that covers
+  it (`cam-sim::target`'s `claim_helix` carries the derivation, its footprint window and its two
+  degenerate cases), so a coarse thread is clean on both signs and the entry above this one is history
+  rather than a limit. What remains is the sampling: the claim is the continuous maximum over the tool's
+  footprint and the sweep is a set of samples, so the claim can be a fraction of a cell's eighth generous
+  — the same one-sided, harmless residue every other graded claim here has.
 - **A cut deeper than the stock reports as uncut** (L6). A document whose `cut_depth` exceeds the stock's
   thickness authorises more than the field can remove, so the difference is reported as uncut — the honest
   reading of "the program does not reach the declared depth". The field itself stops at `-thickness` and

@@ -1795,3 +1795,237 @@ fn an_inlay_needs_no_tool_shape() {
   assert_eq!(target.authorised(40, 40), 6.0);
   assert_eq!(target.authorised(5, 5), 6.0);
 }
+
+// --- thread milling (M6 A7, A9, D-M6-8) -------------------------------------------------------
+
+/// A thread on `entities`: `pitch` millimetres a turn, `direction`, from `start` to `cut`.
+fn thread(
+  id: &str,
+  entities: &[&str],
+  pitch: f64,
+  direction: cam_model::ThreadDirection,
+  start: f64,
+  cut: f64,
+) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Thread".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Thread(cam_model::ThreadParams {
+      pitch: Length::from_mm(pitch),
+      direction,
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+    }),
+  }
+}
+
+/// Check a thread's annulus bounds: nothing outside is claimed, and something inside is.
+///
+/// A band of one cell at each edge is left unasserted, because a cell whose centre lies on a boundary is
+/// claimed or not by the region's own tolerance, which is a different question from the annulus's
+/// arithmetic. The depth inside is **not** asserted here: it is a spiral, and each test pins its own
+/// points of it (M6 A7).
+fn assert_annulus(target: &Target, centre: Point2, inner: f64, outer: f64, depth: f64) {
+  let grid = target.grid();
+  let cell = grid.cell.mm();
+  let mut claimed_inside = 0;
+  for row in 0..grid.rows {
+    for column in 0..grid.columns {
+      let radius = grid.centre(column, row).distance_to(centre);
+      let authorised = target.authorised(column, row);
+      if radius < inner - cell {
+        assert_eq!(
+          authorised, 0.0,
+          "a cell {radius} mm from the centre is inside the thread's inner bound {inner} and is \
+           authorised nothing"
+        );
+      } else if radius > outer + cell {
+        assert_eq!(
+          authorised, 0.0,
+          "a cell {radius} mm from the centre is outside the thread's outer bound {outer}"
+        );
+      } else if radius > inner + cell && radius < outer - cell {
+        assert!(
+          authorised > 0.0 && authorised <= depth + 1e-9,
+          "a cell {radius} mm from the centre is inside the annulus {inner}..{outer} and is authorised \
+           {authorised} mm, which is neither nothing nor more than the depth"
+        );
+        claimed_inside += 1;
+      }
+    }
+  }
+  assert!(
+    claimed_inside > 0,
+    "the annulus {inner}..{outer} must claim at least one cell"
+  );
+}
+
+#[test]
+fn an_internal_thread_claims_the_spiral_its_helix_leaves_inside_the_annulus() {
+  // A 12 mm hole milled by a 4 mm tool: the tool orbits at `(D − t)/2 = 4`, so its disc sweeps the annulus
+  // between `D/2 − t = 2` and `D/2 = 6` mm. Inside it the claim is **not** flat, and that is the point of
+  // the exact round: a helical descent leaves a spiral, one pitch per revolution, so the deepest the
+  // program can reach at a cell depends on where the descent's seam falls relative to that cell's own
+  // angle. The seam is the orbit's `+x` point — where the strategy starts and where every revolution turns
+  // over — so the cell there is authorised the full depth and the cell diametrically opposite it is
+  // authorised a pitch shallower.
+  let centre = Point2::new(50.0, 50.0);
+  let document = document(
+    100.0,
+    &[("hole", circle(centre, 6.0))],
+    vec![thread(
+      "thread 1",
+      &["hole"],
+      1.5,
+      cam_model::ThreadDirection::Internal,
+      0.0,
+      6.0,
+    )],
+  );
+  let target = target_for(&document, cell(), &tools(4.0)).expect("the claim derives");
+
+  // The annulus bounds are the same as they were: outside is unauthorised, inside is authorised something.
+  assert_annulus(&target, centre, 2.0, 6.0, 6.0);
+
+  let grid = target.grid();
+  let authorised_at = |angle: f64, radius: f64| -> f64 {
+    let point = Point2::new(
+      centre.x + radius * angle.cos(),
+      centre.y + radius * angle.sin(),
+    );
+    let column = ((point.x - grid.origin.x) / CELL).floor() as usize;
+    let row = ((point.y - grid.origin.y) / CELL).floor() as usize;
+    target.authorised(column, row)
+  };
+
+  // At the seam the descent ends exactly on the cell's own angle, so the claim is the depth itself.
+  let seam = authorised_at(0.0, 4.0);
+  assert!(
+    (seam - 6.0).abs() < 1e-9,
+    "the cell at the seam is authorised the whole depth, got {seam}"
+  );
+  // Half a turn away it is a pitch shallower: one revolution later, and that revolution has not reached
+  // the depth yet.
+  let opposite = authorised_at(PI, 4.0);
+  assert!(
+    (opposite - (6.0 - 0.75)).abs() < 0.4,
+    "half a turn from the seam the spiral is about half a pitch short: {opposite}, against {}",
+    6.0 - 0.75
+  );
+
+  // The whole annulus is a spiral of one pitch: nothing claims more than the depth, nothing claims less
+  // than a pitch under it, and the range really is most of a pitch. A flat claim of `cut_depth` over the
+  // annulus — the reading this round replaced — would fail the first thing and the last.
+  let mut low = f64::INFINITY;
+  let mut high: f64 = 0.0;
+  for row in 0..grid.rows {
+    for column in 0..grid.columns {
+      let radius = grid.centre(column, row).distance_to(centre);
+      if radius > 2.0 + CELL / 2.0 && radius < 6.0 - CELL / 2.0 {
+        let claim = target.authorised(column, row);
+        low = low.min(claim);
+        high = high.max(claim);
+      }
+    }
+  }
+  assert!(high <= 6.0, "nothing claims more than the depth: {high}");
+  assert!(
+    low >= 6.0 - 1.5,
+    "and nothing claims less than a pitch under it: {low}"
+  );
+  assert!(
+    high - low > 1.0,
+    "the claim is a spiral, not a flat disc: {low}..{high}"
+  );
+
+  // Its volume is the annulus times the spiral's mean depth, `cut_depth − pitch/2`: the seam's phase is
+  // uniform over the annulus, so the mean of the one-pitch gradient is half a pitch. `π · 32 · 5.25 =
+  // 527.788` mm3, within the same coverage bound of `150.796` mm3.
+  let analytic = PI * (6.0_f64.powi(2) - 2.0_f64.powi(2)) * (6.0 - 1.5 / 2.0);
+  let bound = (2.0 * PI * 6.0 + 2.0 * PI * 2.0) * CELL / 2.0 * 6.0;
+  let volume = authorised_volume(&target);
+  assert!(
+    (volume - analytic).abs() <= bound,
+    "authorised {volume} mm3 against the spiral's {analytic} mm3, bound {bound} mm3"
+  );
+}
+
+#[test]
+fn an_external_thread_claims_the_spiral_outside_the_boss() {
+  // The same circle cut as a boss: the orbit is `(D + t)/2 = 8`, the annulus runs from `D/2 = 6` to
+  // `D/2 + t = 10`, and the claim is the same spiral — `cut_depth − pitch · ((θ_end − θ) mod 2π)/2π`
+  // measured about the circle's centre — at `cut_depth = 4` and a 2 mm pitch.
+  let centre = Point2::new(50.0, 50.0);
+  let document = document(
+    100.0,
+    &[("boss", circle(centre, 6.0))],
+    vec![thread(
+      "thread 1",
+      &["boss"],
+      2.0,
+      cam_model::ThreadDirection::External,
+      0.0,
+      4.0,
+    )],
+  );
+  let target = target_for(&document, cell(), &tools(4.0)).expect("the claim derives");
+
+  assert_annulus(&target, centre, 6.0, 10.0, 4.0);
+
+  let grid = target.grid();
+  let authorised_at = |angle: f64| -> f64 {
+    let point = Point2::new(centre.x + 8.0 * angle.cos(), centre.y + 8.0 * angle.sin());
+    let column = ((point.x - grid.origin.x) / CELL).floor() as usize;
+    let row = ((point.y - grid.origin.y) / CELL).floor() as usize;
+    target.authorised(column, row)
+  };
+  let seam = authorised_at(0.0);
+  assert!(
+    (seam - 4.0).abs() < 1e-9,
+    "the external thread's seam is authorised the whole depth, got {seam}"
+  );
+  let opposite = authorised_at(PI);
+  assert!(
+    (opposite - (4.0 - 1.0)).abs() < 0.5,
+    "and half a turn away it is half a pitch short: {opposite}"
+  );
+
+  // `π · (10² − 6²) · (4 − 1) = 603.186` mm3, bound `(2π·10 + 2π·6) · 1/2 · 4 = 201.062` mm3.
+  let analytic = PI * (10.0_f64.powi(2) - 6.0_f64.powi(2)) * (4.0 - 2.0 / 2.0);
+  let bound = (2.0 * PI * 10.0 + 2.0 * PI * 6.0) * CELL / 2.0 * 4.0;
+  let volume = authorised_volume(&target);
+  assert!(
+    (volume - analytic).abs() <= bound,
+    "authorised {volume} mm3 against the spiral's {analytic} mm3, bound {bound} mm3"
+  );
+}
+
+#[test]
+fn a_thread_on_geometry_that_is_not_a_circle_is_refused_by_the_claim() {
+  // The document model cannot tell a circle from any other closed contour, so the claim — which needs
+  // the diameter the tool orbits — is the boundary that names it.
+  let document = document(
+    100.0,
+    &[("square", square(20.0, 60.0))],
+    vec![thread(
+      "thread 1",
+      &["square"],
+      1.5,
+      cam_model::ThreadDirection::Internal,
+      0.0,
+      6.0,
+    )],
+  );
+  let error = target_for(&document, cell(), &tools(4.0)).expect_err("a square has no thread");
+  assert!(
+    matches!(error, TargetError::Geometry { ref toolpath, .. } if toolpath == "thread 1"),
+    "{error:?}"
+  );
+  assert!(
+    error.to_string().contains("not a circle"),
+    "the refusal names what is wrong: {error}"
+  );
+}
