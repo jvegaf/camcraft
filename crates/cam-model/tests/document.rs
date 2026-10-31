@@ -2,7 +2,7 @@
 
 use cam_geom::{Contour, Point2};
 use cam_model::*;
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
 fn square(size: f64) -> Contour {
   Contour::from_points(
@@ -574,4 +574,212 @@ fn a_flute_may_cut_an_open_vector() {
   document
     .validate()
     .expect("a flute of an open vector is valid");
+}
+
+// --- texture (M6 A5, D-M6-6) -----------------------------------------------------------------
+
+/// A texture toolpath over a square `size` millimetres across, `spacing` apart at `angle` degrees.
+fn texture_document(size: f64, cut_depth: f64, spacing: f64, degrees: f64) -> Document {
+  let mut document = document_with(Operation::Texture(TextureParams {
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(cut_depth),
+    spacing: Length::from_mm(spacing),
+    angle: Angle::from_degrees(degrees),
+  }));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: square(size),
+  };
+  document
+}
+
+/// The grooves the document's own pattern cuts, as document XY polylines.
+fn grooves_of(document: &Document) -> Vec<Vec<Point2>> {
+  let Operation::Texture(params) = &document.toolpaths[0].operation else {
+    panic!("expected a texture toolpath");
+  };
+  let contours: Vec<&Contour> = document.toolpaths[0]
+    .entity_ids
+    .iter()
+    .map(|id| {
+      document
+        .entity(id)
+        .and_then(|entity| entity.kind.as_contour())
+        .expect("a contour")
+    })
+    .collect();
+  params.grooves(&contours)
+}
+
+#[test]
+fn a_texture_pattern_across_a_rectangle_is_rows_a_spacing_apart() {
+  // D-M6-6's pattern, stated arithmetically: a 10 x 10 mm square at 0 degrees with a 2 mm spacing. The
+  // first groove sits half a spacing inside the region, so the rows are y = 1, 3, 5, 7 and 9, and each
+  // is clipped to the square's own extent, x = 0 to 10. Five grooves, each 10 mm long — the pattern,
+  // and never a clearing of the 100 mm2 between them.
+  let document = texture_document(10.0, 3.0, 2.0, 0.0);
+  document.validate().expect("a texture of a closed region");
+  let grooves = grooves_of(&document);
+
+  assert_eq!(
+    grooves.len(),
+    5,
+    "five rows a 2 mm spacing apart: {grooves:?}"
+  );
+  assert_eq!(
+    grooves[0],
+    vec![Point2::new(0.0, 1.0), Point2::new(10.0, 1.0)],
+    "the first groove is half a spacing inside the region"
+  );
+  assert_eq!(
+    grooves[4],
+    vec![Point2::new(0.0, 9.0), Point2::new(10.0, 9.0)],
+    "and the last is the furthest one that still crosses material"
+  );
+  for (index, groove) in grooves.iter().enumerate() {
+    let y = 1.0 + 2.0 * index as f64;
+    assert_eq!(groove.len(), 2, "one straight span per row: {groove:?}");
+    assert!((groove[0].y - y).abs() < 1e-12, "{groove:?} at y = {y}");
+    assert!((groove[1].y - y).abs() < 1e-12, "{groove:?} at y = {y}");
+    assert!(
+      (groove[1].x - groove[0].x - 10.0).abs() < 1e-12,
+      "{groove:?}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_pattern_at_forty_five_degrees_is_clipped_by_the_region_and_not_by_its_bounds() {
+  // The same square at 45 degrees. In the groove frame the region is a diamond whose extent is the
+  // diagonal, `2 * 10 / sqrt(2) = 14.142` mm, so a 2 mm spacing gives seven rows starting half a
+  // spacing inside it. Each groove is the diamond's own chord, so the pattern is the region's — a
+  // rotation of the region, never of the document and never a rotation of its bounding box.
+  let document = texture_document(10.0, 3.0, 2.0, 45.0);
+  document.validate().expect("a texture of a closed region");
+  let grooves = grooves_of(&document);
+
+  let sqrt2 = std::f64::consts::SQRT_2;
+  let half_spacing = 1.0;
+  let diagonal = 10.0 / sqrt2;
+  assert_eq!(
+    grooves.len(),
+    7,
+    "the diagonal is 14.142 mm, so a 2 mm spacing gives 7 rows: {grooves:?}"
+  );
+
+  // The first row is `diagonal/2 - half_spacing` from the diamond's low corner, which puts it
+  // `half_spacing * sqrt(2)` from the square's corner (10, 0) along each of the two edges it meets.
+  let first = &grooves[0];
+  let corner = Point2::new(10.0 - half_spacing * sqrt2, 0.0);
+  let edge = Point2::new(10.0, half_spacing * sqrt2);
+  assert!(
+    (first[0].x - corner.x).abs() < 1e-9 && (first[0].y - corner.y).abs() < 1e-9,
+    "the first groove starts {half_spacing} mm across from the corner: {first:?} against {corner:?}"
+  );
+  assert!(
+    (first[1].x - edge.x).abs() < 1e-9 && (first[1].y - edge.y).abs() < 1e-9,
+    "and meets the next edge the same distance up it: {first:?} against {edge:?}"
+  );
+
+  // The last row is six spacings further in, and the groove `y - x = offset` crosses the square's two
+  // other edges where the pattern says it does.
+  let offset = (-diagonal + half_spacing + 6.0 * 2.0) * sqrt2;
+  let last = &grooves[6];
+  assert!(
+    (last[0].x).abs() < 1e-9 && (last[0].y - offset).abs() < 1e-9,
+    "the last groove starts on the left edge: {last:?} at offset {offset}"
+  );
+  assert!(
+    (last[1].y - 10.0).abs() < 1e-9 && (last[1].x - (10.0 - offset)).abs() < 1e-9,
+    "and ends on the top edge: {last:?} at offset {offset}"
+  );
+
+  // Every groove runs along the 45 degree diagonal, and none of them is axis-aligned: a pattern that
+  // rotated the square's bounding box instead of the region would give rows parallel to the axes.
+  for groove in &grooves {
+    let span = groove[1] - groove[0];
+    assert!(
+      (span.x.abs() - span.y.abs()).abs() < 1e-9,
+      "a 45 degree groove: {groove:?}"
+    );
+    assert!(
+      span.length() > 0.0,
+      "and it has material to cut: {groove:?}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_toolpath_round_trips_with_its_spacing_and_angle() {
+  let document = texture_document(10.0, 3.0, 2.5, 30.0);
+  document
+    .validate()
+    .expect("a texture of a closed region is valid");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"texture\""), "{json}");
+  assert!(json.contains("\"spacing\":2.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_texture_toolpath_written_without_its_spacing_and_angle_loads_with_the_defaults() {
+  // Both fields are defaulted rather than required, so a hand-written document that names a `texture`
+  // toolpath without them loads as the pattern it describes — 3 mm apart, along X — instead of failing
+  // the load (A1, D-M6-6).
+  let document = texture_document(10.0, 3.0, 5.0, 45.0);
+  let json = serde_json::to_string(&document).expect("serialises");
+  let angle = Angle::from_degrees(45.0).radians();
+  let without = json
+    .replace(",\"spacing\":5.0", "")
+    .replace(&format!(",\"angle\":{angle}"), "");
+  assert_ne!(without, json, "the archive carries both fields: {json}");
+  let parsed: Document = serde_json::from_str(&without).expect("a document without them loads");
+  match &parsed.toolpaths[0].operation {
+    Operation::Texture(params) => {
+      assert_eq!(params.spacing, TextureParams::default().spacing);
+      assert_eq!(params.angle, Angle::ZERO);
+    }
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+  parsed.validate().expect("and it is valid");
+}
+
+#[test]
+fn a_non_positive_texture_spacing_is_refused_at_load_naming_the_value() {
+  // A lattice of grooves `spacing` apart, with no spacing, is an input error and never an empty
+  // pattern: it is refused here, at the boundary that sees the document before any toolpath exists,
+  // and again by `cam-toolpath::texture` (D-M6-6).
+  for spacing in [0.0, -2.0] {
+    let document = texture_document(10.0, 3.0, spacing, 0.0);
+    let error = document
+      .validate()
+      .expect_err("a spacing with no distance behind it must be refused");
+    assert_eq!(
+      error,
+      ModelError::TextureSpacingNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: spacing,
+      }
+    );
+    assert!(
+      error.to_string().contains(&spacing.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_toolpath_on_open_geometry_is_rejected() {
+  // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6). A flute and
+  // an engrave are the two strategies that accept one.
+  let mut document = texture_document(10.0, 3.0, 2.0, 0.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
 }

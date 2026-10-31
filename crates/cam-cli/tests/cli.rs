@@ -3758,3 +3758,338 @@ fn a_document_that_already_carries_a_ramped_flute_on_an_arc_exits_two_naming_the
   assert!(simulated.stderr.contains("helical"), "{}", simulated.stderr);
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// --- texture (M6 A5, A9, D-M6-6) ---------------------------------------------------------------
+
+/// The whole program one textured square emits, byte for byte.
+///
+/// A 6 mm end mill and a 0.5 mm texture at a 10 mm spacing and 0 degrees on a 40 x 30 mm square. The
+/// pattern is the rows half a spacing inside the region — `y = 5, 15, 25` — and each is **one pass**:
+/// a rapid over its first vertex at safe Z, a plunge in place to `-0.5`, one feed across the square, and
+/// a retract to safe Z before the next groove starts (D-M4-6, D-M6-6). Twelve moves, and no move that
+/// clears the material *between* the grooves: that is what a texture is, and the three bands it leaves
+/// are the pattern.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_TEXTURE_PROGRAM: &str = "\
+( Texture 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y5.0000\r\n\
+N40G01Z-0.5000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G00Z5.0000\r\n\
+N70G00X0.0000Y15.0000\r\n\
+N80G01Z-0.5000\r\n\
+N90G01X40.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y25.0000\r\n\
+N120G01Z-0.5000\r\n\
+N130G01X40.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Z5.0000\r\n\
+N160G00X0.0000Y0.0000\r\n\
+N170M05\r\n\
+N180M30\r\n";
+
+/// Author a texture on `E1` through the real `toolpath` command.
+fn author_texture(
+  document: &Path,
+  library: &Path,
+  spacing: &str,
+  degrees: &str,
+  cut_depth: f64,
+) -> Outcome {
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--spacing",
+    spacing,
+    "--angle",
+    degrees,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+#[test]
+fn a_texture_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-texture");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_texture(&document, &library, "10", "0", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 texture (10 mm at 0 degrees), tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the pattern's two parameters and the one depth; nothing is derived
+  // from the tool.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Texture(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(0.5));
+      assert_eq!(params.spacing, Length::from_mm(10.0));
+      assert_eq!(params.angle, Angle::ZERO);
+    }
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_TEXTURE_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_takes_no_side_no_pass_depth_no_tabs_no_leads_no_allowance_no_stepover_and_no_ramp() {
+  // D-M6-6: a texture cuts grooves at a spacing and leaves the material between them standing, so every
+  // flag a profile, a pocket or a flute would consume has no meaning here. Refusing them by name is the
+  // difference between a refusal and a silently different pattern.
+  let directory = scratch("texture-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "0.2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--allowance", "1"),
+    ("--stepover", "2"),
+    ("--ramp", "2"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "texture.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "texture",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--spacing",
+      "10",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("between them standing") || outcome.stderr.contains("--spacing"),
+      "and says what a texture is instead: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_without_a_spacing_anywhere_exits_two_naming_the_option() {
+  // `--spacing` falls back to the library's stepover the way a pocket's `--stepover` does, and this
+  // library has none: the absence is an input error naming the flag, never a defaulted lattice. The
+  // fixture's tool is a 6 mm end mill with no stepover in its cutting data.
+  let directory = scratch("texture-nospacing");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--spacing"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_takes_its_spacing_from_the_tool_librarys_stepover() {
+  // The pocket precedent, applied to the pattern: `--spacing` absent, the library's `stepover` present,
+  // and the document stores the library's number. The library's stepover is 2.4 mm.
+  let directory = scratch("texture-library-spacing");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Texture(params) => assert_eq!(
+      params.spacing,
+      Length::from_mm(2.4),
+      "the library's stepover is the pattern's spacing"
+    ),
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_simulates_with_no_gouge_and_no_uncut() {
+  // The end-to-end claim A5 rests on: the target authorises the document's own pattern, and the program
+  // cuts that pattern. A target that claimed the region instead of the grooves would report the
+  // standing material as a gouge; a program that cleared would report it as uncut. Both are zero cells,
+  // with nothing tolerance-softened.
+  let directory = scratch("texture-simulate");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_texture(&document, &library, "10", "0", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  // The program is the textured one and not an empty segment: "no deviation" from a program that cut
+  // nothing would say nothing at all.
+  assert_eq!(
+    report_volume(&outcome.stdout, "program:"),
+    12.0,
+    "three grooves, one pass of four moves each: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("120.000 mm cutting length"),
+    "and every pass is 40 mm long: {}",
+    outcome.stdout
+  );
+  assert!(
+    report_volume(&outcome.stdout, "removed:") > 0.0,
+    "and they remove material: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_at_forty_five_degrees_emits_the_patterns_diagonal_grooves() {
+  // `--angle` reaches the program. The pattern is clipped in the groove frame, so on a 40 x 30 mm
+  // rectangle at 45 degrees the region's own extent is the diagonal, `(40 + 30) / sqrt(2) = 49.497` mm,
+  // and a 6 mm spacing gives eight rows. Every one is a diagonal chord of the rectangle, so every
+  // cutting move changes both X and Y — and none of them is an axis-aligned row a bounding-box
+  // rotation would have produced.
+  //
+  // This is a program assertion and not a simulation one on purpose: a 45 degree groove's footprint
+  // boundary cuts the cell lattice at an angle, so the sweep's half-cell sampling leaves up to a
+  // hundredth of a millimetre of the claim's rind uncut along it — M5's published one-sided coverage
+  // property (D-M5-3), asserted where it belongs in `cam-sim/tests/target.rs` and `oracle.rs` rather
+  // than traded for a loose tolerance here.
+  let directory = scratch("texture-45-program");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_texture(&document, &library, "6", "45", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  let cutting: Vec<&str> = program
+    .lines()
+    .filter(|line| line.contains("G01X") && line.contains("Y"))
+    .collect();
+  assert_eq!(
+    cutting.len(),
+    8,
+    "eight grooves, one diagonal pass each:\n{program}"
+  );
+  for line in cutting {
+    assert!(
+      !line.contains("Y0.0000") || !line.contains("X0.0000"),
+      "no groove is axis-aligned: {line}"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}

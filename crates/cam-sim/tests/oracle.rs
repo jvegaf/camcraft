@@ -19,7 +19,7 @@ use cam_geom::{Contour, Point2};
 use cam_model::{
   ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
   Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide,
-  Toolpath,
+  TextureParams, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
@@ -1391,5 +1391,192 @@ fn a_six_millimetre_flute_over_a_one_millimetre_ramp_is_clean_at_cell_eighths_an
   assert!(
     shallow.uncut > 0.0 && shallow.uncut_cells > 0,
     "1 mm shallow is uncut even on a 1 mm ramp: {shallow:?}"
+  );
+}
+
+// --- texture (M6 A5, A9, D-M6-6) --------------------------------------------------------------
+
+/// A texture over `entities` at `cut` millimetres, `spacing` apart at `degrees` (D-M6-6).
+fn texture(id: &str, entities: &[&str], cut: f64, spacing: f64, degrees: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Texture".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Texture(TextureParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(cut),
+      spacing: Length::from_mm(spacing),
+      angle: Angle::from_degrees(degrees),
+    }),
+  }
+}
+
+/// The moves a texture emits for one groove: a rapid over its first vertex at safe Z, a plunge in place,
+/// **one** feed along the groove, and a retract (D-M6-6).
+fn groove_moves(from: Point2, to: Point2, depth: f64) -> Vec<Move> {
+  vec![
+    Move::Rapid {
+      to: Point3::new(from.x, from.y, SAFE_Z),
+    },
+    Move::Feed {
+      to: Point3::new(from.x, from.y, -depth),
+    },
+    Move::Feed {
+      to: Point3::new(to.x, to.y, -depth),
+    },
+    Move::Retract {
+      to: Point3::new(to.x, to.y, SAFE_Z),
+    },
+  ]
+}
+
+/// The stock the texture oracles are cut out of: 40 mm square, so the region is the whole sheet and
+/// each groove's ends sit **on** the sheet's edges.
+///
+/// That is the engrave fixture's device (T2's L9): a groove's band is a stadium, and a stadium whose
+/// ends are inside the sheet adds two half-disc toes the closed form below does not count. Clipping the
+/// region to the sheet's own extent removes them, because only the rectangle of the stadium lies inside
+/// the strip — so the arithmetic is the closed form and not a tolerance over the caps.
+const TEXTURE_STOCK: f64 = 40.0;
+/// The depth every texture fixture is cut to.
+const TEXTURE_DEPTH: f64 = 6.0;
+/// The distance between the texture fixtures' grooves. Wider than the 6 mm tool, so the bands do not
+/// overlap and the removed volume is the sum of the grooves' own.
+const TEXTURE_SPACING: f64 = 8.0;
+
+fn texture_fixture(depth: f64) -> Document {
+  document(
+    TEXTURE_STOCK,
+    &[("sheet", square(0.0, TEXTURE_STOCK))],
+    vec![texture(
+      "texture 1",
+      &["sheet"],
+      depth,
+      TEXTURE_SPACING,
+      0.0,
+    )],
+  )
+}
+
+/// The document's own pattern, as the strategy cuts it: `cam-model` derives it once and both consumers
+/// read that one derivation (D-M6-6).
+fn texture_pattern(document: &Document) -> Vec<Vec<Point2>> {
+  let Operation::Texture(params) = &document.toolpaths[0].operation else {
+    panic!("expected a texture toolpath");
+  };
+  let contours: Vec<&Contour> = document.toolpaths[0]
+    .entity_ids
+    .iter()
+    .map(|id| {
+      document
+        .entity(id)
+        .and_then(|entity| entity.kind.as_contour())
+        .expect("a contour")
+    })
+    .collect();
+  params.grooves(&contours)
+}
+
+#[test]
+fn a_texture_with_an_end_mill_removes_two_radius_times_depth_per_millimetre_of_groove() {
+  // A9's arithmetic for a texture, first sign. A cylinder of radius `R` cutting a groove of length `L`
+  // to depth `d` removes the band within `R` of the groove, and on a straight groove that band is
+  // `2·R` wide, so the groove removes `2·R·d` per millimetre of its own length:
+  //
+  //   removed = 2·R·d·Σ length(groove)
+  //
+  // With `R = 3`, `d = 6`, and a 40 mm square textured at 0 degrees with an 8 mm spacing, the pattern is
+  // the rows at y = 4, 12, 20, 28 and 36, so `Σ length = 5 · 40 = 200` mm and the analytic volume is
+  // `6 · 6 · 200 = 7200` mm3. The sum is taken from the **document's own pattern** — not from a second
+  // derivation written here — so the number below is the pattern the program and the target share.
+  //
+  // The measured volume is 7200 exactly, and that is the fixture and not luck: the grooves end on the
+  // sheet's edges, so no toe is inside it, and every band is `2·R` wide with its edges on cell
+  // boundaries (`y = 1 … 7`, `9 … 15`, …), so each groove's six rows of forty cells are all in and the
+  // row beyond is all out. `2·ΣL·cell/2·d = 1200` mm3 is the published coverage bound; it is written out
+  // rather than needed.
+  let depth = TEXTURE_DEPTH;
+  let diameter = TOOL;
+  let document = texture_fixture(depth);
+  let pattern = texture_pattern(&document);
+  assert_eq!(pattern.len(), 5, "five rows a spacing apart: {pattern:?}");
+
+  let mut moves = Vec::new();
+  for groove in &pattern {
+    moves.extend(groove_moves(groove[0], groove[1], depth));
+  }
+  let field = cut(TEXTURE_STOCK, CELL, diameter, moves);
+
+  let radius = diameter / 2.0;
+  let total_length: f64 = pattern
+    .iter()
+    .map(|groove| groove[0].distance_to(groove[1]))
+    .sum();
+  assert!(
+    (total_length - 200.0).abs() < 1e-9,
+    "the pattern's own length sum: {total_length}"
+  );
+  let analytic = 2.0 * radius * depth * total_length;
+  let bound = 2.0 * total_length * CELL / 2.0 * depth;
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  assert_eq!(
+    field.volumes().through_cells,
+    0,
+    "{depth} mm of material out of an 18 mm stock goes through nothing"
+  );
+
+  // And the target claims the same grooves, cell for cell: the document's pattern is what it
+  // authorises, so a correct texture deviates by nothing at all.
+  let target = target_for(&document, Length::from_mm(CELL), &tools(diameter)).expect("a target");
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a clean texture deviates by nothing"
+  );
+}
+
+#[test]
+fn a_texture_one_millimetre_shallow_is_uncut_and_one_millimetre_deep_is_gouge() {
+  // A9's second sign, on the pattern rather than on a single groove: the document asks for five grooves
+  // 6 mm deep, and the same pattern is cut 1 mm shallow in one field and 1 mm deep in the other. The
+  // shallow one must be uncut and gouge nothing; the deep one must gouge and leave nothing uncut. A
+  // target that claimed the region instead of the grooves would fail the clean case next door; a target
+  // that claimed the wrong angle would fail both signs at once.
+  let document = texture_fixture(TEXTURE_DEPTH);
+  let pattern = texture_pattern(&document);
+  let tolerance = Length::from_mm(CELL / 8.0);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(TOOL)).expect("a target");
+
+  let program = |depth: f64| {
+    let mut moves = Vec::new();
+    for groove in &pattern {
+      moves.extend(groove_moves(groove[0], groove[1], depth));
+    }
+    moves
+  };
+
+  let shallow = cut(TEXTURE_STOCK, CELL, TOOL, program(TEXTURE_DEPTH - 1.0));
+  let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+  assert_eq!(shallow.gouge, 0.0, "1 mm shallow gouges nothing");
+  assert_eq!(shallow.gouge_cells, 0);
+  assert!(
+    shallow.uncut > 0.0 && shallow.uncut_cells > 0,
+    "1 mm shallow is uncut: {shallow:?}"
+  );
+
+  let deep = cut(TEXTURE_STOCK, CELL, TOOL, program(TEXTURE_DEPTH + 1.0));
+  let deep = deviations(&deep, &target, tolerance).expect("one grid");
+  assert_eq!(deep.uncut, 0.0, "1 mm deep leaves nothing uncut");
+  assert_eq!(deep.uncut_cells, 0);
+  assert!(
+    deep.gouge > 0.0 && deep.gouge_cells > 0,
+    "1 mm deep is a gouge: {deep:?}"
   );
 }

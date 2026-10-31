@@ -215,7 +215,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4, D-M6-11 | delegated, test-first | `5c55544` |
 | T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `76eb4e1` |
 | T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `76eb4e1` |
-| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | inline, test-first | |
+| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | pending |
 | T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7 | inline, test-first | |
 | T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | inline, test-first, own commit (Risk item 3) | |
 | T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
@@ -362,3 +362,14 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   does not refuse a ramped flute on an arc (strategy-level rule, like the depth range), and a cone's interior
   candidate in `claim_flute` is exact only while the nearest point is a perpendicular foot — measured clean on
   every fixture, and a ternary search would remove the assumption at a real per-cell cost.
+- **L15 (review, T5, three notes and one bound worth naming).** The pattern is derived once, in
+  `TextureParams::grooves`, and both `cam-toolpath` and `cam-sim` call it — D-M6-2's rule applied to
+  something much easier to get subtly wrong twice than a depth. Two behaviours are recorded because a
+  reader will meet them: a **45° texture does not pass `simulate`'s zero-defect gate at 1 mm cells**
+  (`uncut 1.000 mm³ over 2 cell(s)`), which is M5's documented one-sided coverage bound on a rind the
+  grid does not sample, so the 45° case asserts the emitted diagonals and the claim geometry directly
+  instead of widening a tolerance (L14(c)'s rejected trade); and the lattice's phase — half a spacing
+  inside the region's lower extent in the groove frame — is a decision the spec did not make, recorded
+  in the cam-model test with its own numbers, centred only when the extent is a whole number of
+  spacings. `--spacing`/`--angle` on a kind that does not use them now parse and are ignored rather
+  than refused as unknown, which is D-M6-11's position and a real change for those two names.

@@ -5,8 +5,9 @@
 //! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks). M6 adds
 //! the depth-variant strategies: `chamfer`, one V-bit pass whose Z is derived from the bit's own
 //! included angle instead of authored, `engrave`, one authored-depth pass along open or closed
-//! vectors with no pass law at all, and `fluting`, one pass along a vector that ramps in over its
-//! first millimetres and out over its last.
+//! vectors with no pass law at all, `fluting`, one pass along a vector that ramps in over its
+//! first millimetres and out over its last, and `texture`, one authored-depth pass along each groove
+//! of a pattern clipped to a closed region.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -17,12 +18,14 @@ pub mod drill;
 pub mod engrave;
 pub mod fluting;
 pub mod pocket;
+pub mod texture;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use engrave::{engrave, EngraveRequest};
 pub use fluting::{fluting, FlutingRequest};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
+pub use texture::{texture, TextureRequest};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
@@ -156,6 +159,32 @@ pub enum ToolpathError {
   RampOnArc {
     /// The offending ramp in millimetres.
     ramp: f64,
+  },
+  /// A texture's spacing is not a positive number of millimetres.
+  ///
+  /// The document model refuses it as the document loads, but a caller that hands the strategy its
+  /// parameters directly reaches it without passing through there. A zero spacing is an input error and
+  /// never a silently empty pattern (D-M6-6).
+  #[error("texture spacing {spacing} mm must be greater than zero")]
+  InvalidSpacing {
+    /// The offending spacing in millimetres.
+    spacing: f64,
+  },
+  /// A texture's spacing yields no groove across the region, so the pattern would cut nothing.
+  ///
+  /// The lattice is the region's own extent divided by the spacing, so a spacing wider than the region
+  /// is a request with no groove behind it. Emitting an empty program instead would look like a
+  /// strategy that ran and found nothing to do, which is the one thing a mis-typed spacing must never
+  /// look like (D-M6-6).
+  #[error(
+    "texture spacing {spacing} mm at {angle} degrees leaves no groove across the region: the \
+     pattern would cut nothing, so this is a spacing with no pattern behind it"
+  )]
+  NoGroove {
+    /// The offending spacing in millimetres.
+    spacing: f64,
+    /// The groove direction in degrees.
+    angle: f64,
   },
 }
 

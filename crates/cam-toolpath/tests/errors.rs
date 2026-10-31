@@ -46,6 +46,11 @@ fn every_variant() -> Vec<ToolpathError> {
       length: 100.0,
     },
     ToolpathError::RampOnArc { ramp: 10.0 },
+    ToolpathError::InvalidSpacing { spacing: 0.0 },
+    ToolpathError::NoGroove {
+      spacing: 500.0,
+      angle: 0.0,
+    },
   ]
 }
 
@@ -54,7 +59,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    15,
+    17,
     "every variant must be listed exactly once"
   );
 
@@ -100,6 +105,15 @@ fn every_variant_keeps_its_message() {
           "fluting ramp {ramp} mm would run along a contour with arcs, and a ramped move cannot follow \
            one: the move vocabulary has no helical move, and its only curved move is constant-Z, so a \
            ramped arc would be cut as a straight chord. Cut this contour with ramp 0, or ramp a polyline"
+        )
+      }
+      ToolpathError::InvalidSpacing { spacing } => {
+        format!("texture spacing {spacing} mm must be greater than zero")
+      }
+      ToolpathError::NoGroove { spacing, angle } => {
+        format!(
+          "texture spacing {spacing} mm at {angle} degrees leaves no groove across the region: the \
+           pattern would cut nothing, so this is a spacing with no pattern behind it"
         )
       }
     };

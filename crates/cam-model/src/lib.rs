@@ -18,7 +18,7 @@
 
 #![warn(missing_docs)]
 
-use cam_geom::Contour;
+use cam_geom::{Contour, Point2};
 use cam_units::{Angle, Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
@@ -371,6 +371,136 @@ impl Default for FlutingParams {
   }
 }
 
+/// Parameters of a texture toolpath.
+///
+/// A texture is a pattern of parallel grooves across a closed region (D-M6-6), and its value is the
+/// **pattern**, not the clearing: the material between the grooves is meant to stand, so nothing here
+/// clears it and nothing here may be read as a pocket. Each groove is one pass at one authored depth
+/// with the tool centre on it, and the pattern itself is **derived** — [`TextureParams::grooves`] —
+/// because a stored pattern and a recomputed one diverge, and a pattern has far more in it to get
+/// subtly wrong twice than a chamfer's single depth does (the argument D-M6-2 makes for that depth).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextureParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface; each groove's one pass lands exactly on it.
+  pub cut_depth: Length,
+  /// Distance between neighbouring grooves, measured across them.
+  ///
+  /// Defaulted rather than required, so a hand-written document that names a `texture` toolpath
+  /// without the field loads as the pattern it describes instead of failing the load. A spacing that
+  /// is zero or negative is an **input error** and never an empty pattern: it is refused by name at
+  /// document load (`ModelError::TextureSpacingNotPositive`) and again by
+  /// `cam-toolpath::texture`, because a groove lattice with no spacing behind it is a request the
+  /// user did not make.
+  #[serde(default = "default_texture_spacing")]
+  pub spacing: Length,
+  /// Direction of the grooves, in radians, counter-clockwise from the X axis.
+  ///
+  /// Defaulted like `spacing`, so an older or hand-written document describing a horizontal pattern
+  /// loads. The pattern is clipped to the region in the **groove frame**, so this rotates the region
+  /// and never the document (D-M6-6).
+  #[serde(default)]
+  pub angle: Angle,
+}
+
+impl TextureParams {
+  /// The grooves this pattern cuts across `contours`, as polylines in document XY.
+  ///
+  /// Derived here and nowhere else (D-M6-6): `cam-toolpath::texture` cuts these vertices and
+  /// `cam-sim::target` authorises along the same ones, so the program and the target cannot be made to
+  /// agree by construction.
+  ///
+  /// The grooves are clipped to the region `contours` bound under the kernel's parity rule, by
+  /// [`cam_geom::region::Region::raster_spans`] in the **groove frame**: rotating the region by
+  /// `-angle` turns "a groove at `angle`" into "a row at some `y`", which is exactly the question
+  /// `raster_spans` answers, arcs and islands included, without a second intersector (D-M6-6). The
+  /// first groove sits half a spacing inside the region's lower extent in that frame, so the lattice
+  /// starts off the region's own edge instead of on it, where the kernel would report a tangency.
+  ///
+  /// A row that misses the region contributes nothing, and a row that only **touches** a boundary is a
+  /// tangency the kernel reports as ambiguous and this method drops: a tangent groove has no length to
+  /// cut. Returns no grooves at all when the contours do not bound a region or the spacing has no
+  /// pattern behind it; those refusals belong to the callers, which are the ones that can name an
+  /// entity or a number (`ToolpathError::OpenContour`, `ToolpathError::InvalidSpacing`,
+  /// `ToolpathError::NoGroove`).
+  pub fn grooves(&self, contours: &[&Contour]) -> Vec<Vec<Point2>> {
+    let spacing = self.spacing.mm();
+    if contours.is_empty() || !spacing.is_finite() || spacing <= 0.0 {
+      return Vec::new();
+    }
+    let angle = self.angle.radians();
+    // Into the groove frame: a groove at `angle` is a horizontal row here, so the clipping below is the
+    // kernel's own raster question and not a second intersector (D-M6-6).
+    let Some(region) = rotated_region(contours, -angle) else {
+      return Vec::new();
+    };
+    let bounds = region
+      .boundaries
+      .iter()
+      .fold(cam_geom::Bounds::empty(), |bounds, boundary| {
+        bounds.union(boundary.bounds())
+      });
+    let origin = Point2::new(0.0, 0.0);
+    let mut grooves = Vec::new();
+    let mut row = bounds.min.y + spacing / 2.0;
+    while row <= bounds.max.y {
+      // `None` is the kernel's ambiguity, which for a row means a tangency: the row touches a boundary
+      // without crossing it, so the groove there has no length to cut and contributes nothing.
+      if let Some(spans) = region.raster_spans(row, cam_geom::DEFAULT_TOLERANCE) {
+        for (left, right) in spans {
+          if right - left <= 0.0 {
+            continue;
+          }
+          grooves.push(vec![
+            Point2::new(left, row).rotated_about(origin, angle),
+            Point2::new(right, row).rotated_about(origin, angle),
+          ]);
+        }
+      }
+      row += spacing;
+    }
+    grooves
+  }
+}
+
+impl Default for TextureParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+      spacing: default_texture_spacing(),
+      angle: Angle::ZERO,
+    }
+  }
+}
+
+/// The default distance between a texture's grooves: 3 mm, the pocket stepover's own default.
+fn default_texture_spacing() -> Length {
+  Length::from_mm(3.0)
+}
+
+/// `contours` as a region in a frame rotated by `radians`, or `None` when they do not bound one.
+///
+/// A rotation moves every vertex and leaves every bulge alone — a bulge is an angle between two
+/// segments, and both turn with the frame — so the region keeps its arcs and its parity, and nothing
+/// about it is tessellated to rotate it.
+fn rotated_region(contours: &[&Contour], radians: f64) -> Option<cam_geom::region::Region> {
+  let origin = Point2::new(0.0, 0.0);
+  let mut boundaries = Vec::with_capacity(contours.len());
+  for contour in contours {
+    let vertices: Vec<cam_geom::Vertex> = contour
+      .vertices()
+      .iter()
+      .map(|vertex| {
+        cam_geom::Vertex::new(vertex.point.rotated_about(origin, radians), vertex.bulge)
+      })
+      .collect();
+    boundaries.push(Contour::new(vertices, contour.is_closed()).ok()?);
+  }
+  cam_geom::region::Region::new(boundaries).ok()
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -387,6 +517,8 @@ pub enum Operation {
   Engrave(EngraveParams),
   /// Flute the selected vectors, open or closed, in one pass whose ends ramp in and out.
   Fluting(FlutingParams),
+  /// Cut parallel grooves across the selected closed region; the material between them stands.
+  Texture(TextureParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -550,6 +682,20 @@ pub enum ModelError {
     /// The offending ramp in millimetres.
     value: f64,
   },
+  /// A texture's spacing is zero, negative or not a finite number.
+  ///
+  /// A pattern is a lattice of grooves `spacing` millimetres apart, so a spacing with no distance
+  /// behind it is an input error and not a silently empty pattern: it is refused here, as the document
+  /// loads, and again by `cam-toolpath::texture`, which sees a caller that bypassed the CLI (D-M6-6).
+  #[error(
+    "toolpath {toolpath:?} texture spacing must be a positive number of millimetres, got {value} mm"
+  )]
+  TextureSpacingNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending spacing in millimetres.
+    value: f64,
+  },
 }
 
 impl Document {
@@ -647,7 +793,9 @@ impl Document {
           Operation::Profile(_)
           | Operation::Pocket(_)
           | Operation::Drilling(_)
-          | Operation::Chamfer(_) => true,
+          | Operation::Chamfer(_)
+          // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6).
+          | Operation::Texture(_) => true,
           // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
           // vector and stops at its last vertex. Fluting is that same walk with a ramp at each end,
           // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
@@ -670,6 +818,7 @@ impl Document {
       }
       check_chamfer(toolpath)?;
       check_fluting(toolpath)?;
+      check_texture(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
@@ -717,6 +866,25 @@ fn check_fluting(toolpath: &Toolpath) -> Result<(), ModelError> {
     return Err(ModelError::FlutingRampNegative {
       toolpath: toolpath.id.clone(),
       value: ramp,
+    });
+  }
+  Ok(())
+}
+
+/// Check a texture's own parameters: a lattice of grooves needs a distance between them.
+///
+/// Only the spacing is checked here. Whether the pattern crosses the region at all needs the geometry,
+/// which the strategy has when it asks for the grooves, and that is where the refusal names both
+/// numbers (`ToolpathError::NoGroove`, D-M6-6).
+fn check_texture(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Texture(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let spacing = params.spacing.mm();
+  if !spacing.is_finite() || spacing <= 0.0 {
+    return Err(ModelError::TextureSpacingNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: spacing,
     });
   }
   Ok(())

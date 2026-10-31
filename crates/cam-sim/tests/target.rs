@@ -14,7 +14,7 @@ use cam_geom::{Contour, Point2};
 use cam_model::{
   ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
   Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab,
-  Toolpath,
+  TextureParams, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
@@ -1505,5 +1505,141 @@ fn a_v_bits_flutes_claim_also_reaches_past_the_start_vertex() {
     deviation,
     Deviation::default(),
     "a correct V-groove flute deviates by nothing, its start vertex included"
+  );
+}
+
+// --- texture (M6 A5, D-M6-6) ------------------------------------------------------------------
+
+/// A texture over `entities` at `cut` millimetres, `spacing` apart at `degrees` (D-M6-6).
+fn texture(id: &str, entities: &[&str], cut: f64, spacing: f64, degrees: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Texture".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Texture(TextureParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(cut),
+      spacing: Length::from_mm(spacing),
+      angle: Angle::from_degrees(degrees),
+    }),
+  }
+}
+
+#[test]
+fn a_texture_authorises_a_groove_and_not_the_material_between_grooves() {
+  // A 60 x 60 mm region textured at 0 degrees with a 12 mm spacing and a 6 mm end mill: the pattern is
+  // the rows at y = 6, 18, 30, 42 and 54, and the claim is each groove's footprint band, 3 mm either
+  // side of it — `cut_depth` across the band, because a cylinder's rise is zero at every radius (A8).
+  // The material between two grooves is what a texture is *for*, so it is authorised nothing at all:
+  // that is the difference between this strategy and a pocket with a very wide stepover.
+  let document = document(
+    60.0,
+    &[("square", square(0.0, 60.0))],
+    vec![texture("texture 1", &["square"], 6.0, 12.0, 0.0)],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  // Cell (30, 6) holds the centre (30.5, 6.5): half a millimetre from the groove at y = 6.
+  assert_eq!(
+    target.authorised(30, 6),
+    6.0,
+    "a cell on a groove is authorised the whole cut depth"
+  );
+  // Cell (30, 12) holds (30.5, 12.5): 5.5 mm from the nearest groove, past the 3 mm radius.
+  assert_eq!(
+    target.authorised(30, 12),
+    0.0,
+    "a cell between two grooves is authorised nothing: the material stands"
+  );
+  // The grooves are the pattern's, not the region's bounds: a cell just inside the region's edge, 3.5 mm
+  // from the first groove, is not claimed either.
+  assert_eq!(
+    target.authorised(30, 0),
+    0.0,
+    "the region's edge is no groove"
+  );
+  // And every row the pattern names is claimed, including the last one. Cell (30, 54) holds
+  // (30.5, 54.5), half a millimetre from the groove at y = 54 and 5.5 mm from the one at 42 — the last
+  // groove is the far one, not a dropped remainder.
+  assert_eq!(target.authorised(30, 54), 6.0, "the last groove is claimed");
+  // Only the bands are claimed, and exactly them: five grooves 60 mm long across a 60 mm square, each
+  // claimed 6 mm wide (3 mm of radius either side), is `5 * 60 * 6 = 1800` of the sheet's 3600 cells.
+  // The other 1800 are the material between the grooves, which a texture is meant to leave standing —
+  // so a claim that treated the region as cleared would report all of them as a gouge.
+  assert_eq!(
+    claimed_cells(&target),
+    1800,
+    "a texture claims its grooves by their own length and width, not the region"
+  );
+}
+
+#[test]
+fn a_forty_five_degree_texture_claims_where_the_pattern_says_and_not_an_axis_aligned_band() {
+  // The pattern is clipped in the groove frame, so at 45 degrees the grooves are diagonals: `y - x`
+  // constant. The same 60 x 60 region at a 12 mm spacing gives rows half a spacing inside the diamond
+  // whose extent is `60 * sqrt(2) = 84.85` mm — at `y - x = -17.5736` for the row nearest the bottom
+  // right corner and `y - x = -0.603` for the one through the middle.
+  //
+  // Two cells make the difference observable, and each is the other one's opposite:
+  //
+  // - (20, 2) — centre (20.5, 2.5) — is 0.3 mm from a diagonal groove and 3.5 mm from every axis-aligned
+  //   row the 0 degree pattern has. Authorised the full depth at 45 degrees and nothing at 0.
+  // - (30, 6) — centre (30.5, 6.5) — sits on the 0 degree pattern's groove at y = 6, and is 4.5 mm from
+  //   the nearest diagonal. Authorised the full depth at 0 degrees and nothing at 45.
+  //
+  // A claim that rotated the region's *bounds* rather than clipping the region would fail both halves.
+  let rotated = document(
+    60.0,
+    &[("square", square(0.0, 60.0))],
+    vec![texture("texture 1", &["square"], 6.0, 12.0, 45.0)],
+  );
+  let target = target_for(&rotated, cell(), &tools(6.0)).expect("a target");
+  assert!(
+    (target.authorised(20, 2) - 6.0).abs() < 1e-9,
+    "a cell on a 45 degree groove is authorised the cut depth, got {}",
+    target.authorised(20, 2)
+  );
+  assert_eq!(
+    target.authorised(30, 6),
+    0.0,
+    "and a cell on the axis-aligned pattern's groove is not authorised by this one"
+  );
+
+  let aligned = document(
+    60.0,
+    &[("square", square(0.0, 60.0))],
+    vec![texture("texture 1", &["square"], 6.0, 12.0, 0.0)],
+  );
+  let target = target_for(&aligned, cell(), &tools(6.0)).expect("a target");
+  assert_eq!(
+    target.authorised(20, 2),
+    0.0,
+    "the 0 degree pattern does not reach the diagonal's cell"
+  );
+  assert_eq!(
+    target.authorised(30, 6),
+    6.0,
+    "and it claims its own groove at y = 6"
+  );
+}
+
+#[test]
+fn a_texture_without_its_tool_shape_is_refused_by_name() {
+  // Like a profile and an engrave, a texture's claim needs the footprint the tool sweeps, and the
+  // diameter is in the library, not the document.
+  let document = document(
+    60.0,
+    &[("square", square(0.0, 60.0))],
+    vec![texture("texture 1", &["square"], 6.0, 12.0, 0.0)],
+  );
+  let error = target_for(&document, cell(), &ToolShapes::default()).expect_err("must refuse");
+  assert_eq!(
+    error,
+    TargetError::MissingTool {
+      toolpath: "texture 1".to_owned(),
+      tool_number: 1,
+    }
   );
 }

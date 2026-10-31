@@ -7,10 +7,19 @@
 //! whatever a tab declares it keeps (D-M5-5) — a chamfer authorises the cone its derived depth reaches
 //! either side of the vector (M6 A8), an engrave authorises the band or the graded groove its one pass
 //! cuts along the vector (M6 A3, D-M6-4), a flute authorises the ramp law *along* the vector rather
-//! than at a distance from it (M6 A4, D-M6-5), and every cell nothing claims is authorised to lose
+//! than at a distance from it (M6 A4, D-M6-5), a texture authorises the same band along every groove of
+//! the document's own pattern (M6 A5, D-M6-6), and every cell nothing claims is authorised to lose
 //! nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
+//!
+//! # What a texture's claim reads
+//!
+//! A texture's claim reads the document's **derived pattern** — `cam_model::TextureParams::grooves`, the
+//! same call `cam-toolpath::texture` cuts — and never the emitted moves (M6 A5, D-M6-6). That is the
+//! point of deriving the pattern in the model rather than in each consumer: a target built from the
+//! program's own moves would agree with the program by construction, including where both are wrong, and
+//! would report a program that cut nothing as clean.
 //!
 //! The tool's diameter is not in the document — it is in the tool library — so a caller that wants
 //! profile bands supplies it through [`ToolShapes`]. A pocket or a drilling toolpath's target does
@@ -331,6 +340,32 @@ fn claim_toolpath(
       for id in &toolpath.entity_ids {
         let contour = contour_of(document, toolpath, id)?;
         claim_flute(target, contour, tool, depth, params.ramp.mm());
+      }
+    }
+    Operation::Texture(params) => {
+      // The pattern is the document's, derived once in `cam-model` (`TextureParams::grooves`) and cut by
+      // `cam-toolpath::texture` from the same vertices. This claim reads that pattern and never the
+      // program's moves: a claim built from the emitted moves would agree with them by construction,
+      // including where both are wrong (M6 A5, D-M6-6).
+      let depth = authorised_depth(params.cut_depth);
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
+      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
+      for id in &toolpath.entity_ids {
+        contours.push(contour_of(document, toolpath, id)?);
+      }
+      for groove in params.grooves(&contours) {
+        let path = Contour::from_points(&groove, false).map_err(|error| TargetError::Geometry {
+          toolpath: toolpath.id.clone(),
+          reason: error.to_string(),
+        })?;
+        // A groove is one pass at one depth with the centre on it, so its claim is the tool's footprint
+        // band around the groove: the same law, and the same code, an engrave's claim uses (M6 A3, A5).
+        claim_along_path(target, &path, tool, depth);
       }
     }
   }

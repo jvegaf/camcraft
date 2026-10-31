@@ -19,9 +19,9 @@ use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  chamfer, circle_centre, drill, engrave, fluting, pocket, profile, ChamferRequest, DrillHole,
-  DrillRequest, EngraveRequest, FlutingRequest, PocketRequest, ProfileRequest, ToolSpec,
-  ToolpathError,
+  chamfer, circle_centre, drill, engrave, fluting, pocket, profile, texture, ChamferRequest,
+  DrillHole, DrillRequest, EngraveRequest, FlutingRequest, PocketRequest, ProfileRequest,
+  TextureRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -45,7 +45,9 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket, drilling, chamfer, engrave or fluting (required)
+        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting or texture
+                              (required); a texture cuts grooves only, so the material between
+                              them stands and the region is never cleared
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -53,6 +55,9 @@ COMMANDS:
         --allowance <mm>      profile, pocket: material left on the vector
         --strategy <mode>     pocket: offset or raster (default offset)
         --stepover <mm>       pocket: ring or row spacing; defaults to the tool's stepover
+        --spacing <mm>        texture: distance between grooves; defaults to the tool's stepover.
+                              The material between grooves stands: a texture does not clear
+        --angle <degrees>     texture: direction of the grooves, from the X axis (default 0)
         --clear               pocket: take the default from the tool's clear stepover
         --peck-depth <mm>     drilling: depth per peck, 0 for one plunge
         --retract <mode>      drilling: full (default) or amount
@@ -61,8 +66,8 @@ COMMANDS:
         --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
         --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
-        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
-                              and fluting cut their one pass at it
+        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave,
+                              fluting and texture cut their one pass at it
         --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
                               to plunge in place; longer than half the vector is an error
         --lead-in <mm>        profile: straight lead-in
@@ -607,6 +612,8 @@ struct ToolpathArgs {
   bank: Option<(u32, f64)>,
   chamfer_width: Option<f64>,
   ramp: Option<f64>,
+  spacing: Option<f64>,
+  angle: Option<f64>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -646,6 +653,10 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         args.chamfer_width = Some(parse_mm(&take("--chamfer-width")?, "--chamfer-width")?)
       }
       "--ramp" => args.ramp = Some(parse_mm(&take("--ramp")?, "--ramp")?),
+      "--spacing" => args.spacing = Some(parse_mm(&take("--spacing")?, "--spacing")?),
+      "--angle" => {
+        args.angle = Some(parse_degrees(&take("--angle")?, "--angle")?);
+      }
       "--tab" => args.tabs.push(parse_tab(&take("--tab")?)?),
       "--clear" => {
         args.clear = true;
@@ -927,10 +938,55 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         ramp: mm(args.ramp.unwrap_or(0.0)),
       })
     }
+    "texture" => {
+      // A texture cuts grooves only (D-M6-6), so every flag a profile, a pocket or a flute would
+      // consume has no meaning here: a side, a pass law, a tab, a lead, an allowance and a ramp all
+      // widen, chunk or tilt a groove the pattern alone defines. `--stepover` belongs to a pocket: a
+      // texture's equivalent is `--spacing`, and accepting both would leave two numbers naming one
+      // distance. Refused by name, so nothing that was never applied still looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--allowance", args.allowance.is_some()),
+        ("--stepover", args.stepover.is_some()),
+        ("--ramp", args.ramp.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind texture takes no {flag}: a texture cuts parallel grooves at --spacing apart and \
+             leaves the material between them standing, so it takes no side, no pass law, no tab, no \
+             lead, no allowance, no stepover and no ramp"
+          )));
+        }
+      }
+      // `--spacing` falls back to the library's stepover exactly the way a pocket's `--stepover`
+      // does, and its absence is an input error naming the flag rather than a defaulted lattice.
+      let spacing = match (
+        args.spacing,
+        cutting.as_ref().and_then(|cutting| cutting.stepover),
+      ) {
+        (Some(spacing), _) => spacing,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "a texture needs --spacing: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      Operation::Texture(cam_model::TextureParams {
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+        spacing: mm(spacing),
+        angle: cam_units::Angle::from_degrees(args.angle.unwrap_or(0.0)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
-        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave or \
-         fluting"
+        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave, \
+         fluting or texture"
       )))
     }
   };
@@ -959,6 +1015,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Chamfer(_) => "Chamfer",
         Operation::Engrave(_) => "Engrave",
         Operation::Fluting(_) => "Fluting",
+        Operation::Texture(_) => "Texture",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -1194,6 +1251,11 @@ fn operation_label(operation: &Operation) -> String {
     Operation::Chamfer(_) => "chamfer".to_owned(),
     Operation::Engrave(_) => "engrave".to_owned(),
     Operation::Fluting(_) => "fluting".to_owned(),
+    Operation::Texture(params) => format!(
+      "texture ({} mm at {} degrees)",
+      params.spacing.mm(),
+      params.angle.degrees()
+    ),
   }
 }
 
@@ -1213,6 +1275,14 @@ fn parse_mm(value: &str, option: &str) -> Result<f64, Failure> {
   value.parse::<f64>().map_err(|_| {
     Failure::input(format!(
       "{option} expects a number of millimetres, got {value:?}"
+    ))
+  })
+}
+
+fn parse_degrees(value: &str, option: &str) -> Result<f64, Failure> {
+  value.parse::<f64>().map_err(|_| {
+    Failure::input(format!(
+      "{option} expects a number of degrees, got {value:?}"
     ))
   })
 }
@@ -1417,18 +1487,20 @@ fn build_segment(
       }
       ToolShape::v_bit(included_angle, flat_diameter)
     }
-    // An engrave or a flute carries the tool's real shape, whatever it is: a V-bit when the library
-    // records an angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it — the
-    // depth is authored and the ramp is a length — but the simulation must sweep the groove the bit
-    // actually cuts, and a segment that said "cylinder" for a V-bit would report a correct engrave as
-    // gouge, and a correct V-groove flute as a flat slot.
-    Operation::Engrave(_) | Operation::Fluting(_) => match geometry.included_angle {
-      Some(included_angle) => ToolShape::v_bit(
-        included_angle,
-        geometry.flat_diameter.unwrap_or(Length::ZERO),
-      ),
-      None => ToolShape::cylinder(spec.diameter),
-    },
+    // An engrave, a flute or a texture carries the tool's real shape, whatever it is: a V-bit when the
+    // library records an angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it —
+    // a groove's depth is authored and a ramp is a length — but the simulation must sweep the groove the
+    // bit actually cuts, and a segment that said "cylinder" for a V-bit would report a correct engrave
+    // as gouge, and a correct V-groove flute or texture as a flat slot.
+    Operation::Engrave(_) | Operation::Fluting(_) | Operation::Texture(_) => {
+      match geometry.included_angle {
+        Some(included_angle) => ToolShape::v_bit(
+          included_angle,
+          geometry.flat_diameter.unwrap_or(Length::ZERO),
+        ),
+        None => ToolShape::cylinder(spec.diameter),
+      }
+    }
     _ => ToolShape::cylinder(spec.diameter),
   };
 
@@ -1561,6 +1633,24 @@ fn build_segment(
           .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
         );
       }
+    }
+    Operation::Texture(params) => {
+      // Every selected contour is a boundary of **one** region, and the region's parity rule is what
+      // turns an appended contour into a hole (D-RB-2), so the pattern is clipped against the whole
+      // selection at once rather than once per entity (D-M6-6).
+      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
+      for entity_id in &toolpath.entity_ids {
+        contours.push(contour_of(document, &toolpath.id, entity_id)?);
+      }
+      moves.extend(
+        texture(&TextureRequest {
+          contours: &contours,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+      );
     }
   }
 
