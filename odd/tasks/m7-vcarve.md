@@ -129,9 +129,14 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   nearest boundary *points* (deduped by point, so a vertex shared by two segments is one point) number
   at least two, or the boundary is smooth there and every nearest point is at the same exact distance.
   A candidate that fails the test is dropped whole, never nudged into place, and the drop is counted.
-  Candidates are generated from the bisectors of boundary element pairs and refined to the declared
-  tolerance; the refinement is a function of the region alone, so two runs give the same branches in
-  the same order.
+  Candidates are generated from a nearest-feature lattice and refined by bisecting the two distances
+  along a crossing lattice edge, which is what makes an exact certificate reachable without constructing
+  a bisector; the refinement is a function of the region and the tolerance alone, so two runs give the
+  same branches in the same order. *(Amended by execution: the lattice+bisection route replaced "the
+  bisectors of boundary element pairs" because a bisector involving an arc is a conic the kernel has no
+  type for — and bisecting a scalar needs none. See L10.)* **Topology is an answer, so it is tested**: a
+  finer tolerance never returns more branches than a coarser one, because a finer tolerance that
+  fragmented one axis into thirteen would retract the tool thirteen times for a better measurement.
 
 - **A3 — The program is a walk of the skeleton at a varying Z, and it needs no post change.** Each
   branch is a rapid to safe Z, a plunge at the first vertex's own depth, then one `Move::Feed` per
@@ -239,7 +244,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 | --- | --- | --- | --- | --- |
 | T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | `786c3d8` + `228ecc7` |
 | T1 | `cam-geom`: the exact distance from a point to a region's boundary, over every boundary segment, arcs native; property-checked against a sampled lower bound | A1, D-M7-2 | inline, test-first | |
-| T2 | `cam-geom::medial`: the verified medial axis — pair-bisector candidates, the exact empty-ball certificate (nearest points deduped by point), chaining, refinement to the job tolerance, drop-whole with a count, deterministic branch order | A2, D-M7-2, D-M7-4 | delegated, test-first (the milestone's research unit) | |
+| T2 | `cam-geom::medial`: the verified medial axis — nearest-feature lattice, exact bisection, the empty-ball certificate (contacts deduped by point), a stitch pass over refused crossings, deterministic branch order, and the monotonicity property that a finer tolerance never returns more branches | A2, D-M7-2, D-M7-4, D-M7-5 | delegated, test-first (the milestone's research unit, three rounds: T2, T2b, T2c) | `eb989ab` |
 | T3 | `cam-model`: `Operation::VCarve` + the parameter record, one shared law beside the tool, refusals at load, `@2` round trip | A1, A4 | inline, test-first | |
 | T4 | `cam-toolpath::vcarve`: walk the branches at `-d/tan(θ/2)`, per-vertex Z feeds, retract between branches, flat-tip and unangled-bit refusals | A3, D-M7-7, S14 | delegated, test-first | |
 | T5 | `cam-cli toolpath --kind vcarve`, the named refusals for every flag it does not have, `inspect`, `--start-depth` refused | A5, D-M7-3, S16 | inline, test-first | |
