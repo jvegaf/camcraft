@@ -20,8 +20,9 @@ use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
   chamfer, circle_centre, drill, engrave, female, fluting, inlay, male, pocket, profile, texture,
-  thread, ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest, InlayRequest,
-  PocketRequest, ProfileRequest, TextureRequest, ThreadRequest, ToolSpec, ToolpathError,
+  thread, vcarve, ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest,
+  InlayRequest, PocketRequest, ProfileRequest, TextureRequest, ThreadRequest, ToolSpec,
+  ToolpathError, VCarveRequest,
 };
 use cam_units::{Format, Length};
 
@@ -49,7 +50,9 @@ COMMANDS:
                               thread (required); a texture cuts grooves only, so the material between
                               them stands and the region is never cleared; an inlay appends **two**
                               toolpaths, a female cavity and the male plug that fits it; a thread
-                              mills one helical descent around each circle, one pitch per revolution
+                              mills one helical descent around each circle, one pitch per revolution;
+                              a vcarve walks the region's medial axis at the depth the distance to
+                              the boundary demands, so it takes no depth at all
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -68,12 +71,15 @@ COMMANDS:
         --retract-amount <mm> drilling: lift above the peck when --retract amount
         --bank <count:pitch>  drilling: a gang of drills spaced along X
         --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
+        --tolerance <mm>      vcarve: the medial axis's lattice step (default 0.1). It costs the
+                              axis's own step, and therefore at most that much material left standing
+                              near a convex corner: a coarser step is a faster program and a shallower
+                              carve at the corners, never a deeper one
         --pass-depth <mm>     depth per pass; profile, pocket and inlay, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
         --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
                               and texture cut their one pass at it, fluting ramps to it, and a thread's
-                              helix descends to it
-        --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
+                              helix descends to it        --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
                               to plunge in place; longer than half the vector is an error
         --pitch <mm>          thread: how far the helix descends each revolution (required)
         --thread-direction <d>  thread: internal (default) inside a hole, or external around a boss
@@ -624,6 +630,7 @@ struct ToolpathArgs {
   inlay_allowance: Option<f64>,
   pitch: Option<f64>,
   thread_direction: Option<String>,
+  tolerance: Option<f64>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -671,6 +678,9 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       }
       "--angle" => {
         args.angle = Some(parse_degrees(&take("--angle")?, "--angle")?);
+      }
+      "--tolerance" => {
+        args.tolerance = Some(parse_mm(&take("--tolerance")?, "--tolerance")?);
       }
       "--tab" => args.tabs.push(parse_tab(&take("--tab")?)?),
       "--clear" => {
@@ -903,6 +913,140 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         start_depth: mm(args.start_depth.unwrap_or(0.0)),
       })
     }
+    "vcarve" => {
+      // A V-carve's depth **is** the distance field (A1, D-M7-3), its path is the region's medial axis
+      // (A2) and its only lateral choice is that axis, so every flag that names another strategy's law
+      // has no meaning here. Accepting one would mean ignoring it, and a `--stepover 2` nobody applied
+      // still looks applied: each is refused by name with the reason it has no meaning (A5).
+      for (flag, given, reason) in [
+        (
+          "--cut-depth",
+          args.cut_depth.is_some(),
+          "a V-carve's depth is derived at every tip from its distance to the boundary and the bit's \
+           included angle, so there is no one depth to name",
+        ),
+        (
+          "--start-depth",
+          args.start_depth.is_some(),
+          "with a start depth the cone's top reaches start * tan(angle / 2) outside the vectors and \
+           the carve stops being the distance field, which is the claim this operation is built on \
+           (D-M7-3)",
+        ),
+        (
+          "--pass-depth",
+          args.pass_depth.is_some(),
+          "each medial branch is one walk at the depth each of its tips demands, so there is no \
+           pass law",
+        ),
+        (
+          "--stepover",
+          args.stepover.is_some(),
+          "the medial axis decides where the next tip goes, not a spacing the user names",
+        ),
+        (
+          "--allowance",
+          args.allowance.is_some(),
+          "the carve meets the vectors exactly, so there is no wall to leave standing",
+        ),
+        (
+          "--side",
+          args.side.is_some(),
+          "the tip runs on the medial axis, which is inside the region by construction",
+        ),
+        (
+          "--tab",
+          !args.tabs.is_empty(),
+          "the depth is a function of position, and a tab would be a second Z law over it",
+        ),
+        (
+          "--lead-in",
+          args.lead_in.is_some(),
+          "every branch plunges and retracts on its own first vertex",
+        ),
+        (
+          "--lead-out",
+          args.lead_out.is_some(),
+          "every branch plunges and retracts on its own first vertex",
+        ),
+        (
+          "--ramp",
+          args.ramp.is_some(),
+          "a branch is walked at the depth its tips demand; there is no entry ramp",
+        ),
+        (
+          "--spacing",
+          args.spacing.is_some(),
+          "a spacing belongs to a texture's pattern, and the medial axis is not a pattern",
+        ),
+        (
+          "--angle",
+          args.angle.is_some(),
+          "the grooves' direction belongs to a texture; a V-carve's angle is the bit's, from the \
+           library",
+        ),
+        (
+          "--pitch",
+          args.pitch.is_some(),
+          "a pitch belongs to a thread's helix",
+        ),
+        (
+          "--chamfer-width",
+          args.chamfer_width.is_some(),
+          "a bevel's width belongs to a chamfer; a V-carve has no width parameter",
+        ),
+        (
+          "--inlay-allowance",
+          args.inlay_allowance.is_some(),
+          "a clearance belongs to an inlay pair",
+        ),
+        (
+          "--clear",
+          args.clear,
+          "a clear stepover belongs to a pocket's clearing",
+        ),
+        (
+          "--strategy",
+          args.strategy.is_some(),
+          "a clearing pattern belongs to a pocket, and the medial axis is the only pattern here",
+        ),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind vcarve takes no {flag}: {reason}"
+          )));
+        }
+      }
+      // D-M6-9 and D-M6-10's analogue for this operation, refused where the tool is read so that
+      // nothing is written for a bit that cannot carve to a sharp edge. The strategy refuses the same
+      // two, and so does `emit`, because the library can change under a document.
+      let included_angle = included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{tool_number} has no included angle in the library, so a V-carve's depth cannot be \
+           derived: a V-carve needs a V-bit"
+        ))
+      })?;
+      if let Some(flat) = flat_diameter {
+        if flat.mm() > 0.0 {
+          return Err(Failure::input(format!(
+            "tool T{tool_number} has a {} mm flat tip, so it cannot carve to a sharp edge: a V-carve \
+             needs a sharp V-bit",
+            flat.mm()
+          )));
+        }
+      }
+      let tolerance = args
+        .tolerance
+        .unwrap_or_else(|| cam_model::VCarveParams::default().tolerance.mm());
+      if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(Failure::input(format!(
+          "--tolerance must be a positive length in mm, got {tolerance}"
+        )));
+      }
+      Operation::VCarve(cam_model::VCarveParams {
+        included_angle,
+        tolerance: mm(tolerance),
+      })
+    }
     "engrave" => {
       // An engrave is one pass at one depth with the tool centre on the vector (D-M6-4). A side, a pass
       // law, a tab and a lead each have no meaning here, and accepting them would mean ignoring them:
@@ -1107,8 +1251,8 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     }
     other => {
       return Err(Failure::input(format!(
-        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave, \
-         fluting, texture, inlay or thread"
+        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, vcarve, \
+         engrave, fluting, texture, inlay or thread"
       )))
     }
   };
@@ -1150,6 +1294,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Pocket(_) => "Pocket",
         Operation::Drilling(_) => "Drilling",
         Operation::Chamfer(_) => "Chamfer",
+        Operation::VCarve(_) => "V carve",
         Operation::Engrave(_) => "Engrave",
         Operation::Fluting(_) => "Fluting",
         Operation::Texture(_) => "Texture",
@@ -1214,6 +1359,43 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         .map_err(|error| Failure::input(error.to_string()))?;
       }
     }
+  }
+
+  // A V-carve's axis is computed here, while the command can still say no and change nothing. Two of
+  // its refusals are only answerable with the whole request in hand: a tolerance the lattice cannot
+  // afford (`cam_geom::medial`'s own sample cap) and a region whose axis is empty. A document whose
+  // only failure mode is a later `emit` is worse than a command that answers now, which is the rule
+  // the drilling and thread checks above already follow.
+  if let Operation::VCarve(params) = &operation {
+    let mut contours = Vec::with_capacity(entity_ids.len());
+    for entity_id in &entity_ids {
+      contours.push(contour_of(&document, &id, entity_id)?);
+    }
+    let spec = ToolSpec {
+      number: tool_number,
+      diameter: diameter.unwrap_or(Length::ZERO),
+      included_angle: Some(params.included_angle),
+      feed_rate: cutting
+        .as_ref()
+        .and_then(|cutting| cutting.feed_rate)
+        .unwrap_or(0.0),
+      plunge_rate: cutting
+        .as_ref()
+        .and_then(|cutting| cutting.plunge_rate)
+        .unwrap_or(0.0),
+      spindle_speed: cutting
+        .as_ref()
+        .and_then(|cutting| cutting.spindle_speed)
+        .unwrap_or(0),
+    };
+    vcarve(&VCarveRequest {
+      contours: &contours,
+      params,
+      tool: &spec,
+      flat_diameter: flat_diameter.unwrap_or(Length::ZERO),
+      job: &document.job,
+    })
+    .map_err(|error| Failure::input(error.to_string()))?;
   }
 
   document.toolpaths.push(Toolpath {
@@ -1508,6 +1690,7 @@ fn operation_label(operation: &Operation) -> String {
       }
     }
     Operation::Chamfer(_) => "chamfer".to_owned(),
+    Operation::VCarve(_) => "vcarve".to_owned(),
     Operation::Engrave(_) => "engrave".to_owned(),
     Operation::Fluting(_) => "fluting".to_owned(),
     Operation::Inlay(_) => "inlay".to_owned(),
@@ -1769,6 +1952,31 @@ fn build_segment(
         None => ToolShape::cylinder(spec.diameter),
       }
     }
+    // A V-carve's cone is the bit's own, and the simulation must sweep the shape the machine really
+    // has: the program's Z says `clearance / tan(document's angle / 2)`, and if the library's angle is
+    // not that one, the carve really is a different shape and the report must say so rather than
+    // restating the document's assumption (M6 A8's rule for a groove, applied to a cone). A tool the
+    // library does not describe as an angled bit, or one with a flat, is refused by name here as it is
+    // at authoring and in the strategy: the library can change under a document.
+    Operation::VCarve(_) => {
+      let included_angle = geometry.included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{number} has no included angle, so toolpath {:?} cannot carve: a V-carve's depth \
+           cannot be derived, and defaulting 90 degrees would cut a different carve",
+          toolpath.id
+        ))
+      })?;
+      let flat_diameter = geometry.flat_diameter.unwrap_or(Length::ZERO);
+      if flat_diameter.mm() > 0.0 {
+        return Err(Failure::input(format!(
+          "tool T{number} has a {} mm flat tip, so toolpath {:?} would not carve to a sharp edge: a \
+           V-carve needs a sharp V-bit",
+          flat_diameter.mm(),
+          toolpath.id
+        )));
+      }
+      ToolShape::v_bit(included_angle, flat_diameter)
+    }
     _ => ToolShape::cylinder(spec.diameter),
   };
 
@@ -1871,6 +2079,25 @@ fn build_segment(
           .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
         );
       }
+    }
+    Operation::VCarve(params) => {
+      // One region, and its parity rule is what turns an appended contour into a hole (D-RB-2), so the
+      // walk is asked for the whole selection at once rather than once per entity: a V-carve of two
+      // nested contours is the ring between them, exactly as a pocket of the same vectors is.
+      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
+      for entity_id in &toolpath.entity_ids {
+        contours.push(contour_of(document, &toolpath.id, entity_id)?);
+      }
+      moves.extend(
+        vcarve(&VCarveRequest {
+          contours: &contours,
+          params,
+          tool: &spec,
+          flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+      );
     }
     Operation::Fluting(params) => {
       // Open and closed alike, like an engrave: a flute is one groove per vector (D-M6-5).

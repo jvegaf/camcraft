@@ -10,7 +10,8 @@
 //! than at a distance from it (M6 A4, D-M6-5), a texture authorises the same band along every groove of
 //! the document's own pattern (M6 A5, D-M6-6), an inlay authorises the half it is — the region grown by
 //! the allowance for the female, the job rectangle minus the region for the male (M6 A6, D-M6-7) — a thread authorises the **spiral** its helical descent
-//! leaves in the annulus its tool sweeps, cell by cell (M6 A7) — and
+//! leaves in the annulus its tool sweeps, cell by cell (M6 A7) — a V-carve authorises the **distance
+//! field** itself, at each cell's own centre (M7 A1, A6) — and
 //! every cell nothing claims is authorised to lose nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
@@ -33,7 +34,7 @@ use std::ops::Range;
 
 use cam_geom::offset::{offset_contour, OffsetOptions};
 use cam_geom::{region::Region, Contour, Point2, Segment, DEFAULT_TOLERANCE};
-use cam_model::{Document, Operation, ProfileParams, ProfileSide, Tab, Toolpath};
+use cam_model::{Document, Operation, ProfileParams, ProfileSide, Tab, Toolpath, VCarveParams};
 use cam_move::ToolShape;
 use cam_units::Length;
 use thiserror::Error;
@@ -441,8 +442,71 @@ fn claim_toolpath(
         claim_along_path(target, &path, tool, depth);
       }
     }
+    Operation::VCarve(params) => {
+      // The claim is the **distance field itself**, and it is read from the document alone (A6). A cell
+      // inside the region is authorised `depth(distance to the boundary at its centre)` — the same law,
+      // and the same call, `cam-toolpath::vcarve` makes for every tip — and a cell outside it is
+      // authorised nothing. No tool is looked up: the angle is the document's, because a tool lookup
+      // here would let the claim and the program be built from two different bits.
+      let angle = params.included_angle.radians();
+      if !(angle > 0.0 && angle < PI) {
+        return Err(TargetError::Geometry {
+          toolpath: toolpath.id.clone(),
+          reason: format!(
+            "its V-carve included angle is {} degrees, and the depth law divides by tan of half of it",
+            params.included_angle.degrees()
+          ),
+        });
+      }
+      let boundaries = contours_of(document, toolpath, toolpath.entity_ids.iter())?;
+      let region = region_of(&toolpath.id, boundaries)?;
+      // A carve deeper than the stock is material the machine cannot remove, so that is the one place
+      // the claim is clamped: everything else is the distance field as it stands.
+      claim_v_carve(target, &region, params, document.job.thickness.mm());
+    }
   }
   Ok(())
+}
+
+/// Claim the depth a V-carve authorises, cell by cell: the distance field at each cell's own centre.
+///
+/// The law is [`VCarveParams::depth`], and the distance is [`Region::distance_to_boundary`]'s exact
+/// one — arc-native, so a circular region's field is the circle's and not a chord's (M7 A1, A2). A cell
+/// whose centre is not material is authorised nothing: the carve meets the vectors exactly and cuts
+/// nothing outside them, which is why a V-carve has no footprint band around a path.
+///
+/// The tolerance the distance is asked at decides membership only, exactly as it does in
+/// [`Region::contains`]: it never snaps a distance to zero, so a cell a thousandth of a millimetre
+/// inside the region is authorised a thousandth's worth of depth rather than surfacing as a cliff.
+///
+/// This is the one claim in the file that reads no tool and no pattern: the surface a correct V-carve
+/// leaves is a property of the **region and the bit's angle** alone, which is what makes the oracle in
+/// `tests/vcarve.rs` an independent check of the program rather than a restatement of it.
+fn claim_v_carve(target: &mut Target, region: &Region, params: &VCarveParams, thickness: f64) {
+  let grid = target.grid;
+  let columns = grid.columns;
+  let Some(window) = cell_window(region, grid) else {
+    return;
+  };
+  for row in window.rows {
+    for column in window.columns.clone() {
+      let centre = grid.centre(column, row);
+      let Some(answer) = region.distance_to_boundary(centre, DEFAULT_TOLERANCE) else {
+        continue;
+      };
+      if !answer.inside {
+        continue;
+      }
+      let authorised = params
+        .depth(Length::from_mm(answer.distance))
+        .mm()
+        .min(thickness);
+      let slot = &mut target.authorised[row * columns + column];
+      if authorised > *slot {
+        *slot = authorised;
+      }
+    }
+  }
 }
 
 /// Claim the spiral a thread's helical descent leaves in the annulus its tool sweeps (M6 A7).

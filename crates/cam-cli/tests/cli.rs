@@ -5191,3 +5191,337 @@ fn a_post_without_helical_blocks_refuses_a_thread_by_name_and_writes_nothing() {
   assert!(!out.exists(), "a refused program writes nothing");
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// --- V-carve (M7 A5, A6, D-M7-3, D-M7-5) -------------------------------------------------------
+
+/// A V-bit library of `degrees` with a tip flat of `flat` millimetres, for the V-carve commands.
+fn write_vcarve_library(directory: &Path, name: &str, degrees: f64, flat: f64) -> PathBuf {
+  write_chamfer_library_at(directory, name, degrees, flat)
+}
+
+/// One `toolpath --kind vcarve` invocation with the flags the tests vary.
+fn add_v_carve(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
+  let mut arguments = vec![
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "vcarve",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ];
+  arguments.extend_from_slice(extra);
+  run(&arguments)
+}
+
+#[test]
+fn a_vcarve_authored_through_the_cli_stores_the_bits_angle_and_the_tolerance() {
+  let directory = scratch("vcarve-author");
+  let document = write_vectors(
+    &directory,
+    "vcarve.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 60.0, 0.0);
+
+  let added = add_v_carve(&document, &library, &["--tolerance", "0.5"]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 vcarve, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the bit's angle and the axis's tolerance, never a depth: the depth is
+  // a function of where each tip is, so there is no one number to store (A1, D-M7-3).
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::VCarve(params) => {
+      assert_eq!(params.included_angle, Angle::from_degrees(60.0));
+      assert_eq!(params.tolerance, Length::from_mm(0.5));
+      let depth = params.depth(Length::from_mm(10.0)).mm();
+      assert!(
+        (depth - 10.0 * 3.0_f64.sqrt()).abs() < 1.0e-9,
+        "10 mm of clearance on a 60 degree bit is 10 * sqrt(3) mm deep, got {depth}"
+      );
+    }
+    other => panic!("expected a V-carve, got {other:?}"),
+  }
+  assert!(loaded.validate().is_ok(), "and the document is valid");
+
+  // `inspect` names the kind (A5).
+  let inspected = run(&["inspect", document.to_str().expect("utf8")]);
+  assert_eq!(inspected.code, 0, "{}", inspected.stderr);
+  assert!(
+    inspected.stdout.contains("vcarve"),
+    "inspect names the kind: {}",
+    inspected.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_tolerance_defaults_to_a_tenth_of_a_millimetre_and_is_stored() {
+  // D-M7-5's correction: the tolerance is a flag with a documented default, and it reaches the
+  // document, because `emit` recomputes the axis from the document alone (S9, S10). A flag that was
+  // accepted and then dropped would make `emit`'s output depend on a constant nobody named.
+  let directory = scratch("vcarve-tolerance");
+  let explicit_path = write_vectors(
+    &directory,
+    "explicit.c2d",
+    vec![rectangle_contour(20.0, 20.0)],
+  );
+  let default_path = write_vectors(
+    &directory,
+    "default.c2d",
+    vec![rectangle_contour(20.0, 20.0)],
+  );
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let explicit = add_v_carve(&explicit_path, &library, &["--tolerance", "0.1"]);
+  assert_eq!(explicit.code, 0, "{}", explicit.stderr);
+  let default = add_v_carve(&default_path, &library, &[]);
+  assert_eq!(default.code, 0, "{}", default.stderr);
+
+  let loaded = cam_store::document::load_document(&default_path).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::VCarve(params) => assert_eq!(params.tolerance, Length::from_mm(0.1)),
+    other => panic!("expected a V-carve, got {other:?}"),
+  }
+  assert_eq!(
+    std::fs::read(&default_path).expect("read"),
+    std::fs::read(&explicit_path).expect("read"),
+    "the default is the documented 0.1 mm, byte for byte"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_tolerance_is_byte_identical_across_runs() {
+  // S10's determinism, on the new command: the same document and the same flags produce the same
+  // bytes, so two runs of the command can be compared with `cmp`.
+  let directory = scratch("vcarve-determinism");
+  let first = write_vectors(&directory, "first.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  let second = write_vectors(
+    &directory,
+    "second.c2d",
+    vec![rectangle_contour(20.0, 20.0)],
+  );
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let one = add_v_carve(&first, &library, &["--tolerance", "0.25"]);
+  assert_eq!(one.code, 0, "{}", one.stderr);
+  let two = add_v_carve(&second, &library, &["--tolerance", "0.25"]);
+  assert_eq!(two.code, 0, "{}", two.stderr);
+  assert_eq!(one.stdout, two.stdout, "the same report, byte for byte");
+  assert_eq!(
+    std::fs::read(&first).expect("read"),
+    std::fs::read(&second).expect("read"),
+    "the same document, byte for byte"
+  );
+
+  // And the program the document emits is byte-identical across runs, which is the determinism S10 is
+  // really about: the axis is a function of the region and the tolerance alone.
+  let post = write_post(&directory);
+  let one_program = emit_program(&directory, &first, &library, &post);
+  assert_eq!(
+    emit_program(&directory, &first, &library, &post),
+    one_program,
+    "the emitted program, byte for byte"
+  );
+  assert!(
+    one_program.contains("G01X"),
+    "and it is a program of varying-Z linear feeds: {one_program}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_refuses_every_flag_it_has_no_meaning_for_by_name() {
+  // A5: a flag whose meaning this kind does not have is refused **by name, with the reason**, rather
+  // than silently dropped — a `--stepover 2` nobody applied still looks applied. Every one of them
+  // leaves the file byte-identical, because a refusal happens before anything is written.
+  let directory = scratch("vcarve-refusals");
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+  for (flag, value) in [
+    ("--cut-depth", "5"),
+    ("--start-depth", "1"),
+    ("--pass-depth", "2"),
+    ("--stepover", "2"),
+    ("--allowance", "0.5"),
+    ("--side", "inside"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--ramp", "2"),
+    ("--spacing", "3"),
+    ("--angle", "30"),
+    ("--pitch", "1.5"),
+    ("--chamfer-width", "3"),
+    ("--inlay-allowance", "0.1"),
+    ("--strategy", "raster"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "refused.c2d",
+      vec![rectangle_contour(20.0, 20.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = add_v_carve(&document, &library, &[flag, value]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "{flag} is named by the refusal: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("takes no"),
+      "{flag} is refused as a flag this kind has no meaning for: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: a refused toolpath writes nothing"
+    );
+  }
+
+  // `--clear` takes no value, so it is its own run.
+  let document = write_vectors(&directory, "clear.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = add_v_carve(&document, &library, &["--clear"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--clear") && outcome.stderr.contains("takes no"),
+    "{}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_on_a_tool_without_an_included_angle_exits_two_naming_the_tool() {
+  let directory = scratch("vcarve-no-angle");
+  let document = write_vectors(&directory, "plain.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  // The ordinary library's T1 is an end mill: a diameter and no angle.
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = add_v_carve(&document, &library, &[]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("included angle"),
+    "and says what is missing: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_on_a_flat_tipped_bit_exits_two_naming_the_flat() {
+  // A flat tip cannot carve to a sharp edge, so the depth law this operation stands on is the law of a
+  // bit that is not in the machine (the chamfer's D-M6-10 in the other direction).
+  let directory = scratch("vcarve-flat");
+  let document = write_vectors(&directory, "flat.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  let library = write_vcarve_library(&directory, "flat-tools.sqlite", 90.0, 0.4);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = add_v_carve(&document, &library, &[]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("0.4"),
+    "the refusal names the flat: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("sharp"),
+    "and says what a V-carve needs: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_vcarve_tolerance_that_is_not_a_step_exits_two() {
+  let directory = scratch("vcarve-tolerance-refused");
+  let document = write_vectors(&directory, "step.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+  let before = std::fs::read(&document).expect("read");
+  for tolerance in ["0", "-0.1"] {
+    let outcome = add_v_carve(&document, &library, &["--tolerance", tolerance]);
+    assert_eq!(outcome.code, 2, "{tolerance}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains("--tolerance"),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(std::fs::read(&document).expect("read"), before);
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn simulate_reports_a_correct_vcarve_with_no_gouge_and_no_uncut_material() {
+  // A6, end to end through the binary: the document authorises the distance field, `emit` walks the
+  // medial axis at each tip's own depth, and the sweep finds exactly the authorised surface — so the
+  // report's two defect lines are zero and the command exits 0. Exit 0 is the assertion: `simulate`
+  // returns 6 the moment either volume is above zero (D-M5-6).
+  let directory = scratch("vcarve-simulate");
+  let document = write_vectors(&directory, "carve.c2d", vec![rectangle_contour(40.0, 30.0)]);
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+  // A 0.1 mm axis on purpose: D-M7-5 measured the convex-corner band this tolerance leaves as `0.00`
+  // mm, which is the one tolerance at which the whole carve is the field. At 0.5 mm the same program
+  // reports a fraction of a cubic millimetre of `uncut` at the rectangle's four corners and still no
+  // gouge, which is the declared cost of a coarser axis and is asserted in `cam-sim`'s own oracle.
+  let added = add_v_carve(&document, &library, &["--tolerance", "0.1"]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = run(&[
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--resolution",
+    "0.5",
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "a correct V-carve gouges nothing at all: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "and leaves nothing the document authorised standing: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("crash: none"),
+    "the walk retracts between branches: {}",
+    outcome.stdout
+  );
+
+  // The deepest cut is the region's own half-height: the 40 x 30 rectangle's axis reaches 15 mm from
+  // the boundary, so a 90 degree bit's apex is 15 mm — inside the 18 mm stock.
+  let emitted = emit_program(&directory, &document, &library, &write_post(&directory));
+  assert!(
+    emitted.contains("Z-15.0000"),
+    "the apex of a 40 x 30 rectangle on a 90 degree bit is -15 mm: {emitted}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}

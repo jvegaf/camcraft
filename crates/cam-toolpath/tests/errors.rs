@@ -63,6 +63,14 @@ fn every_variant() -> Vec<ToolpathError> {
       width: 100.0,
       height: 100.0,
     },
+    ToolpathError::VCarveNeedsAngledTool { tool_number: 3 },
+    ToolpathError::VCarveNeedsSharpBit {
+      tool_number: 3,
+      flat_diameter: 0.4,
+    },
+    ToolpathError::MedialAxis {
+      reason: "the medial axis needs a positive finite tolerance, in millimetres".to_owned(),
+    },
   ]
 }
 
@@ -71,7 +79,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    20,
+    23,
     "every variant must be listed exactly once"
   );
 
@@ -139,6 +147,24 @@ fn every_variant_keeps_its_message() {
            clears the stock around the region, so a region on or across the stock's edge leaves nothing \
            for it to clear"
         )
+      }
+      ToolpathError::VCarveNeedsAngledTool { tool_number } => {
+        format!(
+          "tool T{tool_number} has no included angle in the library, so a V-carve's depth cannot be \
+           derived: a V-carve needs a V-bit"
+        )
+      }
+      ToolpathError::VCarveNeedsSharpBit {
+        tool_number,
+        flat_diameter,
+      } => {
+        format!(
+          "tool T{tool_number} has a {flat_diameter} mm flat tip, so it cannot carve to a sharp edge: \
+           a V-carve's depth law is the cone of a sharp point, so a V-carve needs a sharp V-bit"
+        )
+      }
+      ToolpathError::MedialAxis { reason } => {
+        format!("the V-carve's medial axis could not be computed: {reason}")
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

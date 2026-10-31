@@ -10,7 +10,9 @@
 //! of a pattern clipped to a closed region, `inlay`, the male/female pair of pockets one command
 //! appends: a cavity grown by the allowance and a plug of the region itself, and `thread`, one helical
 //! descent around a circle at a pitch per revolution — the one strategy whose program is not a stack of
-//! constant-Z moves.
+//! constant-Z moves. M7 adds `vcarve`, which walks the selected region's medial axis with one tip per
+//! vertex at the depth that vertex's own clearance demands, so its program is a depth field rather than
+//! a set of passes at all.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -24,6 +26,7 @@ pub mod inlay;
 pub mod pocket;
 pub mod texture;
 pub mod thread;
+pub mod vcarve;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
@@ -33,6 +36,7 @@ pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 pub use texture::{texture, TextureRequest};
 pub use thread::{thread, ThreadRequest};
+pub use vcarve::{vcarve, VCarveRequest};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
@@ -231,6 +235,44 @@ pub enum ToolpathError {
     width: f64,
     /// The job's height in millimetres.
     height: f64,
+  },
+  /// A V-carve was asked of a tool the library does not describe as an angled bit.
+  ///
+  /// The carve's whole depth law is `clearance / tan(θ/2)`, so a cylinder has no angle to derive it
+  /// from and defaulting 90 degrees would cut a different carve than the one asked for (D-M6-9).
+  #[error(
+    "tool T{tool_number} has no included angle in the library, so a V-carve's depth cannot be \
+     derived: a V-carve needs a V-bit"
+  )]
+  VCarveNeedsAngledTool {
+    /// The tool the caller named.
+    tool_number: u32,
+  },
+  /// A V-carve was asked of a bit whose tip has a flat.
+  ///
+  /// With a flat of diameter `f` the tool cannot carve to a sharp edge: the surface its tip leaves is
+  /// `f/2 · cot(θ/2)` wide at the bottom, while the depth law the whole operation stands on reaches
+  /// zero exactly at the vectors. That is the chamfer's `D-M6-10` in the other direction, and it is
+  /// refused by name rather than absorbed.
+  #[error(
+    "tool T{tool_number} has a {flat_diameter} mm flat tip, so it cannot carve to a sharp edge: a \
+     V-carve's depth law is the cone of a sharp point, so a V-carve needs a sharp V-bit"
+  )]
+  VCarveNeedsSharpBit {
+    /// The tool the caller named.
+    tool_number: u32,
+    /// The flat at its tip, in millimetres.
+    flat_diameter: f64,
+  },
+  /// The medial axis a V-carve walks could not be computed.
+  ///
+  /// `cam_geom::medial` refuses a tolerance that is not positive and finite, and a lattice the
+  /// tolerance would make larger than its own sample cap. Neither is clamped into a coarser axis: a
+  /// silently coarsened tolerance changes what the carve leaves standing (D-M7-5).
+  #[error("the V-carve's medial axis could not be computed: {reason}")]
+  MedialAxis {
+    /// What the kernel said, verbatim.
+    reason: String,
   },
 }
 
