@@ -70,9 +70,10 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   additive under the existing `kind` tag, an unknown `kind` remains a hard load error, and every
   previously serialised document still loads and re-saves byte-identically.
 - **A2 — A chamfer is a V-bit bevel with a derived depth.** `--kind chamfer` takes `--entities`,
-  `--tool`, `--side`, `--chamfer-width` and `--start-depth`; the depth is `start_depth +
-  chamfer_width / tan(included_angle / 2)`, derived from the tool and never authored. The tip travels
-  on the selected contour, unoffset, in **one** pass (S-D-M6-2 below), and the tool's own emitted path
+  `--tool`, `--chamfer-width` and `--start-depth`; the depth is `start_depth +
+  chamfer_width / tan(included_angle / 2)`, derived from the tool and never authored, and there is no
+  `--side`: the tip travels on the vector and the bevel is symmetric about it (amended in L7). The
+  tip travels on the selected contour, unoffset, in **one** pass (S-D-M6-2 below), and the tool's own emitted path
   is unchanged by the width except through its Z.
 - **A3 — A quick engrave is one constant-depth pass on the contour.** `--kind engrave` takes
   `--entities`, `--tool` and `--cut-depth`; it cuts each selected contour at that single depth with no
@@ -123,7 +124,10 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   `width` inside the edge and reaches the edge line at depth `depth`, giving a bevel of horizontal width
   `width` whose face makes the half-angle with vertical — for a 90° bit, a 45° chamfer of width
   `width`, which is the case a user checks by eye. One pass, because a second pass at a deeper Z would
-  cut a second bevel into the first.
+  cut a second bevel into the first. **Amended in L7:** a symmetric bevel about the vector has no side,
+  so `ChamferParams` carries no `side` and no `cut_depth` — only `chamfer_width`, `included_angle` and
+  `start_depth`, with one shared `ChamferParams::depth()` in `cam-model` that `cam-toolpath` and
+  `cam-sim` both call, so the two can never derive different depths.
 - **D-M6-3 — The cone is modelled in `cam-sim`, not approximated by a cylinder.** M5 S2 put the tool's
   diameter on the segment because the simulation needs the swept footprint; a V-bit's footprint is not a
   diameter. `cam_move::Segment` therefore carries a tool shape (`Cylinder { diameter }` or
@@ -165,7 +169,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim | A8, S9, S10, D-M6-3 | inline, test-first | `6a9dbb0`? |
+| T1 | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim | A8, S9, S10, D-M6-3 | inline, test-first | `b9b29d9` |
 | T2 | Chamfer: `Operation::Chamfer`, `ToolSpec.included_angle`, `cam-toolpath::chamfer`, CLI `--kind chamfer --chamfer-width`, sim arm, oracle, golden | A2, A8, A9, D-M6-2, D-M6-9 | inline, test-first | |
 | T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4 | inline, test-first | |
 | T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | inline, test-first | |
@@ -227,3 +231,12 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   beyond a quarter cell, because the sweep walks the path every half cell and its sample can only be
   further from the path than the path itself. That one-signedness is a property worth stating: a cone
   cut can be reported shallow by the sampling and never deep, so the sampling can never hide a gouge.
+- **L7 (design, T2 pre-flight, an amendment to A2 and D-M6-2).** Writing the task made a hole in A2
+  visible: a V-bit with its tip on the vector cuts symmetrically about it, so there is no side to choose.
+  `ChamferParams` therefore carries `chamfer_width`, `included_angle` and `start_depth` and **not** a
+  derived `cut_depth`; the derivation lives once, in `cam-model`, because a stored derived value and a
+  recomputed one would eventually disagree in a hand-edited document.
+- **L8 (process, slice size).** T1 landed as one commit of 819 authored lines, past the ~400-line slice
+  the harness asks for. The boundary is deliberate and cannot be moved: `Segment.tool_diameter` became
+  `Segment.tool`, and a half-applied shape change leaves the workspace uncompilable, while every test in
+  the tree constructs a segment. The next commits are the smaller ones the plan already had.
