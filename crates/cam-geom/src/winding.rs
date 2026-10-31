@@ -55,18 +55,38 @@ pub fn winding_number(contour: &Contour, point: Point2) -> i32 {
 /// The boundary test runs first and is a real distance, so a point within `tolerance` of any segment
 /// is reported as `OnBoundary` rather than being assigned to one side by rounding.
 pub fn classify(contour: &Contour, point: Point2, tolerance: f64) -> Membership {
+  classify_with_distance(contour, point, tolerance).0
+}
+
+/// [`classify`] together with the exact distance to the contour's boundary, from one walk.
+///
+/// The two answers are asked together because both need the same per-segment distance: the boundary
+/// test *is* the nearest distance compared with `tolerance`. A region answering "how far is the
+/// boundary" and "is this material" therefore walks its segments once, not twice, which is what
+/// [`crate::region::Region::distance_to_boundary`] does.
+///
+/// The distance is the exact minimum over the contour's segments, arcs native
+/// ([`crate::segment::Segment::distance_to_point`]); `tolerance` decides only whether the point is
+/// reported as `OnBoundary` and never snaps the distance itself. An open contour encloses nothing, so
+/// its membership is `Outside`, and a contour with no segments at all has no boundary to be far from
+/// and reports `f64::INFINITY`.
+pub fn classify_with_distance(
+  contour: &Contour,
+  point: Point2,
+  tolerance: f64,
+) -> (Membership, f64) {
   let nearest = contour
     .segments()
     .iter()
     .map(|segment| segment.distance_to_point(point))
     .fold(f64::INFINITY, f64::min);
   if nearest <= tolerance {
-    return Membership::OnBoundary;
+    return (Membership::OnBoundary, nearest);
   }
   if winding_number(contour, point) == 0 {
-    Membership::Outside
+    (Membership::Outside, nearest)
   } else {
-    Membership::Inside
+    (Membership::Inside, nearest)
   }
 }
 
