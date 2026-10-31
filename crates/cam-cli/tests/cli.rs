@@ -3033,3 +3033,241 @@ fn emit_refuses_a_chamfer_whose_tool_has_a_flat_tip_naming_the_tool() {
   assert!(!out.exists(), "a refused program writes nothing");
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// --- quick engrave (M6 A3, D-M6-4) -----------------------------------------------------------
+
+/// The whole program one engrave emits, byte for byte.
+///
+/// A 90 degree V-bit and a 2 mm engrave with no start depth: the tool centre runs on the 40 x 30
+/// rectangle itself, unoffset, at `-2` mm, in **one** pass — rapid, one plunge, four sides, retract to
+/// safe Z. Every line is the chamfer golden's, with this strategy's own Z and name: an engrave
+/// replaces the pass law and the bevel derivation, not the walk. CRLF, because the fixture post
+/// declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_ENGRAVE_PROGRAM: &str = "\
+( Engrave 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z-2.0000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G01Y30.0000\r\n\
+N70G01X0.0000\r\n\
+N80G01Y0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn an_engrave_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-engrave");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 engrave, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the authored depth and the start it begins from — nothing derived.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Engrave(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(2.0));
+    }
+    other => panic!("expected an engrave, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_ENGRAVE_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_takes_no_side_no_pass_depth_no_tabs_and_no_leads() {
+  // An engrave is one pass at one depth with the tool centre on the vector (D-M6-4), so a side, a
+  // pass law, a tab and a lead each have no meaning here. Refusing them by name is the difference
+  // between a refusal and a silently different groove: a `--pass-depth 2` that nobody applied would
+  // still look like it had been.
+  let directory = scratch("engrave-flags");
+  let library = write_chamfer_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "engrave.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "engrave",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--cut-depth",
+      "2",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_whose_cut_depth_is_not_below_its_start_depth_exits_two_naming_both() {
+  // The profile's own rule, inherited through D-M6-4: the deepest pass lands on `cut_depth`, so a
+  // document whose cut depth is not below its start depth is refused as an input error that names
+  // both numbers rather than emitting a program that cuts nothing.
+  let directory = scratch("engrave-depths");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "4",
+    "--start-depth",
+    "4",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(
+    added.code, 0,
+    "authoring stores what was asked: {}",
+    added.stderr
+  );
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("cut depth 4 mm") && outcome.stderr.contains("start depth 4 mm"),
+    "the refusal names both depths: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_simulates_with_no_gouge_and_no_uncut() {
+  // A8's end-to-end claim for the third strategy: the V-bit the library describes reaches `cam-sim`
+  // through the segment, so the groove the program is simulated with is the groove its tool cuts. A
+  // segment that carried a cylinder instead would remove a flat slot the target does not authorise,
+  // and the report would show it.
+  let directory = scratch("engrave-simulate");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = run(&[
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}

@@ -3,8 +3,9 @@
 //! M0 implemented `profile` and the rules every other strategy reuses: the side offset, the
 //! allowance, depth chunking, tab lifting and lead moves. M4 adds the two strategies that define 2.5D
 //! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks). M6 adds
-//! `chamfer`, the first depth-variant strategy: one V-bit pass whose Z is derived from the bit's own
-//! included angle instead of authored.
+//! the depth-variant strategies: `chamfer`, one V-bit pass whose Z is derived from the bit's own
+//! included angle instead of authored, and `engrave`, one authored-depth pass along open or closed
+//! vectors with no pass law at all.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -12,10 +13,12 @@
 
 pub mod chamfer;
 pub mod drill;
+pub mod engrave;
 pub mod pocket;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
+pub use engrave::{engrave, EngraveRequest};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};

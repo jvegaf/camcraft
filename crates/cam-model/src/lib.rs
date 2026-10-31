@@ -314,6 +314,29 @@ impl Default for ChamferParams {
   }
 }
 
+/// Parameters of a quick engrave toolpath.
+///
+/// One pass at one authored depth, with the tool's centre **on** the vector (D-M6-4). There is no
+/// side, no pass law, no lead and no tab: a second pass would cut a second groove into the first, and
+/// the feature is a single groove. The depth is authored here rather than derived, which is what
+/// separates an engrave from a chamfer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EngraveParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface; the one pass lands exactly on it.
+  pub cut_depth: Length,
+}
+
+impl Default for EngraveParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -326,6 +349,8 @@ pub enum Operation {
   Drilling(DrillParams),
   /// Bevel the selected closed vectors with a V-bit, at a depth derived from the bit.
   Chamfer(ChamferParams),
+  /// Engrave the selected vectors, open or closed, in one pass at an authored depth.
+  Engrave(EngraveParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -574,6 +599,9 @@ impl Document {
           | Operation::Pocket(_)
           | Operation::Drilling(_)
           | Operation::Chamfer(_) => true,
+          // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
+          // vector and stops at its last vertex, so an open one is legal here and only here.
+          Operation::Engrave(_) => false,
         };
         if needs_closed_geometry {
           let closed = entity

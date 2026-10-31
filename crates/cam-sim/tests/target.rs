@@ -12,8 +12,8 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner,
-  PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, Job, Layer, Operation,
+  OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
@@ -1101,4 +1101,91 @@ fn a_chamfer_with_a_flat_tipped_bit_is_refused_by_name() {
       flat_diameter: 2.0,
     })
   );
+}
+
+/// A quick engrave over `entities` at `cut` millimetres, from `start` (D-M6-4).
+fn engrave(id: &str, entities: &[&str], cut: f64, start: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Engrave".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Engrave(EngraveParams {
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+    }),
+  }
+}
+
+#[test]
+fn an_engrave_authorises_the_cone_either_side_of_an_open_vector() {
+  // An open vector has no interior, so it is not a region at all: the claim is built from the geometry
+  // (T3). A 90 degree V-bit 6 mm deep on the line `y = 10` reaches the surface 6 mm either side of it,
+  // and a cell `x` mm away is authorised `6 - x`. Cell centres 0.5, 3.5 and 6.5 mm from the line are
+  // authorised 5.5, 2.5 and nothing — the same three numbers T1 pinned for a profile `on` the vector,
+  // now from a contour the profile would have refused as open.
+  let line = Contour::from_points(&[Point2::new(10.0, 10.0), Point2::new(30.0, 10.0)], false)
+    .expect("an open vector");
+  let document = document(
+    60.0,
+    &[("line", line)],
+    vec![engrave("engrave 1", &["line"], 6.0, 0.0)],
+  );
+  let target = target_for(&document, cell(), &v_bit_tools(90.0, 0.0)).expect("a target");
+
+  assert!(
+    (target.authorised(20, 10) - 5.5).abs() < 1e-9,
+    "half a millimetre off the vector is authorised 5.5, got {}",
+    target.authorised(20, 10)
+  );
+  assert!(
+    (target.authorised(20, 13) - 2.5).abs() < 1e-9,
+    "3.5 mm off the vector is authorised 2.5, got {}",
+    target.authorised(20, 13)
+  );
+  assert_eq!(
+    target.authorised(20, 16),
+    0.0,
+    "6.5 mm off the vector is past the cone's reach"
+  );
+  // The claim is a capsule around the vector, not a strip across the sheet: a cell half a millimetre
+  // past the vector's last vertex is already `sqrt(6.5^2 + 0.5^2)` from it, which is past the cone's
+  // reach of 6.
+  assert_eq!(
+    target.authorised(36, 10),
+    0.0,
+    "past the end of an open vector nothing is authorised"
+  );
+}
+
+#[test]
+fn an_engrave_with_an_end_mill_authorises_a_uniform_band_and_not_a_region() {
+  // A8's fall-out for the third strategy, asserted rather than assumed: a cylinder's `rise` is zero at
+  // every radius, so the cone law degenerates to one depth across the footprint the tool sweeps. The
+  // footprint is the *band* — engraving does not clear — so the inside of a closed contour stays
+  // standing even though the contour is closed, which is where this differs from a pocket.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 50.0))],
+    vec![engrave("engrave 1", &["square"], 6.0, 0.0)],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  // Cell centres 0.5 and 2.5 mm inside the bottom edge are within the 3 mm radius, at the whole depth
+  // and the same number both times: that is what "uniform" means here.
+  assert_eq!(target.authorised(30, 10), 6.0, "0.5 mm inside the band");
+  assert_eq!(target.authorised(30, 12), 6.0, "2.5 mm inside the band");
+  // 3.5 mm away is outside the footprint. The cell window is the contour's bounds widened by the
+  // radius, and its corner is further than the radius from the vector, so the window alone cannot be
+  // the claim: the distance has to be checked, exactly as the sweep checks it.
+  assert_eq!(target.authorised(30, 13), 0.0, "3.5 mm away is outside");
+  // The middle of the square is 20 mm from every edge, so an engrave leaves it standing.
+  assert_eq!(
+    target.authorised(30, 30),
+    0.0,
+    "a closed engrave grooves the loop and clears nothing inside it"
+  );
+  // The far edge is claimed by the same law as the near one.
+  assert_eq!(target.authorised(30, 49), 6.0, "0.5 mm inside the top edge");
 }

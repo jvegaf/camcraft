@@ -19,8 +19,8 @@ use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  chamfer, circle_centre, drill, pocket, profile, ChamferRequest, DrillHole, DrillRequest,
-  PocketRequest, ProfileRequest, ToolSpec, ToolpathError,
+  chamfer, circle_centre, drill, engrave, pocket, profile, ChamferRequest, DrillHole, DrillRequest,
+  EngraveRequest, PocketRequest, ProfileRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -44,7 +44,7 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket, drilling or chamfer (required)
+        --kind <kind>         profile, pocket, drilling, chamfer or engrave (required)
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -60,7 +60,8 @@ COMMANDS:
         --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
         --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
-        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead
+        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
+                              cuts its one pass at it
         --lead-in <mm>        profile: straight lead-in
         --lead-out <mm>       profile: straight lead-out
         --tab <pos:width:height>  profile: repeatable holding tab
@@ -871,9 +872,32 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         start_depth: mm(args.start_depth.unwrap_or(0.0)),
       })
     }
+    "engrave" => {
+      // An engrave is one pass at one depth with the tool centre on the vector (D-M6-4). A side, a pass
+      // law, a tab and a lead each have no meaning here, and accepting them would mean ignoring them:
+      // a `--pass-depth 2` nobody applied still looks applied. Refused by name instead.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind engrave takes no {flag}: an engrave is one pass at a constant depth, with the tool \
+             centre on the vector, no stepdown, no tabs and no lead"
+          )));
+        }
+      }
+      Operation::Engrave(cam_model::EngraveParams {
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
-        "unknown toolpath kind {other:?}; expected profile, pocket, drilling or chamfer"
+        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer or engrave"
       )))
     }
   };
@@ -900,6 +924,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Pocket(_) => "Pocket",
         Operation::Drilling(_) => "Drilling",
         Operation::Chamfer(_) => "Chamfer",
+        Operation::Engrave(_) => "Engrave",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -1113,6 +1138,7 @@ fn operation_label(operation: &Operation) -> String {
       }
     }
     Operation::Chamfer(_) => "chamfer".to_owned(),
+    Operation::Engrave(_) => "engrave".to_owned(),
   }
 }
 
@@ -1336,6 +1362,17 @@ fn build_segment(
       }
       ToolShape::v_bit(included_angle, flat_diameter)
     }
+    // An engrave carries the tool's real shape, whatever it is: a V-bit when the library records an
+    // angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it — the depth is
+    // authored — but the simulation must sweep the groove the bit actually cuts, and a segment that
+    // said "cylinder" for a V-bit would report a correct engrave as gouge.
+    Operation::Engrave(_) => match geometry.included_angle {
+      Some(included_angle) => ToolShape::v_bit(
+        included_angle,
+        geometry.flat_diameter.unwrap_or(Length::ZERO),
+      ),
+      None => ToolShape::cylinder(spec.diameter),
+    },
     _ => ToolShape::cylinder(spec.diameter),
   };
 
@@ -1430,6 +1467,21 @@ fn build_segment(
         let contour = contour_of(document, &toolpath.id, entity_id)?;
         moves.extend(
           chamfer(&ChamferRequest {
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
+    Operation::Engrave(params) => {
+      // Open and closed vectors alike: engraving an open one is the strategy's point (D-M6-4).
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          engrave(&EngraveRequest {
             contour,
             params,
             tool: &spec,

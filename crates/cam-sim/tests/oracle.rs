@@ -17,8 +17,8 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner,
-  PocketParams, PocketStrategy, ProfileParams, ProfileSide, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, Job, Layer, Operation,
+  OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
@@ -906,5 +906,229 @@ fn a_chamfer_on_the_stock_edge_removes_one_flank() {
     deviation,
     Deviation::default(),
     "a chamfer on the stock's edge deviates by nothing"
+  );
+}
+
+// --- quick engrave (M6 A3, A9, D-M6-4) -------------------------------------------------------
+
+/// A quick engrave along `entities` at `cut` millimetres, starting at `start` (D-M6-4: one pass, no
+/// pass law, so there is no step to write here).
+fn engrave(id: &str, entities: &[&str], cut: f64, start: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Engrave".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Engrave(EngraveParams {
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+    }),
+  }
+}
+
+/// The moves an engrave emits on one open vector: rapid over its first vertex, one plunge to the
+/// pass's own depth, the vector straight through, and a retract to clearance. No lead-in, no lead-out,
+/// no tab lift — that is the whole of the strategy (D-M6-4).
+fn engrave_moves(from: Point2, to: Point2, depth: f64) -> Vec<Move> {
+  vec![
+    Move::Rapid {
+      to: Point3::new(from.x, from.y, SAFE_Z),
+    },
+    Move::Feed {
+      to: Point3::new(from.x, from.y, -depth),
+    },
+    Move::Feed {
+      to: Point3::new(to.x, to.y, -depth),
+    },
+    Move::Retract {
+      to: Point3::new(to.x, to.y, SAFE_Z),
+    },
+  ]
+}
+
+/// The stock the engrave oracles are cut out of: 160 mm square, so a groove 3.5 mm either side of a
+/// line through its middle stays well inside it.
+const ENGRAVE_STOCK: f64 = 160.0;
+/// The depth every engrave fixture is cut to.
+const ENGRAVE_DEPTH: f64 = 6.0;
+/// A 60 degree bit on purpose, as for the chamfer: its half angle is 30 degrees, so a depth that
+/// ignored `tan(half angle)` would disagree with the right one instead of coinciding with it.
+const ENGRAVE_DEGREES: f64 = 60.0;
+
+/// The engrave fixture's vector: one straight line through the middle of the sheet, running 20 mm past
+/// it at **both** ends.
+///
+/// The overhang is the point. A cone swept along a segment removes the wedge of its interior plus two
+/// end caps whose volume is `pi * d^3 * tan^2(half) / 6` each — real geometry nobody asked this test to
+/// subtract. Running the ends off the sheet puts both caps where neither the field nor the target has
+/// a cell, so the grid clips them at exactly the same place and the arithmetic below stays the
+/// interior's. (The chamfer oracle reached the same conclusion from the other side: it used a circle so
+/// that a closed path had no ends at all.)
+fn engrave_vector() -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(-20.0, ENGRAVE_STOCK / 2.0),
+      Point2::new(ENGRAVE_STOCK + 20.0, ENGRAVE_STOCK / 2.0),
+    ],
+    false,
+  )
+  .expect("an open vector")
+}
+
+fn engrave_fixture(depth: f64) -> Document {
+  document(
+    ENGRAVE_STOCK,
+    &[("vector", engrave_vector())],
+    vec![engrave("engrave 1", &["vector"], depth, 0.0)],
+  )
+}
+
+#[test]
+fn an_engrave_with_a_v_bit_removes_the_cone_it_sweeps() {
+  // A9's arithmetic for quick engrave, first sign. A 60 degree bit at depth `d` cutting a straight
+  // vector of length `L` removes `L * d^2 * tan(30)`: the groove's cross-section is the isosceles
+  // triangle whose height is `d` on the vector and whose base is `2 * d * tan(30)` at the surface, so
+  // its area is `d^2 * tan(30)` and the volume is that times the length.
+  //
+  // `L` is the sheet's width, not the vector's length: the vector overhangs both ends so the two end
+  // caps fall outside the grid (see `engrave_vector`). The removed volume is therefore
+  // `160 * 6^2 * tan(30) = 3325.6` mm3.
+  let depth = ENGRAVE_DEPTH;
+  let half = Angle::from_degrees(ENGRAVE_DEGREES).radians() / 2.0;
+  let tool = ToolShape::v_bit(Angle::from_degrees(ENGRAVE_DEGREES), Length::ZERO);
+  let vector = engrave_vector();
+  let moves = engrave_moves(
+    vector.vertices()[0].point,
+    vector.vertices()[1].point,
+    depth,
+  );
+  let mut field = field(ENGRAVE_STOCK, CELL);
+  let removal = sweep::apply(&v_bit_program(ENGRAVE_DEGREES, moves), &mut field);
+  assert!(removal.crashes.is_empty(), "the retract is at safe Z");
+
+  let analytic = ENGRAVE_STOCK * depth * depth * half.tan();
+  // The groove has two graded boundaries at `d * tan(half)` either side of the vector, each 160 mm
+  // long. D-M5-3's bound is half a cell of coverage, and on a graded cut a boundary cell can be wrong
+  // by the depth the cone gains over the half cell plus the quarter cell the sweep's sampling can add
+  // — `rise(0.75 * cell)` — so the bound is `2 * L * cell * rise(0.75 * cell)`.
+  let bound = 2.0 * ENGRAVE_STOCK * CELL * tool.rise_at_radius(0.75 * CELL);
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  assert_eq!(
+    field.volumes().through_cells,
+    0,
+    "{depth} mm out of an 18 mm stock goes through nothing"
+  );
+
+  // And it is the right cells, not two errors cancelling: the engrave's own target authorises exactly
+  // what the program cut, at the tolerance the graded cut is judged at (the same one the chamfer
+  // oracle uses, `rise(cell / 4)`).
+  let document = engrave_fixture(depth);
+  let target = target_for(
+    &document,
+    Length::from_mm(CELL),
+    &v_bit_tools(ENGRAVE_DEGREES),
+  )
+  .expect("a target");
+  let deviation = deviations(&field, &target, cone_tolerance(tool)).expect("the same grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a clean engrave deviates by nothing: the target grades the claim with the same cone"
+  );
+}
+
+#[test]
+fn an_engrave_with_an_end_mill_removes_a_uniform_band() {
+  // A9's arithmetic for quick engrave, second sign — and A8's fall-out stated rather than assumed: a
+  // cylinder's `rise` is zero at every radius, so the cone law degenerates to one depth across the
+  // tool's whole footprint. A 6 mm end mill at depth 3 on a straight vector of length 160 removes
+  // `L * D * d = 160 * 6 * 3 = 2880` mm3: a rectangle's worth of material, not a V-groove's.
+  let depth = 3.0;
+  let diameter = 6.0;
+  let from = engrave_vector().vertices()[0].point;
+  let to = engrave_vector().vertices()[1].point;
+  let field = cut(
+    ENGRAVE_STOCK,
+    CELL,
+    diameter,
+    engrave_moves(from, to, depth),
+  );
+
+  let analytic = ENGRAVE_STOCK * diameter * depth;
+  // One boundary on each side of the vector, 160 mm long, half a cell of coverage (D-M5-3).
+  let bound = 2.0 * ENGRAVE_STOCK * CELL / 2.0 * depth;
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+
+  // The target claims the same rectangle: the engrave's band is uniform, not graded.
+  let document = engrave_fixture(depth);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(diameter)).expect("a target");
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 4.0)).expect("the same grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a clean engrave with an end mill deviates by nothing"
+  );
+}
+
+#[test]
+fn an_engrave_one_millimetre_shallow_is_uncut_and_one_millimetre_deep_is_gouge() {
+  // A9's second sign, on the engrave: the document asks for a 6 mm groove with a 60 degree bit, and
+  // the same vector is cut 1 mm shallow in one field and 1 mm deep in the other. The shallow cut must
+  // be reported as uncut and must gouge nothing; the deep one gouges and leaves nothing uncut. A
+  // target that claimed a flat band, or the wrong depth, would report the *correct* groove as a
+  // deviation instead, which is what this test exists to catch.
+  let document = engrave_fixture(ENGRAVE_DEPTH);
+  let target = target_for(
+    &document,
+    Length::from_mm(CELL),
+    &v_bit_tools(ENGRAVE_DEGREES),
+  )
+  .expect("a target");
+  let tool = ToolShape::v_bit(Angle::from_degrees(ENGRAVE_DEGREES), Length::ZERO);
+  let tolerance = cone_tolerance(tool);
+  let from = engrave_vector().vertices()[0].point;
+  let to = engrave_vector().vertices()[1].point;
+
+  let mut shallow = field(ENGRAVE_STOCK, CELL);
+  let removal = sweep::apply(
+    &v_bit_program(
+      ENGRAVE_DEGREES,
+      engrave_moves(from, to, ENGRAVE_DEPTH - 1.0),
+    ),
+    &mut shallow,
+  );
+  assert!(removal.crashes.is_empty(), "the retract is at safe Z");
+  let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+  assert_eq!(shallow.gouge, 0.0, "1 mm shallow gouges nothing");
+  assert_eq!(shallow.gouge_cells, 0);
+  assert!(
+    shallow.uncut > 0.0 && shallow.uncut_cells > 0,
+    "1 mm shallow is uncut: {shallow:?}"
+  );
+
+  let mut deep = field(ENGRAVE_STOCK, CELL);
+  let removal = sweep::apply(
+    &v_bit_program(
+      ENGRAVE_DEGREES,
+      engrave_moves(from, to, ENGRAVE_DEPTH + 1.0),
+    ),
+    &mut deep,
+  );
+  assert!(removal.crashes.is_empty(), "the retract is at safe Z");
+  let deep = deviations(&deep, &target, tolerance).expect("one grid");
+  assert_eq!(deep.uncut, 0.0, "1 mm deep leaves nothing uncut");
+  assert_eq!(deep.uncut_cells, 0);
+  assert!(
+    deep.gouge > 0.0 && deep.gouge_cells > 0,
+    "1 mm deep is a gouge: {deep:?}"
   );
 }

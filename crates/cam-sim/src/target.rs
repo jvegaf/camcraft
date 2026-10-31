@@ -5,7 +5,8 @@
 //! wall its allowance keeps (D-M5-10), a drilling toolpath authorises each hole's circle, a profile
 //! authorises the band its tool *sweeps* — `allowance … 2·radius + allowance` from the vector, less
 //! whatever a tab declares it keeps (D-M5-5) — a chamfer authorises the cone its derived depth reaches
-//! either side of the vector (M6 A8), and every cell nothing claims is authorised to lose nothing.
+//! either side of the vector (M6 A8), an engrave authorises the band or the graded groove its one pass
+//! cuts along the vector (M6 A3, D-M6-4), and every cell nothing claims is authorised to lose nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
 //!
@@ -295,6 +296,22 @@ fn claim_toolpath(
         let contour = contour_of(document, toolpath, id)?;
         let region = cone_band(&toolpath.id, contour, reach)?;
         claim_cone_region(target, &region, contour, tool, depth, None);
+      }
+    }
+    Operation::Engrave(params) => {
+      // The depth is authored, so it is claimed as it stands (D-M6-4): nothing is derived and nothing
+      // is added to it. The claim is built from the geometry rather than from a region, because an
+      // open vector has no interior and cannot be a region at all (see `claim_along_path`).
+      let depth = authorised_depth(params.cut_depth);
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
+      for id in &toolpath.entity_ids {
+        let contour = contour_of(document, toolpath, id)?;
+        claim_along_path(target, contour, tool, depth);
       }
     }
   }
@@ -616,6 +633,54 @@ struct Window {
   rows: Range<usize>,
 }
 
+/// Claim the band or groove a one-pass engrave cuts along `contour` (M6 A3, D-M6-4).
+///
+/// This is [`claim_cone_region`] without a region, and the reason is not layout: an **open** vector has
+/// no interior, so it cannot be a `Region` at all, and a closed one claimed as a filled region would
+/// authorise a clearing pass an engrave never cuts. The claim is therefore built from the geometry —
+/// the cells of the contour's own bounds widened by the tool's reach at `depth`, each authorised
+/// `depth − rise(distance to the contour)`, clamped at zero — which is the same law the sweep applies
+/// and the same law `claim_cone_region` applies inside its band.
+///
+/// The distance test is not redundant with the window. A cell at a corner of the window is up to
+/// `reach · √2` from the vector, and a cylinder's `rise` is zero at every radius: without the test an
+/// end mill would authorise the whole window instead of the band its footprint sweeps. A sharp V-bit
+/// clamps itself (its `rise` reaches `depth` exactly at `reach`), so the test only has real work to do
+/// for a cylinder or a flat tip — which is exactly why it must be written, not assumed.
+fn claim_along_path(target: &mut Target, contour: &Contour, tool: ToolShape, depth: f64) {
+  let grid = target.grid;
+  let columns = grid.columns;
+  let reach = tool.radius_at(depth);
+  let bounds = contour.bounds();
+  let widened = cam_geom::Bounds {
+    min: Point2::new(bounds.min.x - reach, bounds.min.y - reach),
+    max: Point2::new(bounds.max.x + reach, bounds.max.y + reach),
+  };
+  let Some(window) = bounds_window(widened, grid) else {
+    return;
+  };
+  let segments = contour.segments();
+  for row in window.rows {
+    for column in window.columns.clone() {
+      let centre = grid.centre(column, row);
+      let distance = segments
+        .iter()
+        .map(|segment| segment.distance_to_point(centre))
+        .fold(f64::INFINITY, f64::min);
+      if distance > reach {
+        continue;
+      }
+      // The tool's own law: a cell `distance` from the vector is reached `depth − rise(distance)` deep,
+      // and a cylinder's `rise` is zero, so its band is uniform (M6 A3, A8).
+      let authorised = (depth - tool.rise_at_radius(distance)).max(0.0);
+      let slot = &mut target.authorised[row * columns + column];
+      if authorised > *slot {
+        *slot = authorised;
+      }
+    }
+  }
+}
+
 /// The cell window that contains a region, clamped to the grid.
 fn cell_window(region: &Region, grid: Grid) -> Option<Window> {
   let mut bounds = cam_geom::Bounds::empty();
@@ -624,6 +689,11 @@ fn cell_window(region: &Region, grid: Grid) -> Option<Window> {
     bounds.min = Point2::new(bounds.min.x.min(one.min.x), bounds.min.y.min(one.min.y));
     bounds.max = Point2::new(bounds.max.x.max(one.max.x), bounds.max.y.max(one.max.y));
   }
+  bounds_window(bounds, grid)
+}
+
+/// The cells a bounding box touches, clamped to the grid.
+fn bounds_window(bounds: cam_geom::Bounds, grid: Grid) -> Option<Window> {
   if !bounds.min.x.is_finite()
     || !bounds.min.y.is_finite()
     || !bounds.max.x.is_finite()

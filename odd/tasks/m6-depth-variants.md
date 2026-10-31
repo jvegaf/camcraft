@@ -172,6 +172,13 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   outside the name formatter consumed them (`crates/cam-store/src/tools.rs:122-148`). M6 consumes the
   angle and the flat diameter through `ToolSpec`; a V-bit strategy given a tool without an angle exits
   as input error naming the tool, because defaulting to 90° would silently cut a different chamfer.
+- **D-M6-11 — The CLI ignores a flag its kind does not use, and M6 does not close that milestone-wide.**
+  `cam-cli toolpath` parses every option and only the strategies that consume one validate it, so
+  `--allowance` reaches a drilling toolpath and is dropped. Chamfer and engrave refuse the flags their own
+  law forbids (a chamfer's `--side`, an engrave's `--pass-depth`, `--tab`, `--lead-in`, `--lead-out`), which
+  keeps their contract honest where M6 touched it. Closing it for every existing kind changes the CLI's
+  contract for callers that pass a superset today, so it is recorded as its own slice and not folded into a
+  strategy task.
 - **D-M6-10 — A chamfer needs a sharp V-bit, and the library refuses a degenerate one.** With a flat tip
   of diameter `f` the bevel reaches the surface at `f/2 + d·tan(θ/2)`, so honouring `chamfer_width`
   exactly would need `d = (w − f/2)/tan(θ/2)` — a derivation that reads the tool, while `ChamferParams`
@@ -289,3 +296,19 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   library can change under a valid document rather than constructing a doctored fixture. T2 closes at **224
   tests** in the four crates it touched (cam-model 25, cam-toolpath 81, cam-sim 54, cam-cli 64) with the whole
   gate green.
+- **L12 (review, T3, four things the specification under-specified).** *(1) The claim needs the reach
+  test.* A3 said every cell in the window is authorised `cut_depth − rise(distance)`; with `rise = 0` for a
+  cylinder that authorises the whole rectangle, corners included, which is the opposite of the band the same
+  paragraph demands. The writer kept the window as the outer loop and added `distance > reach`, which is the
+  law `sweep_disc` already applies; a sharp V-bit self-clamps, a cylinder does not, and the uniform-band test
+  is what caught it. *(2) The oracle's end caps.* A straight vector of finite length also sweeps two end
+  caps, so `L·d²·tan(θ/2)` is the interior alone; the fixture runs the vector past both sheet edges, T2's L9
+  device, instead of widening a tolerance over the caps. *(3) `--start-depth` is taken* although A3 names
+  only `--cut-depth`, because the `cut_depth > start_depth` rule is otherwise unreachable through the CLI;
+  the refusal list is exactly the flags D-M6-4 names. *(4) A flat tip is not refused for engrave*, and that
+  is deliberate: an engrave's depth is authored rather than derived, so a flat widens the groove by `f/2`
+  and `rise_at_radius` accounts for it in both the sweep and the claim. D-M6-10 stays chamfer-only. A fifth
+  finding is a gap T3 found and did not widen its surface to fix: `crates/cam-toolpath/tests/errors.rs`
+  matches every `ToolpathError` exhaustively, so a new variant is unrepresentable to a task that cannot edit
+  it — that file is now part of every later strategy's surface, and T3 reuses `OpenContour` for its empty
+  guard rather than shipping an unrepresentable variant.
