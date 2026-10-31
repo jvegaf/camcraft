@@ -71,6 +71,11 @@ fn every_variant() -> Vec<ToolpathError> {
     ToolpathError::MedialAxis {
       reason: "the medial axis needs a positive finite tolerance, in millimetres".to_owned(),
     },
+    ToolpathError::VCarveNothingToCarve {
+      tolerance: 50.0,
+      width: 20.0,
+      height: 20.0,
+    },
   ]
 }
 
@@ -79,7 +84,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    23,
+    24,
     "every variant must be listed exactly once"
   );
 
@@ -165,6 +170,17 @@ fn every_variant_keeps_its_message() {
       }
       ToolpathError::MedialAxis { reason } => {
         format!("the V-carve's medial axis could not be computed: {reason}")
+      }
+      ToolpathError::VCarveNothingToCarve {
+        tolerance,
+        width,
+        height,
+      } => {
+        format!(
+          "the V-carve's {tolerance} mm tolerance leaves nothing to carve in the {width} x {height} \
+           mm region: every point of the region is within that distance of its boundary, so the \
+           medial axis is empty and there is no tip to plunge"
+        )
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

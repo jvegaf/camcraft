@@ -46,13 +46,13 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or
-                              thread (required); a texture cuts grooves only, so the material between
-                              them stands and the region is never cleared; an inlay appends **two**
-                              toolpaths, a female cavity and the male plug that fits it; a thread
-                              mills one helical descent around each circle, one pitch per revolution;
-                              a vcarve walks the region's medial axis at the depth the distance to
-                              the boundary demands, so it takes no depth at all
+        --kind <kind>         profile, pocket, drilling, chamfer, vcarve, engrave, fluting, texture,
+                              inlay or thread (required); a vcarve walks the region's medial axis at
+                              the depth the distance to the boundary demands, so it takes no depth at
+                              all; a texture cuts grooves only, so the material between them stands
+                              and the region is never cleared; an inlay appends **two** toolpaths, a
+                              female cavity and the male plug that fits it; a thread mills one
+                              helical descent around each circle, one pitch per revolution
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -79,7 +79,8 @@ COMMANDS:
         --start-depth <mm>    depth at which cutting starts
         --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
                               and texture cut their one pass at it, fluting ramps to it, and a thread's
-                              helix descends to it        --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
+                              helix descends to it
+        --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
                               to plunge in place; longer than half the vector is an error
         --pitch <mm>          thread: how far the helix descends each revolution (required)
         --thread-direction <d>  thread: internal (default) inside a hole, or external around a boss

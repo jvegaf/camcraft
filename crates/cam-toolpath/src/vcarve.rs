@@ -38,7 +38,7 @@
 use std::f64::consts::PI;
 
 use cam_geom::medial::medial_axis;
-use cam_geom::{region::Region, Contour};
+use cam_geom::{region::Region, Bounds, Contour};
 use cam_model::{Job, VCarveParams};
 use cam_move::{Move, Point3};
 use cam_units::Length;
@@ -83,7 +83,7 @@ pub struct VCarveRequest<'a> {
 ///
 /// # The refusals, and why they are here
 ///
-/// Four inputs are refused by name rather than absorbed:
+/// Five inputs are refused by name rather than absorbed:
 ///
 /// * an **open contour**, because a region is an area and an open vector encloses none
 ///   ([`ToolpathError::OpenContour`]);
@@ -93,6 +93,10 @@ pub struct VCarveRequest<'a> {
 ///   Z);
 /// * a tool the library **does not describe as an angled bit** ([`ToolpathError::VCarveNeedsAngledTool`]),
 ///   because defaulting 90 degrees would cut a different carve (D-M6-9);
+/// * a region whose **medial axis is empty** ([`ToolpathError::VCarveNothingToCarve`]), because a
+///   lattice step at least as large as the region's own clearance leaves no point that qualifies as
+///   material: there is nothing to carve, and a program of zero moves would only be found later by
+///   `simulate`, as a whole field of `uncut`;
 /// * a tool whose tip has a **flat** ([`ToolpathError::VCarveNeedsSharpBit`]), because a flat of
 ///   diameter `f` cannot carve to a sharp edge: the surface its tip leaves is `f/2 · cot(θ/2)` wide at
 ///   the bottom, and the depth law this operation is built on — `d / tan(θ/2)`, which reaches zero
@@ -136,6 +140,29 @@ pub fn vcarve(request: &VCarveRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
     medial_axis(&region, params.tolerance.mm()).map_err(|error| ToolpathError::MedialAxis {
       reason: error.to_string(),
     })?;
+  // An axis with no branch is not a carve: a lattice step at least as large as the region's own
+  // clearance puts every point of it within that step of the boundary, so nothing qualifies as
+  // material and there is no tip to plunge. The alternative is a program of zero moves, which
+  // `simulate` then reports as the whole field left standing — so the two numbers that produced it
+  // are the refusal (M7 A5). See [`ToolpathError::VCarveNothingToCarve`].
+  if axis.branches.is_empty() {
+    let mut bounds = Bounds::empty();
+    for contour in request.contours {
+      for segment in contour.segments() {
+        bounds = bounds.union(segment.bounds());
+      }
+    }
+    let (width, height) = if bounds.is_empty() {
+      (0.0, 0.0)
+    } else {
+      (bounds.width(), bounds.height())
+    };
+    return Err(ToolpathError::VCarveNothingToCarve {
+      tolerance: params.tolerance.mm(),
+      width,
+      height,
+    });
+  }
 
   let safe_z = request.job.safe_z;
   let depth_of = |clearance: f64| -params.depth(Length::from_mm(clearance)).mm();

@@ -274,6 +274,27 @@ pub enum ToolpathError {
     /// What the kernel said, verbatim.
     reason: String,
   },
+  /// A V-carve's region has no medial axis at all, so there is nothing to carve.
+  ///
+  /// The axis's lattice step is the operation's tolerance, and a step at least as large as the
+  /// region's own clearance puts every point of it within that step of the boundary: no point is
+  /// material, no candidate is certified, and the axis comes back with no branch. A program built
+  /// from that is zero moves, and `simulate` then reports the whole field as uncut — an input the
+  /// command can see, so it is refused by name with both numbers in the message rather than written
+  /// as a document whose only outcome is a later exit `6` (M7 A5, D-M7-5).
+  #[error(
+    "the V-carve's {tolerance} mm tolerance leaves nothing to carve in the {width} x {height} mm \
+     region: every point of the region is within that distance of its boundary, so the medial axis \
+     is empty and there is no tip to plunge"
+  )]
+  VCarveNothingToCarve {
+    /// The axis's lattice step, in millimetres.
+    tolerance: f64,
+    /// The region's extent along X, in millimetres.
+    width: f64,
+    /// The region's extent along Y, in millimetres.
+    height: f64,
+  },
 }
 
 /// Everything a profile pass needs.

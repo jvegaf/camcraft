@@ -10,7 +10,7 @@ use std::process::Command;
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
   ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer, Operation,
-  PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
+  PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath, VCarveParams,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -5132,7 +5132,7 @@ fn the_help_lists_the_thread_kind_and_its_two_options() {
   let outcome = run(&["--help"]);
   assert_eq!(outcome.code, 0);
   for expected in [
-    "texture, inlay or\n                              thread",
+    "texture,\n                              inlay or thread",
     "--pitch <mm>",
     "--thread-direction <d>",
     "helical descent",
@@ -5215,6 +5215,27 @@ fn add_v_carve(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
   ];
   arguments.extend_from_slice(extra);
   run(&arguments)
+}
+
+#[test]
+fn the_help_lists_the_v_carve_kind_and_its_tolerance() {
+  // A5's contract at the CLI's own door: the kind is listed with the others, its one option is
+  // documented, and the help says what the tolerance costs — a shallower carve at the corners and
+  // never a deeper one.
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "chamfer, vcarve, engrave",
+    "walks the region's medial axis",
+    "--tolerance <mm>      vcarve: the medial axis's lattice step (default 0.1)",
+    "carve at the corners, never a deeper one",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected:?}:\n{}",
+      outcome.stdout
+    );
+  }
 }
 
 #[test]
@@ -5476,6 +5497,43 @@ fn a_vcarve_tolerance_that_is_not_a_step_exits_two() {
 }
 
 #[test]
+fn a_vcarve_whose_axis_is_empty_exits_two_naming_the_tolerance_and_the_region() {
+  // An empty axis is not a carve. A tolerance larger than the region puts every point of it within
+  // the lattice step of its boundary, so no point qualifies as material, the axis has no branch and
+  // there is no tip to plunge: the command would write a document whose program is zero moves, and
+  // `simulate` would then report the whole field as uncut (exit 6). The command can see this — the
+  // region and the step are both in its hand — so it refuses by name before anything is written.
+  let directory = scratch("vcarve-empty-axis");
+  let document = write_vectors(&directory, "empty.c2d", vec![rectangle_contour(20.0, 20.0)]);
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = add_v_carve(&document, &library, &["--tolerance", "50"]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.is_empty(),
+    "a refused toolpath reports nothing as added: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stderr.contains("50 mm") && outcome.stderr.contains("20 x 20 mm"),
+    "the refusal names the tolerance and the region: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("nothing to carve"),
+    "and says what is wrong with the two numbers: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing: the file is byte-identical"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn simulate_reports_a_correct_vcarve_with_no_gouge_and_no_uncut_material() {
   // A6, end to end through the binary: the document authorises the distance field, `emit` walks the
   // medial axis at each tip's own depth, and the sweep finds exactly the authorised surface — so the
@@ -5522,6 +5580,646 @@ fn simulate_reports_a_correct_vcarve_with_no_gouge_and_no_uncut_material() {
   assert!(
     emitted.contains("Z-15.0000"),
     "the apex of a 40 x 30 rectangle on a 90 degree bit is -15 mm: {emitted}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- M7 T7: golden V-carve programs, a square and a circle region ------------------------------
+
+/// The V-carve golden document: a 90 degree bit, a 0.1 mm axis, and one toolpath named the way the
+/// command names one, so the hand-built document and the one `cam-cli toolpath` authors can only
+/// differ in how the toolpath got there.
+///
+/// The two regions are the milestone's own fixtures: a 20 x 20 mm square, whose axis is four branches
+/// from just inside each corner to the centre, and a disc of radius 15 mm, whose axis is **one point**.
+fn write_v_carve_document(directory: &Path, name: &str, contour: Contour) -> PathBuf {
+  let path = write_vectors(directory, name, vec![contour]);
+  let mut document = cam_store::document::load_document(&path).expect("loads");
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "V carve 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::VCarve(VCarveParams {
+      included_angle: Angle::from_degrees(90.0),
+      tolerance: Length::from_mm(0.1),
+    }),
+  });
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// Author the same V-carve through the binary, from the geometry-only fixture, and return the program.
+fn author_and_emit_v_carve(directory: &Path, document: &Path, library: &Path) -> String {
+  let authored = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "vcarve",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--tolerance",
+    "0.1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(authored.code, 0, "{}", authored.stderr);
+  assert_eq!(
+    authored.stdout, "added TP1 vcarve, tool T1, 1 entity(ies)\n",
+    "{}",
+    authored.stdout
+  );
+  emit_program(directory, document, library, &write_post(directory))
+}
+
+/// The whole program the 20 x 20 mm square emits, byte for byte.
+///
+/// Derived and then read, never captured and blessed: 413 lines — the header, **four** branches of
+/// 99 tips each (a plunge and 98 varying-Z feeds), a retract between every pair, and the footer. Each
+/// branch starts 0.2 mm inside a corner, one lattice step projected on the diagonal away from it, at
+/// `Z-0.2000`, and walks to the centre at `(10, 10)`, where a 90 degree bit's apex is `-10.0000` — half
+/// the side, which is the region's largest clearance. Consecutive tips are `0.1·sqrt(2) = 0.1414` mm
+/// apart along the diagonal, and every Z is the tip's own exact distance to the boundary, because on a
+/// 90 degree bit `tan(45°) = 1` and the depth **is** the clearance. Every rapid is at `safe_z = 5`, and
+/// there is not one arc move: the walk is linear with a per-vertex Z (A3, D-M7-7).
+const GOLDEN_V_CARVE_SQUARE: &str = "\
+( V carve 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.2000Y0.2000\r\n\
+N40G01Z-0.2000F100.0\r\n\
+N50G01X0.3000Y0.3000Z-0.3000\r\n\
+N60G01X0.4000Y0.4000Z-0.4000\r\n\
+N70G01X0.5000Y0.5000Z-0.5000\r\n\
+N80G01X0.6000Y0.6000Z-0.6000\r\n\
+N90G01X0.7000Y0.7000Z-0.7000\r\n\
+N100G01X0.8000Y0.8000Z-0.8000\r\n\
+N110G01X0.9000Y0.9000Z-0.9000\r\n\
+N120G01X1.0000Y1.0000Z-1.0000\r\n\
+N130G01X1.1000Y1.1000Z-1.1000\r\n\
+N140G01X1.2000Y1.2000Z-1.2000\r\n\
+N150G01X1.3000Y1.3000Z-1.3000\r\n\
+N160G01X1.4000Y1.4000Z-1.4000\r\n\
+N170G01X1.5000Y1.5000Z-1.5000\r\n\
+N180G01X1.6000Y1.6000Z-1.6000\r\n\
+N190G01X1.7000Y1.7000Z-1.7000\r\n\
+N200G01X1.8000Y1.8000Z-1.8000\r\n\
+N210G01X1.9000Y1.9000Z-1.9000\r\n\
+N220G01X2.0000Y2.0000Z-2.0000\r\n\
+N230G01X2.1000Y2.1000Z-2.1000\r\n\
+N240G01X2.2000Y2.2000Z-2.2000\r\n\
+N250G01X2.3000Y2.3000Z-2.3000\r\n\
+N260G01X2.4000Y2.4000Z-2.4000\r\n\
+N270G01X2.5000Y2.5000Z-2.5000\r\n\
+N280G01X2.6000Y2.6000Z-2.6000\r\n\
+N290G01X2.7000Y2.7000Z-2.7000\r\n\
+N300G01X2.8000Y2.8000Z-2.8000\r\n\
+N310G01X2.9000Y2.9000Z-2.9000\r\n\
+N320G01X3.0000Y3.0000Z-3.0000\r\n\
+N330G01X3.1000Y3.1000Z-3.1000\r\n\
+N340G01X3.2000Y3.2000Z-3.2000\r\n\
+N350G01X3.3000Y3.3000Z-3.3000\r\n\
+N360G01X3.4000Y3.4000Z-3.4000\r\n\
+N370G01X3.5000Y3.5000Z-3.5000\r\n\
+N380G01X3.6000Y3.6000Z-3.6000\r\n\
+N390G01X3.7000Y3.7000Z-3.7000\r\n\
+N400G01X3.8000Y3.8000Z-3.8000\r\n\
+N410G01X3.9000Y3.9000Z-3.9000\r\n\
+N420G01X4.0000Y4.0000Z-4.0000\r\n\
+N430G01X4.1000Y4.1000Z-4.1000\r\n\
+N440G01X4.2000Y4.2000Z-4.2000\r\n\
+N450G01X4.3000Y4.3000Z-4.3000\r\n\
+N460G01X4.4000Y4.4000Z-4.4000\r\n\
+N470G01X4.5000Y4.5000Z-4.5000\r\n\
+N480G01X4.6000Y4.6000Z-4.6000\r\n\
+N490G01X4.7000Y4.7000Z-4.7000\r\n\
+N500G01X4.8000Y4.8000Z-4.8000\r\n\
+N510G01X4.9000Y4.9000Z-4.9000\r\n\
+N520G01X5.0000Y5.0000Z-5.0000\r\n\
+N530G01X5.1000Y5.1000Z-5.1000\r\n\
+N540G01X5.2000Y5.2000Z-5.2000\r\n\
+N550G01X5.3000Y5.3000Z-5.3000\r\n\
+N560G01X5.4000Y5.4000Z-5.4000\r\n\
+N570G01X5.5000Y5.5000Z-5.5000\r\n\
+N580G01X5.6000Y5.6000Z-5.6000\r\n\
+N590G01X5.7000Y5.7000Z-5.7000\r\n\
+N600G01X5.8000Y5.8000Z-5.8000\r\n\
+N610G01X5.9000Y5.9000Z-5.9000\r\n\
+N620G01X6.0000Y6.0000Z-6.0000\r\n\
+N630G01X6.1000Y6.1000Z-6.1000\r\n\
+N640G01X6.2000Y6.2000Z-6.2000\r\n\
+N650G01X6.3000Y6.3000Z-6.3000\r\n\
+N660G01X6.4000Y6.4000Z-6.4000\r\n\
+N670G01X6.5000Y6.5000Z-6.5000\r\n\
+N680G01X6.6000Y6.6000Z-6.6000\r\n\
+N690G01X6.7000Y6.7000Z-6.7000\r\n\
+N700G01X6.8000Y6.8000Z-6.8000\r\n\
+N710G01X6.9000Y6.9000Z-6.9000\r\n\
+N720G01X7.0000Y7.0000Z-7.0000\r\n\
+N730G01X7.1000Y7.1000Z-7.1000\r\n\
+N740G01X7.2000Y7.2000Z-7.2000\r\n\
+N750G01X7.3000Y7.3000Z-7.3000\r\n\
+N760G01X7.4000Y7.4000Z-7.4000\r\n\
+N770G01X7.5000Y7.5000Z-7.5000\r\n\
+N780G01X7.6000Y7.6000Z-7.6000\r\n\
+N790G01X7.7000Y7.7000Z-7.7000\r\n\
+N800G01X7.8000Y7.8000Z-7.8000\r\n\
+N810G01X7.9000Y7.9000Z-7.9000\r\n\
+N820G01X8.0000Y8.0000Z-8.0000\r\n\
+N830G01X8.1000Y8.1000Z-8.1000\r\n\
+N840G01X8.2000Y8.2000Z-8.2000\r\n\
+N850G01X8.3000Y8.3000Z-8.3000\r\n\
+N860G01X8.4000Y8.4000Z-8.4000\r\n\
+N870G01X8.5000Y8.5000Z-8.5000\r\n\
+N880G01X8.6000Y8.6000Z-8.6000\r\n\
+N890G01X8.7000Y8.7000Z-8.7000\r\n\
+N900G01X8.8000Y8.8000Z-8.8000\r\n\
+N910G01X8.9000Y8.9000Z-8.9000\r\n\
+N920G01X9.0000Y9.0000Z-9.0000\r\n\
+N930G01X9.1000Y9.1000Z-9.1000\r\n\
+N940G01X9.2000Y9.2000Z-9.2000\r\n\
+N950G01X9.3000Y9.3000Z-9.3000\r\n\
+N960G01X9.4000Y9.4000Z-9.4000\r\n\
+N970G01X9.5000Y9.5000Z-9.5000\r\n\
+N980G01X9.6000Y9.6000Z-9.6000\r\n\
+N990G01X9.7000Y9.7000Z-9.7000\r\n\
+N1000G01X9.8000Y9.8000Z-9.8000\r\n\
+N1010G01X9.9000Y9.9000Z-9.9000\r\n\
+N1020G01X10.0000Y10.0000Z-10.0000\r\n\
+N1030G00Z5.0000\r\n\
+N1040G00X19.8000Y0.2000\r\n\
+N1050G01Z-0.2000\r\n\
+N1060G01X19.7000Y0.3000Z-0.3000\r\n\
+N1070G01X19.6000Y0.4000Z-0.4000\r\n\
+N1080G01X19.5000Y0.5000Z-0.5000\r\n\
+N1090G01X19.4000Y0.6000Z-0.6000\r\n\
+N1100G01X19.3000Y0.7000Z-0.7000\r\n\
+N1110G01X19.2000Y0.8000Z-0.8000\r\n\
+N1120G01X19.1000Y0.9000Z-0.9000\r\n\
+N1130G01X19.0000Y1.0000Z-1.0000\r\n\
+N1140G01X18.9000Y1.1000Z-1.1000\r\n\
+N1150G01X18.8000Y1.2000Z-1.2000\r\n\
+N1160G01X18.7000Y1.3000Z-1.3000\r\n\
+N1170G01X18.6000Y1.4000Z-1.4000\r\n\
+N1180G01X18.5000Y1.5000Z-1.5000\r\n\
+N1190G01X18.4000Y1.6000Z-1.6000\r\n\
+N1200G01X18.3000Y1.7000Z-1.7000\r\n\
+N1210G01X18.2000Y1.8000Z-1.8000\r\n\
+N1220G01X18.1000Y1.9000Z-1.9000\r\n\
+N1230G01X18.0000Y2.0000Z-2.0000\r\n\
+N1240G01X17.9000Y2.1000Z-2.1000\r\n\
+N1250G01X17.8000Y2.2000Z-2.2000\r\n\
+N1260G01X17.7000Y2.3000Z-2.3000\r\n\
+N1270G01X17.6000Y2.4000Z-2.4000\r\n\
+N1280G01X17.5000Y2.5000Z-2.5000\r\n\
+N1290G01X17.4000Y2.6000Z-2.6000\r\n\
+N1300G01X17.3000Y2.7000Z-2.7000\r\n\
+N1310G01X17.2000Y2.8000Z-2.8000\r\n\
+N1320G01X17.1000Y2.9000Z-2.9000\r\n\
+N1330G01X17.0000Y3.0000Z-3.0000\r\n\
+N1340G01X16.9000Y3.1000Z-3.1000\r\n\
+N1350G01X16.8000Y3.2000Z-3.2000\r\n\
+N1360G01X16.7000Y3.3000Z-3.3000\r\n\
+N1370G01X16.6000Y3.4000Z-3.4000\r\n\
+N1380G01X16.5000Y3.5000Z-3.5000\r\n\
+N1390G01X16.4000Y3.6000Z-3.6000\r\n\
+N1400G01X16.3000Y3.7000Z-3.7000\r\n\
+N1410G01X16.2000Y3.8000Z-3.8000\r\n\
+N1420G01X16.1000Y3.9000Z-3.9000\r\n\
+N1430G01X16.0000Y4.0000Z-4.0000\r\n\
+N1440G01X15.9000Y4.1000Z-4.1000\r\n\
+N1450G01X15.8000Y4.2000Z-4.2000\r\n\
+N1460G01X15.7000Y4.3000Z-4.3000\r\n\
+N1470G01X15.6000Y4.4000Z-4.4000\r\n\
+N1480G01X15.5000Y4.5000Z-4.5000\r\n\
+N1490G01X15.4000Y4.6000Z-4.6000\r\n\
+N1500G01X15.3000Y4.7000Z-4.7000\r\n\
+N1510G01X15.2000Y4.8000Z-4.8000\r\n\
+N1520G01X15.1000Y4.9000Z-4.9000\r\n\
+N1530G01X15.0000Y5.0000Z-5.0000\r\n\
+N1540G01X14.9000Y5.1000Z-5.1000\r\n\
+N1550G01X14.8000Y5.2000Z-5.2000\r\n\
+N1560G01X14.7000Y5.3000Z-5.3000\r\n\
+N1570G01X14.6000Y5.4000Z-5.4000\r\n\
+N1580G01X14.5000Y5.5000Z-5.5000\r\n\
+N1590G01X14.4000Y5.6000Z-5.6000\r\n\
+N1600G01X14.3000Y5.7000Z-5.7000\r\n\
+N1610G01X14.2000Y5.8000Z-5.8000\r\n\
+N1620G01X14.1000Y5.9000Z-5.9000\r\n\
+N1630G01X14.0000Y6.0000Z-6.0000\r\n\
+N1640G01X13.9000Y6.1000Z-6.1000\r\n\
+N1650G01X13.8000Y6.2000Z-6.2000\r\n\
+N1660G01X13.7000Y6.3000Z-6.3000\r\n\
+N1670G01X13.6000Y6.4000Z-6.4000\r\n\
+N1680G01X13.5000Y6.5000Z-6.5000\r\n\
+N1690G01X13.4000Y6.6000Z-6.6000\r\n\
+N1700G01X13.3000Y6.7000Z-6.7000\r\n\
+N1710G01X13.2000Y6.8000Z-6.8000\r\n\
+N1720G01X13.1000Y6.9000Z-6.9000\r\n\
+N1730G01X13.0000Y7.0000Z-7.0000\r\n\
+N1740G01X12.9000Y7.1000Z-7.1000\r\n\
+N1750G01X12.8000Y7.2000Z-7.2000\r\n\
+N1760G01X12.7000Y7.3000Z-7.3000\r\n\
+N1770G01X12.6000Y7.4000Z-7.4000\r\n\
+N1780G01X12.5000Y7.5000Z-7.5000\r\n\
+N1790G01X12.4000Y7.6000Z-7.6000\r\n\
+N1800G01X12.3000Y7.7000Z-7.7000\r\n\
+N1810G01X12.2000Y7.8000Z-7.8000\r\n\
+N1820G01X12.1000Y7.9000Z-7.9000\r\n\
+N1830G01X12.0000Y8.0000Z-8.0000\r\n\
+N1840G01X11.9000Y8.1000Z-8.1000\r\n\
+N1850G01X11.8000Y8.2000Z-8.2000\r\n\
+N1860G01X11.7000Y8.3000Z-8.3000\r\n\
+N1870G01X11.6000Y8.4000Z-8.4000\r\n\
+N1880G01X11.5000Y8.5000Z-8.5000\r\n\
+N1890G01X11.4000Y8.6000Z-8.6000\r\n\
+N1900G01X11.3000Y8.7000Z-8.7000\r\n\
+N1910G01X11.2000Y8.8000Z-8.8000\r\n\
+N1920G01X11.1000Y8.9000Z-8.9000\r\n\
+N1930G01X11.0000Y9.0000Z-9.0000\r\n\
+N1940G01X10.9000Y9.1000Z-9.1000\r\n\
+N1950G01X10.8000Y9.2000Z-9.2000\r\n\
+N1960G01X10.7000Y9.3000Z-9.3000\r\n\
+N1970G01X10.6000Y9.4000Z-9.4000\r\n\
+N1980G01X10.5000Y9.5000Z-9.5000\r\n\
+N1990G01X10.4000Y9.6000Z-9.6000\r\n\
+N2000G01X10.3000Y9.7000Z-9.7000\r\n\
+N2010G01X10.2000Y9.8000Z-9.8000\r\n\
+N2020G01X10.1000Y9.9000Z-9.9000\r\n\
+N2030G01X10.0000Y10.0000Z-10.0000\r\n\
+N2040G00Z5.0000\r\n\
+N2050G00\r\n\
+N2060G01Z-10.0000\r\n\
+N2070G01X9.9000Y10.1000Z-9.9000\r\n\
+N2080G01X9.8000Y10.2000Z-9.8000\r\n\
+N2090G01X9.7000Y10.3000Z-9.7000\r\n\
+N2100G01X9.6000Y10.4000Z-9.6000\r\n\
+N2110G01X9.5000Y10.5000Z-9.5000\r\n\
+N2120G01X9.4000Y10.6000Z-9.4000\r\n\
+N2130G01X9.3000Y10.7000Z-9.3000\r\n\
+N2140G01X9.2000Y10.8000Z-9.2000\r\n\
+N2150G01X9.1000Y10.9000Z-9.1000\r\n\
+N2160G01X9.0000Y11.0000Z-9.0000\r\n\
+N2170G01X8.9000Y11.1000Z-8.9000\r\n\
+N2180G01X8.8000Y11.2000Z-8.8000\r\n\
+N2190G01X8.7000Y11.3000Z-8.7000\r\n\
+N2200G01X8.6000Y11.4000Z-8.6000\r\n\
+N2210G01X8.5000Y11.5000Z-8.5000\r\n\
+N2220G01X8.4000Y11.6000Z-8.4000\r\n\
+N2230G01X8.3000Y11.7000Z-8.3000\r\n\
+N2240G01X8.2000Y11.8000Z-8.2000\r\n\
+N2250G01X8.1000Y11.9000Z-8.1000\r\n\
+N2260G01X8.0000Y12.0000Z-8.0000\r\n\
+N2270G01X7.9000Y12.1000Z-7.9000\r\n\
+N2280G01X7.8000Y12.2000Z-7.8000\r\n\
+N2290G01X7.7000Y12.3000Z-7.7000\r\n\
+N2300G01X7.6000Y12.4000Z-7.6000\r\n\
+N2310G01X7.5000Y12.5000Z-7.5000\r\n\
+N2320G01X7.4000Y12.6000Z-7.4000\r\n\
+N2330G01X7.3000Y12.7000Z-7.3000\r\n\
+N2340G01X7.2000Y12.8000Z-7.2000\r\n\
+N2350G01X7.1000Y12.9000Z-7.1000\r\n\
+N2360G01X7.0000Y13.0000Z-7.0000\r\n\
+N2370G01X6.9000Y13.1000Z-6.9000\r\n\
+N2380G01X6.8000Y13.2000Z-6.8000\r\n\
+N2390G01X6.7000Y13.3000Z-6.7000\r\n\
+N2400G01X6.6000Y13.4000Z-6.6000\r\n\
+N2410G01X6.5000Y13.5000Z-6.5000\r\n\
+N2420G01X6.4000Y13.6000Z-6.4000\r\n\
+N2430G01X6.3000Y13.7000Z-6.3000\r\n\
+N2440G01X6.2000Y13.8000Z-6.2000\r\n\
+N2450G01X6.1000Y13.9000Z-6.1000\r\n\
+N2460G01X6.0000Y14.0000Z-6.0000\r\n\
+N2470G01X5.9000Y14.1000Z-5.9000\r\n\
+N2480G01X5.8000Y14.2000Z-5.8000\r\n\
+N2490G01X5.7000Y14.3000Z-5.7000\r\n\
+N2500G01X5.6000Y14.4000Z-5.6000\r\n\
+N2510G01X5.5000Y14.5000Z-5.5000\r\n\
+N2520G01X5.4000Y14.6000Z-5.4000\r\n\
+N2530G01X5.3000Y14.7000Z-5.3000\r\n\
+N2540G01X5.2000Y14.8000Z-5.2000\r\n\
+N2550G01X5.1000Y14.9000Z-5.1000\r\n\
+N2560G01X5.0000Y15.0000Z-5.0000\r\n\
+N2570G01X4.9000Y15.1000Z-4.9000\r\n\
+N2580G01X4.8000Y15.2000Z-4.8000\r\n\
+N2590G01X4.7000Y15.3000Z-4.7000\r\n\
+N2600G01X4.6000Y15.4000Z-4.6000\r\n\
+N2610G01X4.5000Y15.5000Z-4.5000\r\n\
+N2620G01X4.4000Y15.6000Z-4.4000\r\n\
+N2630G01X4.3000Y15.7000Z-4.3000\r\n\
+N2640G01X4.2000Y15.8000Z-4.2000\r\n\
+N2650G01X4.1000Y15.9000Z-4.1000\r\n\
+N2660G01X4.0000Y16.0000Z-4.0000\r\n\
+N2670G01X3.9000Y16.1000Z-3.9000\r\n\
+N2680G01X3.8000Y16.2000Z-3.8000\r\n\
+N2690G01X3.7000Y16.3000Z-3.7000\r\n\
+N2700G01X3.6000Y16.4000Z-3.6000\r\n\
+N2710G01X3.5000Y16.5000Z-3.5000\r\n\
+N2720G01X3.4000Y16.6000Z-3.4000\r\n\
+N2730G01X3.3000Y16.7000Z-3.3000\r\n\
+N2740G01X3.2000Y16.8000Z-3.2000\r\n\
+N2750G01X3.1000Y16.9000Z-3.1000\r\n\
+N2760G01X3.0000Y17.0000Z-3.0000\r\n\
+N2770G01X2.9000Y17.1000Z-2.9000\r\n\
+N2780G01X2.8000Y17.2000Z-2.8000\r\n\
+N2790G01X2.7000Y17.3000Z-2.7000\r\n\
+N2800G01X2.6000Y17.4000Z-2.6000\r\n\
+N2810G01X2.5000Y17.5000Z-2.5000\r\n\
+N2820G01X2.4000Y17.6000Z-2.4000\r\n\
+N2830G01X2.3000Y17.7000Z-2.3000\r\n\
+N2840G01X2.2000Y17.8000Z-2.2000\r\n\
+N2850G01X2.1000Y17.9000Z-2.1000\r\n\
+N2860G01X2.0000Y18.0000Z-2.0000\r\n\
+N2870G01X1.9000Y18.1000Z-1.9000\r\n\
+N2880G01X1.8000Y18.2000Z-1.8000\r\n\
+N2890G01X1.7000Y18.3000Z-1.7000\r\n\
+N2900G01X1.6000Y18.4000Z-1.6000\r\n\
+N2910G01X1.5000Y18.5000Z-1.5000\r\n\
+N2920G01X1.4000Y18.6000Z-1.4000\r\n\
+N2930G01X1.3000Y18.7000Z-1.3000\r\n\
+N2940G01X1.2000Y18.8000Z-1.2000\r\n\
+N2950G01X1.1000Y18.9000Z-1.1000\r\n\
+N2960G01X1.0000Y19.0000Z-1.0000\r\n\
+N2970G01X0.9000Y19.1000Z-0.9000\r\n\
+N2980G01X0.8000Y19.2000Z-0.8000\r\n\
+N2990G01X0.7000Y19.3000Z-0.7000\r\n\
+N3000G01X0.6000Y19.4000Z-0.6000\r\n\
+N3010G01X0.5000Y19.5000Z-0.5000\r\n\
+N3020G01X0.4000Y19.6000Z-0.4000\r\n\
+N3030G01X0.3000Y19.7000Z-0.3000\r\n\
+N3040G01X0.2000Y19.8000Z-0.2000\r\n\
+N3050G00Z5.0000\r\n\
+N3060G00X10.0000Y10.0000\r\n\
+N3070G01Z-10.0000\r\n\
+N3080G01X10.1000Y10.1000Z-9.9000\r\n\
+N3090G01X10.2000Y10.2000Z-9.8000\r\n\
+N3100G01X10.3000Y10.3000Z-9.7000\r\n\
+N3110G01X10.4000Y10.4000Z-9.6000\r\n\
+N3120G01X10.5000Y10.5000Z-9.5000\r\n\
+N3130G01X10.6000Y10.6000Z-9.4000\r\n\
+N3140G01X10.7000Y10.7000Z-9.3000\r\n\
+N3150G01X10.8000Y10.8000Z-9.2000\r\n\
+N3160G01X10.9000Y10.9000Z-9.1000\r\n\
+N3170G01X11.0000Y11.0000Z-9.0000\r\n\
+N3180G01X11.1000Y11.1000Z-8.9000\r\n\
+N3190G01X11.2000Y11.2000Z-8.8000\r\n\
+N3200G01X11.3000Y11.3000Z-8.7000\r\n\
+N3210G01X11.4000Y11.4000Z-8.6000\r\n\
+N3220G01X11.5000Y11.5000Z-8.5000\r\n\
+N3230G01X11.6000Y11.6000Z-8.4000\r\n\
+N3240G01X11.7000Y11.7000Z-8.3000\r\n\
+N3250G01X11.8000Y11.8000Z-8.2000\r\n\
+N3260G01X11.9000Y11.9000Z-8.1000\r\n\
+N3270G01X12.0000Y12.0000Z-8.0000\r\n\
+N3280G01X12.1000Y12.1000Z-7.9000\r\n\
+N3290G01X12.2000Y12.2000Z-7.8000\r\n\
+N3300G01X12.3000Y12.3000Z-7.7000\r\n\
+N3310G01X12.4000Y12.4000Z-7.6000\r\n\
+N3320G01X12.5000Y12.5000Z-7.5000\r\n\
+N3330G01X12.6000Y12.6000Z-7.4000\r\n\
+N3340G01X12.7000Y12.7000Z-7.3000\r\n\
+N3350G01X12.8000Y12.8000Z-7.2000\r\n\
+N3360G01X12.9000Y12.9000Z-7.1000\r\n\
+N3370G01X13.0000Y13.0000Z-7.0000\r\n\
+N3380G01X13.1000Y13.1000Z-6.9000\r\n\
+N3390G01X13.2000Y13.2000Z-6.8000\r\n\
+N3400G01X13.3000Y13.3000Z-6.7000\r\n\
+N3410G01X13.4000Y13.4000Z-6.6000\r\n\
+N3420G01X13.5000Y13.5000Z-6.5000\r\n\
+N3430G01X13.6000Y13.6000Z-6.4000\r\n\
+N3440G01X13.7000Y13.7000Z-6.3000\r\n\
+N3450G01X13.8000Y13.8000Z-6.2000\r\n\
+N3460G01X13.9000Y13.9000Z-6.1000\r\n\
+N3470G01X14.0000Y14.0000Z-6.0000\r\n\
+N3480G01X14.1000Y14.1000Z-5.9000\r\n\
+N3490G01X14.2000Y14.2000Z-5.8000\r\n\
+N3500G01X14.3000Y14.3000Z-5.7000\r\n\
+N3510G01X14.4000Y14.4000Z-5.6000\r\n\
+N3520G01X14.5000Y14.5000Z-5.5000\r\n\
+N3530G01X14.6000Y14.6000Z-5.4000\r\n\
+N3540G01X14.7000Y14.7000Z-5.3000\r\n\
+N3550G01X14.8000Y14.8000Z-5.2000\r\n\
+N3560G01X14.9000Y14.9000Z-5.1000\r\n\
+N3570G01X15.0000Y15.0000Z-5.0000\r\n\
+N3580G01X15.1000Y15.1000Z-4.9000\r\n\
+N3590G01X15.2000Y15.2000Z-4.8000\r\n\
+N3600G01X15.3000Y15.3000Z-4.7000\r\n\
+N3610G01X15.4000Y15.4000Z-4.6000\r\n\
+N3620G01X15.5000Y15.5000Z-4.5000\r\n\
+N3630G01X15.6000Y15.6000Z-4.4000\r\n\
+N3640G01X15.7000Y15.7000Z-4.3000\r\n\
+N3650G01X15.8000Y15.8000Z-4.2000\r\n\
+N3660G01X15.9000Y15.9000Z-4.1000\r\n\
+N3670G01X16.0000Y16.0000Z-4.0000\r\n\
+N3680G01X16.1000Y16.1000Z-3.9000\r\n\
+N3690G01X16.2000Y16.2000Z-3.8000\r\n\
+N3700G01X16.3000Y16.3000Z-3.7000\r\n\
+N3710G01X16.4000Y16.4000Z-3.6000\r\n\
+N3720G01X16.5000Y16.5000Z-3.5000\r\n\
+N3730G01X16.6000Y16.6000Z-3.4000\r\n\
+N3740G01X16.7000Y16.7000Z-3.3000\r\n\
+N3750G01X16.8000Y16.8000Z-3.2000\r\n\
+N3760G01X16.9000Y16.9000Z-3.1000\r\n\
+N3770G01X17.0000Y17.0000Z-3.0000\r\n\
+N3780G01X17.1000Y17.1000Z-2.9000\r\n\
+N3790G01X17.2000Y17.2000Z-2.8000\r\n\
+N3800G01X17.3000Y17.3000Z-2.7000\r\n\
+N3810G01X17.4000Y17.4000Z-2.6000\r\n\
+N3820G01X17.5000Y17.5000Z-2.5000\r\n\
+N3830G01X17.6000Y17.6000Z-2.4000\r\n\
+N3840G01X17.7000Y17.7000Z-2.3000\r\n\
+N3850G01X17.8000Y17.8000Z-2.2000\r\n\
+N3860G01X17.9000Y17.9000Z-2.1000\r\n\
+N3870G01X18.0000Y18.0000Z-2.0000\r\n\
+N3880G01X18.1000Y18.1000Z-1.9000\r\n\
+N3890G01X18.2000Y18.2000Z-1.8000\r\n\
+N3900G01X18.3000Y18.3000Z-1.7000\r\n\
+N3910G01X18.4000Y18.4000Z-1.6000\r\n\
+N3920G01X18.5000Y18.5000Z-1.5000\r\n\
+N3930G01X18.6000Y18.6000Z-1.4000\r\n\
+N3940G01X18.7000Y18.7000Z-1.3000\r\n\
+N3950G01X18.8000Y18.8000Z-1.2000\r\n\
+N3960G01X18.9000Y18.9000Z-1.1000\r\n\
+N3970G01X19.0000Y19.0000Z-1.0000\r\n\
+N3980G01X19.1000Y19.1000Z-0.9000\r\n\
+N3990G01X19.2000Y19.2000Z-0.8000\r\n\
+N4000G01X19.3000Y19.3000Z-0.7000\r\n\
+N4010G01X19.4000Y19.4000Z-0.6000\r\n\
+N4020G01X19.5000Y19.5000Z-0.5000\r\n\
+N4030G01X19.6000Y19.6000Z-0.4000\r\n\
+N4040G01X19.7000Y19.7000Z-0.3000\r\n\
+N4050G01X19.8000Y19.8000Z-0.2000\r\n\
+N4060G00Z5.0000\r\n\
+N4070G00Z5.0000\r\n\
+N4080G00X0.0000Y0.0000\r\n\
+N4090M05\r\n\
+N4100M30\r\n\
+";
+
+const GOLDEN_V_CARVE_CIRCLE: &str = "\
+( V carve 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X25.0000Y15.0000\r\n\
+N40G01Z-15.0000F100.0\r\n\
+N50G00Z5.0000\r\n\
+N60G00Z5.0000\r\n\
+N70G00X0.0000Y0.0000\r\n\
+N80M05\r\n\
+N90M30\r\n\
+";
+
+#[test]
+fn a_square_v_carve_emits_the_golden_program() {
+  let directory = scratch("vcarve-golden-square");
+  let document = write_v_carve_document(&directory, "square.c2d", rectangle_contour(20.0, 20.0));
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let program = emit_program(&directory, &document, &library, &write_post(&directory));
+  assert_eq!(program, GOLDEN_V_CARVE_SQUARE);
+  assert_eq!(
+    program.lines().count(),
+    413,
+    "the pinned program's own size"
+  );
+  // The apex, and the two numbers that state the axis rather than the emitter: four branches, and
+  // the corner offset one lattice step leaves.
+  assert!(
+    program.contains("N2030G01X10.0000Y10.0000Z-10.0000\r"),
+    "the centre is the apex, w/2 = 10 mm deep"
+  );
+  assert!(
+    program.contains("N40G01Z-0.2000F100.0\r"),
+    "the first tip is 0.2 mm inside the corner, at the depth that clearance demands"
+  );
+  // Four branches, in the axis's own order: the two it lists from a corner plunge at `-0.2` and the
+  // two it lists from the centre plunge at the apex, so every branch enters at its first tip's depth
+  // instead of at a common depth a V-carve does not have (A3).
+  assert_eq!(
+    program.matches("G01Z-0.2000").count(),
+    2,
+    "two branches enter at their corner tip's depth"
+  );
+  assert_eq!(
+    program.matches("G01Z-10.0000").count(),
+    2,
+    "and two enter at the apex"
+  );
+  assert_eq!(
+    program.matches("G00Z5.0000").count(),
+    5,
+    "four branch retracts plus the program's own closing rise to safe Z"
+  );
+  // A8's determinism clause, on the golden: a second run is the same bytes.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &write_post(&directory)),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_square_v_carve_survives_a_document_save_and_load_round_trip() {
+  // The program is a function of the document alone (S9, S10), so a document that made the `c2d`
+  // round trip emits the same program — which is what says the operation's record is complete.
+  let directory = scratch("vcarve-golden-square-round-trip");
+  let document = write_v_carve_document(&directory, "square.c2d", rectangle_contour(20.0, 20.0));
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  save_document(&reloaded, &loaded).expect("saved");
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &write_post(&directory)),
+    GOLDEN_V_CARVE_SQUARE
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_square_v_carve_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("vcarve-golden-square-authored");
+  let document = write_vectors(
+    &directory,
+    "square.c2d",
+    vec![rectangle_contour(20.0, 20.0)],
+  );
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  assert_eq!(
+    author_and_emit_v_carve(&directory, &document, &library),
+    GOLDEN_V_CARVE_SQUARE
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole program the 15 mm radius disc emits, byte for byte.
+///
+/// A disc is the sharpest case a V-carve has: its medial axis is **one point**, the centre, so the
+/// whole carve is one cone and the program is a plunge to `-15.0000` — the radius, which is the
+/// region's largest clearance — and a retract. Ten move lines and not one of them a lateral move.
+
+#[test]
+fn a_circle_v_carve_emits_the_golden_program() {
+  let directory = scratch("vcarve-golden-circle");
+  let document = write_v_carve_document(&directory, "circle.c2d", circle_contour(15.0));
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let program = emit_program(&directory, &document, &library, &write_post(&directory));
+  assert_eq!(program, GOLDEN_V_CARVE_CIRCLE);
+  assert_eq!(program.lines().count(), 12, "the pinned program's own size");
+  assert!(
+    program.contains("N30G00X25.0000Y15.0000\r"),
+    "the one tip is the centre of the circle"
+  );
+  assert!(
+    program.contains("N40G01Z-15.0000F100.0\r"),
+    "and it plunges to the radius: a 90 degree bit's depth is the clearance"
+  );
+  assert_eq!(
+    program.matches("G01X").count(),
+    0,
+    "a disc's V-carve has no lateral move at all"
+  );
+  assert_eq!(
+    emit_program(&directory, &document, &library, &write_post(&directory)),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_circle_v_carve_survives_a_document_save_and_load_round_trip() {
+  let directory = scratch("vcarve-golden-circle-round-trip");
+  let document = write_v_carve_document(&directory, "circle.c2d", circle_contour(15.0));
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  save_document(&reloaded, &loaded).expect("saved");
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &write_post(&directory)),
+    GOLDEN_V_CARVE_CIRCLE
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_circle_v_carve_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("vcarve-golden-circle-authored");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(15.0)]);
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+
+  assert_eq!(
+    author_and_emit_v_carve(&directory, &document, &library),
+    GOLDEN_V_CARVE_CIRCLE
   );
   std::fs::remove_dir_all(&directory).ok();
 }
