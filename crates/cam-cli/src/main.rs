@@ -19,8 +19,8 @@ use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  circle_centre, drill, pocket, profile, DrillHole, DrillRequest, PocketRequest, ProfileRequest,
-  ToolSpec, ToolpathError,
+  chamfer, circle_centre, drill, pocket, profile, ChamferRequest, DrillHole, DrillRequest,
+  PocketRequest, ProfileRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -44,7 +44,7 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket or drilling (required)
+        --kind <kind>         profile, pocket, drilling or chamfer (required)
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
@@ -57,9 +57,10 @@ COMMANDS:
         --retract <mode>      drilling: full (default) or amount
         --retract-amount <mm> drilling: lift above the peck when --retract amount
         --bank <count:pitch>  drilling: a gang of drills spaced along X
+        --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
         --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
-        --cut-depth <mm>      total cut depth (default 18)
+        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead
         --lead-in <mm>        profile: straight lead-in
         --lead-out <mm>       profile: straight lead-out
         --tab <pos:width:height>  profile: repeatable holding tab
@@ -600,6 +601,7 @@ struct ToolpathArgs {
   retract: Option<String>,
   retract_amount: Option<f64>,
   bank: Option<(u32, f64)>,
+  chamfer_width: Option<f64>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -635,6 +637,9 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         args.retract_amount = Some(parse_mm(&take("--retract-amount")?, "--retract-amount")?)
       }
       "--bank" => args.bank = Some(parse_bank(&take("--bank")?)?),
+      "--chamfer-width" => {
+        args.chamfer_width = Some(parse_mm(&take("--chamfer-width")?, "--chamfer-width")?)
+      }
       "--tab" => args.tabs.push(parse_tab(&take("--tab")?)?),
       "--clear" => {
         args.clear = true;
@@ -708,6 +713,16 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   let diameter = tool_data
     .as_ref()
     .and_then(|(geometry, _cutting)| geometry.diameter);
+  // A chamfer's depth comes from the bit's angle, so it is read here, where the tool is, and written
+  // into the document (D-M6-2, D-M6-9). Its absence is refused by name below. The tip's flat is read
+  // for the same reason: it disqualifies the bit from cutting a bevel of the width the user names
+  // (D-M6-10).
+  let included_angle = tool_data
+    .as_ref()
+    .and_then(|(geometry, _cutting)| geometry.included_angle);
+  let flat_diameter = tool_data
+    .as_ref()
+    .and_then(|(geometry, _cutting)| geometry.flat_diameter);
   let cutting = tool_data.map(|(_geometry, cutting)| cutting);
 
   let operation = match kind.as_str() {
@@ -811,9 +826,54 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         }),
       })
     }
+    "chamfer" => {
+      // A chamfer has no side and no authored depth: the bevel is symmetric about the vector and its Z
+      // is derived from the bit's angle (D-M6-2 as amended in L7). Both flags would otherwise be
+      // accepted and ignored, which is a silently different bevel; they are refused by name instead.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--cut-depth", args.cut_depth.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind chamfer takes no {flag}: the tip runs on the vector and its depth is derived \
+             from --chamfer-width and the tool's included angle"
+          )));
+        }
+      }
+      let chamfer_width = args
+        .chamfer_width
+        .ok_or_else(|| Failure::input("a chamfer needs --chamfer-width, in millimetres"))?;
+      // D-M6-9: a tool without an angle has no bevel behind it. Defaulting 90 degrees would cut a
+      // different chamfer, so the refusal names the tool and nothing is written.
+      let included_angle = included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{tool_number} has no included angle in the library, so a chamfer's depth cannot be \
+           derived: a chamfer needs a V-bit"
+        ))
+      })?;
+      // D-M6-10: with a flat of diameter `f` the bevel reaches the surface at `f/2 + d·tan(θ/2)`, so the
+      // derived depth cannot honour `--chamfer-width` on such a bit. Refused by name rather than
+      // cutting a bevel wider than the number the user typed.
+      if let Some(flat) = flat_diameter {
+        if flat.mm() > 0.0 {
+          return Err(Failure::input(format!(
+            "tool T{tool_number} has a {} mm flat tip, so a chamfer's bevel would reach the surface \
+             wider than --chamfer-width {chamfer_width} mm: a chamfer needs a sharp V-bit",
+            flat.mm()
+          )));
+        }
+      }
+      Operation::Chamfer(cam_model::ChamferParams {
+        chamfer_width: mm(chamfer_width),
+        included_angle,
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
-        "unknown toolpath kind {other:?}; expected profile, pocket or drilling"
+        "unknown toolpath kind {other:?}; expected profile, pocket, drilling or chamfer"
       )))
     }
   };
@@ -839,6 +899,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Profile(_) => "Profile",
         Operation::Pocket(_) => "Pocket",
         Operation::Drilling(_) => "Drilling",
+        Operation::Chamfer(_) => "Chamfer",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -934,9 +995,12 @@ fn bank_summary(
       "{headline}: no selection to report, the tool library has no diameter for T{tool_number}"
     );
   };
+  // Drilling selects a drill, never a cone: the bank report asks the strategy only about the XY its
+  // holes and pitches put the head at, so the tool's angle is irrelevant here and stays unset.
   let spec = ToolSpec {
     number: tool_number,
     diameter,
+    included_angle: None,
     feed_rate: cutting.and_then(|cutting| cutting.feed_rate).unwrap_or(0.0),
     plunge_rate: cutting
       .and_then(|cutting| cutting.plunge_rate)
@@ -1048,6 +1112,7 @@ fn operation_label(operation: &Operation) -> String {
         "drilling".to_owned()
       }
     }
+    Operation::Chamfer(_) => "chamfer".to_owned(),
   }
 }
 
@@ -1235,9 +1300,43 @@ fn build_segment(
   let spec = ToolSpec {
     number,
     diameter,
+    included_angle: geometry.included_angle,
     feed_rate: cutting.feed_rate.unwrap_or(0.0),
     plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
     spindle_speed: cutting.spindle_speed.unwrap_or(0),
+  };
+
+  // The shape the simulation sweeps (A8). A chamfer is the only operation that cuts with a cone, and
+  // its cone is the library's own geometry: the bit's included angle and its flat, zero when the
+  // library does not record one. A chamfer on a tool with no angle is refused by name rather than
+  // defaulted to 90 degrees, because that would cut a different bevel (D-M6-9).
+  let tool_shape = match &toolpath.operation {
+    Operation::Chamfer(params) => {
+      let included_angle = geometry.included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{number} has no included angle, so toolpath {:?} cannot cut a chamfer: a V-bit \
+           strategy needs the tool's angle, and defaulting 90 degrees would cut a different bevel",
+          toolpath.id
+        ))
+      })?;
+      // The same refusal as at authoring, repeated here because the library can change under a
+      // document that was written against a sharp bit: a flat widens the bevel to
+      // `chamfer_width + flat/2`, and the document's derived depth knows nothing of it (D-M6-10).
+      // A program that would cut a bevel nobody asked for is not written, and the simulation refuses
+      // the same shape, so the bit fails at every boundary that can see it.
+      let flat_diameter = geometry.flat_diameter.unwrap_or(Length::ZERO);
+      if flat_diameter.mm() > 0.0 {
+        return Err(Failure::input(format!(
+          "tool T{number} has a {} mm flat tip, so toolpath {:?} would cut a bevel wider than its \
+           {} mm chamfer width: a chamfer needs a sharp V-bit",
+          flat_diameter.mm(),
+          toolpath.id,
+          params.chamfer_width.mm()
+        )));
+      }
+      ToolShape::v_bit(included_angle, flat_diameter)
+    }
+    _ => ToolShape::cylinder(spec.diameter),
   };
 
   let mut moves = Vec::new();
@@ -1326,12 +1425,26 @@ fn build_segment(
       .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
       moves.extend(path.moves);
     }
+    Operation::Chamfer(params) => {
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          chamfer(&ChamferRequest {
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
   }
 
   Ok(Segment {
     name: toolpath.name.clone(),
     tool_number: number,
-    tool: ToolShape::cylinder(spec.diameter),
+    tool: tool_shape,
     feed_rate: spec.feed_rate,
     plunge_rate: spec.plunge_rate,
     spindle_speed: spec.spindle_speed,

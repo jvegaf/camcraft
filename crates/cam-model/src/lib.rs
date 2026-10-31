@@ -19,7 +19,7 @@
 #![warn(missing_docs)]
 
 use cam_geom::Contour;
-use cam_units::{Length, UnitSystem};
+use cam_units::{Angle, Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
 /// The document schema this build writes.
@@ -274,6 +274,46 @@ impl Default for ProfileParams {
   }
 }
 
+/// Parameters of a chamfer (V-bit bevel) toolpath.
+///
+/// A chamfer's depth is **derived, never authored** (D-M6-2 as amended in L7): the bevel's width and
+/// the bit's included angle fix how deep the tip has to go for the flank to meet the surface exactly
+/// `chamfer_width` millimetres from the vector. There is no `side`: the tip runs on the vector and the
+/// bevel is symmetric about it, so the same bevel comes out whichever way the tool travels.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ChamferParams {
+  /// Horizontal width of the bevel, from the vector to where the flank meets the surface.
+  pub chamfer_width: Length,
+  /// Full included angle of the V-bit, as the tool library records it (S11).
+  pub included_angle: Angle,
+  /// Depth of the surface the bevel starts from, for a part already partly machined.
+  pub start_depth: Length,
+}
+
+impl ChamferParams {
+  /// The one depth the tip reaches: `start_depth + chamfer_width / tan(included_angle / 2)`.
+  ///
+  /// Derived here and nowhere else, so the toolpath that cuts and the simulation that checks it can
+  /// never disagree about how deep the bevel is (D-M6-2 as amended in L7). The formula does not clamp:
+  /// a width or angle with no bevel behind it is refused by [`Document::validate`] naming the value,
+  /// because clamping it into a plausible-looking bevel would cut a different chamfer than the one
+  /// asked for.
+  pub fn depth(&self) -> Length {
+    let half = self.included_angle.radians() / 2.0;
+    Length::from_mm(self.start_depth.mm() + self.chamfer_width.mm() / half.tan())
+  }
+}
+
+impl Default for ChamferParams {
+  fn default() -> Self {
+    Self {
+      chamfer_width: Length::from_mm(6.0),
+      included_angle: Angle::from_degrees(90.0),
+      start_depth: Length::ZERO,
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -284,6 +324,8 @@ pub enum Operation {
   Pocket(PocketParams),
   /// Plunge at the centre of each selected circle.
   Drilling(DrillParams),
+  /// Bevel the selected closed vectors with a V-bit, at a depth derived from the bit.
+  Chamfer(ChamferParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -413,6 +455,27 @@ pub enum ModelError {
     /// The entity id.
     entity: String,
   },
+  /// A chamfer's bevel width is zero, negative or not a finite number.
+  #[error(
+    "toolpath {toolpath:?} chamfer width must be a positive number of millimetres, got {value} mm"
+  )]
+  ChamferWidthNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending width in millimetres.
+    value: f64,
+  },
+  /// A chamfer's included angle is not strictly between 0 and 180 degrees.
+  #[error(
+    "toolpath {toolpath:?} chamfer included angle must be between 0 and 180 degrees, got {degrees} \
+     degrees"
+  )]
+  ChamferAngleOutOfRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending angle in degrees.
+    degrees: f64,
+  },
 }
 
 impl Document {
@@ -507,7 +570,10 @@ impl Document {
         // Listing the kinds explicitly keeps this a compile error to update when another one
         // lands, instead of silently skipping its rules (D-M4-1).
         let needs_closed_geometry = match toolpath.operation {
-          Operation::Profile(_) | Operation::Pocket(_) | Operation::Drilling(_) => true,
+          Operation::Profile(_)
+          | Operation::Pocket(_)
+          | Operation::Drilling(_)
+          | Operation::Chamfer(_) => true,
         };
         if needs_closed_geometry {
           let closed = entity
@@ -523,11 +589,38 @@ impl Document {
           }
         }
       }
+      check_chamfer(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
     Ok(())
   }
+}
+
+/// Check a chamfer's own parameters: a bevel needs a width and an angle that describe one.
+///
+/// The depth is derived from the two (D-M6-2 as amended in L7), so a zero width has no bevel behind
+/// it and an angle at either end of `(0, 180)` degrees has a tangent of zero or infinity. Either
+/// would emit an infinite Z, so both are refused naming the offending value rather than clamped.
+fn check_chamfer(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Chamfer(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let width = params.chamfer_width.mm();
+  if !width.is_finite() || width <= 0.0 {
+    return Err(ModelError::ChamferWidthNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: width,
+    });
+  }
+  let angle = params.included_angle.radians();
+  if !(angle > 0.0 && angle < std::f64::consts::PI) {
+    return Err(ModelError::ChamferAngleOutOfRange {
+      toolpath: toolpath.id.clone(),
+      degrees: params.included_angle.degrees(),
+    });
+  }
+  Ok(())
 }
 
 /// Check a toolpath's islands: closed, strictly inside a boundary, and never crossing or touching

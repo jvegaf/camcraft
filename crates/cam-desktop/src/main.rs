@@ -127,6 +127,7 @@ fn sample_tool() -> ToolSpec {
   ToolSpec {
     number: 1,
     diameter: Length::from_mm(6.0),
+    included_angle: None,
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,

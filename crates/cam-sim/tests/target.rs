@@ -12,8 +12,8 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner, PocketParams,
-  PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
+  ChamferParams, Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner,
+  PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
@@ -141,6 +141,23 @@ fn drilling(id: &str, entities: &[&str], cut: f64) -> Toolpath {
     operation: Operation::Drilling(DrillParams {
       cut_depth: Length::from_mm(cut),
       ..DrillParams::default()
+    }),
+  }
+}
+
+/// A chamfer over `entities`: a bevel `width` millimetres wide on a bit of `degrees`, starting at
+/// `start` millimetres below the surface. The depth is **not** written here — it is derived.
+fn chamfer(id: &str, entities: &[&str], width: f64, degrees: f64, start: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Chamfer".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Chamfer(ChamferParams {
+      chamfer_width: Length::from_mm(width),
+      included_angle: Angle::from_degrees(degrees),
+      start_depth: Length::from_mm(start),
     }),
   }
 }
@@ -1005,5 +1022,83 @@ fn a_clean_cone_cut_leaves_no_gouge_and_uncut() {
     sampled,
     Deviation::default(),
     "everything left standing is within the sweep's own sampling"
+  );
+}
+
+#[test]
+fn a_chamfer_authorises_the_cone_its_derived_depth_reaches() {
+  // A 6 mm bevel on a 60 degree bit, tip on a 20 mm square. A 60 degree bit's half angle is 30
+  // degrees, so the derived depth is `6 / tan(30)` — 10.392 mm, **not** the 6 mm a width-equals-depth
+  // reading would give — and the cone reaches the surface exactly 6 mm either side of the vector.
+  // Cell centres 0.5, 3.5 and 6.5 mm from the bottom edge are authorised
+  // `depth - 0.5/tan(30)`, `depth - 3.5/tan(30)` and nothing. A target that used the chamfer's width,
+  // or the tool's footprint without the grading, would disagree with one of the three.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![chamfer("chamfer 1", &["square"], 6.0, 60.0, 0.0)],
+  );
+  let target = target_for(&document, cell(), &v_bit_tools(60.0, 0.0)).expect("a target");
+
+  let half = Angle::from_degrees(60.0).radians() / 2.0;
+  let depth = 6.0 / half.tan();
+  let authorised = |offset: f64| depth - offset / half.tan();
+
+  assert!(
+    (target.authorised(20, 10) - authorised(0.5)).abs() < 1e-9,
+    "half a millimetre off the vector is authorised {}, got {}",
+    authorised(0.5),
+    target.authorised(20, 10)
+  );
+  assert!(
+    (target.authorised(20, 13) - authorised(3.5)).abs() < 1e-9,
+    "3.5 mm off the vector is authorised {}, got {}",
+    authorised(3.5),
+    target.authorised(20, 13)
+  );
+  assert_eq!(
+    target.authorised(20, 17),
+    0.0,
+    "7 mm off the vector is past the cone's reach"
+  );
+}
+
+#[test]
+fn a_chamfer_with_a_cylinder_tool_is_refused_by_name() {
+  // A chamfer's depth comes from the bit's angle, so a tool the caller described as a cylinder
+  // cannot chamfer. Approximating it as a cylinder would authorise a flat-bottomed slot the program
+  // never cuts (D-M6-3), and defaulting an angle would cut a different bevel (D-M6-9).
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![chamfer("chamfer 1", &["square"], 6.0, 60.0, 0.0)],
+  );
+  assert_eq!(
+    target_for(&document, cell(), &tools(6.0)),
+    Err(TargetError::ChamferNeedsVBit {
+      toolpath: "chamfer 1".to_owned(),
+      tool_number: 1,
+    })
+  );
+}
+
+#[test]
+fn a_chamfer_with_a_flat_tipped_bit_is_refused_by_name() {
+  // D-M6-10: with a flat of diameter `f` the bevel reaches the surface at `f/2 + d*tan(half)`, so the
+  // target would authorise a bevel wider than the `chamfer_width` the user typed. The derivation in
+  // `ChamferParams` reads only the document (L7), so the honest answer is a refusal naming the tool,
+  // not a graded band around a wider groove.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![chamfer("chamfer 1", &["square"], 6.0, 60.0, 0.0)],
+  );
+  assert_eq!(
+    target_for(&document, cell(), &v_bit_tools(60.0, 2.0)),
+    Err(TargetError::ChamferNeedsSharpBit {
+      toolpath: "chamfer 1".to_owned(),
+      tool_number: 1,
+      flat_diameter: 2.0,
+    })
   );
 }

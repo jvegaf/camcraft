@@ -4,9 +4,10 @@
 //! One target surface, derived from the document alone: a pocket authorises its region inset by the
 //! wall its allowance keeps (D-M5-10), a drilling toolpath authorises each hole's circle, a profile
 //! authorises the band its tool *sweeps* — `allowance … 2·radius + allowance` from the vector, less
-//! whatever a tab declares it keeps (D-M5-5) — and every cell nothing claims is authorised to lose
-//! nothing. Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than
-//! authorised, and authorised deeper than removed.
+//! whatever a tab declares it keeps (D-M5-5) — a chamfer authorises the cone its derived depth reaches
+//! either side of the vector (M6 A8), and every cell nothing claims is authorised to lose nothing.
+//! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
+//! authorised deeper than removed.
 //!
 //! The tool's diameter is not in the document — it is in the tool library — so a caller that wants
 //! profile bands supplies it through [`ToolShapes`]. A pocket or a drilling toolpath's target does
@@ -90,6 +91,39 @@ pub enum TargetError {
     toolpath: String,
     /// What the kernel said, verbatim.
     reason: String,
+  },
+  /// A chamfer was claimed with a tool that is not a V-bit.
+  ///
+  /// A chamfer's depth is derived from its bit's included angle (D-M6-2), so a cylinder has no rule to
+  /// grade its claim with. Approximating one would authorise a flat-bottomed slot the program never
+  /// cuts (D-M6-3), and defaulting an angle would cut a different bevel (D-M6-9).
+  #[error(
+    "toolpath {toolpath:?} chamfers with tool {tool_number}, which the library does not describe as a \
+     V-bit: a chamfer's depth comes from the tool's included angle, and there is none to use"
+  )]
+  ChamferNeedsVBit {
+    /// The toolpath that needs it.
+    toolpath: String,
+    /// The tool it named.
+    tool_number: u32,
+  },
+  /// A chamfer was claimed with a bit whose tip has a flat.
+  ///
+  /// With a flat of diameter `f` the bevel reaches the surface at `f/2 + d·tan(θ/2)`, so the target
+  /// would authorise a groove wider than the `chamfer_width` the document names. The derivation reads
+  /// the document alone (L7), so it cannot honour the width on such a bit and the bit is refused by
+  /// name instead of absorbed (D-M6-10).
+  #[error(
+    "toolpath {toolpath:?} chamfers with tool {tool_number}, whose tip has a {flat_diameter} mm flat: \
+     a chamfer's bevel would reach the surface wider than its width, so a chamfer needs a sharp V-bit"
+  )]
+  ChamferNeedsSharpBit {
+    /// The toolpath that needs it.
+    toolpath: String,
+    /// The tool it named.
+    tool_number: u32,
+    /// The flat at the tip, in millimetres.
+    flat_diameter: f64,
   },
 }
 
@@ -226,6 +260,43 @@ fn claim_toolpath(
         }
       }
     }
+    Operation::Chamfer(params) => {
+      // The depth is derived once, in the document model, and `cam-toolpath` cuts at the same number
+      // (D-M6-2 as amended in L7): the derivation is called here, never repeated.
+      let depth = params.depth().mm();
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
+      if !matches!(tool, ToolShape::VBit { .. }) {
+        return Err(TargetError::ChamferNeedsVBit {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        });
+      }
+      if let ToolShape::VBit { flat_diameter, .. } = tool {
+        if flat_diameter.mm() > 0.0 {
+          // A flat tip widens the bevel by half its diameter, and the derived depth knows nothing of
+          // it (L7), so a correct claim is not available from the document (D-M6-10).
+          return Err(TargetError::ChamferNeedsSharpBit {
+            toolpath: toolpath.id.clone(),
+            tool_number: toolpath.tool_number,
+            flat_diameter: flat_diameter.mm(),
+          });
+        }
+      }
+      // The widest footprint the cone has where it meets the surface, which is also where the bevel is
+      // `chamfer_width` from the vector: for a bit with no flat the reach and the width are the same
+      // number, and the cone's own law grades the claim inside the band.
+      let reach = tool.radius_at(depth);
+      for id in &toolpath.entity_ids {
+        let contour = contour_of(document, toolpath, id)?;
+        let region = cone_band(&toolpath.id, contour, reach)?;
+        claim_cone_region(target, &region, contour, tool, depth, None);
+      }
+    }
   }
   Ok(())
 }
@@ -274,19 +345,7 @@ fn kerf_band(
   params: &ProfileParams,
   tool: ToolShape,
 ) -> Result<Region, TargetError> {
-  let offset = |distance: f64| -> Result<Contour, TargetError> {
-    if distance == 0.0 {
-      // Offsetting by nothing is the contour itself; asking the kernel to walk a zero offset only
-      // risks it reporting a collapse for a question nobody asked.
-      return Ok(contour.clone());
-    }
-    offset_contour(contour, distance, &OffsetOptions::default())
-      .map(|offset| offset.contour)
-      .map_err(|error| TargetError::Geometry {
-        toolpath: toolpath.to_owned(),
-        reason: error.to_string(),
-      })
-  };
+  let offset = |distance: f64| offset_contour_or(toolpath, contour, distance);
   let allowance = params.allowance.mm();
   // A cone's radius grows with depth, so its widest footprint is the one at the depth it reaches.
   let radius = tool.radius_at(params.cut_depth.mm());
@@ -313,6 +372,42 @@ fn kerf_band(
     });
   }
   region_of(toolpath, boundaries)
+}
+
+/// The band a chamfer's cone sweeps: the contour grown and shrunk by the cone's reach where it meets
+/// the surface, as a parity region.
+///
+/// The tip travels **on** the vector (D-M6-2 as amended in L7), so the bevel is symmetric about it and
+/// the band is both of the contour's offsets by `reach` — the widest footprint the cone has at the
+/// depth it reaches. The grade inside the band is the cone's own law, claimed cell by cell by
+/// [`claim_cone_region`].
+fn cone_band(toolpath: &str, contour: &Contour, reach: f64) -> Result<Region, TargetError> {
+  region_of(
+    toolpath,
+    vec![
+      offset_contour_or(toolpath, contour, reach)?,
+      offset_contour_or(toolpath, contour, -reach)?,
+    ],
+  )
+}
+
+/// `contour` offset **outward** by `distance`, or the contour itself when the distance is zero.
+fn offset_contour_or(
+  toolpath: &str,
+  contour: &Contour,
+  distance: f64,
+) -> Result<Contour, TargetError> {
+  if distance == 0.0 {
+    // Offsetting by nothing is the contour itself; asking the kernel to walk a zero offset only risks
+    // it reporting a collapse for a question nobody asked.
+    return Ok(contour.clone());
+  }
+  offset_contour(contour, distance, &OffsetOptions::default())
+    .map(|offset| offset.contour)
+    .map_err(|error| TargetError::Geometry {
+      toolpath: toolpath.to_owned(),
+      reason: error.to_string(),
+    })
 }
 
 fn region_of(toolpath: &str, boundaries: Vec<Contour>) -> Result<Region, TargetError> {

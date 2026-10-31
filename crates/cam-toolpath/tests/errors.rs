@@ -39,6 +39,7 @@ fn every_variant() -> Vec<ToolpathError> {
     },
     ToolpathError::NoHoles,
     ToolpathError::InvalidBank,
+    ToolpathError::InvalidIncludedAngle { degrees: 0.0 },
   ]
 }
 
@@ -47,7 +48,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    11,
+    12,
     "every variant must be listed exactly once"
   );
 
@@ -78,6 +79,9 @@ fn every_variant_keeps_its_message() {
       ToolpathError::NoHoles => "drilling needs at least one hole".to_owned(),
       ToolpathError::InvalidBank => {
         "drill bank needs at least one drill and a positive pitch".to_owned()
+      }
+      ToolpathError::InvalidIncludedAngle { degrees } => {
+        format!("chamfer included angle {degrees} degrees must be strictly between 0 and 180")
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

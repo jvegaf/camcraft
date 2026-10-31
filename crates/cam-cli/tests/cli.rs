@@ -9,12 +9,12 @@ use std::process::Command;
 
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
-  Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, PocketParams, PocketStrategy,
-  ProfileParams, ProfileSide, RetractMode, Toolpath,
+  ChamferParams, Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, PocketParams,
+  PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
-use cam_units::{Length, UnitSystem};
+use cam_units::{Angle, Length, UnitSystem};
 
 const POST: &str = include_str!("../../cam-post/tests/fixtures/post_mm.pp");
 
@@ -440,6 +440,8 @@ fn help_lists_every_command_option_and_exit_code() {
     "--post",
     "--out",
     "--library",
+    "chamfer",
+    "--chamfer-width",
     "EXIT CODES",
     "unsupported document schema",
     "post-processor error",
@@ -2491,4 +2493,543 @@ fn the_help_lists_the_simulate_command_its_flags_and_its_exit_code() {
       outcome.stdout
     );
   }
+}
+
+// --- chamfer (M6 A2, A8, D-M6-2, D-M6-9) ------------------------------------------------------
+
+/// A library holding one 90 degree V-bit as T1: what a chamfer needs, and a real bit's geometry.
+///
+/// The diameter is the bit's large diameter and moves nothing — a chamfer's tip runs on the vector —
+/// and the 90 degree included angle is what makes the derived depth equal the bevel's width.
+fn write_chamfer_library(directory: &Path) -> PathBuf {
+  write_chamfer_library_at(directory, "chamfer-tools.sqlite", 90.0, 0.0)
+}
+
+/// The same library with a chosen included angle and tip flat, so the refusals can be reached.
+fn write_chamfer_library_at(directory: &Path, name: &str, degrees: f64, flat: f64) -> PathBuf {
+  let path = directory.join(name);
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "V1".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(12.7)),
+      included_angle: Some(Angle::from_degrees(degrees)),
+      flat_diameter: Some(Length::from_mm(flat)),
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "V1CUT".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(6.0)),
+      stepover: None,
+      clear_stepover: None,
+      tool_number: Some(1),
+      notes: None,
+    })
+    .expect("cutting data");
+  library
+    .link("V1LINK", "V1", "V1CUT", None, None)
+    .expect("link");
+  path
+}
+
+/// The whole program one chamfer emits, byte for byte.
+///
+/// A 90 degree V-bit and a 3 mm bevel with no start depth: the tip runs on the 40 x 30 rectangle
+/// itself, unoffset, at `-(0 + 3 / tan(45)) = -3` mm, in **one** pass — rapid, one plunge, four
+/// sides, retract to safe Z. CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_CHAMFER_PROGRAM: &str = "\
+( Chamfer 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z-3.0000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G01Y30.0000\r\n\
+N70G01X0.0000\r\n\
+N80G01Y0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn a_chamfer_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-chamfer");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 chamfer, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the bevel and the bit, never a derived depth (D-M6-2 as amended in
+  // L7): the angle is the library's own, in radians, and the depth is a question asked at emission.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Chamfer(params) => {
+      assert_eq!(params.chamfer_width, Length::from_mm(3.0));
+      assert_eq!(params.included_angle, Angle::from_degrees(90.0));
+      assert_eq!(params.start_depth, Length::ZERO);
+      // `tan(pi/4)` is not exactly 1 in binary floating point, so the derived depth is 3 mm to
+      // within rounding — and 3.0000 mm once the post's four decimals format it.
+      assert!(
+        (params.depth().mm() - 3.0).abs() < 1.0e-9,
+        "a 90 degree bit and a 3 mm bevel derive 3 mm, got {}",
+        params.depth().mm()
+      );
+    }
+    other => panic!("expected a chamfer, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_CHAMFER_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_on_a_tool_without_an_included_angle_exits_two_naming_the_tool() {
+  let directory = scratch("chamfer-no-angle");
+  let document = write_vectors(&directory, "plain.c2d", vec![rectangle_contour(40.0, 30.0)]);
+  // The ordinary library's T1 is an end mill: a diameter and no angle.
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("included angle"),
+    "and says what is missing: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn emit_refuses_a_chamfer_whose_tool_has_no_included_angle_naming_the_tool() {
+  // The other half of D-M6-9: a document authored elsewhere still carries the bevel, and the library
+  // the machine is set up with has no angle for that tool. Defaulting 90 degrees would cut a
+  // different bevel, so the program is refused by name and nothing is written.
+  let directory = scratch("chamfer-emit-no-angle");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Chamfer 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Chamfer(ChamferParams {
+      chamfer_width: Length::from_mm(3.0),
+      included_angle: Angle::from_degrees(90.0),
+      start_depth: Length::ZERO,
+    }),
+  });
+  save_document(&document, &loaded).expect("document saved");
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_takes_no_side_and_no_authored_depth() {
+  // A bevel is symmetric about the vector and its depth is derived from the bit, so both flags have
+  // no meaning here. Refusing them is the difference between a refusal and a silently different
+  // bevel: a `--cut-depth 12` that nobody applied would still look like it had been.
+  let directory = scratch("chamfer-flags");
+  let library = write_chamfer_library(&directory);
+  for flag in ["--side", "--cut-depth", "--pass-depth"] {
+    let document = write_vectors(
+      &directory,
+      "chamfer.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "chamfer",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--chamfer-width",
+      "3",
+      flag,
+      "6",
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_without_a_width_exits_two_naming_the_option() {
+  let directory = scratch("chamfer-no-width");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--chamfer-width"),
+    "{}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_with_no_width_or_an_impossible_angle_exits_two_naming_the_value() {
+  // The depth is `width / tan(half angle)`, so a zero width has no bevel and an angle at either end
+  // of `(0, 180)` degrees has no finite tangent. Both are input errors that name the value, never a
+  // clamp: a clamped bevel is a different bevel on someone's part.
+  let directory = scratch("chamfer-invalid");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let zero = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "0",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(zero.code, 2, "{}", zero.stdout);
+  assert!(
+    zero.stderr.contains("chamfer width") && zero.stderr.contains("got 0 mm"),
+    "the refusal names the value: {}",
+    zero.stderr
+  );
+
+  // The same rule holds for the angle, and it is the document model that holds it: a library bit
+  // whose included angle is 0 degrees has no tangent to derive from, so authoring a chamfer with it
+  // is refused naming the value. (Such a document cannot even be written — saving validates it — so
+  // this is the only path that reaches the rule.)
+  let flat_bit = write_chamfer_library_at(&directory, "zero-angle.sqlite", 0.0, 0.0);
+  let impossible = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    flat_bit.to_str().expect("utf8"),
+  ]);
+  assert_eq!(impossible.code, 2, "{}", impossible.stdout);
+  assert!(
+    impossible.stderr.contains("included angle") && impossible.stderr.contains("got 0 degrees"),
+    "the refusal names the value: {}",
+    impossible.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_simulates_with_no_gouge_and_no_uncut() {
+  // A8's end-to-end claim: the shape the library describes reaches `cam-sim` through the segment, so
+  // the cone the program is simulated with is the cone the document derived its depth from. A
+  // cylinder in the segment would not merely disagree — `cam-sim` refuses a chamfer claimed with one
+  // — and an angle that reached the simulation differently from the document would report a correct
+  // bevel as gouge or uncut. Both directions are visible here, at the binary's own tolerance.
+  let directory = scratch("chamfer-simulate");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--start-depth",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = run(&[
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(outcome.stdout.contains("crash: none"), "{}", outcome.stdout);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_on_a_flat_tipped_bit_exits_two_naming_the_tool() {
+  // D-M6-10: a flat of diameter `f` widens the bevel to `w + f/2`, and `ChamferParams` reads only the
+  // document, so the depth it derives cannot honour the width the user typed on a flat-tipped bit. The
+  // bit is refused by name at authoring time rather than cutting a bevel nobody asked for.
+  let directory = scratch("chamfer-flat-tip");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library_at(&directory, "flat.sqlite", 90.0, 2.0);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("flat"),
+    "and says what disqualifies it: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn emit_refuses_a_chamfer_whose_tool_has_a_flat_tip_naming_the_tool() {
+  // The third boundary that can see the bit (D-M6-10), and the one that costs the part if it is
+  // missed: a document authored against a sharp bit, then emitted against a library whose T1 has
+  // picked up a flat. The flat widens the bevel to `w + f/2` while the document's derived depth knows
+  // nothing of it, so the program must not be written at all — exit 2 naming the tool, no output file.
+  let directory = scratch("chamfer-emit-flat-tip");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  // Authored while the bit is still sharp.
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  // The same tool number, now described with a 2 mm flat at the tip.
+  let tools = ToolLibrary::open(&library).expect("library");
+  tools
+    .put_geometry(&ToolGeometry {
+      id: "V1".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(12.7)),
+      included_angle: Some(Angle::from_degrees(90.0)),
+      flat_diameter: Some(Length::from_mm(2.0)),
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  drop(tools);
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("flat tip"),
+    "and says what disqualifies it: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
 }

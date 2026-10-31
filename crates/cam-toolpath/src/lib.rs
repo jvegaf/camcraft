@@ -2,30 +2,44 @@
 //!
 //! M0 implemented `profile` and the rules every other strategy reuses: the side offset, the
 //! allowance, depth chunking, tab lifting and lead moves. M4 adds the two strategies that define 2.5D
-//! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks).
+//! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks). M6 adds
+//! `chamfer`, the first depth-variant strategy: one V-bit pass whose Z is derived from the bit's own
+//! included angle instead of authored.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
 #![warn(missing_docs)]
 
+pub mod chamfer;
 pub mod drill;
 pub mod pocket;
 
+pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
 use cam_move::{Move, Point3};
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
-/// The subset of tool data a profile cut needs.
+/// The subset of tool data a toolpath strategy needs.
+///
+/// `diameter` is what the offset strategies and the cylinder footprint need; `included_angle` is what a
+/// V-bit strategy needs, and it is an `Option` because the library records an angle only for tools that
+/// have one (D-M6-9).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ToolSpec {
   /// Tool number used in the program.
   pub number: u32,
   /// Cutting diameter.
   pub diameter: Length,
+  /// Full included angle of the tool's cone, when the library records one.
+  ///
+  /// `None` for a tool the library does not describe as a V-bit. A strategy that derives geometry from
+  /// the angle refuses such a tool by name instead of assuming 90 degrees, because a defaulted angle
+  /// silently cuts a different bevel (D-M6-9).
+  pub included_angle: Option<Angle>,
   /// Feed rate along the cut.
   pub feed_rate: f64,
   /// Plunge rate.
@@ -92,6 +106,16 @@ pub enum ToolpathError {
   /// A drill bank was described with no drills, or with drills that overlap.
   #[error("drill bank needs at least one drill and a positive pitch")]
   InvalidBank,
+  /// A chamfer was given an included angle with no finite tangent.
+  ///
+  /// The document model refuses an impossible angle for a stored toolpath, but a caller that hands the
+  /// strategy its parameters directly must not receive an infinite Z either: the tangent of zero is
+  /// zero, so there is no depth behind the bevel (D-M6-10).
+  #[error("chamfer included angle {degrees} degrees must be strictly between 0 and 180")]
+  InvalidIncludedAngle {
+    /// The offending angle in degrees.
+    degrees: f64,
+  },
 }
 
 /// Everything a profile pass needs.
@@ -331,8 +355,12 @@ fn tangent_of(segment: Segment) -> cam_geom::Vec2 {
   }
 }
 
-/// Walk the contour once, splitting at tab boundaries and lifting where a tab applies.
-fn walk_contour(
+/// Walk the contour once at `z`, splitting at tab boundaries and lifting where a tab applies.
+///
+/// Shared with `chamfer`, which has no tabs: with an empty `tabs` the split is the whole contour, so a
+/// one-pass strategy gets the same arc-preserving walk a profile pass does instead of a second
+/// implementation of it.
+pub(crate) fn walk_contour(
   contour: &Contour,
   job: &Job,
   z: f64,

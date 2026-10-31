@@ -107,7 +107,9 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   arithmetic is per side, and T2's review found A9 asserting the wrong one** (L9): a chamfer whose
   vector has material on both sides removes `L·w·d` per unit length; one whose vector is an outside
   edge, with air on the other side, removes `L·w·d/2`. Both cases get an oracle, so neither reading
-  can pass as the whole truth.
+  can pass as the whole truth. The one-sided case is expressible without inventing a clip: a closed
+  rectangle whose cut edge lies on the stock's low edge and whose other three edges lie outside the
+  sheet, so the grid clips exactly the flank that would fall on air.
 - **A10 — Determinism and the old bytes (S6).** Two runs of every new subcommand print and emit
   identical bytes; the twelve pre-existing subcommand differential still holds against `179d6b3`
   except for `--help` and the new commands themselves.
@@ -177,7 +179,11 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   bevel wider than the number the user asked for; a tapered footprint with a flat is a later strategy's
   business. For the same reason `cam-toolpath::chamfer` refuses an angle that is not strictly inside
   `(0, π)` at the library boundary and not only in the model's validation: a caller that bypasses the
-  CLI must not receive an infinite Z.
+  CLI must not receive an infinite Z. **Amended in L11:** the gate has to exist at every boundary that can see the
+  flat, and they see different things — `cam-cli toolpath` sees the library before a toolpath is stored,
+  `cam-cli emit` sees the library *after* the document exists (the case that matters: a document authored
+  against a sharp bit and emitted against a flat one), and `cam-sim::target` sees the `ToolShape::VBit` the
+  segment carries. One boundary cannot cover another, which is why all three refuse.
 
 ## Tasks
 
@@ -273,3 +279,13 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   split by crate or by layer leaves the workspace uncompilable, and splitting code from tests would
   separate a behaviour from the only thing that proves it. The boundary is recorded here rather than the
   guideline being quietly exceeded; the next strategies are additive and can be sliced smaller.
+- **L11 (review, T2 close, the gate that was still missing).** The first round put the flat-tip refusal at
+  authoring and in the simulation, and the writer flagged the asymmetry instead of shipping it: `cam-cli emit`
+  still accepted a document whose library had since been re-pointed at a flat-tipped bit, and wrote a program
+  for a bevel wider than its own stored width. The decision was to refuse at all three boundaries, and the
+  reason is worth keeping: each boundary sees a different object — the library before authoring, the library
+  after the document exists, and the `ToolShape` the segment carries — so no one of them can cover the others.
+  Three tests, one per gate, and the emission one re-points an existing library tool by id so it proves the
+  library can change under a valid document rather than constructing a doctored fixture. T2 closes at **224
+  tests** in the four crates it touched (cam-model 25, cam-toolpath 81, cam-sim 54, cam-cli 64) with the whole
+  gate green.

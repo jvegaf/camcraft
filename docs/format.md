@@ -49,7 +49,10 @@ part.c2d
       "operation": { "kind": "drilling", "peck_depth": 3.0,
         "retract": { "mode": "amount", "amount": 1.0 },
         "start_depth": 0.0, "cut_depth": 12.0,
-        "bank": { "count": 3, "pitch": 32.0 } } }
+        "bank": { "count": 3, "pitch": 32.0 } } },
+    { "id": "TP4", "name": "Chamfer 4", "entity_ids": ["E1"], "tool_number": 3,
+      "operation": { "kind": "chamfer", "chamfer_width": 3.0,
+        "included_angle": 1.5707963267948966, "start_depth": 0.0 } }
   ],
   "tools_ref": "tools.sqlite",
   "postp": "mach3.pp"
@@ -64,13 +67,14 @@ part.c2d
 | Schema | This build **writes** `c2d/document@2` and still **reads** `c2d/document@1`, upgrading it in memory on load so a save never writes the old tag back. Anything else is rejected naming both the found and the supported version. `@2` only added `Toolpath.island_ids`: the bump exists because an older build ignores a field it does not know, so keeping the tag would let it pocket straight through an island. |
 | Geometry | A contour is an ordered list of vertices; `bulge` is the DXF bulge of the segment leaving that vertex (`0` = straight, `tan(sweep/4)` = arc, positive counter-clockwise). A full circle is two half-turn arcs. |
 | Validation | Contours are validated **on deserialisation**: too few vertices, coincident consecutive vertices and impossible bulges fail the load instead of producing geometry. |
-| References | Toolpath `entity_ids` must resolve. Every operation that cuts a closed contour — `profile`, `pocket`, `drilling` — must reference closed contours, and an open one is refused by name. Ids are unique within their kind. |
+| References | Toolpath `entity_ids` must resolve. Every operation that cuts a closed contour — `profile`, `pocket`, `drilling`, `chamfer` — must reference closed contours, and an open one is refused by name. Ids are unique within their kind. |
 | Job | `width`, `height` and `thickness` must be positive and finite. |
 | Origin | `bottom_left`, `top_left` or `center`. The mapping onto machine coordinates happens once, in the toolpath layer. |
 | Extensibility | `EntityKind` and `Operation` are internally tagged enums. An unknown tag is a **hard error**: a document written by a newer build never half-loads, it is refused by name. Because of that, adding a variant is additive and keeps the schema tag; changing what an existing field means, or its units, is what makes a `@2`. |
 | `RetractMode` | `{"mode":"full"}` or `{"mode":"amount","amount":1.0}`. A tagged **newtype** over a bare number cannot carry the tag, so the amount is a named field. |
 | `bank` | Omitted when the machine has no drill gang, so a document that does not use one is byte-identical to one written before banks existed. |
 | `island_ids` | Omitted when empty. Names the closed contours to leave standing inside a `pocket`'s region; nothing is inferred from the drawing, so the field *is* the island list. The model refuses an island that is not a closed contour, that is not strictly inside one of the toolpath's boundaries, that is not disjoint from another island, that repeats an id, or that belongs to any operation other than a pocket. See [region-booleans.md](region-booleans.md). |
+| `chamfer` | A V-bit bevel on the selected closed contours: the tip travels **on** the vector, in one pass, and the bevel is symmetric about it. `chamfer_width` is the bevel's horizontal width in millimetres and `included_angle` is the bit's full included angle in **radians**, as the library stores it. There is no `cut_depth`: the depth is **derived** — `start_depth + chamfer_width / tan(included_angle / 2)` — and never stored, so a stored value cannot disagree with the bit it came from. A width that is not positive, or an angle outside `(0, π)`, is refused naming the offending value. The derivation assumes a sharp point, so a bit with a flat tip is refused by name as well: with a flat of diameter `f` the bevel would reach the surface `f/2` wider than `chamfer_width`. See [m4-toolpaths.md](m4-toolpaths.md) for the neighbouring operations. |
 
 `tools_ref` and `postp` are optional references resolved relative to the document.
 
@@ -178,7 +182,7 @@ Text variables need no declaration: `TOOLPATH_NAME`, `PATHNAME`, `FILE_NAME`, `F
 | `postp validate <file>` | Parse a post-processor and print a summary |
 | `tools list <library>` | List tools |
 | `tools add <library> --id --diameter --number` | Add or replace a tool |
-| `toolpath <document> --kind profile\|pocket\|drilling --entities <ids> [--islands <ids>] --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); `--islands` is a pocket-only list of contours to leave standing; see [m4-toolpaths.md](m4-toolpaths.md) and [region-booleans.md](region-booleans.md) |
+| `toolpath <document> --kind profile\|pocket\|drilling\|chamfer --entities <ids> [--islands <ids>] --tool <n>` | Append one toolpath and write the document back (`--out` writes elsewhere); `--islands` is a pocket-only list of contours to leave standing; `chamfer` takes `--chamfer-width` and derives its depth, so it has no `--side` and no `--cut-depth`; see [m4-toolpaths.md](m4-toolpaths.md) and [region-booleans.md](region-booleans.md) |
 | `emit <document> --post <file> [--out <path>] [--library <path>]` | Compute toolpaths and write the program |
 | `simulate <document> [--library <path>] [--resolution <mm>]` | Simulate the program's material removal over the stock and print the report: removed volume, through-cut cells, gouge, uncut material and every crash. `--resolution` is the cell size in mm (default 1); the deviation tolerance that separates "gouge" from "uncut" is an eighth of a cell; see [m5-simulation.md](m5-simulation.md) |
 
