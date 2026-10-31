@@ -18,8 +18,8 @@
 
 #![warn(missing_docs)]
 
-use cam_geom::Contour;
-use cam_units::{Length, UnitSystem};
+use cam_geom::{Contour, Point2};
+use cam_units::{Angle, Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
 /// The document schema this build writes.
@@ -76,6 +76,37 @@ impl Job {
       origin: OriginCorner::BottomLeft,
       safe_z: Length::from_mm(5.0),
     }
+  }
+
+  /// The stock's surface as a closed contour in document coordinates, from `(0, 0)` to
+  /// `(width, height)`.
+  ///
+  /// The **one** place the job rectangle is built (M6 A6). An inlay's male half clears it with the
+  /// region standing as an island, and `cam-sim` authorises the same rectangle, so both ask here: a
+  /// program and a target that each built their own rectangle would eventually disagree about where the
+  /// stock ends, and a male that cleared past the stock or stopped short of it would be a ruined part
+  /// rather than a visible error.
+  ///
+  /// Document coordinates always run from the job's own corner; the corner *selector* is applied later,
+  /// once, by the toolpath layer (`cam_toolpath::machine_point`), and never here.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `width` or `height` is not a positive, finite length, which cannot describe a
+  /// rectangle. Every caller reaches this through [`Document::validate`] or a grid, both of which
+  /// refuse such a job by name first, and the panic says so rather than returning a degenerate
+  /// contour no strategy could cut.
+  pub fn outline(&self) -> Contour {
+    Contour::from_points(
+      &[
+        Point2::new(0.0, 0.0),
+        Point2::new(self.width.mm(), 0.0),
+        Point2::new(self.width.mm(), self.height.mm()),
+        Point2::new(0.0, self.height.mm()),
+      ],
+      true,
+    )
+    .expect("validated job dimensions describe a closed rectangle")
   }
 }
 
@@ -274,6 +305,327 @@ impl Default for ProfileParams {
   }
 }
 
+/// Parameters of a chamfer (V-bit bevel) toolpath.
+///
+/// A chamfer's depth is **derived, never authored** (D-M6-2 as amended in L7): the bevel's width and
+/// the bit's included angle fix how deep the tip has to go for the flank to meet the surface exactly
+/// `chamfer_width` millimetres from the vector. There is no `side`: the tip runs on the vector and the
+/// bevel is symmetric about it, so the same bevel comes out whichever way the tool travels.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ChamferParams {
+  /// Horizontal width of the bevel, from the vector to where the flank meets the surface.
+  pub chamfer_width: Length,
+  /// Full included angle of the V-bit, as the tool library records it (S11).
+  pub included_angle: Angle,
+  /// Depth of the surface the bevel starts from, for a part already partly machined.
+  pub start_depth: Length,
+}
+
+impl ChamferParams {
+  /// The one depth the tip reaches: `start_depth + chamfer_width / tan(included_angle / 2)`.
+  ///
+  /// Derived here and nowhere else, so the toolpath that cuts and the simulation that checks it can
+  /// never disagree about how deep the bevel is (D-M6-2 as amended in L7). The formula does not clamp:
+  /// a width or angle with no bevel behind it is refused by [`Document::validate`] naming the value,
+  /// because clamping it into a plausible-looking bevel would cut a different chamfer than the one
+  /// asked for.
+  pub fn depth(&self) -> Length {
+    let half = self.included_angle.radians() / 2.0;
+    Length::from_mm(self.start_depth.mm() + self.chamfer_width.mm() / half.tan())
+  }
+}
+
+impl Default for ChamferParams {
+  fn default() -> Self {
+    Self {
+      chamfer_width: Length::from_mm(6.0),
+      included_angle: Angle::from_degrees(90.0),
+      start_depth: Length::ZERO,
+    }
+  }
+}
+
+/// Parameters of a quick engrave toolpath.
+///
+/// One pass at one authored depth, with the tool's centre **on** the vector (D-M6-4). There is no
+/// side, no pass law, no lead and no tab: a second pass would cut a second groove into the first, and
+/// the feature is a single groove. The depth is authored here rather than derived, which is what
+/// separates an engrave from a chamfer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EngraveParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface; the one pass lands exactly on it.
+  pub cut_depth: Length,
+}
+
+impl Default for EngraveParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+    }
+  }
+}
+
+/// Parameters of a fluting toolpath.
+///
+/// A flute is one pass along each selected vector at one authored depth, with the tool's centre
+/// **on** the vector (D-M6-5). The ramp is a *length*, not a depth: with `ramp > 0` the pass enters
+/// over the first `ramp` millimetres of the vector and leaves over the last, so a round-nosed bit
+/// never plunges at full depth into the end of a visible flute; `ramp = 0` plunges and retracts in
+/// place, which is the plain groove. Nothing else about a profile's machinery applies: no side, no
+/// pass law, no lead and no tab, because a second pass would cut a second groove into the first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FlutingParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Depth the pass cuts to: the bottom of the ramp in and the top of the ramp out.
+  pub cut_depth: Length,
+  /// Length in millimetres of the ramped entry and of the ramped exit; zero plunges in place.
+  ///
+  /// Defaulted rather than required, so a hand-written or older document that names a `fluting`
+  /// toolpath without the field loads as the in-place plunge it describes instead of failing the
+  /// load. The ramp bounds are input errors, not defaults: a negative ramp is refused by
+  /// `cam-toolpath::fluting` by name, and so is one longer than half the vector it runs on (A4).
+  #[serde(default)]
+  pub ramp: Length,
+}
+
+impl Default for FlutingParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+      ramp: Length::ZERO,
+    }
+  }
+}
+
+/// Parameters of a texture toolpath.
+///
+/// A texture is a pattern of parallel grooves across a closed region (D-M6-6), and its value is the
+/// **pattern**, not the clearing: the material between the grooves is meant to stand, so nothing here
+/// clears it and nothing here may be read as a pocket. Each groove is one pass at one authored depth
+/// with the tool centre on it, and the pattern itself is **derived** — [`TextureParams::grooves`] —
+/// because a stored pattern and a recomputed one diverge, and a pattern has far more in it to get
+/// subtly wrong twice than a chamfer's single depth does (the argument D-M6-2 makes for that depth).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextureParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface; each groove's one pass lands exactly on it.
+  pub cut_depth: Length,
+  /// Distance between neighbouring grooves, measured across them.
+  ///
+  /// Defaulted rather than required, so a hand-written document that names a `texture` toolpath
+  /// without the field loads as the pattern it describes instead of failing the load. A spacing that
+  /// is zero or negative is an **input error** and never an empty pattern: it is refused by name at
+  /// document load (`ModelError::TextureSpacingNotPositive`) and again by
+  /// `cam-toolpath::texture`, because a groove lattice with no spacing behind it is a request the
+  /// user did not make.
+  #[serde(default = "default_texture_spacing")]
+  pub spacing: Length,
+  /// Direction of the grooves, in radians, counter-clockwise from the X axis.
+  ///
+  /// Defaulted like `spacing`, so an older or hand-written document describing a horizontal pattern
+  /// loads. The pattern is clipped to the region in the **groove frame**, so this rotates the region
+  /// and never the document (D-M6-6).
+  #[serde(default)]
+  pub angle: Angle,
+}
+
+impl TextureParams {
+  /// The grooves this pattern cuts across `contours`, as polylines in document XY.
+  ///
+  /// Derived here and nowhere else (D-M6-6): `cam-toolpath::texture` cuts these vertices and
+  /// `cam-sim::target` authorises along the same ones, so the program and the target cannot be made to
+  /// agree by construction.
+  ///
+  /// The grooves are clipped to the region `contours` bound under the kernel's parity rule, by
+  /// [`cam_geom::region::Region::raster_spans`] in the **groove frame**: rotating the region by
+  /// `-angle` turns "a groove at `angle`" into "a row at some `y`", which is exactly the question
+  /// `raster_spans` answers, arcs and islands included, without a second intersector (D-M6-6). The
+  /// first groove sits half a spacing inside the region's lower extent in that frame, so the lattice
+  /// starts off the region's own edge instead of on it, where the kernel would report a tangency.
+  ///
+  /// A row that misses the region contributes nothing, and a row that only **touches** a boundary is a
+  /// tangency the kernel reports as ambiguous and this method drops: a tangent groove has no length to
+  /// cut. Returns no grooves at all when the contours do not bound a region or the spacing has no
+  /// pattern behind it; those refusals belong to the callers, which are the ones that can name an
+  /// entity or a number (`ToolpathError::OpenContour`, `ToolpathError::InvalidSpacing`,
+  /// `ToolpathError::NoGroove`).
+  pub fn grooves(&self, contours: &[&Contour]) -> Vec<Vec<Point2>> {
+    let spacing = self.spacing.mm();
+    if contours.is_empty() || !spacing.is_finite() || spacing <= 0.0 {
+      return Vec::new();
+    }
+    let angle = self.angle.radians();
+    // Into the groove frame: a groove at `angle` is a horizontal row here, so the clipping below is the
+    // kernel's own raster question and not a second intersector (D-M6-6).
+    let Some(region) = rotated_region(contours, -angle) else {
+      return Vec::new();
+    };
+    let bounds = region
+      .boundaries
+      .iter()
+      .fold(cam_geom::Bounds::empty(), |bounds, boundary| {
+        bounds.union(boundary.bounds())
+      });
+    let origin = Point2::new(0.0, 0.0);
+    let mut grooves = Vec::new();
+    let mut row = bounds.min.y + spacing / 2.0;
+    while row <= bounds.max.y {
+      // `None` is the kernel's ambiguity, which for a row means a tangency: the row touches a boundary
+      // without crossing it, so the groove there has no length to cut and contributes nothing.
+      if let Some(spans) = region.raster_spans(row, cam_geom::DEFAULT_TOLERANCE) {
+        for (left, right) in spans {
+          if right - left <= 0.0 {
+            continue;
+          }
+          grooves.push(vec![
+            Point2::new(left, row).rotated_about(origin, angle),
+            Point2::new(right, row).rotated_about(origin, angle),
+          ]);
+        }
+      }
+      row += spacing;
+    }
+    grooves
+  }
+}
+
+impl Default for TextureParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+      spacing: default_texture_spacing(),
+      angle: Angle::ZERO,
+    }
+  }
+}
+
+/// The default distance between a texture's grooves: 3 mm, the pocket stepover's own default.
+fn default_texture_spacing() -> Length {
+  Length::from_mm(3.0)
+}
+
+/// Parameters of an inlay toolpath pair.
+///
+/// An inlay is **two** toolpaths from one command (M6 A6, D-M6-7): a *female* that clears the selected
+/// region grown by `allowance` — the cavity — and a *male* that clears the job rectangle with the region
+/// standing as an island, which leaves a plug of exactly the region's shape. The plug fits the cavity
+/// with `allowance` millimetres of clearance, which is why there is one allowance and no second "gap"
+/// parameter: the number **is** the clearance.
+///
+/// Both halves carry the same five parameters, and which half a toolpath is, is stated where the
+/// document already states such things: the **female** names the region it clears as its `entity_ids`
+/// and leaves nothing standing, and the **male** has no boundary entity at all — its boundary is the
+/// job rectangle, which is not an entity ([`Job::outline`]) — and names the region it leaves standing
+/// as its `island_ids`. Nothing here is derived, so the two halves cannot disagree about the depth, the
+/// stepover or the allowance: there is one copy of them between the pair, and
+/// [`ModelError::InlayMaleTakesNoEntities`] refuses a record that names both, because two halves in one
+/// toolpath would leave the program's meaning to a guess.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InlayParams {
+  /// Clearance between the male plug and the female cavity: how far the female's region grows.
+  pub allowance: Length,
+  /// Distance between adjacent rings or rows of either half's clearing, the pocket's own parameter.
+  pub stepover: Length,
+  /// Depth of material removed per pass.
+  pub pass_depth: Length,
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface, shared by both halves.
+  pub cut_depth: Length,
+}
+
+impl Default for InlayParams {
+  /// The pocket's own defaults, taken from it rather than restated: an inlay that authors nothing but
+  /// its region clears at the depth and the stepover a pocket would.
+  fn default() -> Self {
+    let pocket = PocketParams::default();
+    Self {
+      allowance: Length::ZERO,
+      stepover: pocket.stepover,
+      pass_depth: pocket.pass_depth,
+      start_depth: pocket.start_depth,
+      cut_depth: pocket.cut_depth,
+    }
+  }
+}
+
+/// `contours` as a region in a frame rotated by `radians`, or `None` when they do not bound one.
+///
+/// A rotation moves every vertex and leaves every bulge alone — a bulge is an angle between two
+/// segments, and both turn with the frame — so the region keeps its arcs and its parity, and nothing
+/// about it is tessellated to rotate it.
+fn rotated_region(contours: &[&Contour], radians: f64) -> Option<cam_geom::region::Region> {
+  let origin = Point2::new(0.0, 0.0);
+  let mut boundaries = Vec::with_capacity(contours.len());
+  for contour in contours {
+    let vertices: Vec<cam_geom::Vertex> = contour
+      .vertices()
+      .iter()
+      .map(|vertex| {
+        cam_geom::Vertex::new(vertex.point.rotated_about(origin, radians), vertex.bulge)
+      })
+      .collect();
+    boundaries.push(Contour::new(vertices, contour.is_closed()).ok()?);
+  }
+  cam_geom::region::Region::new(boundaries).ok()
+}
+
+/// Which side of the circle a milled thread runs on.
+///
+/// An **internal** thread is cut inside a hole — the wall the tool approaches from within — and an
+/// **external** one on a boss's outside. The direction decides one number, the radius of the tool
+/// centre's own circle: `(D − t) / 2` for an internal thread and `(D + t) / 2` for an external one, `D`
+/// being the selected circle's diameter and `t` the tool's (M6 A7).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadDirection {
+  /// A thread inside a hole: the tool centre runs inside the circle.
+  #[default]
+  Internal,
+  /// A thread on a boss's outside: the tool centre runs outside the circle.
+  External,
+}
+
+/// Parameters of a thread-milling toolpath.
+///
+/// A thread milled on a circle is one **helical** descent: the tool orbits the selected circle at a
+/// fixed radius and drops one `pitch` per revolution, from the surface to `-cut_depth`, then retracts
+/// (M6 A7). Nothing about the circle's diameter is stored here, and nothing about the tool either: the
+/// circle is the entity the toolpath names and the tool is the library's, so a document cannot disagree
+/// with the geometry it was written against.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ThreadParams {
+  /// Distance the tool descends per revolution, in millimetres.
+  ///
+  /// A pitch that is zero or negative has no descent per revolution behind it, so it is refused by
+  /// name when the document is validated and never clamped into a thread.
+  pub pitch: Length,
+  /// Whether the thread is cut inside the circle or around its outside.
+  pub direction: ThreadDirection,
+  /// Depth at which the descent starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface: the depth the helix reaches before it retracts.
+  pub cut_depth: Length,
+}
+
+impl Default for ThreadParams {
+  fn default() -> Self {
+    Self {
+      pitch: Length::from_mm(1.5),
+      direction: ThreadDirection::Internal,
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -284,6 +636,18 @@ pub enum Operation {
   Pocket(PocketParams),
   /// Plunge at the centre of each selected circle.
   Drilling(DrillParams),
+  /// Bevel the selected closed vectors with a V-bit, at a depth derived from the bit.
+  Chamfer(ChamferParams),
+  /// Engrave the selected vectors, open or closed, in one pass at an authored depth.
+  Engrave(EngraveParams),
+  /// Flute the selected vectors, open or closed, in one pass whose ends ramp in and out.
+  Fluting(FlutingParams),
+  /// Cut parallel grooves across the selected closed region; the material between them stands.
+  Texture(TextureParams),
+  /// Cut one half of a male/female inlay pair; the pair is two toolpaths sharing one `InlayParams`.
+  Inlay(InlayParams),
+  /// Mill a thread: one helical descent around each selected circle, one `pitch` per revolution.
+  Thread(ThreadParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -400,8 +764,14 @@ pub enum ModelError {
     second: String,
   },
   /// Islands were given to an operation that does not clear a region.
-  #[error("toolpath {toolpath:?} takes islands only for a pocket")]
-  IslandsRequirePocket {
+  ///
+  /// Two operations take islands, and they are the two that clear a region: a `pocket`, whose islands
+  /// are contours inside its boundary, and an `inlay`, whose **male** half has no boundary entity at
+  /// all — its boundary is the job rectangle — so its island list is the region it leaves standing
+  /// (D-M6-13). The sentence names both, because "only for a pocket" stopped being true when the inlay
+  /// pair landed (M6 L16).
+  #[error("toolpath {toolpath:?} takes islands only for a pocket or an inlay")]
+  IslandsRequirePocketOrInlay {
     /// The toolpath id.
     toolpath: String,
   },
@@ -412,6 +782,127 @@ pub enum ModelError {
     toolpath: String,
     /// The entity id.
     entity: String,
+  },
+  /// A chamfer's bevel width is zero, negative or not a finite number.
+  #[error(
+    "toolpath {toolpath:?} chamfer width must be a positive number of millimetres, got {value} mm"
+  )]
+  ChamferWidthNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending width in millimetres.
+    value: f64,
+  },
+  /// A chamfer's included angle is not strictly between 0 and 180 degrees.
+  #[error(
+    "toolpath {toolpath:?} chamfer included angle must be between 0 and 180 degrees, got {degrees} \
+     degrees"
+  )]
+  ChamferAngleOutOfRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending angle in degrees.
+    degrees: f64,
+  },
+  /// A flute's ramp is negative, which would enter upwards.
+  ///
+  /// The document model refuses it as the document loads, because a negative length has no meaning here
+  /// and the machine has nothing sensible to do with it. `cam-toolpath::fluting` refuses it too, naming
+  /// the same value: the document is the boundary that sees it before any toolpath exists, and a
+  /// caller that bypasses the CLI reaches the strategy without passing through here (D-M6-5, A4).
+  #[error("toolpath {toolpath:?} fluting ramp must not be negative, got {value} mm")]
+  FlutingRampNegative {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending ramp in millimetres.
+    value: f64,
+  },
+  /// A texture's spacing is zero, negative or not a finite number.
+  ///
+  /// A pattern is a lattice of grooves `spacing` millimetres apart, so a spacing with no distance
+  /// behind it is an input error and not a silently empty pattern: it is refused here, as the document
+  /// loads, and again by `cam-toolpath::texture`, which sees a caller that bypassed the CLI (D-M6-6).
+  #[error(
+    "toolpath {toolpath:?} texture spacing must be a positive number of millimetres, got {value} mm"
+  )]
+  TextureSpacingNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending spacing in millimetres.
+    value: f64,
+  },
+  /// An inlay's stepover is zero, negative or not a finite number.
+  ///
+  /// Both halves clear with the pocket's ring machinery, so both need a distance between rings: a ring
+  /// lattice with no stepover behind it leaves material between the rings, which is the one thing a
+  /// clearing pass must never do (M6 A6).
+  #[error(
+    "toolpath {toolpath:?} inlay stepover must be a positive number of millimetres, got {value} mm"
+  )]
+  InlayStepoverNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending stepover in millimetres.
+    value: f64,
+  },
+  /// An inlay's cut depth does not extend below its start depth.
+  ///
+  /// The rule every chunked strategy inherits from the profile: a pass whose cut depth is not below its
+  /// start depth has no pass behind it, so no clearing would be emitted at all (M6 A6).
+  #[error(
+    "toolpath {toolpath:?} inlay cut depth {cut_depth} mm must be greater than its start depth \
+     {start_depth} mm"
+  )]
+  InlayDepthRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The requested cut depth in millimetres.
+    cut_depth: f64,
+    /// The requested start depth in millimetres.
+    start_depth: f64,
+  },
+  /// An inlay toolpath names both boundary entities and islands, so it is not one of the two halves.
+  ///
+  /// A female's boundary is the region it clears; a male's boundary is the job rectangle and its island
+  /// list is that same region. A record naming both is two halves in one toolpath, and which of them a
+  /// program would cut is not something to guess (see [`InlayParams`]).
+  #[error(
+    "toolpath {toolpath:?} is an inlay male with entity_ids: a male's boundary is the job rectangle, so \
+     an inlay toolpath names either the region it clears or the islands it leaves standing, never both"
+  )]
+  InlayMaleTakesNoEntities {
+    /// The toolpath id.
+    toolpath: String,
+  },
+  /// A thread's pitch is zero, negative or not a finite number.
+  ///
+  /// The pitch is how far the helix drops each revolution, so a pitch with no distance behind it asks
+  /// for a descent that never descends. Refused here, as the document loads, and again by
+  /// `cam-toolpath::thread`, which sees a caller that bypassed the CLI (M6 A7).
+  #[error(
+    "toolpath {toolpath:?} thread pitch must be a positive number of millimetres, got {value} mm"
+  )]
+  ThreadPitchNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending pitch in millimetres.
+    value: f64,
+  },
+  /// A thread's cut depth does not extend below its start depth.
+  ///
+  /// The rule every one-pass strategy inherits from the profile: a helix whose cut depth is not below
+  /// its start depth has no descent behind it (M6 A7).
+  #[error(
+    "toolpath {toolpath:?} thread cut depth {cut_depth} mm must be greater than its start depth \
+     {start_depth} mm"
+  )]
+  ThreadDepthRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The requested cut depth in millimetres.
+    cut_depth: f64,
+    /// The requested start depth in millimetres.
+    start_depth: f64,
   },
 }
 
@@ -507,7 +998,22 @@ impl Document {
         // Listing the kinds explicitly keeps this a compile error to update when another one
         // lands, instead of silently skipping its rules (D-M4-1).
         let needs_closed_geometry = match toolpath.operation {
-          Operation::Profile(_) | Operation::Pocket(_) | Operation::Drilling(_) => true,
+          Operation::Profile(_)
+          | Operation::Pocket(_)
+          | Operation::Drilling(_)
+          | Operation::Chamfer(_)
+          // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6).
+          | Operation::Texture(_)
+          // An inlay grows a region and leaves it standing as an island, so its selection must bound
+          // one: an open vector bounds none (M6 A6).
+          | Operation::Inlay(_)
+          // A thread runs around a circle, and an open vector bounds no circle (M6 A7).
+          | Operation::Thread(_) => true,
+          // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
+          // vector and stops at its last vertex. Fluting is that same walk with a ramp at each end,
+          // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
+          // accept an open vector and nothing else here does.
+          Operation::Engrave(_) | Operation::Fluting(_) => false,
         };
         if needs_closed_geometry {
           let closed = entity
@@ -523,11 +1029,139 @@ impl Document {
           }
         }
       }
+      check_chamfer(toolpath)?;
+      check_fluting(toolpath)?;
+      check_texture(toolpath)?;
+      check_inlay(toolpath)?;
+      check_thread(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
     Ok(())
   }
+}
+
+/// Check a chamfer's own parameters: a bevel needs a width and an angle that describe one.
+///
+/// The depth is derived from the two (D-M6-2 as amended in L7), so a zero width has no bevel behind
+/// it and an angle at either end of `(0, 180)` degrees has a tangent of zero or infinity. Either
+/// would emit an infinite Z, so both are refused naming the offending value rather than clamped.
+fn check_chamfer(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Chamfer(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let width = params.chamfer_width.mm();
+  if !width.is_finite() || width <= 0.0 {
+    return Err(ModelError::ChamferWidthNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: width,
+    });
+  }
+  let angle = params.included_angle.radians();
+  if !(angle > 0.0 && angle < std::f64::consts::PI) {
+    return Err(ModelError::ChamferAngleOutOfRange {
+      toolpath: toolpath.id.clone(),
+      degrees: params.included_angle.degrees(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a flute's own parameters: a ramp is a length along the vector, so it cannot be negative.
+///
+/// Only the sign is checked here. Whether the ramp *fits* — it may not be longer than half the vector —
+/// needs the geometry's length, which the strategy measures when it walks the vector, and that is where
+/// the refusal names both numbers (`ToolpathError::RampTooLong`, A4).
+fn check_fluting(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Fluting(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let ramp = params.ramp.mm();
+  if !ramp.is_finite() || ramp < 0.0 {
+    return Err(ModelError::FlutingRampNegative {
+      toolpath: toolpath.id.clone(),
+      value: ramp,
+    });
+  }
+  Ok(())
+}
+
+/// Check a texture's own parameters: a lattice of grooves needs a distance between them.
+///
+/// Only the spacing is checked here. Whether the pattern crosses the region at all needs the geometry,
+/// which the strategy has when it asks for the grooves, and that is where the refusal names both
+/// numbers (`ToolpathError::NoGroove`, D-M6-6).
+fn check_texture(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Texture(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let spacing = params.spacing.mm();
+  if !spacing.is_finite() || spacing <= 0.0 {
+    return Err(ModelError::TextureSpacingNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: spacing,
+    });
+  }
+  Ok(())
+}
+
+/// Check an inlay pair's own parameters, and that each toolpath is one half of the pair.
+///
+/// The stepover and the depth range are the pocket's rules, refused here by name because the document
+/// is the boundary that sees them before any toolpath exists. Which half a toolpath is comes from its
+/// island list (see [`InlayParams`]), so a record that names both a boundary and an island is refused
+/// rather than guessed at.
+fn check_inlay(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Inlay(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let stepover = params.stepover.mm();
+  if !stepover.is_finite() || stepover <= 0.0 {
+    return Err(ModelError::InlayStepoverNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: stepover,
+    });
+  }
+  if params.cut_depth.mm() <= params.start_depth.mm() {
+    return Err(ModelError::InlayDepthRange {
+      toolpath: toolpath.id.clone(),
+      cut_depth: params.cut_depth.mm(),
+      start_depth: params.start_depth.mm(),
+    });
+  }
+  if !toolpath.island_ids.is_empty() && !toolpath.entity_ids.is_empty() {
+    return Err(ModelError::InlayMaleTakesNoEntities {
+      toolpath: toolpath.id.clone(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a thread's own parameters: a helix needs a pitch to descend by and a depth to descend to.
+///
+/// Both are refused here, at the boundary that sees the document before any toolpath exists, and again
+/// by `cam-toolpath::thread`. Whether the selection is a **circle** is not asked here: the model has no
+/// opinion about a shape's identity beyond closed-or-open, and the strategy names the entity that is
+/// not a circle (M6 A7).
+fn check_thread(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Thread(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let pitch = params.pitch.mm();
+  if !pitch.is_finite() || pitch <= 0.0 {
+    return Err(ModelError::ThreadPitchNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: pitch,
+    });
+  }
+  if params.cut_depth.mm() <= params.start_depth.mm() {
+    return Err(ModelError::ThreadDepthRange {
+      toolpath: toolpath.id.clone(),
+      cut_depth: params.cut_depth.mm(),
+      start_depth: params.start_depth.mm(),
+    });
+  }
+  Ok(())
 }
 
 /// Check a toolpath's islands: closed, strictly inside a boundary, and never crossing or touching
@@ -539,8 +1173,11 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
   if toolpath.island_ids.is_empty() {
     return Ok(());
   }
-  if !matches!(toolpath.operation, Operation::Pocket(_)) {
-    return Err(ModelError::IslandsRequirePocket {
+  if !matches!(
+    toolpath.operation,
+    Operation::Pocket(_) | Operation::Inlay(_)
+  ) {
+    return Err(ModelError::IslandsRequirePocketOrInlay {
       toolpath: toolpath.id.clone(),
     });
   }
@@ -585,7 +1222,13 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
           cam_geom::winding::Relation::FirstInside
         )
       })
-    });
+    }) || (matches!(toolpath.operation, Operation::Inlay(_))
+      && matches!(
+        // An inlay male's boundary is the job rectangle, which is not an entity: its region has to sit
+        // strictly inside the stock, or the male has nothing to clear around it (M6 A6, D-M6-7).
+        cam_geom::winding::relation(island, &document.job.outline(), tolerance),
+        cam_geom::winding::Relation::FirstInside
+      ));
     if !inside {
       return Err(ModelError::IslandOutsideBoundary {
         toolpath: toolpath.id.clone(),

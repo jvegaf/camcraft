@@ -1,6 +1,7 @@
 + CamPilot fixture post-processor for Mach3-compatible controllers (millimetres).
 + Authored for this project; no the vendor post-processor is vendored.
-+ Covers every directive and every output block of the dialect.
++ Covers every directive and every output block of the dialect, the four helical
++ kinds included (M6 D-M6-8).
 POST_NAME = "CamPilot fixture Mach3 Arcs (inch) (*.nc)"
 FILE_EXTENSION = "nc"
 UNITS = "INCHES"
@@ -72,6 +73,18 @@ begin FIRST_CCW_ARC_MOVE
 
 begin CCW_ARC_MOVE
 "[N]G03[X][Y][I][J]"
+
+begin FIRST_CW_HELIX_MOVE
+"[N]G02[X][Y][Z][I][J][F]"
+
+begin CW_HELIX_MOVE
+"[N]G02[X][Y][Z][I][J]"
+
+begin FIRST_CCW_HELIX_MOVE
+"[N]G03[X][Y][Z][I][J][F]"
+
+begin CCW_HELIX_MOVE
+"[N]G03[X][Y][Z][I][J]"
 
 begin FEED_RATE_CHANGE
 "[N][F]"

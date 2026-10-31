@@ -71,6 +71,7 @@ fn tool(diameter: f64) -> ToolSpec {
   ToolSpec {
     number: 1,
     diameter: Length::from_mm(diameter),
+    included_angle: None,
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,
@@ -130,7 +131,7 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         points.push(to);
         previous = Some(to);
       }
-      Move::Feed { .. } | Move::Arc { .. } => {
+      Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
         if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
           points.push(to);
           previous = Some(to);

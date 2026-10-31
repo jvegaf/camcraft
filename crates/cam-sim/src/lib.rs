@@ -17,5 +17,5 @@ pub use grid::{grid_for, Grid, GridError, DEFAULT_CELL, MAX_CELLS};
 pub use heightfield::{Heightfield, Volumes};
 pub use sweep::{apply, apply_move, Crash, Removal};
 pub use target::{
-  deviations, target_for, Deviation, DeviationError, Target, TargetError, ToolDiameters,
+  deviations, target_for, Deviation, DeviationError, Target, TargetError, ToolShapes,
 };

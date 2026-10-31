@@ -9,7 +9,7 @@
 #![warn(missing_docs)]
 
 use cam_geom::Point2;
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
 /// A position in machine space.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -62,7 +62,30 @@ pub enum Move {
     to: Point3,
   },
   /// Circular cutting move in the XY plane at constant Z.
+  ///
+  /// Constant-Z is the contract, not a habit: a post-processor's arc blocks carry `[X][Y][I][J]` and no
+  /// `[Z]`, so an arc that also descended would be emitted at one depth whatever its destination said.
+  /// A curved move that descends is [`Move::Helix`].
   Arc {
+    /// Destination.
+    to: Point3,
+    /// Arc centre in XY.
+    center: Point2,
+    /// True for counter-clockwise.
+    ccw: bool,
+  },
+  /// A circular cutting move that **also descends**: the XY path is an arc about `center`, and its Z
+  /// runs from where the move started to `to.z`.
+  ///
+  /// It is [`Move::Arc`]'s helical sibling, and it exists because a thread is one continuous descent
+  /// around a circle: `Arc` is constant-Z by contract, so a helix cannot ride on it, and cutting one as
+  /// a chord would put the vocabulary's limit into the program the machine runs (A7, D-M6-8).
+  ///
+  /// One helical move covers **at most one turn**. A move whose start and end XY are the same point is
+  /// exactly one full revolution, which is the same reading [`Move::Arc`] already has — so a descent of
+  /// several turns is several helical moves, one per revolution, and the last one carries the fraction
+  /// of a turn that reaches the depth.
+  Helix {
     /// Destination.
     to: Point3,
     /// Arc centre in XY.
@@ -81,7 +104,97 @@ impl Move {
   /// The position this move ends at.
   pub fn destination(self) -> Point3 {
     match self {
-      Self::Rapid { to } | Self::Feed { to } | Self::Arc { to, .. } | Self::Retract { to } => to,
+      Self::Rapid { to }
+      | Self::Feed { to }
+      | Self::Arc { to, .. }
+      | Self::Helix { to, .. }
+      | Self::Retract { to } => to,
+    }
+  }
+}
+
+/// The shape of a tool's cutting end, which decides the footprint a move sweeps.
+///
+/// A move's footprint is not a property of the move: a cylinder sweeps the same width at every depth,
+/// while a V-bit's radius grows with depth below its tip. Carrying the shape next to the moves keeps the
+/// tool joined to the geometry that uses it (M5 S2) and lets the simulation sweep the shape a program
+/// would really cut (M6 A8). The emitter ignores it: a post-processor has no block that states a tool's
+/// shape.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ToolShape {
+  /// A cylindrical cutter: one radius at every depth.
+  Cylinder {
+    /// Cutting diameter.
+    diameter: Length,
+  },
+  /// A V-bit: a cone whose radius grows with depth below the tip.
+  VBit {
+    /// Full included angle of the cone, measured across the tip.
+    included_angle: Angle,
+    /// Width of the flat at the tip; zero for a sharp point.
+    flat_diameter: Length,
+  },
+}
+
+impl ToolShape {
+  /// A cylindrical cutter of `diameter`.
+  pub const fn cylinder(diameter: Length) -> Self {
+    Self::Cylinder { diameter }
+  }
+
+  /// A V-bit with an `included_angle` and a `flat_diameter` tip.
+  pub const fn v_bit(included_angle: Angle, flat_diameter: Length) -> Self {
+    Self::VBit {
+      included_angle,
+      flat_diameter,
+    }
+  }
+
+  /// Half the included angle of a cone, in radians. Zero for a cylinder, whose radius never grows.
+  pub fn half_angle(self) -> f64 {
+    match self {
+      Self::Cylinder { .. } => 0.0,
+      Self::VBit { included_angle, .. } => (included_angle.radians() / 2.0).max(0.0),
+    }
+  }
+
+  /// The radius of the footprint `depth_below_tip` millimetres below the tip.
+  ///
+  /// A negative or non-finite depth is read as zero: the tool cannot be above its own tip, and the
+  /// answer must stay finite where a caller hands in a surface it did not clamp.
+  pub fn radius_at(self, depth_below_tip: f64) -> f64 {
+    let depth = if depth_below_tip.is_finite() {
+      depth_below_tip.max(0.0)
+    } else {
+      0.0
+    };
+    match self {
+      Self::Cylinder { diameter } => (diameter.mm() / 2.0).max(0.0),
+      Self::VBit { flat_diameter, .. } => {
+        (flat_diameter.mm() / 2.0).max(0.0) + depth * self.half_angle().tan()
+      }
+    }
+  }
+
+  /// How far above its tip the tool's own surface first reaches `radius`.
+  ///
+  /// This is the quantity a sweep needs. A cone at tip depth `d` removes material at horizontal
+  /// distance `x` down to `d − rise(x)`, and reaches nothing at all where `rise(x) ≥ d`; a cylinder is
+  /// vertical, so it reaches its own radius at the tip itself and removes the full depth everywhere
+  /// inside its footprint.
+  pub fn rise_at_radius(self, radius: f64) -> f64 {
+    if !radius.is_finite() {
+      return f64::INFINITY;
+    }
+    match self {
+      Self::Cylinder { .. } => 0.0,
+      Self::VBit { flat_diameter, .. } => {
+        let slope = self.half_angle().tan();
+        if slope <= 0.0 {
+          return f64::INFINITY;
+        }
+        ((radius - (flat_diameter.mm() / 2.0).max(0.0)) / slope).max(0.0)
+      }
     }
   }
 }
@@ -93,12 +206,12 @@ pub struct Segment {
   pub name: String,
   /// Tool number.
   pub tool_number: u32,
-  /// Cutting diameter of the tool, in millimetres.
+  /// The shape of the tool that cuts these moves.
   ///
-  /// The emitter ignores it — a post-processor has no block that states a tool's diameter — but the
+  /// The emitter ignores it — a post-processor has no block that states a tool's shape — but the
   /// simulation needs the footprint a move sweeps, and taking it from the segment keeps the tool
-  /// joined to the moves that use it (M5 S2).
-  pub tool_diameter: Length,
+  /// joined to the moves that use it (M5 S2). It was a bare diameter until M6 needed a V-bit's cone.
+  pub tool: ToolShape,
   /// Cutting feed rate in millimetres per second.
   pub feed_rate: f64,
   /// Plunge feed rate in millimetres per second.
@@ -145,6 +258,12 @@ impl MoveStream {
   }
 
   /// Total cutting length in XY, ignoring rapids and retracts.
+  ///
+  /// A helix is measured **along its own circle** rather than by its chord, which is the one place this
+  /// number is not a chord: a full revolution's destination is its start point, so a chord would report
+  /// a thread — nothing but full revolutions — as zero millimetres of cutting. An arc keeps the chord it
+  /// has always been measured as, because that number is pinned by every report written before helixes
+  /// existed.
   pub fn cut_length(&self) -> Length {
     let mut total = 0.0;
     for segment in &self.segments {
@@ -152,8 +271,15 @@ impl MoveStream {
       for movement in &segment.moves {
         let destination = movement.destination();
         if let Some(from) = previous {
-          if matches!(movement, Move::Feed { .. } | Move::Arc { .. }) {
-            total += from.xy().distance_to(destination.xy());
+          match movement {
+            Move::Feed { .. } | Move::Arc { .. } => {
+              total += from.xy().distance_to(destination.xy());
+            }
+            Move::Helix { center, ccw, .. } => {
+              let radius = center.distance_to(destination.xy());
+              total += radius * sweep_of(from.xy(), destination.xy(), *center, *ccw).abs();
+            }
+            Move::Rapid { .. } | Move::Retract { .. } => {}
           }
         }
         previous = Some(destination);
@@ -161,4 +287,25 @@ impl MoveStream {
     }
     Length::from_mm(total)
   }
+}
+
+/// The signed angle a circular move sweeps from `from` to `to` about `center`.
+///
+/// The ends of an arc the move does not state are read the one way an arc can be read: a move whose
+/// destination is its start point is **one** full turn in the direction it is going, which is the same
+/// reading the sweep and the preview take.
+fn sweep_of(from: Point2, to: Point2, center: Point2, ccw: bool) -> f64 {
+  let start = (from.y - center.y).atan2(from.x - center.x);
+  let end = (to.y - center.y).atan2(to.x - center.x);
+  let mut delta = end - start;
+  if ccw {
+    while delta <= 0.0 {
+      delta += std::f64::consts::TAU;
+    }
+  } else {
+    while delta >= 0.0 {
+      delta -= std::f64::consts::TAU;
+    }
+  }
+  delta
 }

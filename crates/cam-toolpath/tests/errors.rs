@@ -39,6 +39,30 @@ fn every_variant() -> Vec<ToolpathError> {
     },
     ToolpathError::NoHoles,
     ToolpathError::InvalidBank,
+    ToolpathError::InvalidIncludedAngle { degrees: 0.0 },
+    ToolpathError::InvalidRamp { ramp: -1.0 },
+    ToolpathError::RampTooLong {
+      ramp: 51.0,
+      length: 100.0,
+    },
+    ToolpathError::InvalidPitch { pitch: 0.0 },
+    ToolpathError::ThreadToolTooWide {
+      diameter: 14.0,
+      hole: 12.0,
+    },
+    ToolpathError::InvalidSpacing { spacing: 0.0 },
+    ToolpathError::NoGroove {
+      spacing: 500.0,
+      angle: 0.0,
+    },
+    ToolpathError::InlayAllowanceCollapsed {
+      allowance: -25.0,
+      reason: "the region offset collapsed an enclosing boundary".to_owned(),
+    },
+    ToolpathError::InlayRegionOutsideJob {
+      width: 100.0,
+      height: 100.0,
+    },
   ]
 }
 
@@ -47,7 +71,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    11,
+    20,
     "every variant must be listed exactly once"
   );
 
@@ -73,11 +97,48 @@ fn every_variant_keeps_its_message() {
         format!("peck depth {peck_depth} mm must not be negative")
       }
       ToolpathError::NotACircle { entity } => {
-        format!("entity {entity:?} is not a circle, so it has no drill centre")
+        format!("entity {entity:?} is not a circle, so it has no centre to work from")
       }
       ToolpathError::NoHoles => "drilling needs at least one hole".to_owned(),
       ToolpathError::InvalidBank => {
         "drill bank needs at least one drill and a positive pitch".to_owned()
+      }
+      ToolpathError::InvalidIncludedAngle { degrees } => {
+        format!("chamfer included angle {degrees} degrees must be strictly between 0 and 180")
+      }
+      ToolpathError::InvalidRamp { ramp } => {
+        format!("fluting ramp {ramp} mm must not be negative")
+      }
+      ToolpathError::RampTooLong { ramp, length } => {
+        format!("fluting ramp {ramp} mm is longer than half of the vector's {length} mm length")
+      }
+      ToolpathError::InvalidPitch { pitch } => {
+        format!("thread pitch {pitch} mm must be greater than zero")
+      }
+      ToolpathError::ThreadToolTooWide { diameter, hole } => {
+        format!(
+          "tool diameter {diameter} mm does not fit a {hole} mm hole: an internal thread's tool centre \
+           orbits at (D - t)/2, which has no radius when the tool is as wide as the hole"
+        )
+      }
+      ToolpathError::InvalidSpacing { spacing } => {
+        format!("texture spacing {spacing} mm must be greater than zero")
+      }
+      ToolpathError::NoGroove { spacing, angle } => {
+        format!(
+          "texture spacing {spacing} mm at {angle} degrees leaves no groove across the region: the \
+           pattern would cut nothing, so this is a spacing with no pattern behind it"
+        )
+      }
+      ToolpathError::InlayAllowanceCollapsed { allowance, reason } => {
+        format!("inlay allowance {allowance} mm leaves no region to cut: {reason}")
+      }
+      ToolpathError::InlayRegionOutsideJob { width, height } => {
+        format!(
+          "inlay region is not strictly inside the job's {width} x {height} mm rectangle: the male \
+           clears the stock around the region, so a region on or across the stock's edge leaves nothing \
+           for it to clear"
+        )
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

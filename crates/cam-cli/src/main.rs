@@ -13,14 +13,15 @@ use std::process::ExitCode;
 
 use cam_geom::Point2;
 use cam_model::{Document, Operation, Toolpath};
-use cam_move::{MoveStream, Segment};
+use cam_move::{MoveStream, Segment, ToolShape};
 use cam_post::{emit, parse_post, ProgramMeta};
-use cam_sim::{deviations, sweep, target_for, Heightfield, ToolDiameters};
+use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  circle_centre, drill, pocket, profile, DrillHole, DrillRequest, PocketRequest, ProfileRequest,
-  ToolSpec, ToolpathError,
+  chamfer, circle_centre, drill, engrave, female, fluting, inlay, male, pocket, profile, texture,
+  thread, ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest, InlayRequest,
+  PocketRequest, ProfileRequest, TextureRequest, ThreadRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -44,22 +45,38 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket or drilling (required)
+        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or
+                              thread (required); a texture cuts grooves only, so the material between
+                              them stands and the region is never cleared; an inlay appends **two**
+                              toolpaths, a female cavity and the male plug that fits it; a thread
+                              mills one helical descent around each circle, one pitch per revolution
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
         --side <side>         profile: inside, outside or on (default outside)
         --allowance <mm>      profile, pocket: material left on the vector
         --strategy <mode>     pocket: offset or raster (default offset)
-        --stepover <mm>       pocket: ring or row spacing; defaults to the tool's stepover
-        --clear               pocket: take the default from the tool's clear stepover
+        --stepover <mm>       pocket, inlay: ring or row spacing; defaults to the tool's stepover
+        --spacing <mm>        texture: distance between grooves; defaults to the tool's stepover.
+                              The material between grooves stands: a texture does not clear
+        --angle <degrees>     texture: direction of the grooves, from the X axis (default 0)
+        --inlay-allowance <mm>  inlay: clearance between the male plug and the female cavity, which is
+                              how far the female's region grows (default 0)
+        --clear               pocket, inlay: take the default from the tool's clear stepover
         --peck-depth <mm>     drilling: depth per peck, 0 for one plunge
         --retract <mode>      drilling: full (default) or amount
         --retract-amount <mm> drilling: lift above the peck when --retract amount
         --bank <count:pitch>  drilling: a gang of drills spaced along X
-        --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
+        --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
+        --pass-depth <mm>     depth per pass; profile, pocket and inlay, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
-        --cut-depth <mm>      total cut depth (default 18)
+        --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave
+                              and texture cut their one pass at it, fluting ramps to it, and a thread's
+                              helix descends to it
+        --ramp <mm>           fluting: length of the ramped entry and of the ramped exit, 0 (default)
+                              to plunge in place; longer than half the vector is an error
+        --pitch <mm>          thread: how far the helix descends each revolution (required)
+        --thread-direction <d>  thread: internal (default) inside a hole, or external around a boss
         --lead-in <mm>        profile: straight lead-in
         --lead-out <mm>       profile: straight lead-out
         --tab <pos:width:height>  profile: repeatable holding tab
@@ -600,6 +617,13 @@ struct ToolpathArgs {
   retract: Option<String>,
   retract_amount: Option<f64>,
   bank: Option<(u32, f64)>,
+  chamfer_width: Option<f64>,
+  ramp: Option<f64>,
+  spacing: Option<f64>,
+  angle: Option<f64>,
+  inlay_allowance: Option<f64>,
+  pitch: Option<f64>,
+  thread_direction: Option<String>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -635,6 +659,19 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         args.retract_amount = Some(parse_mm(&take("--retract-amount")?, "--retract-amount")?)
       }
       "--bank" => args.bank = Some(parse_bank(&take("--bank")?)?),
+      "--chamfer-width" => {
+        args.chamfer_width = Some(parse_mm(&take("--chamfer-width")?, "--chamfer-width")?)
+      }
+      "--ramp" => args.ramp = Some(parse_mm(&take("--ramp")?, "--ramp")?),
+      "--spacing" => args.spacing = Some(parse_mm(&take("--spacing")?, "--spacing")?),
+      "--pitch" => args.pitch = Some(parse_mm(&take("--pitch")?, "--pitch")?),
+      "--thread-direction" => args.thread_direction = Some(take("--thread-direction")?),
+      "--inlay-allowance" => {
+        args.inlay_allowance = Some(parse_mm(&take("--inlay-allowance")?, "--inlay-allowance")?)
+      }
+      "--angle" => {
+        args.angle = Some(parse_degrees(&take("--angle")?, "--angle")?);
+      }
       "--tab" => args.tabs.push(parse_tab(&take("--tab")?)?),
       "--clear" => {
         args.clear = true;
@@ -708,6 +745,16 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   let diameter = tool_data
     .as_ref()
     .and_then(|(geometry, _cutting)| geometry.diameter);
+  // A chamfer's depth comes from the bit's angle, so it is read here, where the tool is, and written
+  // into the document (D-M6-2, D-M6-9). Its absence is refused by name below. The tip's flat is read
+  // for the same reason: it disqualifies the bit from cutting a bevel of the width the user names
+  // (D-M6-10).
+  let included_angle = tool_data
+    .as_ref()
+    .and_then(|(geometry, _cutting)| geometry.included_angle);
+  let flat_diameter = tool_data
+    .as_ref()
+    .and_then(|(geometry, _cutting)| geometry.flat_diameter);
   let cutting = tool_data.map(|(_geometry, cutting)| cutting);
 
   let operation = match kind.as_str() {
@@ -811,12 +858,275 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         }),
       })
     }
+    "chamfer" => {
+      // A chamfer has no side and no authored depth: the bevel is symmetric about the vector and its Z
+      // is derived from the bit's angle (D-M6-2 as amended in L7). Both flags would otherwise be
+      // accepted and ignored, which is a silently different bevel; they are refused by name instead.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--cut-depth", args.cut_depth.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind chamfer takes no {flag}: the tip runs on the vector and its depth is derived \
+             from --chamfer-width and the tool's included angle"
+          )));
+        }
+      }
+      let chamfer_width = args
+        .chamfer_width
+        .ok_or_else(|| Failure::input("a chamfer needs --chamfer-width, in millimetres"))?;
+      // D-M6-9: a tool without an angle has no bevel behind it. Defaulting 90 degrees would cut a
+      // different chamfer, so the refusal names the tool and nothing is written.
+      let included_angle = included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{tool_number} has no included angle in the library, so a chamfer's depth cannot be \
+           derived: a chamfer needs a V-bit"
+        ))
+      })?;
+      // D-M6-10: with a flat of diameter `f` the bevel reaches the surface at `f/2 + d·tan(θ/2)`, so the
+      // derived depth cannot honour `--chamfer-width` on such a bit. Refused by name rather than
+      // cutting a bevel wider than the number the user typed.
+      if let Some(flat) = flat_diameter {
+        if flat.mm() > 0.0 {
+          return Err(Failure::input(format!(
+            "tool T{tool_number} has a {} mm flat tip, so a chamfer's bevel would reach the surface \
+             wider than --chamfer-width {chamfer_width} mm: a chamfer needs a sharp V-bit",
+            flat.mm()
+          )));
+        }
+      }
+      Operation::Chamfer(cam_model::ChamferParams {
+        chamfer_width: mm(chamfer_width),
+        included_angle,
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+      })
+    }
+    "engrave" => {
+      // An engrave is one pass at one depth with the tool centre on the vector (D-M6-4). A side, a pass
+      // law, a tab and a lead each have no meaning here, and accepting them would mean ignoring them:
+      // a `--pass-depth 2` nobody applied still looks applied. Refused by name instead.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind engrave takes no {flag}: an engrave is one pass at a constant depth, with the tool \
+             centre on the vector, no stepdown, no tabs and no lead"
+          )));
+        }
+      }
+      Operation::Engrave(cam_model::EngraveParams {
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
+    "fluting" => {
+      // A flute is one pass along the vector with its centre on it (D-M6-5), so every flag a profile or
+      // a pocket would consume has no meaning here: a side, a pass law, a tab, a lead, a stepover and an
+      // allowance all widen or chunk a cut that is neither widened nor chunked. Accepting them would
+      // mean ignoring them, and a `--stepover 2` nobody applied still looks applied. Refused by name.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--stepover", args.stepover.is_some()),
+        ("--allowance", args.allowance.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind fluting takes no {flag}: a flute is one pass along the vector with the tool centre \
+             on it, and its only Z law is --ramp"
+          )));
+        }
+      }
+      Operation::Fluting(cam_model::FlutingParams {
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+        ramp: mm(args.ramp.unwrap_or(0.0)),
+      })
+    }
+    "texture" => {
+      // A texture cuts grooves only (D-M6-6), so every flag a profile, a pocket or a flute would
+      // consume has no meaning here: a side, a pass law, a tab, a lead, an allowance and a ramp all
+      // widen, chunk or tilt a groove the pattern alone defines. `--stepover` belongs to a pocket: a
+      // texture's equivalent is `--spacing`, and accepting both would leave two numbers naming one
+      // distance. Refused by name, so nothing that was never applied still looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--allowance", args.allowance.is_some()),
+        ("--stepover", args.stepover.is_some()),
+        ("--ramp", args.ramp.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind texture takes no {flag}: a texture cuts parallel grooves at --spacing apart and \
+             leaves the material between them standing, so it takes no side, no pass law, no tab, no \
+             lead, no allowance, no stepover and no ramp"
+          )));
+        }
+      }
+      // `--spacing` falls back to the library's stepover exactly the way a pocket's `--stepover`
+      // does, and its absence is an input error naming the flag rather than a defaulted lattice.
+      let spacing = match (
+        args.spacing,
+        cutting.as_ref().and_then(|cutting| cutting.stepover),
+      ) {
+        (Some(spacing), _) => spacing,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "a texture needs --spacing: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      Operation::Texture(cam_model::TextureParams {
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+        spacing: mm(spacing),
+        angle: cam_units::Angle::from_degrees(args.angle.unwrap_or(0.0)),
+      })
+    }
+    "inlay" => {
+      // An inlay is a male/female pair of pockets (D-M6-7), so every flag that belongs to a different
+      // cutting law has no meaning here: a bevel's width, a groove's spacing or angle, a flute's ramp, a
+      // profile's side, tabs and leads. `--strategy` is refused with them because the pair's parameters
+      // carry no clearing pattern at all, so a `--strategy raster` nobody stored would still look
+      // applied. Refused by name, so nothing that was never applied looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--ramp", args.ramp.is_some()),
+        ("--spacing", args.spacing.is_some()),
+        ("--angle", args.angle.is_some()),
+        ("--chamfer-width", args.chamfer_width.is_some()),
+        ("--strategy", args.strategy.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind inlay takes no {flag}: an inlay is a male/female pair of pockets, cleared with the \
+             pocket's offset pattern at --stepover apart, with one allowance between them"
+          )));
+        }
+      }
+      // The pair names itself, and the names are part of the contract: two toolpaths per command, in a
+      // fixed order, so one `--id` or `--name` could only ever name one of them.
+      if args.id.is_some() || args.name.is_some() {
+        return Err(Failure::input(
+          "--kind inlay names its two toolpaths itself: it appends \"inlay female\" and \"inlay male\" \
+           with consecutive ids, so --id and --name cannot name a pair",
+        ));
+      }
+      // The pocket's library fallbacks, unchanged: the stepover from the library (`--clear` asking for
+      // the clear stepover, exactly as a pocket does) and the pass depth from its stepdown.
+      let library_stepover = cutting.as_ref().and_then(|cutting| {
+        if args.clear {
+          cutting.clear_stepover
+        } else {
+          cutting.stepover
+        }
+      });
+      let stepover = match (args.stepover, library_stepover) {
+        (Some(stepover), _) => stepover,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "an inlay needs --stepover: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      Operation::Inlay(cam_model::InlayParams {
+        allowance: mm(args.inlay_allowance.unwrap_or(0.0)),
+        stepover: mm(stepover),
+        pass_depth: mm(default_pass_depth(
+          args.pass_depth,
+          cutting.as_ref().and_then(|cutting| cutting.stepdown),
+          "inlay",
+        )?),
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
+    "thread" => {
+      // A thread is one helical descent around a circle (A7), so every flag that belongs to another
+      // cutting law has no meaning here: a side, a pass law, a tab, a lead, a stepover, an allowance, a
+      // ramp, a bevel's width and a clearing strategy each describe a cut a thread does not make.
+      // Refused by name, so nothing that was never applied looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--pass-depth", args.pass_depth.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--stepover", args.stepover.is_some()),
+        ("--allowance", args.allowance.is_some()),
+        ("--ramp", args.ramp.is_some()),
+        ("--chamfer-width", args.chamfer_width.is_some()),
+        ("--strategy", args.strategy.is_some()),
+        ("--inlay-allowance", args.inlay_allowance.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind thread takes no {flag}: a thread is one helical descent around each circle, one \
+             --pitch per revolution, so it takes no side, no pass law, no tab, no lead, no stepover, no \
+             allowance and no other strategy's geometry"
+          )));
+        }
+      }
+      let pitch = args
+        .pitch
+        .ok_or_else(|| Failure::input("a thread needs --pitch, in millimetres"))?;
+      let direction = match args.thread_direction.as_deref() {
+        None | Some("internal") => cam_model::ThreadDirection::Internal,
+        Some("external") => cam_model::ThreadDirection::External,
+        Some(other) => {
+          return Err(Failure::input(format!(
+            "unknown --thread-direction {other:?}; expected internal or external"
+          )))
+        }
+      };
+      Operation::Thread(cam_model::ThreadParams {
+        pitch: mm(pitch),
+        direction,
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
-        "unknown toolpath kind {other:?}; expected profile, pocket or drilling"
+        "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave, \
+         fluting, texture, inlay or thread"
       )))
     }
   };
+
+  // An inlay is two toolpaths from one command, in a fixed order (A6, D-M6-7), so it names them itself
+  // and appends both before the document is written: one half would be a document whose only outcome is
+  // a male with no cavity, or a cavity with no plug.
+  if let Operation::Inlay(params) = &operation {
+    return append_inlay(
+      &mut document,
+      args.out.clone().unwrap_or(path),
+      &entity_ids,
+      tool_number,
+      params,
+      diameter,
+      cutting.as_ref(),
+    );
+  }
 
   let id = match args.id.clone() {
     Some(id) => id,
@@ -839,6 +1149,12 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Profile(_) => "Profile",
         Operation::Pocket(_) => "Pocket",
         Operation::Drilling(_) => "Drilling",
+        Operation::Chamfer(_) => "Chamfer",
+        Operation::Engrave(_) => "Engrave",
+        Operation::Fluting(_) => "Fluting",
+        Operation::Texture(_) => "Texture",
+        Operation::Inlay(_) => "Inlay",
+        Operation::Thread(_) => "Thread",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -858,6 +1174,44 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
           }
           .to_string(),
         ));
+      }
+    }
+  }
+
+  // A thread runs on a circle and nowhere else (A7): its diameter is what `(D ± t)/2` is measured from, so
+  // a selection that is not a circle is refused here, while the command can still say no and change
+  // nothing, rather than left for a later `emit` to discover. The strategy is then asked for the whole
+  // path, because one of its refusals — a tool that does not fit inside the hole — needs the tool's
+  // diameter from the library and cannot be answered by the geometry alone.
+  if let Operation::Thread(params) = &operation {
+    if let Some(diameter) = diameter {
+      let spec = ToolSpec {
+        number: tool_number,
+        diameter,
+        included_angle: None,
+        feed_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.feed_rate)
+          .unwrap_or(0.0),
+        plunge_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.plunge_rate)
+          .unwrap_or(0.0),
+        spindle_speed: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.spindle_speed)
+          .unwrap_or(0),
+      };
+      for entity_id in &entity_ids {
+        let contour = contour_of(&document, &id, entity_id)?;
+        thread(&ThreadRequest {
+          entity: entity_id,
+          contour,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(error.to_string()))?;
       }
     }
   }
@@ -907,6 +1261,108 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   Ok(())
 }
 
+/// Append the two toolpaths one inlay means, in the fixed order, and write the document back.
+///
+/// `inlay female` (the region grown by the allowance) is appended first and `inlay male` (the job
+/// rectangle with that region standing as an island) second, with consecutive `TPn` ids and those exact
+/// names (M6 A6, D-M6-7). Both carry the **same** [`cam_model::InlayParams`]; what tells them apart is
+/// what the document already records about what a toolpath does — the female names the region it clears
+/// as its entities, and the male names the same region as the islands it leaves standing and takes no
+/// boundary entity, because its boundary is the job rectangle and the job is not an entity.
+///
+/// The pair's own geometry rules are asked here, by the real strategy, before anything is written: a
+/// document whose only failure mode is a later `emit` is worse than a command that says no. A tool
+/// whose diameter the library does not record is not a reason to refuse here — `emit` names that one —
+/// so the check is skipped and the pocket's own refusal takes over.
+fn append_inlay(
+  document: &mut Document,
+  destination: PathBuf,
+  entity_ids: &[String],
+  tool_number: u32,
+  params: &cam_model::InlayParams,
+  diameter: Option<Length>,
+  cutting: Option<&CuttingData>,
+) -> Result<(), Failure> {
+  let female_id = next_toolpath_id(document, None);
+  let male_id = next_toolpath_id(document, Some(&female_id));
+
+  if let Some(diameter) = diameter {
+    let spec = ToolSpec {
+      number: tool_number,
+      diameter,
+      included_angle: None,
+      feed_rate: cutting.and_then(|cutting| cutting.feed_rate).unwrap_or(0.0),
+      plunge_rate: cutting
+        .and_then(|cutting| cutting.plunge_rate)
+        .unwrap_or(0.0),
+      spindle_speed: cutting
+        .and_then(|cutting| cutting.spindle_speed)
+        .unwrap_or(0),
+    };
+    let mut contours = Vec::with_capacity(entity_ids.len());
+    for entity_id in entity_ids {
+      contours.push(contour_of(document, &female_id, entity_id)?);
+    }
+    inlay(&InlayRequest {
+      contours: &contours,
+      params,
+      tool: &spec,
+      job: &document.job,
+    })
+    .map_err(|error| Failure::input(error.to_string()))?;
+  }
+
+  document.toolpaths.push(Toolpath {
+    id: female_id.clone(),
+    name: "inlay female".to_owned(),
+    entity_ids: entity_ids.to_vec(),
+    island_ids: Vec::new(),
+    tool_number,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document.toolpaths.push(Toolpath {
+    id: male_id.clone(),
+    name: "inlay male".to_owned(),
+    entity_ids: Vec::new(),
+    island_ids: entity_ids.to_vec(),
+    tool_number,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document
+    .validate()
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  cam_store::document::save_document(&destination, document)
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  println!(
+    "added {female_id} inlay female, tool T{tool_number}, {} entity(ies)",
+    entity_ids.len()
+  );
+  println!(
+    "added {male_id} inlay male, tool T{tool_number}, {} island(s)",
+    entity_ids.len()
+  );
+  Ok(())
+}
+
+/// The next free `TPn` id, skipping `taken` as well when a pair is being named at once.
+///
+/// The same scan the single-toolpath path performs — from `len + 1` upwards, so a second run of the same
+/// command appends the next pair instead of colliding — with one extra exclusion, because the two ids of
+/// a pair are chosen before either is pushed.
+fn next_toolpath_id(document: &Document, taken: Option<&str>) -> String {
+  let mut number = document.toolpaths.len() + 1;
+  loop {
+    let id = format!("TP{number}");
+    let used = document.toolpaths.iter().any(|toolpath| toolpath.id == id);
+    if !used && taken != Some(id.as_str()) {
+      return id;
+    }
+    number += 1;
+  }
+}
+
 /// The bank selection a banked drilling toolpath will produce, for whoever loads the gang.
 ///
 /// The selection is computed by the real strategy, so the report is exactly what `emit` will cut. A
@@ -934,9 +1390,12 @@ fn bank_summary(
       "{headline}: no selection to report, the tool library has no diameter for T{tool_number}"
     );
   };
+  // Drilling selects a drill, never a cone: the bank report asks the strategy only about the XY its
+  // holes and pitches put the head at, so the tool's angle is irrelevant here and stays unset.
   let spec = ToolSpec {
     number: tool_number,
     diameter,
+    included_angle: None,
     feed_rate: cutting.and_then(|cutting| cutting.feed_rate).unwrap_or(0.0),
     plunge_rate: cutting
       .and_then(|cutting| cutting.plunge_rate)
@@ -1048,6 +1507,23 @@ fn operation_label(operation: &Operation) -> String {
         "drilling".to_owned()
       }
     }
+    Operation::Chamfer(_) => "chamfer".to_owned(),
+    Operation::Engrave(_) => "engrave".to_owned(),
+    Operation::Fluting(_) => "fluting".to_owned(),
+    Operation::Inlay(_) => "inlay".to_owned(),
+    Operation::Thread(params) => format!(
+      "thread ({} mm pitch, {})",
+      params.pitch.mm(),
+      match params.direction {
+        cam_model::ThreadDirection::Internal => "internal",
+        cam_model::ThreadDirection::External => "external",
+      }
+    ),
+    Operation::Texture(params) => format!(
+      "texture ({} mm at {} degrees)",
+      params.spacing.mm(),
+      params.angle.degrees()
+    ),
   }
 }
 
@@ -1067,6 +1543,14 @@ fn parse_mm(value: &str, option: &str) -> Result<f64, Failure> {
   value.parse::<f64>().map_err(|_| {
     Failure::input(format!(
       "{option} expects a number of millimetres, got {value:?}"
+    ))
+  })
+}
+
+fn parse_degrees(value: &str, option: &str) -> Result<f64, Failure> {
+  value.parse::<f64>().map_err(|_| {
+    Failure::input(format!(
+      "{option} expects a number of degrees, got {value:?}"
     ))
   })
 }
@@ -1235,9 +1719,57 @@ fn build_segment(
   let spec = ToolSpec {
     number,
     diameter,
+    included_angle: geometry.included_angle,
     feed_rate: cutting.feed_rate.unwrap_or(0.0),
     plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
     spindle_speed: cutting.spindle_speed.unwrap_or(0),
+  };
+
+  // The shape the simulation sweeps (A8). A chamfer is the only operation that cuts with a cone, and
+  // its cone is the library's own geometry: the bit's included angle and its flat, zero when the
+  // library does not record one. A chamfer on a tool with no angle is refused by name rather than
+  // defaulted to 90 degrees, because that would cut a different bevel (D-M6-9).
+  let tool_shape = match &toolpath.operation {
+    Operation::Chamfer(params) => {
+      let included_angle = geometry.included_angle.ok_or_else(|| {
+        Failure::input(format!(
+          "tool T{number} has no included angle, so toolpath {:?} cannot cut a chamfer: a V-bit \
+           strategy needs the tool's angle, and defaulting 90 degrees would cut a different bevel",
+          toolpath.id
+        ))
+      })?;
+      // The same refusal as at authoring, repeated here because the library can change under a
+      // document that was written against a sharp bit: a flat widens the bevel to
+      // `chamfer_width + flat/2`, and the document's derived depth knows nothing of it (D-M6-10).
+      // A program that would cut a bevel nobody asked for is not written, and the simulation refuses
+      // the same shape, so the bit fails at every boundary that can see it.
+      let flat_diameter = geometry.flat_diameter.unwrap_or(Length::ZERO);
+      if flat_diameter.mm() > 0.0 {
+        return Err(Failure::input(format!(
+          "tool T{number} has a {} mm flat tip, so toolpath {:?} would cut a bevel wider than its \
+           {} mm chamfer width: a chamfer needs a sharp V-bit",
+          flat_diameter.mm(),
+          toolpath.id,
+          params.chamfer_width.mm()
+        )));
+      }
+      ToolShape::v_bit(included_angle, flat_diameter)
+    }
+    // An engrave, a flute or a texture carries the tool's real shape, whatever it is: a V-bit when the
+    // library records an angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it —
+    // a groove's depth is authored and a ramp is a length — but the simulation must sweep the groove the
+    // bit actually cuts, and a segment that said "cylinder" for a V-bit would report a correct engrave
+    // as gouge, and a correct V-groove flute or texture as a flat slot.
+    Operation::Engrave(_) | Operation::Fluting(_) | Operation::Texture(_) => {
+      match geometry.included_angle {
+        Some(included_angle) => ToolShape::v_bit(
+          included_angle,
+          geometry.flat_diameter.unwrap_or(Length::ZERO),
+        ),
+        None => ToolShape::cylinder(spec.diameter),
+      }
+    }
+    _ => ToolShape::cylinder(spec.diameter),
   };
 
   let mut moves = Vec::new();
@@ -1326,12 +1858,120 @@ fn build_segment(
       .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
       moves.extend(path.moves);
     }
+    Operation::Chamfer(params) => {
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          chamfer(&ChamferRequest {
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
+    Operation::Fluting(params) => {
+      // Open and closed alike, like an engrave: a flute is one groove per vector (D-M6-5).
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          fluting(&FlutingRequest {
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
+    Operation::Engrave(params) => {
+      // Open and closed vectors alike: engraving an open one is the strategy's point (D-M6-4).
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          engrave(&EngraveRequest {
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
+    Operation::Texture(params) => {
+      // Every selected contour is a boundary of **one** region, and the region's parity rule is what
+      // turns an appended contour into a hole (D-RB-2), so the pattern is clipped against the whole
+      // selection at once rather than once per entity (D-M6-6).
+      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
+      for entity_id in &toolpath.entity_ids {
+        contours.push(contour_of(document, &toolpath.id, entity_id)?);
+      }
+      moves.extend(
+        texture(&TextureRequest {
+          contours: &contours,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+      );
+    }
+    Operation::Thread(params) => {
+      // One descent per selected circle, and each is its own thread: a thread's diameter is the entity's
+      // own, so two circles are two threads with two orbits and never one shared one (M6 A7).
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, &toolpath.id, entity_id)?;
+        moves.extend(
+          thread(&ThreadRequest {
+            entity: entity_id,
+            contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+        );
+      }
+    }
+    Operation::Inlay(params) => {
+      // One half per toolpath, and the document says which half it is (see
+      // `cam_model::InlayParams`): the female names the region it clears, and the male names that same
+      // region as the islands it leaves standing inside the job rectangle, whose boundary is not an
+      // entity at all.
+      let ids = if toolpath.island_ids.is_empty() {
+        &toolpath.entity_ids
+      } else {
+        &toolpath.island_ids
+      };
+      let mut contours = Vec::with_capacity(ids.len());
+      for entity_id in ids {
+        contours.push(contour_of(document, &toolpath.id, entity_id)?);
+      }
+      let request = InlayRequest {
+        contours: &contours,
+        params,
+        tool: &spec,
+        job: &document.job,
+      };
+      let half = if toolpath.island_ids.is_empty() {
+        female(&request)
+      } else {
+        male(&request)
+      };
+      moves.extend(
+        half.map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+      );
+    }
   }
 
   Ok(Segment {
     name: toolpath.name.clone(),
     tool_number: number,
-    tool_diameter: spec.diameter,
+    tool: tool_shape,
     feed_rate: spec.feed_rate,
     plunge_rate: spec.plunge_rate,
     spindle_speed: spec.spindle_speed,
@@ -1418,13 +2058,13 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
   let cell = Length::from_mm(resolution);
   let mut field =
     Heightfield::new(&document.job, cell).map_err(|error| Failure::input(error.to_string()))?;
-  // Every tool the program uses, at the diameter the library gives it: a profile's target band is
-  // the material its tool sweeps, and the segment already carries the size that built it.
-  let tools = ToolDiameters::new(
+  // Every tool the program uses, at the shape the library gives it: a profile's target band is the
+  // material its tool sweeps, and the segment already carries the shape that built it.
+  let tools = ToolShapes::new(
     stream
       .segments
       .iter()
-      .map(|segment| (segment.tool_number, segment.tool_diameter)),
+      .map(|segment| (segment.tool_number, segment.tool)),
   );
   let target =
     target_for(&document, cell, &tools).map_err(|error| Failure::input(error.to_string()))?;

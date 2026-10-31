@@ -50,6 +50,21 @@ pub enum EmitError {
     /// The post-processor's display name.
     post_name: String,
   },
+  /// The program has helical moves but the post-processor cannot express them.
+  ///
+  /// The arc precedent, applied to the move that descends (M6 A7, D-M6-8). An arc block's template is
+  /// `[X][Y][I][J]` and carries no `[Z]`, so emitting a helix through one would cut a flat circle at
+  /// whatever depth the last `Z` word left the tool at; the four helical kinds carry the Z, and a post
+  /// without them refuses by name instead of approximating.
+  #[error(
+    "post-processor {post_name:?} defines no helical move block, so it cannot express a helical arc \
+     (Move::Helix): a program that descends around a circle needs CW_HELIX_MOVE, CCW_HELIX_MOVE, \
+     FIRST_CW_HELIX_MOVE or FIRST_CCW_HELIX_MOVE; refusing to emit an approximation"
+  )]
+  HelixUnsupported {
+    /// The post-processor's display name.
+    post_name: String,
+  },
   /// A block line has an unterminated variable reference.
   #[error("block {block:?} has an unterminated variable reference in {line:?}")]
   UnterminatedReference {
@@ -170,12 +185,14 @@ impl<'a> Writer<'a> {
       let mut first_feed_of_segment = true;
       let mut first_cw_of_segment = true;
       let mut first_ccw_of_segment = true;
+      let mut first_cw_helix_of_segment = true;
+      let mut first_ccw_helix_of_segment = true;
 
       for movement in &segment.moves {
         let from = self.previous;
         let to = movement.destination();
         let (center, radius) = match movement {
-          Move::Arc { center, to, .. } => {
+          Move::Arc { center, to, .. } | Move::Helix { center, to, .. } => {
             let radius = from.xy().distance_to(*center);
             let _ = to;
             (Some(*center), Some(radius))
@@ -222,6 +239,23 @@ impl<'a> Writer<'a> {
               BlockKind::CwArcMove
             }
           }
+          // A helix has its own four kinds rather than reusing the arcs': its block carries the Z the
+          // descent needs, and a post that defines the arcs alone cannot express one (D-M6-8).
+          Move::Helix { ccw, .. } => {
+            if *ccw {
+              if first_ccw_helix_of_segment {
+                first_ccw_helix_of_segment = false;
+                BlockKind::FirstCcwHelixMove
+              } else {
+                BlockKind::CcwHelixMove
+              }
+            } else if first_cw_helix_of_segment {
+              first_cw_helix_of_segment = false;
+              BlockKind::FirstCwHelixMove
+            } else {
+              BlockKind::CwHelixMove
+            }
+          }
         };
 
         let site = Site {
@@ -233,6 +267,11 @@ impl<'a> Writer<'a> {
         };
         if matches!(movement, Move::Arc { .. }) && !self.supports_arcs() {
           return Err(EmitError::ArcsUnsupported {
+            post_name: self.post.post_name.clone(),
+          });
+        }
+        if matches!(movement, Move::Helix { .. }) && !self.supports_helixes() {
+          return Err(EmitError::HelixUnsupported {
             post_name: self.post.post_name.clone(),
           });
         }
@@ -265,6 +304,21 @@ impl<'a> Writer<'a> {
       BlockKind::CcwArcMove,
       BlockKind::FirstCwArcMove,
       BlockKind::FirstCcwArcMove,
+    ]
+    .iter()
+    .any(|kind| !self.post.block(*kind).is_empty())
+  }
+
+  /// True when the post-processor can express a helical move at all.
+  ///
+  /// The arc vocabulary is not a substitute: an arc block has no `[Z]`, so a helix emitted through one
+  /// would lose its descent (M6 A7).
+  fn supports_helixes(&self) -> bool {
+    [
+      BlockKind::CwHelixMove,
+      BlockKind::CcwHelixMove,
+      BlockKind::FirstCwHelixMove,
+      BlockKind::FirstCcwHelixMove,
     ]
     .iter()
     .any(|kind| !self.post.block(*kind).is_empty())

@@ -9,12 +9,12 @@ use std::process::Command;
 
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
-  Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, PocketParams, PocketStrategy,
-  ProfileParams, ProfileSide, RetractMode, Toolpath,
+  ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer, Operation,
+  PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
-use cam_units::{Length, UnitSystem};
+use cam_units::{Angle, Length, UnitSystem};
 
 const POST: &str = include_str!("../../cam-post/tests/fixtures/post_mm.pp");
 
@@ -172,13 +172,40 @@ fn rewrite_schema_tag(document: &Path, tag: &str) {
     broken, payload,
     "the archive carries the current schema tag"
   );
+  rewrite_payload(document, &broken);
+}
+
+/// Replace a saved document's `document.json` with `payload`, keeping the archive.
+fn rewrite_payload(document: &Path, payload: &str) {
   let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
   writer
     .start_file("document.json", zip::write::SimpleFileOptions::default())
     .expect("start");
-  std::io::Write::write_all(&mut writer, broken.as_bytes()).expect("write");
+  std::io::Write::write_all(&mut writer, payload.as_bytes()).expect("write");
   let raw = writer.finish().expect("finish").into_inner();
   std::fs::write(document, raw).expect("write document");
+}
+
+/// Drop the `ramp` field from a saved document's `fluting` operation, as an older or hand-written
+/// document that predates it would have been written.
+fn remove_fluting_ramp(document: &Path) {
+  let payload = document_payload(document);
+  let marker = "\"ramp\"";
+  let at = payload.find(marker).expect("the archive carries the ramp");
+  // The field is its operation's last, so it is preceded by the previous field's comma and ends at the
+  // line break before the closing brace. Both are found by position, not by their printed form, so the
+  // pretty-printer's layout can change without breaking this.
+  let comma = payload[..at].rfind(',').expect("a field separator");
+  let end = payload[at..]
+    .find('\n')
+    .map(|offset| at + offset)
+    .expect("a line break after the field");
+  let without = format!("{}{}", &payload[..comma], &payload[end..]);
+  assert!(
+    !without.contains(marker),
+    "the ramp field is gone from:\n{without}"
+  );
+  rewrite_payload(document, &without);
 }
 
 #[test]
@@ -248,7 +275,7 @@ fn postp_validate_summarises_and_rejects_with_line_and_column() {
   let good = write_post(&directory);
   let outcome = run(&["postp", "validate", good.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 0, "{}", outcome.stderr);
-  assert!(outcome.stdout.contains("blocks: 16"), "{}", outcome.stdout);
+  assert!(outcome.stdout.contains("blocks: 20"), "{}", outcome.stdout);
 
   let bad = directory.join("bad.pp");
   std::fs::write(&bad, "POST_NAME = \"x\"\nNOT_A_DIRECTIVE = \"y\"\n").expect("write");
@@ -440,6 +467,8 @@ fn help_lists_every_command_option_and_exit_code() {
     "--post",
     "--out",
     "--library",
+    "chamfer",
+    "--chamfer-width",
     "EXIT CODES",
     "unsupported document schema",
     "post-processor error",
@@ -2491,4 +2520,2580 @@ fn the_help_lists_the_simulate_command_its_flags_and_its_exit_code() {
       outcome.stdout
     );
   }
+}
+
+// --- chamfer (M6 A2, A8, D-M6-2, D-M6-9) ------------------------------------------------------
+
+/// A library holding one 90 degree V-bit as T1: what a chamfer needs, and a real bit's geometry.
+///
+/// The diameter is the bit's large diameter and moves nothing — a chamfer's tip runs on the vector —
+/// and the 90 degree included angle is what makes the derived depth equal the bevel's width.
+fn write_chamfer_library(directory: &Path) -> PathBuf {
+  write_chamfer_library_at(directory, "chamfer-tools.sqlite", 90.0, 0.0)
+}
+
+/// The same library with a chosen included angle and tip flat, so the refusals can be reached.
+fn write_chamfer_library_at(directory: &Path, name: &str, degrees: f64, flat: f64) -> PathBuf {
+  let path = directory.join(name);
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "V1".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(12.7)),
+      included_angle: Some(Angle::from_degrees(degrees)),
+      flat_diameter: Some(Length::from_mm(flat)),
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "V1CUT".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(6.0)),
+      stepover: None,
+      clear_stepover: None,
+      tool_number: Some(1),
+      notes: None,
+    })
+    .expect("cutting data");
+  library
+    .link("V1LINK", "V1", "V1CUT", None, None)
+    .expect("link");
+  path
+}
+
+/// The whole program one chamfer emits, byte for byte.
+///
+/// A 90 degree V-bit and a 3 mm bevel with no start depth: the tip runs on the 40 x 30 rectangle
+/// itself, unoffset, at `-(0 + 3 / tan(45)) = -3` mm, in **one** pass — rapid, one plunge, four
+/// sides, retract to safe Z. CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_CHAMFER_PROGRAM: &str = "\
+( Chamfer 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z-3.0000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G01Y30.0000\r\n\
+N70G01X0.0000\r\n\
+N80G01Y0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn a_chamfer_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-chamfer");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 chamfer, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the bevel and the bit, never a derived depth (D-M6-2 as amended in
+  // L7): the angle is the library's own, in radians, and the depth is a question asked at emission.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Chamfer(params) => {
+      assert_eq!(params.chamfer_width, Length::from_mm(3.0));
+      assert_eq!(params.included_angle, Angle::from_degrees(90.0));
+      assert_eq!(params.start_depth, Length::ZERO);
+      // `tan(pi/4)` is not exactly 1 in binary floating point, so the derived depth is 3 mm to
+      // within rounding — and 3.0000 mm once the post's four decimals format it.
+      assert!(
+        (params.depth().mm() - 3.0).abs() < 1.0e-9,
+        "a 90 degree bit and a 3 mm bevel derive 3 mm, got {}",
+        params.depth().mm()
+      );
+    }
+    other => panic!("expected a chamfer, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_CHAMFER_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_on_a_tool_without_an_included_angle_exits_two_naming_the_tool() {
+  let directory = scratch("chamfer-no-angle");
+  let document = write_vectors(&directory, "plain.c2d", vec![rectangle_contour(40.0, 30.0)]);
+  // The ordinary library's T1 is an end mill: a diameter and no angle.
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("included angle"),
+    "and says what is missing: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn emit_refuses_a_chamfer_whose_tool_has_no_included_angle_naming_the_tool() {
+  // The other half of D-M6-9: a document authored elsewhere still carries the bevel, and the library
+  // the machine is set up with has no angle for that tool. Defaulting 90 degrees would cut a
+  // different bevel, so the program is refused by name and nothing is written.
+  let directory = scratch("chamfer-emit-no-angle");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Chamfer 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Chamfer(ChamferParams {
+      chamfer_width: Length::from_mm(3.0),
+      included_angle: Angle::from_degrees(90.0),
+      start_depth: Length::ZERO,
+    }),
+  });
+  save_document(&document, &loaded).expect("document saved");
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_takes_no_side_and_no_authored_depth() {
+  // A bevel is symmetric about the vector and its depth is derived from the bit, so both flags have
+  // no meaning here. Refusing them is the difference between a refusal and a silently different
+  // bevel: a `--cut-depth 12` that nobody applied would still look like it had been.
+  let directory = scratch("chamfer-flags");
+  let library = write_chamfer_library(&directory);
+  for flag in ["--side", "--cut-depth", "--pass-depth"] {
+    let document = write_vectors(
+      &directory,
+      "chamfer.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "chamfer",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--chamfer-width",
+      "3",
+      flag,
+      "6",
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_without_a_width_exits_two_naming_the_option() {
+  let directory = scratch("chamfer-no-width");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--chamfer-width"),
+    "{}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_with_no_width_or_an_impossible_angle_exits_two_naming_the_value() {
+  // The depth is `width / tan(half angle)`, so a zero width has no bevel and an angle at either end
+  // of `(0, 180)` degrees has no finite tangent. Both are input errors that name the value, never a
+  // clamp: a clamped bevel is a different bevel on someone's part.
+  let directory = scratch("chamfer-invalid");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let zero = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "0",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(zero.code, 2, "{}", zero.stdout);
+  assert!(
+    zero.stderr.contains("chamfer width") && zero.stderr.contains("got 0 mm"),
+    "the refusal names the value: {}",
+    zero.stderr
+  );
+
+  // The same rule holds for the angle, and it is the document model that holds it: a library bit
+  // whose included angle is 0 degrees has no tangent to derive from, so authoring a chamfer with it
+  // is refused naming the value. (Such a document cannot even be written — saving validates it — so
+  // this is the only path that reaches the rule.)
+  let flat_bit = write_chamfer_library_at(&directory, "zero-angle.sqlite", 0.0, 0.0);
+  let impossible = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    flat_bit.to_str().expect("utf8"),
+  ]);
+  assert_eq!(impossible.code, 2, "{}", impossible.stdout);
+  assert!(
+    impossible.stderr.contains("included angle") && impossible.stderr.contains("got 0 degrees"),
+    "the refusal names the value: {}",
+    impossible.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_simulates_with_no_gouge_and_no_uncut() {
+  // A8's end-to-end claim: the shape the library describes reaches `cam-sim` through the segment, so
+  // the cone the program is simulated with is the cone the document derived its depth from. A
+  // cylinder in the segment would not merely disagree — `cam-sim` refuses a chamfer claimed with one
+  // — and an angle that reached the simulation differently from the document would report a correct
+  // bevel as gouge or uncut. Both directions are visible here, at the binary's own tolerance.
+  let directory = scratch("chamfer-simulate");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--start-depth",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = run(&[
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(outcome.stdout.contains("crash: none"), "{}", outcome.stdout);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_chamfer_on_a_flat_tipped_bit_exits_two_naming_the_tool() {
+  // D-M6-10: a flat of diameter `f` widens the bevel to `w + f/2`, and `ChamferParams` reads only the
+  // document, so the depth it derives cannot honour the width the user typed on a flat-tipped bit. The
+  // bit is refused by name at authoring time rather than cutting a bevel nobody asked for.
+  let directory = scratch("chamfer-flat-tip");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library_at(&directory, "flat.sqlite", 90.0, 2.0);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("flat"),
+    "and says what disqualifies it: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn emit_refuses_a_chamfer_whose_tool_has_a_flat_tip_naming_the_tool() {
+  // The third boundary that can see the bit (D-M6-10), and the one that costs the part if it is
+  // missed: a document authored against a sharp bit, then emitted against a library whose T1 has
+  // picked up a flat. The flat widens the bevel to `w + f/2` while the document's derived depth knows
+  // nothing of it, so the program must not be written at all — exit 2 naming the tool, no output file.
+  let directory = scratch("chamfer-emit-flat-tip");
+  let document = write_vectors(
+    &directory,
+    "chamfer.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  // Authored while the bit is still sharp.
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "chamfer",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--chamfer-width",
+    "3",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  // The same tool number, now described with a 2 mm flat at the tip.
+  let tools = ToolLibrary::open(&library).expect("library");
+  tools
+    .put_geometry(&ToolGeometry {
+      id: "V1".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(12.7)),
+      included_angle: Some(Angle::from_degrees(90.0)),
+      flat_diameter: Some(Length::from_mm(2.0)),
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  drop(tools);
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("T1"),
+    "the refusal names the tool: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("flat tip"),
+    "and says what disqualifies it: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- quick engrave (M6 A3, D-M6-4) -----------------------------------------------------------
+
+/// The whole program one engrave emits, byte for byte.
+///
+/// A 90 degree V-bit and a 2 mm engrave with no start depth: the tool centre runs on the 40 x 30
+/// rectangle itself, unoffset, at `-2` mm, in **one** pass — rapid, one plunge, four sides, retract to
+/// safe Z. Every line is the chamfer golden's, with this strategy's own Z and name: an engrave
+/// replaces the pass law and the bevel derivation, not the walk. CRLF, because the fixture post
+/// declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_ENGRAVE_PROGRAM: &str = "\
+( Engrave 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z-2.0000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G01Y30.0000\r\n\
+N70G01X0.0000\r\n\
+N80G01Y0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn an_engrave_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-engrave");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 engrave, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the authored depth and the start it begins from — nothing derived.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Engrave(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(2.0));
+    }
+    other => panic!("expected an engrave, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_ENGRAVE_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_takes_no_side_no_pass_depth_no_tabs_and_no_leads() {
+  // An engrave is one pass at one depth with the tool centre on the vector (D-M6-4), so a side, a
+  // pass law, a tab and a lead each have no meaning here. Refusing them by name is the difference
+  // between a refusal and a silently different groove: a `--pass-depth 2` that nobody applied would
+  // still look like it had been.
+  let directory = scratch("engrave-flags");
+  let library = write_chamfer_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "engrave.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "engrave",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--cut-depth",
+      "2",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_whose_cut_depth_is_not_below_its_start_depth_exits_two_naming_both() {
+  // The profile's own rule, inherited through D-M6-4: the deepest pass lands on `cut_depth`, so a
+  // document whose cut depth is not below its start depth is refused as an input error that names
+  // both numbers rather than emitting a program that cuts nothing.
+  let directory = scratch("engrave-depths");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+  let post = write_post(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "4",
+    "--start-depth",
+    "4",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(
+    added.code, 0,
+    "authoring stores what was asked: {}",
+    added.stderr
+  );
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("cut depth 4 mm") && outcome.stderr.contains("start depth 4 mm"),
+    "the refusal names both depths: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_engrave_simulates_with_no_gouge_and_no_uncut() {
+  // A8's end-to-end claim for the third strategy: the V-bit the library describes reaches `cam-sim`
+  // through the segment, so the groove the program is simulated with is the groove its tool cuts. A
+  // segment that carried a cylinder instead would remove a flat slot the target does not authorise,
+  // and the report would show it.
+  let directory = scratch("engrave-simulate");
+  let document = write_vectors(
+    &directory,
+    "engrave.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_chamfer_library(&directory);
+
+  let added = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "engrave",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--cut-depth",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = run(&[
+    "simulate",
+    document.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- fluting (M6 A4, A9, D-M6-5) ---------------------------------------------------------------
+
+/// The whole program one ramped flute emits, byte for byte.
+///
+/// A 6 mm end mill and a 0.5 mm flute ramped over 10 mm on a 40 x 30 rectangle (140 mm of perimeter).
+/// The entry and the exit are real moves — the machine traverses them — and **each is one move**: a
+/// single feed of 10 mm of travel whose Z descends from the surface to `-0.5` along the bottom edge, the
+/// plateau around the rest of the loop at `-0.5`, and the mirror move from `(0, 10)` back up to
+/// `(0, 0)`. The ramp used to be walked in steps of a tenth of a millimetre of Z because the simulation
+/// removed a move's *destination* depth over its whole travel; `cam-sim` now interpolates Z along a
+/// move (D-M6-12, which amends D-M5-3), so the staircase is gone and the program says what the machine
+/// does. CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_FLUTING_PROGRAM: &str = "\
+( Fluting 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z0.0000F100.0\r\n\
+N50G01X10.0000Z-0.5000\r\n\
+N60G01X40.0000\r\n\
+N70G01Y30.0000\r\n\
+N80G01X0.0000\r\n\
+N90G01Y10.0000\r\n\
+N100G01Y0.0000Z0.0000\r\n\
+N110G00Z5.0000\r\n\
+N120G00Z5.0000\r\n\
+N130G00X0.0000Y0.0000\r\n\
+N140M05\r\n\
+N150M30\r\n";
+
+/// Author a ramped flute on `E1` through the real `toolpath` command.
+fn author_fluting(document: &Path, library: &Path, ramp: f64, cut_depth: f64) -> Outcome {
+  let ramp = ramp.to_string();
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "fluting",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--ramp",
+    &ramp,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+#[test]
+fn a_ramped_flute_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-fluting");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 fluting, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the authored depth and the ramp; nothing is derived from the tool.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Fluting(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(0.5));
+      assert_eq!(params.ramp, Length::from_mm(10.0));
+    }
+    other => panic!("expected a fluting toolpath, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_FLUTING_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_takes_no_side_no_stepover_no_pass_depth_no_tabs_no_leads_and_no_allowance() {
+  // D-M6-5: a flute is one pass along the vector with its centre on it, so every flag a profile or a
+  // pocket would consume has no meaning here. Refusing them by name is the difference between a
+  // refusal and a silently different groove: a `--stepover` nobody applied still looks applied.
+  let directory = scratch("fluting-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "0.2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--stepover", "2"),
+    ("--allowance", "1"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "fluting.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "fluting",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--ramp",
+      "10",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_whose_ramp_is_longer_than_half_the_vector_exits_two_naming_both_numbers() {
+  // A4: the two ramps have to fit on the vector. Authoring succeeds — half of a 140 mm perimeter is
+  // 70 mm — and emitting refuses the 71 mm one by name, because a silently shortened ramp would cut
+  // the ends at a depth nobody authored.
+  let directory = scratch("fluting-ramp");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 71.0, 0.5);
+  assert_eq!(
+    added.code, 0,
+    "authoring stores what was asked: {}",
+    added.stderr
+  );
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("71") && outcome.stderr.contains("140"),
+    "the refusal names the ramp and the vector's length: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_ramped_flute_simulates_with_no_gouge_and_no_uncut() {
+  // The end-to-end claim A4 rests on: the target authorises the ramp law *along the path*, and the
+  // program cuts that law. A target that claimed the full depth over the whole band would report both
+  // ramps as uncut; a program that ramped in one move would be reported as a gouge. Neither number is
+  // tolerance-softened: both are zero cells.
+  let directory = scratch("fluting-simulate");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  // The program is the ramped one and not an empty segment: "no deviation" from a program that cut
+  // nothing would say nothing at all. Nine moves: the rapid, the plunge to the surface, the ramp in,
+  // the four plateau sides, the ramp out and the retract.
+  assert!(
+    report_volume(&outcome.stdout, "program:") > 8.0,
+    "the ramps are real moves: {}",
+    outcome.stdout
+  );
+  assert!(
+    report_volume(&outcome.stdout, "removed:") > 0.0,
+    "and they remove material: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_fluting_document_written_without_a_ramp_still_loads_and_plays_as_the_plain_groove() {
+  // A1's compatibility rule, for the one field this strategy defaults: a document that names a
+  // `fluting` toolpath and no `ramp` — hand-written, or written by a build that predates the field —
+  // must load rather than fail, and it must describe what its absence means, the in-place plunge. The
+  // same rectangle is authored twice, once with `--ramp 10` and its field removed afterwards, and once
+  // with `--ramp 0`; the two programs are then the same bytes.
+  let directory = scratch("fluting-no-ramp");
+  let stripped = write_vectors(
+    &directory,
+    "stripped.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let authored = write_vectors(
+    &directory,
+    "authored.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&stripped, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  remove_fluting_ramp(&stripped);
+
+  let validated = run(&["validate", stripped.to_str().expect("utf8")]);
+  assert_eq!(validated.code, 0, "{}", validated.stderr);
+
+  let added = author_fluting(&authored, &library, 0.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    emit_program(&directory, &stripped, &library, &post),
+    emit_program(&directory, &authored, &library, &post),
+    "a document without a ramp is the plain groove: plunge, cut, retract"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_six_millimetre_flute_simulates_with_no_gouge_and_no_uncut() {
+  // The graded case, at the judgement M5 fixed: an eighth of a cell, with nothing added for the ramp.
+  // The sweep pays for the ramp where it belongs — in its own sampling, which takes enough steps that
+  // the depth residual between two of them is inside that eighth (D-M6-12) — so a deep flute reports its
+  // ramps as cut. The thin fixture next door would pass at any sampling; this one is what shows the
+  // residual is resolved rather than tolerated.
+  let directory = scratch("fluting-simulate-deep");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_six_millimetre_flute_over_a_one_millimetre_ramp_simulates_with_no_gouge_and_no_uncut() {
+  // The steepest ramp a flute can carry at this size: 6 mm of Z over 1 mm of travel, a grade of 6. A
+  // document-global tolerance keyed on the grade would have licensed 3.125 mm of deviation anywhere in
+  // this document, which would have hidden a millimetre of gouge on the plateau as well as on the ramp.
+  // The sampling settles it instead — a move crossing that much Z takes 96 steps at a 1 mm cell — so the
+  // judgement stays at an eighth of a cell and this document is still clean.
+  let directory = scratch("fluting-simulate-steep");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 1.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_ramped_flute_on_an_arc_is_authored_as_a_helix_and_simulates_clean() {
+  // The defect T4 refused and T7 lifts, measured before the refusal and again now: an imported circle of
+  // radius 25 fluted 6 mm deep with a 10 mm ramp used to be cut as a chord — `gouge 33.228 mm3 over 22
+  // cell(s), uncut 30.093 mm3 over 34 cell(s)`, exit 6 — because a ramped move could not ride on
+  // `Move::Arc`. With `Move::Helix` the ramp rides the arc itself, so the program is clean at the
+  // judgement M5 fixed: an eighth of a cell.
+  let directory = scratch("fluting-arc-ramp");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  let helix_lines = program
+    .lines()
+    .filter(|line| (line.contains("G02") || line.contains("G03")) && line.contains('Z'))
+    .count();
+  assert_eq!(
+    helix_lines, 2,
+    "the ramped entry and the ramped exit are the program's only helixes:\n{program}"
+  );
+  assert!(
+    program.contains("G02") || program.contains("G03"),
+    "and the plateau is still cut along the circle's arcs:\n{program}"
+  );
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_document_that_already_carries_a_ramped_flute_on_an_arc_emits_a_helical_program() {
+  // A document written before T7's lift (or by hand) is not refused any more: the strategy emits the
+  // same helix through `emit` and `simulate` that the command now authors. This is the fixture that
+  // used to exit 2 at both doors, and before T4's refusal, exit 6 with tens of cubic millimetres of
+  // gouge and uncut material.
+  let directory = scratch("fluting-arc-ramp-document");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Fluting 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Fluting(FlutingParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+      ramp: Length::from_mm(10.0),
+    }),
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program
+      .lines()
+      .any(|line| (line.contains("G02") || line.contains("G03")) && line.contains('Z')),
+    "the ramps reach the program as helical moves:\n{program}"
+  );
+
+  let simulated = simulate(&document, &library, &[]);
+  assert_eq!(
+    simulated.code, 0,
+    "{}{}",
+    simulated.stdout, simulated.stderr
+  );
+  assert!(
+    simulated.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)")
+      && simulated.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    simulated.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_without_a_ramp_still_cuts_an_arc_as_an_arc_through_the_cli() {
+  // The other half of the lifted refusal: `ramp = 0` on the same arc contour is exactly what `Move::Arc`
+  // for, so it is authored, emitted with arc blocks and simulated clean. Refusing it would have been a
+  // regression dressed as safety.
+  let directory = scratch("fluting-arc-flat");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(15.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 0.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program.contains("G02") || program.contains("G03"),
+    "the circle's arcs reach the program as arcs:\n{program}"
+  );
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)")
+      && outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- texture (M6 A5, A9, D-M6-6) ---------------------------------------------------------------
+
+/// The whole program one textured square emits, byte for byte.
+///
+/// A 6 mm end mill and a 0.5 mm texture at a 10 mm spacing and 0 degrees on a 40 x 30 mm square. The
+/// pattern is the rows half a spacing inside the region — `y = 5, 15, 25` — and each is **one pass**:
+/// a rapid over its first vertex at safe Z, a plunge in place to `-0.5`, one feed across the square, and
+/// a retract to safe Z before the next groove starts (D-M4-6, D-M6-6). Twelve moves, and no move that
+/// clears the material *between* the grooves: that is what a texture is, and the three bands it leaves
+/// are the pattern.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_TEXTURE_PROGRAM: &str = "\
+( Texture 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y5.0000\r\n\
+N40G01Z-0.5000F100.0\r\n\
+N50G01X40.0000\r\n\
+N60G00Z5.0000\r\n\
+N70G00X0.0000Y15.0000\r\n\
+N80G01Z-0.5000\r\n\
+N90G01X40.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y25.0000\r\n\
+N120G01Z-0.5000\r\n\
+N130G01X40.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Z5.0000\r\n\
+N160G00X0.0000Y0.0000\r\n\
+N170M05\r\n\
+N180M30\r\n";
+
+/// Author a texture on `E1` through the real `toolpath` command.
+fn author_texture(
+  document: &Path,
+  library: &Path,
+  spacing: &str,
+  degrees: &str,
+  cut_depth: f64,
+) -> Outcome {
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--spacing",
+    spacing,
+    "--angle",
+    degrees,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+#[test]
+fn a_texture_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-texture");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_texture(&document, &library, "10", "0", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 texture (10 mm at 0 degrees), tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the pattern's two parameters and the one depth; nothing is derived
+  // from the tool.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Texture(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(0.5));
+      assert_eq!(params.spacing, Length::from_mm(10.0));
+      assert_eq!(params.angle, Angle::ZERO);
+    }
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_TEXTURE_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_takes_no_side_no_pass_depth_no_tabs_no_leads_no_allowance_no_stepover_and_no_ramp() {
+  // D-M6-6: a texture cuts grooves at a spacing and leaves the material between them standing, so every
+  // flag a profile, a pocket or a flute would consume has no meaning here. Refusing them by name is the
+  // difference between a refusal and a silently different pattern.
+  let directory = scratch("texture-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "0.2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--allowance", "1"),
+    ("--stepover", "2"),
+    ("--ramp", "2"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "texture.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "texture",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--spacing",
+      "10",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("between them standing") || outcome.stderr.contains("--spacing"),
+      "and says what a texture is instead: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_without_a_spacing_anywhere_exits_two_naming_the_option() {
+  // `--spacing` falls back to the library's stepover the way a pocket's `--stepover` does, and this
+  // library has none: the absence is an input error naming the flag, never a defaulted lattice. The
+  // fixture's tool is a 6 mm end mill with no stepover in its cutting data.
+  let directory = scratch("texture-nospacing");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--spacing"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_takes_its_spacing_from_the_tool_librarys_stepover() {
+  // The pocket precedent, applied to the pattern: `--spacing` absent, the library's `stepover` present,
+  // and the document stores the library's number. The library's stepover is 2.4 mm.
+  let directory = scratch("texture-library-spacing");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "texture",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Texture(params) => assert_eq!(
+      params.spacing,
+      Length::from_mm(2.4),
+      "the library's stepover is the pattern's spacing"
+    ),
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_simulates_with_no_gouge_and_no_uncut() {
+  // The end-to-end claim A5 rests on: the target authorises the document's own pattern, and the program
+  // cuts that pattern. A target that claimed the region instead of the grooves would report the
+  // standing material as a gouge; a program that cleared would report it as uncut. Both are zero cells,
+  // with nothing tolerance-softened.
+  let directory = scratch("texture-simulate");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_texture(&document, &library, "10", "0", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  // The program is the textured one and not an empty segment: "no deviation" from a program that cut
+  // nothing would say nothing at all.
+  assert_eq!(
+    report_volume(&outcome.stdout, "program:"),
+    12.0,
+    "three grooves, one pass of four moves each: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("120.000 mm cutting length"),
+    "and every pass is 40 mm long: {}",
+    outcome.stdout
+  );
+  assert!(
+    report_volume(&outcome.stdout, "removed:") > 0.0,
+    "and they remove material: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_texture_at_forty_five_degrees_emits_the_patterns_diagonal_grooves() {
+  // `--angle` reaches the program. The pattern is clipped in the groove frame, so on a 40 x 30 mm
+  // rectangle at 45 degrees the region's own extent is the diagonal, `(40 + 30) / sqrt(2) = 49.497` mm,
+  // and a 6 mm spacing gives eight rows. Every one is a diagonal chord of the rectangle, so every
+  // cutting move changes both X and Y — and none of them is an axis-aligned row a bounding-box
+  // rotation would have produced.
+  //
+  // This is a program assertion and not a simulation one on purpose: a 45 degree groove's footprint
+  // boundary cuts the cell lattice at an angle, so the sweep's half-cell sampling leaves up to a
+  // hundredth of a millimetre of the claim's rind uncut along it — M5's published one-sided coverage
+  // property (D-M5-3), asserted where it belongs in `cam-sim/tests/target.rs` and `oracle.rs` rather
+  // than traded for a loose tolerance here.
+  let directory = scratch("texture-45-program");
+  let document = write_vectors(
+    &directory,
+    "texture.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_texture(&document, &library, "6", "45", 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  let cutting: Vec<&str> = program
+    .lines()
+    .filter(|line| line.contains("G01X") && line.contains("Y"))
+    .collect();
+  assert_eq!(
+    cutting.len(),
+    8,
+    "eight grooves, one diagonal pass each:\n{program}"
+  );
+  for line in cutting {
+    assert!(
+      !line.contains("Y0.0000") || !line.contains("X0.0000"),
+      "no groove is axis-aligned: {line}"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- inlay (M6 A6, A9, D-M6-7) ----------------------------------------------------------------
+
+/// A document of a given size with the given contours as `E1..En`, and no toolpaths.
+fn write_sized_vectors(
+  directory: &Path,
+  name: &str,
+  width: f64,
+  height: f64,
+  contours: Vec<Contour>,
+) -> PathBuf {
+  let mut document = Document::new(Job {
+    width: Length::from_mm(width),
+    height: Length::from_mm(height),
+    thickness: Length::from_mm(18.0),
+    units: UnitSystem::Mm,
+    origin: cam_model::OriginCorner::BottomLeft,
+    safe_z: Length::from_mm(5.0),
+  });
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Vectors".to_owned(),
+    visible: true,
+    entities: contours
+      .into_iter()
+      .enumerate()
+      .map(|(index, contour)| Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour { contour },
+      })
+      .collect(),
+  });
+  let path = directory.join(name);
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// A counter-clockwise rectangle with the given corners.
+fn rectangle_at(min: f64, bottom: f64, max: f64, top: f64) -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(min, bottom),
+      Point2::new(max, bottom),
+      Point2::new(max, top),
+      Point2::new(min, top),
+    ],
+    true,
+  )
+  .expect("rectangle")
+}
+
+/// A 2 mm tool with a 1 mm stepover: the fixture the simulation resolves cell for cell, `emit`'s and
+/// `simulate`'s own clean pocket precedent.
+fn write_small_tool_library(directory: &Path) -> PathBuf {
+  let path = directory.join("small.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G3".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(2.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "C3".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(2.0)),
+      stepover: Some(Length::from_mm(1.0)),
+      clear_stepover: None,
+      tool_number: Some(1),
+      notes: None,
+    })
+    .expect("cutting data");
+  library.link("E3", "G3", "C3", None, None).expect("link");
+  path
+}
+
+/// Author an inlay on `E1` through the real `toolpath` command.
+fn author_inlay(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
+  let mut arguments = vec![
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "inlay",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ];
+  arguments.extend_from_slice(extra);
+  run(&arguments)
+}
+
+#[test]
+fn an_inlay_command_appends_the_pair_in_the_fixed_order() {
+  // A6 and D-M6-7: one command, **two** toolpaths, the cavity first and the plug that fits it second,
+  // with consecutive ids and those exact names. The document says which half each one is with what it
+  // already records about a toolpath's work: the female names the region it clears, the male names the
+  // same region as the islands it leaves standing and takes no boundary entity, because its boundary is
+  // the job rectangle and the job is not an entity.
+  let directory = scratch("inlay-pair");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  let before = cam_store::document::load_document(&document).expect("loads");
+  assert!(before.toolpaths.is_empty(), "the fixture has no toolpaths");
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "1.5", "--stepover", "4"],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 inlay female, tool T1, 1 entity(ies)\n\
+     added TP2 inlay male, tool T1, 1 island(s)\n",
+    "{}",
+    added.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths.len(), 2, "one command, two toolpaths");
+  assert_eq!(loaded.toolpaths[0].id, "TP1");
+  assert_eq!(loaded.toolpaths[0].name, "inlay female");
+  assert_eq!(loaded.toolpaths[0].entity_ids, vec!["E1".to_owned()]);
+  assert!(loaded.toolpaths[0].island_ids.is_empty());
+  assert_eq!(loaded.toolpaths[1].id, "TP2");
+  assert_eq!(loaded.toolpaths[1].name, "inlay male");
+  assert!(loaded.toolpaths[1].entity_ids.is_empty());
+  assert_eq!(loaded.toolpaths[1].island_ids, vec!["E1".to_owned()]);
+
+  // Both halves carry the same parameters — one allowance, one depth, one stepover — and the allowance
+  // is the number the flag named.
+  match (
+    &loaded.toolpaths[0].operation,
+    &loaded.toolpaths[1].operation,
+  ) {
+    (Operation::Inlay(female), Operation::Inlay(male)) => {
+      assert_eq!(female, male, "one copy of the pair's numbers");
+      assert_eq!(female.allowance, Length::from_mm(1.5));
+      assert_eq!(
+        female.cut_depth,
+        Length::from_mm(18.0),
+        "--cut-depth's own default, from the profile's"
+      );
+      assert_eq!(
+        female.pass_depth,
+        Length::from_mm(6.0),
+        "the library's stepdown"
+      );
+      assert_eq!(female.start_depth, Length::ZERO);
+    }
+    other => panic!("expected two inlay halves, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_inlay_command_appends_the_next_pair() {
+  // The ids are deterministic and never reused: the second run appends `TP3` and `TP4`, in that order,
+  // because the pair is named from the document's own next free ids.
+  let directory = scratch("inlay-second");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+
+  let first = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "1", "--stepover", "4"],
+  );
+  assert_eq!(first.code, 0, "{}", first.stderr);
+  let second = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "2", "--stepover", "4"],
+  );
+  assert_eq!(second.code, 0, "{}", second.stderr);
+  assert_eq!(
+    second.stdout,
+    "added TP3 inlay female, tool T1, 1 entity(ies)\n\
+     added TP4 inlay male, tool T1, 1 island(s)\n",
+    "{}",
+    second.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let ids: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.id.as_str())
+    .collect();
+  assert_eq!(ids, vec!["TP1", "TP2", "TP3", "TP4"]);
+  let names: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.name.as_str())
+    .collect();
+  assert_eq!(
+    names,
+    vec!["inlay female", "inlay male", "inlay female", "inlay male"]
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole program one inlay pair emits, byte for byte.
+///
+/// A 40 x 30 mm sheet, a 16 x 6 mm region at (12, 12), a 6 mm tool, a 1 mm allowance, a 4 mm stepover
+/// and a 6 mm depth. The **female** is one ring — the tool centre 2 mm inside the region's own wall,
+/// which is `radius - allowance` inside it and therefore `radius` inside the cavity the allowance grows
+/// it to — cut first: `N30`..`N90`, seven moves. The **male** is the frame between the stock's edge and
+/// the region, cleared in rows 4 mm apart: `N100` is the post's segment change (the tool does not change
+/// and the clearance height does not move, so its `G00` carries nothing), then nineteen rows' worth of
+/// passes — `N110`..`N500` — where a row that crosses the region is cut as **two** spans and a row that
+/// misses it as one, zigzagging so each row starts where the last one ended. The post names the first
+/// segment in its header block and no further one, which is why only the female is named.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_INLAY_PROGRAM: &str = "\
+( inlay female )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X14.0000Y14.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X26.0000\r\n\
+N60G01Y16.0000\r\n\
+N70G01X14.0000\r\n\
+N80G01Y14.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00\r\n\
+N110G00X3.0000Y3.0000\r\n\
+N120G01Z-6.0000\r\n\
+N130G01X37.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Y7.0000\r\n\
+N160G01Z-6.0000\r\n\
+N170G01X3.0000\r\n\
+N180G00Z5.0000\r\n\
+N190G00Y11.0000\r\n\
+N200G01Z-6.0000\r\n\
+N210G01X9.0000\r\n\
+N220G00Z5.0000\r\n\
+N230G00X31.0000\r\n\
+N240G01Z-6.0000\r\n\
+N250G01X37.0000\r\n\
+N260G00Z5.0000\r\n\
+N270G00Y15.0000\r\n\
+N280G01Z-6.0000\r\n\
+N290G01X31.0000\r\n\
+N300G00Z5.0000\r\n\
+N310G00X9.0000\r\n\
+N320G01Z-6.0000\r\n\
+N330G01X3.0000\r\n\
+N340G00Z5.0000\r\n\
+N350G00Y19.0000\r\n\
+N360G01Z-6.0000\r\n\
+N370G01X9.0000\r\n\
+N380G00Z5.0000\r\n\
+N390G00X31.0000\r\n\
+N400G01Z-6.0000\r\n\
+N410G01X37.0000\r\n\
+N420G00Z5.0000\r\n\
+N430G00Y23.0000\r\n\
+N440G01Z-6.0000\r\n\
+N450G01X3.0000\r\n\
+N460G00Z5.0000\r\n\
+N470G00Y27.0000\r\n\
+N480G01Z-6.0000\r\n\
+N490G01X37.0000\r\n\
+N500G00Z5.0000\r\n\
+N510G00Z5.0000\r\n\
+N520G00X0.0000Y0.0000\r\n\
+N530M05\r\n\
+N540M30\r\n\
+";
+
+#[test]
+fn an_inlay_authored_through_the_cli_emits_the_golden_program() {
+  // The pair's program, byte for byte: the female's single ring first — the 16 x 6 mm region at
+  // (12, 12) cleared with a 6 mm tool and a 1 mm allowance, so the tool centre runs 2 mm inside its
+  // wall — and then the male's rows across the frame between the stock's edge and the region, 4 mm
+  // apart, each row cut as **two** spans where it crosses the region and as one where it does not.
+  let directory = scratch("golden-inlay");
+  let document = write_sized_vectors(
+    &directory,
+    "inlay.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &[
+      "--inlay-allowance",
+      "1",
+      "--stepover",
+      "4",
+      "--cut-depth",
+      "6",
+    ],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_INLAY_PROGRAM);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_runs_of_an_inlay_print_and_emit_the_same_bytes() {
+  // S6: identical input, identical bytes — the command's own report and the program it makes possible.
+  let directory = scratch("inlay-determinism");
+  let first_document = write_sized_vectors(
+    &directory,
+    "first.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let second_document = write_sized_vectors(
+    &directory,
+    "second.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let arguments = [
+    "--inlay-allowance",
+    "1",
+    "--stepover",
+    "4",
+    "--cut-depth",
+    "6",
+  ];
+  let first = author_inlay(&first_document, &library, &arguments);
+  let second = author_inlay(&second_document, &library, &arguments);
+  assert_eq!(first.code, 0, "{}", first.stderr);
+  assert_eq!(second.code, 0, "{}", second.stderr);
+  assert_eq!(first.stdout, second.stdout);
+
+  let program = emit_program(&directory, &first_document, &library, &post);
+  assert_eq!(
+    emit_program(&directory, &second_document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_takes_no_side_no_tab_no_lead_no_ramp_no_spacing_no_angle_and_no_chamfer_width() {
+  // D-M6-7: the pair is two pockets, so every flag that belongs to another cutting law has no meaning
+  // here — and `--strategy` with them, because the pair's parameters carry no clearing pattern at all.
+  // Refusing them by name is the difference between a refusal and a silently different pair.
+  let directory = scratch("inlay-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--ramp", "10"),
+    ("--spacing", "4"),
+    ("--angle", "45"),
+    ("--chamfer-width", "3"),
+    ("--strategy", "raster"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "inlay.c2d",
+      vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = author_inlay(&document, &library, &["--stepover", "4", flag, value]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("male/female pair of pockets"),
+      "and says what an inlay is instead: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_names_the_pair_itself_so_it_takes_no_id_and_no_name() {
+  // The two ids and the two names are part of the command's contract: one `--id` or `--name` could only
+  // ever name one of the two toolpaths it appends.
+  let directory = scratch("inlay-names");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  for flag in [["--id", "PAIR"], ["--name", "Inlay"]] {
+    let outcome = author_inlay(&document, &library, &["--stepover", "4", flag[0], flag[1]]);
+    assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag[0]),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_takes_its_stepover_and_pass_depth_from_the_tool_library() {
+  // The pocket's own fallbacks, unchanged: `--stepover` absent takes the library's stepover and
+  // `--pass-depth` absent takes its stepdown. The fixture tool is 6 mm with a 2.4 mm stepover and a
+  // 5 mm stepdown.
+  let directory = scratch("inlay-library");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "inlay",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Inlay(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(2.4),
+        "the library's stepover"
+      );
+      assert_eq!(
+        params.pass_depth,
+        Length::from_mm(5.0),
+        "the library's stepdown"
+      );
+    }
+    other => panic!("expected an inlay toolpath, got {other:?}"),
+  }
+
+  // A library with no stepover at all is an input error naming the flag, never a defaulted lattice — the
+  // same refusal a pocket speaks.
+  let plain = write_library(&directory);
+  let document = write_vectors(
+    &directory,
+    "inlay-nostepover.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let outcome = author_inlay(&document, &plain, &[]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--stepover"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_pair_simulates_with_no_gouge_and_no_uncut() {
+  // A9's end-to-end claim for the pair: the target authorises the female's cavity and the male's frame,
+  // and the two programs cut exactly those. The fixture is the one whose geometry the 1 mm grid resolves
+  // cleanly — a 2 mm tool at a 1 mm stepover, on a region whose walls sit on the lattice — so neither
+  // number is tolerance-softened.
+  let directory = scratch("inlay-simulate");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(40.0, 20.0, 120.0, 80.0)],
+  );
+  let library = write_small_tool_library(&directory);
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &[
+      "--inlay-allowance",
+      "2",
+      "--stepover",
+      "1",
+      "--cut-depth",
+      "2",
+    ],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  // And it is the pair that was simulated, not an empty program: two toolpaths, and both halves remove
+  // material.
+  assert!(
+    outcome.stdout.contains("2 toolpath(s)"),
+    "{}",
+    outcome.stdout
+  );
+  let removed = report_volume(&outcome.stdout, "removed:");
+  // The cavity is the 80 x 60 region grown by 2 mm — 84 x 64 — and the frame is the rest of the 200 x 100
+  // stock, so together they are the whole 200 x 100 mm sheet at 2 mm: 40000 mm3.
+  assert!(
+    (removed - 40_000.0).abs() < 1.0,
+    "the pair clears the whole stock: {removed} mm3 of it, {}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_whose_region_is_not_inside_the_stock_exits_two_naming_the_job() {
+  // The male clears the stock *around* the region, so a region on or across the stock's edge has nothing
+  // beside it to clear. The command asks the strategy, and refuses before anything is written.
+  let directory = scratch("inlay-outside");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(150.0, 20.0, 220.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = author_inlay(&document, &library, &["--stepover", "4"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("200 x 100"),
+    "the refusal names the stock: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_on_an_open_contour_exits_two_naming_the_geometry() {
+  // A cavity is a region's and an open vector bounds none: refused by the document's own closed-geometry
+  // rule, before anything is written.
+  let directory = scratch("inlay-open");
+  let open = Contour::from_points(&[Point2::new(20.0, 20.0), Point2::new(60.0, 20.0)], false)
+    .expect("an open vector");
+  let document = write_vectors(&directory, "inlay.c2d", vec![open]);
+  let library = write_library(&directory);
+  let outcome = author_inlay(&document, &library, &["--stepover", "4"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("closed geometry"),
+    "the refusal says what is wrong: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- thread milling (M6 A7, A9, D-M6-8) -------------------------------------------------------
+
+/// Author a thread on `E1` through the real `toolpath` command.
+fn author_thread(
+  document: &Path,
+  library: &Path,
+  pitch: f64,
+  direction: &str,
+  cut_depth: f64,
+) -> Outcome {
+  let pitch = pitch.to_string();
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "thread",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--pitch",
+    &pitch,
+    "--thread-direction",
+    direction,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+/// The whole program one internal thread emits, byte for byte.
+///
+/// A 16 mm circle milled by a 6 mm tool at a 1.5 mm pitch, 6 mm deep: the tool centre orbits at
+/// `(D − t)/2 = 5` mm, so it enters over `(30, 15)` — the circle's centre is `(25, 15)` — and the descent
+/// is `6 / 1.5 = 4` whole revolutions, one **helical** block each, `G03` with its incremental centre and
+/// the Z it has reached. Four turns of exactly one pitch, and a retract.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_THREAD_PROGRAM: &str = "\
+( Thread 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X30.0000Y15.0000\r\n\
+N40G01Z0.0000F100.0\r\n\
+N50G03Z-1.5000I-5.0000J0.0000\r\n\
+N60G03Z-3.0000I-5.0000J0.0000\r\n\
+N70G03Z-4.5000I-5.0000J0.0000\r\n\
+N80G03Z-6.0000I-5.0000J0.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X0.0000Y0.0000\r\n\
+N120M05\r\n\
+N130M30\r\n";
+
+#[test]
+fn a_thread_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-thread");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 thread (1.5 mm pitch, internal), tool T1, 1 entity(ies)\n"
+  );
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_THREAD_PROGRAM);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_thread_runs_emit_identical_bytes() {
+  // S6: identical input, identical output. Two fresh documents, the same command twice, the same
+  // document bytes and the same program bytes.
+  let directory = scratch("thread-determinism");
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let first = write_vectors(&directory, "first.c2d", vec![circle_contour(8.0)]);
+  let second = write_vectors(&directory, "second.c2d", vec![circle_contour(8.0)]);
+  assert_eq!(
+    author_thread(&first, &library, 1.5, "internal", 6.0).code,
+    0
+  );
+  assert_eq!(
+    author_thread(&second, &library, 1.5, "internal", 6.0).code,
+    0
+  );
+  assert_eq!(
+    std::fs::read(&first).expect("read"),
+    std::fs::read(&second).expect("read"),
+    "the two documents are identical"
+  );
+  assert_eq!(
+    emit_program(&directory, &first, &library, &post),
+    emit_program(&directory, &second, &library, &post),
+    "and so are the two programs"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_external_thread_orbits_outside_the_circle() {
+  // The same circle as a boss: the orbit is `(D + t)/2 = 11` mm, so the entry is over `x = 36` and every
+  // helical block's incremental centre offset is `I-11.0000` — the tool is outside the wall it cuts.
+  let directory = scratch("thread-external");
+  let document = write_vectors(&directory, "boss.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_thread(&document, &library, 2.0, "external", 8.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 thread (2 mm pitch, external), tool T1, 1 entity(ies)\n"
+  );
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program.contains("N30G00X36.0000Y15.0000"),
+    "the orbit is (D + t)/2 outside the circle:\n{program}"
+  );
+  assert!(
+    program.contains("I-11.0000"),
+    "and the tool centre is 11 mm from the circle's centre:\n{program}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_refuses_by_name_the_flags_its_own_law_does_not_have() {
+  // A thread is one helical descent at a pitch: a side, a pass law, a tab, a lead, a stepover, an
+  // allowance, a ramp, a bevel's width, a clearing strategy and an inlay's allowance all describe a cut
+  // it does not make. Each is refused by name, and nothing is written.
+  let directory = scratch("thread-flags");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  for (flag, value) in [
+    ("--side", "inside"),
+    ("--pass-depth", "2"),
+    ("--stepover", "2"),
+    ("--allowance", "1"),
+    ("--ramp", "4"),
+    ("--chamfer-width", "3"),
+    ("--strategy", "raster"),
+    ("--inlay-allowance", "0.5"),
+  ] {
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "thread",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--pitch",
+      "1.5",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains(flag) && outcome.stderr.contains("takes no"),
+      "the refusal names {flag}: {}",
+      outcome.stderr
+    );
+  }
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_without_a_pitch_or_with_a_pitch_that_descends_nowhere_is_refused_by_name() {
+  let directory = scratch("thread-pitch");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let missing = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "thread",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(missing.code, 2, "{}", missing.stderr);
+  assert!(
+    missing.stderr.contains("--pitch"),
+    "the refusal names the flag: {}",
+    missing.stderr
+  );
+
+  for pitch in ["0", "-1.5"] {
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "thread",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--pitch",
+      pitch,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "pitch {pitch}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains("pitch") && outcome.stderr.contains(pitch),
+      "the refusal names the pitch and its value: {}",
+      outcome.stderr
+    );
+  }
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_thread_on_geometry_that_is_not_a_circle_is_refused_by_name() {
+  let directory = scratch("thread-square");
+  let document = write_vectors(
+    &directory,
+    "square.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("E1") && outcome.stderr.contains("not a circle"),
+    "the refusal names the entity and what is wrong with it: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_internal_thread_whose_tool_is_wider_than_the_hole_is_refused_by_name() {
+  // A 4 mm hole with the library's 6 mm tool: `(D − t)/2` is negative, so there is no orbit to run the
+  // tool centre on. Refused while the command can still say no, naming both diameters.
+  let directory = scratch("thread-too-wide");
+  let document = write_vectors(&directory, "hole.c2d", vec![circle_contour(2.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("6") && outcome.stderr.contains("4"),
+    "the refusal names the tool and the hole: {}",
+    outcome.stderr
+  );
+  assert!(
+    outcome.stderr.contains("orbit"),
+    "and why they cannot be combined: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+
+  // The same tool outside the same circle is a thread that fits by construction: the orbit only grows.
+  let external = author_thread(&document, &library, 1.5, "external", 6.0);
+  assert_eq!(external.code, 0, "{}", external.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_coarse_thread_simulates_with_no_gouge_and_no_uncut() {
+  // **The acceptance criterion of the exact-claim round.** A real thread: 6 mm deep at a 1.5 mm pitch — four
+  // revolutions — with a 6 mm tool in a 16 mm hole, on 1 mm cells and the judgement's eighth of a cell. The
+  // material a helix leaves between two revolutions is the **thread**, not material standing: the claim is
+  // the spiral the descent leaves, per cell, so a correct coarse thread reports nothing on either sign.
+  // Before the claim was exact this document exited 6 with tens of cubic millimetres of uncut.
+  let directory = scratch("thread-simulate");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_help_lists_the_thread_kind_and_its_two_options() {
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "texture, inlay or\n                              thread",
+    "--pitch <mm>",
+    "--thread-direction <d>",
+    "helical descent",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected}:\n{}",
+      outcome.stdout
+    );
+  }
+}
+
+#[test]
+fn a_post_without_helical_blocks_refuses_a_thread_by_name_and_writes_nothing() {
+  // A7's other half: the program expresses the helix as a helical arc, so a post that cannot express one
+  // **refuses** it — naming the post and the move kind — instead of emitting a flat circle at the wrong
+  // depth. M4's arc precedent, at the CLI's own door: exit 4, and no program file.
+  let directory = scratch("thread-post-refusal");
+  let document = write_vectors(&directory, "thread.c2d", vec![circle_contour(8.0)]);
+  let library = write_library(&directory);
+  let added = author_thread(&document, &library, 1.5, "internal", 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let arcs_only = directory.join("arcs-only.pp");
+  std::fs::write(
+    &arcs_only,
+    "POST_NAME = \"arcs only\"\n\
+     VAR X_POSITION = [X|C|X|1.4]\n\
+     VAR Z_POSITION = [Z|C|Z|1.4]\n\
+     VAR ARC_CENTRE_I_INC_POSITION = [I|A|I|1.4]\n\
+     VAR ARC_CENTRE_J_INC_POSITION = [J|A|J|1.4]\n\
+     begin FIRST_CW_ARC_MOVE\n\"G02[X][I][J]\"\n\
+     begin CW_ARC_MOVE\n\"G02[X][I][J]\"\n",
+  )
+  .expect("post written");
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    arcs_only.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 4, "{}", outcome.stderr);
+  assert!(
+    outcome.stderr.contains("arcs only")
+      && outcome.stderr.contains("Move::Helix")
+      && outcome.stderr.contains("refusing to emit an approximation"),
+    "the refusal names the post, the move kind and the refusal to approximate: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
 }

@@ -18,7 +18,7 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2, Vertex};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, PocketParams, PocketStrategy};
-use cam_move::{MoveStream, Segment};
+use cam_move::{MoveStream, Segment, ToolShape};
 use cam_sim::{Heightfield, DEFAULT_CELL};
 use cam_toolpath::{pocket, PocketRequest, ToolSpec};
 use cam_ui::Shell;
@@ -127,6 +127,7 @@ fn sample_tool() -> ToolSpec {
   ToolSpec {
     number: 1,
     diameter: Length::from_mm(6.0),
+    included_angle: None,
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,
@@ -170,7 +171,7 @@ fn sample_preview(document: &Document) -> (Heightfield, MoveStream) {
   program.segments.push(Segment {
     name: "sample pocket".to_owned(),
     tool_number: tool.number,
-    tool_diameter: tool.diameter,
+    tool: ToolShape::cylinder(tool.diameter),
     feed_rate: tool.feed_rate,
     plunge_rate: tool.plunge_rate,
     spindle_speed: tool.spindle_speed,

@@ -1,7 +1,8 @@
 //! Behaviour tests for the post-processor parser (A5, A7).
 //!
 //! The fixture below is authored for this project: no the vendor `.pp` file is vendored (A7). It covers
-//! all thirteen directives and all sixteen output blocks.
+//! all thirteen directives and all twenty output blocks — the four helical kinds M6 added included, so
+//! `every_block_is_parsed` still means what it says (D-M6-8).
 
 use cam_post::{parse_post, BlockKind, EmissionMode, PostUnits};
 
@@ -79,6 +80,18 @@ begin FIRST_CCW_ARC_MOVE
 
 begin CCW_ARC_MOVE
 "[N]G03[X][Y][I][J]"
+
+begin FIRST_CW_HELIX_MOVE
+"[N]G02[X][Y][Z][I][J][F]"
+
+begin CW_HELIX_MOVE
+"[N]G02[X][Y][Z][I][J]"
+
+begin FIRST_CCW_HELIX_MOVE
+"[N]G03[X][Y][Z][I][J][F]"
+
+begin CCW_HELIX_MOVE
+"[N]G03[X][Y][Z][I][J]"
 
 begin FEED_RATE_CHANGE
 "[N][F]"

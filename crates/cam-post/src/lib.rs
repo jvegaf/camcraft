@@ -85,7 +85,8 @@ pub struct VarSpec {
 
 /// The output blocks a post-processor can define.
 ///
-/// Sixteen blocks: the vocabulary recovered from the shipped post-processors.
+/// Twenty blocks: the sixteen the dialect's shipped post-processors carry, plus M6's four helical
+/// kinds, which carry `[Z]` where the arc kinds cannot (D-M6-8).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BlockKind {
   /// Emitted once at the start of the program.
@@ -114,6 +115,17 @@ pub enum BlockKind {
   FirstCcwArcMove,
   /// A counter-clockwise arc.
   CcwArcMove,
+  /// The first clockwise helical move of a segment.
+  ///
+  /// A helical block carries the Z as well as the centre offsets, because the move descends: an arc
+  /// block's `[X][Y][I][J]` would emit the helix at one depth whatever it was doing (M6 A7).
+  FirstCwHelixMove,
+  /// A clockwise helical move.
+  CwHelixMove,
+  /// The first counter-clockwise helical move of a segment.
+  FirstCcwHelixMove,
+  /// A counter-clockwise helical move.
+  CcwHelixMove,
   /// A feed rate change inside a segment.
   FeedRateChange,
   /// Start of a new toolpath segment.
@@ -124,7 +136,7 @@ pub enum BlockKind {
 
 impl BlockKind {
   /// Every block kind, in a stable order.
-  pub const ALL: [Self; 16] = [
+  pub const ALL: [Self; 20] = [
     Self::Header,
     Self::Footer,
     Self::InitialRapidMove,
@@ -138,6 +150,10 @@ impl BlockKind {
     Self::CwArcMove,
     Self::FirstCcwArcMove,
     Self::CcwArcMove,
+    Self::FirstCwHelixMove,
+    Self::CwHelixMove,
+    Self::FirstCcwHelixMove,
+    Self::CcwHelixMove,
     Self::FeedRateChange,
     Self::NewSegment,
     Self::Toolchange,
@@ -159,6 +175,10 @@ impl BlockKind {
       Self::CwArcMove => "CW_ARC_MOVE",
       Self::FirstCcwArcMove => "FIRST_CCW_ARC_MOVE",
       Self::CcwArcMove => "CCW_ARC_MOVE",
+      Self::FirstCwHelixMove => "FIRST_CW_HELIX_MOVE",
+      Self::CwHelixMove => "CW_HELIX_MOVE",
+      Self::FirstCcwHelixMove => "FIRST_CCW_HELIX_MOVE",
+      Self::CcwHelixMove => "CCW_HELIX_MOVE",
       Self::FeedRateChange => "FEED_RATE_CHANGE",
       Self::NewSegment => "NEW_SEGMENT",
       Self::Toolchange => "TOOLCHANGE",

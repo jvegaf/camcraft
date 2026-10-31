@@ -35,7 +35,7 @@
 
 use cam_app::Viewport;
 use cam_model::Job;
-use cam_move::{Move, MoveStream, Point3};
+use cam_move::{Move, MoveStream, Point3, ToolShape};
 use cam_sim::{sweep, Heightfield};
 use cam_units::Length;
 use cam_view::{build_stock_box, build_surface, Camera3d, Line3, FIELD_OF_VIEW, MIN_DISTANCE};
@@ -139,8 +139,9 @@ struct Step {
   movement: Move,
   /// Where the sweep starts: exactly the origin [`sweep::apply`] uses for this move.
   sweep_from: Point3,
-  /// The tool radius, from the segment's own diameter.
-  radius: f64,
+  /// The tool's shape, carried from the segment so the preview's own field is cut by the tool the
+  /// program names rather than by a widened disc (M6 A8).
+  tool: ToolShape,
   /// How long the move takes, in the program's own seconds.
   seconds: f64,
 }
@@ -404,7 +405,7 @@ impl Preview3d {
   /// the picture stays honest either way.
   fn apply(&mut self, index: usize) {
     let step = self.steps[index];
-    let _ = sweep::apply_move(&mut self.field, step.sweep_from, step.movement, step.radius);
+    let _ = sweep::apply_move(&mut self.field, step.sweep_from, step.movement, step.tool);
   }
 
   /// Stop playback once there is nothing left to play, and mark the last move consumed.
@@ -536,7 +537,9 @@ impl Preview3d {
       for movement in &segment.moves {
         let to = movement.destination();
         let stroke = match movement {
-          Move::Feed { .. } | Move::Arc { .. } => Stroke::new(1.6, palette::CUT),
+          Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
+            Stroke::new(1.6, palette::CUT)
+          }
           Move::Rapid { .. } | Move::Retract { .. } => Stroke::new(1.0, palette::TRAVEL),
         };
         if let Some(from) = previous {
@@ -600,7 +603,7 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
   cumulative.push(0.0);
   let mut departure = Point3::new(program.home.x, program.home.y, program.safe_z.mm());
   for segment in &program.segments {
-    let radius = segment.tool_diameter.mm() / 2.0;
+    let tool = segment.tool;
     let mut previous: Option<Point3> = None;
     for movement in &segment.moves {
       let to = movement.destination();
@@ -609,7 +612,7 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
       steps.push(Step {
         movement: *movement,
         sweep_from: previous.unwrap_or(to),
-        radius,
+        tool,
         seconds,
       });
       cumulative.push(total);
@@ -626,8 +629,9 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
 /// otherwise. A rapid and a retract carry no rate of their own, so they are timed at the segment's
 /// feed rate — the preview's clock is a story about progress, and a machine's rapid rate is a number
 /// the program does not contain. An arc is measured along its own circle, for the same reason the
-/// sweep follows it rather than its chord. A length or a rate that is not a positive number gives a
-/// zero-duration move, which playback crosses without spending any of its budget.
+/// sweep follows it rather than its chord, and a helix adds the Z it descends to that arc length — the
+/// tool travels the hypotenuse of a turn, not the turn alone. A length or a rate that is not a positive
+/// number gives a zero-duration move, which playback crosses without spending any of its budget.
 fn move_seconds(departure: Point3, movement: Move, feed_rate: f64, plunge_rate: f64) -> f64 {
   let to = movement.destination();
   let (length, rate) = match movement {
@@ -635,6 +639,12 @@ fn move_seconds(departure: Point3, movement: Move, feed_rate: f64, plunge_rate: 
       let radius = center.distance_to(to.xy());
       let sweep = arc_sweep(departure.xy(), to.xy(), center, ccw);
       (radius * sweep.abs(), feed_rate)
+    }
+    Move::Helix { center, ccw, .. } => {
+      let radius = center.distance_to(to.xy());
+      let sweep = arc_sweep(departure.xy(), to.xy(), center, ccw);
+      let (arc, rise) = (radius * sweep.abs(), to.z.mm() - departure.z.mm());
+      ((arc * arc + rise * rise).sqrt(), feed_rate)
     }
     Move::Feed { .. } => {
       let flat = departure.xy().distance_to(to.xy());
@@ -688,14 +698,16 @@ fn frame_camera(job: &Job) -> Camera3d {
 
 /// The straight edges a movement contributes, in machine space.
 ///
-/// A feed, rapid or retract is one edge. An arc is flattened into the chords that stay within
-/// `tolerance` of it, with its Z interpolated along the way — the arc model is planar in XY, so the
-/// height comes from the movement, not from the circle. A degenerate arc falls back to its chord
-/// rather than disappearing: showing where the tool went is more useful than showing nothing.
+/// A feed, rapid or retract is one edge. An arc or a helix is flattened into the chords that stay within
+/// `tolerance` of its circle, with its Z interpolated along the way — the arc model is planar in XY, so
+/// the height comes from the movement, not from the circle, which is what draws a helix as the descending
+/// spiral it is. A degenerate arc falls back to its chord rather than disappearing: showing where the
+/// tool went is more useful than showing nothing.
 fn path_points(from: Point3, movement: Move, tolerance: f64) -> Vec<(Point3, Point3)> {
   let to = movement.destination();
-  let Move::Arc { center, ccw, .. } = movement else {
-    return vec![(from, to)];
+  let (center, ccw) = match movement {
+    Move::Arc { center, ccw, .. } | Move::Helix { center, ccw, .. } => (center, ccw),
+    _ => return vec![(from, to)],
   };
   let radius = center.distance_to(to.xy());
   if !radius.is_finite() || radius <= 0.0 {

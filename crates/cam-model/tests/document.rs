@@ -2,7 +2,7 @@
 
 use cam_geom::{Contour, Point2};
 use cam_model::*;
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
 fn square(size: f64) -> Contour {
   Contour::from_points(
@@ -468,8 +468,16 @@ fn islands_on_a_profile_toolpath_are_rejected() {
   document.toolpaths[0].island_ids = vec!["E2".to_owned()];
   let error = document.validate().expect_err("must reject");
   assert!(
-    matches!(error, ModelError::IslandsRequirePocket { .. }),
+    matches!(error, ModelError::IslandsRequirePocketOrInlay { .. }),
     "{error:?}"
+  );
+  // The sentence is the contract, not just the variant: `cam-cli` prints it verbatim and exits `2`.
+  // It names **both** operations that take islands, because an inlay male has no boundary entity at
+  // all — its boundary is the job rectangle — and its island list *is* the region it leaves standing
+  // (M6 D-M6-13), so "only for a pocket" stopped being true when the pair landed (M6 L16).
+  assert_eq!(
+    error.to_string(),
+    "toolpath \"TP1\" takes islands only for a pocket or an inlay"
   );
 }
 
@@ -493,6 +501,606 @@ fn a_legacy_schema_tag_is_migrated_and_an_unknown_one_is_not() {
   let error = unknown.validate().expect_err("must reject");
   assert!(
     matches!(error, ModelError::UnsupportedSchema { .. }),
+    "{error:?}"
+  );
+}
+
+// --- fluting (M6 A4, D-M6-5, D-M6-12) --------------------------------------------------------
+
+/// A fluting toolpath on the square's one entity, ramped over `ramp` millimetres.
+fn fluting_document(ramp: f64) -> Document {
+  document_with(Operation::Fluting(FlutingParams {
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(3.0),
+    ramp: Length::from_mm(ramp),
+  }))
+}
+
+#[test]
+fn a_fluting_toolpath_round_trips_with_its_ramp() {
+  let document = fluting_document(10.0);
+  document
+    .validate()
+    .expect("a flute on closed geometry is valid");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"fluting\""), "{json}");
+  assert!(json.contains("\"ramp\":10.0"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_fluting_toolpath_written_without_a_ramp_loads_as_the_plain_groove() {
+  // `ramp` is defaulted rather than required, so a hand-written or older document that names a
+  // `fluting` toolpath without the field loads as the in-place plunge it describes (A1, D-M6-5).
+  let json = serde_json::to_string(&fluting_document(10.0)).expect("serialises");
+  let without = json.replace(",\"ramp\":10.0", "");
+  assert_ne!(without, json, "the archive carries the ramp: {json}");
+  let parsed: Document = serde_json::from_str(&without).expect("a document without a ramp loads");
+  match &parsed.toolpaths[0].operation {
+    Operation::Fluting(params) => assert_eq!(params.ramp, Length::ZERO),
+    other => panic!("expected a fluting toolpath, got {other:?}"),
+  }
+  parsed.validate().expect("and it is valid");
+}
+
+#[test]
+fn a_negative_fluting_ramp_is_refused_at_load_naming_the_value() {
+  // A negative ramp would enter upwards, so the document model refuses it as it loads rather than
+  // leaving it for `emit` to discover (D-M6-5, A4). It is the same refusal `cam-toolpath` makes, at the
+  // boundary that sees the document before any toolpath exists.
+  let document = fluting_document(-2.0);
+  let error = document
+    .validate()
+    .expect_err("a negative ramp must be refused");
+  assert_eq!(
+    error,
+    ModelError::FlutingRampNegative {
+      toolpath: "TP1".to_owned(),
+      value: -2.0,
+    }
+  );
+  assert!(
+    error.to_string().contains("-2"),
+    "the refusal names the value: {error}"
+  );
+  // Zero is the plain groove, not a negative ramp, and half the vector is the longest legal ramp this
+  // model can see without measuring the geometry (that check is the strategy's).
+  fluting_document(0.0).validate().expect("no ramp is legal");
+}
+
+#[test]
+fn a_flute_may_cut_an_open_vector() {
+  // A flute is one groove per vector, and a vector drawn as a line is the commonest case. Every other
+  // cutting operation in the model needs closed geometry; engrave and fluting are the two that do not.
+  let mut document = fluting_document(5.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  document
+    .validate()
+    .expect("a flute of an open vector is valid");
+}
+
+// --- texture (M6 A5, D-M6-6) -----------------------------------------------------------------
+
+/// A texture toolpath over a square `size` millimetres across, `spacing` apart at `angle` degrees.
+fn texture_document(size: f64, cut_depth: f64, spacing: f64, degrees: f64) -> Document {
+  let mut document = document_with(Operation::Texture(TextureParams {
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(cut_depth),
+    spacing: Length::from_mm(spacing),
+    angle: Angle::from_degrees(degrees),
+  }));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: square(size),
+  };
+  document
+}
+
+/// The grooves the document's own pattern cuts, as document XY polylines.
+fn grooves_of(document: &Document) -> Vec<Vec<Point2>> {
+  let Operation::Texture(params) = &document.toolpaths[0].operation else {
+    panic!("expected a texture toolpath");
+  };
+  let contours: Vec<&Contour> = document.toolpaths[0]
+    .entity_ids
+    .iter()
+    .map(|id| {
+      document
+        .entity(id)
+        .and_then(|entity| entity.kind.as_contour())
+        .expect("a contour")
+    })
+    .collect();
+  params.grooves(&contours)
+}
+
+#[test]
+fn a_texture_pattern_across_a_rectangle_is_rows_a_spacing_apart() {
+  // D-M6-6's pattern, stated arithmetically: a 10 x 10 mm square at 0 degrees with a 2 mm spacing. The
+  // first groove sits half a spacing inside the region, so the rows are y = 1, 3, 5, 7 and 9, and each
+  // is clipped to the square's own extent, x = 0 to 10. Five grooves, each 10 mm long — the pattern,
+  // and never a clearing of the 100 mm2 between them.
+  let document = texture_document(10.0, 3.0, 2.0, 0.0);
+  document.validate().expect("a texture of a closed region");
+  let grooves = grooves_of(&document);
+
+  assert_eq!(
+    grooves.len(),
+    5,
+    "five rows a 2 mm spacing apart: {grooves:?}"
+  );
+  assert_eq!(
+    grooves[0],
+    vec![Point2::new(0.0, 1.0), Point2::new(10.0, 1.0)],
+    "the first groove is half a spacing inside the region"
+  );
+  assert_eq!(
+    grooves[4],
+    vec![Point2::new(0.0, 9.0), Point2::new(10.0, 9.0)],
+    "and the last is the furthest one that still crosses material"
+  );
+  for (index, groove) in grooves.iter().enumerate() {
+    let y = 1.0 + 2.0 * index as f64;
+    assert_eq!(groove.len(), 2, "one straight span per row: {groove:?}");
+    assert!((groove[0].y - y).abs() < 1e-12, "{groove:?} at y = {y}");
+    assert!((groove[1].y - y).abs() < 1e-12, "{groove:?} at y = {y}");
+    assert!(
+      (groove[1].x - groove[0].x - 10.0).abs() < 1e-12,
+      "{groove:?}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_pattern_at_forty_five_degrees_is_clipped_by_the_region_and_not_by_its_bounds() {
+  // The same square at 45 degrees. In the groove frame the region is a diamond whose extent is the
+  // diagonal, `2 * 10 / sqrt(2) = 14.142` mm, so a 2 mm spacing gives seven rows starting half a
+  // spacing inside it. Each groove is the diamond's own chord, so the pattern is the region's — a
+  // rotation of the region, never of the document and never a rotation of its bounding box.
+  let document = texture_document(10.0, 3.0, 2.0, 45.0);
+  document.validate().expect("a texture of a closed region");
+  let grooves = grooves_of(&document);
+
+  let sqrt2 = std::f64::consts::SQRT_2;
+  let half_spacing = 1.0;
+  let diagonal = 10.0 / sqrt2;
+  assert_eq!(
+    grooves.len(),
+    7,
+    "the diagonal is 14.142 mm, so a 2 mm spacing gives 7 rows: {grooves:?}"
+  );
+
+  // The first row is `diagonal/2 - half_spacing` from the diamond's low corner, which puts it
+  // `half_spacing * sqrt(2)` from the square's corner (10, 0) along each of the two edges it meets.
+  let first = &grooves[0];
+  let corner = Point2::new(10.0 - half_spacing * sqrt2, 0.0);
+  let edge = Point2::new(10.0, half_spacing * sqrt2);
+  assert!(
+    (first[0].x - corner.x).abs() < 1e-9 && (first[0].y - corner.y).abs() < 1e-9,
+    "the first groove starts {half_spacing} mm across from the corner: {first:?} against {corner:?}"
+  );
+  assert!(
+    (first[1].x - edge.x).abs() < 1e-9 && (first[1].y - edge.y).abs() < 1e-9,
+    "and meets the next edge the same distance up it: {first:?} against {edge:?}"
+  );
+
+  // The last row is six spacings further in, and the groove `y - x = offset` crosses the square's two
+  // other edges where the pattern says it does.
+  let offset = (-diagonal + half_spacing + 6.0 * 2.0) * sqrt2;
+  let last = &grooves[6];
+  assert!(
+    (last[0].x).abs() < 1e-9 && (last[0].y - offset).abs() < 1e-9,
+    "the last groove starts on the left edge: {last:?} at offset {offset}"
+  );
+  assert!(
+    (last[1].y - 10.0).abs() < 1e-9 && (last[1].x - (10.0 - offset)).abs() < 1e-9,
+    "and ends on the top edge: {last:?} at offset {offset}"
+  );
+
+  // Every groove runs along the 45 degree diagonal, and none of them is axis-aligned: a pattern that
+  // rotated the square's bounding box instead of the region would give rows parallel to the axes.
+  for groove in &grooves {
+    let span = groove[1] - groove[0];
+    assert!(
+      (span.x.abs() - span.y.abs()).abs() < 1e-9,
+      "a 45 degree groove: {groove:?}"
+    );
+    assert!(
+      span.length() > 0.0,
+      "and it has material to cut: {groove:?}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_toolpath_round_trips_with_its_spacing_and_angle() {
+  let document = texture_document(10.0, 3.0, 2.5, 30.0);
+  document
+    .validate()
+    .expect("a texture of a closed region is valid");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"texture\""), "{json}");
+  assert!(json.contains("\"spacing\":2.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_texture_toolpath_written_without_its_spacing_and_angle_loads_with_the_defaults() {
+  // Both fields are defaulted rather than required, so a hand-written document that names a `texture`
+  // toolpath without them loads as the pattern it describes — 3 mm apart, along X — instead of failing
+  // the load (A1, D-M6-6).
+  let document = texture_document(10.0, 3.0, 5.0, 45.0);
+  let json = serde_json::to_string(&document).expect("serialises");
+  let angle = Angle::from_degrees(45.0).radians();
+  let without = json
+    .replace(",\"spacing\":5.0", "")
+    .replace(&format!(",\"angle\":{angle}"), "");
+  assert_ne!(without, json, "the archive carries both fields: {json}");
+  let parsed: Document = serde_json::from_str(&without).expect("a document without them loads");
+  match &parsed.toolpaths[0].operation {
+    Operation::Texture(params) => {
+      assert_eq!(params.spacing, TextureParams::default().spacing);
+      assert_eq!(params.angle, Angle::ZERO);
+    }
+    other => panic!("expected a texture toolpath, got {other:?}"),
+  }
+  parsed.validate().expect("and it is valid");
+}
+
+#[test]
+fn a_non_positive_texture_spacing_is_refused_at_load_naming_the_value() {
+  // A lattice of grooves `spacing` apart, with no spacing, is an input error and never an empty
+  // pattern: it is refused here, at the boundary that sees the document before any toolpath exists,
+  // and again by `cam-toolpath::texture` (D-M6-6).
+  for spacing in [0.0, -2.0] {
+    let document = texture_document(10.0, 3.0, spacing, 0.0);
+    let error = document
+      .validate()
+      .expect_err("a spacing with no distance behind it must be refused");
+    assert_eq!(
+      error,
+      ModelError::TextureSpacingNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: spacing,
+      }
+    );
+    assert!(
+      error.to_string().contains(&spacing.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_texture_toolpath_on_open_geometry_is_rejected() {
+  // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6). A flute and
+  // an engrave are the two strategies that accept one.
+  let mut document = texture_document(10.0, 3.0, 2.0, 0.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+// --- inlay (M6 A6, D-M6-7) -------------------------------------------------------------------
+
+/// The pair one `toolpath --kind inlay` command appends: a female that clears `E1` and a male that
+/// leaves it standing inside the job rectangle, both carrying the same parameters.
+///
+/// The region is a 100 mm square strictly inside the default 1219 x 2438 sheet, because an inlay's
+/// region has to sit inside the stock: the male clears the material around it.
+fn inlay_pair(params: InlayParams) -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Part".to_owned(),
+    visible: true,
+    entities: vec![Entity {
+      id: "E1".to_owned(),
+      kind: EntityKind::Contour {
+        contour: Contour::from_points(
+          &[
+            Point2::new(100.0, 100.0),
+            Point2::new(200.0, 100.0),
+            Point2::new(200.0, 200.0),
+            Point2::new(100.0, 200.0),
+          ],
+          true,
+        )
+        .expect("a square inside the stock"),
+      },
+    }],
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "inlay female".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "inlay male".to_owned(),
+    entity_ids: Vec::new(),
+    island_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Inlay(params),
+  });
+  document
+}
+
+fn inlay_params(allowance: f64, stepover: f64) -> InlayParams {
+  InlayParams {
+    allowance: Length::from_mm(allowance),
+    stepover: Length::from_mm(stepover),
+    ..InlayParams::default()
+  }
+}
+
+#[test]
+fn an_inlay_pair_round_trips_and_is_two_toolpaths_sharing_one_operation() {
+  let document = inlay_pair(inlay_params(1.5, 2.4));
+  document.validate().expect("a closed region inlay");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"inlay\""), "{json}");
+  assert!(json.contains("\"allowance\":1.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+
+  // The two halves carry the same parameters: the document states which half each one is with what it
+  // already records about a toolpath's work — the entities it clears and the islands it leaves standing.
+  match (
+    &parsed.toolpaths[0].operation,
+    &parsed.toolpaths[1].operation,
+  ) {
+    (Operation::Inlay(female), Operation::Inlay(male)) => assert_eq!(female, male),
+    other => panic!("expected two inlay halves, got {other:?}"),
+  }
+  assert_eq!(parsed.toolpaths[0].island_ids, Vec::<String>::new());
+  assert_eq!(parsed.toolpaths[1].entity_ids, Vec::<String>::new());
+  assert_eq!(parsed.toolpaths[1].island_ids, vec!["E1".to_owned()]);
+}
+
+#[test]
+fn an_inlay_defaults_to_the_pockets_own_numbers() {
+  // D-M6-7's "one depth and one stepover rather than two extra flags": an inlay that authors nothing
+  // clears at the depth and the stepover a pocket would, taken from the pocket rather than restated.
+  let inlay = InlayParams::default();
+  let pocket = PocketParams::default();
+  assert_eq!(inlay.allowance, Length::ZERO);
+  assert_eq!(inlay.stepover, pocket.stepover);
+  assert_eq!(inlay.pass_depth, pocket.pass_depth);
+  assert_eq!(inlay.start_depth, pocket.start_depth);
+  assert_eq!(inlay.cut_depth, pocket.cut_depth);
+}
+
+#[test]
+fn a_non_positive_inlay_stepover_is_refused_at_load_naming_the_value() {
+  // Both halves clear with the pocket's ring machinery, so both need a distance between rings: a
+  // lattice with no stepover leaves material standing between the rings.
+  for stepover in [0.0, -2.0] {
+    let document = inlay_pair(inlay_params(1.0, stepover));
+    let error = document
+      .validate()
+      .expect_err("a stepover with no distance behind it must be refused");
+    assert_eq!(
+      error,
+      ModelError::InlayStepoverNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: stepover,
+      }
+    );
+    assert!(
+      error.to_string().contains(&stepover.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn an_inlay_depth_range_with_no_pass_in_it_is_refused_at_load_naming_both_depths() {
+  for (start, cut) in [(6.0, 6.0), (6.0, 2.0)] {
+    let params = InlayParams {
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+      ..inlay_params(1.0, 2.0)
+    };
+    let document = inlay_pair(params);
+    let error = document
+      .validate()
+      .expect_err("a cut above its start depth has no pass behind it");
+    assert_eq!(
+      error,
+      ModelError::InlayDepthRange {
+        toolpath: "TP1".to_owned(),
+        cut_depth: cut,
+        start_depth: start,
+      }
+    );
+    assert!(
+      error.to_string().contains(&cut.to_string())
+        && error.to_string().contains(&start.to_string()),
+      "the refusal names both depths: {error}"
+    );
+  }
+}
+
+#[test]
+fn an_inlay_toolpath_that_is_both_halves_is_refused_rather_than_guessed() {
+  // A female names the region it clears; a male names it as the islands it leaves standing and takes no
+  // boundary entity, because its boundary is the job rectangle. A record that names both is two halves in
+  // one toolpath, and which of them a program would cut is not something to guess (see `InlayParams`).
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  document.toolpaths[1].entity_ids = vec!["E1".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::InlayMaleTakesNoEntities { ref toolpath } if toolpath == "TP2"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_inlay_toolpath_on_open_geometry_is_rejected() {
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  // The female's own rule fires first, and the male's island is refused for the same reason: a cavity
+  // and a plug are both regions, and an open vector bounds none.
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_inlay_male_stands_its_islands_inside_the_job_rectangle() {
+  // A male's boundary is the job, which is not an entity, so the model checks its islands against
+  // `Job::outline()`: a region outside the stock has nothing beside it for the male to clear.
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  let outside = Contour::from_points(
+    &[
+      Point2::new(1500.0, 1200.0),
+      Point2::new(1600.0, 1200.0),
+      Point2::new(1600.0, 1300.0),
+      Point2::new(1500.0, 1300.0),
+    ],
+    true,
+  )
+  .expect("a square past the stock's corner");
+  document.layers[0].entities.push(Entity {
+    id: "E2".to_owned(),
+    kind: EntityKind::Contour { contour: outside },
+  });
+  document.toolpaths[1].island_ids = vec!["E2".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandOutsideBoundary { ref island, .. } if island == "E2"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn the_job_outline_is_one_rectangle_in_document_coordinates() {
+  // The one place the job rectangle is built (M6 A6): `cam-toolpath::inlay`'s male half clears it and
+  // `cam-sim` authorises it, so both ask here.
+  let job = Job {
+    width: Length::from_mm(200.0),
+    height: Length::from_mm(100.0),
+    ..Job::default_sheet()
+  };
+  let outline = job.outline();
+  assert!(outline.is_closed());
+  let bounds = outline.bounds();
+  assert_eq!(
+    (bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y),
+    (0.0, 0.0, 200.0, 100.0)
+  );
+  // Document coordinates, not machine ones: the origin corner is applied later, once, by the toolpath
+  // layer, so a top-left job's outline is the same rectangle.
+  let top_left = Job {
+    origin: OriginCorner::TopLeft,
+    ..job
+  };
+  assert_eq!(top_left.outline(), outline);
+}
+
+// --- thread milling (M6 A7, D-M6-8) ----------------------------------------------------------
+
+/// A thread toolpath on the square's one entity: `pitch` millimetres a turn, `cut` deep, from `start`.
+fn thread_document(pitch: f64, direction: ThreadDirection, start: f64, cut: f64) -> Document {
+  document_with(Operation::Thread(ThreadParams {
+    pitch: Length::from_mm(pitch),
+    direction,
+    start_depth: Length::from_mm(start),
+    cut_depth: Length::from_mm(cut),
+  }))
+}
+
+#[test]
+fn a_thread_toolpath_round_trips_with_its_direction() {
+  // `ThreadDirection` is a snake_case tag like every other enum in the schema, and the operation is
+  // additive under the existing `kind` tag (A1): the schema stays `c2d/document@2`.
+  let document = thread_document(1.5, ThreadDirection::External, 1.0, 9.0);
+  document
+    .validate()
+    .expect("a thread on closed geometry is valid");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"thread\""), "{json}");
+  assert!(json.contains("\"direction\":\"external\""), "{json}");
+  assert!(json.contains("\"pitch\":1.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  assert!(
+    json.contains(DOCUMENT_SCHEMA),
+    "the schema tag is unchanged"
+  );
+}
+
+#[test]
+fn a_threads_pitch_must_be_a_positive_number_of_millimetres() {
+  // A pitch of zero is a descent of zero per revolution, which is not a thread: it is refused naming the
+  // toolpath and the value rather than clamped into one.
+  for pitch in [0.0, -1.5] {
+    let document = thread_document(pitch, ThreadDirection::Internal, 0.0, 6.0);
+    let error = document
+      .validate()
+      .expect_err("must refuse a pitch with no thread behind it");
+    assert_eq!(
+      error,
+      ModelError::ThreadPitchNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: pitch,
+      }
+    );
+    assert!(
+      error.to_string().contains(&pitch.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_threads_cut_depth_must_extend_below_its_start_depth() {
+  let document = thread_document(1.5, ThreadDirection::Internal, 6.0, 6.0);
+  let error = document.validate().expect_err("nothing to cut");
+  assert_eq!(
+    error,
+    ModelError::ThreadDepthRange {
+      toolpath: "TP1".to_owned(),
+      cut_depth: 6.0,
+      start_depth: 6.0,
+    }
+  );
+}
+
+#[test]
+fn a_thread_needs_closed_geometry() {
+  // A thread runs around a circle, and an open vector bounds no circle. The model refuses the open
+  // vector before the strategy has to, and `cam-toolpath::thread` refuses a closed non-circle too.
+  let mut document = thread_document(1.5, ThreadDirection::Internal, 0.0, 6.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("an open vector"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
     "{error:?}"
   );
 }

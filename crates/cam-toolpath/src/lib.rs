@@ -2,30 +2,60 @@
 //!
 //! M0 implemented `profile` and the rules every other strategy reuses: the side offset, the
 //! allowance, depth chunking, tab lifting and lead moves. M4 adds the two strategies that define 2.5D
-//! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks).
+//! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks). M6 adds
+//! the depth-variant strategies: `chamfer`, one V-bit pass whose Z is derived from the bit's own
+//! included angle instead of authored, `engrave`, one authored-depth pass along open or closed
+//! vectors with no pass law at all, `fluting`, one pass along a vector that ramps in over its
+//! first millimetres and out over its last, `texture`, one authored-depth pass along each groove
+//! of a pattern clipped to a closed region, `inlay`, the male/female pair of pockets one command
+//! appends: a cavity grown by the allowance and a plug of the region itself, and `thread`, one helical
+//! descent around a circle at a pitch per revolution — the one strategy whose program is not a stack of
+//! constant-Z moves.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
 #![warn(missing_docs)]
 
+pub mod chamfer;
 pub mod drill;
+pub mod engrave;
+pub mod fluting;
+pub mod inlay;
 pub mod pocket;
+pub mod texture;
+pub mod thread;
 
+pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
+pub use engrave::{engrave, EngraveRequest};
+pub use fluting::{fluting, FlutingRequest};
+pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
+pub use texture::{texture, TextureRequest};
+pub use thread::{thread, ThreadRequest};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
 use cam_move::{Move, Point3};
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
-/// The subset of tool data a profile cut needs.
+/// The subset of tool data a toolpath strategy needs.
+///
+/// `diameter` is what the offset strategies and the cylinder footprint need; `included_angle` is what a
+/// V-bit strategy needs, and it is an `Option` because the library records an angle only for tools that
+/// have one (D-M6-9).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ToolSpec {
   /// Tool number used in the program.
   pub number: u32,
   /// Cutting diameter.
   pub diameter: Length,
+  /// Full included angle of the tool's cone, when the library records one.
+  ///
+  /// `None` for a tool the library does not describe as a V-bit. A strategy that derives geometry from
+  /// the angle refuses such a tool by name instead of assuming 90 degrees, because a defaulted angle
+  /// silently cuts a different bevel (D-M6-9).
+  pub included_angle: Option<Angle>,
   /// Feed rate along the cut.
   pub feed_rate: f64,
   /// Plunge rate.
@@ -80,8 +110,8 @@ pub enum ToolpathError {
     /// The offending peck depth in millimetres.
     peck_depth: f64,
   },
-  /// A hole is not a circle, so it has no centre to drill.
-  #[error("entity {entity:?} is not a circle, so it has no drill centre")]
+  /// A hole is not a circle, so it has no centre to drill or to orbit.
+  #[error("entity {entity:?} is not a circle, so it has no centre to work from")]
   NotACircle {
     /// Id of the offending entity.
     entity: String,
@@ -92,6 +122,116 @@ pub enum ToolpathError {
   /// A drill bank was described with no drills, or with drills that overlap.
   #[error("drill bank needs at least one drill and a positive pitch")]
   InvalidBank,
+  /// A chamfer was given an included angle with no finite tangent.
+  ///
+  /// The document model refuses an impossible angle for a stored toolpath, but a caller that hands the
+  /// strategy its parameters directly must not receive an infinite Z either: the tangent of zero is
+  /// zero, so there is no depth behind the bevel (D-M6-10).
+  #[error("chamfer included angle {degrees} degrees must be strictly between 0 and 180")]
+  InvalidIncludedAngle {
+    /// The offending angle in degrees.
+    degrees: f64,
+  },
+  /// A flute's ramp is negative, which would enter upwards.
+  #[error("fluting ramp {ramp} mm must not be negative")]
+  InvalidRamp {
+    /// The offending ramp in millimetres.
+    ramp: f64,
+  },
+  /// A flute's ramp is longer than half the vector it runs on, so its entry and its exit would meet.
+  ///
+  /// Shortening the ramp silently is exactly what this refusal exists to prevent: the document asks
+  /// for a ramped entry and a ramped exit of that length, and a silently shortened one cuts both ends
+  /// at a depth nobody authorised (A4). Both numbers are named, so the message says which pair cannot
+  /// fit.
+  #[error("fluting ramp {ramp} mm is longer than half of the vector's {length} mm length")]
+  RampTooLong {
+    /// The offending ramp in millimetres.
+    ramp: f64,
+    /// The vector's length in millimetres.
+    length: f64,
+  },
+  /// A thread's pitch is zero or negative, so one revolution descends nowhere.
+  ///
+  /// The document model refuses it as the document loads, but a caller that hands the strategy its
+  /// parameters directly reaches it without passing through there. A pitch with no distance behind it
+  /// is an input error and never a helix that stays at one depth (M6 A7).
+  #[error("thread pitch {pitch} mm must be greater than zero")]
+  InvalidPitch {
+    /// The offending pitch in millimetres.
+    pitch: f64,
+  },
+  /// An internal thread's tool is at least as wide as the hole it is meant to cut inside.
+  ///
+  /// The tool centre orbited at `(D − t)/2`, which is not a radius when `t ≥ D`: the tool's centre would
+  /// have to sit on the hole's axis or outside it. Refused by name rather than collapsed into a plunge on
+  /// the axis, and the same tool outside the same circle is the external case, where it fits by
+  /// construction (M6 A7).
+  #[error(
+    "tool diameter {diameter} mm does not fit a {hole} mm hole: an internal thread's tool centre orbits \
+     at (D - t)/2, which has no radius when the tool is as wide as the hole"
+  )]
+  ThreadToolTooWide {
+    /// The tool's diameter in millimetres.
+    diameter: f64,
+    /// The hole's diameter in millimetres.
+    hole: f64,
+  },
+  /// A texture's spacing is not a positive number of millimetres.
+  ///
+  /// The document model refuses it as the document loads, but a caller that hands the strategy its
+  /// parameters directly reaches it without passing through there. A zero spacing is an input error and
+  /// never a silently empty pattern (D-M6-6).
+  #[error("texture spacing {spacing} mm must be greater than zero")]
+  InvalidSpacing {
+    /// The offending spacing in millimetres.
+    spacing: f64,
+  },
+  /// A texture's spacing yields no groove across the region, so the pattern would cut nothing.
+  ///
+  /// The lattice is the region's own extent divided by the spacing, so a spacing wider than the region
+  /// is a request with no groove behind it. Emitting an empty program instead would look like a
+  /// strategy that ran and found nothing to do, which is the one thing a mis-typed spacing must never
+  /// look like (D-M6-6).
+  #[error(
+    "texture spacing {spacing} mm at {angle} degrees leaves no groove across the region: the \
+     pattern would cut nothing, so this is a spacing with no pattern behind it"
+  )]
+  NoGroove {
+    /// The offending spacing in millimetres.
+    spacing: f64,
+    /// The groove direction in degrees.
+    angle: f64,
+  },
+  /// An inlay's allowance shrinks the region until there is none of it left.
+  ///
+  /// A negative allowance is an interference fit — the cavity smaller than the plug — so it is a
+  /// legitimate request up to the point where the region has no area left. The kernel is the only thing
+  /// that can say where that point is, and the refusal names the allowance rather than surfacing as a
+  /// pocket that "does not fit", which would blame the tool for an allowance (M6 A6, D-M6-7).
+  #[error("inlay allowance {allowance} mm leaves no region to cut: {reason}")]
+  InlayAllowanceCollapsed {
+    /// The offending allowance in millimetres.
+    allowance: f64,
+    /// What the kernel said, verbatim.
+    reason: String,
+  },
+  /// An inlay's region does not lie strictly inside the job rectangle.
+  ///
+  /// The male clears the stock *around* the region, so a region that reaches or crosses the stock's edge
+  /// has no material beside it to clear and the plug would come out bounded by the saw cut instead of by
+  /// a machined wall (M6 A6, D-M6-7).
+  #[error(
+    "inlay region is not strictly inside the job's {width} x {height} mm rectangle: the male clears \
+     the stock around the region, so a region on or across the stock's edge leaves nothing for it to \
+     clear"
+  )]
+  InlayRegionOutsideJob {
+    /// The job's width in millimetres.
+    width: f64,
+    /// The job's height in millimetres.
+    height: f64,
+  },
 }
 
 /// Everything a profile pass needs.
@@ -331,8 +471,12 @@ fn tangent_of(segment: Segment) -> cam_geom::Vec2 {
   }
 }
 
-/// Walk the contour once, splitting at tab boundaries and lifting where a tab applies.
-fn walk_contour(
+/// Walk the contour once at `z`, splitting at tab boundaries and lifting where a tab applies.
+///
+/// Shared with `chamfer`, which has no tabs: with an empty `tabs` the split is the whole contour, so a
+/// one-pass strategy gets the same arc-preserving walk a profile pass does instead of a second
+/// implementation of it.
+pub(crate) fn walk_contour(
   contour: &Contour,
   job: &Job,
   z: f64,
@@ -457,6 +601,124 @@ fn tab_spans(tabs: &[Tab], total: f64) -> Vec<Span> {
       .unwrap_or(std::cmp::Ordering::Equal)
   });
   spans
+}
+
+/// Walk the contour from arc length `from` to `to` at a constant `z`, keeping arcs as arcs.
+///
+/// [`walk_contour`] walks the whole contour; a flute's plateau is the middle of one, between the two
+/// ramps. The pieces go through the same [`sub_segment`] and [`push_horizontal`] pair, so a plateau
+/// that lands on an arc is still cut as an arc.
+pub(crate) fn walk_range(contour: &Contour, job: &Job, from: f64, to: f64, z: f64) -> Vec<Move> {
+  let mut moves = Vec::new();
+  let mut walked = 0.0;
+  for segment in contour.segments() {
+    let length = segment.length();
+    let start = walked;
+    walked += length;
+    if length <= 0.0 {
+      continue;
+    }
+    let piece_from = from.max(start);
+    let piece_to = to.min(start + length);
+    if piece_to <= piece_from + 1.0e-12 {
+      continue;
+    }
+    let first = (piece_from - start) / length;
+    let last = (piece_to - start) / length;
+    let (from_point, to_point) = piece_endpoints(segment, first, last);
+    push_horizontal(
+      &mut moves,
+      job,
+      sub_segment(segment, first, last),
+      from_point,
+      to_point,
+      z,
+    );
+  }
+  moves
+}
+
+/// Append a cutting move along `segment` whose Z is `z`, as an arc when the piece is one.
+///
+/// The helical sibling of [`push_horizontal`], and the reason T4's ramp refusal could go: a piece of an
+/// arc that also changes Z is a [`Move::Helix`], so a ramp riding on a curve is expressed by the move
+/// vocabulary itself instead of being chorded (M6 A7, D-M6-8). A line stays a line.
+pub(crate) fn push_ramp(moves: &mut Vec<Move>, job: &Job, segment: Segment, to: Point2, z: f64) {
+  let destination = machine_point(job, to);
+  match segment {
+    Segment::Line(_) => moves.push(Move::Feed {
+      to: Point3 {
+        x: Length::from_mm(destination.x),
+        y: Length::from_mm(destination.y),
+        z: Length::from_mm(z),
+      },
+    }),
+    Segment::Arc(arc) => {
+      let center = machine_point(job, arc.center());
+      moves.push(Move::Helix {
+        to: Point3 {
+          x: Length::from_mm(destination.x),
+          y: Length::from_mm(destination.y),
+          z: Length::from_mm(z),
+        },
+        center,
+        ccw: arc.is_ccw(),
+      });
+    }
+  }
+}
+
+/// Walk the contour from arc length `from` to `to`, with `z` running linearly between `z_from` and
+/// `z_to` along it: a ramp that follows the vector instead of chording across it.
+///
+/// The plateau's [`walk_range`] at a constant `z` is the same walk with both ends equal. Each piece's Z
+/// is interpolated by **arc length**, so the depth the tool has reached depends on how far along the ramp
+/// it is and on nothing else — which is exactly the law `cam-sim`'s flute claim authorises, and the law
+/// the sweep applies to the moves this emits (D-M6-12).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ramp_range(
+  contour: &Contour,
+  job: &Job,
+  from: f64,
+  to: f64,
+  z_from: f64,
+  z_to: f64,
+) -> Vec<Move> {
+  let total = to - from;
+  let mut moves = Vec::new();
+  let mut walked = 0.0;
+  for segment in contour.segments() {
+    let length = segment.length();
+    let start = walked;
+    walked += length;
+    if length <= 0.0 {
+      continue;
+    }
+    let piece_from = from.max(start);
+    let piece_to = to.min(start + length);
+    if piece_to <= piece_from + 1.0e-12 {
+      continue;
+    }
+    let first = (piece_from - start) / length;
+    let last = (piece_to - start) / length;
+    let (_from_point, to_point) = piece_endpoints(segment, first, last);
+    // The fraction of the whole ramp this piece ends at, which is where its Z is read. Written as
+    // `z_from + (z_to − z_from) · t` so the first and last pieces land exactly on the two ends instead
+    // of on an expression that can round away from them.
+    let t = if total > 0.0 {
+      (piece_to - from) / total
+    } else {
+      1.0
+    };
+    push_ramp(
+      &mut moves,
+      job,
+      sub_segment(segment, first, last),
+      to_point,
+      z_from + (z_to - z_from) * t,
+    );
+  }
+  moves
 }
 
 /// Endpoints of the piece of `segment` between two fractions of its length.
