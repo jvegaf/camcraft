@@ -764,8 +764,14 @@ pub enum ModelError {
     second: String,
   },
   /// Islands were given to an operation that does not clear a region.
-  #[error("toolpath {toolpath:?} takes islands only for a pocket")]
-  IslandsRequirePocket {
+  ///
+  /// Two operations take islands, and they are the two that clear a region: a `pocket`, whose islands
+  /// are contours inside its boundary, and an `inlay`, whose **male** half has no boundary entity at
+  /// all — its boundary is the job rectangle — so its island list is the region it leaves standing
+  /// (D-M6-13). The sentence names both, because "only for a pocket" stopped being true when the inlay
+  /// pair landed (M6 L16).
+  #[error("toolpath {toolpath:?} takes islands only for a pocket or an inlay")]
+  IslandsRequirePocketOrInlay {
     /// The toolpath id.
     toolpath: String,
   },
@@ -1171,7 +1177,7 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
     toolpath.operation,
     Operation::Pocket(_) | Operation::Inlay(_)
   ) {
-    return Err(ModelError::IslandsRequirePocket {
+    return Err(ModelError::IslandsRequirePocketOrInlay {
       toolpath: toolpath.id.clone(),
     });
   }

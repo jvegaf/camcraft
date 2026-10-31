@@ -468,8 +468,16 @@ fn islands_on_a_profile_toolpath_are_rejected() {
   document.toolpaths[0].island_ids = vec!["E2".to_owned()];
   let error = document.validate().expect_err("must reject");
   assert!(
-    matches!(error, ModelError::IslandsRequirePocket { .. }),
+    matches!(error, ModelError::IslandsRequirePocketOrInlay { .. }),
     "{error:?}"
+  );
+  // The sentence is the contract, not just the variant: `cam-cli` prints it verbatim and exits `2`.
+  // It names **both** operations that take islands, because an inlay male has no boundary entity at
+  // all — its boundary is the job rectangle — and its island list *is* the region it leaves standing
+  // (M6 D-M6-13), so "only for a pocket" stopped being true when the pair landed (M6 L16).
+  assert_eq!(
+    error.to_string(),
+    "toolpath \"TP1\" takes islands only for a pocket or an inlay"
   );
 }
 

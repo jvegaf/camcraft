@@ -232,10 +232,15 @@ program, no cache, and the file on disk is compared before and after by the test
 
 ## Known limits, each a decision
 
-- **The tool is a flat cylinder** (A13). `ToolSpec` carries a number, a diameter, a feed rate, a plunge
-  rate and a spindle speed and no shape, so the sweep is a disc of the tool's diameter and nothing else.
-  V-bit and tip-geometry simulation is a recorded limit rather than an omission: the target model is
-  depth-based, so it does not need one, and the strategy that would need a tip geometry is M7's.
+- **The tool was a flat cylinder, and M6 replaced that with a shape** (A13, closed by D-M6-3). When
+  M5 shipped, `ToolSpec` carried a number, a diameter, a feed rate, a plunge rate and a spindle speed and
+  no shape, so the sweep was a disc of the tool's diameter and nothing else — a recorded limit rather
+  than an omission, because the target model is depth-based. M6 is the milestone
+  that needed the tip geometry: a segment now carries `ToolShape::Cylinder { diameter }` or
+  `ToolShape::VBit { included_angle, flat_diameter }`, the sweep grows the footprint radius with depth
+  below the tip, and a chamfer's bevel is simulated as the cone it is rather than as a cylinder that
+  would report a correct chamfer as a gouge. A cylinder tool is unchanged cell for cell; the model, the
+  laws and the recorded numbers are in [m6-toolpaths.md](m6-toolpaths.md).
 - **A convex corner over-authorises, by a bound that is written down** (D-M5-11). The profile band comes
   from `offset_contour`, whose joins are mitered (`miter_limit: 4.0`), while the removal is a union of
   discs of the tool radius along that path. Along a straight or smooth vector the two agree. At a convex

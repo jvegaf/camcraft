@@ -207,7 +207,13 @@ islands existed. `Document::validate` refuses, by name and with the ids:
 | An island not strictly inside one of the toolpath's boundaries | `toolpath "TP1" island "E2" is not inside any of its boundaries` |
 | Two islands that are not disjoint | `toolpath "TP1" islands "E2" and "E3" overlap or touch` |
 | The same island named twice | `duplicate island id "E2"` |
-| Islands on an operation that does not clear a region | `toolpath "TP1" takes islands only for a pocket` |
+| Islands on an operation that does not clear a region | `toolpath "TP1" takes islands only for a pocket or an inlay` |
+
+The field is **not** pocket-only: an `inlay` male carries its region as `island_ids` and has no
+boundary entity at all, because its boundary is the job rectangle and the job is not an entity. That is
+also how the document says which half of the pair a toolpath is — see
+[m6-toolpaths.md](m6-toolpaths.md#the-inlay-pair). The refusal above names both operations for that
+reason.
 
 "Inside" is the exact containment question, not a bounds test, and it is asked island-first because
 `relation` is directional: a pocket's boundary *holds* its island, so the answer that means "valid" is

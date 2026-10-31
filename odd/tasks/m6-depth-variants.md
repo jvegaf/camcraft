@@ -111,8 +111,10 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   rectangle whose cut edge lies on the stock's low edge and whose other three edges lie outside the
   sheet, so the grid clips exactly the flank that would fall on air.
 - **A10 — Determinism and the old bytes (S6).** Two runs of every new subcommand print and emit
-  identical bytes; the twelve pre-existing subcommand differential still holds against `179d6b3`
-  except for `--help` and the new commands themselves.
+  identical bytes; the pre-existing subcommand differential still holds against `179d6b3` except for
+  `--help`, the unknown-`--kind` sentence, the new commands themselves, and one error sentence an inlay
+  made false. (A10 said "twelve"; M5's own count was twelve *invocations* of ten subcommands — the
+  wording is corrected here and the differential is reported by invocation, per L18.)
 - **A11 — No new dependency, and the shell untouched.** `Cargo.lock` gains no `[[package]]`; the
   existing 795 tests keep passing unmodified except where a criterion above moves an expectation, and
   each such move is re-derived, never fitted.
@@ -239,7 +241,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `76eb4e1` |
 | T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `6a6676a` |
 | T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `6167f37` |
-| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | pending |
+| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | `45f5f14` |
 | T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
 
 ## Recorded out of scope
@@ -424,3 +426,28 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   and the program disagree about *where* everything is — for every strategy since M5, not for threads. It
   is recorded here, with its severity, and it needs its own slice; every fixture and the default sheet are
   bottom-left, which is why nothing caught it.
+- **L18 (execution, T8, the closing evidence).** `docs/m6-toolpaths.md` is 655 lines in the shape
+  `docs/m5-simulation.md` has, and every console block and number in it was produced by running the
+  shipped binary rather than transcribed: the six authoring lines, a seven-toolpath simulate report, the
+  helical `G03` pair, a post refusal at exit 4, and a 60° bit's square chamfer at 0/0. README's status
+  and "Next" move to M7 with M6 reported as shipped; `odd/roadmap.md` gains §4.9 with the two
+  prerequisites the milestone's plan did not anticipate, a ten-row deliverable/where/proof table, the
+  origin-corner defect as a defect rather than a paragraph, and D-M6-12 / D-M6-14 in §7.
+  `ModelError::IslandsRequirePocket` became `IslandsRequirePocketOrInlay` with its sentence and
+  `docs/region-booleans.md` updated, because an inlay male carries islands and the old message said only
+  a pocket could. The closing differential against `179d6b3` ran 29 invocations over ten subcommands in an
+  identical sandbox, comparing exit code, stdout, stderr and every produced file: **two** deliberate
+  differences (`--help` listing nine kinds and the new flags, and the unknown-`--kind` sentence) plus one
+  outside that sandbox — the islands refusal, which the CLI cannot author and which this task made false.
+  No regression. The gate is `./scripts/check.sh` green (`fmt --check`, `clippy -D warnings`, the whole
+  suite) at **975 tests**, `cam-model` 47, `cam-toolpath` 123, `cam-sim` 99, `cam-cli` 104.
+  The origin-corner defect was reproduced through the binary before it was written down: an 80 x 30 mm
+  region at `y = 60..90` in a 200 x 100 sheet reports `gouge 0.000 / uncut 24.000 mm³` at `bottom_left`
+  and `gouge 14376.000 over 2396 cells / uncut 14400.000` at `top_left`; `origin: center` collapses
+  `removed` from 47976 to 2394. It is recorded in §6 of the roadmap with a fix sketch and left unfixed,
+  because changing the field's frame touches every strategy's numbers and needs its own slice and its own
+  tests — one per origin corner.
+- **L19 (T8, recorded corrections to this document).** Two statements here were superseded by later work
+  and are noted rather than rewritten: L13 says a negative ramp was not refused at document load, and it
+  now is (`ModelError::FlutingRampNegative`); and A10's "twelve subcommands" is twelve invocations of ten
+  subcommands, as L18's differential reports. Neither changes a decision.
