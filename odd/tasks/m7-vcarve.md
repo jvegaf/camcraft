@@ -237,7 +237,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | |
+| T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | `786c3d8` + `228ecc7` |
 | T1 | `cam-geom`: the exact distance from a point to a region's boundary, over every boundary segment, arcs native; property-checked against a sampled lower bound | A1, D-M7-2 | inline, test-first | |
 | T2 | `cam-geom::medial`: the verified medial axis — pair-bisector candidates, the exact empty-ball certificate (nearest points deduped by point), chaining, refinement to the job tolerance, drop-whole with a count, deterministic branch order | A2, D-M7-2, D-M7-4 | delegated, test-first (the milestone's research unit) | |
 | T3 | `cam-model`: `Operation::VCarve` + the parameter record, one shared law beside the tool, refusals at load, `@2` round trip | A1, A4 | inline, test-first | |
@@ -302,3 +302,30 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   first reached the emitter (M4), and no fixture noticed because every fixture is bottom-left. A7 was
   widened to cover it and T0 was widened with it; the mapping's `is_reflection` (which exists for the
   sweep) is the primitive the toolpath layer needs, which is why the two halves share one definition.
+- **L7 (execution, T0, the third site and a second half only the first fix revealed).** A first writer
+  argued that `thread.rs` needed no change because its helix is built in machine coordinates, and the
+  argument is wrong in a way worth recording: only the orbit's *start* was in machine space. The
+  strategy maps the centre but offsets the start along **+x**, which a Y reflection leaves alone, and
+  computes the fractional turn's end point with `+sin` around that machine centre — so `top_left`
+  emitted the opposite orbit (the read-back test measured `39.608` where `bottom_left` emits `60.392`)
+  *and* the opposite hand, which would have shipped a left-hand thread from a document that describes a
+  right-hand one. Fixing `ccw` alone was therefore not enough, and the test that states the rule — a
+  program read back into the document frame must be the program `bottom_left` emits — caught the second
+  half only after the first was fixed. Three construction sites in the workspace build a `Move::Arc` or
+  `Move::Helix` from document geometry and all three now state their direction in the machine's
+  numbering; the only other construction site, `thread.rs`'s, was the same defect. Bottom-left programs
+  are byte-identical after all of it: five `emit` fixtures compared with `cmp` and the thread's own
+  move dump, 22 `G02`/`G03` lines among them, no difference.
+- **L8 (process, T0's slice and a warning that measures the wrong range).** T0 landed as two commits —
+  `786c3d8` (the `Frame`, the field's mapping, 1044 lines of code and tests plus this document) and
+  `228ecc7` (the program's handedness, 476 lines) — because a new `Frame` with no caller is dead code and
+  the handedness fix cannot be separated from the map it uses, while the two are still reviewable alone
+  and each passes the suite on its own. Both are past the ~400-line guideline and that is deliberate:
+  splitting by layer would leave one commit uncompilable. The commit-slice warning reports "19 commits
+  since `origin/master`", which is M6's 17 unpushed commits plus these two — the range it measures is not
+  this branch's work. `git log --oneline 9ff0b8c..HEAD` is the honest count.
+- **L9 (execution, the suite's numbers).** The workspace stood at 975 tests at `9ff0b8c`; T0 added 13
+  (2 `cam-sim/tests/origin.rs`, 4 `cam-model/tests/frame.rs`, 3 `cam-sim/tests/frame.rs`, 3
+  `cam-toolpath/tests/frame.rs`, 1 in `cam-cli/tests/cli.rs`) for **988**, green under
+  `./scripts/check.sh` with `fmt` and `clippy -D warnings` clean. No pre-existing expectation was moved:
+  every change here was additive at `bottom_left`, which is why the differentials could be byte-level.
