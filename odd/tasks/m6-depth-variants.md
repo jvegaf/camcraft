@@ -186,6 +186,18 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   cutting move removes, at each sampled point along it, the depth interpolated between where it started and
   where it ends. Fluting's ramp is then one linear move per end, the fluting claim keeps its footprint
   envelope (which is independent of this), and T7's helix can be swept honestly.
+- **D-M6-13 — The two inlay halves are told apart by the ids they carry, and the male cuts rows.** A6
+  says both halves share one `InlayParams`, so the half cannot live in the parameters without adding a
+  field the spec does not have; it lives in the vocabulary the document already has. The female names the
+  region as `entity_ids` and stands nothing; the male has no boundary entity at all — its boundary is
+  `Job::outline()`, which is not an entity — and names the region as `island_ids`. A record that names
+  both is refused (`InlayMaleTakesNoEntities`) rather than guessed at, and the toolpath's display name is
+  never consulted: it is a user-editable string. The male cuts **raster rows**, not offset rings, and the
+  number is the reason: on a 40 mm region in a 100 mm stock with a 6 mm tool at a 2 mm stepover, the ring
+  male leaves 2300 mm² of the 8556 mm² frame never cut — the four diagonal corners where a ring lattice
+  converges on the frame's medial axis and stops, i.e. a plug still attached at four points — while the
+  row male leaves 80 mm². What remains is the pocket's own coverage bound, which T6 records rather than
+  fixes.
 - **D-M6-11 — The CLI ignores a flag its kind does not use, and M6 does not close that milestone-wide.**
   `cam-cli toolpath` parses every option and only the strategies that consume one validate it, so
   `--allowance` reaches a drilling toolpath and is dropped. Chamfer and engrave refuse the flags their own
@@ -215,8 +227,8 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4, D-M6-11 | delegated, test-first | `5c55544` |
 | T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `76eb4e1` |
 | T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `76eb4e1` |
-| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | pending |
-| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7 | inline, test-first | |
+| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `6a6676a` |
+| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | pending |
 | T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | inline, test-first, own commit (Risk item 3) | |
 | T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
 
@@ -373,3 +385,14 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   in the cam-model test with its own numbers, centred only when the extent is a whole number of
   spacings. `--spacing`/`--angle` on a kind that does not use them now parse and are ignored rather
   than refused as unknown, which is D-M6-11's position and a real change for those two names.
+- **L16 (review, T6, one gap T8 must close and one decision recorded).** The writer found that the two
+  halves cannot be told apart from `InlayParams` alone and encoded the half in the ids a toolpath carries
+  (D-M6-13), refusing a record that names both rather than guessing — the alternative, reading the display
+  name, is a user-editable string and was rejected on sight. It also chose the male's raster over rings on
+  a measurement (2300 mm² of frame left standing against 80 mm²), which is the kind of choice that should
+  never be made by taste. Two follow-ups: `ModelError::IslandsRequirePocket`'s sentence now says islands
+  are "only for a pocket" although an inlay male takes them, and the text is asserted in
+  `docs/region-booleans.md` — T8 rewords both; and the male leaves 480 mm³ standing on the oracle fixture,
+  which is the pocket's published coverage bound (`crates/cam-toolpath/src/pocket.rs`), pinned in the
+  oracle with its arithmetic rather than absorbed into a tolerance. T6 closes at **341 tests** in the four
+  crates (cam-model 43, cam-toolpath 114, cam-sim 90, cam-cli 94).

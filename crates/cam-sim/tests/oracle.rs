@@ -17,12 +17,12 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
-  Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide,
-  TextureParams, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams,
+  InlayParams, Job, Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams,
+  ProfileSide, TextureParams, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
-use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
+use cam_sim::target::{deviations, target_for, Deviation, Target, ToolShapes};
 use cam_sim::{sweep, Heightfield};
 use cam_units::{Angle, Length, UnitSystem};
 
@@ -1579,4 +1579,310 @@ fn a_texture_one_millimetre_shallow_is_uncut_and_one_millimetre_deep_is_gouge() 
     deep.gouge > 0.0 && deep.gouge_cells > 0,
     "1 mm deep is a gouge: {deep:?}"
   );
+}
+
+// --- inlay (M6 A6, A9, D-M6-7) ----------------------------------------------------------------
+
+/// The region every inlay oracle is cut from: a 38 mm square at (21, 21), so the stock has 21 mm of
+/// material beside it on every side.
+///
+/// The numbers are chosen so the hand-built programs below are the emitter's own, move for move: the
+/// male's row lattice starts at the tool radius (3 mm) and steps by [`INLAY_STEPOVER`], so it lands on
+/// **every** 3 + 2k row and never on the region's grown edges (18 and 62 mm) — where the emitter itself
+/// retries a row a hair to one side, which a hand-built fixture cannot copy without copying that retry.
+const INLAY_MIN: f64 = 21.0;
+const INLAY_SIDE: f64 = 38.0;
+/// The clearance between the male plug and the female cavity, and the stepover both halves clear at.
+/// Two millimetres under a 6 mm tool overlaps by 4 mm, so both lattices cover what they claim, and the
+/// row lattice reaches the stock's far edge exactly (3 + 47 x 2 = 97).
+const INLAY_ALLOWANCE: f64 = 2.0;
+const INLAY_STEPOVER: f64 = 2.0;
+
+/// One closed rectangular ring cut in one pass: rapid over it, plunge, four sides, retract.
+fn rectangle_pass(min: Point2, max: Point2, depth: f64) -> Vec<Move> {
+  let start = min;
+  let mut moves = vec![
+    Move::Rapid {
+      to: Point3::new(start.x, start.y, SAFE_Z),
+    },
+    Move::Feed {
+      to: Point3::new(start.x, start.y, -depth),
+    },
+  ];
+  for corner in [
+    Point2::new(max.x, min.y),
+    Point2::new(max.x, max.y),
+    Point2::new(min.x, max.y),
+    start,
+  ] {
+    moves.push(Move::Feed {
+      to: Point3::new(corner.x, corner.y, -depth),
+    });
+  }
+  moves.push(Move::Retract {
+    to: Point3::new(start.x, start.y, SAFE_Z),
+  });
+  moves
+}
+
+/// The moves the **female** half emits on the fixture's region.
+///
+/// The cavity is the region grown by the allowance, which the pocket's ring machinery cuts as rings
+/// `radius - allowance` inside the region's own boundary (1 mm here), one stepover apart, until the
+/// inset reaches half the region — the point the offset collapses at.
+fn inlay_female_moves(allowance: f64, stepover: f64, depth: f64) -> Vec<Move> {
+  let half = INLAY_SIDE / 2.0;
+  let mut moves = Vec::new();
+  let mut inset = TOOL / 2.0 - allowance;
+  while inset < half {
+    moves.extend(rectangle_pass(
+      Point2::new(INLAY_MIN + inset, INLAY_MIN + inset),
+      Point2::new(
+        INLAY_MIN + INLAY_SIDE - inset,
+        INLAY_MIN + INLAY_SIDE - inset,
+      ),
+      depth,
+    ));
+    inset += stepover;
+  }
+  moves
+}
+
+/// The moves the **male** half emits: the job rectangle with the region standing as an island.
+///
+/// The male clears with the pocket's **raster** pattern, and this fixture is why: the material around a
+/// region is a frame, the offset ring lattice converges on the frame's medial axis and stops there, and
+/// the four diagonal corners between the last two rings are never cut — 2808 of the frame's 8400 mm2 on a
+/// 40 mm region in the same stock at a 4 mm stepover, which is a plug still attached to the stock at four
+/// points. Rows have no such blind spot: each is clipped to the frame by the kernel's raster spans, so
+/// every row reaches both walls.
+///
+/// The rows are the inset frame's own: the stock inset by the tool radius (3 mm) crossed `stepover` at a
+/// time to the far edge, and a row that crosses the region is cut as **two** spans, never one (A7's
+/// parity). The region's grown bound is 18..62 mm here and the lattice never lands on it, so this is the
+/// emitter's program move for move.
+fn inlay_male_moves(stepover: f64, depth: f64) -> Vec<Move> {
+  let near = TOOL / 2.0;
+  let far = STOCK - TOOL / 2.0;
+  let island_near = INLAY_MIN - TOOL / 2.0;
+  let island_far = INLAY_MIN + INLAY_SIDE + TOOL / 2.0;
+  let mut moves = Vec::new();
+  let mut y = near;
+  while y <= far {
+    let crossing = y > island_near && y < island_far;
+    let spans = if crossing {
+      vec![(near, island_near), (island_far, far)]
+    } else {
+      vec![(near, far)]
+    };
+    for (left, right) in spans {
+      moves.extend([
+        Move::Rapid {
+          to: Point3::new(left, y, SAFE_Z),
+        },
+        Move::Feed {
+          to: Point3::new(left, y, -depth),
+        },
+        Move::Feed {
+          to: Point3::new(right, y, -depth),
+        },
+        Move::Retract {
+          to: Point3::new(right, y, SAFE_Z),
+        },
+      ]);
+    }
+    y += stepover;
+  }
+  moves
+}
+
+/// The document one inlay half describes, as `toolpath --kind inlay` writes it.
+///
+/// One half at a time, so each half's program is judged against the half's own claim: a target built
+/// from the whole pair would report the other half's cells as uncut and drown the number the test is
+/// about.
+fn inlay_document(female: bool, cut: f64) -> Document {
+  let region = square(INLAY_MIN, INLAY_MIN + INLAY_SIDE);
+  let mut document = document(STOCK, &[("region", region)], Vec::new());
+  let params = InlayParams {
+    allowance: Length::from_mm(INLAY_ALLOWANCE),
+    stepover: Length::from_mm(INLAY_STEPOVER),
+    cut_depth: Length::from_mm(cut),
+    ..InlayParams::default()
+  };
+  document.toolpaths = vec![if female {
+    Toolpath {
+      id: "inlay female".to_owned(),
+      name: "inlay female".to_owned(),
+      entity_ids: vec!["region".to_owned()],
+      island_ids: Vec::new(),
+      tool_number: 1,
+      operation: Operation::Inlay(params),
+    }
+  } else {
+    Toolpath {
+      id: "inlay male".to_owned(),
+      name: "inlay male".to_owned(),
+      entity_ids: Vec::new(),
+      island_ids: vec!["region".to_owned()],
+      tool_number: 1,
+      operation: Operation::Inlay(params),
+    }
+  }];
+  document
+}
+
+/// The whole target surface's volume, summed in row-major order: the test's own arithmetic.
+fn authorised_volume(target: &Target) -> f64 {
+  let grid = target.grid();
+  let mut volume = 0.0;
+  for row in 0..grid.rows {
+    for column in 0..grid.columns {
+      volume += target.authorised(column, row) * grid.cell_area();
+    }
+  }
+  volume
+}
+
+#[test]
+fn an_inlay_removes_both_halves_analytically() {
+  // A9 for the pair, in the M5 oracle's own shape: the removed volume of each half against the analytic
+  // volume of the material it is meant to clear, summed from the document's own geometry.
+  //
+  // The cavity is the region grown by the allowance. The grown region is **mitered**, so its area is
+  // exact rather than approximate: a square grown by `a` is `(side + 2a)²`, because each of the four
+  // corners picks up `a²` and no rounding arc — `Region::offset` joins mitre, and D-M5-11's precedent (a
+  // tolerance is not widened over a shape the kernel describes exactly) is why this is arithmetic and not
+  // a bound. The male's is the stock minus the region, a rectangle difference and exact for the same
+  // reason.
+  let tolerance = Length::from_mm(CELL / 8.0);
+
+  let grown_side = INLAY_SIDE + 2.0 * INLAY_ALLOWANCE;
+  let female_target = target_for(
+    &inlay_document(true, DEPTH),
+    Length::from_mm(CELL),
+    &tools(TOOL),
+  )
+  .expect("a target");
+  let female = cut(
+    STOCK,
+    CELL,
+    TOOL,
+    inlay_female_moves(INLAY_ALLOWANCE, INLAY_STEPOVER, DEPTH),
+  );
+  let removed = female.volumes().removed;
+  let analytic = grown_side * grown_side * DEPTH;
+  // The coverage bound this file already uses: the region's perimeter times half a cell, times the depth.
+  let bound = 4.0 * grown_side * CELL / 2.0 * DEPTH;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "the female removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  assert_eq!(
+    female.volumes().through_cells,
+    0,
+    "6 mm of material out of an 18 mm stock goes through nothing"
+  );
+
+  // And it cuts what the cavity authorises and nothing else: the four cells a 6 mm disc cannot reach into
+  // the grown square's mitered corners stand — `4 x 1 x 6 = 24 mm3`, the pocket oracle's own sliver.
+  let female = deviations(&female, &female_target, tolerance).expect("one grid");
+  assert_eq!(female.gouge, 0.0, "the female never left the cavity");
+  assert_eq!(female.gouge_cells, 0);
+  assert_eq!(
+    female.uncut,
+    4.0 * CELL * CELL * DEPTH,
+    "four corner cells of the grown region"
+  );
+  assert_eq!(female.uncut_cells, 4);
+
+  let male_target = target_for(
+    &inlay_document(false, DEPTH),
+    Length::from_mm(CELL),
+    &tools(TOOL),
+  )
+  .expect("a target");
+  let male = cut(STOCK, CELL, TOOL, inlay_male_moves(INLAY_STEPOVER, DEPTH));
+  let removed = male.volumes().removed;
+  let analytic = (STOCK * STOCK - INLAY_SIDE * INLAY_SIDE) * DEPTH;
+  let bound = (4.0 * STOCK + 4.0 * INLAY_SIDE) * CELL / 2.0 * DEPTH;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "the male removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+
+  // The male's residue is the pocket's published coverage bound and not nothing: its row lattice leaves
+  // the stock's four corner cells **and** a rind of up to one stepover along the two walls of the region
+  // that run parallel to the rows. Measured here: 480 mm3 over 80 cells — 76 of them the 1 mm strip along
+  // the region's low and high walls, whose nearest row is at `wall - radius - 1` rather than at
+  // `wall - radius`. The same frame cleared with the offset pattern instead leaves 2300 mm² (13800 mm3) at
+  // the same stepover, in the four diagonal corners the ring lattice converges on and stops short of, so
+  // the rows are the smaller — and the only — defect the pocket offers here. What the inlay needs is that
+  // the plug be *separated* from the stock, which the rows do everywhere except those corner cells, and
+  // that is the honest statement of this pair's finish.
+  let male = deviations(&male, &male_target, tolerance).expect("one grid");
+  assert_eq!(male.gouge, 0.0, "the male never crossed into the plug");
+  assert_eq!(male.gouge_cells, 0);
+  assert!(
+    male.uncut <= bound,
+    "the male's residue is inside the bound"
+  );
+  assert_eq!(
+    male.uncut, 480.0,
+    "80 cells: the corner four and the two rinds"
+  );
+  assert_eq!(male.uncut_cells, 80);
+}
+
+#[test]
+fn an_inlay_one_millimetre_shallow_is_uncut_and_one_deep_is_gouge() {
+  // A9's other sign, on both halves: a program that cuts one millimetre shallower than the document says
+  // is reported as uncut, and one a millimetre deeper as gouge, with the other number exactly zero. Both
+  // halves are cut at both wrong depths, so neither half can pass by reporting the other's law.
+  //
+  // The arithmetic is the claimed cells times the millimetre: every cell the document authorises loses one
+  // millimetre less (or more) than the number it names, and each half's own residue from its clean cut is
+  // unchanged in the deep one — the corner cells a disc cannot reach stay uncut either way.
+  let tolerance = Length::from_mm(CELL / 8.0);
+  let halves: [(&str, bool); 2] = [("female", true), ("male", false)];
+  for (name, female) in halves {
+    let target = target_for(
+      &inlay_document(female, DEPTH),
+      Length::from_mm(CELL),
+      &tools(TOOL),
+    )
+    .expect("a target");
+    let claimed = authorised_volume(&target) / DEPTH;
+    let moves = |depth: f64| {
+      if female {
+        inlay_female_moves(INLAY_ALLOWANCE, INLAY_STEPOVER, depth)
+      } else {
+        inlay_male_moves(INLAY_STEPOVER, depth)
+      }
+    };
+
+    let clean = cut(STOCK, CELL, TOOL, moves(DEPTH));
+    let clean = deviations(&clean, &target, tolerance).expect("one grid");
+
+    let shallow = cut(STOCK, CELL, TOOL, moves(DEPTH - 1.0));
+    let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+    assert_eq!(shallow.gouge, 0.0, "{name}: 1 mm shallow gouges nothing");
+    assert!(
+      shallow.uncut >= claimed,
+      "{name}: every one of the {claimed} claimed cells is at least 1 mm short: {shallow:?}"
+    );
+
+    let deep = cut(STOCK, CELL, TOOL, moves(DEPTH + 1.0));
+    let deep = deviations(&deep, &target, tolerance).expect("one grid");
+    assert_eq!(
+      deep.uncut, clean.uncut,
+      "{name}: 1 mm deep leaves no more standing than the clean cut's own residue"
+    );
+    // Every claimed cell but the clean cut's own residue is a millimetre too deep: the residue cells are
+    // removed by nothing at all, so they are the only ones that cannot be too deep.
+    assert!(
+      deep.gouge >= claimed - clean.uncut_cells as f64,
+      "{name}: every claimed cell but the residue is at least 1 mm too deep: {deep:?}"
+    );
+  }
 }

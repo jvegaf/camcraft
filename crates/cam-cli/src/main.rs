@@ -19,9 +19,9 @@ use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  chamfer, circle_centre, drill, engrave, fluting, pocket, profile, texture, ChamferRequest,
-  DrillHole, DrillRequest, EngraveRequest, FlutingRequest, PocketRequest, ProfileRequest,
-  TextureRequest, ToolSpec, ToolpathError,
+  chamfer, circle_centre, drill, engrave, female, fluting, inlay, male, pocket, profile, texture,
+  ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest, InlayRequest,
+  PocketRequest, ProfileRequest, TextureRequest, ToolSpec, ToolpathError,
 };
 use cam_units::{Format, Length};
 
@@ -45,26 +45,29 @@ COMMANDS:
         --simplify <mm>       Simplify traced contours within this distance
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
-        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting or texture
+        --kind <kind>         profile, pocket, drilling, chamfer, engrave, fluting, texture or inlay
                               (required); a texture cuts grooves only, so the material between
-                              them stands and the region is never cleared
+                              them stands and the region is never cleared; an inlay appends **two**
+                              toolpaths, a female cavity and the male plug that fits it
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
         --side <side>         profile: inside, outside or on (default outside)
         --allowance <mm>      profile, pocket: material left on the vector
         --strategy <mode>     pocket: offset or raster (default offset)
-        --stepover <mm>       pocket: ring or row spacing; defaults to the tool's stepover
+        --stepover <mm>       pocket, inlay: ring or row spacing; defaults to the tool's stepover
         --spacing <mm>        texture: distance between grooves; defaults to the tool's stepover.
                               The material between grooves stands: a texture does not clear
         --angle <degrees>     texture: direction of the grooves, from the X axis (default 0)
-        --clear               pocket: take the default from the tool's clear stepover
+        --inlay-allowance <mm>  inlay: clearance between the male plug and the female cavity, which is
+                              how far the female's region grows (default 0)
+        --clear               pocket, inlay: take the default from the tool's clear stepover
         --peck-depth <mm>     drilling: depth per peck, 0 for one plunge
         --retract <mode>      drilling: full (default) or amount
         --retract-amount <mm> drilling: lift above the peck when --retract amount
         --bank <count:pitch>  drilling: a gang of drills spaced along X
         --chamfer-width <mm>  chamfer: width of the bevel; the depth is derived from the tool's angle
-        --pass-depth <mm>     depth per pass; profile and pocket, defaults to the tool's stepdown
+        --pass-depth <mm>     depth per pass; profile, pocket and inlay, defaults to the tool's stepdown
         --start-depth <mm>    depth at which cutting starts
         --cut-depth <mm>      total cut depth (default 18); chamfer derives its depth instead, engrave,
                               fluting and texture cut their one pass at it
@@ -614,6 +617,7 @@ struct ToolpathArgs {
   ramp: Option<f64>,
   spacing: Option<f64>,
   angle: Option<f64>,
+  inlay_allowance: Option<f64>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -654,6 +658,9 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       }
       "--ramp" => args.ramp = Some(parse_mm(&take("--ramp")?, "--ramp")?),
       "--spacing" => args.spacing = Some(parse_mm(&take("--spacing")?, "--spacing")?),
+      "--inlay-allowance" => {
+        args.inlay_allowance = Some(parse_mm(&take("--inlay-allowance")?, "--inlay-allowance")?)
+      }
       "--angle" => {
         args.angle = Some(parse_degrees(&take("--angle")?, "--angle")?);
       }
@@ -983,13 +990,90 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         angle: cam_units::Angle::from_degrees(args.angle.unwrap_or(0.0)),
       })
     }
+    "inlay" => {
+      // An inlay is a male/female pair of pockets (D-M6-7), so every flag that belongs to a different
+      // cutting law has no meaning here: a bevel's width, a groove's spacing or angle, a flute's ramp, a
+      // profile's side, tabs and leads. `--strategy` is refused with them because the pair's parameters
+      // carry no clearing pattern at all, so a `--strategy raster` nobody stored would still look
+      // applied. Refused by name, so nothing that was never applied looks applied.
+      for (flag, given) in [
+        ("--side", args.side.is_some()),
+        ("--tab", !args.tabs.is_empty()),
+        ("--lead-in", args.lead_in.is_some()),
+        ("--lead-out", args.lead_out.is_some()),
+        ("--ramp", args.ramp.is_some()),
+        ("--spacing", args.spacing.is_some()),
+        ("--angle", args.angle.is_some()),
+        ("--chamfer-width", args.chamfer_width.is_some()),
+        ("--strategy", args.strategy.is_some()),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind inlay takes no {flag}: an inlay is a male/female pair of pockets, cleared with the \
+             pocket's offset pattern at --stepover apart, with one allowance between them"
+          )));
+        }
+      }
+      // The pair names itself, and the names are part of the contract: two toolpaths per command, in a
+      // fixed order, so one `--id` or `--name` could only ever name one of them.
+      if args.id.is_some() || args.name.is_some() {
+        return Err(Failure::input(
+          "--kind inlay names its two toolpaths itself: it appends \"inlay female\" and \"inlay male\" \
+           with consecutive ids, so --id and --name cannot name a pair",
+        ));
+      }
+      // The pocket's library fallbacks, unchanged: the stepover from the library (`--clear` asking for
+      // the clear stepover, exactly as a pocket does) and the pass depth from its stepdown.
+      let library_stepover = cutting.as_ref().and_then(|cutting| {
+        if args.clear {
+          cutting.clear_stepover
+        } else {
+          cutting.stepover
+        }
+      });
+      let stepover = match (args.stepover, library_stepover) {
+        (Some(stepover), _) => stepover,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "an inlay needs --stepover: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      Operation::Inlay(cam_model::InlayParams {
+        allowance: mm(args.inlay_allowance.unwrap_or(0.0)),
+        stepover: mm(stepover),
+        pass_depth: mm(default_pass_depth(
+          args.pass_depth,
+          cutting.as_ref().and_then(|cutting| cutting.stepdown),
+          "inlay",
+        )?),
+        start_depth: mm(args.start_depth.unwrap_or(0.0)),
+        cut_depth: mm(default_cut_depth(args.cut_depth)),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
         "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, engrave, \
-         fluting or texture"
+         fluting, texture or inlay"
       )))
     }
   };
+
+  // An inlay is two toolpaths from one command, in a fixed order (A6, D-M6-7), so it names them itself
+  // and appends both before the document is written: one half would be a document whose only outcome is
+  // a male with no cavity, or a cavity with no plug.
+  if let Operation::Inlay(params) = &operation {
+    return append_inlay(
+      &mut document,
+      args.out.clone().unwrap_or(path),
+      &entity_ids,
+      tool_number,
+      params,
+      diameter,
+      cutting.as_ref(),
+    );
+  }
 
   let id = match args.id.clone() {
     Some(id) => id,
@@ -1016,6 +1100,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Engrave(_) => "Engrave",
         Operation::Fluting(_) => "Fluting",
         Operation::Texture(_) => "Texture",
+        Operation::Inlay(_) => "Inlay",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -1102,6 +1187,108 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     println!("{report}");
   }
   Ok(())
+}
+
+/// Append the two toolpaths one inlay means, in the fixed order, and write the document back.
+///
+/// `inlay female` (the region grown by the allowance) is appended first and `inlay male` (the job
+/// rectangle with that region standing as an island) second, with consecutive `TPn` ids and those exact
+/// names (M6 A6, D-M6-7). Both carry the **same** [`cam_model::InlayParams`]; what tells them apart is
+/// what the document already records about what a toolpath does — the female names the region it clears
+/// as its entities, and the male names the same region as the islands it leaves standing and takes no
+/// boundary entity, because its boundary is the job rectangle and the job is not an entity.
+///
+/// The pair's own geometry rules are asked here, by the real strategy, before anything is written: a
+/// document whose only failure mode is a later `emit` is worse than a command that says no. A tool
+/// whose diameter the library does not record is not a reason to refuse here — `emit` names that one —
+/// so the check is skipped and the pocket's own refusal takes over.
+fn append_inlay(
+  document: &mut Document,
+  destination: PathBuf,
+  entity_ids: &[String],
+  tool_number: u32,
+  params: &cam_model::InlayParams,
+  diameter: Option<Length>,
+  cutting: Option<&CuttingData>,
+) -> Result<(), Failure> {
+  let female_id = next_toolpath_id(document, None);
+  let male_id = next_toolpath_id(document, Some(&female_id));
+
+  if let Some(diameter) = diameter {
+    let spec = ToolSpec {
+      number: tool_number,
+      diameter,
+      included_angle: None,
+      feed_rate: cutting.and_then(|cutting| cutting.feed_rate).unwrap_or(0.0),
+      plunge_rate: cutting
+        .and_then(|cutting| cutting.plunge_rate)
+        .unwrap_or(0.0),
+      spindle_speed: cutting
+        .and_then(|cutting| cutting.spindle_speed)
+        .unwrap_or(0),
+    };
+    let mut contours = Vec::with_capacity(entity_ids.len());
+    for entity_id in entity_ids {
+      contours.push(contour_of(document, &female_id, entity_id)?);
+    }
+    inlay(&InlayRequest {
+      contours: &contours,
+      params,
+      tool: &spec,
+      job: &document.job,
+    })
+    .map_err(|error| Failure::input(error.to_string()))?;
+  }
+
+  document.toolpaths.push(Toolpath {
+    id: female_id.clone(),
+    name: "inlay female".to_owned(),
+    entity_ids: entity_ids.to_vec(),
+    island_ids: Vec::new(),
+    tool_number,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document.toolpaths.push(Toolpath {
+    id: male_id.clone(),
+    name: "inlay male".to_owned(),
+    entity_ids: Vec::new(),
+    island_ids: entity_ids.to_vec(),
+    tool_number,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document
+    .validate()
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  cam_store::document::save_document(&destination, document)
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+  println!(
+    "added {female_id} inlay female, tool T{tool_number}, {} entity(ies)",
+    entity_ids.len()
+  );
+  println!(
+    "added {male_id} inlay male, tool T{tool_number}, {} island(s)",
+    entity_ids.len()
+  );
+  Ok(())
+}
+
+/// The next free `TPn` id, skipping `taken` as well when a pair is being named at once.
+///
+/// The same scan the single-toolpath path performs — from `len + 1` upwards, so a second run of the same
+/// command appends the next pair instead of colliding — with one extra exclusion, because the two ids of
+/// a pair are chosen before either is pushed.
+fn next_toolpath_id(document: &Document, taken: Option<&str>) -> String {
+  let mut number = document.toolpaths.len() + 1;
+  loop {
+    let id = format!("TP{number}");
+    let used = document.toolpaths.iter().any(|toolpath| toolpath.id == id);
+    if !used && taken != Some(id.as_str()) {
+      return id;
+    }
+    number += 1;
+  }
 }
 
 /// The bank selection a banked drilling toolpath will produce, for whoever loads the gang.
@@ -1251,6 +1438,7 @@ fn operation_label(operation: &Operation) -> String {
     Operation::Chamfer(_) => "chamfer".to_owned(),
     Operation::Engrave(_) => "engrave".to_owned(),
     Operation::Fluting(_) => "fluting".to_owned(),
+    Operation::Inlay(_) => "inlay".to_owned(),
     Operation::Texture(params) => format!(
       "texture ({} mm at {} degrees)",
       params.spacing.mm(),
@@ -1650,6 +1838,35 @@ fn build_segment(
           job: &document.job,
         })
         .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
+      );
+    }
+    Operation::Inlay(params) => {
+      // One half per toolpath, and the document says which half it is (see
+      // `cam_model::InlayParams`): the female names the region it clears, and the male names that same
+      // region as the islands it leaves standing inside the job rectangle, whose boundary is not an
+      // entity at all.
+      let ids = if toolpath.island_ids.is_empty() {
+        &toolpath.entity_ids
+      } else {
+        &toolpath.island_ids
+      };
+      let mut contours = Vec::with_capacity(ids.len());
+      for entity_id in ids {
+        contours.push(contour_of(document, &toolpath.id, entity_id)?);
+      }
+      let request = InlayRequest {
+        contours: &contours,
+        params,
+        tool: &spec,
+        job: &document.job,
+      };
+      let half = if toolpath.island_ids.is_empty() {
+        female(&request)
+      } else {
+        male(&request)
+      };
+      moves.extend(
+        half.map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
       );
     }
   }

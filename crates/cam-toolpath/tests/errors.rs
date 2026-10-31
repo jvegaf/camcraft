@@ -51,6 +51,14 @@ fn every_variant() -> Vec<ToolpathError> {
       spacing: 500.0,
       angle: 0.0,
     },
+    ToolpathError::InlayAllowanceCollapsed {
+      allowance: -25.0,
+      reason: "the region offset collapsed an enclosing boundary".to_owned(),
+    },
+    ToolpathError::InlayRegionOutsideJob {
+      width: 100.0,
+      height: 100.0,
+    },
   ]
 }
 
@@ -59,7 +67,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    17,
+    19,
     "every variant must be listed exactly once"
   );
 
@@ -114,6 +122,16 @@ fn every_variant_keeps_its_message() {
         format!(
           "texture spacing {spacing} mm at {angle} degrees leaves no groove across the region: the \
            pattern would cut nothing, so this is a spacing with no pattern behind it"
+        )
+      }
+      ToolpathError::InlayAllowanceCollapsed { allowance, reason } => {
+        format!("inlay allowance {allowance} mm leaves no region to cut: {reason}")
+      }
+      ToolpathError::InlayRegionOutsideJob { width, height } => {
+        format!(
+          "inlay region is not strictly inside the job's {width} x {height} mm rectangle: the male \
+           clears the stock around the region, so a region on or across the stock's edge leaves nothing \
+           for it to clear"
         )
       }
     };

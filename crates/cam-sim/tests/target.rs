@@ -12,9 +12,9 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
-  Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab,
-  TextureParams, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams,
+  InlayParams, Job, Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams,
+  ProfileSide, Tab, TextureParams, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
@@ -1642,4 +1642,156 @@ fn a_texture_without_its_tool_shape_is_refused_by_name() {
       tool_number: 1,
     }
   );
+}
+
+// --- inlay (M6 A6, D-M6-7) -------------------------------------------------------------------
+
+/// The female half of an inlay: the region `entities` grown by its allowance, claimed.
+fn inlay_female(id: &str, entities: &[&str], allowance: f64, cut: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "inlay female".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Inlay(InlayParams {
+      allowance: Length::from_mm(allowance),
+      stepover: Length::from_mm(4.0),
+      cut_depth: Length::from_mm(cut),
+      ..InlayParams::default()
+    }),
+  }
+}
+
+/// The male half of an inlay: the job rectangle with `islands` standing inside it, claimed.
+fn inlay_male(id: &str, islands: &[&str], allowance: f64, cut: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "inlay male".to_owned(),
+    entity_ids: Vec::new(),
+    island_ids: islands.iter().map(|id| (*id).to_owned()).collect(),
+    tool_number: 1,
+    operation: Operation::Inlay(InlayParams {
+      allowance: Length::from_mm(allowance),
+      stepover: Length::from_mm(4.0),
+      cut_depth: Length::from_mm(cut),
+      ..InlayParams::default()
+    }),
+  }
+}
+
+/// A 40 x 40 mm region at (20, 20) inside a 100 x 100 mm job, a 2 mm allowance and a 6 mm depth.
+fn inlay_fixture(female_cut: f64, male_cut: f64) -> Target {
+  let document = document(
+    100.0,
+    &[("region", square(20.0, 60.0))],
+    vec![
+      inlay_female("inlay female", &["region"], 2.0, female_cut),
+      inlay_male("inlay male", &["region"], 2.0, male_cut),
+    ],
+  );
+  target_for(&document, cell(), &tools(6.0)).expect("a target")
+}
+
+#[test]
+fn an_inlay_pair_authorises_the_cavity_and_the_plug() {
+  // The two halves together claim the whole stock: the female the region grown by the allowance (the
+  // cavity, 18..62 mm), the male the job rectangle minus the region (the material around the plug). The
+  // only cells either half leaves alone are the ones neither is asked to cut, and here there are none.
+  let target = inlay_fixture(6.0, 6.0);
+
+  // A cell inside the region is the cavity: the female authorises it to the full depth.
+  assert_eq!(target.authorised(40, 40), 6.0, "centre at (40.5, 40.5)");
+  // A cell in the allowance ring — between the region's 20 mm wall and the cavity's 18 mm one — is
+  // authorised too: it is clearance, and the female clears it.
+  assert_eq!(
+    target.authorised(19, 40),
+    6.0,
+    "centre at (19.5, 40.5), 0.5 mm outside the region"
+  );
+  assert_eq!(
+    target.authorised(18, 40),
+    6.0,
+    "centre at (18.5, 40.5), 1.5 mm outside the region, still inside the 2 mm allowance"
+  );
+  // A cell outside the allowance ring is the male's: the plug's wall is at 20 mm and the stock's edge at
+  // 0, so everything between is material the male removes.
+  assert_eq!(target.authorised(5, 5), 6.0, "centre at (5.5, 5.5)");
+  // And the cavity stops where the allowance says: 0.5 mm outside the grown boundary is the male's, but
+  // the cavity does not reach past 18 mm — measured here as the *change* the allowance makes, below.
+
+  // Every cell of the 100 x 100 grid is claimed, at 6 mm: the pair clears the stock between them.
+  assert_eq!(claimed_cells(&target), 100 * 100);
+  assert_eq!(authorised_volume(&target), 100.0 * 100.0 * 6.0);
+}
+
+#[test]
+fn the_female_authorises_exactly_the_region_grown_by_the_allowance() {
+  // The cavity's edge is the region's, grown: a cell whose centre is inside `R + a` is claimed and one
+  // outside it is not, and a zero allowance leaves the region's own cells and nothing more (M5's rule for
+  // the pocket's allowance, applied to the inlay's).
+  let widened = inlay_fixture(6.0, 0.0);
+  // Columns 18..61 have centres 18.5..61.5, inside the grown 18..62 boundary.
+  assert_eq!(widened.authorised(18, 40), 6.0, "centre at (18.5, 40.5)");
+  assert_eq!(widened.authorised(17, 40), 0.0, "centre at (17.5, 40.5)");
+  assert_eq!(widened.authorised(61, 40), 6.0, "centre at (61.5, 40.5)");
+  assert_eq!(widened.authorised(62, 40), 0.0, "centre at (62.5, 40.5)");
+  // 44 x 44 cells of 1 mm2: the 40 x 40 region plus 2 mm on every side.
+  assert_eq!(authorised_volume(&widened), 44.0 * 44.0 * 6.0);
+
+  let plain = document(
+    100.0,
+    &[("region", square(20.0, 60.0))],
+    vec![inlay_female("inlay female", &["region"], 0.0, 6.0)],
+  );
+  let plain = target_for(&plain, cell(), &tools(6.0)).expect("a target");
+  assert_eq!(plain.authorised(19, 40), 0.0, "no allowance, no ring");
+  assert_eq!(plain.authorised(20, 40), 6.0, "centre at (20.5, 40.5)");
+  assert_eq!(authorised_volume(&plain), 40.0 * 40.0 * 6.0);
+}
+
+#[test]
+fn a_cell_both_halves_claim_keeps_the_deeper_not_the_sum() {
+  // The halves' clearings meet in the allowance ring (D-M6-7), so those cells are claimed twice. The rule
+  // is the one two pockets already follow (D-M5-2): the deeper claim wins, never the sum. A document
+  // whose halves disagree about their depth is what makes the two rules tell each other apart.
+  let target = inlay_fixture(6.0, 4.0);
+
+  // In the ring, both halves claim it: 6 from the female, 4 from the male.
+  assert_eq!(
+    target.authorised(19, 40),
+    6.0,
+    "centre at (19.5, 40.5): 6, not 10, not 4"
+  );
+  // Inside the region only the female claims it, so its own depth shows.
+  assert_eq!(
+    target.authorised(40, 40),
+    6.0,
+    "the cavity, from the female"
+  );
+  // Outside the region only the male claims it, so the shallower number shows there.
+  assert_eq!(
+    target.authorised(5, 5),
+    4.0,
+    "the plug's surroundings, from the male"
+  );
+}
+
+#[test]
+fn an_inlay_needs_no_tool_shape() {
+  // A pocket's claim does not need the tool's geometry and neither does an inlay's, because both clear a
+  // region to one depth instead of authorising a footprint: the diameter is only in the library, and a
+  // caller who never supplies it still gets the pair.
+  let document = document(
+    100.0,
+    &[("region", square(20.0, 60.0))],
+    vec![
+      inlay_female("inlay female", &["region"], 2.0, 6.0),
+      inlay_male("inlay male", &["region"], 2.0, 6.0),
+    ],
+  );
+  let target =
+    target_for(&document, cell(), &ToolShapes::default()).expect("an inlay needs no tool");
+  assert_eq!(target.authorised(40, 40), 6.0);
+  assert_eq!(target.authorised(5, 5), 6.0);
 }

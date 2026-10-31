@@ -8,8 +8,9 @@
 //! either side of the vector (M6 A8), an engrave authorises the band or the graded groove its one pass
 //! cuts along the vector (M6 A3, D-M6-4), a flute authorises the ramp law *along* the vector rather
 //! than at a distance from it (M6 A4, D-M6-5), a texture authorises the same band along every groove of
-//! the document's own pattern (M6 A5, D-M6-6), and every cell nothing claims is authorised to lose
-//! nothing.
+//! the document's own pattern (M6 A5, D-M6-6), an inlay authorises the half it is — the region grown by
+//! the allowance for the female, the job rectangle minus the region for the male (M6 A6, D-M6-7) — and
+//! every cell nothing claims is authorised to lose nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
 //!
@@ -231,16 +232,41 @@ fn claim_toolpath(
     Operation::Pocket(params) => {
       // Parity does the subtraction (D-RB-2): an island is appended as one more boundary, so a cell
       // inside it is enclosed an even number of times and is not material.
-      let mut boundaries =
-        Vec::with_capacity(toolpath.entity_ids.len() + toolpath.island_ids.len());
-      for id in toolpath.entity_ids.iter().chain(&toolpath.island_ids) {
-        boundaries.push(contour_of(document, toolpath, id)?.clone());
-      }
-      let region = region_of(&toolpath.id, boundaries)?;
+      let boundaries = contours_of(
+        document,
+        toolpath,
+        toolpath.entity_ids.iter().chain(&toolpath.island_ids),
+      )?;
       // The wall the allowance keeps is material the document asked to leave standing, so it is not
       // authorised (D-M5-10).
-      let region = inset_by(&toolpath.id, region, params.allowance.mm())?;
-      claim_region(target, &region, authorised_depth(params.cut_depth), None);
+      claim_clearing(
+        target,
+        toolpath,
+        boundaries,
+        params.allowance.mm(),
+        authorised_depth(params.cut_depth),
+      )?;
+    }
+    Operation::Inlay(params) => {
+      // The pair is two claims, and the document says which half a toolpath is (see
+      // `cam_model::InlayParams`). Both go through the pocket's own claim path, so a cell inside the
+      // region is authorised by the female, a cell outside it by the male, and a cell both claim keeps
+      // the deeper of the two and never the sum (D-M5-2).
+      let depth = authorised_depth(params.cut_depth);
+      if toolpath.island_ids.is_empty() {
+        // The female: the region it clears, grown by the allowance. The pocket's inset is what its tool
+        // leaves standing, so the cavity's oversize is the same number negated — at zero allowance no
+        // cell moves, which is M5's rule for the pocket's own allowance.
+        let boundaries = contours_of(document, toolpath, toolpath.entity_ids.iter())?;
+        claim_clearing(target, toolpath, boundaries, -params.allowance.mm(), depth)?;
+      } else {
+        // The male: the job rectangle with the region standing as an island. The rectangle is the job's
+        // own (`Job::outline`), the same call `cam-toolpath::inlay` cuts, so the program's boundary and
+        // the authorised one cannot be different rectangles.
+        let mut boundaries = vec![document.job.outline()];
+        boundaries.extend(contours_of(document, toolpath, toolpath.island_ids.iter())?);
+        claim_clearing(target, toolpath, boundaries, 0.0, depth)?;
+      }
     }
     Operation::Drilling(params) => {
       let depth = authorised_depth(params.cut_depth);
@@ -486,6 +512,38 @@ fn region_of(toolpath: &str, boundaries: Vec<Contour>) -> Result<Region, TargetE
     toolpath: toolpath.to_owned(),
     reason: error.to_string(),
   })
+}
+
+/// Claim the region a **clearing** toolpath removes, as one code path for a pocket and for both halves
+/// of an inlay (M5 D-M5-10, M6 A6).
+///
+/// `inset` is what the tool leaves standing at the region's own boundary, in the pocket's own sense: a
+/// positive allowance shrinks the region by the wall it keeps, a negative one grows it by the same
+/// distance (the female inlay's cavity), and zero claims the region exactly as its boundaries describe it
+/// (the male inlay, whose island list *is* the region). Everything else — the parity subtraction, the
+/// nested islands and the deeper-claim rule — is the shared machinery and not repeated per strategy.
+fn claim_clearing(
+  target: &mut Target,
+  toolpath: &Toolpath,
+  boundaries: Vec<Contour>,
+  inset: f64,
+  depth: f64,
+) -> Result<(), TargetError> {
+  let region = region_of(&toolpath.id, boundaries)?;
+  let region = inset_by(&toolpath.id, region, inset)?;
+  claim_region(target, &region, depth, None);
+  Ok(())
+}
+
+/// The contours a toolpath names by id, in the order it names them.
+fn contours_of<'a>(
+  document: &'a Document,
+  toolpath: &Toolpath,
+  ids: impl Iterator<Item = &'a String>,
+) -> Result<Vec<Contour>, TargetError> {
+  ids
+    .map(|id| contour_of(document, toolpath, id).cloned())
+    .collect()
 }
 
 fn contour_of<'a>(

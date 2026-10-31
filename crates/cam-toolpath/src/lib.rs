@@ -6,8 +6,9 @@
 //! the depth-variant strategies: `chamfer`, one V-bit pass whose Z is derived from the bit's own
 //! included angle instead of authored, `engrave`, one authored-depth pass along open or closed
 //! vectors with no pass law at all, `fluting`, one pass along a vector that ramps in over its
-//! first millimetres and out over its last, and `texture`, one authored-depth pass along each groove
-//! of a pattern clipped to a closed region.
+//! first millimetres and out over its last, `texture`, one authored-depth pass along each groove
+//! of a pattern clipped to a closed region, and `inlay`, the male/female pair of pockets one command
+//! appends: a cavity grown by the allowance and a plug of the region itself.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -17,6 +18,7 @@ pub mod chamfer;
 pub mod drill;
 pub mod engrave;
 pub mod fluting;
+pub mod inlay;
 pub mod pocket;
 pub mod texture;
 
@@ -24,6 +26,7 @@ pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use engrave::{engrave, EngraveRequest};
 pub use fluting::{fluting, FlutingRequest};
+pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 pub use texture::{texture, TextureRequest};
 
@@ -185,6 +188,35 @@ pub enum ToolpathError {
     spacing: f64,
     /// The groove direction in degrees.
     angle: f64,
+  },
+  /// An inlay's allowance shrinks the region until there is none of it left.
+  ///
+  /// A negative allowance is an interference fit — the cavity smaller than the plug — so it is a
+  /// legitimate request up to the point where the region has no area left. The kernel is the only thing
+  /// that can say where that point is, and the refusal names the allowance rather than surfacing as a
+  /// pocket that "does not fit", which would blame the tool for an allowance (M6 A6, D-M6-7).
+  #[error("inlay allowance {allowance} mm leaves no region to cut: {reason}")]
+  InlayAllowanceCollapsed {
+    /// The offending allowance in millimetres.
+    allowance: f64,
+    /// What the kernel said, verbatim.
+    reason: String,
+  },
+  /// An inlay's region does not lie strictly inside the job rectangle.
+  ///
+  /// The male clears the stock *around* the region, so a region that reaches or crosses the stock's edge
+  /// has no material beside it to clear and the plug would come out bounded by the saw cut instead of by
+  /// a machined wall (M6 A6, D-M6-7).
+  #[error(
+    "inlay region is not strictly inside the job's {width} x {height} mm rectangle: the male clears \
+     the stock around the region, so a region on or across the stock's edge leaves nothing for it to \
+     clear"
+  )]
+  InlayRegionOutsideJob {
+    /// The job's width in millimetres.
+    width: f64,
+    /// The job's height in millimetres.
+    height: f64,
   },
 }
 

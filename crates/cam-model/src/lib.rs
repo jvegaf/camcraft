@@ -77,6 +77,37 @@ impl Job {
       safe_z: Length::from_mm(5.0),
     }
   }
+
+  /// The stock's surface as a closed contour in document coordinates, from `(0, 0)` to
+  /// `(width, height)`.
+  ///
+  /// The **one** place the job rectangle is built (M6 A6). An inlay's male half clears it with the
+  /// region standing as an island, and `cam-sim` authorises the same rectangle, so both ask here: a
+  /// program and a target that each built their own rectangle would eventually disagree about where the
+  /// stock ends, and a male that cleared past the stock or stopped short of it would be a ruined part
+  /// rather than a visible error.
+  ///
+  /// Document coordinates always run from the job's own corner; the corner *selector* is applied later,
+  /// once, by the toolpath layer (`cam_toolpath::machine_point`), and never here.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `width` or `height` is not a positive, finite length, which cannot describe a
+  /// rectangle. Every caller reaches this through [`Document::validate`] or a grid, both of which
+  /// refuse such a job by name first, and the panic says so rather than returning a degenerate
+  /// contour no strategy could cut.
+  pub fn outline(&self) -> Contour {
+    Contour::from_points(
+      &[
+        Point2::new(0.0, 0.0),
+        Point2::new(self.width.mm(), 0.0),
+        Point2::new(self.width.mm(), self.height.mm()),
+        Point2::new(0.0, self.height.mm()),
+      ],
+      true,
+    )
+    .expect("validated job dimensions describe a closed rectangle")
+  }
 }
 
 /// A named, independently switchable group of geometry.
@@ -480,6 +511,51 @@ fn default_texture_spacing() -> Length {
   Length::from_mm(3.0)
 }
 
+/// Parameters of an inlay toolpath pair.
+///
+/// An inlay is **two** toolpaths from one command (M6 A6, D-M6-7): a *female* that clears the selected
+/// region grown by `allowance` — the cavity — and a *male* that clears the job rectangle with the region
+/// standing as an island, which leaves a plug of exactly the region's shape. The plug fits the cavity
+/// with `allowance` millimetres of clearance, which is why there is one allowance and no second "gap"
+/// parameter: the number **is** the clearance.
+///
+/// Both halves carry the same five parameters, and which half a toolpath is, is stated where the
+/// document already states such things: the **female** names the region it clears as its `entity_ids`
+/// and leaves nothing standing, and the **male** has no boundary entity at all — its boundary is the
+/// job rectangle, which is not an entity ([`Job::outline`]) — and names the region it leaves standing
+/// as its `island_ids`. Nothing here is derived, so the two halves cannot disagree about the depth, the
+/// stepover or the allowance: there is one copy of them between the pair, and
+/// [`ModelError::InlayMaleTakesNoEntities`] refuses a record that names both, because two halves in one
+/// toolpath would leave the program's meaning to a guess.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InlayParams {
+  /// Clearance between the male plug and the female cavity: how far the female's region grows.
+  pub allowance: Length,
+  /// Distance between adjacent rings or rows of either half's clearing, the pocket's own parameter.
+  pub stepover: Length,
+  /// Depth of material removed per pass.
+  pub pass_depth: Length,
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Total cut depth below the stock surface, shared by both halves.
+  pub cut_depth: Length,
+}
+
+impl Default for InlayParams {
+  /// The pocket's own defaults, taken from it rather than restated: an inlay that authors nothing but
+  /// its region clears at the depth and the stepover a pocket would.
+  fn default() -> Self {
+    let pocket = PocketParams::default();
+    Self {
+      allowance: Length::ZERO,
+      stepover: pocket.stepover,
+      pass_depth: pocket.pass_depth,
+      start_depth: pocket.start_depth,
+      cut_depth: pocket.cut_depth,
+    }
+  }
+}
+
 /// `contours` as a region in a frame rotated by `radians`, or `None` when they do not bound one.
 ///
 /// A rotation moves every vertex and leaves every bulge alone — a bulge is an angle between two
@@ -519,6 +595,8 @@ pub enum Operation {
   Fluting(FlutingParams),
   /// Cut parallel grooves across the selected closed region; the material between them stands.
   Texture(TextureParams),
+  /// Cut one half of a male/female inlay pair; the pair is two toolpaths sharing one `InlayParams`.
+  Inlay(InlayParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -696,6 +774,49 @@ pub enum ModelError {
     /// The offending spacing in millimetres.
     value: f64,
   },
+  /// An inlay's stepover is zero, negative or not a finite number.
+  ///
+  /// Both halves clear with the pocket's ring machinery, so both need a distance between rings: a ring
+  /// lattice with no stepover behind it leaves material between the rings, which is the one thing a
+  /// clearing pass must never do (M6 A6).
+  #[error(
+    "toolpath {toolpath:?} inlay stepover must be a positive number of millimetres, got {value} mm"
+  )]
+  InlayStepoverNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending stepover in millimetres.
+    value: f64,
+  },
+  /// An inlay's cut depth does not extend below its start depth.
+  ///
+  /// The rule every chunked strategy inherits from the profile: a pass whose cut depth is not below its
+  /// start depth has no pass behind it, so no clearing would be emitted at all (M6 A6).
+  #[error(
+    "toolpath {toolpath:?} inlay cut depth {cut_depth} mm must be greater than its start depth \
+     {start_depth} mm"
+  )]
+  InlayDepthRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The requested cut depth in millimetres.
+    cut_depth: f64,
+    /// The requested start depth in millimetres.
+    start_depth: f64,
+  },
+  /// An inlay toolpath names both boundary entities and islands, so it is not one of the two halves.
+  ///
+  /// A female's boundary is the region it clears; a male's boundary is the job rectangle and its island
+  /// list is that same region. A record naming both is two halves in one toolpath, and which of them a
+  /// program would cut is not something to guess (see [`InlayParams`]).
+  #[error(
+    "toolpath {toolpath:?} is an inlay male with entity_ids: a male's boundary is the job rectangle, so \
+     an inlay toolpath names either the region it clears or the islands it leaves standing, never both"
+  )]
+  InlayMaleTakesNoEntities {
+    /// The toolpath id.
+    toolpath: String,
+  },
 }
 
 impl Document {
@@ -795,7 +916,10 @@ impl Document {
           | Operation::Drilling(_)
           | Operation::Chamfer(_)
           // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6).
-          | Operation::Texture(_) => true,
+          | Operation::Texture(_)
+          // An inlay grows a region and leaves it standing as an island, so its selection must bound
+          // one: an open vector bounds none (M6 A6).
+          | Operation::Inlay(_) => true,
           // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
           // vector and stops at its last vertex. Fluting is that same walk with a ramp at each end,
           // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
@@ -819,6 +943,7 @@ impl Document {
       check_chamfer(toolpath)?;
       check_fluting(toolpath)?;
       check_texture(toolpath)?;
+      check_inlay(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
@@ -890,6 +1015,38 @@ fn check_texture(toolpath: &Toolpath) -> Result<(), ModelError> {
   Ok(())
 }
 
+/// Check an inlay pair's own parameters, and that each toolpath is one half of the pair.
+///
+/// The stepover and the depth range are the pocket's rules, refused here by name because the document
+/// is the boundary that sees them before any toolpath exists. Which half a toolpath is comes from its
+/// island list (see [`InlayParams`]), so a record that names both a boundary and an island is refused
+/// rather than guessed at.
+fn check_inlay(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Inlay(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let stepover = params.stepover.mm();
+  if !stepover.is_finite() || stepover <= 0.0 {
+    return Err(ModelError::InlayStepoverNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: stepover,
+    });
+  }
+  if params.cut_depth.mm() <= params.start_depth.mm() {
+    return Err(ModelError::InlayDepthRange {
+      toolpath: toolpath.id.clone(),
+      cut_depth: params.cut_depth.mm(),
+      start_depth: params.start_depth.mm(),
+    });
+  }
+  if !toolpath.island_ids.is_empty() && !toolpath.entity_ids.is_empty() {
+    return Err(ModelError::InlayMaleTakesNoEntities {
+      toolpath: toolpath.id.clone(),
+    });
+  }
+  Ok(())
+}
+
 /// Check a toolpath's islands: closed, strictly inside a boundary, and never crossing or touching
 /// each other.
 ///
@@ -899,7 +1056,10 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
   if toolpath.island_ids.is_empty() {
     return Ok(());
   }
-  if !matches!(toolpath.operation, Operation::Pocket(_)) {
+  if !matches!(
+    toolpath.operation,
+    Operation::Pocket(_) | Operation::Inlay(_)
+  ) {
     return Err(ModelError::IslandsRequirePocket {
       toolpath: toolpath.id.clone(),
     });
@@ -945,7 +1105,13 @@ fn check_islands(document: &Document, toolpath: &Toolpath) -> Result<(), ModelEr
           cam_geom::winding::Relation::FirstInside
         )
       })
-    });
+    }) || (matches!(toolpath.operation, Operation::Inlay(_))
+      && matches!(
+        // An inlay male's boundary is the job rectangle, which is not an entity: its region has to sit
+        // strictly inside the stock, or the male has nothing to clear around it (M6 A6, D-M6-7).
+        cam_geom::winding::relation(island, &document.job.outline(), tolerance),
+        cam_geom::winding::Relation::FirstInside
+      ));
     if !inside {
       return Err(ModelError::IslandOutsideBoundary {
         toolpath: toolpath.id.clone(),

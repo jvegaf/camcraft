@@ -783,3 +783,230 @@ fn a_texture_toolpath_on_open_geometry_is_rejected() {
     "{error:?}"
   );
 }
+
+// --- inlay (M6 A6, D-M6-7) -------------------------------------------------------------------
+
+/// The pair one `toolpath --kind inlay` command appends: a female that clears `E1` and a male that
+/// leaves it standing inside the job rectangle, both carrying the same parameters.
+///
+/// The region is a 100 mm square strictly inside the default 1219 x 2438 sheet, because an inlay's
+/// region has to sit inside the stock: the male clears the material around it.
+fn inlay_pair(params: InlayParams) -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Part".to_owned(),
+    visible: true,
+    entities: vec![Entity {
+      id: "E1".to_owned(),
+      kind: EntityKind::Contour {
+        contour: Contour::from_points(
+          &[
+            Point2::new(100.0, 100.0),
+            Point2::new(200.0, 100.0),
+            Point2::new(200.0, 200.0),
+            Point2::new(100.0, 200.0),
+          ],
+          true,
+        )
+        .expect("a square inside the stock"),
+      },
+    }],
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "inlay female".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Inlay(params.clone()),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "inlay male".to_owned(),
+    entity_ids: Vec::new(),
+    island_ids: vec!["E1".to_owned()],
+    tool_number: 1,
+    operation: Operation::Inlay(params),
+  });
+  document
+}
+
+fn inlay_params(allowance: f64, stepover: f64) -> InlayParams {
+  InlayParams {
+    allowance: Length::from_mm(allowance),
+    stepover: Length::from_mm(stepover),
+    ..InlayParams::default()
+  }
+}
+
+#[test]
+fn an_inlay_pair_round_trips_and_is_two_toolpaths_sharing_one_operation() {
+  let document = inlay_pair(inlay_params(1.5, 2.4));
+  document.validate().expect("a closed region inlay");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"inlay\""), "{json}");
+  assert!(json.contains("\"allowance\":1.5"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+
+  // The two halves carry the same parameters: the document states which half each one is with what it
+  // already records about a toolpath's work — the entities it clears and the islands it leaves standing.
+  match (
+    &parsed.toolpaths[0].operation,
+    &parsed.toolpaths[1].operation,
+  ) {
+    (Operation::Inlay(female), Operation::Inlay(male)) => assert_eq!(female, male),
+    other => panic!("expected two inlay halves, got {other:?}"),
+  }
+  assert_eq!(parsed.toolpaths[0].island_ids, Vec::<String>::new());
+  assert_eq!(parsed.toolpaths[1].entity_ids, Vec::<String>::new());
+  assert_eq!(parsed.toolpaths[1].island_ids, vec!["E1".to_owned()]);
+}
+
+#[test]
+fn an_inlay_defaults_to_the_pockets_own_numbers() {
+  // D-M6-7's "one depth and one stepover rather than two extra flags": an inlay that authors nothing
+  // clears at the depth and the stepover a pocket would, taken from the pocket rather than restated.
+  let inlay = InlayParams::default();
+  let pocket = PocketParams::default();
+  assert_eq!(inlay.allowance, Length::ZERO);
+  assert_eq!(inlay.stepover, pocket.stepover);
+  assert_eq!(inlay.pass_depth, pocket.pass_depth);
+  assert_eq!(inlay.start_depth, pocket.start_depth);
+  assert_eq!(inlay.cut_depth, pocket.cut_depth);
+}
+
+#[test]
+fn a_non_positive_inlay_stepover_is_refused_at_load_naming_the_value() {
+  // Both halves clear with the pocket's ring machinery, so both need a distance between rings: a
+  // lattice with no stepover leaves material standing between the rings.
+  for stepover in [0.0, -2.0] {
+    let document = inlay_pair(inlay_params(1.0, stepover));
+    let error = document
+      .validate()
+      .expect_err("a stepover with no distance behind it must be refused");
+    assert_eq!(
+      error,
+      ModelError::InlayStepoverNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: stepover,
+      }
+    );
+    assert!(
+      error.to_string().contains(&stepover.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn an_inlay_depth_range_with_no_pass_in_it_is_refused_at_load_naming_both_depths() {
+  for (start, cut) in [(6.0, 6.0), (6.0, 2.0)] {
+    let params = InlayParams {
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+      ..inlay_params(1.0, 2.0)
+    };
+    let document = inlay_pair(params);
+    let error = document
+      .validate()
+      .expect_err("a cut above its start depth has no pass behind it");
+    assert_eq!(
+      error,
+      ModelError::InlayDepthRange {
+        toolpath: "TP1".to_owned(),
+        cut_depth: cut,
+        start_depth: start,
+      }
+    );
+    assert!(
+      error.to_string().contains(&cut.to_string())
+        && error.to_string().contains(&start.to_string()),
+      "the refusal names both depths: {error}"
+    );
+  }
+}
+
+#[test]
+fn an_inlay_toolpath_that_is_both_halves_is_refused_rather_than_guessed() {
+  // A female names the region it clears; a male names it as the islands it leaves standing and takes no
+  // boundary entity, because its boundary is the job rectangle. A record that names both is two halves in
+  // one toolpath, and which of them a program would cut is not something to guess (see `InlayParams`).
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  document.toolpaths[1].entity_ids = vec!["E1".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::InlayMaleTakesNoEntities { ref toolpath } if toolpath == "TP2"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_inlay_toolpath_on_open_geometry_is_rejected() {
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  // The female's own rule fires first, and the male's island is refused for the same reason: a cavity
+  // and a plug are both regions, and an open vector bounds none.
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn an_inlay_male_stands_its_islands_inside_the_job_rectangle() {
+  // A male's boundary is the job, which is not an entity, so the model checks its islands against
+  // `Job::outline()`: a region outside the stock has nothing beside it for the male to clear.
+  let mut document = inlay_pair(inlay_params(1.0, 2.0));
+  let outside = Contour::from_points(
+    &[
+      Point2::new(1500.0, 1200.0),
+      Point2::new(1600.0, 1200.0),
+      Point2::new(1600.0, 1300.0),
+      Point2::new(1500.0, 1300.0),
+    ],
+    true,
+  )
+  .expect("a square past the stock's corner");
+  document.layers[0].entities.push(Entity {
+    id: "E2".to_owned(),
+    kind: EntityKind::Contour { contour: outside },
+  });
+  document.toolpaths[1].island_ids = vec!["E2".to_owned()];
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::IslandOutsideBoundary { ref island, .. } if island == "E2"),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn the_job_outline_is_one_rectangle_in_document_coordinates() {
+  // The one place the job rectangle is built (M6 A6): `cam-toolpath::inlay`'s male half clears it and
+  // `cam-sim` authorises it, so both ask here.
+  let job = Job {
+    width: Length::from_mm(200.0),
+    height: Length::from_mm(100.0),
+    ..Job::default_sheet()
+  };
+  let outline = job.outline();
+  assert!(outline.is_closed());
+  let bounds = outline.bounds();
+  assert_eq!(
+    (bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y),
+    (0.0, 0.0, 200.0, 100.0)
+  );
+  // Document coordinates, not machine ones: the origin corner is applied later, once, by the toolpath
+  // layer, so a top-left job's outline is the same rectangle.
+  let top_left = Job {
+    origin: OriginCorner::TopLeft,
+    ..job
+  };
+  assert_eq!(top_left.outline(), outline);
+}

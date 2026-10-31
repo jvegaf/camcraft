@@ -4093,3 +4093,612 @@ fn a_texture_at_forty_five_degrees_emits_the_patterns_diagonal_grooves() {
   }
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// --- inlay (M6 A6, A9, D-M6-7) ----------------------------------------------------------------
+
+/// A document of a given size with the given contours as `E1..En`, and no toolpaths.
+fn write_sized_vectors(
+  directory: &Path,
+  name: &str,
+  width: f64,
+  height: f64,
+  contours: Vec<Contour>,
+) -> PathBuf {
+  let mut document = Document::new(Job {
+    width: Length::from_mm(width),
+    height: Length::from_mm(height),
+    thickness: Length::from_mm(18.0),
+    units: UnitSystem::Mm,
+    origin: cam_model::OriginCorner::BottomLeft,
+    safe_z: Length::from_mm(5.0),
+  });
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Vectors".to_owned(),
+    visible: true,
+    entities: contours
+      .into_iter()
+      .enumerate()
+      .map(|(index, contour)| Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour { contour },
+      })
+      .collect(),
+  });
+  let path = directory.join(name);
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// A counter-clockwise rectangle with the given corners.
+fn rectangle_at(min: f64, bottom: f64, max: f64, top: f64) -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(min, bottom),
+      Point2::new(max, bottom),
+      Point2::new(max, top),
+      Point2::new(min, top),
+    ],
+    true,
+  )
+  .expect("rectangle")
+}
+
+/// A 2 mm tool with a 1 mm stepover: the fixture the simulation resolves cell for cell, `emit`'s and
+/// `simulate`'s own clean pocket precedent.
+fn write_small_tool_library(directory: &Path) -> PathBuf {
+  let path = directory.join("small.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G3".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(2.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "C3".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(2.0)),
+      stepover: Some(Length::from_mm(1.0)),
+      clear_stepover: None,
+      tool_number: Some(1),
+      notes: None,
+    })
+    .expect("cutting data");
+  library.link("E3", "G3", "C3", None, None).expect("link");
+  path
+}
+
+/// Author an inlay on `E1` through the real `toolpath` command.
+fn author_inlay(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
+  let mut arguments = vec![
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "inlay",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ];
+  arguments.extend_from_slice(extra);
+  run(&arguments)
+}
+
+#[test]
+fn an_inlay_command_appends_the_pair_in_the_fixed_order() {
+  // A6 and D-M6-7: one command, **two** toolpaths, the cavity first and the plug that fits it second,
+  // with consecutive ids and those exact names. The document says which half each one is with what it
+  // already records about a toolpath's work: the female names the region it clears, the male names the
+  // same region as the islands it leaves standing and takes no boundary entity, because its boundary is
+  // the job rectangle and the job is not an entity.
+  let directory = scratch("inlay-pair");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  let before = cam_store::document::load_document(&document).expect("loads");
+  assert!(before.toolpaths.is_empty(), "the fixture has no toolpaths");
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "1.5", "--stepover", "4"],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout,
+    "added TP1 inlay female, tool T1, 1 entity(ies)\n\
+     added TP2 inlay male, tool T1, 1 island(s)\n",
+    "{}",
+    added.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths.len(), 2, "one command, two toolpaths");
+  assert_eq!(loaded.toolpaths[0].id, "TP1");
+  assert_eq!(loaded.toolpaths[0].name, "inlay female");
+  assert_eq!(loaded.toolpaths[0].entity_ids, vec!["E1".to_owned()]);
+  assert!(loaded.toolpaths[0].island_ids.is_empty());
+  assert_eq!(loaded.toolpaths[1].id, "TP2");
+  assert_eq!(loaded.toolpaths[1].name, "inlay male");
+  assert!(loaded.toolpaths[1].entity_ids.is_empty());
+  assert_eq!(loaded.toolpaths[1].island_ids, vec!["E1".to_owned()]);
+
+  // Both halves carry the same parameters — one allowance, one depth, one stepover — and the allowance
+  // is the number the flag named.
+  match (
+    &loaded.toolpaths[0].operation,
+    &loaded.toolpaths[1].operation,
+  ) {
+    (Operation::Inlay(female), Operation::Inlay(male)) => {
+      assert_eq!(female, male, "one copy of the pair's numbers");
+      assert_eq!(female.allowance, Length::from_mm(1.5));
+      assert_eq!(
+        female.cut_depth,
+        Length::from_mm(18.0),
+        "--cut-depth's own default, from the profile's"
+      );
+      assert_eq!(
+        female.pass_depth,
+        Length::from_mm(6.0),
+        "the library's stepdown"
+      );
+      assert_eq!(female.start_depth, Length::ZERO);
+    }
+    other => panic!("expected two inlay halves, got {other:?}"),
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_inlay_command_appends_the_next_pair() {
+  // The ids are deterministic and never reused: the second run appends `TP3` and `TP4`, in that order,
+  // because the pair is named from the document's own next free ids.
+  let directory = scratch("inlay-second");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+
+  let first = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "1", "--stepover", "4"],
+  );
+  assert_eq!(first.code, 0, "{}", first.stderr);
+  let second = author_inlay(
+    &document,
+    &library,
+    &["--inlay-allowance", "2", "--stepover", "4"],
+  );
+  assert_eq!(second.code, 0, "{}", second.stderr);
+  assert_eq!(
+    second.stdout,
+    "added TP3 inlay female, tool T1, 1 entity(ies)\n\
+     added TP4 inlay male, tool T1, 1 island(s)\n",
+    "{}",
+    second.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let ids: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.id.as_str())
+    .collect();
+  assert_eq!(ids, vec!["TP1", "TP2", "TP3", "TP4"]);
+  let names: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.name.as_str())
+    .collect();
+  assert_eq!(
+    names,
+    vec!["inlay female", "inlay male", "inlay female", "inlay male"]
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole program one inlay pair emits, byte for byte.
+///
+/// A 40 x 30 mm sheet, a 16 x 6 mm region at (12, 12), a 6 mm tool, a 1 mm allowance, a 4 mm stepover
+/// and a 6 mm depth. The **female** is one ring — the tool centre 2 mm inside the region's own wall,
+/// which is `radius - allowance` inside it and therefore `radius` inside the cavity the allowance grows
+/// it to — cut first: `N30`..`N90`, seven moves. The **male** is the frame between the stock's edge and
+/// the region, cleared in rows 4 mm apart: `N100` is the post's segment change (the tool does not change
+/// and the clearance height does not move, so its `G00` carries nothing), then nineteen rows' worth of
+/// passes — `N110`..`N500` — where a row that crosses the region is cut as **two** spans and a row that
+/// misses it as one, zigzagging so each row starts where the last one ended. The post names the first
+/// segment in its header block and no further one, which is why only the female is named.
+///
+/// CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_INLAY_PROGRAM: &str = "\
+( inlay female )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X14.0000Y14.0000\r\n\
+N40G01Z-6.0000F100.0\r\n\
+N50G01X26.0000\r\n\
+N60G01Y16.0000\r\n\
+N70G01X14.0000\r\n\
+N80G01Y14.0000\r\n\
+N90G00Z5.0000\r\n\
+N100G00\r\n\
+N110G00X3.0000Y3.0000\r\n\
+N120G01Z-6.0000\r\n\
+N130G01X37.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Y7.0000\r\n\
+N160G01Z-6.0000\r\n\
+N170G01X3.0000\r\n\
+N180G00Z5.0000\r\n\
+N190G00Y11.0000\r\n\
+N200G01Z-6.0000\r\n\
+N210G01X9.0000\r\n\
+N220G00Z5.0000\r\n\
+N230G00X31.0000\r\n\
+N240G01Z-6.0000\r\n\
+N250G01X37.0000\r\n\
+N260G00Z5.0000\r\n\
+N270G00Y15.0000\r\n\
+N280G01Z-6.0000\r\n\
+N290G01X31.0000\r\n\
+N300G00Z5.0000\r\n\
+N310G00X9.0000\r\n\
+N320G01Z-6.0000\r\n\
+N330G01X3.0000\r\n\
+N340G00Z5.0000\r\n\
+N350G00Y19.0000\r\n\
+N360G01Z-6.0000\r\n\
+N370G01X9.0000\r\n\
+N380G00Z5.0000\r\n\
+N390G00X31.0000\r\n\
+N400G01Z-6.0000\r\n\
+N410G01X37.0000\r\n\
+N420G00Z5.0000\r\n\
+N430G00Y23.0000\r\n\
+N440G01Z-6.0000\r\n\
+N450G01X3.0000\r\n\
+N460G00Z5.0000\r\n\
+N470G00Y27.0000\r\n\
+N480G01Z-6.0000\r\n\
+N490G01X37.0000\r\n\
+N500G00Z5.0000\r\n\
+N510G00Z5.0000\r\n\
+N520G00X0.0000Y0.0000\r\n\
+N530M05\r\n\
+N540M30\r\n\
+";
+
+#[test]
+fn an_inlay_authored_through_the_cli_emits_the_golden_program() {
+  // The pair's program, byte for byte: the female's single ring first — the 16 x 6 mm region at
+  // (12, 12) cleared with a 6 mm tool and a 1 mm allowance, so the tool centre runs 2 mm inside its
+  // wall — and then the male's rows across the frame between the stock's edge and the region, 4 mm
+  // apart, each row cut as **two** spans where it crosses the region and as one where it does not.
+  let directory = scratch("golden-inlay");
+  let document = write_sized_vectors(
+    &directory,
+    "inlay.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &[
+      "--inlay-allowance",
+      "1",
+      "--stepover",
+      "4",
+      "--cut-depth",
+      "6",
+    ],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_INLAY_PROGRAM);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_runs_of_an_inlay_print_and_emit_the_same_bytes() {
+  // S6: identical input, identical bytes — the command's own report and the program it makes possible.
+  let directory = scratch("inlay-determinism");
+  let first_document = write_sized_vectors(
+    &directory,
+    "first.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let second_document = write_sized_vectors(
+    &directory,
+    "second.c2d",
+    40.0,
+    30.0,
+    vec![rectangle_at(12.0, 12.0, 28.0, 18.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let arguments = [
+    "--inlay-allowance",
+    "1",
+    "--stepover",
+    "4",
+    "--cut-depth",
+    "6",
+  ];
+  let first = author_inlay(&first_document, &library, &arguments);
+  let second = author_inlay(&second_document, &library, &arguments);
+  assert_eq!(first.code, 0, "{}", first.stderr);
+  assert_eq!(second.code, 0, "{}", second.stderr);
+  assert_eq!(first.stdout, second.stdout);
+
+  let program = emit_program(&directory, &first_document, &library, &post);
+  assert_eq!(
+    emit_program(&directory, &second_document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_takes_no_side_no_tab_no_lead_no_ramp_no_spacing_no_angle_and_no_chamfer_width() {
+  // D-M6-7: the pair is two pockets, so every flag that belongs to another cutting law has no meaning
+  // here — and `--strategy` with them, because the pair's parameters carry no clearing pattern at all.
+  // Refusing them by name is the difference between a refusal and a silently different pair.
+  let directory = scratch("inlay-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--ramp", "10"),
+    ("--spacing", "4"),
+    ("--angle", "45"),
+    ("--chamfer-width", "3"),
+    ("--strategy", "raster"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "inlay.c2d",
+      vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = author_inlay(&document, &library, &["--stepover", "4", flag, value]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("male/female pair of pockets"),
+      "and says what an inlay is instead: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_names_the_pair_itself_so_it_takes_no_id_and_no_name() {
+  // The two ids and the two names are part of the command's contract: one `--id` or `--name` could only
+  // ever name one of the two toolpaths it appends.
+  let directory = scratch("inlay-names");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  for flag in [["--id", "PAIR"], ["--name", "Inlay"]] {
+    let outcome = author_inlay(&document, &library, &["--stepover", "4", flag[0], flag[1]]);
+    assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag[0]),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_takes_its_stepover_and_pass_depth_from_the_tool_library() {
+  // The pocket's own fallbacks, unchanged: `--stepover` absent takes the library's stepover and
+  // `--pass-depth` absent takes its stepdown. The fixture tool is 6 mm with a 2.4 mm stepover and a
+  // 5 mm stepdown.
+  let directory = scratch("inlay-library");
+  let library = write_library_with_pocket_rates(&directory);
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "inlay",
+    "--entities",
+    "E1",
+    "--tool",
+    "2",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Inlay(params) => {
+      assert_eq!(
+        params.stepover,
+        Length::from_mm(2.4),
+        "the library's stepover"
+      );
+      assert_eq!(
+        params.pass_depth,
+        Length::from_mm(5.0),
+        "the library's stepdown"
+      );
+    }
+    other => panic!("expected an inlay toolpath, got {other:?}"),
+  }
+
+  // A library with no stepover at all is an input error naming the flag, never a defaulted lattice — the
+  // same refusal a pocket speaks.
+  let plain = write_library(&directory);
+  let document = write_vectors(
+    &directory,
+    "inlay-nostepover.c2d",
+    vec![rectangle_at(20.0, 20.0, 60.0, 60.0)],
+  );
+  let outcome = author_inlay(&document, &plain, &[]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--stepover"),
+    "the refusal names the missing input: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_pair_simulates_with_no_gouge_and_no_uncut() {
+  // A9's end-to-end claim for the pair: the target authorises the female's cavity and the male's frame,
+  // and the two programs cut exactly those. The fixture is the one whose geometry the 1 mm grid resolves
+  // cleanly — a 2 mm tool at a 1 mm stepover, on a region whose walls sit on the lattice — so neither
+  // number is tolerance-softened.
+  let directory = scratch("inlay-simulate");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(40.0, 20.0, 120.0, 80.0)],
+  );
+  let library = write_small_tool_library(&directory);
+
+  let added = author_inlay(
+    &document,
+    &library,
+    &[
+      "--inlay-allowance",
+      "2",
+      "--stepover",
+      "1",
+      "--cut-depth",
+      "2",
+    ],
+  );
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  // And it is the pair that was simulated, not an empty program: two toolpaths, and both halves remove
+  // material.
+  assert!(
+    outcome.stdout.contains("2 toolpath(s)"),
+    "{}",
+    outcome.stdout
+  );
+  let removed = report_volume(&outcome.stdout, "removed:");
+  // The cavity is the 80 x 60 region grown by 2 mm — 84 x 64 — and the frame is the rest of the 200 x 100
+  // stock, so together they are the whole 200 x 100 mm sheet at 2 mm: 40000 mm3.
+  assert!(
+    (removed - 40_000.0).abs() < 1.0,
+    "the pair clears the whole stock: {removed} mm3 of it, {}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_whose_region_is_not_inside_the_stock_exits_two_naming_the_job() {
+  // The male clears the stock *around* the region, so a region on or across the stock's edge has nothing
+  // beside it to clear. The command asks the strategy, and refuses before anything is written.
+  let directory = scratch("inlay-outside");
+  let document = write_vectors(
+    &directory,
+    "inlay.c2d",
+    vec![rectangle_at(150.0, 20.0, 220.0, 60.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = author_inlay(&document, &library, &["--stepover", "4"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("200 x 100"),
+    "the refusal names the stock: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_inlay_on_an_open_contour_exits_two_naming_the_geometry() {
+  // A cavity is a region's and an open vector bounds none: refused by the document's own closed-geometry
+  // rule, before anything is written.
+  let directory = scratch("inlay-open");
+  let open = Contour::from_points(&[Point2::new(20.0, 20.0), Point2::new(60.0, 20.0)], false)
+    .expect("an open vector");
+  let document = write_vectors(&directory, "inlay.c2d", vec![open]);
+  let library = write_library(&directory);
+  let outcome = author_inlay(&document, &library, &["--stepover", "4"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("closed geometry"),
+    "the refusal says what is wrong: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
