@@ -37,7 +37,7 @@ use cam_model::{Job, ThreadDirection, ThreadParams};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 
-use crate::{circle_centre, machine_point, ToolSpec, ToolpathError};
+use crate::{circle_centre, machine_ccw, machine_point, ToolSpec, ToolpathError};
 
 /// Everything a thread needs.
 #[derive(Clone, Copy, Debug)]
@@ -106,13 +106,23 @@ pub fn thread(request: &ThreadRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
     ThreadDirection::External => (circle + diameter) / 2.0,
   };
 
-  let centre = machine_point(request.job, centre);
+  // The orbit is a curve of the **document's** geometry, so it is built there and mapped once, by the
+  // same pair every arc and every ramp uses: its points through `machine_point`, and its sense through
+  // `machine_ccw`. Handedness is not something the point map can carry — `top_left` reflects the frame
+  // and a reflection reverses the orbit — so a helix emitted with only its points mapped runs the other
+  // way round the same circle and cuts the opposite thread hand (A7, L6).
+  let document_centre = centre;
   let safe_z = request.job.safe_z;
   let depth = params.cut_depth.mm();
   // The orbit's `+x` point, which is where the descent starts and where every whole turn ends. It is
   // computed once and reused, so a full turn's destination is bit-for-bit its start point — which is
   // what makes it one revolution to the sweep, to the preview and to `cut_length` alike.
-  let start = Point2::new(centre.x + orbit, centre.y);
+  let start = machine_point(
+    request.job,
+    Point2::new(document_centre.x + orbit, document_centre.y),
+  );
+  let centre = machine_point(request.job, document_centre);
+  let ccw = machine_ccw(request.job, true);
   let at = |x: f64, y: f64, z: f64| Point3 {
     x: Length::from_mm(x),
     y: Length::from_mm(y),
@@ -140,22 +150,26 @@ pub fn thread(request: &ThreadRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
     moves.push(Move::Helix {
       to: at(start.x, start.y, -(pitch * (turn + 1) as f64)),
       center: centre,
-      ccw: true,
+      ccw,
     });
   }
   let remainder = depth - pitch * whole;
   if remainder > 1.0e-9 {
     // The fraction of a turn that reaches the depth, by angle: the same fraction of the descent's Z, so
-    // one revolution still drops one pitch.
+    // one revolution still drops one pitch. The end point is the document's own, so the same one map
+    // puts it on the machine's orbit even where the frame reflects.
     let angle = (remainder / pitch) * TAU;
-    let end = Point2::new(
-      centre.x + orbit * angle.cos(),
-      centre.y + orbit * angle.sin(),
+    let end = machine_point(
+      request.job,
+      Point2::new(
+        document_centre.x + orbit * angle.cos(),
+        document_centre.y + orbit * angle.sin(),
+      ),
     );
     moves.push(Move::Helix {
       to: at(end.x, end.y, -depth),
       center: centre,
-      ccw: true,
+      ccw,
     });
   }
 

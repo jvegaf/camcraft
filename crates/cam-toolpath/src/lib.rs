@@ -419,14 +419,20 @@ pub(crate) fn pass_depths(start: f64, cut: f64, step: f64) -> Result<Vec<f64>, T
 
 /// Map a document point onto machine coordinates for the job's origin corner.
 pub fn machine_point(job: &Job, point: Point2) -> Point2 {
-  match job.origin {
-    cam_model::OriginCorner::BottomLeft => point,
-    cam_model::OriginCorner::TopLeft => Point2::new(point.x, job.height.mm() - point.y),
-    cam_model::OriginCorner::Center => Point2::new(
-      point.x - job.width.mm() / 2.0,
-      point.y - job.height.mm() / 2.0,
-    ),
-  }
+  // One definition, in the model: the simulation reads a program back with the same map (M7 A7).
+  job.frame().to_machine(point)
+}
+
+/// The sense an arc keeps when the job's frame maps it onto the machine.
+///
+/// A frame is not only a position: `top_left` is a **reflection**, and a reflection reverses
+/// orientation, so a curve the document traverses counter-clockwise is traversed clockwise in the
+/// machine's own numbering. Mapping an arc's points and keeping its `ccw` therefore states the
+/// **complementary** arc — a `G03` where the machine needs `G02`, which is a wrong cut rather than a
+/// wrong report. `center` translates and keeps handedness, so it flips nothing (M7 A7, L6). The map
+/// itself is the model's, exactly as it is for [`machine_point`]: this only asks it.
+fn machine_ccw(job: &Job, ccw: bool) -> bool {
+  ccw != job.frame().is_reflection()
 }
 
 /// A point `lead` millimetres behind `start` along the contour's direction of travel.
@@ -662,7 +668,7 @@ pub(crate) fn push_ramp(moves: &mut Vec<Move>, job: &Job, segment: Segment, to: 
           z: Length::from_mm(z),
         },
         center,
-        ccw: arc.is_ccw(),
+        ccw: machine_ccw(job, arc.is_ccw()),
       });
     }
   }
@@ -775,7 +781,7 @@ pub(crate) fn push_horizontal(
           z: Length::from_mm(z),
         },
         center,
-        ccw: arc.is_ccw(),
+        ccw: machine_ccw(job, arc.is_ccw()),
       });
     }
   }

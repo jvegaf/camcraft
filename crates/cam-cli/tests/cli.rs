@@ -360,6 +360,100 @@ fn emit_is_byte_identical_across_runs() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+/// `source`, re-saved at another origin corner — the one field `Job::origin` that moves the machine
+/// frame relative to the document.
+fn with_origin(source: &Path, corner: cam_model::OriginCorner, target: &Path) {
+  let mut document = cam_store::document::load_document(source).expect("the document loads");
+  document.job.origin = corner;
+  save_document(target, &document).expect("the document saves");
+}
+
+/// The arc words a program states, in order, as `G02` and `G03`.
+///
+/// Only the word is read, not the block: a helix carries `G02`/`G03` too, and the leading words of the
+/// header (`G17`, `G90`, `G21`) contain neither.
+fn arc_words(program: &str) -> Vec<&'static str> {
+  program
+    .lines()
+    .filter_map(|line| {
+      if line.contains("G02") {
+        Some("G02")
+      } else if line.contains("G03") {
+        Some("G03")
+      } else {
+        None
+      }
+    })
+    .collect()
+}
+
+#[test]
+fn a_top_left_origin_flips_every_arc_word_and_a_centred_origin_flips_none() {
+  // A7 as widened by L6. `top_left` reflects the job, so a curve the document traverses
+  // counter-clockwise is clockwise in the machine's own numbering, and a program that mapped only its
+  // points states the complementary arc: a G03 where the machine needs G02. That is a wrong cut, and it
+  // survived every milestone until now because every fixture is bottom-left. `center` translates the
+  // job, so it keeps the document's handedness and is the control that shows the flip is the mirror's
+  // doing rather than the point mapping's.
+  let directory = scratch("origin-arc-handedness");
+  let document = write_document(
+    &directory,
+    cam_geom::primitive::circle(Point2::new(100.0, 50.0), 15.0).expect("a circle"),
+    None,
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let bottom_left = arc_words(&emit_program(&directory, &document, &library, &post));
+  assert!(
+    !bottom_left.is_empty(),
+    "a circle profile is emitted with arc blocks at bottom-left"
+  );
+  assert!(
+    bottom_left.iter().all(|word| *word == "G03"),
+    "the document's circle runs counter-clockwise, so bottom-left says G03: {bottom_left:?}"
+  );
+
+  let top_left_document = directory.join("top-left.c2d");
+  with_origin(
+    &document,
+    cam_model::OriginCorner::TopLeft,
+    &top_left_document,
+  );
+  let top_left = arc_words(&emit_program(
+    &directory,
+    &top_left_document,
+    &library,
+    &post,
+  ));
+  let complementary: Vec<&str> = bottom_left
+    .iter()
+    .map(|word| if *word == "G02" { "G03" } else { "G02" })
+    .collect();
+  assert_eq!(
+    top_left, complementary,
+    "reflecting the job reverses every arc's sense, so the program states the other word"
+  );
+
+  let centred_document = directory.join("centred.c2d");
+  with_origin(
+    &document,
+    cam_model::OriginCorner::Center,
+    &centred_document,
+  );
+  let centred = arc_words(&emit_program(
+    &directory,
+    &centred_document,
+    &library,
+    &post,
+  ));
+  assert_eq!(
+    centred, bottom_left,
+    "centring the job moves it without mirroring it, so the arc words are the same"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 #[test]
 fn emit_refuses_a_document_it_cannot_cut_and_writes_nothing() {
   let directory = scratch("refuse");
