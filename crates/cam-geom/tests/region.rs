@@ -146,6 +146,26 @@ fn contains_reports_a_point_on_a_boundary_as_not_material() {
 }
 
 #[test]
+fn contains_keeps_its_answer_when_it_shares_the_walk_with_the_distance() {
+  // PRESERVE (M7 T1): `contains` now answers through `distance_to_boundary`, so the case worth
+  // pinning is the one the old code short-circuited — a point on a boundary whose parity is *odd* is
+  // still not material, and the empty region, which has no boundary to be on, is not material either.
+  let region = region(vec![
+    square(Point2::new(0.0, 0.0), 20.0, 20.0),
+    square(Point2::new(8.0, 8.0), 4.0, 4.0),
+  ]);
+  assert!(
+    !region.contains(Point2::new(8.0, 10.0), TOLERANCE),
+    "on the hole's wall, with parity 1 from the outer square alone"
+  );
+  assert!(region.contains(Point2::new(6.0, 10.0), TOLERANCE));
+  assert!(!region.contains(Point2::new(10.0, 10.0), TOLERANCE));
+  assert!(!Region::new(Vec::new())
+    .expect("an empty region is legal")
+    .contains(Point2::new(3.0, 4.0), TOLERANCE));
+}
+
+#[test]
 fn subtract_appends_the_hole_and_normalizes() {
   let pocket = region(vec![square(Point2::new(0.0, 0.0), 20.0, 20.0)]);
   let with_hole = pocket

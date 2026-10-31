@@ -217,6 +217,51 @@ impl Arc {
     }
   }
 
+  /// The nearest point of the arc, and its exact distance (M7 A2).
+  ///
+  /// Inside the sweep the nearest point is the radial one; outside it, it is whichever endpoint is
+  /// nearer. Both are exact, and neither is a chord: the arc is never tessellated to answer this.
+  ///
+  /// The one case that is not a single point is the arc's **own centre**, where every point of the
+  /// sweep is at the radius and none of them is nearer than the others. The answer is then flagged
+  /// [`NearestPoint::interval`](crate::NearestPoint::interval), because the medial-axis certificate
+  /// needs to know that the nearest set is a continuum rather than trusting one arbitrary member.
+  pub fn nearest_point(self, point: Point2) -> crate::NearestPoint {
+    let offset = point - self.center;
+    let distance = offset.length();
+    if distance <= f64::MIN_POSITIVE {
+      return crate::NearestPoint {
+        point: self.start_point(),
+        distance: self.radius,
+        interval: true,
+      };
+    }
+    if self.contains_angle(offset.angle()) {
+      let foot = self.center + offset * (self.radius / distance);
+      return crate::NearestPoint {
+        point: foot,
+        distance: (distance - self.radius).abs(),
+        interval: false,
+      };
+    }
+    let start = self.start_point();
+    let end = self.end_point();
+    let (to_start, to_end) = (start.distance_to(point), end.distance_to(point));
+    if to_start <= to_end {
+      crate::NearestPoint {
+        point: start,
+        distance: to_start,
+        interval: false,
+      }
+    } else {
+      crate::NearestPoint {
+        point: end,
+        distance: to_end,
+        interval: false,
+      }
+    }
+  }
+
   /// Exact axis-aligned bounds: endpoints plus whichever axis extremes the sweep passes through.
   ///
   /// Tessellating to measure an arc is both approximate and wasteful, and the viewport asks for

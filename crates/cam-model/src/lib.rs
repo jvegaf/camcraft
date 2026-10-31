@@ -48,6 +48,81 @@ pub enum OriginCorner {
   Center,
 }
 
+/// The document frame's relation to the machine frame, for one job (M7 A7, S17).
+///
+/// A document's geometry runs from the job's own corner, `(0, 0)` to `(width, height)`, while a
+/// program's moves are in machine coordinates — the frame the selected [`OriginCorner`] puts the
+/// machine's origin in. Two of the three corners make the frames differ, and both differences are exact
+/// isometries: `center` translates the job so its centre is the machine's origin, and `top_left`
+/// reflects Y so distance grows towards the operator.
+///
+/// This is the **one** definition of that map. The toolpath layer emits with [`Frame::to_machine`], and
+/// the simulation reads a program back into the document frame with [`Frame::from_machine`], so a
+/// program cannot mean one place in G-code and another in the report. M6 recorded the defect that
+/// motivated it: `cam_sim`'s field was in the document frame while the programs it swept were in the
+/// machine frame, so at any corner but `bottom_left` a correct program was reported as gouge and uncut.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+  corner: OriginCorner,
+  width: f64,
+  height: f64,
+}
+
+impl Frame {
+  /// The frame of `job`, from its origin corner and its size.
+  pub fn of(job: &Job) -> Self {
+    Self {
+      corner: job.origin,
+      width: job.width.mm(),
+      height: job.height.mm(),
+    }
+  }
+
+  /// The corner the machine's XY origin sits on.
+  pub fn corner(&self) -> OriginCorner {
+    self.corner
+  }
+
+  /// A point in document coordinates, as the machine sees it.
+  pub fn to_machine(&self, point: Point2) -> Point2 {
+    match self.corner {
+      OriginCorner::BottomLeft => point,
+      OriginCorner::TopLeft => Point2::new(point.x, self.height - point.y),
+      OriginCorner::Center => Point2::new(point.x - self.width / 2.0, point.y - self.height / 2.0),
+    }
+  }
+
+  /// A point in machine coordinates, as the document sees it.
+  ///
+  /// The exact inverse of [`Frame::to_machine`], which is what lets the simulation sweep an emitted
+  /// program onto a field built in the document frame. A reflection is its own inverse, so `top_left`
+  /// reads the same in both directions.
+  pub fn from_machine(&self, point: Point2) -> Point2 {
+    match self.corner {
+      OriginCorner::BottomLeft => point,
+      OriginCorner::TopLeft => Point2::new(point.x, self.height - point.y),
+      OriginCorner::Center => Point2::new(point.x + self.width / 2.0, point.y + self.height / 2.0),
+    }
+  }
+
+  /// Whether the two frames are the same one, in which case every map is the identity.
+  pub fn is_identity(&self) -> bool {
+    self.corner == OriginCorner::BottomLeft
+  }
+
+  /// Whether the map is a mirror, which reverses the sense of every arc it carries.
+  ///
+  /// A reflection is not just a different position: an arc traversed counter-clockwise in one frame is
+  /// traversed clockwise in the other, so a caller reading a program back into the document frame has
+  /// to flip the arc's direction as well as its points. `center` translates, so it keeps handedness;
+  /// `top_left` reflects, so it does not. It is part of this map rather than the caller's business,
+  /// because a map that silently reverses a path's sense would leave the sweep cutting the mirror
+  /// image of the arc the document asked for.
+  pub fn is_reflection(&self) -> bool {
+    self.corner == OriginCorner::TopLeft
+  }
+}
+
 /// The stock and coordinate setup of the job.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Job {
@@ -66,6 +141,11 @@ pub struct Job {
 }
 
 impl Job {
+  /// This job's document frame against the machine frame.
+  pub fn frame(&self) -> Frame {
+    Frame::of(self)
+  }
+
   /// A job with the analysed product's default setup: 1219 x 2438 x 18 mm, 5 mm safe Z.
   pub fn default_sheet() -> Self {
     Self {
@@ -343,6 +423,81 @@ impl Default for ChamferParams {
       start_depth: Length::ZERO,
     }
   }
+}
+
+/// Parameters of a V-carve toolpath.
+///
+/// A V-carve is not a stack of constant-Z passes: the tip walks the **medial axis** of the selected
+/// region at the depth its own clearance demands, so the surface it leaves is the distance field
+/// (M7 A1). The depth law therefore lives here, beside the tool, the way [`ChamferParams::depth`]
+/// does — one function that turns a clearance into a depth, called by `cam-toolpath::vcarve` and by
+/// `cam-sim`'s claim, so the program and the authorisation cannot disagree about how deep a tip goes
+/// (M6's D-M6-2 precedent).
+///
+/// There is deliberately **no `start_depth`** (D-M7-3). With a start depth `s` the tip sits `s` below
+/// the surface, so the cone's intersection with the stock top reaches `s · tan(θ/2)` *outside* the
+/// vectors and the authorised surface is no longer `-d(q)/tan(θ/2)` inside the region alone. That is
+/// a claim of its own, and shipping it here would make the milestone's cleanest assertion — `gouge`
+/// exactly zero — false for a legitimate program. The CLI refuses `--start-depth` by name rather
+/// than storing a field that defaults to zero.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VCarveParams {
+  /// Full included angle of the V-bit, as the tool library records it.
+  ///
+  /// The law is derived from **this** angle, not from the library's, because the document is what a
+  /// later `emit` and `simulate` read; the toolpath authoring command writes the library's angle
+  /// here, so the two agree by construction. A tool the library does not describe as an angled bit is
+  /// refused by name at authoring and again at emission (D-M6-9): defaulting 90 degrees would cut a
+  /// different carve.
+  pub included_angle: Angle,
+  /// The medial axis's lattice step, in millimetres (D-M7-5).
+  ///
+  /// It is the caller's tolerance in the only sense the milestone has: the axis is refined to this
+  /// step, so it bounds the chording between certified vertices, the shortest piece of axis the walk
+  /// can see, the band of material left standing near a convex corner, and the truncation at a
+  /// curvature extremum. All four are `cam_geom::medial`'s declared costs and all four cost coverage
+  /// only, never depth.
+  ///
+  /// Stored with the operation rather than passed to `emit`, because the program is recomputed from
+  /// the document alone (S9, S10): a tolerance that was not stored would make `emit`'s output depend
+  /// on a constant nobody named, and `cam-cli toolpath --tolerance` would be a silently dropped flag.
+  /// Defaulted so a hand-written or older document that names a `v_carve` toolpath without the field
+  /// loads as the axis the CLI's own default would have written.
+  #[serde(default = "default_v_carve_tolerance")]
+  pub tolerance: Length,
+}
+
+impl VCarveParams {
+  /// The depth a tip whose clearance is `clearance` sits at: `clearance / tan(included_angle / 2)`.
+  ///
+  /// Derived here and nowhere else, so the toolpath that cuts and the simulation that checks it can
+  /// never disagree about how deep the carve goes (A1). The formula does not clamp: an angle with no
+  /// cone behind it is refused by [`Document::validate`] naming the value, and again by
+  /// `cam-toolpath::vcarve`, because a clamped depth would cut a different carve than the one asked
+  /// for.
+  pub fn depth(&self, clearance: Length) -> Length {
+    let half = self.included_angle.radians() / 2.0;
+    Length::from_mm(clearance.mm() / half.tan())
+  }
+}
+
+impl Default for VCarveParams {
+  fn default() -> Self {
+    Self {
+      included_angle: Angle::from_degrees(90.0),
+      tolerance: default_v_carve_tolerance(),
+    }
+  }
+}
+
+/// The default medial-axis lattice step for a V-carve: 0.1 mm (D-M7-5).
+///
+/// The measured cost of the coarser 0.5 mm step was 0.20 mm of missed depth near a convex corner and
+/// an ellipse's axis 0.7 mm short of its analytic end; at 0.1 mm both are `0.00` mm. The default is
+/// the finer number because the axis is the toolpath, and a mismatch between the two is material left
+/// standing.
+fn default_v_carve_tolerance() -> Length {
+  Length::from_mm(0.1)
 }
 
 /// Parameters of a quick engrave toolpath.
@@ -638,6 +793,8 @@ pub enum Operation {
   Drilling(DrillParams),
   /// Bevel the selected closed vectors with a V-bit, at a depth derived from the bit.
   Chamfer(ChamferParams),
+  /// Carve the selected closed region by walking its medial axis at the distance field's own depth.
+  VCarve(VCarveParams),
   /// Engrave the selected vectors, open or closed, in one pass at an authored depth.
   Engrave(EngraveParams),
   /// Flute the selected vectors, open or closed, in one pass whose ends ramp in and out.
@@ -803,6 +960,34 @@ pub enum ModelError {
     toolpath: String,
     /// The offending angle in degrees.
     degrees: f64,
+  },
+  /// A V-carve's included angle is not strictly between 0 and 180 degrees.
+  ///
+  /// The depth law is `clearance / tan(angle / 2)`, so an angle at either end of the range has a
+  /// tangent of zero or infinity and no depth behind it. Refused here, as the document loads, naming
+  /// the value (A4), and again by `cam-toolpath::vcarve`, which sees a caller that bypassed the CLI.
+  #[error(
+    "toolpath {toolpath:?} V-carve included angle must be between 0 and 180 degrees, got {degrees} \
+     degrees"
+  )]
+  VCarveAngleOutOfRange {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending angle in degrees.
+    degrees: f64,
+  },
+  /// A V-carve's medial-axis tolerance is zero, negative or not a finite number.
+  ///
+  /// The tolerance is the lattice step `cam_geom::medial` refines the axis to, so a step with no
+  /// distance behind it is refused by name rather than clamped into a plausible one (D-M7-5).
+  #[error(
+    "toolpath {toolpath:?} V-carve tolerance must be a positive number of millimetres, got {value} mm"
+  )]
+  VCarveToleranceNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending tolerance in millimetres.
+    value: f64,
   },
   /// A flute's ramp is negative, which would enter upwards.
   ///
@@ -1002,6 +1187,9 @@ impl Document {
           | Operation::Pocket(_)
           | Operation::Drilling(_)
           | Operation::Chamfer(_)
+          // A V-carve's region is what the contours enclose, and its medial axis is the toolpath:
+          // an open vector bounds no region to carve (M7 A4).
+          | Operation::VCarve(_)
           // A texture's grooves are clipped to a region, and an open vector bounds none (D-M6-6).
           | Operation::Texture(_)
           // An inlay grows a region and leaves it standing as an island, so its selection must bound
@@ -1030,6 +1218,7 @@ impl Document {
         }
       }
       check_chamfer(toolpath)?;
+      check_v_carve(toolpath)?;
       check_fluting(toolpath)?;
       check_texture(toolpath)?;
       check_inlay(toolpath)?;
@@ -1062,6 +1251,33 @@ fn check_chamfer(toolpath: &Toolpath) -> Result<(), ModelError> {
     return Err(ModelError::ChamferAngleOutOfRange {
       toolpath: toolpath.id.clone(),
       degrees: params.included_angle.degrees(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a V-carve's own parameters: the depth law needs an angle and the axis needs a step.
+///
+/// Both are refused naming the value rather than clamped, because a clamped carve is a different
+/// shape: an angle at either end of `(0, 180)` degrees has no depth behind it, and a lattice step of
+/// zero is an axis `cam_geom::medial` would refuse, which would leave a document whose only failure
+/// mode is a later `emit` (A4, D-M7-5).
+fn check_v_carve(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::VCarve(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let angle = params.included_angle.radians();
+  if !(angle > 0.0 && angle < std::f64::consts::PI) {
+    return Err(ModelError::VCarveAngleOutOfRange {
+      toolpath: toolpath.id.clone(),
+      degrees: params.included_angle.degrees(),
+    });
+  }
+  let tolerance = params.tolerance.mm();
+  if !tolerance.is_finite() || tolerance <= 0.0 {
+    return Err(ModelError::VCarveToleranceNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: tolerance,
     });
   }
   Ok(())

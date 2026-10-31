@@ -13,11 +13,16 @@
 //! boundaries at their crossings, keeps the pieces that bound material and chains what is left into
 //! closed contours (A4) — and [`Region::subtract`] is that same operation with one boundary appended
 //! (A5).
+//!
+//! [`Region::distance_to_boundary`] is the region's distance field: the exact distance from a point to
+//! the boundary, and whether the point is material, in one answer (M7 A1). It is the surface a V-carve
+//! cuts, so it is exact — arcs native, no tessellation, no sampling — and it is measured against the
+//! *boundary*, not against a filled area.
 
 use crate::boolean;
 use crate::contour::Contour;
 use crate::point::Point2;
-use crate::winding::{classify, Membership};
+use crate::winding::{classify_with_distance, Membership};
 use crate::GeomError;
 
 pub use crate::region_offset::RegionOffset;
@@ -43,6 +48,21 @@ pub struct Normalized {
   pub flattened: bool,
 }
 
+/// The exact distance from a point to a region's boundary, and whether the point is material.
+///
+/// Both halves are answered together because neither is usable alone: a point 2 mm inside a wall and
+/// one 2 mm outside it report the same `distance`, and only `inside` tells them apart (M7 A1). See
+/// [`Region::distance_to_boundary`] for the contract, including the region with no boundary at all.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BoundaryDistance {
+  /// Exact distance to the nearest point of any boundary, in millimetres. Never negative, and never
+  /// snapped to zero by a tolerance: a point on the boundary reports exactly `0.0`.
+  pub distance: f64,
+  /// Whether the point is material, i.e. [`Region::contains`] at the same point and tolerance. A point
+  /// on (or within `tolerance` of) a boundary is **not** material.
+  pub inside: bool,
+}
+
 impl Region {
   /// Build a region from its boundaries.
   ///
@@ -65,16 +85,56 @@ impl Region {
   /// A point within `tolerance` of any boundary is not material: a boundary is the edge of what can be
   /// cut, so reporting it as inside would let a tool cut along an edge two regions share. The parity
   /// rule is the whole membership model (A3) — a hole needs no flag, only a second boundary.
+  ///
+  /// This is the membership half of [`Region::distance_to_boundary`], which answers both questions for
+  /// the price of one walk over the boundaries; neither restates the rule.
   pub fn contains(&self, point: Point2, tolerance: f64) -> bool {
+    self
+      .distance_to_boundary(point, tolerance)
+      .is_some_and(|answer| answer.inside)
+  }
+
+  /// The exact distance from `point` to this region's boundary, and whether the point is material.
+  ///
+  /// The distance is the **minimum over every segment of every boundary** of that segment's own exact
+  /// point distance ([`crate::Segment::distance_to_point`]): arcs stay arcs, so the centre of a circle
+  /// reports the radius itself and not the apothem of a chord inscribed in it, and there is no
+  /// tessellation, no sampling and no tolerance in the answer. `tolerance` decides only membership,
+  /// exactly as it does in [`Region::contains`]: it never snaps a distance to zero, so a point a tenth
+  /// of a nanometre off a wall reports that tenth even when it is too close to be cut.
+  ///
+  /// Membership is reported in the **same call** because every caller that wants the distance wants it
+  /// too — the medial axis and the V-carve law both measure a point that may lie either side of the
+  /// boundary — and one walk is cheaper than two. `inside` is [`Region::contains`] at the same tolerance
+  /// by construction, so the two cannot disagree.
+  ///
+  /// # The region with no boundary
+  ///
+  /// `None` when the region has no boundary at all — an empty boundary list, or a contour that carries
+  /// no segment. There is then no distance to report, and both alternatives would be wrong answers:
+  /// `0.0` would claim the point lies *on* a boundary that does not exist (and would put the V-carve
+  /// surface at full depth everywhere), and a panic would turn an empty region into a crash instead of
+  /// a shape. `Region::default()` is a legal region, so callers must handle `None` rather than assume.
+  pub fn distance_to_boundary(&self, point: Point2, tolerance: f64) -> Option<BoundaryDistance> {
+    let mut nearest = f64::INFINITY;
     let mut enclosed = 0_usize;
+    let mut on_boundary = false;
     for boundary in &self.boundaries {
-      match classify(boundary, point, tolerance) {
-        Membership::OnBoundary => return false,
+      let (membership, distance) = classify_with_distance(boundary, point, tolerance);
+      nearest = nearest.min(distance);
+      match membership {
+        Membership::OnBoundary => on_boundary = true,
         Membership::Inside => enclosed += 1,
         Membership::Outside => {}
       }
     }
-    enclosed % 2 == 1
+    if !nearest.is_finite() {
+      return None;
+    }
+    Some(BoundaryDistance {
+      distance: nearest,
+      inside: !on_boundary && enclosed % 2 == 1,
+    })
   }
 
   /// The region with `hole` appended and normalized (A5).

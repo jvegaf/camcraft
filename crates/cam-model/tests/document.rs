@@ -1104,3 +1104,188 @@ fn a_thread_needs_closed_geometry() {
     "{error:?}"
   );
 }
+
+// --- V-carve (M7 A1, A4, D-M7-3, D-M7-5) ------------------------------------------------------
+
+/// A V-carve toolpath on the square's one entity: a bit of `degrees`, its axis refined to `tolerance`.
+fn v_carve_document(degrees: f64, tolerance: f64) -> Document {
+  document_with(Operation::VCarve(VCarveParams {
+    included_angle: Angle::from_degrees(degrees),
+    tolerance: Length::from_mm(tolerance),
+  }))
+}
+
+#[test]
+fn a_v_carve_toolpath_round_trips_with_its_angle_and_tolerance() {
+  // The variant is additive under the existing `kind` tag, so the schema does not move (A4, D-M4-1):
+  // `c2d/document@2` reads and writes it, and a document written before it existed is untouched.
+  let document = v_carve_document(60.0, 0.25);
+  document
+    .validate()
+    .expect("a V-carve on closed geometry is valid");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"v_carve\""), "{json}");
+  assert!(json.contains("\"tolerance\":0.25"), "{json}");
+  assert!(
+    json.contains("\"schema\":\"c2d/document@2\""),
+    "the schema tag does not move for an additive variant: {json}"
+  );
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  match &parsed.toolpaths[0].operation {
+    Operation::VCarve(params) => {
+      assert_eq!(params.included_angle, Angle::from_degrees(60.0));
+      assert_eq!(params.tolerance, Length::from_mm(0.25));
+    }
+    other => panic!("expected a V-carve, got {other:?}"),
+  }
+
+  // The tolerance is defaulted rather than required, so a hand-written or older document that names a
+  // `v_carve` toolpath without the field loads as the axis the CLI's own documented default writes
+  // (D-M7-5), instead of failing the load.
+  let without = json.replace(",\"tolerance\":0.25", "");
+  assert_ne!(without, json, "the archive carries the tolerance: {json}");
+  let reloaded: Document =
+    serde_json::from_str(&without).expect("a document without a tolerance loads");
+  match &reloaded.toolpaths[0].operation {
+    Operation::VCarve(params) => assert_eq!(params.tolerance, Length::from_mm(0.1)),
+    other => panic!("expected a V-carve, got {other:?}"),
+  }
+  reloaded.validate().expect("and it is valid");
+}
+
+#[test]
+fn a_v_carves_depth_is_the_clearance_over_the_tangent_of_the_half_angle() {
+  // The law lives beside the tool (D-M6-2's precedent, A1): a tip whose clearance is `d` sits
+  // `d / tan(theta / 2)` below the surface. Written here from the geometry and never read back from
+  // the function under test, so a derivation that forgot the half angle or the tangent fails.
+  for (degrees, expected) in [
+    (90.0, 4.0_f64),              // tan(45) = 1
+    (60.0, 4.0 * 3.0_f64.sqrt()), // tan(30) = 1/sqrt(3)
+    (30.0, 4.0 / 15.0_f64.to_radians().tan()),
+  ] {
+    let params = VCarveParams {
+      included_angle: Angle::from_degrees(degrees),
+      tolerance: Length::from_mm(0.1),
+    };
+    let depth = params.depth(Length::from_mm(4.0)).mm();
+    assert!(
+      (depth - expected).abs() < 1.0e-9,
+      "a {degrees} degree bit carves 4 mm of clearance {expected} mm deep, got {depth}"
+    );
+  }
+}
+
+#[test]
+fn a_v_carve_record_carries_no_start_depth() {
+  // D-M7-3: with a start depth the cone's top reaches `start * tan(theta/2)` outside the vectors and
+  // the carve stops being the distance field, so it is refused by name in the CLI rather than stored
+  // as a field that defaults to zero. This is the structural half of that refusal: there is no field
+  // to default.
+  let json = serde_json::to_string(&v_carve_document(90.0, 0.1)).expect("serialises");
+  assert!(
+    !json.contains("start_depth"),
+    "a V-carve has no start depth to store: {json}"
+  );
+}
+
+#[test]
+fn a_v_carve_angle_outside_the_range_is_refused_at_load_naming_the_value() {
+  // An angle at either end of `(0, 180)` has a tangent of zero or infinity, so the depth law has no
+  // depth behind it. The document is the boundary that sees the value before any toolpath exists (A4).
+  for degrees in [0.0, 180.0] {
+    let document = v_carve_document(degrees, 0.1);
+    let error = document
+      .validate()
+      .expect_err("must refuse an angle with no cone behind it");
+    assert_eq!(
+      error,
+      ModelError::VCarveAngleOutOfRange {
+        toolpath: "TP1".to_owned(),
+        degrees,
+      }
+    );
+    assert!(
+      error.to_string().contains(&degrees.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_v_carve_tolerance_must_be_a_positive_number_of_millimetres() {
+  // The tolerance is the medial axis's lattice step (D-M7-5), so it is stored with the operation and
+  // refused by name when it is not a step: a zero or negative one would ask `cam_geom::medial` for an
+  // axis it refuses, and a document that can never emit is worse than a refusal at load.
+  for tolerance in [0.0, -0.1] {
+    let document = v_carve_document(90.0, tolerance);
+    let error = document
+      .validate()
+      .expect_err("must refuse a tolerance with no step behind it");
+    assert_eq!(
+      error,
+      ModelError::VCarveToleranceNotPositive {
+        toolpath: "TP1".to_owned(),
+        value: tolerance,
+      }
+    );
+    assert!(
+      error.to_string().contains(&tolerance.to_string()),
+      "the refusal names the value: {error}"
+    );
+  }
+}
+
+#[test]
+fn a_v_carve_needs_closed_geometry() {
+  // A V-carve's region is what the contours enclose, so it extends the one closed-contour rule every
+  // cutting operation already obeys rather than adding a second one (A4).
+  let mut document = v_carve_document(90.0, 0.1);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("an open vector"),
+  };
+  let error = document.validate().expect_err("must reject");
+  assert!(
+    matches!(error, ModelError::OpenContourNotCuttable { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_pre_existing_document_still_re_saves_byte_identically() {
+  // A4's last clause: every previously serialised document loads and re-saves byte-identically, so
+  // the new variant must not have moved a single byte of what an older document already says.
+  let mut document = pocket_document_with_island();
+  document.toolpaths[0].operation = Operation::Pocket(PocketParams {
+    strategy: PocketStrategy::Raster,
+    allowance: Length::from_mm(0.4),
+    stepover: Length::from_mm(2.5),
+    pass_depth: Length::from_mm(6.0),
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(9.0),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "Bevel".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 2,
+    operation: Operation::Chamfer(ChamferParams {
+      chamfer_width: Length::from_mm(3.0),
+      included_angle: Angle::from_degrees(60.0),
+      start_depth: Length::ZERO,
+    }),
+  });
+  document.validate().expect("a valid document");
+
+  let stored = serde_json::to_string(&document).expect("serialises");
+  let reloaded: Document = serde_json::from_str(&stored).expect("deserialises");
+  assert_eq!(
+    serde_json::to_string(&reloaded).expect("serialises"),
+    stored,
+    "a document written before M7 is re-saved byte for byte"
+  );
+  reloaded.validate().expect("and it still validates");
+}

@@ -147,6 +147,7 @@ everywhere the document claims nothing. Each operation's form of it:
 | `fluting` | That same band along the vector | The ramp's law along the path: `min(depth, depth·s/ramp, depth·(L − s)/ramp)`, less the tool's rise, and the maximum of it anywhere the footprint could have removed the cell |
 | `inlay` | The female's region grown by the allowance, and the male's job rectangle with the region standing | `cut_depth` |
 | `thread` | The **annulus the helix sweeps**: `D/2 − t … D/2` for an internal thread and `D/2 … D/2 + t` for an external one, `D` the selected circle's diameter and `t` the tool's | The **spiral the descent leaves**, cell by cell: `cut_depth − pitch · ((θ_end − θ) mod 2π) / 2π`, deepened to the last pass the tool's own footprint reaches that cell at — see the paragraph below the table |
+| `v_carve` | The toolpath's whole region, and the depth is graded across it | The **distance field**: `d(centre) / tan(included_angle / 2)`, with `d` the exact distance from the cell's centre to the region's boundary, clamped to the stock (M7 A6, D-M7-7). A tip set inside the region can never cut deeper than this (the field is 1-Lipschitz), so a correct V-carve gouges **exactly zero** and a missing tip costs `uncut` and nothing else — see [m7-vcarve.md](m7-vcarve.md) |
 | Anything else | — | `0` |
 
 The `thread` row is the one law in that table that is not a depth at a distance but a depth **at an

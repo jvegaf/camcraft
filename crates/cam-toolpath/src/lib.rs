@@ -10,7 +10,9 @@
 //! of a pattern clipped to a closed region, `inlay`, the male/female pair of pockets one command
 //! appends: a cavity grown by the allowance and a plug of the region itself, and `thread`, one helical
 //! descent around a circle at a pitch per revolution — the one strategy whose program is not a stack of
-//! constant-Z moves.
+//! constant-Z moves. M7 adds `vcarve`, which walks the selected region's medial axis with one tip per
+//! vertex at the depth that vertex's own clearance demands, so its program is a depth field rather than
+//! a set of passes at all.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -24,6 +26,7 @@ pub mod inlay;
 pub mod pocket;
 pub mod texture;
 pub mod thread;
+pub mod vcarve;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
@@ -33,6 +36,7 @@ pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 pub use texture::{texture, TextureRequest};
 pub use thread::{thread, ThreadRequest};
+pub use vcarve::{vcarve, VCarveRequest};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
 use cam_model::{Job, ProfileParams, ProfileSide, Tab};
@@ -232,6 +236,65 @@ pub enum ToolpathError {
     /// The job's height in millimetres.
     height: f64,
   },
+  /// A V-carve was asked of a tool the library does not describe as an angled bit.
+  ///
+  /// The carve's whole depth law is `clearance / tan(θ/2)`, so a cylinder has no angle to derive it
+  /// from and defaulting 90 degrees would cut a different carve than the one asked for (D-M6-9).
+  #[error(
+    "tool T{tool_number} has no included angle in the library, so a V-carve's depth cannot be \
+     derived: a V-carve needs a V-bit"
+  )]
+  VCarveNeedsAngledTool {
+    /// The tool the caller named.
+    tool_number: u32,
+  },
+  /// A V-carve was asked of a bit whose tip has a flat.
+  ///
+  /// With a flat of diameter `f` the tool cannot carve to a sharp edge: the surface its tip leaves is
+  /// `f/2 · cot(θ/2)` wide at the bottom, while the depth law the whole operation stands on reaches
+  /// zero exactly at the vectors. That is the chamfer's `D-M6-10` in the other direction, and it is
+  /// refused by name rather than absorbed.
+  #[error(
+    "tool T{tool_number} has a {flat_diameter} mm flat tip, so it cannot carve to a sharp edge: a \
+     V-carve's depth law is the cone of a sharp point, so a V-carve needs a sharp V-bit"
+  )]
+  VCarveNeedsSharpBit {
+    /// The tool the caller named.
+    tool_number: u32,
+    /// The flat at its tip, in millimetres.
+    flat_diameter: f64,
+  },
+  /// The medial axis a V-carve walks could not be computed.
+  ///
+  /// `cam_geom::medial` refuses a tolerance that is not positive and finite, and a lattice the
+  /// tolerance would make larger than its own sample cap. Neither is clamped into a coarser axis: a
+  /// silently coarsened tolerance changes what the carve leaves standing (D-M7-5).
+  #[error("the V-carve's medial axis could not be computed: {reason}")]
+  MedialAxis {
+    /// What the kernel said, verbatim.
+    reason: String,
+  },
+  /// A V-carve's region has no medial axis at all, so there is nothing to carve.
+  ///
+  /// The axis's lattice step is the operation's tolerance, and a step at least as large as the
+  /// region's own clearance puts every point of it within that step of the boundary: no point is
+  /// material, no candidate is certified, and the axis comes back with no branch. A program built
+  /// from that is zero moves, and `simulate` then reports the whole field as uncut — an input the
+  /// command can see, so it is refused by name with both numbers in the message rather than written
+  /// as a document whose only outcome is a later exit `6` (M7 A5, D-M7-5).
+  #[error(
+    "the V-carve's {tolerance} mm tolerance leaves nothing to carve in the {width} x {height} mm \
+     region: every point of the region is within that distance of its boundary, so the medial axis \
+     is empty and there is no tip to plunge"
+  )]
+  VCarveNothingToCarve {
+    /// The axis's lattice step, in millimetres.
+    tolerance: f64,
+    /// The region's extent along X, in millimetres.
+    width: f64,
+    /// The region's extent along Y, in millimetres.
+    height: f64,
+  },
 }
 
 /// Everything a profile pass needs.
@@ -419,14 +482,20 @@ pub(crate) fn pass_depths(start: f64, cut: f64, step: f64) -> Result<Vec<f64>, T
 
 /// Map a document point onto machine coordinates for the job's origin corner.
 pub fn machine_point(job: &Job, point: Point2) -> Point2 {
-  match job.origin {
-    cam_model::OriginCorner::BottomLeft => point,
-    cam_model::OriginCorner::TopLeft => Point2::new(point.x, job.height.mm() - point.y),
-    cam_model::OriginCorner::Center => Point2::new(
-      point.x - job.width.mm() / 2.0,
-      point.y - job.height.mm() / 2.0,
-    ),
-  }
+  // One definition, in the model: the simulation reads a program back with the same map (M7 A7).
+  job.frame().to_machine(point)
+}
+
+/// The sense an arc keeps when the job's frame maps it onto the machine.
+///
+/// A frame is not only a position: `top_left` is a **reflection**, and a reflection reverses
+/// orientation, so a curve the document traverses counter-clockwise is traversed clockwise in the
+/// machine's own numbering. Mapping an arc's points and keeping its `ccw` therefore states the
+/// **complementary** arc — a `G03` where the machine needs `G02`, which is a wrong cut rather than a
+/// wrong report. `center` translates and keeps handedness, so it flips nothing (M7 A7, L6). The map
+/// itself is the model's, exactly as it is for [`machine_point`]: this only asks it.
+fn machine_ccw(job: &Job, ccw: bool) -> bool {
+  ccw != job.frame().is_reflection()
 }
 
 /// A point `lead` millimetres behind `start` along the contour's direction of travel.
@@ -662,7 +731,7 @@ pub(crate) fn push_ramp(moves: &mut Vec<Move>, job: &Job, segment: Segment, to: 
           z: Length::from_mm(z),
         },
         center,
-        ccw: arc.is_ccw(),
+        ccw: machine_ccw(job, arc.is_ccw()),
       });
     }
   }
@@ -775,7 +844,7 @@ pub(crate) fn push_horizontal(
           z: Length::from_mm(z),
         },
         center,
-        ccw: arc.is_ccw(),
+        ccw: machine_ccw(job, arc.is_ccw()),
       });
     }
   }
