@@ -9,7 +9,7 @@
 //! authorised, and authorised deeper than removed.
 //!
 //! The tool's diameter is not in the document — it is in the tool library — so a caller that wants
-//! profile bands supplies it through [`ToolDiameters`]. A pocket or a drilling toolpath's target does
+//! profile bands supplies it through [`ToolShapes`]. A pocket or a drilling toolpath's target does
 //! not need it.
 
 use std::collections::BTreeMap;
@@ -19,38 +19,35 @@ use std::ops::Range;
 use cam_geom::offset::{offset_contour, OffsetOptions};
 use cam_geom::{region::Region, Contour, Point2, Segment, DEFAULT_TOLERANCE};
 use cam_model::{Document, Operation, ProfileParams, ProfileSide, Tab, Toolpath};
+use cam_move::ToolShape;
 use cam_units::Length;
 use thiserror::Error;
 
 use crate::grid::{grid_for, Grid, GridError};
 use crate::heightfield::Heightfield;
 
-/// The cutting diameters a document's toolpaths refer to, by tool number.
+/// The tools a document's toolpaths refer to, by tool number.
 ///
 /// A `BTreeMap` rather than a `HashMap`: the target surface is on a path to an output line, and
 /// iteration order on that path is explicit (S9).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ToolDiameters {
-  diameters: BTreeMap<u32, f64>,
+pub struct ToolShapes {
+  shapes: BTreeMap<u32, ToolShape>,
 }
 
-impl ToolDiameters {
-  /// Build the table from `(tool number, diameter)` pairs, later pairs winning.
-  pub fn new<I: IntoIterator<Item = (u32, Length)>>(tools: I) -> Self {
-    let mut diameters = BTreeMap::new();
-    for (number, diameter) in tools {
-      diameters.insert(number, diameter.mm());
+impl ToolShapes {
+  /// Build the table from `(tool number, shape)` pairs, later pairs winning.
+  pub fn new<I: IntoIterator<Item = (u32, ToolShape)>>(tools: I) -> Self {
+    let mut shapes = BTreeMap::new();
+    for (number, tool) in tools {
+      shapes.insert(number, tool);
     }
-    Self { diameters }
+    Self { shapes }
   }
 
-  /// The diameter of a tool, when the caller supplied one.
-  pub fn diameter(&self, tool_number: u32) -> Option<Length> {
-    self
-      .diameters
-      .get(&tool_number)
-      .copied()
-      .map(Length::from_mm)
+  /// The shape of a tool, when the caller supplied one.
+  pub fn shape(&self, tool_number: u32) -> Option<ToolShape> {
+    self.shapes.get(&tool_number).copied()
   }
 }
 
@@ -60,15 +57,31 @@ pub enum TargetError {
   /// The grid the target would live on could not be built.
   #[error("{0}")]
   Grid(#[from] GridError),
-  /// A profile's band needs the tool's size, and the caller did not supply it.
+  /// A profile's band needs the tool's shape, and the caller did not supply it.
   #[error(
-    "toolpath {toolpath:?} uses tool {tool_number}, whose diameter the caller did not supply"
+    "toolpath {toolpath:?} uses tool {tool_number}, whose geometry the caller did not supply"
   )]
   MissingTool {
     /// The toolpath that needs it.
     toolpath: String,
     /// The tool number it refers to.
     tool_number: u32,
+  },
+  /// A V-bit was asked for a band on a side the target cannot authorise exactly.
+  ///
+  /// A cone's radius grows with depth, so the material it sweeps on one side of a vector is a wedge
+  /// whose depth varies from cell to cell; the target authorises that wedge only where the tip travels
+  /// on the vector (side `on`), which is where the strategies that use a V-bit put it (D-M6-2).
+  #[error(
+    "toolpath {toolpath:?} cuts {side} with a V-bit: a cone's band is only authorised with the tip on \
+     the vector (side `on`), because a graded band on one side of it would need the cell's signed \
+     distance from the offset centre path"
+  )]
+  ConeOnVectorOnly {
+    /// The toolpath that cuts with a cone.
+    toolpath: String,
+    /// The side it asked for.
+    side: &'static str,
   },
   /// A toolpath's geometry could not be turned into a region.
   #[error("toolpath {toolpath:?}: {reason}")]
@@ -143,13 +156,13 @@ pub struct Deviation {
 
 /// Derive the target surface for a whole document, on a grid of `cell` millimetres.
 ///
-/// `tools` supplies the diameters the profile bands need; a document whose toolpaths are pockets
+/// `tools` supplies the shapes the profile bands need; a document whose toolpaths are pockets
 /// and drills alone derives without it. A cell claimed by more than one toolpath is authorised the
 /// **deeper** of them, never the sum: two toolpaths that both cut a cell remove it once (D-M5-2).
 pub fn target_for(
   document: &Document,
   cell: Length,
-  tools: &ToolDiameters,
+  tools: &ToolShapes,
 ) -> Result<Target, TargetError> {
   let grid = grid_for(&document.job, cell)?;
   let mut target = Target {
@@ -166,7 +179,7 @@ fn claim_toolpath(
   target: &mut Target,
   document: &Document,
   toolpath: &Toolpath,
-  tools: &ToolDiameters,
+  tools: &ToolShapes,
 ) -> Result<(), TargetError> {
   match &toolpath.operation {
     Operation::Pocket(params) => {
@@ -195,19 +208,22 @@ fn claim_toolpath(
     }
     Operation::Profile(params) => {
       let depth = authorised_depth(params.cut_depth);
-      let diameter =
-        tools
-          .diameter(toolpath.tool_number)
-          .ok_or_else(|| TargetError::MissingTool {
-            toolpath: toolpath.id.clone(),
-            tool_number: toolpath.tool_number,
-          })?;
-      let radius = diameter.mm() / 2.0;
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
       for id in &toolpath.entity_ids {
         let contour = contour_of(document, toolpath, id)?;
-        let region = kerf_band(&toolpath.id, contour, params, radius)?;
+        let region = kerf_band(&toolpath.id, contour, params, tool)?;
         let tabs = Tabs::new(contour, &params.tabs);
-        claim_region(target, &region, depth, Some(&tabs));
+        match tool {
+          ToolShape::Cylinder { .. } => claim_region(target, &region, depth, Some(&tabs)),
+          ToolShape::VBit { .. } => {
+            claim_cone_region(target, &region, contour, tool, depth, Some(&tabs))
+          }
+        }
       }
     }
   }
@@ -256,7 +272,7 @@ fn kerf_band(
   toolpath: &str,
   contour: &Contour,
   params: &ProfileParams,
-  radius: f64,
+  tool: ToolShape,
 ) -> Result<Region, TargetError> {
   let offset = |distance: f64| -> Result<Contour, TargetError> {
     if distance == 0.0 {
@@ -272,6 +288,8 @@ fn kerf_band(
       })
   };
   let allowance = params.allowance.mm();
+  // A cone's radius grows with depth, so its widest footprint is the one at the depth it reaches.
+  let radius = tool.radius_at(params.cut_depth.mm());
   // The kerf's outer edge: the tool centre's offset plus one radius of the tool that rides there.
   let reach = 2.0 * radius + allowance;
   let boundaries = match params.side {
@@ -282,6 +300,18 @@ fn kerf_band(
     // both sides of it and the keep side is on neither.
     ProfileSide::On => vec![offset(radius)?, offset(-radius)?],
   };
+  if !matches!(tool, ToolShape::Cylinder { .. }) && params.side != ProfileSide::On {
+    // Refused rather than approximated: a graded band offset to one side of the vector would grade
+    // from the wrong line and report a correct cone cut as a deviation (D-M6-3).
+    return Err(TargetError::ConeOnVectorOnly {
+      toolpath: toolpath.to_owned(),
+      side: match params.side {
+        ProfileSide::Inside => "inside",
+        ProfileSide::Outside => "outside",
+        ProfileSide::On => "on",
+      },
+    });
+  }
   region_of(toolpath, boundaries)
 }
 
@@ -430,6 +460,51 @@ fn claim_region(target: &mut Target, region: &Region, depth: f64, tabs: Option<&
       }
       let kept = tabs.map_or(0.0, |tabs| tabs.kept(centre));
       let authorised = (depth - kept).max(0.0);
+      let slot = &mut target.authorised[row * columns + column];
+      if authorised > *slot {
+        *slot = authorised;
+      }
+    }
+  }
+}
+
+/// Claim a cone's band: each cell is authorised the depth the cone reaches at its own distance from
+/// `contour`, capped at `depth` (M6 A8).
+///
+/// This is the difference the shape makes. A cylinder's footprint has one radius, so the whole band is
+/// cut to one depth; a V-bit's radius grows with depth below the tip, so a cell `d` millimetres from the
+/// vector can only be reached as deep as the cone is wide there. Authorising the full depth across the
+/// band would report a correct bevel as uncut — the same failure mode D-M5-5 was amended for, with the
+/// sign reversed.
+fn claim_cone_region(
+  target: &mut Target,
+  region: &Region,
+  contour: &Contour,
+  tool: ToolShape,
+  depth: f64,
+  tabs: Option<&Tabs>,
+) {
+  let grid = target.grid;
+  let columns = grid.columns;
+  let Some(window) = cell_window(region, grid) else {
+    return;
+  };
+  let segments = contour.segments();
+  for row in window.rows {
+    for column in window.columns.clone() {
+      let centre = grid.centre(column, row);
+      if !region.contains(centre, DEFAULT_TOLERANCE) {
+        continue;
+      }
+      let distance = segments
+        .iter()
+        .map(|segment| segment.distance_to_point(centre))
+        .fold(f64::INFINITY, f64::min);
+      let kept = tabs.map_or(0.0, |tabs| tabs.kept(centre));
+      // The cone reaches a point `distance` from the vector only as deep as its flank is steep
+      // enough to: `depth − rise(distance)`, and nothing beyond the footprint it has at the surface.
+      let reached = (depth - tool.rise_at_radius(distance)).max(0.0);
+      let authorised = (reached - kept).max(0.0);
       let slot = &mut target.authorised[row * columns + column];
       if authorised > *slot {
         *slot = authorised;

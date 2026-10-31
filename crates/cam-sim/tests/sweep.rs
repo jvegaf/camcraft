@@ -2,9 +2,9 @@
 
 use cam_geom::Point2;
 use cam_model::{Job, OriginCorner};
-use cam_move::{Move, MoveStream, Point3, Segment};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield};
-use cam_units::{Length, UnitSystem};
+use cam_units::{Angle, Length, UnitSystem};
 
 fn job(extent: f64, thickness: f64) -> Job {
   Job {
@@ -25,7 +25,7 @@ fn segment(name: &str, diameter: f64, moves: Vec<Move>) -> Segment {
   Segment {
     name: name.to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(diameter),
+    tool: ToolShape::cylinder(Length::from_mm(diameter)),
     feed_rate: 1000.0,
     plunge_rate: 300.0,
     spindle_speed: 12000,
@@ -97,7 +97,7 @@ fn a_straight_feed_cuts_exactly_the_capsule_the_tool_sweeps() {
     Move::Feed {
       to: Point3::new(to.x, to.y, -2.0),
     },
-    radius,
+    ToolShape::cylinder(Length::from_mm(2.0 * radius)),
   );
 
   assert_eq!(cut_cells(&field), expected, "the sweep's capsule");
@@ -123,7 +123,7 @@ fn a_full_circle_arc_cuts_its_annulus_and_leaves_the_centre_standing() {
       center: centre,
       ccw: true,
     },
-    1.0,
+    ToolShape::cylinder(Length::from_mm(2.0)),
   );
 
   let middle = field.cell_centre(20, 20);
@@ -263,4 +263,76 @@ fn two_runs_over_the_same_program_give_the_same_field() {
     first.volumes().removed > 0.0,
     "the program did cut something"
   );
+}
+
+/// A V-bit: `degrees` across the tip, and a flat of `flat` millimetres at it.
+fn v_bit(degrees: f64, flat: f64) -> ToolShape {
+  ToolShape::v_bit(Angle::from_degrees(degrees), Length::from_mm(flat))
+}
+
+#[test]
+fn a_v_bit_leaves_a_v_groove_whose_floor_follows_its_flank() {
+  // A 90 degree V-bit with a sharp point, one pass 6 mm deep along y = 20.5 from x = 5 to x = 15. The
+  // cone's radius where it meets the surface is `6 * tan(45) = 6`, so the groove is 12 mm wide and its
+  // floor `x` millimetres to the side of the line is `6 - x` deep. A cylinder would leave a flat floor
+  // across all 12 mm, which is material the machine never removed (M6 A8).
+  let mut field = field(40.0, 1.0);
+  sweep::apply_move(
+    &mut field,
+    Point3::new(5.0, 20.5, 5.0),
+    Move::Feed {
+      to: Point3::new(15.0, 20.5, -6.0),
+    },
+    v_bit(90.0, 0.0),
+  );
+
+  // One column inside the pass, so every distance below is measured to the line and not to an end.
+  let column = 10;
+  let at = |row: usize| field.surface(column, row);
+  assert!(
+    (at(20) + 6.0).abs() < 1e-9,
+    "on the line the floor is the pass depth, got {}",
+    at(20)
+  );
+  assert!(
+    (at(23) + 3.0).abs() < 0.01,
+    "3 mm off the line the flank is 3 mm above the tip, got {}",
+    at(23)
+  );
+  assert!(
+    (at(25) + 1.0).abs() < 0.01,
+    "5 mm off the line only the last millimetre is cut, got {}",
+    at(25)
+  );
+  assert_eq!(at(27), 0.0, "7 mm off the line is past the 6 mm reach");
+}
+
+#[test]
+fn a_v_bit_with_a_flat_tip_holds_its_depth_across_the_flat_and_then_climbs() {
+  // The same pass with a 2 mm flat: the floor stays at -6 for the first millimetre either side (the
+  // tip is a disc of radius 1), then climbs at 45 degrees, and reaches the surface at 1 + 6 = 7 mm.
+  let mut field = field(40.0, 1.0);
+  sweep::apply_move(
+    &mut field,
+    Point3::new(5.0, 20.5, 5.0),
+    Move::Feed {
+      to: Point3::new(15.0, 20.5, -6.0),
+    },
+    v_bit(90.0, 2.0),
+  );
+
+  let column = 10;
+  let at = |row: usize| field.surface(column, row);
+  assert!((at(20) + 6.0).abs() < 1e-9, "under the flat: {}", at(20));
+  assert!(
+    (at(21) + 6.0).abs() < 1e-9,
+    "at the flat's edge: {}",
+    at(21)
+  );
+  assert!(
+    (at(24) + 3.0).abs() < 0.01,
+    "4 mm off the line, 3 mm up the flank: {}",
+    at(24)
+  );
+  assert_eq!(at(28), 0.0, "8 mm off the line is past the 7 mm reach");
 }

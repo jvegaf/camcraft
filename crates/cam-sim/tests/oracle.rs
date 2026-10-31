@@ -20,8 +20,8 @@ use cam_model::{
   Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner, PocketParams,
   PocketStrategy, ProfileParams, ProfileSide, Toolpath,
 };
-use cam_move::{Move, MoveStream, Point3, Segment};
-use cam_sim::target::{deviations, target_for, Deviation, ToolDiameters};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
+use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
 use cam_sim::{sweep, Heightfield};
 use cam_units::{Length, UnitSystem};
 
@@ -142,8 +142,8 @@ fn profile(id: &str, entities: &[&str], side: ProfileSide, cut: f64) -> Toolpath
   }
 }
 
-fn tools(diameter: f64) -> ToolDiameters {
-  ToolDiameters::new([(1, Length::from_mm(diameter))])
+fn tools(diameter: f64) -> ToolShapes {
+  ToolShapes::new([(1, ToolShape::cylinder(Length::from_mm(diameter)))])
 }
 
 fn program(diameter: f64, moves: Vec<Move>) -> MoveStream {
@@ -151,7 +151,7 @@ fn program(diameter: f64, moves: Vec<Move>) -> MoveStream {
     segments: vec![Segment {
       name: "program".to_owned(),
       tool_number: 1,
-      tool_diameter: Length::from_mm(diameter),
+      tool: ToolShape::cylinder(Length::from_mm(diameter)),
       feed_rate: 1000.0,
       plunge_rate: 300.0,
       spindle_speed: 12_000,

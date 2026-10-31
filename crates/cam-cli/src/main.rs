@@ -13,9 +13,9 @@ use std::process::ExitCode;
 
 use cam_geom::Point2;
 use cam_model::{Document, Operation, Toolpath};
-use cam_move::{MoveStream, Segment};
+use cam_move::{MoveStream, Segment, ToolShape};
 use cam_post::{emit, parse_post, ProgramMeta};
-use cam_sim::{deviations, sweep, target_for, Heightfield, ToolDiameters};
+use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
@@ -1331,7 +1331,7 @@ fn build_segment(
   Ok(Segment {
     name: toolpath.name.clone(),
     tool_number: number,
-    tool_diameter: spec.diameter,
+    tool: ToolShape::cylinder(spec.diameter),
     feed_rate: spec.feed_rate,
     plunge_rate: spec.plunge_rate,
     spindle_speed: spec.spindle_speed,
@@ -1418,13 +1418,13 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
   let cell = Length::from_mm(resolution);
   let mut field =
     Heightfield::new(&document.job, cell).map_err(|error| Failure::input(error.to_string()))?;
-  // Every tool the program uses, at the diameter the library gives it: a profile's target band is
-  // the material its tool sweeps, and the segment already carries the size that built it.
-  let tools = ToolDiameters::new(
+  // Every tool the program uses, at the shape the library gives it: a profile's target band is the
+  // material its tool sweeps, and the segment already carries the shape that built it.
+  let tools = ToolShapes::new(
     stream
       .segments
       .iter()
-      .map(|segment| (segment.tool_number, segment.tool_diameter)),
+      .map(|segment| (segment.tool_number, segment.tool)),
   );
   let target =
     target_for(&document, cell, &tools).map_err(|error| Failure::input(error.to_string()))?;

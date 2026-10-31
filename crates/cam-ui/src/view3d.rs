@@ -35,7 +35,7 @@
 
 use cam_app::Viewport;
 use cam_model::Job;
-use cam_move::{Move, MoveStream, Point3};
+use cam_move::{Move, MoveStream, Point3, ToolShape};
 use cam_sim::{sweep, Heightfield};
 use cam_units::Length;
 use cam_view::{build_stock_box, build_surface, Camera3d, Line3, FIELD_OF_VIEW, MIN_DISTANCE};
@@ -139,8 +139,9 @@ struct Step {
   movement: Move,
   /// Where the sweep starts: exactly the origin [`sweep::apply`] uses for this move.
   sweep_from: Point3,
-  /// The tool radius, from the segment's own diameter.
-  radius: f64,
+  /// The tool's shape, carried from the segment so the preview's own field is cut by the tool the
+  /// program names rather than by a widened disc (M6 A8).
+  tool: ToolShape,
   /// How long the move takes, in the program's own seconds.
   seconds: f64,
 }
@@ -404,7 +405,7 @@ impl Preview3d {
   /// the picture stays honest either way.
   fn apply(&mut self, index: usize) {
     let step = self.steps[index];
-    let _ = sweep::apply_move(&mut self.field, step.sweep_from, step.movement, step.radius);
+    let _ = sweep::apply_move(&mut self.field, step.sweep_from, step.movement, step.tool);
   }
 
   /// Stop playback once there is nothing left to play, and mark the last move consumed.
@@ -600,7 +601,7 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
   cumulative.push(0.0);
   let mut departure = Point3::new(program.home.x, program.home.y, program.safe_z.mm());
   for segment in &program.segments {
-    let radius = segment.tool_diameter.mm() / 2.0;
+    let tool = segment.tool;
     let mut previous: Option<Point3> = None;
     for movement in &segment.moves {
       let to = movement.destination();
@@ -609,7 +610,7 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
       steps.push(Step {
         movement: *movement,
         sweep_from: previous.unwrap_or(to),
-        radius,
+        tool,
         seconds,
       });
       cumulative.push(total);

@@ -13,7 +13,7 @@
 use std::f64::consts::TAU;
 
 use cam_geom::Point2;
-use cam_move::{Move, MoveStream, Point3};
+use cam_move::{Move, MoveStream, Point3, ToolShape};
 
 use crate::heightfield::Heightfield;
 
@@ -37,17 +37,17 @@ pub struct Removal {
   pub crashes: Vec<Crash>,
 }
 
-/// Apply a whole program to a field, one segment at a time, with each segment's own tool diameter.
+/// Apply a whole program to a field, one segment at a time, with each segment's own tool shape.
 pub fn apply(program: &MoveStream, field: &mut Heightfield) -> Removal {
   let mut removal = Removal::default();
   for segment in &program.segments {
-    let radius = segment.tool_diameter.mm() / 2.0;
+    let tool = segment.tool;
     let mut from: Option<Point3> = None;
     for (index, movement) in segment.moves.iter().enumerate() {
       // The stream carries no explicit start position: a segment's first move starts where it ends,
       // which turns a plunge into a single disc instead of inventing an approach it did not declare.
       let origin = from.unwrap_or(movement.destination());
-      if let Some(mut crash) = apply_move(field, origin, *movement, radius) {
+      if let Some(mut crash) = apply_move(field, origin, *movement, tool) {
         crash.toolpath = segment.name.clone();
         crash.move_index = index;
         removal.crashes.push(crash);
@@ -59,30 +59,22 @@ pub fn apply(program: &MoveStream, field: &mut Heightfield) -> Removal {
   removal
 }
 
-/// Apply one movement that starts at `from`, with a tool of `tool_radius`.
+/// Apply one movement that starts at `from`, cut by `tool`.
 ///
 /// Returns the crash a rapid represents, when it ends below the surface at its destination.
 pub fn apply_move(
   field: &mut Heightfield,
   from: Point3,
   movement: Move,
-  tool_radius: f64,
+  tool: ToolShape,
 ) -> Option<Crash> {
   match movement {
     Move::Feed { to } => {
-      sweep_line(field, from.xy(), to.xy(), to.z.mm(), tool_radius);
+      sweep_line(field, from.xy(), to.xy(), to.z.mm(), tool);
       None
     }
     Move::Arc { to, center, ccw } => {
-      sweep_arc(
-        field,
-        from.xy(),
-        to.xy(),
-        center,
-        ccw,
-        to.z.mm(),
-        tool_radius,
-      );
+      sweep_arc(field, from.xy(), to.xy(), center, ccw, to.z.mm(), tool);
       None
     }
     Move::Rapid { to } | Move::Retract { to } => {
@@ -100,11 +92,18 @@ pub fn apply_move(
   }
 }
 
-/// Lower every cell whose centre the tool covers at a point.
-fn sweep_disc(field: &mut Heightfield, centre: Point2, z: f64, radius: f64) {
+/// Lower every cell the tool covers at a point, to the depth its own shape reaches there.
+///
+/// A cylinder removes the move's whole depth across its footprint. A cone does not: at horizontal
+/// distance `x` from the tip its flank is `rise(x)` above the tip, so the material there is lowered to
+/// `−(depth − rise(x))`, and the footprint at the surface is the widest one the move can reach. This is
+/// the difference between a V-groove and a flat-bottomed slot, and cutting the flat slot would remove
+/// material the machine never touched (M6 A8).
+fn sweep_disc(field: &mut Heightfield, centre: Point2, z: f64, tool: ToolShape) {
   let grid = field.grid();
   let cell = grid.cell.mm();
-  let radius = radius.max(0.0);
+  let depth = -z;
+  let radius = tool.radius_at(depth).max(0.0);
   let low = |value: f64, origin: f64, count: usize| -> usize {
     let raw = ((value - origin) / cell).floor();
     if raw <= 0.0 {
@@ -122,22 +121,26 @@ fn sweep_disc(field: &mut Heightfield, centre: Point2, z: f64, radius: f64) {
   for row in first_row..=last_row.min(grid.rows.saturating_sub(1)) {
     for column in first_column..=last_column.min(grid.columns.saturating_sub(1)) {
       let distance = field.cell_centre(column, row).distance_to(centre);
-      if distance <= radius {
-        field.lower(column, row, z);
+      if distance > radius {
+        continue;
+      }
+      let removed = (depth - tool.rise_at_radius(distance)).max(0.0);
+      if removed > 0.0 {
+        field.lower(column, row, -removed);
       }
     }
   }
 }
 
 /// Sweep a straight move, sampled at half a cell so the union of discs covers the capsule.
-fn sweep_line(field: &mut Heightfield, from: Point2, to: Point2, z: f64, radius: f64) {
+fn sweep_line(field: &mut Heightfield, from: Point2, to: Point2, z: f64, tool: ToolShape) {
   let cell = field.grid().cell.mm();
   let length = from.distance_to(to);
   let steps = ((length / (cell / 2.0)).ceil() as usize).max(1);
   for step in 0..=steps {
     let t = step as f64 / steps as f64;
     let point = Point2::new(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
-    sweep_disc(field, point, z, radius);
+    sweep_disc(field, point, z, tool);
   }
 }
 
@@ -149,12 +152,12 @@ fn sweep_arc(
   center: Point2,
   ccw: bool,
   z: f64,
-  radius: f64,
+  tool: ToolShape,
 ) {
   let cell = field.grid().cell.mm();
   let path_radius = center.distance_to(to);
   if path_radius <= 0.0 {
-    sweep_disc(field, to, z, radius);
+    sweep_disc(field, to, z, tool);
     return;
   }
   let start = (from.y - center.y).atan2(from.x - center.x);
@@ -177,6 +180,6 @@ fn sweep_arc(
       center.x + path_radius * angle.cos(),
       center.y + path_radius * angle.sin(),
     );
-    sweep_disc(field, point, z, radius);
+    sweep_disc(field, point, z, tool);
   }
 }

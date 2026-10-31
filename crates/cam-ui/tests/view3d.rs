@@ -14,7 +14,7 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Job, Layer};
-use cam_move::{Move, MoveStream, Point3, Segment};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield, Volumes};
 use cam_ui::{Preview3d, Shell, ShellOutput};
 use cam_units::Length;
@@ -69,7 +69,7 @@ fn program() -> MoveStream {
   stream.segments.push(Segment {
     name: "pocket 1".to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(6.0),
+    tool: ToolShape::cylinder(Length::from_mm(6.0)),
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,
@@ -127,7 +127,7 @@ fn playback_program() -> MoveStream {
   stream.segments.push(Segment {
     name: "playback".to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(6.0),
+    tool: ToolShape::cylinder(Length::from_mm(6.0)),
     feed_rate: 100.0,
     plunge_rate: 50.0,
     spindle_speed: 18_000,

@@ -15,13 +15,13 @@ use cam_model::{
   Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner, PocketParams,
   PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
 };
-use cam_move::{Move, MoveStream, Point3, Segment};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
 use cam_sim::target::{
-  deviations, target_for, Deviation, DeviationError, Target, TargetError, ToolDiameters,
+  deviations, target_for, Deviation, DeviationError, Target, TargetError, ToolShapes,
 };
 use cam_sim::Heightfield;
-use cam_units::{Length, UnitSystem};
+use cam_units::{Angle, Length, UnitSystem};
 
 /// The resolution every test in this file runs at, and the one the tree's arithmetic assumes.
 const CELL: f64 = 1.0;
@@ -145,8 +145,8 @@ fn drilling(id: &str, entities: &[&str], cut: f64) -> Toolpath {
   }
 }
 
-fn tools(diameter: f64) -> ToolDiameters {
-  ToolDiameters::new([(1, Length::from_mm(diameter))])
+fn tools(diameter: f64) -> ToolShapes {
+  ToolShapes::new([(1, ToolShape::cylinder(Length::from_mm(diameter)))])
 }
 
 /// The whole target surface's volume, summed in row-major order: the test's own arithmetic.
@@ -485,7 +485,7 @@ fn a_clean_outside_cut_through_the_sweep_leaves_no_gouge_and_no_uncut() {
     segments: vec![Segment {
       name: "profile 1".to_owned(),
       tool_number: 1,
-      tool_diameter: Length::from_mm(6.0),
+      tool: ToolShape::cylinder(Length::from_mm(6.0)),
       feed_rate: 1000.0,
       plunge_rate: 300.0,
       spindle_speed: 18_000,
@@ -857,10 +857,153 @@ fn a_profile_without_its_tool_diameter_is_refused_by_name() {
     )],
   );
   assert_eq!(
-    target_for(&document, cell(), &ToolDiameters::default()),
+    target_for(&document, cell(), &ToolShapes::default()),
     Err(TargetError::MissingTool {
       toolpath: "profile 1".to_owned(),
       tool_number: 1,
     })
+  );
+}
+
+/// The tool table for a single V-bit, the way a profile's band asks for it.
+fn v_bit_tools(degrees: f64, flat: f64) -> ToolShapes {
+  ToolShapes::new([(
+    1,
+    ToolShape::v_bit(Angle::from_degrees(degrees), Length::from_mm(flat)),
+  )])
+}
+
+#[test]
+fn a_v_bit_on_the_vector_authorises_its_cone_and_not_its_widest_disc() {
+  // A 90 degree V-bit engraved on a 20 mm square 6 mm deep. Its footprint where it meets the surface
+  // reaches 6 mm either side of the vector, and its floor `x` millimetres away is `6 - x`. On the
+  // bottom edge the cell centres 0.5, 3.5 and 6.5 mm from it are authorised 5.5, 2.5 and nothing.
+  // Authorising the whole 6 mm across the footprint instead would report a correct V-groove as uncut.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![profile(
+      "engrave 1",
+      &["square"],
+      ProfileSide::On,
+      0.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  let target = target_for(&document, cell(), &v_bit_tools(90.0, 0.0)).expect("a target");
+
+  assert!(
+    (target.authorised(20, 10) - 5.5).abs() < 1e-9,
+    "half a millimetre off the vector is authorised 5.5, got {}",
+    target.authorised(20, 10)
+  );
+  assert!(
+    (target.authorised(20, 13) - 2.5).abs() < 1e-9,
+    "3.5 mm off the vector is authorised 2.5, got {}",
+    target.authorised(20, 13)
+  );
+  assert_eq!(
+    target.authorised(20, 16),
+    0.0,
+    "6.5 mm off the vector is past the cone's reach"
+  );
+}
+
+#[test]
+fn a_v_bit_cutting_one_side_of_the_vector_is_refused_instead_of_approximated() {
+  // A cone is graded from the vector, so a band offset to one side of it would be graded from the
+  // wrong line and would call a correct cut a deviation. Refused by name (D-M6-3).
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![profile(
+      "profile 1",
+      &["square"],
+      ProfileSide::Outside,
+      0.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  assert_eq!(
+    target_for(&document, cell(), &v_bit_tools(90.0, 0.0)),
+    Err(TargetError::ConeOnVectorOnly {
+      toolpath: "profile 1".to_owned(),
+      side: "outside",
+    })
+  );
+}
+
+#[test]
+fn a_clean_cone_cut_leaves_no_gouge_and_uncut() {
+  // The D-M5-5 test with a cone instead of a disc: the program the emitter would write for a 6 mm
+  // pass on the vector, swept with the same shape the target was derived for. Gouge must be exactly
+  // zero — the sweep never removes past its own law — and the only deviation allowed is the sweep's
+  // sampling: it walks the path every half cell, so a cell's nearest sample can sit up to a quarter
+  // cell further away than the path itself, which leaves that much of the cone's floor standing.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 30.0))],
+    vec![profile(
+      "engrave 1",
+      &["square"],
+      ProfileSide::On,
+      0.0,
+      6.0,
+      Vec::new(),
+    )],
+  );
+  let tool = ToolShape::v_bit(Angle::from_degrees(90.0), Length::ZERO);
+  let target = target_for(&document, cell(), &v_bit_tools(90.0, 0.0)).expect("a target");
+  let corner = |x: f64, y: f64| Point3::new(x, y, -6.0);
+  let program = MoveStream {
+    segments: vec![Segment {
+      name: "engrave 1".to_owned(),
+      tool_number: 1,
+      tool,
+      feed_rate: 1000.0,
+      plunge_rate: 300.0,
+      spindle_speed: 18_000,
+      moves: vec![
+        Move::Rapid {
+          to: Point3::new(10.0, 10.0, 5.0),
+        },
+        Move::Feed {
+          to: corner(10.0, 10.0),
+        },
+        Move::Feed {
+          to: corner(30.0, 10.0),
+        },
+        Move::Feed {
+          to: corner(30.0, 30.0),
+        },
+        Move::Feed {
+          to: corner(10.0, 30.0),
+        },
+        Move::Feed {
+          to: corner(10.0, 10.0),
+        },
+        Move::Retract {
+          to: Point3::new(10.0, 10.0, 5.0),
+        },
+      ],
+    }],
+    safe_z: Length::from_mm(5.0),
+    home: Point2::new(0.0, 0.0),
+  };
+  let mut field = Heightfield::new(&document.job, cell()).expect("a field");
+  let removal = apply(&program, &mut field);
+  assert!(removal.crashes.is_empty(), "the retract is at safe Z");
+
+  let exact = deviations(&field, &target, Length::ZERO).expect("the same grid");
+  assert_eq!(exact.gouge, 0.0, "a cone never cuts past its own law");
+  assert_eq!(exact.gouge_cells, 0, "no cell is gouged");
+
+  let sampled = deviations(&field, &target, Length::from_mm(CELL / 4.0)).expect("the same grid");
+  assert_eq!(
+    sampled,
+    Deviation::default(),
+    "everything left standing is within the sweep's own sampling"
   );
 }

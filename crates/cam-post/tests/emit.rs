@@ -1,7 +1,7 @@
 //! Behaviour tests for the data-driven G-code emitter (A5, A6, A9).
 
 use cam_geom::Point2;
-use cam_move::{Move, MoveStream, Point3, Segment};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_post::{emit, parse_post, EmitError, ProgramMeta};
 use cam_units::Length;
 
@@ -20,7 +20,7 @@ fn profile_stream() -> MoveStream {
   stream.segments.push(Segment {
     name: "Outside profile".to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(6.0),
+    tool: ToolShape::cylinder(Length::from_mm(6.0)),
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,
@@ -50,7 +50,7 @@ fn arc_stream() -> MoveStream {
   stream.segments.push(Segment {
     name: "Arc segment".to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(6.0),
+    tool: ToolShape::cylinder(Length::from_mm(6.0)),
     feed_rate: 100.0,
     plunge_rate: 30.0,
     spindle_speed: 18_000,
@@ -183,7 +183,7 @@ fn line_numbers_wrap_at_the_maximum() {
   stream.segments.push(Segment {
     name: "empty".to_owned(),
     tool_number: 1,
-    tool_diameter: Length::from_mm(6.0),
+    tool: ToolShape::cylinder(Length::from_mm(6.0)),
     feed_rate: 1.0,
     plunge_rate: 1.0,
     spindle_speed: 1,
