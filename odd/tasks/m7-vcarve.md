@@ -211,20 +211,26 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   false for a legitimate program. `_vcpdStartDepth` (S6) is recorded as observed and deferred, and the
   CLI refuses `--start-depth` by name (A5) rather than accepting and ignoring it (S16).
 
-- **D-M7-4 — Arcs are tessellated **for the skeleton only**, counted, and the depth is always measured
-  against the original boundary.** The kernel has no conic, and every bisector involving an arc is one
-  (a parabola or a hyperbola). Tessellating the *boundary* to build the *axis* is what makes the
-  straight-line machinery reach `A2`'s certificate, and the count is reported the way every importer
-  reports a flattened curve. The Z at each vertex is then taken from the **true** boundary, arc-native,
-  so tessellation can only displace a tip laterally; by the claim's point 1 that costs coverage, never
-  depth. `_vcpdPreserveArcs` (S6) — the product keeping arcs in its output — is therefore out of scope
-  and recorded as such.
+- **D-M7-4 — Arcs stay arcs: nothing is tessellated, and no chord tolerance exists anywhere.**
+  *(Superseded in its premise by T2's implementation; the corrected decision is the one in force.) As
+  written, this decision said arcs would be tessellated for the skeleton and counted, reasoning that
+  every bisector involving an arc is a parabola or a hyperbola and the kernel has no conic. That is right
+  about *constructing* a bisector and wrong about *needing* one: the axis is found by bisecting the
+  scalar `dist(p, i) - dist(p, j)` along a lattice edge and certifying with exact nearest points, so no
+  bisector is ever built and the arc's own geometry is asked throughout. Arcs are therefore **not**
+  tessellated, the distance is arc-native in the certificate as well as in the clearance, and there is no
+  chord tolerance in the pipeline at all. `_vcpdPreserveArcs` (S6) is still out of scope for a different
+  reason: the walk emits linear feeds with per-vertex Z (D-M7-7), so the question does not arise.
 
-- **D-M7-5 — The tolerance is the branch refinement step, declared once.** It is the same *kind* of knob
-  the product calls `VCarve Toolpath Tolerance` (S7) but not the same knob: the product simplifies a
-  computed path afterwards to reduce file size, while M7 refines the skeleton to a step and reports the
-  coverage its step costs. Naming both here keeps the CLI's `--tolerance`-shaped flag honest if one is
-  ever added; M7 adds no tolerance flag and takes the job's existing tolerance.
+- **D-M7-5 — The tolerance is the lattice step, and its four costs are declared, not hidden.** It is the
+  same *kind* of knob the product calls `VCarve Toolpath Tolerance` (S7) but not the same knob: the
+  product simplifies a computed path afterwards to reduce file size, while M7 refines the axis to a step.
+  The costs, measured: (1) the chording between certified vertices; (2) a piece shorter than the step is
+  missed; (3) near a convex corner the carve leaves at most `tolerance` of material standing, because a
+  tip whose clearance is at or below the tolerance is not material — measured as `0.20` mm of missed
+  depth at a 0.5 mm tolerance and `0.00` at 0.1 mm; (4) a curvature extremum truncates a branch, and the
+  ellipse's axis stops at `|x| = 3.5` against its analytic `4.2` at a 0.5 mm tolerance. All four are in
+  `cam_geom::medial`'s module doc, so the milestone's `uncut` starts from a written bound.
 
 - **D-M7-6 — T0 is the origin fix, and it is a prerequisite rather than a detour.** M7's acceptance test
   is a simulation report (S11). While `grid_for` and the sweep disagree about the origin at three of
@@ -334,3 +340,37 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   `cam-toolpath/tests/frame.rs`, 1 in `cam-cli/tests/cli.rs`) for **988**, green under
   `./scripts/check.sh` with `fmt` and `clippy -D warnings` clean. No pre-existing expectation was moved:
   every change here was additive at `bottom_left`, which is why the differentials could be byte-level.
+- **L10 (execution, T2, the research unit, and the three things measurement decided that this document
+  could not).** `eb989ab` is 2454 authored lines — `cam_geom::medial` (758), its two test files (1112) and
+  the exact `nearest_point` additions to `Segment` and `Arc` (103). One commit, past the slice guideline
+  on purpose: the module, its certificate and its tests are one indivisible claim, and the kernel
+  additions exist only to answer "which point" for that certificate. Three rounds of measurement changed
+  the design, and each is recorded because each was a test that failed.
+  *(1) The route.* This document said "candidates from the bisectors of boundary element pairs" and "arcs
+  are tessellated for the skeleton only, and counted". Both were wrong for one reason: a bisector
+  involving an arc is a conic, so the plan was to avoid arcs — but the implementation never needs to
+  *build* a bisector, only to bisect the scalar `dist(p,i) - dist(p,j)` along a lattice edge. So arcs stay
+  arcs, nothing is tessellated, and the `arcs_tessellated` field this document asked for was structurally
+  `0` and was removed (T2b). D-M7-4 is recorded as superseded in its premise rather than deleted, because
+  its reasoning is exactly why the alternative looks necessary.
+  *(2) The certificate counted one contact as two.* The kernel's 16-arc ellipse arcs disagree about the
+  vertex they share by up to `1.3e-5` mm, so a query just off a joint's normal gets an interior foot on
+  one arc and the joint on the other at the same distance, and every joint grew a stub of "axis": the
+  ellipse's single axis came back as **13 branches at a 0.1 mm tolerance**. The dedup now reads contacts
+  at a tenth of the tolerance, which can only ever reject a candidate.
+  *(3) A refused candidate broke a branch in two,* because the cell-local walk ended on both sides of it.
+  A stitch pass joins branch ends within two lattice steps when each points into the seam and the seam
+  crosses nothing; no vertex is invented and none is recomputed. The square's 4 branches stayed 4, the
+  L's 10 became 9, the ellipse's 13 became 1.
+  The property that now guards all of it is
+  `a_finer_tolerance_never_returns_more_branches_than_a_coarser_one`: a finer tolerance buying a better
+  measurement by fragmenting the toolpath into more retracts is the defect, and the test says so.
+  Coverage was measured rather than assumed, at both tolerances on six fixtures: the axis's balls cover
+  `0.986`–`0.999` of each region at 0.5 mm and `0.997`–`1.000` at 0.1 mm, the largest missed clearance is
+  `0.20` mm at 0.5 and `0.00` at 0.1, and stabilising the topology moved no coverage figure at all — it
+  changed how many walks the same certified points form, not what they cover.
+- **L11 (review, T1, one observation recorded rather than fixed).** `Arc::distance_to_point`'s
+  out-of-sweep branch computes `distance.min(0.0).max(min_endpoint)`. The `min(0.0)` is a no-op on a
+  non-negative length, so the branch is correct today, but it reads like a typo for `max` and it sits in
+  the expression the certificate evaluates thousands of times. Left untouched as out of scope; recorded
+  so it is not rediscovered as a mystery.
