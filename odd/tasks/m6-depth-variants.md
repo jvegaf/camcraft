@@ -242,7 +242,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `6a6676a` |
 | T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `6167f37` |
 | T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | `45f5f14` |
-| T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
+| T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | delegated | `fc6de8f` |
 
 ## Recorded out of scope
 
