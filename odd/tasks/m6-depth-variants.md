@@ -451,3 +451,17 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   and are noted rather than rewritten: L13 says a negative ramp was not refused at document load, and it
   now is (`ModelError::FlutingRampNegative`); and A10's "twelve subcommands" is twelve invocations of ten
   subcommands, as L18's differential reports. Neither changes a decision.
+- **L20 (delivery, the native review this milestone could not have).** The owner-owned review switch is
+  on, so the candidate was submitted: `inspect` reported the whole branch ready (46 paths, `workspace`
+  against `master` `179d6b3`), and `start` with all four lenses was refused with
+  `lens_context_budget_exceeded` — no lineage was created and nothing was mutated, so there was nothing to
+  abandon or repair, and the provider states that retrying that exact candidate cannot succeed. The
+  candidate is ~16.3k authored lines; the per-commit sizes are 819 (T1), 1777 (T2), 1119 (T3), 3269
+  (T4+T4b), 1710 (T5), 2541 (T6), 3163 (T7) and 868 (T8). The three large ones are large for the reason
+  L8 and L10 record: a new `Operation` variant breaks the exhaustive matches of four crates and
+  `Move::Helix` breaks the workspace's, so slicing them by layer would leave the tree uncompilable. The
+  owner's decision was to merge M6 on its own evidence — **975 tests**, the gate green, and a
+  differential of 29 invocations against `179d6b3` identical in exit code, stdout, stderr and every
+  produced file but three deliberate differences — and to carry the native review into M7, whose slices
+  are additive over what this milestone landed. Recorded because "merged without a review" and "merged
+  after a review the tooling refused" are not the same fact, and the next reader deserves the second one.
