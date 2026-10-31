@@ -103,7 +103,11 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   `included_angle` is an input error naming the tool, never a default angle.
 - **A9 — Every strategy has an oracle in both signs (S7).** For each of the six, a test asserts the
   analytically derived removed volume within tolerance, and a test asserts that a deliberately wrong
-  depth is reported as gouge or uncut — the M5 oracle's own shape (`cam-sim/tests/oracle.rs`).
+  depth is reported as gouge or uncut — the M5 oracle's own shape (`cam-sim/tests/oracle.rs`). **The
+  arithmetic is per side, and T2's review found A9 asserting the wrong one** (L9): a chamfer whose
+  vector has material on both sides removes `L·w·d` per unit length; one whose vector is an outside
+  edge, with air on the other side, removes `L·w·d/2`. Both cases get an oracle, so neither reading
+  can pass as the whole truth.
 - **A10 — Determinism and the old bytes (S6).** Two runs of every new subcommand print and emit
   identical bytes; the twelve pre-existing subcommand differential still holds against `179d6b3`
   except for `--help` and the new commands themselves.
@@ -127,7 +131,9 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   cut a second bevel into the first. **Amended in L7:** a symmetric bevel about the vector has no side,
   so `ChamferParams` carries no `side` and no `cut_depth` — only `chamfer_width`, `included_angle` and
   `start_depth`, with one shared `ChamferParams::depth()` in `cam-model` that `cam-toolpath` and
-  `cam-sim` both call, so the two can never derive different depths.
+  `cam-sim` both call, so the two can never derive different depths. **Amended in L9:** the derivation
+  assumes a sharp point, so a bit with a flat tip is refused by name (`D-M6-10`) instead of cutting a
+  bevel wider than the width the user typed.
 - **D-M6-3 — The cone is modelled in `cam-sim`, not approximated by a cylinder.** M5 S2 put the tool's
   diameter on the segment because the simulation needs the swept footprint; a V-bit's footprint is not a
   diameter. `cam_move::Segment` therefore carries a tool shape (`Cylinder { diameter }` or
@@ -164,6 +170,14 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   outside the name formatter consumed them (`crates/cam-store/src/tools.rs:122-148`). M6 consumes the
   angle and the flat diameter through `ToolSpec`; a V-bit strategy given a tool without an angle exits
   as input error naming the tool, because defaulting to 90° would silently cut a different chamfer.
+- **D-M6-10 — A chamfer needs a sharp V-bit, and the library refuses a degenerate one.** With a flat tip
+  of diameter `f` the bevel reaches the surface at `f/2 + d·tan(θ/2)`, so honouring `chamfer_width`
+  exactly would need `d = (w − f/2)/tan(θ/2)` — a derivation that reads the tool, while `ChamferParams`
+  deliberately does not (L7). M6 refuses a flat-tipped bit for `chamfer` by name rather than cutting a
+  bevel wider than the number the user asked for; a tapered footprint with a flat is a later strategy's
+  business. For the same reason `cam-toolpath::chamfer` refuses an angle that is not strictly inside
+  `(0, π)` at the library boundary and not only in the model's validation: a caller that bypasses the
+  CLI must not receive an infinite Z.
 
 ## Tasks
 
@@ -240,3 +254,22 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   the harness asks for. The boundary is deliberate and cannot be moved: `Segment.tool_diameter` became
   `Segment.tool`, and a half-applied shape change leaves the workspace uncompilable, while every test in
   the tree constructs a segment. The next commits are the smaller ones the plan already had.
+- **L9 (review, T2, three defects found by the writer against its own spec).** Recording what the
+  specification got wrong, because each one would have shipped as a number nobody questioned.
+  *(1) The oracle's arithmetic.* A9 asserted `L·w·d/2`; that is one flank. The cone is symmetric about
+  the vector, so a bevel with material on both sides removes `w·d` per unit length, and the writer's
+  circular-edge fixture measured `L·w·d`. Asserting `/2` is impossible against a correct implementation,
+  so A9 now names both cases and both get an oracle. *(2) A flat tip widens the bevel.* `depth()` omits
+  the tip's flat, so a bit with `flat_diameter = f` cuts a bevel `w + f/2` wide — the target and the
+  sweep agree (same shape) but the geometry is not what the user asked for. Refused by name (D-M6-10)
+  rather than absorbed. *(3) The library boundary had no gate.* `cam-toolpath/tests/errors.rs` was
+  outside T2's edit surface, so `chamfer()` first shipped with no error variant of its own and a direct
+  caller could pass an angle of zero for an infinite Z; the surface was widened and the refusal added.
+  One tolerance moved and was re-derived, not fitted: the chamfer oracle judges at `rise(cell/4)`
+  instead of `cell/4`, because D-M5-3's bound is a distance bound and a graded cut pays `cot(θ/2)` of it
+  in depth — the mutation still fails at the wider tolerance, so the test did not go blind.
+- **L10 (process, T2's slice).** T2 lands as one commit for the same reason T1 did, one degree stronger:
+  a new `Operation` variant breaks exhaustive matches in `cam-model`, `cam-sim` and `cam-cli`, so any
+  split by crate or by layer leaves the workspace uncompilable, and splitting code from tests would
+  separate a behaviour from the only thing that proves it. The boundary is recorded here rather than the
+  guideline being quietly exceeded; the next strategies are additive and can be sliced smaller.
