@@ -424,3 +424,46 @@ proptest! {
     );
   }
 }
+
+#[test]
+fn the_nearest_point_and_the_distance_are_the_same_answer() {
+  // `Segment::nearest_point` was added for the medial axis (M7 A2), which needs to know *which*
+  // boundary point is nearest and not only how far it is. The two answers are computed by separate
+  // code paths for an arc, so they are pinned together here: whatever the query point, the distance
+  // to the reported nearest point is the distance the kernel already reports.
+  let queries = [
+    point(0.0, 0.0),
+    point(0.0, 10.0),
+    point(0.0, -3.0),
+    point(4.0, 4.0),
+    point(13.0, 0.0),
+    point(-2.0, -2.0),
+    point(2.0, 7.0),
+  ];
+  let segments = [
+    line(0.0, 0.0, 10.0, 0.0),
+    line(10.0, 0.0, 10.0, 10.0),
+    arc(0.0, 0.0, 10.0, 0.0, PI),
+    arc(3.0, 1.0, 2.5, 0.5, -2.0),
+    // A zero-length segment, which is a point.
+    line(4.0, 4.0, 4.0, 4.0),
+  ];
+  for segment in segments {
+    for query in queries {
+      let nearest = segment.nearest_point(query);
+      assert!(
+        (nearest.distance - segment.distance_to_point(query)).abs() <= 1.0e-12,
+        "{segment:?} at {query:?}: nearest_point says {} and distance_to_point says {}",
+        nearest.distance,
+        segment.distance_to_point(query)
+      );
+      assert!(
+        (nearest.point.distance_to(query) - nearest.distance).abs() <= 1.0e-12,
+        "the reported point is exactly the reported distance away"
+      );
+      // The nearest set is a single point except at an arc's own centre.
+      let at_centre = matches!(segment, Segment::Arc(a) if a.center().is_near(query, 1.0e-12));
+      assert_eq!(nearest.interval, at_centre, "{segment:?} at {query:?}");
+    }
+  }
+}

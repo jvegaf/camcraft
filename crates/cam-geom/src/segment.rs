@@ -3,6 +3,38 @@
 use crate::arc::Arc;
 use crate::point::{Bounds, Point2, Vec2};
 
+/// The point of a segment that lies nearest a query point, and how far away it is.
+///
+/// [`Segment::distance_to_point`] answers *how far*; this answers *which point*, which is the question
+/// the medial-axis certificate asks (M7 A2): a point is on the medial axis only when its nearest set
+/// holds at least two **distinct** boundary points, and two segments that share a vertex must report
+/// that one vertex or every polygon corner would certify itself.
+///
+/// The two answers are returned together so they cannot drift apart: `distance` is
+/// `point.distance_to(query)` by construction.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NearestPoint {
+  /// The nearest point of the segment.
+  pub point: Point2,
+  /// Exact distance from the query point to `point`.
+  pub distance: f64,
+  /// True when the nearest *set* is not a single point, so `point` is one arbitrary member of it.
+  /// Exactly one case produces this: an arc asked about its own centre, where every point of the
+  /// sweep is equally near.
+  pub interval: bool,
+}
+
+impl NearestPoint {
+  /// A single nearest point at `distance` from the query.
+  const fn single(point: Point2, distance: f64) -> Self {
+    Self {
+      point,
+      distance,
+      interval: false,
+    }
+  }
+}
+
 /// A straight segment.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineSeg {
@@ -60,6 +92,21 @@ impl LineSeg {
     }
     let projection = ((point - self.start).dot(span) / length_squared).clamp(0.0, 1.0);
     point.distance_to(self.start + span * projection)
+  }
+
+  /// The nearest point of the segment, which for a straight segment is always a single point.
+  ///
+  /// The perpendicular foot when it falls inside the segment, and the nearer end when it does not;
+  /// either way the answer is exact, because a straight segment has no other candidate.
+  pub fn nearest_point(self, point: Point2) -> NearestPoint {
+    let span = self.end - self.start;
+    let length_squared = span.length_squared();
+    if length_squared <= 0.0 {
+      return NearestPoint::single(self.start, point.distance_to(self.start));
+    }
+    let projection = ((point - self.start).dot(span) / length_squared).clamp(0.0, 1.0);
+    let foot = self.start + span * projection;
+    NearestPoint::single(foot, point.distance_to(foot))
   }
 
   /// Bounds of the segment.
@@ -147,6 +194,17 @@ impl Segment {
     match self {
       Self::Line(line) => line.distance_to_point(point),
       Self::Arc(arc) => arc.distance_to_point(point),
+    }
+  }
+
+  /// The nearest point of the segment, and its exact distance.
+  ///
+  /// [`Segment::distance_to_point`] without the position, except in the one case where the nearest
+  /// set is an interval rather than a point ([`NearestPoint::interval`]).
+  pub fn nearest_point(self, point: Point2) -> NearestPoint {
+    match self {
+      Self::Line(line) => line.nearest_point(point),
+      Self::Arc(arc) => arc.nearest_point(point),
     }
   }
 
