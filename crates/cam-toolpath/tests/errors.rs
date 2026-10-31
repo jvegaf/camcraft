@@ -40,6 +40,12 @@ fn every_variant() -> Vec<ToolpathError> {
     ToolpathError::NoHoles,
     ToolpathError::InvalidBank,
     ToolpathError::InvalidIncludedAngle { degrees: 0.0 },
+    ToolpathError::InvalidRamp { ramp: -1.0 },
+    ToolpathError::RampTooLong {
+      ramp: 51.0,
+      length: 100.0,
+    },
+    ToolpathError::RampOnArc { ramp: 10.0 },
   ]
 }
 
@@ -48,7 +54,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    12,
+    15,
     "every variant must be listed exactly once"
   );
 
@@ -82,6 +88,19 @@ fn every_variant_keeps_its_message() {
       }
       ToolpathError::InvalidIncludedAngle { degrees } => {
         format!("chamfer included angle {degrees} degrees must be strictly between 0 and 180")
+      }
+      ToolpathError::InvalidRamp { ramp } => {
+        format!("fluting ramp {ramp} mm must not be negative")
+      }
+      ToolpathError::RampTooLong { ramp, length } => {
+        format!("fluting ramp {ramp} mm is longer than half of the vector's {length} mm length")
+      }
+      ToolpathError::RampOnArc { ramp } => {
+        format!(
+          "fluting ramp {ramp} mm would run along a contour with arcs, and a ramped move cannot follow \
+           one: the move vocabulary has no helical move, and its only curved move is constant-Z, so a \
+           ramped arc would be cut as a straight chord. Cut this contour with ramp 0, or ramp a polyline"
+        )
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

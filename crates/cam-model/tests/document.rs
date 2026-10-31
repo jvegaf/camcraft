@@ -496,3 +496,82 @@ fn a_legacy_schema_tag_is_migrated_and_an_unknown_one_is_not() {
     "{error:?}"
   );
 }
+
+// --- fluting (M6 A4, D-M6-5, D-M6-12) --------------------------------------------------------
+
+/// A fluting toolpath on the square's one entity, ramped over `ramp` millimetres.
+fn fluting_document(ramp: f64) -> Document {
+  document_with(Operation::Fluting(FlutingParams {
+    start_depth: Length::ZERO,
+    cut_depth: Length::from_mm(3.0),
+    ramp: Length::from_mm(ramp),
+  }))
+}
+
+#[test]
+fn a_fluting_toolpath_round_trips_with_its_ramp() {
+  let document = fluting_document(10.0);
+  document
+    .validate()
+    .expect("a flute on closed geometry is valid");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"fluting\""), "{json}");
+  assert!(json.contains("\"ramp\":10.0"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_fluting_toolpath_written_without_a_ramp_loads_as_the_plain_groove() {
+  // `ramp` is defaulted rather than required, so a hand-written or older document that names a
+  // `fluting` toolpath without the field loads as the in-place plunge it describes (A1, D-M6-5).
+  let json = serde_json::to_string(&fluting_document(10.0)).expect("serialises");
+  let without = json.replace(",\"ramp\":10.0", "");
+  assert_ne!(without, json, "the archive carries the ramp: {json}");
+  let parsed: Document = serde_json::from_str(&without).expect("a document without a ramp loads");
+  match &parsed.toolpaths[0].operation {
+    Operation::Fluting(params) => assert_eq!(params.ramp, Length::ZERO),
+    other => panic!("expected a fluting toolpath, got {other:?}"),
+  }
+  parsed.validate().expect("and it is valid");
+}
+
+#[test]
+fn a_negative_fluting_ramp_is_refused_at_load_naming_the_value() {
+  // A negative ramp would enter upwards, so the document model refuses it as it loads rather than
+  // leaving it for `emit` to discover (D-M6-5, A4). It is the same refusal `cam-toolpath` makes, at the
+  // boundary that sees the document before any toolpath exists.
+  let document = fluting_document(-2.0);
+  let error = document
+    .validate()
+    .expect_err("a negative ramp must be refused");
+  assert_eq!(
+    error,
+    ModelError::FlutingRampNegative {
+      toolpath: "TP1".to_owned(),
+      value: -2.0,
+    }
+  );
+  assert!(
+    error.to_string().contains("-2"),
+    "the refusal names the value: {error}"
+  );
+  // Zero is the plain groove, not a negative ramp, and half the vector is the longest legal ramp this
+  // model can see without measuring the geometry (that check is the strategy's).
+  fluting_document(0.0).validate().expect("no ramp is legal");
+}
+
+#[test]
+fn a_flute_may_cut_an_open_vector() {
+  // A flute is one groove per vector, and a vector drawn as a line is the commonest case. Every other
+  // cutting operation in the model needs closed geometry; engrave and fluting are the two that do not.
+  let mut document = fluting_document(5.0);
+  document.layers[0].entities[0].kind = EntityKind::Contour {
+    contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)], false)
+      .expect("open polyline"),
+  };
+  document
+    .validate()
+    .expect("a flute of an open vector is valid");
+}

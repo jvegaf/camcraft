@@ -17,8 +17,9 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, Job, Layer, Operation,
-  OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
+  Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide,
+  Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
@@ -1130,5 +1131,265 @@ fn an_engrave_one_millimetre_shallow_is_uncut_and_one_millimetre_deep_is_gouge()
   assert!(
     deep.gouge > 0.0 && deep.gouge_cells > 0,
     "1 mm deep is a gouge: {deep:?}"
+  );
+}
+
+// --- fluting (M6 A4, A9, D-M6-5) --------------------------------------------------------------
+
+/// A flute along `entities` at `cut` millimetres, ramped in and out over `ramp` (D-M6-5).
+fn fluting(id: &str, entities: &[&str], cut: f64, ramp: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Fluting".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Fluting(FlutingParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(cut),
+      ramp: Length::from_mm(ramp),
+    }),
+  }
+}
+
+/// The moves a ramped flute emits on one straight vector: rapid over its first point, a plunge to the
+/// surface, **one** move in over `ramp` millimetres, the plateau, **one** move out, and a retract.
+///
+/// The fixture states the strategy's geometry, and since D-M6-12 that geometry is a single linear move
+/// per end: `cam-sim` interpolates `z` along a cutting move, so the floor of the ramp is graded by the
+/// move itself instead of by a staircase of short ones.
+fn flute_moves(from: Point2, to: Point2, depth: f64, ramp: f64) -> Vec<Move> {
+  let length = from.distance_to(to);
+  let along = |s: f64| from.lerp(to, s / length);
+  let ramp_in = along(ramp);
+  let ramp_out = along(length - ramp);
+  let end = along(length);
+  vec![
+    Move::Rapid {
+      to: Point3::new(from.x, from.y, SAFE_Z),
+    },
+    Move::Feed {
+      to: Point3::new(from.x, from.y, 0.0),
+    },
+    Move::Feed {
+      to: Point3::new(ramp_in.x, ramp_in.y, -depth),
+    },
+    Move::Feed {
+      to: Point3::new(ramp_out.x, ramp_out.y, -depth),
+    },
+    Move::Feed {
+      to: Point3::new(end.x, end.y, 0.0),
+    },
+    Move::Retract {
+      to: Point3::new(end.x, end.y, SAFE_Z),
+    },
+  ]
+}
+
+/// The stock the flute oracles are cut out of: 160 mm square.
+const FLUTE_STOCK: f64 = 160.0;
+/// The depth every flute fixture is cut to.
+const FLUTE_DEPTH: f64 = 6.0;
+/// The ramp every flute fixture enters and leaves over.
+const FLUTE_RAMP: f64 = 10.0;
+
+/// The flute fixture's vector: one straight line through the middle of the sheet, from its low edge to
+/// its high edge.
+///
+/// The ends sit **on** the sheet's edges rather than past them, unlike the engrave fixture: the ramps
+/// live at the vector's ends, so pushing the ends off the sheet would push the ramps off it too and
+/// leave the arithmetic below asserting the plateau alone. The two end caps are therefore inside the
+/// grid, but they are cut at a depth of one step — a tenth of a millimetre where the entry ramp meets
+/// the surface, nothing at all where the exit ramp does — which the bound below covers with room to
+/// spare.
+fn flute_vector() -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(0.0, FLUTE_STOCK / 2.0),
+      Point2::new(FLUTE_STOCK, FLUTE_STOCK / 2.0),
+    ],
+    false,
+  )
+  .expect("an open vector")
+}
+
+fn flute_fixture(depth: f64) -> Document {
+  document(
+    FLUTE_STOCK,
+    &[("vector", flute_vector())],
+    vec![fluting("fluting 1", &["vector"], depth, FLUTE_RAMP)],
+  )
+}
+
+#[test]
+fn a_ramped_flute_with_an_end_mill_removes_two_radius_times_depth_times_length_minus_ramp() {
+  // A9's arithmetic for fluting, first sign, and D-M6-5's closed form. A cylinder of radius `R`
+  // cutting a straight vector of length `L` to depth `d` removes the band within `R` of the vector,
+  // so its volume is `2·R` times the depth *integrated along the path*. The depth is `d·s/ramp` over
+  // the first `ramp` millimetres and `d·(L − s)/ramp` over the last, each integral `d·ramp/2`, and `d`
+  // in between over `L − 2·ramp`:
+  //
+  //   ∫ depth ds = d·ramp/2 + d·(L − 2·ramp) + d·ramp/2 = d·(L − ramp)
+  //
+  // so the volume is `2·R·d·(L − ramp)`. With `R = 3`, `d = 6`, `L = 160` and `ramp = 10` that is
+  // `2 · 3 · 6 · 150 = 5400` mm3 — the material of the plateau plus both ramps, which is exactly what
+  // a linear ramp removes and what a uniform band at `d` over the whole vector would overstate by
+  // `2·R·d·ramp = 360` mm3.
+  //
+  // The measurement is 5548.5 mm3 rather than 5400. The 148.5 mm3 between them is not slack: it is most
+  // of `π · R² · d = 169.6` mm3 of *toes* — the material a tool's footprint adds where each ramp meets
+  // the surface, because the bottom of a 6 mm end mill is still in the cut 3 mm past its tip, so the
+  // groove is longer than the tip's own travel by a radius at each end. The rest is the cell grid's own
+  // account of the same toes. The closed form has not moved through any of this, and neither has the
+  // published bound: the staircase measured 5549.2 mm3 on this field, the half-cell sampling 5539.2, the
+  // first derived sampling 5545.5 and this one 5548.5 — four samples of one geometry, converging on the
+  // toes, all inside `2 · L · cell/2 · d = 960` mm3. Those toes are exactly the material a claim stated at
+  // the tip alone reports as a gouge, which is why `cam_sim::target`'s flute claim looks along the path
+  // (see `claim_flute`).
+  //
+  // The graded sampling matters here and the numbers say how much: the deepest residual on this field is
+  // 0.0623 mm, half of the `cell / 8 = 0.125` the judgement uses — where the half-cell sampling left
+  // 0.275 mm and the judgement reported 7.695 mm3 of this *correct* flute as uncut.
+  let depth = FLUTE_DEPTH;
+  let diameter = TOOL;
+  let from = flute_vector().vertices()[0].point;
+  let to = flute_vector().vertices()[1].point;
+  let field = cut(
+    FLUTE_STOCK,
+    CELL,
+    diameter,
+    flute_moves(from, to, depth, FLUTE_RAMP),
+  );
+
+  let radius = diameter / 2.0;
+  let analytic = 2.0 * radius * depth * (FLUTE_STOCK - FLUTE_RAMP);
+  // The groove has one straight boundary on each side of the vector, 160 mm long, cut `depth` deep,
+  // and D-M5-3's coverage bound is half a cell: `2 · L · cell/2 · d`.
+  let bound = 2.0 * FLUTE_STOCK * CELL / 2.0 * depth;
+  let removed = field.volumes().removed;
+  assert!(
+    (removed - analytic).abs() <= bound,
+    "removed {removed} mm3 against the analytic {analytic} mm3, bound {bound} mm3"
+  );
+  assert_eq!(
+    field.volumes().through_cells,
+    0,
+    "{depth} mm of material out of an 18 mm stock goes through nothing"
+  );
+
+  // And the target claims the same groove, cell for cell: the document's flute authorises the ramp
+  // law along the path, so a correct ramped flute deviates by nothing at all. Authorising a uniform
+  // band instead would report both ramps as uncut, which is the failure this law exists to avoid.
+  let document = flute_fixture(depth);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(diameter)).expect("a target");
+  // The judgement is M5's, unchanged: an eighth of a cell. The *sampling* is what pays for the ramp —
+  // a cutting move takes enough samples that its depth residual is at most `cell / 16`
+  // (`cam_sim::sweep`'s step-count derivation), so a graded floor is resolved to the tolerance it is
+  // judged at and nothing has to be added to the tolerance itself.
+  let tolerance = Length::from_mm(CELL / 8.0);
+  let deviation = deviations(&field, &target, tolerance).expect("the same grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a clean ramped flute deviates by nothing"
+  );
+}
+
+#[test]
+fn a_ramped_flute_one_millimetre_shallow_is_uncut_and_one_millimetre_deep_is_gouge() {
+  // A9's second sign on the ramp law: the document asks for a 6 mm flute ramped over 10 mm, and the
+  // same vector is cut 1 mm shallow in one field and 1 mm deep in the other. The shallow one must be
+  // uncut and gouge nothing; the deep one must gouge and leave nothing uncut. A target that claimed
+  // the full depth at the ends — a uniform band — would report the *correct* flute as uncut along both
+  // ramps, which is why a test with the right sign has to be paired with a wrong one on each side.
+  let document = flute_fixture(FLUTE_DEPTH);
+  // The same judgement a clean flute gets: an eighth of a cell, with no sampling term to add.
+  let tolerance = Length::from_mm(CELL / 8.0);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(TOOL)).expect("a target");
+  let from = flute_vector().vertices()[0].point;
+  let to = flute_vector().vertices()[1].point;
+
+  let shallow = cut(
+    FLUTE_STOCK,
+    CELL,
+    TOOL,
+    flute_moves(from, to, FLUTE_DEPTH - 1.0, FLUTE_RAMP),
+  );
+  let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+  assert_eq!(shallow.gouge, 0.0, "1 mm shallow gouges nothing");
+  assert_eq!(shallow.gouge_cells, 0);
+  assert!(
+    shallow.uncut > 0.0 && shallow.uncut_cells > 0,
+    "1 mm shallow is uncut: {shallow:?}"
+  );
+
+  let deep = cut(
+    FLUTE_STOCK,
+    CELL,
+    TOOL,
+    flute_moves(from, to, FLUTE_DEPTH + 1.0, FLUTE_RAMP),
+  );
+  let deep = deviations(&deep, &target, tolerance).expect("one grid");
+  assert_eq!(deep.uncut, 0.0, "1 mm deep leaves nothing uncut");
+  assert_eq!(deep.uncut_cells, 0);
+  assert!(
+    deep.gouge > 0.0 && deep.gouge_cells > 0,
+    "1 mm deep is a gouge: {deep:?}"
+  );
+}
+
+/// The same 160 mm vector fluted 6 mm deep, but ramped in and out over **1 mm** instead of 10.
+///
+/// A grade of 6 mm of Z per millimetre of travel: the steepest ramp the strategy allows on a 140 mm
+/// loop, and the case that made a document-global tolerance keyed on the steepest grade unworkable —
+/// `cell/8 + grade·cell/2` would have licensed 3.125 mm of deviation anywhere in this document.
+fn steep_flute_fixture(depth: f64) -> Document {
+  document(
+    FLUTE_STOCK,
+    &[("vector", flute_vector())],
+    vec![fluting("fluting 1", &["vector"], depth, 1.0)],
+  )
+}
+
+#[test]
+fn a_six_millimetre_flute_over_a_one_millimetre_ramp_is_clean_at_cell_eighths_and_a_shallow_one_is_not(
+) {
+  // The steepest ramp a flute of this size can carry is judged at M5's eighth of a cell like any other,
+  // and the residual there measures zero — not because the sampling carries it, but because a 6 mm
+  // cutter's footprint spans a 1 mm ramp whole and reaches the plateau beyond it, so every cell near the
+  // ramp is cut by a sample at full depth. What this test pins is the *judgement*: the shallow half of it
+  // is a millimetre of missing material in a document whose steepest grade is 6, and a document-global
+  // tolerance keyed on that grade (`cell/8 + grade·cell/2` = 3.125 mm) would have reported this defect as
+  // nothing at all.
+  let document = steep_flute_fixture(FLUTE_DEPTH);
+  let target = target_for(&document, Length::from_mm(CELL), &tools(TOOL)).expect("a target");
+  let tolerance = Length::from_mm(CELL / 8.0);
+  let from = flute_vector().vertices()[0].point;
+  let to = flute_vector().vertices()[1].point;
+
+  let correct = cut(
+    FLUTE_STOCK,
+    CELL,
+    TOOL,
+    flute_moves(from, to, FLUTE_DEPTH, 1.0),
+  );
+  let clean = deviations(&correct, &target, tolerance).expect("one grid");
+  assert_eq!(
+    clean,
+    Deviation::default(),
+    "a clean 6 mm flute over a 1 mm ramp deviates by nothing at an eighth of a cell"
+  );
+
+  let shallow = cut(
+    FLUTE_STOCK,
+    CELL,
+    TOOL,
+    flute_moves(from, to, FLUTE_DEPTH - 1.0, 1.0),
+  );
+  let shallow = deviations(&shallow, &target, tolerance).expect("one grid");
+  assert_eq!(shallow.gouge, 0.0, "1 mm shallow gouges nothing");
+  assert!(
+    shallow.uncut > 0.0 && shallow.uncut_cells > 0,
+    "1 mm shallow is uncut even on a 1 mm ramp: {shallow:?}"
   );
 }

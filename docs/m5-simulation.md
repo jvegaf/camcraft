@@ -57,7 +57,7 @@ the stock's.
 | --- | --- | --- |
 | Default cell | `1` mm | Keeps the default 1219 x 2438 mm sheet at 2,971,922 cells, under the cap, and is the resolution the oracle's error bound is written for |
 | Cell cap | `4,000,000` cells | 32 MB of `f64` surface heights: enough for the default sheet at a millimetre, small enough that a mistyped resolution is refused instead of attempted |
-| Coverage bound | `perimeter × cell / 2` | A cell is cut when its **centre** is inside the swept disc, so a boundary is wrong by at most half a cell; times the perimeter is the area the report can be off by, and times the depth the volume |
+| Coverage bound | `perimeter × cell / 2` | A cell is cut when its **centre** is inside the swept disc, so a boundary is wrong by at most half a cell; times the perimeter is the area the report can be off by, and times the depth the volume. A graded move adds no term of its own: the sampler takes enough samples to resolve its Z to half the deviation tolerance, `cell / 16` (D-M6-12) |
 
 A request over the cap fails **before any allocation**, with exit `2`, and the error carries all three
 numbers a reader needs — the cell asked for, the grid it implies and the cap. On the default
@@ -71,8 +71,9 @@ integral arithmetic at every boundary) and supersampling (a hidden tolerance kno
 
 ## The sweep
 
-A cutting move — `Feed` or `Arc` — removes material to its destination `z` for every cell whose centre
-lies inside the disc the tool sweeps along it:
+A cutting move — `Feed` or `Arc` — removes, at each point sampled along it, the depth **interpolated**
+between the `z` it started at and the `z` it ends at, for every cell whose centre lies inside the disc
+the tool sweeps there:
 
 - **Arc moves are swept as arcs.** The circle comes from the move's own centre and radius, so a full circle
   leaves the middle of the circle standing. A chord sweep would cut the hole solid, and the test that
@@ -84,17 +85,39 @@ lies inside the disc the tool sweeps along it:
   and D-M5-4 refuses to hide that defect inside a plausible volume number.
 - **A feed above the surface cuts air.** Lowering a cell to a height above its current one is not a
   raise, so an approach that clears the stock leaves it untouched.
-- **The vertical ramp is not modelled.** A move removes to its destination `z` across its whole footprint
-  rather than interpolating from the previous height, so a ramping move cuts early rather than late. The
-  error is in the one direction that keeps the report honest: no material is claimed to be standing that
-  the tool did not leave standing.
+- **The vertical ramp is interpolated** (D-M6-12, which amends D-M5-3). M5 removed a move's *destination*
+  depth across its whole travel, and that bullet used to say so: the error then ran in the one direction
+  that keeps a report honest, no material claimed to be standing that the tool did not leave standing.
+  That argument holds while every cutting move holds one depth, and fails the moment a strategy ramps —
+  a linear ramp simulated at its destination depth cuts *full* depth along the whole of its travel, which
+  is not conservative in any direction, it is simply wrong. A cutting move therefore removes, at each
+  sampled point, the depth it has reached there: a constant-depth move removes one depth over its
+  footprint (bit for bit what M5 measured, which the differential against the pre-change build shows),
+  and a ramping move leaves a graded floor. A graded floor is then known only at the samples, and two
+  neighbouring samples differ in depth by `grade × step`: a cell's footprint reaches past the last sample
+  inside it, so up to a whole interval of Z can be missing from its floor. That is not left to a
+  tolerance. The number of samples a cutting move takes follows the `z` it covers as well as the travel it
+  makes, holding that interval to an eighth of a cell, so the judgement stays at M5's eighth of a cell —
+  `cam-sim::sweep`'s `sample_steps` carries the derivation, and it is the only place the two numbers
+  meet.
 
 Sampling is deterministic and a function of the move's own numbers:
 
 | Move | Sampling |
 | --- | --- |
-| Line | A step of `cell / 2` along its length, a disc of the tool radius applied at each sample |
-| Arc | An angular step of `cell / (2 · r)` radians, `r` being the arc's own radius, a disc at each sample |
+| Line | A step of `cell / 2` along its length, a disc of the tool radius at each sample, of the depth it has reached there |
+| Arc | An angular step of `cell / (2 · r)` radians, `r` being the arc's own radius, a disc at each sample, of the depth the angle has reached |
+
+Either count is then raised, if the move's `z` asks for it, to `16 · |Δz| / cell` samples: two neighbouring
+samples differ in depth by `grade · step`, and a cell's footprint reaches past the last sample inside it,
+so a whole interval of Z can be missing from its floor. At `16 · |Δz| / cell` that interval is at most
+`cell / 16` — half the tolerance a simulation is judged at, so the bound is met with headroom instead of
+grazing it — and it is the *smallest* such count. The factor of two is not free: it doubles the samples of
+every graded move, which is the price of a residual that another platform's rounding cannot push over the
+judgement. The count follows
+the Z a move covers — bounded by the cut depth — and not how steep it is, which is unbounded as a ramp
+shortens; a move whose `z` does not change, and a plunge, take exactly the count they always took, which is
+why every constant-depth result is bit-identical to M5's.
 
 Sampling at half a cell is what makes the union of discs cover the swept capsule within one cell, which is
 inside the coverage bound above. The stream carries no explicit start position, so a segment's first move

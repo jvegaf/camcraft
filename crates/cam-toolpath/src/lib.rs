@@ -4,8 +4,9 @@
 //! allowance, depth chunking, tab lifting and lead moves. M4 adds the two strategies that define 2.5D
 //! routing: `pocket` (offset rings or raster rows) and `drill` (pecks, retracts, drill banks). M6 adds
 //! the depth-variant strategies: `chamfer`, one V-bit pass whose Z is derived from the bit's own
-//! included angle instead of authored, and `engrave`, one authored-depth pass along open or closed
-//! vectors with no pass law at all.
+//! included angle instead of authored, `engrave`, one authored-depth pass along open or closed
+//! vectors with no pass law at all, and `fluting`, one pass along a vector that ramps in over its
+//! first millimetres and out over its last.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -14,11 +15,13 @@
 pub mod chamfer;
 pub mod drill;
 pub mod engrave;
+pub mod fluting;
 pub mod pocket;
 
 pub use chamfer::{chamfer, ChamferRequest};
 pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use engrave::{engrave, EngraveRequest};
+pub use fluting::{fluting, FlutingRequest};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 
 use cam_geom::{Contour, LineSeg, Point2, Segment};
@@ -118,6 +121,41 @@ pub enum ToolpathError {
   InvalidIncludedAngle {
     /// The offending angle in degrees.
     degrees: f64,
+  },
+  /// A flute's ramp is negative, which would enter upwards.
+  #[error("fluting ramp {ramp} mm must not be negative")]
+  InvalidRamp {
+    /// The offending ramp in millimetres.
+    ramp: f64,
+  },
+  /// A flute's ramp is longer than half the vector it runs on, so its entry and its exit would meet.
+  ///
+  /// Shortening the ramp silently is exactly what this refusal exists to prevent: the document asks
+  /// for a ramped entry and a ramped exit of that length, and a silently shortened one cuts both ends
+  /// at a depth nobody authorised (A4). Both numbers are named, so the message says which pair cannot
+  /// fit.
+  #[error("fluting ramp {ramp} mm is longer than half of the vector's {length} mm length")]
+  RampTooLong {
+    /// The offending ramp in millimetres.
+    ramp: f64,
+    /// The vector's length in millimetres.
+    length: f64,
+  },
+  /// A flute's ramp runs along a contour that contains an arc.
+  ///
+  /// A ramped move cannot ride on `Move::Arc`, which is documented constant-Z (S9), and the move
+  /// vocabulary has no helical move yet — T7 adds one, and with it this refusal goes. Chording the ramp
+  /// to a sagitta would put the vocabulary's limit into the program the machine runs, which is the trade
+  /// the staircase already lost, so the strategy refuses by name instead: on a 25 mm circle a 10 mm chord
+  /// sits half a millimetre inside the vector. A constant-depth flute along the same arc is untouched.
+  #[error(
+    "fluting ramp {ramp} mm would run along a contour with arcs, and a ramped move cannot follow one: \
+     the move vocabulary has no helical move, and its only curved move is constant-Z, so a ramped arc \
+     would be cut as a straight chord. Cut this contour with ramp 0, or ramp a polyline"
+  )]
+  RampOnArc {
+    /// The offending ramp in millimetres.
+    ramp: f64,
   },
 }
 
@@ -488,6 +526,64 @@ fn tab_spans(tabs: &[Tab], total: f64) -> Vec<Span> {
       .unwrap_or(std::cmp::Ordering::Equal)
   });
   spans
+}
+
+/// The point `along` millimetres along the contour's arc length, clamped to its ends.
+///
+/// The inverse of the walk: a flute's ramp is a length along the vector, so it is a position that has
+/// to be found on whichever segment holds it, arcs included.
+pub(crate) fn point_at_arc(contour: &Contour, along: f64) -> Option<Point2> {
+  let segments = contour.segments();
+  let mut walked = 0.0;
+  for (index, segment) in segments.iter().enumerate() {
+    let length = segment.length();
+    let last = index + 1 == segments.len();
+    if along <= walked + length || last {
+      let fraction = if length <= 0.0 {
+        0.0
+      } else {
+        ((along - walked) / length).clamp(0.0, 1.0)
+      };
+      return Some(piece_endpoints(*segment, fraction, fraction).0);
+    }
+    walked += length;
+  }
+  None
+}
+
+/// Walk the contour from arc length `from` to `to` at a constant `z`, keeping arcs as arcs.
+///
+/// [`walk_contour`] walks the whole contour; a flute's plateau is the middle of one, between the two
+/// ramps. The pieces go through the same [`sub_segment`] and [`push_horizontal`] pair, so a plateau
+/// that lands on an arc is still cut as an arc.
+pub(crate) fn walk_range(contour: &Contour, job: &Job, from: f64, to: f64, z: f64) -> Vec<Move> {
+  let mut moves = Vec::new();
+  let mut walked = 0.0;
+  for segment in contour.segments() {
+    let length = segment.length();
+    let start = walked;
+    walked += length;
+    if length <= 0.0 {
+      continue;
+    }
+    let piece_from = from.max(start);
+    let piece_to = to.min(start + length);
+    if piece_to <= piece_from + 1.0e-12 {
+      continue;
+    }
+    let first = (piece_from - start) / length;
+    let last = (piece_to - start) / length;
+    let (from_point, to_point) = piece_endpoints(segment, first, last);
+    push_horizontal(
+      &mut moves,
+      job,
+      sub_segment(segment, first, last),
+      from_point,
+      to_point,
+      z,
+    );
+  }
+  moves
 }
 
 /// Endpoints of the piece of `segment` between two fractions of its length.

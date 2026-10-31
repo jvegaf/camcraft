@@ -150,7 +150,11 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   "Fluting" in the dossier's vocabulary is one groove per vector (S4); the ramp exists so a round-nose
   bit does not plunge into the end of a visible flute. A linear ramp over the first and last `ramp`
   millimetres is the honest minimum that satisfies that, and it makes the removed volume a closed form
-  (A9): `2r · depth · (length − ramp)`.
+  (A9): `2r · depth · (length − ramp)`. **Amended in L14:** a ramp cannot run along a contour that
+  contains an arc, because a ramped move cannot ride on `Move::Arc` (constant-Z by contract), so a
+  ramped arc would be cut as a straight chord — `ramp²/(8r)` inside the vector, half a millimetre for a
+  10 mm ramp on a 25 mm circle. `cam-toolpath::fluting` refuses that selection by name until T7's
+  `Move::Helix` exists, and `ramp = 0` on the same contour is untouched.
 - **D-M6-6 — Texture is parallel grooves at a spacing and angle, not a pocket.** The strategy's value is
   the pattern, not the clearing: the material between grooves is meant to stand, so the command cuts
   rows only, at the given spacing, rotated by the given angle, and says plainly that it does not clear
@@ -213,7 +217,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 | T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | |
 | T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | inline, test-first | |
 | T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7 | inline, test-first | |
-| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden | A7, A9, D-M6-8 | inline, test-first, own commit (Risk item 3) | |
+| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | inline, test-first, own commit (Risk item 3) | |
 | T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | inline | |
 
 ## Recorded out of scope
@@ -337,3 +341,24 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   and `gouge: 5549.2 over 960 cells` for a correct flute under the naive law. Two smaller notes: a negative
   ramp is refused by `cam-toolpath` but not at document load (`crates/cam-model/tests/document.rs` was
   outside the surface), and `RAMP_STEP`'s coupling to cell size disappears with T4b.
+- **L14 (review, T4, four rounds and three implementations rejected).** T4 took four rounds, and each
+  rejection was for the same reason: the program must not be bent to the simulator's convenience.
+  *(a) The staircase.* The first implementation emitted a ramped entry as 0.1 mm Z steps because M5's sweep
+  removes a move's destination depth over its whole travel. Rejected; D-M6-12 makes the sweep interpolate.
+  *(b) The claim envelope.* Accepted, and the writer was right: a tip-only claim reports a clean flute as
+  `gouge 149.2 mm³`, because a 6 mm end mill 3 mm further along the ramp is deeper there and its flat bottom
+  removes the cell. The claim is the maximum the law allows anywhere the tool could have removed the cell, in
+  closed form. *(c) A document-global tolerance.* Fixing the sampler's residual by widening `simulate`'s
+  judgement to the document's steepest grade would license 3 mm of deviation anywhere in a document that
+  contains one steep ramp. Rejected; the sampler now takes `max(2·travel/cell, 16·|Δz|/cell)` steps so the
+  residual is half the judgement by construction, and the constant-Z count is bit-identical (33,600 of
+  33,600 cell values against `a4487f0`). *(d) The chorded arc ramp.* A ramp across a contour arc was emitted
+  as a straight chord: `gouge 33.228 mm³ over 22 cells` at r = 20. Rejected; refused by name instead, with
+  `ramp = 0` on the same contour still emitting arcs, and T7 lifting the refusal when the helix exists. The
+  claim's vertex gap the writer found on its own (`gouge 5.750 mm³ over 6 cells` for a correct flute, because
+  `±sqrt(reach² − d²)` is exact only while the nearest point is interior) is fixed with the reachable stretch
+  solved in closed form for both segment kinds. T4 closes at **283 tests** in the four crates (cam-model 29,
+  cam-toolpath 97, cam-sim 79, cam-cli 78), gate green. Two gaps recorded, not closed: `Document::validate`
+  does not refuse a ramped flute on an arc (strategy-level rule, like the depth range), and a cone's interior
+  candidate in `claim_flute` is exact only while the nearest point is a perpendicular foot — measured clean on
+  every fixture, and a ternary search would remove the assumption at a real per-cell cost.

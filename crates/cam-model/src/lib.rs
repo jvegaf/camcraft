@@ -337,6 +337,40 @@ impl Default for EngraveParams {
   }
 }
 
+/// Parameters of a fluting toolpath.
+///
+/// A flute is one pass along each selected vector at one authored depth, with the tool's centre
+/// **on** the vector (D-M6-5). The ramp is a *length*, not a depth: with `ramp > 0` the pass enters
+/// over the first `ramp` millimetres of the vector and leaves over the last, so a round-nosed bit
+/// never plunges at full depth into the end of a visible flute; `ramp = 0` plunges and retracts in
+/// place, which is the plain groove. Nothing else about a profile's machinery applies: no side, no
+/// pass law, no lead and no tab, because a second pass would cut a second groove into the first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FlutingParams {
+  /// Depth at which cutting starts, for a part already partly machined.
+  pub start_depth: Length,
+  /// Depth the pass cuts to: the bottom of the ramp in and the top of the ramp out.
+  pub cut_depth: Length,
+  /// Length in millimetres of the ramped entry and of the ramped exit; zero plunges in place.
+  ///
+  /// Defaulted rather than required, so a hand-written or older document that names a `fluting`
+  /// toolpath without the field loads as the in-place plunge it describes instead of failing the
+  /// load. The ramp bounds are input errors, not defaults: a negative ramp is refused by
+  /// `cam-toolpath::fluting` by name, and so is one longer than half the vector it runs on (A4).
+  #[serde(default)]
+  pub ramp: Length,
+}
+
+impl Default for FlutingParams {
+  fn default() -> Self {
+    Self {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(18.0),
+      ramp: Length::ZERO,
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -351,6 +385,8 @@ pub enum Operation {
   Chamfer(ChamferParams),
   /// Engrave the selected vectors, open or closed, in one pass at an authored depth.
   Engrave(EngraveParams),
+  /// Flute the selected vectors, open or closed, in one pass whose ends ramp in and out.
+  Fluting(FlutingParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -501,6 +537,19 @@ pub enum ModelError {
     /// The offending angle in degrees.
     degrees: f64,
   },
+  /// A flute's ramp is negative, which would enter upwards.
+  ///
+  /// The document model refuses it as the document loads, because a negative length has no meaning here
+  /// and the machine has nothing sensible to do with it. `cam-toolpath::fluting` refuses it too, naming
+  /// the same value: the document is the boundary that sees it before any toolpath exists, and a
+  /// caller that bypasses the CLI reaches the strategy without passing through here (D-M6-5, A4).
+  #[error("toolpath {toolpath:?} fluting ramp must not be negative, got {value} mm")]
+  FlutingRampNegative {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending ramp in millimetres.
+    value: f64,
+  },
 }
 
 impl Document {
@@ -600,8 +649,10 @@ impl Document {
           | Operation::Drilling(_)
           | Operation::Chamfer(_) => true,
           // Engraving an open vector is the strategy's whole point (M6 A3, D-M6-4): it cuts along the
-          // vector and stops at its last vertex, so an open one is legal here and only here.
-          Operation::Engrave(_) => false,
+          // vector and stops at its last vertex. Fluting is that same walk with a ramp at each end,
+          // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
+          // accept an open vector and nothing else here does.
+          Operation::Engrave(_) | Operation::Fluting(_) => false,
         };
         if needs_closed_geometry {
           let closed = entity
@@ -618,6 +669,7 @@ impl Document {
         }
       }
       check_chamfer(toolpath)?;
+      check_fluting(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
@@ -646,6 +698,25 @@ fn check_chamfer(toolpath: &Toolpath) -> Result<(), ModelError> {
     return Err(ModelError::ChamferAngleOutOfRange {
       toolpath: toolpath.id.clone(),
       degrees: params.included_angle.degrees(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a flute's own parameters: a ramp is a length along the vector, so it cannot be negative.
+///
+/// Only the sign is checked here. Whether the ramp *fits* — it may not be longer than half the vector —
+/// needs the geometry's length, which the strategy measures when it walks the vector, and that is where
+/// the refusal names both numbers (`ToolpathError::RampTooLong`, A4).
+fn check_fluting(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Fluting(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  let ramp = params.ramp.mm();
+  if !ramp.is_finite() || ramp < 0.0 {
+    return Err(ModelError::FlutingRampNegative {
+      toolpath: toolpath.id.clone(),
+      value: ramp,
     });
   }
   Ok(())

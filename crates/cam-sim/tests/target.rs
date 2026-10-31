@@ -12,8 +12,9 @@ use std::f64::consts::{PI, TAU};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, Job, Layer, Operation,
-  OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab, Toolpath,
+  ChamferParams, Document, DrillParams, EngraveParams, Entity, EntityKind, FlutingParams, Job,
+  Layer, Operation, OriginCorner, PocketParams, PocketStrategy, ProfileParams, ProfileSide, Tab,
+  Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::sweep::apply;
@@ -1188,4 +1189,321 @@ fn an_engrave_with_an_end_mill_authorises_a_uniform_band_and_not_a_region() {
   );
   // The far edge is claimed by the same law as the near one.
   assert_eq!(target.authorised(30, 49), 6.0, "0.5 mm inside the top edge");
+}
+
+// --- fluting (M6 A4, D-M6-5) ------------------------------------------------------------------
+
+/// A flute over `entities` at `cut` millimetres from `start`, ramped in and out over `ramp`.
+fn fluting(id: &str, entities: &[&str], cut: f64, start: f64, ramp: f64) -> Toolpath {
+  Toolpath {
+    id: id.to_owned(),
+    name: "Fluting".to_owned(),
+    entity_ids: entities.iter().map(|id| (*id).to_owned()).collect(),
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Fluting(FlutingParams {
+      start_depth: Length::from_mm(start),
+      cut_depth: Length::from_mm(cut),
+      ramp: Length::from_mm(ramp),
+    }),
+  }
+}
+
+#[test]
+fn a_ramped_flute_authorises_the_ramp_law_along_the_vector() {
+  // A4's claim is a *depth along the path*, not a depth at a distance (D-M6-5), and this is the test
+  // that makes the difference visible. A 100 mm vector at `y = 80.5` with `ramp = 10` and a 6 mm deep
+  // flute authorises `min(6, 6·s/10)` on the way in and `min(6, 6·(100 − s)/10)` on the way out, where
+  // `s` is the arc length of the cell's own point on the vector: half the depth 5 mm along, the full
+  // depth at 50 mm, half again at 95 mm. The vector sits on `y = 80.5` so that a row of cell centres
+  // lies exactly on it and the arc lengths are whole millimetres.
+  //
+  // The bit is a 90 degree V-bit on purpose. The law is stated at the tool's tip, and the claim is the
+  // deepest depth the tool's *footprint* can reach at a cell — a bit whose flank climbs faster than the
+  // ramp does reaches deepest at the tip's own point, so the number below is the law's. An end mill is
+  // not like that: its flat bottom is still in the cut 3 mm further along the vector, at a greater
+  // depth, which the second half of this test asserts. Both numbers are the same law; the difference is
+  // the tool.
+  let vector = Contour::from_points(&[Point2::new(10.5, 80.5), Point2::new(110.5, 80.5)], false)
+    .expect("an open vector");
+  let document = document(
+    160.0,
+    &[("vector", vector)],
+    vec![fluting("fluting 1", &["vector"], 6.0, 0.0, 10.0)],
+  );
+
+  let target = target_for(&document, cell(), &v_bit_tools(90.0, 0.0)).expect("a target");
+  // Column 15 holds the cell centre (15.5, 80.5): 5 mm along the vector, so half the depth.
+  assert!(
+    (target.authorised(15, 80) - 3.0).abs() < 1e-9,
+    "5 mm along a 10 mm ramp is authorised half of 6 mm, got {}",
+    target.authorised(15, 80)
+  );
+  // Column 60 is 50 mm along: past the entry's ramp, so the whole depth.
+  assert_eq!(
+    target.authorised(60, 80),
+    6.0,
+    "50 mm along is past the ramp and authorised the full depth"
+  );
+  // Column 105 is 95 mm along: 5 mm from the far end, so the exit's ramp authorises half again.
+  assert!(
+    (target.authorised(105, 80) - 3.0).abs() < 1e-9,
+    "95 mm along is authorised half of 6 mm, got {}",
+    target.authorised(105, 80)
+  );
+  // The plateau is flat: the same full depth at 25 mm as at 50.
+  assert_eq!(target.authorised(35, 80), 6.0, "the plateau is one depth");
+  // The two ends of the vector are where the ramp meets the surface, so they are authorised nothing.
+  assert_eq!(
+    target.authorised(10, 80),
+    0.0,
+    "the entry's first millimetre is at the surface"
+  );
+  assert_eq!(
+    target.authorised(110, 80),
+    0.0,
+    "the exit's last millimetre is back at the surface"
+  );
+  // Across the groove the cone's own flank grades the claim: a cell 2 mm off the vector is authorised
+  // 6 − 2, and one 6 mm off it — the cone's reach at this depth — nothing. The vector lies on a row of
+  // cell centres, so the lateral distances on this grid are whole millimetres.
+  assert!(
+    (target.authorised(60, 82) - 4.0).abs() < 1e-9,
+    "2 mm off a 90 degree bit is authorised the flank's depth, got {}",
+    target.authorised(60, 82)
+  );
+  assert_eq!(
+    target.authorised(60, 86),
+    0.0,
+    "6 mm off the vector is past the cone's reach"
+  );
+
+  // The same document cut by a 6 mm end mill. The cell 5 mm along is authorised 4.8 and not 3: the
+  // tool's flat bottom reaches 3 mm further along the vector, where the ramp law is 3 mm deeper, and
+  // that material is genuinely removed. This is `claim_flute`'s footprint, and the reason a correct
+  // ramped flute cut by an end mill would otherwise be reported as a gouge along both its ramps.
+  let milled = target_for(&document, cell(), &tools(6.0)).expect("a target");
+  assert!(
+    (milled.authorised(15, 80) - 4.8).abs() < 1e-9,
+    "an end mill's footprint reaches 3 mm further along the ramp, got {}",
+    milled.authorised(15, 80)
+  );
+  assert_eq!(
+    milled.authorised(60, 80),
+    6.0,
+    "and the plateau is the same full depth for both tools"
+  );
+  assert_eq!(
+    milled.authorised(60, 84),
+    0.0,
+    "3.5 mm off a 3 mm radius is outside the footprint, flat bottom or not"
+  );
+}
+
+#[test]
+fn a_flute_with_no_ramp_authorises_a_band_and_not_a_region() {
+  // The degenerate ramp D-M6-5 keeps: with `ramp = 0` the whole vector is the plateau, so the claim is
+  // one uniform depth across the tool's footprint — a band around the vector, never a filled region,
+  // even though the vector is a closed contour. The material inside the loop stands.
+  let document = document(
+    60.0,
+    &[("square", square(10.0, 50.0))],
+    vec![fluting("fluting 1", &["square"], 6.0, 0.0, 0.0)],
+  );
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+
+  assert_eq!(target.authorised(30, 10), 6.0, "0.5 mm inside the band");
+  assert_eq!(target.authorised(30, 12), 6.0, "2.5 mm inside the band");
+  assert_eq!(target.authorised(30, 9), 6.0, "0.5 mm outside the band");
+  assert_eq!(target.authorised(30, 13), 0.0, "3.5 mm away is outside");
+  assert_eq!(
+    target.authorised(30, 30),
+    0.0,
+    "the middle of a closed flute's loop is not cleared"
+  );
+  assert_eq!(
+    target.authorised(30, 50),
+    6.0,
+    "the far edge is claimed by the same law as the near one"
+  );
+}
+
+/// The 60 x 50 mm sheet the vertex fixture is cut out of, with one 40 x 30 mm loop at (20, 20)-(60, 50).
+///
+/// The loop's first vertex is **inside** the stock, which is what makes it the case that matters: a
+/// cell just outside that vertex is reached by the tool's flank on the ramp, and the loop's other three
+/// corners sit in the plateau, where a claim stated at the corner itself is deep enough by luck.
+fn vertex_fixture(ramp: f64) -> (Job, Document) {
+  let mut sheet = job(60.0);
+  sheet.height = Length::from_mm(50.0);
+  let loop_ = Contour::from_points(
+    &[
+      Point2::new(20.0, 20.0),
+      Point2::new(60.0, 20.0),
+      Point2::new(60.0, 50.0),
+      Point2::new(20.0, 50.0),
+    ],
+    true,
+  )
+  .expect("a rectangle");
+  let mut document = Document::new(sheet);
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Part".to_owned(),
+    visible: true,
+    entities: vec![Entity {
+      id: "E1".to_owned(),
+      kind: EntityKind::Contour { contour: loop_ },
+    }],
+  });
+  document
+    .toolpaths
+    .push(fluting("fluting 1", &["E1"], 6.0, 0.0, ramp));
+  (sheet, document)
+}
+
+/// The program a flute emits on the vertex fixture: a plunge at the loop's first vertex, one ramp in
+/// over `ramp` millimetres of the bottom edge, the plateau round the other three sides and one ramp out.
+fn vertex_moves(ramp: f64) -> Vec<Move> {
+  let corner = |x: f64, y: f64, z: f64| Point3::new(x, y, z);
+  vec![
+    Move::Rapid {
+      to: corner(20.0, 20.0, 5.0),
+    },
+    Move::Feed {
+      to: corner(20.0, 20.0, 0.0),
+    },
+    Move::Feed {
+      to: corner(20.0 + ramp, 20.0, -6.0),
+    },
+    Move::Feed {
+      to: corner(60.0, 20.0, -6.0),
+    },
+    Move::Feed {
+      to: corner(60.0, 50.0, -6.0),
+    },
+    Move::Feed {
+      to: corner(20.0, 50.0, -6.0),
+    },
+    Move::Feed {
+      to: corner(20.0, 50.0 - (30.0 - ramp), -6.0),
+    },
+    Move::Feed {
+      to: corner(20.0, 20.0, 0.0),
+    },
+    Move::Retract {
+      to: corner(20.0, 20.0, 5.0),
+    },
+  ]
+}
+
+#[test]
+fn a_flutes_claim_reaches_past_its_own_start_vertex_where_the_tool_lands() {
+  // The defect this pins: a cell beyond a contour vertex — here (18.5, 18.5), just outside the loop's
+  // first corner — is reached by the cutting flank on the entry ramp, but the claim over-authorised
+  // nothing there. Its footprint candidate was `±sqrt(reach² − d²)` measured from the cell's *nearest*
+  // point on each segment, which is the half-width of a chord centred on a perpendicular foot and is
+  // only right while that foot is interior to the segment. Beyond a vertex the foot clamps to the
+  // endpoint, the reachable stretch is shorter and one-sided, and the far end of it — where the law is
+  // deepest — was not a candidate at all.
+  //
+  // The exact number: from the corner (20, 20) the bottom edge is reachable for `t` satisfying
+  // `1.5² + 2·1.5·t + t² ≤ 3²`, i.e. `t ≤ (−3 + sqrt(27)) / 2 = 1.0981` mm, so the claim there is the
+  // entry ramp at that arc length, `6 · 1.0981 / 10 = 0.6588`. The left edge's exit ramp gives the same
+  // by symmetry, and the sweep cut the cell 0.625 mm deep.
+  let (sheet, document) = vertex_fixture(10.0);
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+  let claimed = target.authorised(18, 18);
+  assert!(
+    (claimed - 6.0 * ((-3.0 + 27.0_f64.sqrt()) / 2.0) / 10.0).abs() < 1e-9,
+    "the cell beyond the start vertex is authorised the ramp at the reachable end of the bottom edge: \
+     got {claimed}"
+  );
+
+  let program = MoveStream {
+    segments: vec![Segment {
+      name: "fluting 1".to_owned(),
+      tool_number: 1,
+      tool: ToolShape::cylinder(Length::from_mm(6.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 18_000,
+      moves: vertex_moves(10.0),
+    }],
+    safe_z: Length::from_mm(5.0),
+    home: Point2::new(0.0, 0.0),
+  };
+  let mut field = Heightfield::new(&sheet, cell()).expect("the field fits");
+  apply(&program, &mut field);
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a correct 10 mm-ramped flute deviates by nothing, corners included"
+  );
+}
+
+#[test]
+fn a_steep_flutes_claim_reaches_past_its_start_vertex_too() {
+  // The same fixture with a 1 mm ramp: the reachable stretch beyond the vertex is the same geometry, so
+  // the same candidate has to reach it. This variant is also the one whose gouge the finer sampling
+  // exposed last round — 1.750 mm3 over two cells — so it is the regression that keeps both fixed.
+  let (sheet, document) = vertex_fixture(1.0);
+  let target = target_for(&document, cell(), &tools(6.0)).expect("a target");
+  let mut field = Heightfield::new(&sheet, cell()).expect("the field fits");
+  apply(
+    &MoveStream {
+      segments: vec![Segment {
+        name: "fluting 1".to_owned(),
+        tool_number: 1,
+        tool: ToolShape::cylinder(Length::from_mm(6.0)),
+        feed_rate: 100.0,
+        plunge_rate: 30.0,
+        spindle_speed: 18_000,
+        moves: vertex_moves(1.0),
+      }],
+      safe_z: Length::from_mm(5.0),
+      home: Point2::new(0.0, 0.0),
+    },
+    &mut field,
+  );
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a correct 1 mm-ramped flute deviates by nothing either"
+  );
+}
+
+#[test]
+fn a_v_bits_flutes_claim_also_reaches_past_the_start_vertex() {
+  // The same vertex fixture cut by a 90 degree V-bit. A cone's claim is the law at the sample's own depth
+  // less the flank's rise, and its maximum over the reachable stretch can sit *inside* that stretch
+  // rather than at its end — which is what the interior candidate is for. This asks the two candidates
+  // together the same question the end mill was asked: is a correct V-groove flute clean at a corner?
+  let (sheet, document) = vertex_fixture(10.0);
+  let target = target_for(&document, cell(), &v_bit_tools(90.0, 0.0)).expect("a target");
+  let mut field = Heightfield::new(&sheet, cell()).expect("the field fits");
+  apply(
+    &MoveStream {
+      segments: vec![Segment {
+        name: "fluting 1".to_owned(),
+        tool_number: 1,
+        tool: ToolShape::v_bit(Angle::from_degrees(90.0), Length::ZERO),
+        feed_rate: 100.0,
+        plunge_rate: 30.0,
+        spindle_speed: 18_000,
+        moves: vertex_moves(10.0),
+      }],
+      safe_z: Length::from_mm(5.0),
+      home: Point2::new(0.0, 0.0),
+    },
+    &mut field,
+  );
+  let deviation = deviations(&field, &target, Length::from_mm(CELL / 8.0)).expect("one grid");
+  assert_eq!(
+    deviation,
+    Deviation::default(),
+    "a correct V-groove flute deviates by nothing, its start vertex included"
+  );
 }

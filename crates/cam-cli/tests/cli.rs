@@ -9,8 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
-  ChamferParams, Document, DrillParams, Entity, EntityKind, Job, Layer, Operation, PocketParams,
-  PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
+  ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer, Operation,
+  PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -172,13 +172,40 @@ fn rewrite_schema_tag(document: &Path, tag: &str) {
     broken, payload,
     "the archive carries the current schema tag"
   );
+  rewrite_payload(document, &broken);
+}
+
+/// Replace a saved document's `document.json` with `payload`, keeping the archive.
+fn rewrite_payload(document: &Path, payload: &str) {
   let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
   writer
     .start_file("document.json", zip::write::SimpleFileOptions::default())
     .expect("start");
-  std::io::Write::write_all(&mut writer, broken.as_bytes()).expect("write");
+  std::io::Write::write_all(&mut writer, payload.as_bytes()).expect("write");
   let raw = writer.finish().expect("finish").into_inner();
   std::fs::write(document, raw).expect("write document");
+}
+
+/// Drop the `ramp` field from a saved document's `fluting` operation, as an older or hand-written
+/// document that predates it would have been written.
+fn remove_fluting_ramp(document: &Path) {
+  let payload = document_payload(document);
+  let marker = "\"ramp\"";
+  let at = payload.find(marker).expect("the archive carries the ramp");
+  // The field is its operation's last, so it is preceded by the previous field's comma and ends at the
+  // line break before the closing brace. Both are found by position, not by their printed form, so the
+  // pretty-printer's layout can change without breaking this.
+  let comma = payload[..at].rfind(',').expect("a field separator");
+  let end = payload[at..]
+    .find('\n')
+    .map(|offset| at + offset)
+    .expect("a line break after the field");
+  let without = format!("{}{}", &payload[..comma], &payload[end..]);
+  assert!(
+    !without.contains(marker),
+    "the ramp field is gone from:\n{without}"
+  );
+  rewrite_payload(document, &without);
 }
 
 #[test]
@@ -3269,5 +3296,465 @@ fn an_engrave_simulates_with_no_gouge_and_no_uncut() {
     "{}",
     outcome.stdout
   );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- fluting (M6 A4, A9, D-M6-5) ---------------------------------------------------------------
+
+/// The whole program one ramped flute emits, byte for byte.
+///
+/// A 6 mm end mill and a 0.5 mm flute ramped over 10 mm on a 40 x 30 rectangle (140 mm of perimeter).
+/// The entry and the exit are real moves — the machine traverses them — and **each is one move**: a
+/// single feed of 10 mm of travel whose Z descends from the surface to `-0.5` along the bottom edge, the
+/// plateau around the rest of the loop at `-0.5`, and the mirror move from `(0, 10)` back up to
+/// `(0, 0)`. The ramp used to be walked in steps of a tenth of a millimetre of Z because the simulation
+/// removed a move's *destination* depth over its whole travel; `cam-sim` now interpolates Z along a
+/// move (D-M6-12, which amends D-M5-3), so the staircase is gone and the program says what the machine
+/// does. CRLF, because the fixture post declares `LINE_ENDING = "[13][10]"`.
+const GOLDEN_FLUTING_PROGRAM: &str = "\
+( Fluting 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X0.0000Y0.0000\r\n\
+N40G01Z0.0000F100.0\r\n\
+N50G01X10.0000Z-0.5000\r\n\
+N60G01X40.0000\r\n\
+N70G01Y30.0000\r\n\
+N80G01X0.0000\r\n\
+N90G01Y10.0000\r\n\
+N100G01Y0.0000Z0.0000\r\n\
+N110G00Z5.0000\r\n\
+N120G00Z5.0000\r\n\
+N130G00X0.0000Y0.0000\r\n\
+N140M05\r\n\
+N150M30\r\n";
+
+/// Author a ramped flute on `E1` through the real `toolpath` command.
+fn author_fluting(document: &Path, library: &Path, ramp: f64, cut_depth: f64) -> Outcome {
+  let ramp = ramp.to_string();
+  let cut_depth = cut_depth.to_string();
+  run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "fluting",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--ramp",
+    &ramp,
+    "--cut-depth",
+    &cut_depth,
+    "--library",
+    library.to_str().expect("utf8"),
+  ])
+}
+
+#[test]
+fn a_ramped_flute_authored_through_the_cli_emits_the_golden_program() {
+  let directory = scratch("golden-fluting");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 fluting, tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  // What the document stores is the authored depth and the ramp; nothing is derived from the tool.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Fluting(params) => {
+      assert_eq!(params.start_depth, Length::ZERO);
+      assert_eq!(params.cut_depth, Length::from_mm(0.5));
+      assert_eq!(params.ramp, Length::from_mm(10.0));
+    }
+    other => panic!("expected a fluting toolpath, got {other:?}"),
+  }
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert_eq!(program, GOLDEN_FLUTING_PROGRAM);
+  // S6: the same document emits the same bytes on the next run.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &post),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_takes_no_side_no_stepover_no_pass_depth_no_tabs_no_leads_and_no_allowance() {
+  // D-M6-5: a flute is one pass along the vector with its centre on it, so every flag a profile or a
+  // pocket would consume has no meaning here. Refusing them by name is the difference between a
+  // refusal and a silently different groove: a `--stepover` nobody applied still looks applied.
+  let directory = scratch("fluting-flags");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--side", "on"),
+    ("--pass-depth", "0.2"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--stepover", "2"),
+    ("--allowance", "1"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "fluting.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = run(&[
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "fluting",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--ramp",
+      "10",
+      flag,
+      value,
+      "--library",
+      library.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 2, "{flag}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: nothing is written"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_whose_ramp_is_longer_than_half_the_vector_exits_two_naming_both_numbers() {
+  // A4: the two ramps have to fit on the vector. Authoring succeeds — half of a 140 mm perimeter is
+  // 70 mm — and emitting refuses the 71 mm one by name, because a silently shortened ramp would cut
+  // the ends at a depth nobody authored.
+  let directory = scratch("fluting-ramp");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 71.0, 0.5);
+  assert_eq!(
+    added.code, 0,
+    "authoring stores what was asked: {}",
+    added.stderr
+  );
+
+  let out = directory.join("program.nc");
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("71") && outcome.stderr.contains("140"),
+    "the refusal names the ramp and the vector's length: {}",
+    outcome.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_ramped_flute_simulates_with_no_gouge_and_no_uncut() {
+  // The end-to-end claim A4 rests on: the target authorises the ramp law *along the path*, and the
+  // program cuts that law. A target that claimed the full depth over the whole band would report both
+  // ramps as uncut; a program that ramped in one move would be reported as a gouge. Neither number is
+  // tolerance-softened: both are zero cells.
+  let directory = scratch("fluting-simulate");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  // The program is the ramped one and not an empty segment: "no deviation" from a program that cut
+  // nothing would say nothing at all. Nine moves: the rapid, the plunge to the surface, the ramp in,
+  // the four plateau sides, the ramp out and the retract.
+  assert!(
+    report_volume(&outcome.stdout, "program:") > 8.0,
+    "the ramps are real moves: {}",
+    outcome.stdout
+  );
+  assert!(
+    report_volume(&outcome.stdout, "removed:") > 0.0,
+    "and they remove material: {}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_fluting_document_written_without_a_ramp_still_loads_and_plays_as_the_plain_groove() {
+  // A1's compatibility rule, for the one field this strategy defaults: a document that names a
+  // `fluting` toolpath and no `ramp` — hand-written, or written by a build that predates the field —
+  // must load rather than fail, and it must describe what its absence means, the in-place plunge. The
+  // same rectangle is authored twice, once with `--ramp 10` and its field removed afterwards, and once
+  // with `--ramp 0`; the two programs are then the same bytes.
+  let directory = scratch("fluting-no-ramp");
+  let stripped = write_vectors(
+    &directory,
+    "stripped.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let authored = write_vectors(
+    &directory,
+    "authored.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&stripped, &library, 10.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  remove_fluting_ramp(&stripped);
+
+  let validated = run(&["validate", stripped.to_str().expect("utf8")]);
+  assert_eq!(validated.code, 0, "{}", validated.stderr);
+
+  let added = author_fluting(&authored, &library, 0.0, 0.5);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    emit_program(&directory, &stripped, &library, &post),
+    emit_program(&directory, &authored, &library, &post),
+    "a document without a ramp is the plain groove: plunge, cut, retract"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_six_millimetre_flute_simulates_with_no_gouge_and_no_uncut() {
+  // The graded case, at the judgement M5 fixed: an eighth of a cell, with nothing added for the ramp.
+  // The sweep pays for the ramp where it belongs — in its own sampling, which takes enough steps that
+  // the depth residual between two of them is inside that eighth (D-M6-12) — so a deep flute reports its
+  // ramps as cut. The thin fixture next door would pass at any sampling; this one is what shows the
+  // residual is resolved rather than tolerated.
+  let directory = scratch("fluting-simulate-deep");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 10.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_six_millimetre_flute_over_a_one_millimetre_ramp_simulates_with_no_gouge_and_no_uncut() {
+  // The steepest ramp a flute can carry at this size: 6 mm of Z over 1 mm of travel, a grade of 6. A
+  // document-global tolerance keyed on the grade would have licensed 3.125 mm of deviation anywhere in
+  // this document, which would have hidden a millimetre of gouge on the plateau as well as on the ramp.
+  // The sampling settles it instead — a move crossing that much Z takes 96 steps at a 1 mm cell — so the
+  // judgement stays at an eighth of a cell and this document is still clean.
+  let directory = scratch("fluting-simulate-steep");
+  let document = write_vectors(
+    &directory,
+    "fluting.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_fluting(&document, &library, 1.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  assert!(
+    outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_ramped_flute_on_an_arc_is_refused_by_name_and_writes_nothing() {
+  // The defect this closes, measured before the refusal: an imported circle of radius 25 fluted 6 mm deep
+  // with a 10 mm ramp was authored happily and then simulated as a chord — `gouge 33.228 mm3 over 22
+  // cell(s), uncut 30.093 mm3 over 34 cell(s)`, exit 6 — because a ramped move cannot ride on `Move::Arc`
+  // and the move vocabulary has no helix yet. It is now an input error where it is authored, naming the
+  // reason, and the document is left as it was.
+  let directory = scratch("fluting-arc-ramp");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let ramp = "10".to_owned();
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "fluting",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--ramp",
+    &ramp,
+    "--cut-depth",
+    "6",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("arc") && outcome.stderr.contains("helical"),
+    "the refusal names the arc and what is missing: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "nothing is written"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_flute_without_a_ramp_still_cuts_an_arc_as_an_arc_through_the_cli() {
+  // The other half of the refusal: `ramp = 0` on the same arc contour is exactly what `Move::Arc` exists
+  // for, so it is authored, emitted with arc blocks and simulated clean. Refusing it would have been a
+  // regression dressed as safety.
+  let directory = scratch("fluting-arc-flat");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(15.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+
+  let added = author_fluting(&document, &library, 0.0, 6.0);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  let program = emit_program(&directory, &document, &library, &post);
+  assert!(
+    program.contains("G02") || program.contains("G03"),
+    "the circle's arcs reach the program as arcs:\n{program}"
+  );
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stdout.contains("gouge: 0.000 mm3 over 0 cell(s)")
+      && outcome.stdout.contains("uncut: 0.000 mm3 over 0 cell(s)"),
+    "{}",
+    outcome.stdout
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_document_that_already_carries_a_ramped_flute_on_an_arc_exits_two_naming_the_reason() {
+  // A build before this refusal could have written it, so the strategy refuses at `emit` and `simulate`
+  // as well as at authoring: this is the fixture that used to exit 6 with a gouge and uncut of tens of
+  // cubic millimetres, and the program is never written.
+  let directory = scratch("fluting-arc-ramp-document");
+  let document = write_vectors(&directory, "circle.c2d", vec![circle_contour(25.0)]);
+  let library = write_library(&directory);
+  let post = write_post(&directory);
+  let mut loaded = cam_store::document::load_document(&document).expect("loads");
+  loaded.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Fluting 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Fluting(FlutingParams {
+      start_depth: Length::ZERO,
+      cut_depth: Length::from_mm(6.0),
+      ramp: Length::from_mm(10.0),
+    }),
+  });
+  save_document(&document, &loaded).expect("saved");
+
+  let out = directory.join("program.nc");
+  let emitted = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(emitted.code, 2, "{}", emitted.stdout);
+  assert!(
+    emitted.stderr.contains("arc") && emitted.stderr.contains("helical"),
+    "{}",
+    emitted.stderr
+  );
+  assert!(!out.exists(), "a refused program writes nothing");
+
+  let simulated = simulate(&document, &library, &[]);
+  assert_eq!(simulated.code, 2, "{}", simulated.stdout);
+  assert!(simulated.stderr.contains("helical"), "{}", simulated.stderr);
   std::fs::remove_dir_all(&directory).ok();
 }
