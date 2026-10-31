@@ -5,7 +5,7 @@
 //! every value in the field is a height a real tool could leave behind.
 
 use cam_geom::Point2;
-use cam_model::Job;
+use cam_model::{Frame, Job};
 use cam_units::Length;
 
 use crate::grid::{grid_for, Grid, GridError};
@@ -26,6 +26,8 @@ pub struct Volumes {
 pub struct Heightfield {
   grid: Grid,
   thickness: Length,
+  /// The document frame's relation to the machine frame, which every program is read through (M7 A7).
+  frame: Frame,
   surface: Vec<f64>,
 }
 
@@ -36,6 +38,7 @@ impl Heightfield {
     Ok(Self {
       grid,
       thickness: job.thickness,
+      frame: job.frame(),
       surface: vec![0.0; grid.cells()],
     })
   }
@@ -43,6 +46,11 @@ impl Heightfield {
   /// The lattice this field lives on.
   pub fn grid(&self) -> Grid {
     self.grid
+  }
+
+  /// The document frame this field is laid out in, and the machine frame the programs it sweeps use.
+  pub fn frame(&self) -> Frame {
+    self.frame
   }
 
   /// The stock thickness, which bounds every cut.

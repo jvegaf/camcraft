@@ -23,6 +23,7 @@
 use std::f64::consts::TAU;
 
 use cam_geom::Point2;
+use cam_model::Frame;
 use cam_move::{Move, MoveStream, Point3, ToolShape};
 
 use crate::heightfield::Heightfield;
@@ -153,6 +154,12 @@ pub fn apply_move(
   movement: Move,
   tool: ToolShape,
 ) -> Option<Crash> {
+  // A program is in **machine** coordinates and the field is in the **document** frame, so a move is
+  // read back here, once, wherever it crosses into the field (M7 A7). `bottom_left` makes both maps the
+  // identity, so every field that already agreed with its program still agrees cell for cell.
+  let frame = field.frame();
+  let from = in_document_frame(frame, from);
+  let movement = movement_in_document_frame(frame, movement);
   match movement {
     Move::Feed { to } => {
       sweep_line(field, from, to, tool);
@@ -172,15 +179,64 @@ pub fn apply_move(
     Move::Rapid { to } | Move::Retract { to } => {
       let surface = field.surface_under(to.xy())?;
       if to.z.mm() < surface {
+        // Reported where the program put it, not where the field reads it: a crash's position is
+        // read against the program the user can open.
+        let at = frame.to_machine(to.xy());
         Some(Crash {
           toolpath: String::new(),
           move_index: 0,
-          at: to,
+          at: Point3::new(at.x, at.y, to.z.mm()),
         })
       } else {
         None
       }
     }
+  }
+}
+
+/// `point`, read in the field's document frame.
+fn in_document_frame(frame: Frame, point: Point3) -> Point3 {
+  let xy = frame.from_machine(point.xy());
+  Point3::new(xy.x, xy.y, point.z.mm())
+}
+
+/// `movement`, with its positions read in the field's document frame.
+///
+/// Z is untouched: the corner selector moves the job in the plane, never in depth. An arc's direction
+/// **is** touched, because the map can be a mirror: a reflection reverses handedness, so an arc the
+/// program traverses counter-clockwise is traversed clockwise in the document frame, and keeping the
+/// flag would sweep the mirror image of the curve the document asked for. `center` translates, so it
+/// keeps handedness and nothing flips.
+fn movement_in_document_frame(frame: Frame, movement: Move) -> Move {
+  let ccw = |ccw: bool| ccw != frame.is_reflection();
+  match movement {
+    Move::Feed { to } => Move::Feed {
+      to: in_document_frame(frame, to),
+    },
+    Move::Rapid { to } => Move::Rapid {
+      to: in_document_frame(frame, to),
+    },
+    Move::Retract { to } => Move::Retract {
+      to: in_document_frame(frame, to),
+    },
+    Move::Arc {
+      to,
+      center,
+      ccw: direction,
+    } => Move::Arc {
+      to: in_document_frame(frame, to),
+      center: frame.from_machine(center),
+      ccw: ccw(direction),
+    },
+    Move::Helix {
+      to,
+      center,
+      ccw: direction,
+    } => Move::Helix {
+      to: in_document_frame(frame, to),
+      center: frame.from_machine(center),
+      ccw: ccw(direction),
+    },
   }
 }
 

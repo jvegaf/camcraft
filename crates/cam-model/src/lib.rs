@@ -48,6 +48,81 @@ pub enum OriginCorner {
   Center,
 }
 
+/// The document frame's relation to the machine frame, for one job (M7 A7, S17).
+///
+/// A document's geometry runs from the job's own corner, `(0, 0)` to `(width, height)`, while a
+/// program's moves are in machine coordinates — the frame the selected [`OriginCorner`] puts the
+/// machine's origin in. Two of the three corners make the frames differ, and both differences are exact
+/// isometries: `center` translates the job so its centre is the machine's origin, and `top_left`
+/// reflects Y so distance grows towards the operator.
+///
+/// This is the **one** definition of that map. The toolpath layer emits with [`Frame::to_machine`], and
+/// the simulation reads a program back into the document frame with [`Frame::from_machine`], so a
+/// program cannot mean one place in G-code and another in the report. M6 recorded the defect that
+/// motivated it: `cam_sim`'s field was in the document frame while the programs it swept were in the
+/// machine frame, so at any corner but `bottom_left` a correct program was reported as gouge and uncut.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+  corner: OriginCorner,
+  width: f64,
+  height: f64,
+}
+
+impl Frame {
+  /// The frame of `job`, from its origin corner and its size.
+  pub fn of(job: &Job) -> Self {
+    Self {
+      corner: job.origin,
+      width: job.width.mm(),
+      height: job.height.mm(),
+    }
+  }
+
+  /// The corner the machine's XY origin sits on.
+  pub fn corner(&self) -> OriginCorner {
+    self.corner
+  }
+
+  /// A point in document coordinates, as the machine sees it.
+  pub fn to_machine(&self, point: Point2) -> Point2 {
+    match self.corner {
+      OriginCorner::BottomLeft => point,
+      OriginCorner::TopLeft => Point2::new(point.x, self.height - point.y),
+      OriginCorner::Center => Point2::new(point.x - self.width / 2.0, point.y - self.height / 2.0),
+    }
+  }
+
+  /// A point in machine coordinates, as the document sees it.
+  ///
+  /// The exact inverse of [`Frame::to_machine`], which is what lets the simulation sweep an emitted
+  /// program onto a field built in the document frame. A reflection is its own inverse, so `top_left`
+  /// reads the same in both directions.
+  pub fn from_machine(&self, point: Point2) -> Point2 {
+    match self.corner {
+      OriginCorner::BottomLeft => point,
+      OriginCorner::TopLeft => Point2::new(point.x, self.height - point.y),
+      OriginCorner::Center => Point2::new(point.x + self.width / 2.0, point.y + self.height / 2.0),
+    }
+  }
+
+  /// Whether the two frames are the same one, in which case every map is the identity.
+  pub fn is_identity(&self) -> bool {
+    self.corner == OriginCorner::BottomLeft
+  }
+
+  /// Whether the map is a mirror, which reverses the sense of every arc it carries.
+  ///
+  /// A reflection is not just a different position: an arc traversed counter-clockwise in one frame is
+  /// traversed clockwise in the other, so a caller reading a program back into the document frame has
+  /// to flip the arc's direction as well as its points. `center` translates, so it keeps handedness;
+  /// `top_left` reflects, so it does not. It is part of this map rather than the caller's business,
+  /// because a map that silently reverses a path's sense would leave the sweep cutting the mirror
+  /// image of the arc the document asked for.
+  pub fn is_reflection(&self) -> bool {
+    self.corner == OriginCorner::TopLeft
+  }
+}
+
 /// The stock and coordinate setup of the job.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Job {
@@ -66,6 +141,11 @@ pub struct Job {
 }
 
 impl Job {
+  /// This job's document frame against the machine frame.
+  pub fn frame(&self) -> Frame {
+    Frame::of(self)
+  }
+
   /// A job with the analysed product's default setup: 1219 x 2438 x 18 mm, 5 mm safe Z.
   pub fn default_sheet() -> Self {
     Self {
