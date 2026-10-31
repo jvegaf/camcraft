@@ -374,3 +374,22 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   non-negative length, so the branch is correct today, but it reads like a typo for `max` and it sits in
   the expression the certificate evaluates thousands of times. Left untouched as out of scope; recorded
   so it is not rediscovered as a mystery.
+
+- **L12 (native review, refused twice, and the owner's disposition).** The M7 candidate was submitted
+  twice and both times blocked in preflight with `lens_context_budget_exceeded`, `mutation_performed:
+  false` — no authority was created, nothing was abandoned, and `retry_safe` was true. Two facts are
+  worth keeping. *(1) The base the provider picks is the push base, not the branch's own cut point.*
+  `inspect` reported `--base-ref=179d6b3 ... --committed-only=true`, which would have made the candidate
+  M6's 16 255 unreviewed lines plus M7's — the same whole-branch candidate M6's own review had refused.
+  START was therefore given an explicit `baseRef` of `9ff0b8c` (the `master` tip this branch was cut
+  from) with `committedOnly: true`, which is the "reduce the candidate scope" the provider's own cause
+  text asks for, and which reviews exactly this milestone's work. Even so it refused: **4 425 inserted
+  lines across 7 commits**. *(2) The budget is bounded by the candidate's size, not by the lens count.*
+  The second attempt asked for one lens (`risk`) instead of three and was refused identically, so tuning
+  the lens selection cannot make an oversized candidate fit — only smaller commits can.
+  **Owner disposition (verbatim: "2"):** disable the review switch for this clone and deliver M7 on its
+  own evidence, the path M6 took (L20 there). `gentle-ai review mode disable --scope clone` now reads
+  `receipt-driven development: off (decided by clone_local)`, with `global: off` and `clone-local: off`.
+  The consequence is recorded rather than softened: **M7's diff has had no native outside view**, so the
+  milestone's delivery rests on its tests, its simulation oracle, its goldens and its differentials —
+  and T7 must say so in the roadmap and the README the way M6's closing commit did.
