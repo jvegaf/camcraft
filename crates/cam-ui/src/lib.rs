@@ -49,7 +49,7 @@ use cam_view::{
 };
 use egui::{Context, Pos2, RichText, Sense, Stroke};
 
-use crate::icons::Icon;
+use crate::icons::{Family, Icon};
 use crate::theme::{Palette, Role, Theme};
 
 pub mod chrome;
@@ -862,7 +862,7 @@ impl Shell {
     egui::Window::new("Icons")
       .open(&mut open)
       .resizable(true)
-      .default_width(620.0)
+      .default_width(760.0)
       .show(ctx, |ui| {
         ui.label(
           egui::RichText::new(format!(
@@ -871,34 +871,55 @@ impl Shell {
             metrics.icon_stroke,
             metrics.icon_size
           ))
-          .size(theme::CAPTION),
+          .size(theme::CAPTION)
+          .color(palette.get(Role::TextDim)),
         );
-        ui.add_space(metrics.space(3));
-        egui::Grid::new("icon-sheet")
-          .num_columns(8)
-          .spacing([metrics.space(4), metrics.space(3)])
+        egui::ScrollArea::vertical()
+          .id_salt("icon-sheet")
           .show(ui, |ui| {
-            for (index, icon) in Icon::ALL.iter().enumerate() {
-              ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = metrics.space(0);
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), Sense::hover());
-                let scale = rect.width() / metrics.icon_size;
-                icons::paint(
-                  ui.painter(),
-                  rect,
-                  *icon,
-                  palette.get(Role::Text),
-                  metrics.icon_stroke * scale,
-                );
-                ui.label(
-                  egui::RichText::new(icon.name())
-                    .size(theme::CAPTION)
-                    .color(palette.get(Role::TextDim)),
-                );
-              });
-              if index % 8 == 7 {
-                ui.end_row();
-              }
+            // The artboard's structure: six families, each with its count, so seventy glyphs read as six
+            // arguments instead of one wall. `min_col_width` keeps a long name like `toolpath-profile`
+            // inside its cell instead of printing over its neighbour.
+            for family in Family::ALL {
+              ui.add_space(metrics.space(3));
+              ui.label(
+                egui::RichText::new(format!(
+                  "{}  ·  {}",
+                  family.label(),
+                  Icon::in_family(family).count()
+                ))
+                .size(theme::SMALL)
+                .color(palette.get(Role::TextHi)),
+              );
+              egui::Grid::new(family.label())
+                .num_columns(8)
+                .min_col_width(84.0)
+                .spacing([metrics.space(4), metrics.space(3)])
+                .show(ui, |ui| {
+                  for (index, icon) in Icon::in_family(family).enumerate() {
+                    ui.vertical(|ui| {
+                      ui.spacing_mut().item_spacing.y = metrics.space(0);
+                      let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(28.0, 28.0), Sense::hover());
+                      let scale = rect.width() / metrics.icon_size;
+                      icons::paint(
+                        ui.painter(),
+                        rect,
+                        icon,
+                        palette.get(Role::Text),
+                        metrics.icon_stroke * scale,
+                      );
+                      ui.label(
+                        egui::RichText::new(icon.name())
+                          .size(theme::CAPTION)
+                          .color(palette.get(Role::TextDim)),
+                      );
+                    });
+                    if index % 8 == 7 {
+                      ui.end_row();
+                    }
+                  }
+                });
             }
           });
       });

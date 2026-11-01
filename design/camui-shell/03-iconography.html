@@ -188,7 +188,7 @@
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1" stroke-dasharray="2 2"/><rect x="6" y="7" width="8" height="5" rx="1"/><rect x="6" y="14" width="4" height="4" rx="1"/><rect x="12" y="14" width="5" height="4" rx="1"/></svg><span class="nm">nest</span></div>
   </div>
 
-  <h2><span class="n">SET</span> View, document, display <span class="hint">12</span></h2>
+  <h2><span class="n">SET</span> View, document, display <span class="hint">16</span></h2>
   <div class="grid">
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/><rect x="8" y="8" width="8" height="8" rx="1" opacity=".5"/></svg><span class="nm">zoom-fit</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/><rect x="8" y="8" width="5" height="5" opacity=".55"/></svg><span class="nm">zoom-selection</span></div>
@@ -202,6 +202,10 @@
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 15l3-6 3 4 2-2 2 4"/></svg><span class="nm">view-2d</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg><span class="nm">view-3d</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" fill-opacity=".22"/></svg><span class="nm">theme-auto</span></div>
+    <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span class="nm">undo</span></div>
+    <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M15 14L20 9l-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span class="nm">redo</span></div>
+    <div class="cell"><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="4" ry="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5.3 5.3L7 7M17 17l1.7 1.7M18.7 5.3L17 7M7 17l-1.7 1.7"/></svg><span class="nm">theme-light</span></div>
+    <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span class="nm">theme-dark</span></div>
   </div>
 
   <h2><span class="n">SET</span> Cutting — the stage that earns the machine its keep <span class="hint">8</span></h2>
@@ -216,7 +220,13 @@
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10" fill="currentColor" fill-opacity=".22"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10"/></svg><span class="nm">relief</span></div>
   </div>
 
-  <h2><span class="n">COUNT</span> 66 icons across six families</h2>
+  <h2><span class="n">COUNT</span> 70 icons across six families</h2>
+  <p class="lede" style="margin-top:-4px">The last four — <code style="font-family:var(--mono);font-size:12px">undo</code>,
+  <code style="font-family:var(--mono);font-size:12px">redo</code>,
+  <code style="font-family:var(--mono);font-size:12px">theme-light</code> and
+  <code style="font-family:var(--mono);font-size:12px">theme-dark</code> — were added when the app bar was built: the
+  vocabulary has to cover the frame that uses it, or the shell invents a glyph at the call site. The other sixty-six
+  are the commands.</p>
   <div class="anat">
     <div class="card"><h3>What the set refuses</h3>
       <p>· A filled version of the same icon for “active” — the wash does that, and it costs no drawing.</p>

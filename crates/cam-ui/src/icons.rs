@@ -1763,6 +1763,78 @@ impl Icon {
   }
 }
 
+/// The six families the sheet groups the set into, in the order the artboard draws them.
+///
+/// A family is documentation, not behaviour: nothing in the shell branches on it. It exists so seventy
+/// glyphs can be read as six arguments instead of one wall, which is also why the sheet in the app groups
+/// them the same way the artboard does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+  /// Opening, saving, importing, exporting, stock and tools.
+  FileStock,
+  /// The gestures that put geometry on the sheet.
+  Draw,
+  /// Vector surgery: trim, fillet, booleans, joins.
+  VectorEdit,
+  /// Moving, copying, aligning what exists.
+  Transform,
+  /// Looking at it, naming it, choosing a theme.
+  ViewDocument,
+  /// What removes material.
+  Cutting,
+}
+
+impl Family {
+  /// Every family, in sheet order.
+  pub const ALL: [Family; 6] = [
+    Family::FileStock,
+    Family::Draw,
+    Family::VectorEdit,
+    Family::Transform,
+    Family::ViewDocument,
+    Family::Cutting,
+  ];
+
+  /// The word the sheet prints above the family.
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::FileStock => "File and stock",
+      Self::Draw => "Draw",
+      Self::VectorEdit => "Vector edit",
+      Self::Transform => "Transform",
+      Self::ViewDocument => "View, document, display",
+      Self::Cutting => "Cutting",
+    }
+  }
+}
+
+impl Icon {
+  /// The family this glyph belongs to.
+  ///
+  /// Keyed on the glyph's position in [`Icon::ALL`], which is the same order the sheet draws, because
+  /// seventy match arms would be seventy chances to disagree with the table next door. The order itself is
+  /// pinned by [`tests::the_families_cover_the_set_in_order`], so a reordering that moved a glyph between
+  /// families fails a test instead of quietly mislabelling it.
+  pub fn family(self) -> Family {
+    match self as usize {
+      0..=10 => Family::FileStock,
+      11..=22 => Family::Draw,
+      23..=35 => Family::VectorEdit,
+      36..=45 => Family::Transform,
+      46..=61 => Family::ViewDocument,
+      _ => Family::Cutting,
+    }
+  }
+
+  /// The glyphs of one family, in sheet order.
+  pub fn in_family(family: Family) -> impl Iterator<Item = Icon> {
+    Icon::ALL
+      .iter()
+      .copied()
+      .filter(move |icon| icon.family() == family)
+  }
+}
+
 /// The shapes for one glyph, laid out in `box_rect`.
 ///
 /// Pure — no painter, no texture, no side effects — so the geometry can be tested for the two things
@@ -2040,4 +2112,4 @@ mod tests {
       }
     }
   }
-}
+} // A family appears in one contiguous run, so the sheet prints each heading once.

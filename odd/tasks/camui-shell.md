@@ -145,3 +145,18 @@ The foundations are delivered. What remains of the concept, in the order the des
   from the same fields the Tools tab's buttons read: two construction sites for one command. The fix is a command
   module both call, which is a refactor with no visible effect and therefore its own slice. `view3d.rs` still holds
   its own shading constants (T9). Object context menus and the per-command help pairs (T8) are untouched.
+
+- **L15 (03-iconography implemented, and the drift closed).** The glyph set itself landed in `3ecf6ac`; this pass
+  audited it against the artboard and found the only real drift: the code holds **70** glyphs and the artboard drew
+  **66**, the difference being the four the app bar needs (`undo`, `redo`, `theme-light`, `theme-dark`). No glyph in
+  the artboard was missing from the code — the code is an exact superset. The drawing was the authority last time,
+  so the sheet gained the four, with a line saying where they came from, and the record now reads 70 across six
+  families (11 + 12 + 13 + 10 + 16 + 8). `Icon::family()` groups the set for the in-app sheet the same way the
+  artboard does, keyed on position in `Icon::ALL` with a test that a family is one contiguous run — a reordering
+  that moved a glyph between families fails instead of mislabelling the sheet silently. Sheet renders at 760 px with
+  `min_col_width(84)`, so `toolpath-profile` no longer prints over its neighbour.
+- **L16 (incident, self-inflicted, recorded).** To photograph the sheet I flipped `show_icons` to `true` in the
+  default and "restored" it with a `str.replace` that did not match, so the sheet stayed open by default and the
+  input tests started failing because the window took the clicks meant for the canvas. The revert pattern asserting
+  its own success is what would have caught it; the lesson is the same one as the gate swallowing its exit code —
+  a cleanup that cannot fail is not a cleanup.
