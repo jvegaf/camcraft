@@ -18,7 +18,7 @@
     },
     {
       "file": "03-iconography.html",
-      "title": "Icon set — 65 glyphs on one 24 × 24 grid",
+      "title": "Icon set — 66 glyphs on one 24 × 24 grid",
       "tradeoff": "A single stroke weight reads as one hand and never shimmers when selection moves; the cost is that no icon can carry fine detail, so complex strategies rely on labels.",
       "width": 1440,
       "height": 1760

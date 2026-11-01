@@ -49,6 +49,11 @@ use cam_view::{
 };
 use egui::{Context, Pos2, Sense, Stroke};
 
+use crate::icons::Icon;
+use crate::theme::{Palette, Role, Theme};
+
+pub mod icons;
+pub mod theme;
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -80,24 +85,6 @@ pub const JOIN_TOLERANCE_MM: f64 = cam_geom::DEFAULT_TOLERANCE;
 /// A press and release in the same place is a cancel: a zero-size rectangle or a zero-length line is
 /// not something the user can see, select or undo on purpose, so it is never submitted.
 pub const MIN_DRAW_DRAG_PX: f64 = 3.0;
-
-/// Colours, in one place so the picture stays consistent.
-mod palette {
-  use egui::Color32;
-
-  /// Background of the drawing area.
-  pub const CANVAS: Color32 = Color32::from_rgb(24, 26, 30);
-  /// Grid lines.
-  pub const GRID: Color32 = Color32::from_rgb(44, 48, 56);
-  /// Ordinary geometry.
-  pub const GEOMETRY: Color32 = Color32::from_rgb(206, 212, 222);
-  /// Selected geometry.
-  pub const SELECTED: Color32 = Color32::from_rgb(255, 176, 59);
-  /// The stock outline.
-  pub const JOB: Color32 = Color32::from_rgb(88, 132, 178);
-  /// Snap markers and the selection marquee.
-  pub const SNAP: Color32 = Color32::from_rgb(120, 220, 160);
-}
 
 /// The tool armed on the canvas.
 ///
@@ -616,6 +603,9 @@ pub struct Shell {
   pub star_points: usize,
   /// Inner/outer radius ratio used by the star tool. Default 0.5, the classic five-point star.
   pub star_inner_ratio: f64,
+  /// The colour set this shell draws in. [`Theme::Dark`] is the design default: a dark shop, a bright
+  /// screen. Widgets never name a colour, so switching sets re-resolves the whole picture.
+  pub theme: Theme,
   /// Rows and columns the array command uses. Default 2 x 3.
   pub array_grid: (usize, usize),
   /// Column and row spacing the array command uses, in millimetres. Default 50 x 25 mm.
@@ -681,6 +671,12 @@ pub struct Shell {
   /// if pointer tracking uses last frame's canvas geometry. That is the standard immediate-mode
   /// approach and it keeps the readout a frame fresh instead of a frame stale.
   last_canvas: CanvasRect,
+  /// The set egui was last told about. `theme::apply` clones styles, so it runs when the set changes
+  /// rather than once per frame.
+  applied_theme: Option<Theme>,
+  /// Whether the icon sheet is open. Until the shell has a rail to hang glyphs on, this is the only
+  /// way to look at the whole set beside the rest of it.
+  show_icons: bool,
 }
 
 impl Default for Shell {
@@ -691,6 +687,7 @@ impl Default for Shell {
       polygon_sides: 6,
       star_points: 5,
       star_inner_ratio: 0.5,
+      theme: Theme::Dark,
       array_grid: (2, 3),
       array_spacing: (50.0, 25.0),
       offset_distance: 2.0,
@@ -721,6 +718,8 @@ impl Default for Shell {
       auto_frame: true,
       framed: false,
       last_canvas: CanvasRect::default(),
+      applied_theme: None,
+      show_icons: false,
     }
   }
 }
@@ -729,6 +728,26 @@ impl Shell {
   /// A shell with default widget values.
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// The colour set this shell draws in.
+  pub fn theme(&self) -> Theme {
+    self.theme
+  }
+
+  /// Switch the colour set. It takes effect on the next frame, because a frame is what publishes it.
+  pub fn set_theme(&mut self, theme: Theme) {
+    self.theme = theme;
+  }
+
+  /// The palette of the current set, resolved once per frame by whoever needs several roles.
+  pub fn palette(&self) -> Palette {
+    self.theme.palette()
+  }
+
+  /// The measurements of the current set.
+  pub fn metrics(&self) -> theme::Metrics {
+    self.theme.metrics()
   }
 
   /// Apply one action and show what it produced in the status bar.
@@ -788,6 +807,61 @@ impl Shell {
     ctx.root_ui(|ui| self.show_in(app, ui))
   }
 
+  /// The whole glyph set, on one window.
+  ///
+  /// A glyph is only checkable against its neighbours: one drawn at a 2.4 stroke looks fine alone and
+  /// wrong beside sixty-five drawn at 1.6. The window is deliberately plain — a grid and names —
+  /// because it is an instrument, not a screen the operator ever sees.
+  fn icon_sheet(&mut self, ctx: &Context) {
+    let palette = self.palette();
+    let metrics = self.metrics();
+    let mut open = self.show_icons;
+    egui::Window::new("Icons")
+      .open(&mut open)
+      .resizable(true)
+      .default_width(620.0)
+      .show(ctx, |ui| {
+        ui.label(
+          egui::RichText::new(format!(
+            "{} glyphs · stroke {} in a {} box · F2 closes",
+            Icon::ALL.len(),
+            metrics.icon_stroke,
+            metrics.icon_size
+          ))
+          .text_style(theme::caption()),
+        );
+        ui.add_space(metrics.space(3));
+        egui::Grid::new("icon-sheet")
+          .num_columns(8)
+          .spacing([metrics.space(4), metrics.space(3)])
+          .show(ui, |ui| {
+            for (index, icon) in Icon::ALL.iter().enumerate() {
+              ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = metrics.space(0);
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), Sense::hover());
+                let scale = rect.width() / metrics.icon_size;
+                icons::paint(
+                  ui.painter(),
+                  rect,
+                  *icon,
+                  palette.get(Role::Text),
+                  metrics.icon_stroke * scale,
+                );
+                ui.label(
+                  egui::RichText::new(icon.name())
+                    .text_style(theme::caption())
+                    .color(palette.get(Role::TextDim)),
+                );
+              });
+              if index % 8 == 7 {
+                ui.end_row();
+              }
+            }
+          });
+      });
+    self.show_icons = open;
+  }
+
   /// Build one frame into an existing root [`egui::Ui`].
   ///
   /// `eframe` hands the application a root `Ui` directly, and calling [`Self::show`] from inside that
@@ -795,6 +869,19 @@ impl Shell {
   pub fn show_in(&mut self, app: &mut AppState, ui: &mut egui::Ui) -> ShellOutput {
     let mut output = ShellOutput::default();
     let ctx = ui.ctx().clone();
+    // The tokens reach egui when the set changes, not once per frame.
+    if self.applied_theme != Some(self.theme) {
+      theme::apply(&ctx, self.theme);
+      self.applied_theme = Some(self.theme);
+    }
+    // F2 opens the glyph set: the vocabulary is part of the design, so it has to be inspectable from
+    // inside the app that uses it rather than only from the artboard.
+    if ctx.input(|input| input.key_pressed(egui::Key::F2)) {
+      self.show_icons = !self.show_icons;
+    }
+    if self.show_icons {
+      self.icon_sheet(&ctx);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -1248,8 +1335,9 @@ impl Shell {
   }
 
   fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+    let palette = self.palette();
     egui::CentralPanel::default()
-      .frame(egui::Frame::NONE.fill(palette::CANVAS))
+      .frame(egui::Frame::NONE.fill(palette.get(Role::Canvas)))
       .show(ui, |ui| {
         let available = ui.available_rect_before_wrap();
         let (response, painter) = ui.allocate_painter(available.size(), Sense::click_and_drag());
@@ -1622,13 +1710,14 @@ impl Shell {
     app: &AppState,
     output: &mut ShellOutput,
   ) {
+    let palette = self.palette();
     let camera = *app.camera();
     self.grid_spacing = cam_view::nice_spacing(camera.pixels_per_mm(), TARGET_GRID_PIXELS);
 
     let grid = build_grid(&camera, TARGET_GRID_PIXELS);
     output.drawn.painted_grid_lines = grid.len();
     for item in &grid.items {
-      paint_item(&painter, canvas, &camera, item, 1.0);
+      paint_item(&painter, canvas, &camera, item, 1.0, &palette);
     }
 
     // The stock outline, so the user can see where the material ends.
@@ -1639,12 +1728,13 @@ impl Shell {
       &camera,
       Point2::new(0.0, 0.0),
       Point2::new(job.width.mm(), job.height.mm()),
+      &palette,
     );
 
     let scene = build_scene(app.document(), app.selection());
     output.drawn.painted_items = scene.len();
     for item in &scene.items {
-      paint_item(&painter, canvas, &camera, item, 1.6);
+      paint_item(&painter, canvas, &camera, item, 1.6, &palette);
     }
 
     if let Some((_, point)) = self.snap_marker {
@@ -1655,14 +1745,14 @@ impl Shell {
           Pos2::new(position.x - size, position.y),
           Pos2::new(position.x + size, position.y),
         ],
-        Stroke::new(1.5, palette::SNAP),
+        Stroke::new(1.5, palette.get(Role::Sel)),
       );
       painter.line_segment(
         [
           Pos2::new(position.x, position.y - size),
           Pos2::new(position.x, position.y + size),
         ],
-        Stroke::new(1.5, palette::SNAP),
+        Stroke::new(1.5, palette.get(Role::Sel)),
       );
     }
 
@@ -1674,7 +1764,7 @@ impl Shell {
         painter.rect_stroke(
           marquee,
           0.0,
-          Stroke::new(1.0, palette::SNAP),
+          Stroke::new(1.0, palette.get(Role::Sel)),
           egui::StrokeKind::Inside,
         );
       }
@@ -1687,12 +1777,12 @@ impl Shell {
       let from = canvas.to_window(camera.world_to_screen(start));
       let to = canvas.to_window(camera.world_to_screen(current));
       if matches!(self.active_tool, Tool::Line | Tool::Polyline) {
-        painter.line_segment([from, to], Stroke::new(1.5, palette::SELECTED));
+        painter.line_segment([from, to], Stroke::new(1.5, palette.get(Role::Sel)));
       } else {
         painter.rect_stroke(
           egui::Rect::from_two_pos(from, to),
           0.0,
-          Stroke::new(1.5, palette::SELECTED),
+          Stroke::new(1.5, palette.get(Role::Sel)),
           egui::StrokeKind::Inside,
         );
       }
@@ -1703,7 +1793,7 @@ impl Shell {
       egui::Align2::LEFT_TOP,
       format!("{:.2} px/mm", camera.pixels_per_mm()),
       egui::FontId::monospace(12.0),
-      palette::GEOMETRY,
+      palette.get(Role::TextDim),
     );
   }
 }
@@ -1715,12 +1805,15 @@ fn paint_item(
   camera: &Camera,
   item: &SceneItem,
   width: f32,
+  palette: &Palette,
 ) {
+  // Four roles carry the whole scene vocabulary: what is drawn, what is selected, what is only
+  // construction, and the grid. A fifth would be a fifth kind of geometry.
   let colour = match item.style() {
-    Style::Normal => palette::GEOMETRY,
-    Style::Selected => palette::SELECTED,
-    Style::Construction => palette::JOB,
-    Style::Grid => palette::GRID,
+    Style::Normal => palette.get(Role::Text),
+    Style::Selected => palette.get(Role::Sel),
+    Style::Construction => palette.get(Role::TextDim),
+    Style::Grid => palette.get(Role::Hairline),
   };
   let points: Vec<Pos2> = match item {
     SceneItem::Polyline { points, .. } => points
@@ -1759,6 +1852,7 @@ fn paint_world_rect(
   camera: &Camera,
   min: Point2,
   max: Point2,
+  palette: &Palette,
 ) {
   let corners = [
     Point2::new(min.x, min.y),
@@ -1771,7 +1865,10 @@ fn paint_world_rect(
     .iter()
     .map(|point| canvas.to_window(camera.world_to_screen(*point)))
     .collect();
-  painter.add(egui::Shape::line(points, Stroke::new(1.0, palette::JOB)));
+  painter.add(egui::Shape::line(
+    points,
+    Stroke::new(1.0, palette.get(Role::Border)),
+  ));
 }
 
 /// Apply one action to the application state.
