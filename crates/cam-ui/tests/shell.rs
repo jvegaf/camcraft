@@ -1967,3 +1967,31 @@ fn the_palette_chips_still_arm_toggle_and_run() {
     other => panic!("the Move chip must push one Translate action, got {other:?}"),
   }
 }
+
+#[test]
+fn every_palette_chip_is_named_by_its_tooltip() {
+  // The T8.2 defect was invisible to every test here: the Shortcuts chip drew the same glyph as Add text
+  // and its hover text was a sentence that never said "Shortcuts". A headless frame reads neither the
+  // pixels nor the hover card, so the closest thing it can assert is that the words a chip shows on hover
+  // contain the word the chip itself stands for.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  for stage in Stage::ALL {
+    shell.set_stage(stage);
+    let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+    for word in &output.drawn.palette {
+      let command = HelpCommand::ALL
+        .iter()
+        .copied()
+        .find(|command| command.label() == word)
+        .unwrap_or_else(|| panic!("{word:?} is drawn on the palette but no command answers to it"));
+      let tooltip = cam_ui::chrome::palette_tooltip(command);
+      assert!(
+        tooltip.contains(word),
+        "the {word:?} chip's tooltip is {tooltip:?}, which never names the chip"
+      );
+    }
+  }
+}

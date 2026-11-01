@@ -387,3 +387,24 @@ The foundations are delivered. What remains of the concept, in the order the des
   (invisible, not interactable), so a headless test needs one quiet frame before reading `menu_hits`; a press on a
   disabled row does not fall through to the canvas underneath; and the open state lives in the context, not in
   `Shell`, so a second right-click re-anchors instead of stacking menus.
+
+- **L33 (the screenshot's defect, fixed, and re-checked by the same eye).** The visual pass on T8.3 found that the new
+  `Shortcuts` chip was **indistinguishable from `Add text`**: both drew `Icon::Text` — the same `T` — and its tooltip
+  read "The keys the shell answers to", which never names it. The tests passed because they read
+  `DrawnState.palette` strings, not pixels: the L18/L22 class again. Fixed in three parts. A keyboard glyph — two
+  keycaps over a space bar, `(3,5)+(7,6)`, `(14,5)+(7,6)`, `(6,14)+(12,5)` on the 24 grid — joined the set in the
+  `ViewDocument` family right after `Help`, the range widening `46..=62` and the `Icon::ALL` length assert moving
+  70 → 71. `palette_tooltip` now builds every entry from `Command::label()`, so no chip can depend on a sentence that
+  never says what it is; the RED for that found a **second** unnamed chip (`Layers` said "Inspector — collapse or
+  expand"). And two tests pin the pixel fact in the only way a headless test can:
+  `shortcuts_has_a_glyph_and_a_word_of_its_own` (the two glyphs must differ) and
+  `every_palette_chip_is_named_by_its_tooltip`. Gate: **1 102 tests across 92 suites** (+2).
+  Re-checked on screen at the same 2533×1383 window: distinguishable at actual size without hovering, tooltip naming
+  it, the sheet reading `71 glyphs` with `View, document, display · 17` and the new stroke matching the `?` beside it.
+  Three honest leftovers, none of them fixed here: *(1)* adding the 17th member pushed `toolpath-pocket` onto a third
+  row and the sheet now **clips `toolpath-profile`'s label** at its right edge — the same pre-existing column-width
+  problem with a new victim; remedy is widening `min_col_width` or shortening the label, and it deserves the test that
+  can see it. *(2)* A palette chip's tooltip still draws **above** the `F2` sheet when the pointer rests on a chip as it
+  opens (pre-existing z-order). *(3)* `icons.rs` documents `tests::the_families_cover_the_set_in_order`, which **does not
+  exist**; family contiguity rests only on `family()` being one ordered `match`, so the doc promises a guard the tree
+  does not have. Recorded, not papered over.

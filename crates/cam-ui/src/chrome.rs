@@ -411,7 +411,7 @@ impl Shell {
                     ui,
                     &palette,
                     icon,
-                    palette_tooltip(command),
+                    &palette_tooltip(command),
                     self.palette_active(command),
                     true,
                     20.0,
@@ -964,8 +964,9 @@ fn tool_icon(tool: Tool) -> Icon {
 /// Which glyph a command is drawn with, wherever the frame draws it as an icon.
 ///
 /// A gesture keeps the glyph its tool has always had ([`tool_icon`]); the rest are the symbols the palette
-/// and the app bar already used for them. The set has no keyboard glyph, so `Shortcuts` borrows the
-/// letterform and lets its hover text say the rest.
+/// and the app bar already used for them. Each one has to be its own picture: `Shortcuts` drew with
+/// [`Icon::Text`] until T8.2 shipped it two runs below the `Add text` chip, and two chips with one glyph
+/// are two chips an operator cannot tell apart.
 fn command_icon(command: Command) -> Icon {
   if let Some(tool) = command.tool() {
     return tool_icon(tool);
@@ -982,7 +983,7 @@ fn command_icon(command: Command) -> Icon {
     Command::Grid => Icon::Grid,
     Command::Layers => Icon::Layers,
     Command::Help => Icon::Help,
-    Command::Shortcuts => Icon::Text,
+    Command::Shortcuts => Icon::Shortcuts,
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
     Command::FitJob => Icon::ZoomFit,
@@ -995,15 +996,21 @@ fn command_icon(command: Command) -> Icon {
 
 /// The words a palette chip shows on hover.
 ///
-/// The label is the chip's own word; the four that can say more than a word say it, because "Grid" alone
-/// does not tell an operator that the chip is a switch.
-fn palette_tooltip(command: Command) -> &'static str {
+/// Every chip is named by its own hover text: the label always leads, and the four that can say more than
+/// a word say it after the label, because "Grid" alone does not tell an operator that the chip is a
+/// switch. `Shortcuts` shipped as "The keys the shell answers to" — a true sentence that never said
+/// *Shortcuts* — so the label leads here instead of being replaced by prose at the call site.
+///
+/// Public so a headless test can read the words a chip shows on hover: `DrawnState` reports what the
+/// palette drew, and the one thing it cannot report is a card that only appears under the pointer.
+pub fn palette_tooltip(command: Command) -> String {
+  let label = command.label();
   match command {
-    Command::Grid => "Grid and snapping",
-    Command::Layers => "Inspector — collapse or expand",
-    Command::Help => "Help — F1",
-    Command::Shortcuts => "The keys the shell answers to",
-    _ => command.label(),
+    Command::Grid => format!("{label} and snapping"),
+    Command::Layers => format!("{label} — the inspector, collapse or expand"),
+    Command::Help => format!("{label} — F1"),
+    Command::Shortcuts => format!("{label} — the keys the shell answers to"),
+    _ => label.to_owned(),
   }
 }
 
@@ -1256,4 +1263,23 @@ fn note(ui: &mut egui::Ui, palette: &Palette, text: &str) {
       .size(theme::CAPTION)
       .color(palette.get(Role::TextDim)),
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn shortcuts_has_a_glyph_and_a_word_of_its_own() {
+    assert_ne!(
+      command_icon(Command::Shortcuts),
+      command_icon(Command::AddText),
+      "Shortcuts and Add text draw the same glyph, so the two chips are the same picture"
+    );
+    assert!(
+      palette_tooltip(Command::Shortcuts).contains(Command::Shortcuts.label()),
+      "the Shortcuts chip's tooltip is {:?}, which never says what it is",
+      palette_tooltip(Command::Shortcuts)
+    );
+  }
 }
