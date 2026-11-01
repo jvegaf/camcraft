@@ -514,3 +514,40 @@ design argues for:
   them is one that starts **after** the routing file exists; nothing written while this one lives can reach the lens.
   T9 stays shipped on the gate, the two visual passes and the invariants L35 added — the disposition of L30 and L36
   unchanged, and now with a dated reason.
+
+- **L39 (owner, verbatim).** *"dale con todo"* — the three fronts proposed after the merge: the review of T9, the
+  slices the record still owes, and the screenshot patterns. The review is L38. What follows is the rest, split by
+  what the code can actually support, measured rather than assumed.
+
+## Slices from the screenshots (T10-T14)
+
+| ID | Task | Specs | Route |
+| --- | --- | --- | --- |
+| T10 | Fold the seven parameterised command constructions into one module (`params.rs`): one `&Shell` + view centre → `UiAction` builder per command, with the clamp/range each number needs travelling with the builder, so `chrome::command_action` and `lib::authoring` cannot disagree | S5 S7 | worker |
+| T11 | The simulation progress bar: a real `egui::ProgressBar` with elapsed and total, read from the clock `view3d` already owns (`progress()`, `elapsed()`, `duration()`), replacing the text percentage | S2 S4 S8 | worker |
+| T12 | The material dialog: two choice cards (flat sheet / rotary) over a live annotated key plan, writing through a new `UiAction::SetJob` and its handler, and the positivity check `SetJob` does not have today while `Job::outline` panics without one | S2 S7 S8 | worker |
+| T13 | Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
+| T14 | ⛔ not authorised — the current-tool card and the estimated time. **Data missing**: `cam-ui` does not depend on `cam-store`/`cam-toolpath`, there is no tool library handle on `Shell`, and the shell cannot author a toolpath at all. This is a product decision, not a slice | S2 S8 | — |
+
+- **S8 — the screenshots are the pattern authority.** Eight frames of the reference live in
+  `design/Screenshots-reference/`, and `README.md` annotates each one with the pattern it settles. Where a screenshot
+  and an inference from the `.exe`'s strings disagree, the screenshot wins.
+- **S9 — counted, never invented.** A stage that cannot be measured says so with a dash and a sentence, rather than
+  showing a number nothing computes. The rule is already in `chrome.rs:25-28`; T13 is where it starts to bite, because
+  two of the five stages become countable and three do not.
+
+- **L40 (the plan after the handoff, and the two places it changed).** A read-only exploration of the shell measured
+  what each slice needs, and it moved two of them. (1) **T14 is not implementable now**: the cutting tool lives in
+  `cam-store`/`cam-toolpath` and each `Toolpath` carries only a `tool_number` resolved against `Document.tools_ref`,
+  none of which `cam-ui` can reach — `cam-ui` has no dependency on either crate and no library handle on `Shell`.
+  An estimated time would have to be invented, which S9 forbids. It stays unstarted. (2) **T12 carries a defect it
+  found rather than created**: `cam_app::Command::SetJob` assigns width, height and thickness with no positivity
+  check (`cam-app/src/command.rs:433-443`) while `Job::outline` panics on non-positive dimensions
+  (`cam-model/src/lib.rs:180-185`). A dialog is the first thing that can feed it a zero, so the validation travels
+  with the dialog. Two facts keep the other three honest: the only real time computation in the workspace is
+  `Preview3d`'s clock (`view3d.rs:106-107,260-291`), which is what T11 must read instead of inventing one; and the
+  seven duplicated constructions produce **identical** `UiAction`s today — every difference lives outside the action,
+  in widget metadata and in the `array_grid` range that only the Tools tab applies (`lib.rs:1333-1334`), so T10 is a
+  pure fold and its risk is a silent behaviour change, not a design question.
+  Route: four writers **sequentially**, not in parallel, because all four surfaces include
+  `crates/cam-ui/src/lib.rs` and parallel writers on one file are a collision, not a speed-up.
