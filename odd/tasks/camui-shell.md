@@ -352,3 +352,38 @@ The foundations are delivered. What remains of the concept, in the order the des
   constructions into one module is its own slice. Also flagged: the icon set has no keyboard glyph, so `Shortcuts`
   uses `Icon::Text` with a comment instead of an invented glyph, and the app-bar `?` rewiring carries no mouse-level
   test because its rect is not reported — the palette chip test pins the same one-line toggle.
+
+- **L32 (T8.3 delivered: the canvas grows a second mouse button).** Right-clicking the sheet opens a context menu with
+  two scopes. **Object** — Move, Rotate, Scale, Mirror, Array, Offset, Join, Trim, Node edit, Delete selection —
+  because every one of those takes its operand from the selection and would only refuse over empty canvas. **Canvas** —
+  Add text, Add rectangle, Undo, Redo, 3D, Grid, Layers, Theme, Fit the job. Left out on purpose: `Align`, whose six
+  modes *are* what Align means (a menu row that must then ask which one is a submenu nobody asked for), and `Select`
+  with the nine gestures, since arming a gesture while opening a sheet over the drawing is two gestures at once.
+  `help.rs::MenuScope` is the only list of either scope and it filters `Command::ALL`, so rows inherit the table's
+  words and order; a row runs through `run_command`, the same runner the palette chips use. The scope is decided on
+  the right-click in `handle_input` (`lib.rs:1865`) and remembered in `Shell::menu_scope` as **view state** — a
+  right-click on empty canvas must keep the existing selection and still mean the canvas menu, which recomputing the
+  pick inside the popup would break. Pointing at an unselected entity emits exactly one `UiAction::SetSelection`, the
+  same effect a plain click has. The report surface is `DrawnState.menu` plus `DrawnState.menu_hits` — the popup only
+  exists while the button has opened it and egui offers no widget-by-text lookup from outside a frame, so the tests
+  press a recorded point (the same shape as L31's `palette_hits`).
+  Nine tests (+275 lines in `tests/input.rs`), RED by build (`no field menu` six times, `menu_hits` once) — with the
+  writer's own honesty that two Trim tests had no RED, since they were written after the menu compiled. Gate:
+  **1 100 tests across 92 suites** (+9), exit 0. `Sense::click_and_drag()` is untouched, which the parent checked by
+  grep: the drawing gesture is the one thing a context menu could silently break.
+  **Differential on the shared code**, because this slice renamed `run_palette_command` → `run_command` and added four
+  arms: every palette chip on all five stages clicked in a base tree and in the working tree with a shared scratch
+  target, comparing emitted actions verbatim (Transform/Array/Offset/AddText payloads and camera centres included),
+  armed tool, snapping, inspector, 3D, help panel, theme, status, hint, selection and the whole document JSON —
+  **zero differences**; and the Tools tab's Trim button for selections `[E1]`, `[E1,E2]`, `[E2]` — zero differences.
+  **Judgements kept:** the canvas menu says **"Fit the job"**, the table's own word, rather than inventing "Zoom to
+  fit" (a second name for one command is exactly what the menu rule forbids); `Node edit` is a single row that can only
+  mean move-node, so its hover slightly over-promises — flagged rather than papered over, and a future slice either
+  turns it into a submenu or splits the three node edits into their own commands; `Trim` is the one dark row, and its
+  target/cutter pairing moved into `chrome::trim_action` so the button and the row cannot cut differently.
+  **egui 0.37 facts a later slice needs:** `Response::context_menu` opens on `secondary_clicked()` and
+  `Sense::click_and_drag()` already satisfies it; a right-click does not make `clicked()` true; the popup is
+  `at_pointer_fixed` with `CloseOnClick`, so it does not follow the pointer; its **first frame is a sizing pass**
+  (invisible, not interactable), so a headless test needs one quiet frame before reading `menu_hits`; a press on a
+  disabled row does not fall through to the canvas underneath; and the open state lives in the context, not in
+  `Shell`, so a second right-click re-anchors instead of stacking menus.

@@ -32,11 +32,11 @@
 //! glance instead of one search. The cost — an expert pays a stage switch — is the trade the artboard
 //! names.
 
-use cam_app::{AppState, Transform};
+use cam_app::{AppState, Transform, VertexEdit};
 use cam_geom::{Point2, Vec2};
 use egui::{Align, Layout, RichText, Sense};
 
-use crate::help::{Command, Group};
+use crate::help::{Command, Group, MenuScope};
 use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
 use crate::{Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
@@ -289,10 +289,7 @@ impl Shell {
               Theme::Light => (Icon::ThemeLight, "Theme: light — press for dark"),
             };
             if icon_button(ui, &palette, icon, label, false, true, 18.0).clicked() {
-              self.theme = match self.theme {
-                Theme::Dark => Theme::Light,
-                Theme::Light => Theme::Dark,
-              };
+              self.flip_theme();
             }
             // The view toggle the artboard floats over the canvas. It lives in the app bar instead, and it
             // is a segmented control because the choice is exclusive: two alternatives, visible at once, so
@@ -420,7 +417,7 @@ impl Shell {
                     20.0,
                   );
                   if response.clicked() {
-                    self.run_palette_command(command, app, output);
+                    self.run_command(command, app, output);
                   }
                   let centre = response.rect.center();
                   offered.push(command.label().to_owned());
@@ -467,12 +464,17 @@ impl Shell {
     runs
   }
 
-  /// Run one palette chip: arm its gesture, flip the view flag it owns, or push its action.
+  /// Run one command: arm its gesture, flip the view flag it owns, or push its action.
   ///
   /// The cases are the table's own distinction — [`Command::tool`] for a gesture, the view commands that
   /// only change what the frame shows, and [`Command::action`] for everything that reaches the document —
   /// plus the commands whose action carries a number the Tools tab holds.
-  fn run_palette_command(&mut self, command: Command, app: &AppState, output: &mut ShellOutput) {
+  ///
+  /// Both mice meet here. A chip in the palette and a row in the canvas context menu run a command the same
+  /// way, which is what lets the menu offer the table's commands without owning a second copy of any of
+  /// them; the view arms below that no palette chip reaches (`3D`, `Theme`) are the canvas menu's, because a
+  /// toggle is the one thing a menu row can be that a command's own action cannot express.
+  fn run_command(&mut self, command: Command, app: &AppState, output: &mut ShellOutput) {
     if let Some(tool) = command.tool() {
       self.active_tool = tool;
       return;
@@ -482,18 +484,28 @@ impl Shell {
       Command::Layers => self.inspector_open = !self.inspector_open,
       Command::Help => self.show_help = !self.show_help,
       Command::Shortcuts => self.show_shortcuts = !self.show_shortcuts,
-      _ => output
-        .actions
-        .extend(self.palette_action(command, app.camera().center())),
+      Command::View3d => self.show_3d = !self.show_3d,
+      Command::Theme => self.flip_theme(),
+      _ => output.actions.extend(self.command_action(command, app)),
     }
   }
 
-  /// The action a palette command pushes, built from the numbers the Tools tab holds.
+  /// Switch the colour set, from the app bar's button or from the canvas menu's `Theme` row.
+  fn flip_theme(&mut self) {
+    self.theme = match self.theme {
+      Theme::Dark => Theme::Light,
+      Theme::Light => Theme::Dark,
+    };
+  }
+
+  /// The action a command pushes, built from the numbers the Tools tab holds.
   ///
   /// These are the same constructions the Tools tab draws as labelled buttons, and this is the one place
-  /// they are built now: the rail and the tab read the same fields, so a number typed once is the number
-  /// both run.
-  fn palette_action(&self, command: Command, centre: Point2) -> Option<UiAction> {
+  /// they are built now: the rail, the menu and the tab read the same fields, so a number typed once is the
+  /// number all three run. `Node edit` is the Tools tab's *Move node*, because a menu row is one command and
+  /// moving the node at the index the tab holds is the one of the three that reads a single index.
+  fn command_action(&self, command: Command, app: &AppState) -> Option<UiAction> {
+    let centre = app.camera().center();
     match command {
       Command::AddText => Some(UiAction::AddText {
         text: self.text.clone(),
@@ -526,6 +538,11 @@ impl Shell {
       Command::Offset => Some(UiAction::Offset {
         distance: self.offset_distance,
       }),
+      Command::NodeEdit => Some(UiAction::EditVertex(VertexEdit::Move {
+        index: self.vertex_index,
+        to: Point2::new(self.vertex_position.0, self.vertex_position.1),
+      })),
+      Command::Trim => trim_action(app),
       _ => command.action(),
     }
   }
@@ -537,6 +554,58 @@ impl Shell {
       Command::Layers => self.inspector_open,
       _ => command.tool().is_some_and(|tool| tool == self.active_tool),
     }
+  }
+
+  /// The canvas context menu: the commands that act on what the pointer was over.
+  ///
+  /// This is the shell's first secondary-button gesture. egui's [`egui::Response::context_menu`] opens the
+  /// popup at the pointer on a right-click and closes it on the next click, so nothing here tracks open or
+  /// closed: the popup's own memory does, and this only fills it with the table's rows. What it offers comes
+  /// from [`MenuScope`] — decided by the pointer's right-click in `Shell::handle_input`, because the
+  /// selection cannot answer it (a right-click on empty canvas keeps an existing selection and still means
+  /// the canvas menu).
+  ///
+  /// A row is a [`Command`], so its word, its teaching and the rule that runs it are already the shell's;
+  /// a disabled row is a command that would refuse, and its `how` says why. The two report fields —
+  /// [`crate::DrawnState::menu`] and [`crate::DrawnState::menu_hits`] — exist for the same reason the
+  /// palette's do: egui cannot be asked for a widget by its text from outside a frame.
+  pub(crate) fn canvas_menu(
+    &mut self,
+    app: &AppState,
+    response: &egui::Response,
+    output: &mut ShellOutput,
+  ) {
+    let scope: MenuScope = self.menu_scope;
+    response.context_menu(|ui| {
+      for command in scope.commands() {
+        let label = command.label();
+        let enabled = menu_enabled(command, app);
+        let entry = ui.add_enabled(
+          enabled,
+          egui::Button::new(RichText::new(label).size(theme::SMALL)),
+        );
+        // The row teaches what the command gives and costs, in the words the `F1` panel uses for it: one
+        // sentence of consequence when it can run, and the instruction that names the missing operand when
+        // it cannot.
+        let entry = if enabled {
+          entry.on_hover_text(command.help().what)
+        } else {
+          entry.on_disabled_hover_text(command.help().how)
+        };
+        let centre = entry.rect.center();
+        output.drawn.menu.push(label.to_owned());
+        output
+          .drawn
+          .menu_hits
+          .push((label.to_owned(), (centre.x, centre.y)));
+        if entry.clicked() {
+          self.run_command(command, app, output);
+          // A row runs one command and the menu is done. egui's menu popup would also close on this click,
+          // but saying it here means the row does not depend on that default staying what it is.
+          ui.close();
+        }
+      }
+    });
   }
 
   /// The right inspector: the stage's commands, the selection's numbers, the job — and the layers,
@@ -845,6 +914,35 @@ impl Shell {
         }
       });
     self.show_shortcuts = open;
+  }
+}
+
+/// Whether one canvas-menu row can run.
+///
+/// Only a trim refuses on the strength of the selection alone: it needs a target and a cutter, so over one
+/// object the row is drawn dark instead of promising something the command layer would refuse. Every other
+/// row in either scope either needs nothing selected or is only offered over an object.
+fn menu_enabled(command: Command, app: &AppState) -> bool {
+  match command {
+    Command::Trim => app.selection().len() >= 2,
+    _ => true,
+  }
+}
+
+/// The trim this selection asks for, if it asks for one.
+///
+/// A trim needs two operands and the selection has to name which is which: it is ordered by id, so the
+/// first id is the target and the second the cutter. This is the one rule both the Tools tab's button and
+/// the canvas menu's row use — a trim that cut the other way from one place than the other would be two
+/// commands wearing one word.
+pub(crate) fn trim_action(app: &AppState) -> Option<UiAction> {
+  let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+  match selected.as_slice() {
+    [target, cutter, ..] => Some(UiAction::Trim {
+      target: target.clone(),
+      cutter: cutter.clone(),
+    }),
+    _ => None,
   }
 }
 

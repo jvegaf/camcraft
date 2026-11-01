@@ -72,6 +72,77 @@ impl Group {
   }
 }
 
+/// What a context menu is offering, decided by what the pointer was over when it opened.
+///
+/// The shell has two canvas menus and no more: one over an object, which offers the commands that work on
+/// what is selected, and one over empty canvas, which offers the commands that put something on the sheet
+/// or change what the frame shows. [`MenuScope::commands`] is the only list that says which commands each
+/// menu holds, so a menu draws the table's words, in the table's order, with the table's teaching — and
+/// there is no second vocabulary to drift from it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MenuScope {
+  /// A menu opened over an entity: the commands that act on the selection.
+  Object,
+  /// A menu opened over empty canvas: the commands that add geometry or change the view.
+  #[default]
+  Canvas,
+}
+
+impl MenuScope {
+  /// The commands this menu offers, in [`Command::ALL`] order.
+  pub fn commands(self) -> Vec<Command> {
+    Command::ALL
+      .iter()
+      .copied()
+      .filter(|command| self.offers(*command))
+      .collect()
+  }
+
+  /// Whether this scope holds one command.
+  ///
+  /// The object menu is the transform family, the vector surgery that reads one or two selected vectors,
+  /// and Delete: every one of them takes its operand from the selection, so none of them can be offered
+  /// over empty canvas where it could only refuse. [`Command::Trim`] is listed although it needs two
+  /// vectors — over one object the menu draws it dark and its own `how` says why, which is the same answer
+  /// the Tools tab's button gives.
+  ///
+  /// The canvas menu is what puts something on the sheet (a typed rectangle, text), the history, and the
+  /// four view switches the shell really has — snapping, the inspector, the 3D view and the colour set —
+  /// plus framing the job. Neither menu offers `Select` or the nine drawing gestures: a gesture is armed on
+  /// the rail, and a menu that both armed one and opened over the sheet would be two gestures at once.
+  /// `Align` is left out of the object menu because its six modes are what `Align` means, and a menu row
+  /// that has to ask which one is a submenu nobody asked for.
+  fn offers(self, command: Command) -> bool {
+    match self {
+      Self::Object => matches!(
+        command,
+        Command::Move
+          | Command::Rotate
+          | Command::Scale
+          | Command::Mirror
+          | Command::Array
+          | Command::Offset
+          | Command::Join
+          | Command::Trim
+          | Command::NodeEdit
+          | Command::DeleteSelection
+      ),
+      Self::Canvas => matches!(
+        command,
+        Command::AddText
+          | Command::AddRectangle
+          | Command::Undo
+          | Command::Redo
+          | Command::View3d
+          | Command::Grid
+          | Command::Layers
+          | Command::Theme
+          | Command::FitJob
+      ),
+    }
+  }
+}
+
 /// One command the shell offers, with no parameters.
 ///
 /// This is deliberately not [`crate::UiAction`]: an action carries the numbers of one invocation

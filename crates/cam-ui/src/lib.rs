@@ -583,6 +583,19 @@ pub struct DrawnState {
   /// this to prove that every command in the table is listed, which is the one claim a screenshot of a
   /// long list of labels cannot make.
   pub help: Vec<String>,
+  /// The words the canvas context menu drew, in the order it drew them.
+  ///
+  /// Empty while no menu is open, because a popup nobody opened drew no row. The menu is the one part of
+  /// the frame that only exists while the secondary button has been pressed, so this is how a headless test
+  /// sees it at all — and its entries are [`crate::help::Command`] labels, which is what makes "every entry
+  /// can be explained" checkable rather than asserted.
+  pub menu: Vec<String>,
+  /// Where the context menu drew each entry: its word and the point in the window that presses it.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason: egui offers no
+  /// widget-by-text lookup from outside a frame, so a test that has to press a menu row is given the point
+  /// the row was drawn at instead of guessing at the popup's margins.
+  pub menu_hits: Vec<(String, (f32, f32))>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
@@ -725,6 +738,13 @@ pub struct Shell {
   pub show_help: bool,
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   help_focus: crate::help::Command,
+  /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
+  ///
+  /// View state, like [`Shell::drag_box`]: it is what the menu offers, never what the document holds. The
+  /// right-click decides it ([`Shell::handle_input`]) because the selection cannot — a right-click on empty
+  /// canvas keeps an existing selection and still means the canvas menu — and it is re-decided on every
+  /// right-click, so a menu can never outlive the click that opened it.
+  menu_scope: crate::help::MenuScope,
 }
 
 impl Default for Shell {
@@ -774,6 +794,7 @@ impl Default for Shell {
       show_shortcuts: false,
       show_help: false,
       help_focus: crate::help::Command::ALL[0],
+      menu_scope: crate::help::MenuScope::default(),
     }
   }
 }
@@ -1178,7 +1199,9 @@ impl Shell {
   /// a panel that cannot fit them all would hide half of them.
   fn authoring(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let centre = app.camera().center();
-    let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+    // The trim this selection asks for, built by the same rule the canvas menu's row uses: None while fewer
+    // than two vectors are selected, which is what leaves the button dark.
+    let trim = chrome::trim_action(app);
 
     {
       ui.heading("Authoring");
@@ -1360,18 +1383,13 @@ impl Shell {
         if ui.button("Join").clicked() {
           output.actions.push(UiAction::Join);
         }
-        // Trim needs to know which of the two selected entities is the target and which the cutter;
-        // the selection is ordered by id, so the first id is the target and the second the cutter.
+        // Trim needs to know which of the two selected entities is the target and which the cutter; the
+        // pairing lives in `chrome::trim_action`, so the button and the context menu's row cannot disagree.
         if ui
-          .add_enabled(selected.len() >= 2, egui::Button::new("Trim"))
+          .add_enabled(trim.is_some(), egui::Button::new("Trim"))
           .clicked()
         {
-          if let [target, cutter, ..] = selected.as_slice() {
-            output.actions.push(UiAction::Trim {
-              target: target.clone(),
-              cutter: cutter.clone(),
-            });
-          }
+          output.actions.extend(trim.clone());
         }
       });
       ui.label(RichText::new("Nodes").size(theme::SMALL));
@@ -1517,6 +1535,9 @@ impl Shell {
         }
 
         self.handle_input(app, ui, &response, &canvas, output);
+        // The context menu is drawn after the input that opens it, so a right-click and the rows it scopes
+        // arrive in the same frame; the popup's own memory decides whether it is open at all.
+        self.canvas_menu(app, &response, output);
         self.paint(painter, &canvas, app, output);
       });
   }
@@ -1834,6 +1855,32 @@ impl Shell {
           output.actions.push(UiAction::SetSelection(
             hit.map(|hit| vec![hit.entity]).unwrap_or_default(),
           ));
+        }
+      }
+    }
+
+    // The secondary button scopes the canvas context menu, and that is all it does. Pointing at an entity
+    // selects it first, so the command picked from the menu acts on what the operator pointed at; a pointer
+    // over empty canvas offers the canvas' own commands instead and leaves the selection alone.
+    if response.secondary_clicked() {
+      if let Some(position) = response.interact_pointer_pos() {
+        let scene = build_scene(app.document(), app.selection());
+        let hit = pick(
+          &scene,
+          app.camera(),
+          canvas.to_screen(position),
+          PICK_TOLERANCE_PX,
+        );
+        self.menu_scope = match hit {
+          Some(_) => crate::help::MenuScope::Object,
+          None => crate::help::MenuScope::Canvas,
+        };
+        if let Some(hit) = hit {
+          if !app.selection().contains(&hit.entity) {
+            output
+              .actions
+              .push(UiAction::SetSelection(vec![hit.entity]));
+          }
         }
       }
     }
