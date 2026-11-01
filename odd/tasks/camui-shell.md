@@ -30,11 +30,11 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | — |
-| T2 | `cam-ui/src/icons.rs`: 65 glyphs on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24 | S1 S2 S3 S6 | worker | — |
-| T3 | Icon sheet as an `egui::Window` behind a keystroke, so all 65 can be inspected without touching the layout | S3 S5 | inline | — |
-| T4 | Apply the theme at startup in `cam-desktop` and route the existing `palette` through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | — |
-| T5 | `design/system.md` + `design/system.html` synced from `theme.rs` once it is the project's token source | S3 | inline | — |
+| T1 | ✅ delivered — `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | `3ecf6ac` |
+| T2 | ✅ delivered — `cam-ui/src/icons.rs`: the glyph set on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24. Landed at 66 glyphs, later `4cfb497` (families), `725d9fc` (keyboard), 71 today | S1 S2 S3 S6 | worker | `3ecf6ac` |
+| T3 | ✅ delivered — icon sheet as an `egui::Window` behind `F2`, so the whole set can be inspected without touching the layout | S3 S5 | inline | `3ecf6ac` |
+| T4 | ✅ delivered — theme applied at startup in `cam-desktop` and the existing `palette` routed through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | `3ecf6ac` |
+| T5 | ✅ delivered — `design/system.md` + `design/system.html` synced from `theme.rs` once it became the project's token source. Created `d8e1ff9`, re-synced in `28de0db`, `6e59b91` and `a6a2685` as the token set grew | S3 | inline | `d8e1ff9` |
 
 ## Log
 
@@ -95,18 +95,19 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
   symlink alone is not enough, which is worth knowing before trusting a green `check.sh` in this harness. The first
   gate run also appeared to pass while failing, because `check.sh | tail` swallows the exit status — the gate must
   be run without swallowing it.
-## Next phase (planned, not started, not authorised)
+## Next phase (delivered, except T7 which is planned and not authorised)
 
-The foundations are delivered. What remains of the concept, in the order the design argues for:
+The foundations are delivered, and so is every slice below except T7. What remains of the concept, in the order the
+design argues for:
 
 | ID | Task | Specs |
 | --- | --- | --- |
-| T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
+| T6 | ✅ delivered `7e09653` — the shell frame: app bar, stage bar, the stage-scoped rail (52 px then, the 200 px labelled palette since `28de0db`), the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented. This row used to name `4318205`, a pre-rewrite commit no branch contains | S1 S2 S3 S7 |
 | T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
 | T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
 | T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
 | T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
-| T9 | 🔨 in progress from `725d9fc` — `view3d.rs` shading onto the tokens: five literals (`STOCK`, `CUT`, `TRAVEL`, `SURFACE_TOP`, `SURFACE_BOTTOM`) and a depth ramp are the last colours in the shell that no `Role` owns | S1 S7 |
+| T9 | ✅ delivered `a6a2685` — `view3d.rs` paints only through the theme: the five literals and `depth_colour` are gone, replaced by `StockTop`/`StockBottom`/`StockEdge` and `Palette::stock_shade`, with a material-to-canvas invariant the suite did not have before | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
   in the project's real stack. Use the artboard as the visual spec: map its parts to the project's existing
