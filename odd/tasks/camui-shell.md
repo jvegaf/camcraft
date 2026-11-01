@@ -178,3 +178,11 @@ The foundations are delivered. What remains of the concept, in the order the des
   inserted a heading before the same `horizontal_wrapped`. The groups are now split where the node controls really
   begin. Recorded because it is the second time a screenshot found what 1 071 green tests did not — the tests pin
   behaviour, and grouping is not behaviour.
+
+- **L19 (design comment applied, `bbqxd2m4`).** Owner comment on `03-iconography.html`'s `main`: *"me gusta ese tipo de
+  estetica, junto con el design system de la primera, y el layout de la segunda"*. Applied to the artboard it names:
+  the sheet now says in its lede that its colours, type, spacing and radii are the tokens in `design/system.md` (the
+  same surfaces and two signals as `01-shell-2d`), and its six `<h2>` sections became **six family cards** with a
+  heading, the count and one honest line about what the family is for — the layout `02-stages` uses. No glyph, rule
+  or anatomy figure changed: the comment asks the sheet to *express* the combination, and the combination is the
+  same drawing in the same tokens under the other board's structure.
