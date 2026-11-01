@@ -32,14 +32,14 @@
 //! glance instead of one search. The cost — an expert pays a stage switch — is the trade the artboard
 //! names.
 
-use cam_app::{AppState, Transform, VertexEdit};
-use cam_geom::{Point2, Vec2};
+use cam_app::{AppState, VertexEdit};
+use cam_geom::Point2;
 use egui::{Align, Layout, RichText, Sense};
 
 use crate::help::{Command, Group, MenuScope};
 use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
-use crate::{Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
+use crate::{Shell, ShellOutput, Tool, UiAction};
 
 /// One palette chip: the glyph and the command it runs.
 type PaletteChip = (Icon, Command);
@@ -500,50 +500,20 @@ impl Shell {
 
   /// The action a command pushes, built from the numbers the Tools tab holds.
   ///
-  /// These are the same constructions the Tools tab draws as labelled buttons, and this is the one place
-  /// they are built now: the rail, the menu and the tab read the same fields, so a number typed once is the
-  /// number all three run. `Node edit` is the Tools tab's *Move node*, because a menu row is one command and
-  /// moving the node at the index the tab holds is the one of the three that reads a single index.
+  /// The seven parameterised commands come from [`crate::params`], which is also what the Tools tab's
+  /// buttons call: the chip, the menu row and the tab read the same fields *and* build the same payload, so
+  /// a number typed once is the number all three run. `Node edit` is the Tools tab's *Move node*, because a
+  /// menu row is one command and moving the node at the index the tab holds is the one of the three that
+  /// reads a single index.
   fn command_action(&self, command: Command, app: &AppState) -> Option<UiAction> {
     let centre = app.camera().center();
     match command {
-      Command::AddText => Some(UiAction::AddText {
-        text: self.text.clone(),
-        height: self.text_height,
-        origin: centre,
-      }),
-      Command::Move => Some(UiAction::Transform(Transform::Translate {
-        delta: Vec2::new(self.move_delta.0, self.move_delta.1),
-      })),
-      Command::Rotate => Some(UiAction::Transform(Transform::Rotate {
-        radians: self.rotate_degrees.to_radians(),
-        about: centre,
-      })),
-      Command::Scale => Some(UiAction::Transform(Transform::Scale {
-        sx: self.scale_factors.0,
-        sy: self.scale_factors.1,
-        about: centre,
-        tolerance: DEFAULT_TOLERANCE_MM,
-      })),
-      Command::Mirror => Some(UiAction::Transform(Transform::Mirror {
-        point: centre,
-        direction: Vec2::Y_AXIS,
-      })),
-      Command::Array => Some(UiAction::Array {
-        rows: self.array_grid.0,
-        columns: self.array_grid.1,
-        dx: self.array_spacing.0,
-        dy: self.array_spacing.1,
-      }),
-      Command::Offset => Some(UiAction::Offset {
-        distance: self.offset_distance,
-      }),
       Command::NodeEdit => Some(UiAction::EditVertex(VertexEdit::Move {
         index: self.vertex_index,
         to: Point2::new(self.vertex_position.0, self.vertex_position.1),
       })),
       Command::Trim => trim_action(app),
-      _ => command.action(),
+      _ => crate::params::action(command, self, centre).or_else(|| command.action()),
     }
   }
 

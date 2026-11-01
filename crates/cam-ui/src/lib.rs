@@ -39,7 +39,7 @@
 #![warn(missing_docs)]
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
-use cam_geom::{Point2, Vec2};
+use cam_geom::Point2;
 use cam_model::Job;
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
@@ -56,6 +56,9 @@ pub mod chrome;
 /// The command table and its teaching voice.
 pub mod help;
 pub mod icons;
+/// The seven commands whose numbers travel with their builders: `Add text`, `Move`, `Rotate`, `Scale`,
+/// `Mirror`, `Array` and `Offset`.
+pub mod params;
 pub mod theme;
 
 pub use chrome::{Stage, Tab};
@@ -571,6 +574,14 @@ pub struct DrawnState {
   /// egui cannot be asked for a widget by its text from outside a frame, so the palette reports the
   /// point it drew each chip at and a click test presses that point instead of guessing at the layout.
   pub palette_hits: Vec<(String, (f32, f32))>,
+  /// Where the Tools tab drew each parameterised command's button: its word and the point in the window
+  /// that presses it.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason, for the one
+  /// question only it can answer: the tab and the palette run the same seven payloads, and a test that could
+  /// press only one of them could not prove they agree. Only those seven are listed — the tab's other
+  /// buttons are not built from [`crate::params`], so nothing needs their points.
+  pub authoring_hits: Vec<(String, (f32, f32))>,
   /// The words the app bar's three command buttons answer to, in the order it drew them.
   ///
   /// Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test can
@@ -1197,6 +1208,11 @@ impl Shell {
   /// [`AppState`]. It is its own dock rather than a corner of the properties panel because a reviewer
   /// has to be able to see every command at once: egui culls widgets that fall outside their panel, so
   /// a panel that cannot fit them all would hide half of them.
+  ///
+  /// The seven parameterised commands are drawn and built from [`crate::params`] — the same module the
+  /// palette's chips go through — so this tab owns neither their numbers nor their payloads any more. What
+  /// stays here is the tab's own furniture: the tool list, the typed rectangle, the polygon and star counts,
+  /// Align, Join, Trim and the three node edits, none of which a palette chip reaches.
   fn authoring(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let centre = app.camera().center();
     // The trim this selection asks for, built by the same rule the canvas menu's row uses: None while fewer
@@ -1258,97 +1274,42 @@ impl Shell {
         ui.separator();
         ui.label("Text");
         ui.add(egui::TextEdit::singleline(&mut self.text).desired_width(70.0));
-        ui.add(
-          egui::DragValue::new(&mut self.text_height)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        if ui.button("Add text").clicked() {
-          output.actions.push(UiAction::AddText {
-            text: self.text.clone(),
-            height: self.text_height,
-            origin: centre,
-          });
+        // The seven parameterised commands draw their numbers and push their payloads from the same module
+        // (`crate::params`), so a chip in the palette and this button cannot build two different actions.
+        params::edit(ui, self, crate::help::Command::AddText);
+        if authoring_button(ui, output, crate::help::Command::AddText) {
+          output.actions.push(params::add_text(self, centre));
         }
       });
 
       ui.separator();
       ui.label(RichText::new("Transform").size(theme::SMALL));
       ui.horizontal_wrapped(|ui| {
-        ui.label("Move");
-        ui.add(
-          egui::DragValue::new(&mut self.move_delta.0)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        ui.add(
-          egui::DragValue::new(&mut self.move_delta.1)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        if ui.button("Move").clicked() {
-          output
-            .actions
-            .push(UiAction::Transform(Transform::Translate {
-              delta: Vec2::new(self.move_delta.0, self.move_delta.1),
-            }));
+        params::edit(ui, self, crate::help::Command::Move);
+        if authoring_button(ui, output, crate::help::Command::Move) {
+          output.actions.push(params::translate(self, centre));
         }
         ui.separator();
-        ui.label("Rotate");
-        ui.add(
-          egui::DragValue::new(&mut self.rotate_degrees)
-            .speed(1.0)
-            .suffix("°"),
-        );
-        if ui.button("Rotate").clicked() {
-          output.actions.push(UiAction::Transform(Transform::Rotate {
-            radians: self.rotate_degrees.to_radians(),
-            about: centre,
-          }));
+        params::edit(ui, self, crate::help::Command::Rotate);
+        if authoring_button(ui, output, crate::help::Command::Rotate) {
+          output.actions.push(params::rotate(self, centre));
         }
         ui.separator();
-        ui.label("Scale");
-        ui.add(egui::DragValue::new(&mut self.scale_factors.0).speed(0.05));
-        ui.add(egui::DragValue::new(&mut self.scale_factors.1).speed(0.05));
-        if ui.button("Scale").clicked() {
-          output.actions.push(UiAction::Transform(Transform::Scale {
-            sx: self.scale_factors.0,
-            sy: self.scale_factors.1,
-            about: centre,
-            tolerance: DEFAULT_TOLERANCE_MM,
-          }));
+        params::edit(ui, self, crate::help::Command::Scale);
+        if authoring_button(ui, output, crate::help::Command::Scale) {
+          output.actions.push(params::scale(self, centre));
         }
-        if ui.button("Mirror").clicked() {
-          output.actions.push(UiAction::Transform(Transform::Mirror {
-            point: centre,
-            direction: Vec2::Y_AXIS,
-          }));
+        if authoring_button(ui, output, crate::help::Command::Mirror) {
+          output.actions.push(params::mirror(self, centre));
         }
       });
 
       ui.separator();
       ui.label(RichText::new("Repeat and align").size(theme::SMALL));
       ui.horizontal_wrapped(|ui| {
-        ui.label("Array");
-        ui.add(egui::DragValue::new(&mut self.array_grid.0).range(1..=64));
-        ui.add(egui::DragValue::new(&mut self.array_grid.1).range(1..=64));
-        ui.add(
-          egui::DragValue::new(&mut self.array_spacing.0)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        ui.add(
-          egui::DragValue::new(&mut self.array_spacing.1)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        if ui.button("Array").clicked() {
-          output.actions.push(UiAction::Array {
-            rows: self.array_grid.0,
-            columns: self.array_grid.1,
-            dx: self.array_spacing.0,
-            dy: self.array_spacing.1,
-          });
+        params::edit(ui, self, crate::help::Command::Array);
+        if authoring_button(ui, output, crate::help::Command::Array) {
+          output.actions.push(params::array(self, centre));
         }
         ui.separator();
         ui.label("Align");
@@ -1369,16 +1330,9 @@ impl Shell {
       ui.separator();
       ui.label(RichText::new("Vectors").size(theme::SMALL));
       ui.horizontal_wrapped(|ui| {
-        ui.label("Offset");
-        ui.add(
-          egui::DragValue::new(&mut self.offset_distance)
-            .speed(0.5)
-            .suffix(" mm"),
-        );
-        if ui.button("Offset").clicked() {
-          output.actions.push(UiAction::Offset {
-            distance: self.offset_distance,
-          });
+        params::edit(ui, self, crate::help::Command::Offset);
+        if authoring_button(ui, output, crate::help::Command::Offset) {
+          output.actions.push(params::offset(self, centre));
         }
         if ui.button("Join").clicked() {
           output.actions.push(UiAction::Join);
@@ -2048,6 +2002,26 @@ fn paint_item(
   if points.len() >= 2 {
     painter.add(egui::Shape::line(points, Stroke::new(width, colour)));
   }
+}
+
+/// Draw one Tools-tab command button, report where it landed, and say whether it was pressed.
+///
+/// The palette's chips report their points for the same reason ([`DrawnState::palette_hits`]): egui offers no
+/// widget-by-text lookup from outside a frame, so a test that wants to press *this* button — the second of
+/// the two routes a parameterised command is reachable by — is handed the point instead of guessing at the
+/// panel's margins.
+fn authoring_button(
+  ui: &mut egui::Ui,
+  output: &mut ShellOutput,
+  command: crate::help::Command,
+) -> bool {
+  let response = ui.button(command.label());
+  let centre = response.rect.center();
+  output
+    .drawn
+    .authoring_hits
+    .push((command.label().to_owned(), (centre.x, centre.y)));
+  response.clicked()
 }
 
 /// Paint a world-space rectangle, used for the stock outline.

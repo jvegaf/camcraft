@@ -170,6 +170,77 @@ fn painted_text(output: &egui::FullOutput) -> Vec<String> {
     .collect()
 }
 
+/// A window tall enough to lay the whole Tools tab out, so every one of its buttons is pressable.
+///
+/// The inspector's body is a scroll area capped at 55 % of the window height, so at the standard 800 px the
+/// lower half of the tab falls outside the clip rect and a click at a reported point lands on nothing above
+/// it. Reporting a point is only useful while the widget it came from is still on screen.
+fn tall_input() -> egui::RawInput {
+  let mut input = raw_input();
+  input.screen_rect = Some(egui::Rect::from_min_size(
+    egui::Pos2::ZERO,
+    egui::vec2(1200.0, 2000.0),
+  ));
+  input
+}
+
+/// Run one frame of the tall window, with events, and report what the shell produced.
+fn tall_frame(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  events: Vec<egui::Event>,
+) -> ShellOutput {
+  let mut captured: Option<ShellOutput> = None;
+  let mut input = tall_input();
+  input.events = events;
+  let full = ctx.run_pass(input, |ctx| {
+    captured = Some(shell.show(app, ctx));
+  });
+  full.drop_without_applying_deltas();
+  captured.expect("the shell ran")
+}
+
+/// Click one Tools-tab button by the word on it.
+///
+/// The tab reports where it drew each parameterised command's button ([`cam_ui::DrawnState::authoring_hits`])
+/// for the same reason the palette does: egui cannot be asked for a widget by its text from outside a frame.
+fn click_authoring_button(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  label: &str,
+) -> ShellOutput {
+  let output = tall_frame(ctx, shell, app, Vec::new());
+  let at = output
+    .drawn
+    .authoring_hits
+    .iter()
+    .find(|(word, _)| word == label)
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .unwrap_or_else(|| panic!("no {label:?} button in the Tools tab"));
+  let mut last = None;
+  for pressed in [true, false] {
+    // The move is repeated in both passes because egui decides what is under the pointer from the input it
+    // ended the previous pass with.
+    last = Some(tall_frame(
+      ctx,
+      shell,
+      app,
+      vec![
+        egui::Event::PointerMoved(at),
+        egui::Event::PointerButton {
+          pos: at,
+          button: egui::PointerButton::Primary,
+          pressed,
+          modifiers: egui::Modifiers::default(),
+        },
+      ],
+    ));
+  }
+  last.expect("a click is two frames")
+}
+
 /// Read a scrollable panel all the way down.
 ///
 /// egui paints only what falls inside a scroll area's clip rect, so one frame shows the top of a long
@@ -1965,6 +2036,161 @@ fn the_palette_chips_still_arm_toggle_and_run() {
       "the Move chip reads the Tools tab's offset"
     ),
     other => panic!("the Move chip must push one Translate action, got {other:?}"),
+  }
+}
+
+#[test]
+fn the_palette_runs_the_array_grid_its_own_form_can_type() {
+  // The grid count is the one number with a range, and only the Tools tab's widget applies it: the field
+  // itself can hold anything, and the palette hands those numbers straight to the command. A 0-row array
+  // is refused downstream with a sentence, so the chip has to run what its own form can type instead of
+  // letting the two disagree.
+  //
+  // The inspector is on Selection, not Tools, because a visible `DragValue` clamps its own field on the
+  // frame it is drawn: with the form on screen the number is already legal and the disagreement is
+  // invisible. The Tools tab being hidden is exactly the case a number that no widget guards can reach.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  shell.set_stage(Stage::Edit);
+  shell.set_tab(Tab::Selection);
+  shell.array_grid = (0, 99);
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert_eq!(
+    shell.array_grid,
+    (0, 99),
+    "nothing on screen may quietly rewrite the field this test just set"
+  );
+
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Array.label());
+  match output.actions.as_slice() {
+    [UiAction::Array { rows, columns, .. }] => {
+      assert_eq!(
+        (*rows, *columns),
+        (1, 64),
+        "the Array chip must run a grid inside the form's range: 1..=64"
+      );
+    }
+    other => panic!("the Array chip must push one Array action, got {other:?}"),
+  }
+  assert_eq!(
+    shell.array_grid,
+    (0, 99),
+    "the clamp belongs to the action, not to what the operator typed"
+  );
+}
+
+#[test]
+fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
+  // This is the test the fold exists for: the two surfaces that run a parameterised command used to build
+  // the payload themselves, and the palette path also skipped the array grid's range. Pinning the exact
+  // `UiAction` each route emits — not merely that the two agree — is what makes a route that reads the
+  // wrong field visible, so the numbers below are deliberately not the defaults.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut framing = Shell::new();
+  let _ = frame_with(&egui::Context::default(), &mut framing, &mut app);
+  // Every `about` and `origin` names the view centre, and the shell frames the drawing on its first frame:
+  // the point a payload carries is a measurement of the camera, not the origin a default happens to hold.
+  let centre = app.camera().center();
+  assert!(
+    !centre.is_near(Point2::ORIGIN, 1.0e-9),
+    "the payload's point must be the framed view centre, not the origin: {centre:?}"
+  );
+
+  let mut numbers = Shell::new();
+  numbers.text = "Hi".to_owned();
+  numbers.text_height = 7.5;
+  numbers.move_delta = (3.5, -2.0);
+  numbers.rotate_degrees = 42.0;
+  numbers.scale_factors = (1.5, 0.5);
+  numbers.array_grid = (3, 4);
+  numbers.array_spacing = (12.0, 6.0);
+  numbers.offset_distance = 4.25;
+
+  let cases = [
+    (
+      HelpCommand::AddText,
+      Stage::Design,
+      UiAction::AddText {
+        text: "Hi".to_owned(),
+        height: 7.5,
+        origin: centre,
+      },
+    ),
+    (
+      HelpCommand::Move,
+      Stage::Edit,
+      UiAction::Transform(Transform::Translate {
+        delta: Vec2::new(3.5, -2.0),
+      }),
+    ),
+    (
+      HelpCommand::Rotate,
+      Stage::Edit,
+      UiAction::Transform(Transform::Rotate {
+        radians: 42.0_f64.to_radians(),
+        about: centre,
+      }),
+    ),
+    (
+      HelpCommand::Scale,
+      Stage::Edit,
+      UiAction::Transform(Transform::Scale {
+        sx: 1.5,
+        sy: 0.5,
+        about: centre,
+        tolerance: DEFAULT_TOLERANCE_MM,
+      }),
+    ),
+    (
+      HelpCommand::Mirror,
+      Stage::Edit,
+      UiAction::Transform(Transform::Mirror {
+        point: centre,
+        direction: Vec2::Y_AXIS,
+      }),
+    ),
+    (
+      HelpCommand::Array,
+      Stage::Edit,
+      UiAction::Array {
+        rows: 3,
+        columns: 4,
+        dx: 12.0,
+        dy: 6.0,
+      },
+    ),
+    (
+      HelpCommand::Offset,
+      Stage::Edit,
+      UiAction::Offset { distance: 4.25 },
+    ),
+  ];
+
+  for (command, stage, expected) in cases {
+    let mut palette_shell = numbers.clone();
+    palette_shell.set_stage(stage);
+    let palette_ctx = egui::Context::default();
+    let _ = frame_with(&palette_ctx, &mut palette_shell, &mut app);
+    let (from_palette, _) =
+      click_palette_chip(&palette_ctx, &mut palette_shell, &mut app, command.label());
+    assert_eq!(
+      from_palette.actions,
+      vec![expected.clone()],
+      "the palette's {} chip",
+      command.label()
+    );
+
+    let mut tab_shell = numbers.clone();
+    tab_shell.set_stage(stage);
+    let tab_ctx = egui::Context::default();
+    let from_tab = click_authoring_button(&tab_ctx, &mut tab_shell, &mut app, command.label());
+    assert_eq!(
+      from_tab.actions,
+      vec![expected],
+      "the Tools tab's {} button",
+      command.label()
+    );
   }
 }
 
