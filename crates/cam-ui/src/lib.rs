@@ -757,6 +757,16 @@ impl Shell {
     self.theme
   }
 
+  /// Whether the 3D view is the one showing.
+  pub fn view_3d(&self) -> bool {
+    self.show_3d
+  }
+
+  /// Show the 3D view (`true`) or the drawing (`false`).
+  pub fn set_view_3d(&mut self, showing: bool) {
+    self.show_3d = showing;
+  }
+
   /// Switch the colour set. It takes effect on the next frame, because a frame is what publishes it.
   pub fn set_theme(&mut self, theme: Theme) {
     self.theme = theme;
@@ -954,56 +964,73 @@ impl Shell {
     // and a central panel must come last or it would claim the space the sides need.
     self.app_bar(app, ui, &mut output);
     self.stage_bar(app, ui);
-    self.view3d(ui, &mut output, dt);
     self.status_bar(app, ui, &mut output);
     self.rail(app, ui, &mut output);
     self.inspector(app, ui, &mut output);
-    self.canvas(app, ui, &mut output);
+    // One view or the other, never both: the toggle is a mode, and the mode owns the central area.
+    if self.show_3d {
+      self.view3d(ui, &mut output, dt);
+    } else {
+      self.canvas(app, ui, &mut output);
+    }
     if self.show_shortcuts {
       self.shortcuts_window(&ctx);
     }
     output
   }
 
+  /// The 3D view, drawn where the canvas would be.
+  ///
+  /// A mode, not a panel stacked over the drawing: the preview used to take a slice of the top and leave
+  /// the canvas the rest, which gave both views half a screen and neither a usable one. Two views that are
+  /// never on screen together also means the hidden one costs nothing — no playback clock, no mesh, no
+  /// region. The surface fills whatever the frame gives it.
   fn view3d(&mut self, ui: &mut egui::Ui, output: &mut ShellOutput, dt: f64) {
-    if !self.show_3d {
-      return;
-    }
-    egui::Panel::top("preview_3d").show(ui, |ui| {
+    let palette = self.palette();
+    egui::CentralPanel::default().show(ui, |ui| {
       ui.horizontal(|ui| {
-        ui.heading("Preview");
+        ui.label(egui::RichText::new("3D").size(theme::TITLE));
         ui.separator();
         if let Some(preview) = self.preview.as_mut() {
-          // Playback advances only while the panel is open: a closed panel is not a hidden clock, and
+          // Playback advances only while this view is the one showing: a hidden view is not a clock, and
           // the 2D path pays nothing for a preview nobody is looking at (A12).
           preview.advance(dt);
           if preview.playing() {
-            // Without this the window would only repaint on input, and a program that plays to its
-            // end would appear to play only when the mouse moves.
+            // Without this the window would repaint only on input, and a program that plays to its end
+            // would appear to play only when the mouse moves.
             ui.ctx().request_repaint();
           }
           preview.controls(ui);
           ui.separator();
-          ui.label(format!(
-            "{} move(s), {} x {} cells, stride {}",
-            preview.program().move_count(),
-            preview.field().grid().columns,
-            preview.field().grid().rows,
-            preview.stride()
-          ));
+          ui.label(
+            egui::RichText::new(format!(
+              "{} move(s), {} × {} cells, stride {}",
+              preview.program().move_count(),
+              preview.field().grid().columns,
+              preview.field().grid().rows,
+              preview.stride()
+            ))
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+          );
           output.drawn.preview_progress = preview.progress();
         } else {
-          ui.label("no program to preview: simulate one with `cam-cli` and hand it in");
+          ui.label(
+            egui::RichText::new(
+              "No program to preview. Simulate one with `cam-cli simulate` and hand it in.",
+            )
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+          );
         }
       });
-      match self.preview.as_mut() {
-        Some(preview) => preview.show(ui, &mut output.drawn),
-        None => {
-          // An open panel with nothing to show still needs its region allocated, or the panel would
-          // collapse and the user's next click would land on the canvas instead.
-          let size = egui::vec2(ui.available_width(), view3d::PREVIEW_HEIGHT);
-          ui.allocate_space(size);
-        }
+      ui.separator();
+      if let Some(preview) = self.preview.as_mut() {
+        preview.show(ui, &mut output.drawn);
+      } else {
+        // An empty 3D view still holds its region: a collapsing view would hand the click to whatever is
+        // underneath and read as a bug.
+        ui.allocate_space(ui.available_size());
       }
     });
   }
@@ -1265,8 +1292,6 @@ impl Shell {
 
       ui.separator();
       ui.label(RichText::new("Vectors").size(theme::SMALL));
-      ui.separator();
-      ui.label(RichText::new("Nodes").size(theme::SMALL));
       ui.horizontal_wrapped(|ui| {
         ui.label("Offset");
         ui.add(
@@ -1295,7 +1320,9 @@ impl Shell {
             });
           }
         }
-        ui.separator();
+      });
+      ui.label(RichText::new("Nodes").size(theme::SMALL));
+      ui.horizontal_wrapped(|ui| {
         ui.label("Node edit");
         ui.add(egui::DragValue::new(&mut self.vertex_index));
         ui.add(egui::DragValue::new(&mut self.segment_index));

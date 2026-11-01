@@ -43,12 +43,6 @@ use egui::{Color32, Pos2, Stroke};
 
 use crate::DrawnState;
 
-/// Height of the 3D region, in pixels.
-///
-/// Fixed rather than proportional: the panel is a preview the user opens on top of the 2D canvas, and
-/// a region that resized with the window would make the camera's framing jump on every resize.
-pub const PREVIEW_HEIGHT: f32 = 320.0;
-
 /// How far the camera turns per pixel of drag, in radians.
 ///
 /// A tenth of a radian per hundred pixels: a full turn is about 630 px of dragging, which is the
@@ -416,11 +410,19 @@ impl Preview3d {
     }
   }
 
-  /// Paint the preview into a region of `ui`, and take the orbit and zoom gestures it owns.
+  /// Paint the preview into the region `ui` has left, and take the orbit and zoom gestures it owns.
+  ///
+  /// The region is whatever the frame gives it, because the 3D view now *is* the central area rather
+  /// than a strip stacked over the drawing. The camera therefore learns a new viewport on resize, which
+  /// is what a filling view does; the old fixed height existed to stop the framing jumping while the
+  /// strip resized itself, and that trade disappeared with the stacking.
   pub fn show(&mut self, ui: &mut egui::Ui, drawn: &mut DrawnState) {
-    // A panel squeezed narrower than nothing paints nothing rather than allocating a negative
-    // region: `egui` asserts on that, and a window that small is a layout in progress.
-    let size = egui::vec2(ui.available_width().max(0.0), PREVIEW_HEIGHT);
+    // A region squeezed narrower than nothing paints nothing rather than allocating a negative area:
+    // `egui` asserts on that, and a window that small is a layout in progress.
+    let size = egui::vec2(
+      ui.available_width().max(0.0),
+      ui.available_height().max(0.0),
+    );
     let (response, painter) = ui.allocate_painter(size, egui::Sense::click_and_drag());
     let rect = response.rect;
     // The camera projects into its own viewport, so it learns this frame's size before anything is

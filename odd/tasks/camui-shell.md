@@ -160,3 +160,21 @@ The foundations are delivered. What remains of the concept, in the order the des
   input tests started failing because the window took the clicks meant for the canvas. The revert pattern asserting
   its own success is what would have caught it; the lesson is the same one as the gate swallowing its exit code —
   a cleanup that cannot fail is not a cleanup.
+
+- **L17 (owner proposal, implemented: the two views are exclusive).** *"la vista 2d y la 3d creo que deberian de
+  mostrarse solas, o la 2d o la 3d, no crees?"* — agreed, and it was a defect of this shell rather than of the
+  artboard: the 3D preview was a `Panel::top` that took a slice of the frame and left the 2D canvas the rest, so both
+  views were on screen at half size and neither was usable. The 3D view is now the **central area** when
+  `Shell::view_3d()` is true, and the canvas is not built at all when it is not, so the toggle in the app bar is a
+  mode. Two consequences worth naming: the hidden view costs nothing (no playback clock, no mesh, no region — the
+  A12 policy survives, it just applies to the mode instead of the panel), and `view3d::PREVIEW_HEIGHT` is gone
+  because the surface now fills whatever the frame gives it, which retires the "fixed height so the camera framing
+  does not jump on resize" trade along with the stacking. The test that asserted the old behaviour
+  (`the_2d_canvas_still_paints_while_the_panel_is_open`) was rewritten as `the_two_views_are_exclusive`: with 3D
+  showing, `painted_items` and `painted_grid_lines` are exactly zero; back on 2D, `painted_triangles` is zero and
+  the four edges plus the grid return.
+- **L18 (a visual defect the screenshot caught, fixed).** The first run of the new frame showed the inspector's
+  *Vectors* and *Nodes* headings printed one under the other with the Offset controls below both: two edits had each
+  inserted a heading before the same `horizontal_wrapped`. The groups are now split where the node controls really
+  begin. Recorded because it is the second time a screenshot found what 1 071 green tests did not — the tests pin
+  behaviour, and grouping is not behaviour.

@@ -439,21 +439,39 @@ fn a_camera_the_projection_rejects_paints_nothing() {
 }
 
 #[test]
-fn the_2d_canvas_still_paints_while_the_panel_is_open() {
+fn the_two_views_are_exclusive() {
   let mut harness = Harness::new();
   harness.frame(Vec::new());
 
+  // 3D is showing: it owns the central area, and the drawing is not painted at all. The old shell stacked
+  // the preview over the canvas, which gave both half a screen and neither a usable one.
   assert!(
     harness.output.drawn.painted_triangles > 0,
-    "the panel is open, so this is the additive case"
+    "the 3D view is the one showing"
+  );
+  assert_eq!(
+    harness.output.drawn.painted_items, 0,
+    "the 2D scene must not be painted behind the 3D view"
+  );
+  assert_eq!(
+    harness.output.drawn.painted_grid_lines, 0,
+    "and neither must the 2D grid"
+  );
+
+  // Back to the drawing: the triangle count drops to zero and the scene comes back, whole.
+  harness.shell.set_view_3d(false);
+  harness.frame(Vec::new());
+  assert_eq!(
+    harness.output.drawn.painted_triangles, 0,
+    "a hidden view paints no mesh"
   );
   assert_eq!(
     harness.output.drawn.painted_items, 4,
-    "the four rectangle edges still reach the 2D canvas (A12)"
+    "the four rectangle edges are back (A12)"
   );
   assert!(
     harness.output.drawn.painted_grid_lines > 0,
-    "and so does the grid"
+    "and so is the grid"
   );
 }
 
