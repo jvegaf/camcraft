@@ -316,3 +316,39 @@ The foundations are delivered. What remains of the concept, in the order the des
   1 083 tests, 91 suites), and one factual spot check of the prose — `Trim`'s *how* says "the lower id is the target and
   the other one cuts it", which `lib.rs:1354` states and the arm at `lib.rs:1360` implements by destructuring
   `selected.as_slice()`. Help that describes behaviour the code does not have would be worse than no help.
+
+- **L30 (owner disposition: the T8 slices ship unreviewed, on purpose).** `inspect` offered review.start again for
+  the same accumulated candidate (29 paths, base `e9dcb01`, now past 8 000 lines), which is the shape the provider
+  already refused with `lens_context_budget_exceeded`, and the lens that would have to run it still has no model. The
+  owner chose *"Dejá T8 sin review por ahora y seguí"*. So the T8 slices carry the gate — `fmt`, `clippy
+  -D warnings`, the full workspace suite — plus the parent reading the change against this document, and no native
+  receipt. Two facts are recorded rather than buried: the frame lineage `review-3ebc68eeba5006f5` is still
+  `reviewing` and **unburned**, waiting for a model routed to `review-reliability`; and the accumulated candidate
+  cannot be started at all, because a review candidate is one work unit and never the branch. When the lenses get
+  their model, T8.1 (`f06b43a`, 918 lines) is the natural first candidate — one worktree anchor away.
+
+- **L31 (T8.2 delivered, and the differential that checked it).** `rail_commands`, `GroupedCommand`, `Stage::tools()`
+  and `DESIGN_TOOLS` are gone. The palette derives every run, word, glyph and command from `Command::ALL` with
+  `group()`, `label()` and `in_palette()`; the DRAW chips arm `active_tool` through the new `Command::tool()`, which is
+  the only command→tool mapping left; the app bar takes Undo/Redo/Fit from their command with `can_undo`/`can_redo`
+  still gating them; and both help paths now open the `F1` panel while a new VIEW `Shortcuts` chip keeps the keys sheet
+  reachable by mouse. Six tests, plus two report fields (`DrawnState.palette_hits`, `DrawnState.app_bar`) because egui
+  offers no widget-by-text lookup — a click test presses a recorded point instead of guessing at a margin. Gate:
+  **1 089 tests across 91 suites** (+6), exit 0. Tooltips the rewrite made false were corrected with it: the help
+  button no longer says "Shortcuts and help" now that it opens the help panel.
+  Because the slice rewrites 443 lines of `chrome.rs`, the claim "same palette" was **measured, not trusted**: a probe
+  in a worktree at `f06b43a` and the same probe in the working tree printed `DrawnState.palette` for every stage, and
+  the transcripts were diffed. **One difference, on all five stages: `Shortcuts` after `Help`** — the chip the brief
+  asked for, so a declared change rather than a regression. The group runs, their order, the headings (`DRAW`,
+  `TRANSFORM`, `VECTOR EDIT`, `VIEW`) and the other twenty labels: zero differences, and the whole-frame painted text
+  diffed word by word to zero. The verifier also corrected the writer's own wording: `in_palette()` is **not** the old
+  palette — it has **four** VIEW chips, not three, because Shortcuts was added.
+  That transcript is now a committed golden, `crates/cam-ui/tests/palette.rs` (two tests: the per-stage list in order,
+  and no stage offering a history chip). A test that derives its expectation from the table cannot notice the table
+  changing; writing the measured chips down can.
+  **Residual, stated rather than hidden:** the palette no longer holds a *list*, but the *construction* of the
+  parameterised actions — Move, Rotate, Scale, Mirror, Array, Offset, Add text, with their numbers — still exists
+  twice: `chrome.rs::palette_action` and the Tools tab's `authoring()`. The brief asked for the list; folding the
+  constructions into one module is its own slice. Also flagged: the icon set has no keyboard glyph, so `Shortcuts`
+  uses `Icon::Text` with a comment instead of an invented glyph, and the app-bar `?` rewiring carries no mouse-level
+  test because its rect is not reported — the palette chip test pins the same one-line toggle.

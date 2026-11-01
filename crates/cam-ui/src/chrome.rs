@@ -33,7 +33,7 @@
 //! names.
 
 use cam_app::{AppState, Transform};
-use cam_geom::Vec2;
+use cam_geom::{Point2, Vec2};
 use egui::{Align, Layout, RichText, Sense};
 
 use crate::help::{Command, Group};
@@ -41,17 +41,11 @@ use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
 use crate::{Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
 
-/// One palette entry: the glyph, the word it answers to, and the command it runs.
-type PaletteEntry = (Icon, &'static str, UiAction);
+/// One palette chip: the glyph and the command it runs.
+type PaletteChip = (Icon, Command);
 
-/// A labelled run of palette entries: the group's name and the buttons under it.
-type PaletteRun = (&'static str, Vec<PaletteEntry>);
-
-/// A rail command: which group it belongs to, its glyph, its word, and the command.
-type GroupedCommand = (&'static str, Icon, &'static str, UiAction);
-
-/// The nine canvas gestures, as a `'static` slice so the rail can borrow it.
-static DESIGN_TOOLS: [Tool; 9] = Tool::ALL;
+/// A labelled run of palette chips: the group's name and the chips under it.
+type PaletteRun = (Group, Vec<PaletteChip>);
 
 /// The stages a job walks through, in the order the artboard draws them.
 ///
@@ -154,15 +148,16 @@ impl Stage {
     }
   }
 
-  /// The armed tools this stage offers, in rail order.
+  /// The palette runs this stage adds, in the order the table lists them.
   ///
-  /// Only Design has armed canvas gestures today; the other stages offer commands
-  /// ([`Shell::rail_commands`]) or nothing at all, and the difference is visible in the rail rather
-  /// than papered over.
-  fn tools(self) -> &'static [Tool] {
+  /// Only Design has armed canvas gestures today; Edit offers the commands that work on what already
+  /// exists, and the other stages offer nothing but VIEW, which every stage shows. The difference is
+  /// visible in the palette rather than papered over.
+  fn runs(self) -> &'static [Group] {
     match self {
-      Self::Design => &DESIGN_TOOLS,
-      _ => &[],
+      Self::Design => &[Group::Draw],
+      Self::Edit => &[Group::Transform, Group::VectorEdit],
+      Self::Relief | Self::Toolpaths | Self::Prove => &[],
     }
   }
 }
@@ -231,15 +226,28 @@ impl Shell {
           ui.label(RichText::new("campilot").size(theme::TITLE));
           ui.separator();
 
-          if icon_button(ui, &palette, Icon::Undo, "Undo — Ctrl+Z", false, app.can_undo(), 18.0)
+          // Undo and Redo are the table's HISTORY run: their words, glyphs and actions come from the
+          // command that owns them, so the app bar cannot answer to a different name than the help
+          // panel teaches. Only the chord is the bar's own, because the keys window lists it too.
+          for (command, enabled, keys) in [
+            (Command::Undo, app.can_undo(), "Ctrl+Z"),
+            (Command::Redo, app.can_redo(), "Ctrl+Y"),
+          ] {
+            let tooltip = format!("{} — {keys}", command.label());
+            if icon_button(
+              ui,
+              &palette,
+              command_icon(command),
+              &tooltip,
+              false,
+              enabled,
+              18.0,
+            )
             .clicked()
-          {
-            output.actions.push(UiAction::Undo);
-          }
-          if icon_button(ui, &palette, Icon::Redo, "Redo — Ctrl+Y", false, app.can_redo(), 18.0)
-            .clicked()
-          {
-            output.actions.push(UiAction::Redo);
+            {
+              output.actions.extend(command.action());
+            }
+            output.drawn.app_bar.push(command.label().to_owned());
           }
           ui.separator();
 
@@ -261,10 +269,20 @@ impl Shell {
                 "Toolpaths are authored with `cam-cli toolpath` today; this button writes the program \
                  once the shell can author them.",
               );
-            if icon_button(ui, &palette, Icon::Help, "Shortcuts and help", false, true, 18.0)
-              .clicked()
+            // Help is the `F1` panel now: the panel teaches every command, so a help button that opened
+            // a list of chords instead would answer a smaller question than the one asked.
+            if icon_button(
+              ui,
+              &palette,
+              command_icon(Command::Help),
+              "Help — F1",
+              false,
+              true,
+              18.0,
+            )
+            .clicked()
             {
-              self.show_shortcuts = !self.show_shortcuts;
+              self.show_help = !self.show_help;
             }
             let (icon, label) = match self.theme {
               Theme::Dark => (Icon::ThemeDark, "Theme: dark — press for light"),
@@ -290,11 +308,20 @@ impl Shell {
             )
             .on_hover_text("Working units. Every length in the shell is millimetres.");
             ui.separator();
-            if icon_button(ui, &palette, Icon::ZoomFit, "Fit the job — F", false, true, 18.0)
-              .clicked()
+            if icon_button(
+              ui,
+              &palette,
+              command_icon(Command::FitJob),
+              &format!("{} — F", Command::FitJob.label()),
+              false,
+              true,
+              18.0,
+            )
+            .clicked()
             {
-              output.actions.push(UiAction::ZoomToFit);
+              output.actions.extend(Command::FitJob.action());
             }
+            output.drawn.app_bar.push(Command::FitJob.label().to_owned());
           });
         });
       });
@@ -347,6 +374,9 @@ impl Shell {
   /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
   /// to hide behind icons nobody could name. Twenty commands in labelled groups stay findable, and the
   /// label is the word a machinist already uses.
+  ///
+  /// Every word, run, glyph and command here comes from [`crate::help`]: the palette holds no list of
+  /// its own, which is what closed the two-lists-one-command debt T8 inherited (L14).
   pub(crate) fn palette_panel(
     &mut self,
     app: &AppState,
@@ -362,193 +392,150 @@ impl Shell {
           .id_salt("palette")
           .show(ui, |ui| {
             let mut offered: Vec<String> = Vec::new();
-            let centre = app.camera().center();
+            let mut hits: Vec<(String, (f32, f32))> = Vec::new();
 
-            match self.stage {
-              Stage::Design => {
-                section(ui, &palette, "DRAW");
-                ui.horizontal_wrapped(|ui| {
-                  for tool in self.stage.tools() {
-                    if icon_button(
-                      ui,
-                      &palette,
-                      tool_icon(*tool),
-                      tool.label(),
-                      self.active_tool == *tool,
-                      true,
-                      20.0,
-                    )
-                    .clicked()
-                    {
-                      self.active_tool = *tool;
-                    }
-                    offered.push(tool.label().to_owned());
-                  }
-                  // Text is the one "tool" that needs a value before it acts, so it reads the number from
-                  // the Tools tab and lands in the middle of the view.
-                  if icon_button(ui, &palette, Icon::Text, "Add text", false, true, 20.0).clicked()
-                  {
-                    output.actions.push(UiAction::AddText {
-                      text: self.text.clone(),
-                      height: self.text_height,
-                      origin: centre,
-                    });
-                  }
-                  offered.push("Add text".to_owned());
-                });
-              }
-              Stage::Edit => {
-                // Grouped by runs, so a command list with three groups needs no second table to say
-                // which group a command is in.
-                let mut runs: Vec<PaletteRun> = Vec::new();
-                for (group, icon, label, action) in self.rail_commands(app) {
-                  match runs.last_mut() {
-                    Some((name, entries)) if *name == group => entries.push((icon, label, action)),
-                    _ => runs.push((group, vec![(icon, label, action)])),
-                  }
-                }
-                for (group, entries) in runs {
-                  section(ui, &palette, group);
-                  ui.horizontal_wrapped(|ui| {
-                    for (icon, label, action) in entries {
-                      if icon_button(ui, &palette, icon, label, false, true, 20.0).clicked() {
-                        output.actions.push(action);
-                      }
-                      offered.push(label.to_owned());
-                    }
-                  });
-                }
-              }
-              Stage::Relief | Stage::Toolpaths | Stage::Prove => {
-                let title = self.stage.label().to_uppercase();
-                section(ui, &palette, &title);
-                note(ui, &palette, self.stage.note());
-              }
+            // A stage that brings no run of its own explains itself, so an empty rail is an answer and
+            // not a dead end.
+            if self.stage.runs().is_empty() {
+              let title = self.stage.label().to_uppercase();
+              section(ui, &palette, &title);
+              note(ui, &palette, self.stage.note());
             }
 
-            ui.add_space(metrics.space(3));
-            section(ui, &palette, "VIEW");
-            ui.horizontal_wrapped(|ui| {
-              if icon_button(
-                ui,
-                &palette,
-                Icon::Grid,
-                "Grid and snapping",
-                self.snapping,
-                true,
-                20.0,
-              )
-              .clicked()
-              {
-                self.snapping = !self.snapping;
+            // The runs arrive in the table's own order: DRAW, TRANSFORM, VECTOR EDIT and VIEW.
+            for (group, chips) in self.palette_runs() {
+              if group == Group::View {
+                ui.add_space(metrics.space(3));
               }
-              offered.push("Grid".to_owned());
-              if icon_button(
-                ui,
-                &palette,
-                Icon::Layers,
-                "Inspector — collapse or expand",
-                self.inspector_open,
-                true,
-                20.0,
-              )
-              .clicked()
-              {
-                self.inspector_open = !self.inspector_open;
-              }
-              offered.push("Layers".to_owned());
-              if icon_button(
-                ui,
-                &palette,
-                Icon::Help,
-                "Shortcuts and help",
-                false,
-                true,
-                20.0,
-              )
-              .clicked()
-              {
-                self.show_shortcuts = !self.show_shortcuts;
-              }
-              offered.push("Help".to_owned());
-            });
+              section(ui, &palette, group.label());
+              ui.horizontal_wrapped(|ui| {
+                for (icon, command) in chips {
+                  let response = icon_button(
+                    ui,
+                    &palette,
+                    icon,
+                    palette_tooltip(command),
+                    self.palette_active(command),
+                    true,
+                    20.0,
+                  );
+                  if response.clicked() {
+                    self.run_palette_command(command, app, output);
+                  }
+                  let centre = response.rect.center();
+                  offered.push(command.label().to_owned());
+                  hits.push((command.label().to_owned(), (centre.x, centre.y)));
+                }
+              });
+            }
 
             // What the palette offered: `DrawnState` is the shell's report of what it drew, and the
             // palette is the part of the frame that carries no text of its own.
             output.drawn.stage = self.stage;
             output.drawn.palette = offered;
+            output.drawn.palette_hits = hits;
           });
       });
   }
 
-  /// The commands the current stage runs from the rail, built from the numbers in the Tools tab.
+  /// The palette's runs for the current stage, derived from the command table.
   ///
-  /// These are the same constructions the Tools tab draws as labelled buttons. Keeping one
-  /// implementation would mean extracting them into a shared command module — worth doing, and this
-  /// note is the reminder that leaving two is a debt rather than a decision.
-  fn rail_commands(&self, app: &AppState) -> Vec<GroupedCommand> {
-    let centre = app.camera().center();
-    match self.stage {
-      Stage::Edit => vec![
-        (
-          "TRANSFORM",
-          Icon::Move,
-          "Move",
-          UiAction::Transform(Transform::Translate {
-            delta: Vec2::new(self.move_delta.0, self.move_delta.1),
-          }),
-        ),
-        (
-          "TRANSFORM",
-          Icon::Rotate,
-          "Rotate",
-          UiAction::Transform(Transform::Rotate {
-            radians: self.rotate_degrees.to_radians(),
-            about: centre,
-          }),
-        ),
-        (
-          "TRANSFORM",
-          Icon::Scale,
-          "Scale",
-          UiAction::Transform(Transform::Scale {
-            sx: self.scale_factors.0,
-            sy: self.scale_factors.1,
-            about: centre,
-            tolerance: DEFAULT_TOLERANCE_MM,
-          }),
-        ),
-        (
-          "TRANSFORM",
-          Icon::MirrorH,
-          "Mirror",
-          UiAction::Transform(Transform::Mirror {
-            point: centre,
-            direction: Vec2::Y_AXIS,
-          }),
-        ),
-        (
-          "TRANSFORM",
-          Icon::ArrayGrid,
-          "Array",
-          UiAction::Array {
-            rows: self.array_grid.0,
-            columns: self.array_grid.1,
-            dx: self.array_spacing.0,
-            dy: self.array_spacing.1,
-          },
-        ),
-        (
-          "VECTOR EDIT",
-          Icon::Offset,
-          "Offset",
-          UiAction::Offset {
-            distance: self.offset_distance,
-          },
-        ),
-        ("VECTOR EDIT", Icon::Union, "Join", UiAction::Join),
-      ],
-      Stage::Design | Stage::Relief | Stage::Toolpaths | Stage::Prove => Vec::new(),
+  /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]),
+  /// the glyphs and the commands themselves; the stage decides which runs it shows, and VIEW is every
+  /// stage's. The table's order is the order the runs and the chips are drawn in, so a command that moves
+  /// in the table moves in the palette.
+  ///
+  /// HISTORY cannot reach the palette even by accident: [`Command::in_palette`] leaves its two commands
+  /// to the app bar, and no stage claims that run.
+  fn palette_runs(&self) -> Vec<PaletteRun> {
+    let mut runs: Vec<PaletteRun> = Vec::new();
+    for command in Command::ALL
+      .iter()
+      .copied()
+      .filter(|command| command.in_palette())
+    {
+      let group = command.group();
+      if group != Group::View && !self.stage.runs().contains(&group) {
+        continue;
+      }
+      let chip = (command_icon(command), command);
+      match runs.last_mut() {
+        Some((name, chips)) if *name == group => chips.push(chip),
+        _ => runs.push((group, vec![chip])),
+      }
+    }
+    runs
+  }
+
+  /// Run one palette chip: arm its gesture, flip the view flag it owns, or push its action.
+  ///
+  /// The cases are the table's own distinction — [`Command::tool`] for a gesture, the view commands that
+  /// only change what the frame shows, and [`Command::action`] for everything that reaches the document —
+  /// plus the commands whose action carries a number the Tools tab holds.
+  fn run_palette_command(&mut self, command: Command, app: &AppState, output: &mut ShellOutput) {
+    if let Some(tool) = command.tool() {
+      self.active_tool = tool;
+      return;
+    }
+    match command {
+      Command::Grid => self.snapping = !self.snapping,
+      Command::Layers => self.inspector_open = !self.inspector_open,
+      Command::Help => self.show_help = !self.show_help,
+      Command::Shortcuts => self.show_shortcuts = !self.show_shortcuts,
+      _ => output
+        .actions
+        .extend(self.palette_action(command, app.camera().center())),
+    }
+  }
+
+  /// The action a palette command pushes, built from the numbers the Tools tab holds.
+  ///
+  /// These are the same constructions the Tools tab draws as labelled buttons, and this is the one place
+  /// they are built now: the rail and the tab read the same fields, so a number typed once is the number
+  /// both run.
+  fn palette_action(&self, command: Command, centre: Point2) -> Option<UiAction> {
+    match command {
+      Command::AddText => Some(UiAction::AddText {
+        text: self.text.clone(),
+        height: self.text_height,
+        origin: centre,
+      }),
+      Command::Move => Some(UiAction::Transform(Transform::Translate {
+        delta: Vec2::new(self.move_delta.0, self.move_delta.1),
+      })),
+      Command::Rotate => Some(UiAction::Transform(Transform::Rotate {
+        radians: self.rotate_degrees.to_radians(),
+        about: centre,
+      })),
+      Command::Scale => Some(UiAction::Transform(Transform::Scale {
+        sx: self.scale_factors.0,
+        sy: self.scale_factors.1,
+        about: centre,
+        tolerance: DEFAULT_TOLERANCE_MM,
+      })),
+      Command::Mirror => Some(UiAction::Transform(Transform::Mirror {
+        point: centre,
+        direction: Vec2::Y_AXIS,
+      })),
+      Command::Array => Some(UiAction::Array {
+        rows: self.array_grid.0,
+        columns: self.array_grid.1,
+        dx: self.array_spacing.0,
+        dy: self.array_spacing.1,
+      }),
+      Command::Offset => Some(UiAction::Offset {
+        distance: self.offset_distance,
+      }),
+      _ => command.action(),
+    }
+  }
+
+  /// Whether a chip shows its command as on: the armed gesture, snapping, or the open inspector.
+  fn palette_active(&self, command: Command) -> bool {
+    match command {
+      Command::Grid => self.snapping,
+      Command::Layers => self.inspector_open,
+      _ => command.tool().is_some_and(|tool| tool == self.active_tool),
     }
   }
 
@@ -596,7 +583,7 @@ impl Shell {
             ui.add_space(metrics.space(2));
             match self.inspector_tab {
               Tab::Tools => {
-                if self.stage.tools().is_empty() && self.rail_commands(app).is_empty() {
+                if self.stage.runs().is_empty() {
                   note(ui, &palette, self.stage.note());
                 } else {
                   self.authoring(app, ui, output);
@@ -873,6 +860,52 @@ fn tool_icon(tool: Tool) -> Icon {
     Tool::Ellipse => Icon::Ellipse,
     Tool::Polygon => Icon::Polygon,
     Tool::Star => Icon::Star,
+  }
+}
+
+/// Which glyph a command is drawn with, wherever the frame draws it as an icon.
+///
+/// A gesture keeps the glyph its tool has always had ([`tool_icon`]); the rest are the symbols the palette
+/// and the app bar already used for them. The set has no keyboard glyph, so `Shortcuts` borrows the
+/// letterform and lets its hover text say the rest.
+fn command_icon(command: Command) -> Icon {
+  if let Some(tool) = command.tool() {
+    return tool_icon(tool);
+  }
+  match command {
+    Command::AddText => Icon::Text,
+    Command::Move => Icon::Move,
+    Command::Rotate => Icon::Rotate,
+    Command::Scale => Icon::Scale,
+    Command::Mirror => Icon::MirrorH,
+    Command::Array => Icon::ArrayGrid,
+    Command::Offset => Icon::Offset,
+    Command::Join => Icon::Union,
+    Command::Grid => Icon::Grid,
+    Command::Layers => Icon::Layers,
+    Command::Help => Icon::Help,
+    Command::Shortcuts => Icon::Text,
+    Command::Undo => Icon::Undo,
+    Command::Redo => Icon::Redo,
+    Command::FitJob => Icon::ZoomFit,
+    // The rest are not drawn as glyphs anywhere in the frame: they are labelled buttons in the Tools tab
+    // or reached by a key, so this arm is the honest "no symbol of its own" answer rather than a new
+    // symbol nobody has ever seen.
+    _ => Icon::Select,
+  }
+}
+
+/// The words a palette chip shows on hover.
+///
+/// The label is the chip's own word; the four that can say more than a word say it, because "Grid" alone
+/// does not tell an operator that the chip is a switch.
+fn palette_tooltip(command: Command) -> &'static str {
+  match command {
+    Command::Grid => "Grid and snapping",
+    Command::Layers => "Inspector — collapse or expand",
+    Command::Help => "Help — F1",
+    Command::Shortcuts => "The keys the shell answers to",
+    _ => command.label(),
   }
 }
 

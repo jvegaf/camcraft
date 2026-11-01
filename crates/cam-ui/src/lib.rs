@@ -566,6 +566,16 @@ pub struct DrawnState {
   /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
   /// read an icon: this is how "switching stage really changed what the operator can reach" is asserted.
   pub palette: Vec<String>,
+  /// Where the palette drew each chip: its word and the point in the window that presses it.
+  ///
+  /// egui cannot be asked for a widget by its text from outside a frame, so the palette reports the
+  /// point it drew each chip at and a click test presses that point instead of guessing at the layout.
+  pub palette_hits: Vec<(String, (f32, f32))>,
+  /// The words the app bar's three command buttons answer to, in the order it drew them.
+  ///
+  /// Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test can
+  /// read is the one the command table gives them: this is the app bar's own report of it.
+  pub app_bar: Vec<String>,
   /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
   /// command rows, and finally the focused command's `what` and `how`.
   ///

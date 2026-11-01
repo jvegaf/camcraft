@@ -7,12 +7,15 @@
 //!
 //! Two rules keep this file from becoming a second source of truth.
 //!
-//! **The label is the literal the frame already draws.** [`Command::label`] repeats the string at the
-//! call site (`"Offset"`, `"Fit the job"`) and a test asserts the palette still offers exactly those
-//! words, so renaming a button fails the build instead of silently forking the vocabulary.
+//! **The label is the word the frame draws, and the frame draws it from here.** [`Command::label`] is
+//! what the palette chips, the app bar's tooltips and the help panel all print, and a test asserts the
+//! palette offers exactly the table's words, so renaming a command renames the button instead of
+//! forking the vocabulary.
 //!
-//! **Only real commands are listed.** Nine canvas gestures, the seven commands the Edit rail runs, the
-//! ones the Tools tab counts, and the view commands the app bar and palette offer. Nothing the
+//! **Only real commands are listed, and each one says where it is reached.** Nine canvas gestures, the
+//! seven commands the Edit rail runs, the ones the Tools tab counts, and the view commands the app bar
+//! and palette offer. [`Command::in_palette`] and [`Command::tool`] are how the rail asks this table
+//! which chips to draw and what pressing one arms, so the palette keeps no list of its own. Nothing the
 //! operator cannot reach is invented here, and a command that is only offered once a number is typed
 //! ([`Command::Trim`] needs two selected vectors, [`Command::Import`] needs a path from a host) says so
 //! in its own words rather than pretending to be a button.
@@ -24,14 +27,15 @@
 //! [`Help`] is those rules as data: one sentence of *what the operator gets or loses*, then one to
 //! three sentences of *how*, then the commands that are usually wanted next.
 
-use crate::UiAction;
+use crate::{Tool, UiAction};
 
 /// The run of the palette a command sits in.
 ///
-/// Three of these are the palette's own words (`DRAW`, `TRANSFORM`, `VECTOR EDIT`, `VIEW`), which is
+/// Four of these are the palette's own words (`DRAW`, `TRANSFORM`, `VECTOR EDIT`, `VIEW`), which is
 /// what lets the help panel group commands the way the operator finds them. [`Group::History`] is the
-/// app bar's run: it has no palette section yet, and calling Undo a view command would be a lie in the
-/// one place the shell is supposed to be exact.
+/// app bar's run and has no palette section on purpose: calling Undo a view command would be a lie in
+/// the one place the shell is supposed to be exact, and the palette is where a command is *found* rather
+/// than read about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
   /// Making geometry: the nine canvas gestures, text, and the typed rectangle.
@@ -158,7 +162,10 @@ pub struct Help {
 }
 
 impl Command {
-  /// Every command the shell offers, in the order the help panel lists them.
+  /// Every command the shell offers, in the order the help panel and the palette list them.
+  ///
+  /// The order is load-bearing: both draw their rows by walking this list and starting a new run when
+  /// [`Command::group`] changes, so a command that moves here moves in the panel and the palette too.
   pub const ALL: &'static [Command] = &[
     Command::Select,
     Command::Line,
@@ -197,8 +204,9 @@ impl Command {
 
   /// The word the frame already shows for this command.
   ///
-  /// Every literal here is copied from the call site that draws it — the palette, the rail, the Tools
-  /// tab, the app bar's tooltip — so the panel and the frame cannot drift apart without a test failing.
+  /// Every literal here was copied from the call site that drew it before this table existed — the
+  /// palette, the rail, the Tools tab, the app bar's tooltip — and now the call sites read it from here,
+  /// so the panel and the frame cannot drift apart at all.
   pub fn label(self) -> &'static str {
     match self {
       Self::Select => "Select",
@@ -268,6 +276,55 @@ impl Command {
       | Self::Shortcuts
       | Self::FitJob => Group::View,
     }
+  }
+
+  /// The canvas gesture this command arms, if it is one of the nine.
+  ///
+  /// The palette's DRAW run arms [`crate::Shell::active_tool`] instead of pushing an action, because a
+  /// gesture is only half a command: the drag that follows it carries the geometry. That mapping lives
+  /// here, beside the label and the group, so the rail keeps no second list of tools to drift from.
+  pub fn tool(self) -> Option<Tool> {
+    match self {
+      Self::Select => Some(Tool::Select),
+      Self::Line => Some(Tool::Line),
+      Self::Rectangle => Some(Tool::Rectangle),
+      Self::Polyline => Some(Tool::Polyline),
+      Self::Arc => Some(Tool::Arc),
+      Self::Circle => Some(Tool::Circle),
+      Self::Ellipse => Some(Tool::Ellipse),
+      Self::Polygon => Some(Tool::Polygon),
+      Self::Star => Some(Tool::Star),
+      _ => None,
+    }
+  }
+
+  /// Whether the left palette draws a chip for this command.
+  ///
+  /// The palette is a subset of the table, and this is the only list that says which subset: the nine
+  /// gestures plus text, the five transforms the Tools tab also runs, offset and join, and the four view
+  /// chips. Everything else is reached from somewhere the palette is not — `Add rectangle`, `Align`,
+  /// `Trim` and the node edits from the Tools tab, `Undo`, `Redo`, `3D`, `Theme` and `Fit the job` from
+  /// the app bar, `Icon set` from `F2`, and `Import` from a host, which is why it has no button at all.
+  ///
+  /// [`Group::History`] is never here: Undo and Redo are the app bar's run, so the palette has no
+  /// HISTORY section and the help panel is the only place that groups them.
+  pub fn in_palette(self) -> bool {
+    self.tool().is_some()
+      || matches!(
+        self,
+        Self::AddText
+          | Self::Move
+          | Self::Rotate
+          | Self::Scale
+          | Self::Mirror
+          | Self::Array
+          | Self::Offset
+          | Self::Join
+          | Self::Grid
+          | Self::Layers
+          | Self::Help
+          | Self::Shortcuts
+      )
   }
 
   /// The action this command pushes when it needs no number.
@@ -463,8 +520,9 @@ impl Command {
       },
       Self::Help => Help {
         what: "Opens this panel: every command the shell offers, what each one gives you and how to run it.",
-        how: "Press F1 to open it and Esc to close it. Pick a command to read its two sentences; the \
-              keys live in their own window, so this one never lists a chord nobody implemented.",
+        how: "Press F1, or the ? in the app bar, to open it and Esc to close it. Pick a command to read \
+              its two sentences; the keys live in their own window, so this one never lists a chord \
+              nobody implemented.",
         related: &[Command::Shortcuts, Command::IconSet, Command::Theme],
       },
       Self::Theme => Help {
@@ -481,8 +539,8 @@ impl Command {
       },
       Self::Shortcuts => Help {
         what: "Lists every key the shell really answers to, so a chord you learn once is one you can look up.",
-        how: "Open it from the help button in the app bar or the palette. It lists only keys that work \
-              today, because a list of chords nobody implemented is a promise the shell does not keep.",
+        how: "Press Shortcuts in the palette's VIEW run. It lists only keys that work today, because a \
+              list of chords nobody implemented is a promise the shell does not keep.",
         related: &[Command::Help, Command::Undo, Command::FitJob],
       },
       Self::FitJob => Help {
