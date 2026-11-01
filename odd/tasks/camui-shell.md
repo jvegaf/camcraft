@@ -466,3 +466,24 @@ design argues for:
   (`review-89edc321cc30ebdb` for this slice, `review-3ebc68eeba5006f5` for the frame). The natural first candidates for a
   session that *can* review are `f06b43a`, `d511df8`, `99290d8` and this T9 commit — each one work unit under the
   budget.
+
+- **L37 (bookkeeping closed, and the merge).** Owner: *"empieza por el primero"*. Four statements in this document
+  were false, all corrected in `c92aa90`. **T9** read "in progress from `725d9fc`" although `a6a2685` delivered it
+  (L35). **T6** named commit `4318205`, which no branch contains: it is a pre-rewrite copy of `7e09653` — same subject,
+  1 489 lines, and both `git branch -a --contains 4318205` and `git merge-base --is-ancestor 4318205 HEAD` come back
+  empty, so a session following this record would have detached into a commit that is not the frame. The T1–T5 rows
+  carried a dash in the Commit column and read as pending, five tasks later; the hashes were already in the log
+  (`3ecf6ac` for T1–T4, `d8e1ff9` for T5). And the heading claimed "planned, not started, not authorised" over six
+  delivered rows.
+  Then `4a78749` merged `feat/camui-t8-context-help` into `master` with `--no-ff`. **The merge changed no content**:
+  `git diff --stat feat/camui-t8-context-help HEAD` is empty, so `master` holds the branch's own tree and every gate and
+  visual pass recorded in L31–L35 applies undiluted rather than approximately.
+  Gate on `master`, `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config ./scripts/check.sh` with no pipe: exit 0, **1 107
+  tests across 92 suites**, 0 failed, 0 ignored. That is one more than the 1 106 L35 recorded, and the discrepancy is
+  itself a correction rather than a new test: the only commit between the two runs changes documentation, so the source
+  trees are identical and one of the two counts was wrong. The measured one is 1 107; the earlier arithmetic was off by
+  one.
+  `master` is **9 commits ahead of `origin/master` and 0 behind**, and **not pushed** — publishing is the owner's
+  decision, not this session's. Deliberately untouched: the merged branch `feat/camui-t8-context-help` (merged is not
+  deleted), the untracked `.atl/` directory, and the two unburned lineages in L36, which a session that can reach a
+  review model should still be the one to burn.
