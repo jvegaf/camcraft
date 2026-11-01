@@ -65,10 +65,14 @@
   .body{flex:1;display:flex;min-height:0}
 
   /* rail */
-  .rail{width:52px;flex:none;background:var(--bg-panel);border-right:1px solid var(--line-hair);
-    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+  .pal{width:200px;flex:none;background:var(--bg-panel);border-right:1px solid var(--line-hair);
+    padding:8px 10px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+  .pal .grp{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .pal .grp .lab{font-size:11px;color:var(--text-dim);letter-spacing:.02em}
+  .pal .grp .hr{height:1px;background:var(--line-hair);margin-bottom:2px}
+  .pal .row{display:flex;flex-wrap:wrap;gap:2px}
   .rb{width:32px;height:32px;display:grid;place-items:center;border-radius:4px;border:1px solid transparent;
-    background:none;color:var(--text);cursor:pointer;position:relative}
+    background:none;color:var(--text);cursor:pointer;position:relative;flex:none}
   .rb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
   .rb:hover{background:var(--bg-raised)}
   .rb:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
@@ -216,53 +220,46 @@
 
   <div class="body">
     <!-- RAIL -->
-    <aside class="rail" aria-label="Tools">
-      <button class="rb on" aria-label="Select, active tool (V)" title="Select — V">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
-      <button class="rb" aria-label="Edit nodes (N)" title="Edit nodes — N">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18c3-9 6 2 9-3s5-6 8-8"/><rect x="2" y="16.5" width="3" height="3"/><rect x="19" y="4.5" width="3" height="3"/></svg></button>
-      <div class="hair" role="separator"></div>
-      <button class="rb" aria-label="Line (L)" title="Line and polyline — L">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l4.5-8 4.5 5.5L20 6"/></svg></button>
-      <button class="rb" aria-label="Arc (A)" title="Arc by three points — A">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18A11 11 0 0 1 19.5 11.5"/><circle cx="4" cy="18" r="1.3"/><circle cx="19.5" cy="11.5" r="1.3"/></svg></button>
-      <button class="rb" aria-label="Circle (C)" title="Circle by centre and radius — C">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.3"/></svg></button>
-      <button class="rb" aria-label="Ellipse" title="Ellipse in a box">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="5.5"/></svg></button>
-      <button class="rb" aria-label="Rectangle (R)" title="Rectangle — R">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></button>
-      <button class="rb" aria-label="Polygon" title="Regular polygon">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l7.4 4.3v8.4L12 20.5 4.6 16.2V7.8z"/></svg></button>
-      <button class="rb" aria-label="Star" title="Star">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.6 6.1.8-4.4 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.3 9.9l6.1-.8z"/></svg></button>
-      <button class="rb" aria-label="Text (T)" title="Text — T">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5V4.5h14v2"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
-      <button class="rb" aria-label="Dimension" title="Dimension">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v9M20 6v9"/><path d="M4 10h16"/><path d="M6.5 8.2L4 10l2.5 1.8M17.5 8.2L20 10l-2.5 1.8"/></svg></button>
-      <div class="hair" role="separator"></div>
-      <button class="rb" aria-label="Trim" title="Trim to the nearest intersection">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h6.5M14.5 12H21"/><path d="M11.2 8.5v7M12.8 8.5v7"/></svg></button>
-      <button class="rb" aria-label="Fillet" title="Fillet — round a corner">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 20V11a6 6 0 0 1 6-6h9.5"/><path d="M4.5 5.5h3M4.5 5.5v3" opacity=".45"/></svg></button>
-      <button class="rb" aria-label="Offset" title="Offset">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="7.5" y="7.5" width="9" height="9" rx="1"/></svg></button>
-      <button class="rb" aria-label="Union" title="Union — merge closed vectors">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/><path d="M12 7.3a5 5 0 0 1 0 9.4 5 5 0 0 1 0-9.4z" fill="currentColor" fill-opacity=".22"/></svg></button>
-      <button class="rb" aria-label="Move" title="Move — M">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/><path d="M12 3l-2.4 2.6M12 3l2.4 2.6M12 21l-2.4-2.6M12 21l2.4-2.6M3 12l2.6-2.4M3 12l2.6 2.4M21 12l-2.6-2.4M21 12l-2.6 2.4"/></svg></button>
-      <button class="rb" aria-label="Rotate" title="Rotate">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v4.5h-4.5"/></svg></button>
-      <button class="rb" aria-label="Nest" title="Nest the parts into the sheet">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1" stroke-dasharray="2 2"/><rect x="6" y="7" width="8" height="5" rx="1"/><rect x="6" y="14" width="4" height="4" rx="1"/><rect x="12" y="14" width="5" height="4" rx="1"/></svg></button>
-      <div class="bottom">
-        <div class="hair" role="separator"></div>
-        <button class="rb" aria-label="Tool library (T)" title="Tool library — 12 tools"><span class="badge" aria-hidden="true"></span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h4v5.5l-1 2v6l-1 2-1-2v-6l-1-2z"/></svg></button>
+    <aside class="pal" aria-label="Palette">
+      <!-- The Design stage's palette: the two groups the shell draws for it. The Edit stage shows
+           TRANSFORM and VECTOR EDIT here instead, and no stage shows every group at once. -->
+      <div class="grp">
+        <span class="lab">DRAW</span>
+        <div class="hr"></div>
+        <div class="row">
+        <button class="rb on" aria-label="Select" title="Select (V)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
+        <button class="rb" aria-label="Line" title="Line (L)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19L20 6"/></svg></button>
+        <button class="rb" aria-label="Polyline" title="Polyline">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l4.5-8 4.5 5.5L20 6"/></svg></button>
+        <button class="rb" aria-label="Arc" title="Arc (A)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18A11 11 0 0 1 19.5 11.5"/></svg></button>
+        <button class="rb" aria-label="Circle" title="Circle (C)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/></svg></button>
+        <button class="rb" aria-label="Ellipse" title="Ellipse">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5a9 5.5 0 1 0 0 11 9 5.5 0 0 0 0-11z"/></svg></button>
+        <button class="rb" aria-label="Rectangle" title="Rectangle (R)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16v11H4z"/></svg></button>
+        <button class="rb" aria-label="Polygon" title="Polygon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l7.4 4.3v8.4L12 20.5 4.6 16.2V7.8z"/></svg></button>
+        <button class="rb" aria-label="Star" title="Star">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.6 6.1.8-4.4 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.3 9.9l6.1-.8z"/></svg></button>
+        <button class="rb" aria-label="Add text" title="Add text (T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5V4.5h14v2M12 4.5v15M9 19.5h6"/></svg></button>
+        </div>
+      </div>
+      <div class="grp">
+        <span class="lab">VIEW</span>
+        <div class="hr"></div>
+        <div class="row">
         <button class="rb" aria-label="Grid and snapping" title="Grid and snapping">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
-        <button class="rb" aria-label="Layers and dock" title="Layers — Ctrl+L">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></svg></button>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
+        <button class="rb" aria-label="Layers" title="Layers">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 4.5-9 4.5-9-4.5zM3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></svg></button>
+        <button class="rb" aria-label="Shortcuts and help" title="Shortcuts and help">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.3M12 17.4v.2"/></svg></button>
+        </div>
       </div>
     </aside>
 

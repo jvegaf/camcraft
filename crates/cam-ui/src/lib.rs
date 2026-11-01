@@ -556,11 +556,12 @@ pub struct DrawnState {
   pub painted_3d_lines: usize,
   /// The stage the frame drew, and the rail entries it offered in order.
   ///
-  /// The rail is the part of the frame with no text in it, so this is the only way a headless test can
-  /// assert that switching stage really changed what the operator can reach.
   pub stage: Stage,
-  /// What the rail offered, in rail order.
-  pub rail: Vec<String>,
+  /// What the left palette offered, in the order it drew them.
+  ///
+  /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
+  /// read an icon: this is how "switching stage really changed what the operator can reach" is asserted.
+  pub palette: Vec<String>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
@@ -965,7 +966,7 @@ impl Shell {
     self.app_bar(app, ui, &mut output);
     self.stage_bar(app, ui);
     self.status_bar(app, ui, &mut output);
-    self.rail(app, ui, &mut output);
+    self.palette_panel(app, ui, &mut output);
     self.inspector(app, ui, &mut output);
     // One view or the other, never both: the toggle is a mode, and the mode owns the central area.
     if self.show_3d {

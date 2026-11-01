@@ -4,8 +4,8 @@
   "artboards": [
     {
       "file": "01-shell-2d.html",
-      "title": "2D shell — app bar, stage bar, icon rail, collapsible inspector, status bar",
-      "tradeoff": "One screen, one job: the operator always knows the next step, but the rail can only show one stage of tools at a time and experts pay a stage switch.",
+      "title": "2D shell — app bar, stage bar, labelled palette, collapsible inspector, status bar",
+      "tradeoff": "One screen, one job: the operator always knows the next step, but the palette can only show one stage of commands at a time and experts pay a stage switch.",
       "width": 1440,
       "height": 900
     },

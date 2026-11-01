@@ -186,3 +186,22 @@ The foundations are delivered. What remains of the concept, in the order the des
   heading, the count and one honest line about what the family is for — the layout `02-stages` uses. No glyph, rule
   or anatomy figure changed: the comment asks the sheet to *express* the combination, and the combination is the
   same drawing in the same tokens under the other board's structure.
+
+- **L20 (owner delivered screenshots of the reference; the inference is retired).** *"sigue con la ui, te he
+  dejado capturas de la otra para que te guíes. las tienes en design/Screenshots-reference"*. Eight frames from two
+  videos about Prancheta CNC, annotated in `design/Screenshots-reference/README.md` with the pattern each one
+  settles. Three findings are worth naming because they contradict or correct what the shell had inferred:
+  *(1)* the reference's left panel is a **palette of labelled groups** (`CRIAR VETORES`, `TRANSFORMAR OBJETOS`,
+  `EDITAR OBJETOS`, `CONTORNAR E POSICIONAR`), not a rail of glyphs — which is exactly the limit this shell hit
+  when seven Edit commands had to hide behind unnameable icons; *(2)* its inspector is a stack of **uppercase
+  sections with labelled fields two to a row** and paired fields that derive each other, not a list of sentences;
+  *(3)* the top bar **changes with the mode**, which corroborates the exclusive 2D/3D decision.
+- **L21 (implemented from the screenshots).** The 52 px rail is now a **200 px palette** (`Metrics::palette_width`)
+  with the reference's group labels: `DRAW` (the nine gestures plus Add text), `TRANSFORM` and `VECTOR EDIT` on the
+  Edit stage, `VIEW` always. Commands carry their group, so `palette_panel` renders runs and needs no second table
+  saying which group a command is in. The Job tab became **labelled measurement boxes** in two columns
+  (`MATERIAL`: Width X / Height Y / Thickness Z / Grid; `DOCUMENT`: toolpaths, layers) through a `field` widget.
+  `DrawnState.rail` became `DrawnState.palette`, and two tests pin the new grammar: the group labels are painted per
+  stage, and the Job tab shows its measurements labelled. Gates: fmt, clippy `-D warnings`, **1 073 tests** across
+  91 suites. Artboard `01-shell-2d` was updated in the same pass (its rail became the palette with the same ten plus
+  three buttons), and `design/system.md` now carries `palette_width` and the palette-group rule instead of the rail's.

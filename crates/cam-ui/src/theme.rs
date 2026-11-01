@@ -218,8 +218,8 @@ pub struct Metrics {
   pub app_bar_height: f32,
   /// The status bar.
   pub status_height: f32,
-  /// The left tool rail.
-  pub rail_width: f32,
+  /// The left palette: grouped, labelled columns of commands.
+  pub palette_width: f32,
   /// The right inspector.
   pub dock_width: f32,
   /// One pixel of hairline.
@@ -242,7 +242,7 @@ impl Metrics {
       row_height: 26.0,
       app_bar_height: 40.0,
       status_height: 26.0,
-      rail_width: 52.0,
+      palette_width: 200.0,
       dock_width: 288.0,
       hairline: 1.0,
       icon_size: ICON_SIZE,

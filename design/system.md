@@ -103,7 +103,7 @@ Numbers use tabular figures and live in columns; a unit appears once per column,
 | `row_height` | `26` | Layer and inspector rows |
 | `app_bar_height` | `40` | App bar |
 | `status_height` | `26` | Status bar |
-| `rail_width` | `52` | Left tool rail |
+| `palette_width` | `200` | Left palette: labelled groups of commands |
 | `dock_width` | `288` | Right inspector |
 | `hairline` | `1` | The only border weight |
 | `icon_size` / `icon_stroke` | `24` / `1.6` | The icon authoring box and its single weight |
@@ -113,7 +113,10 @@ menus (`0 8px 24px`) and dialogs (`0 24px 64px`).
 
 ## Component rules
 
-- **Rail button** — 32 px target; active is `sel-soft` fill plus a 1 px `sel` border; the glyph keeps its 1.6
+- **Palette group** — a small uppercase `text-dim` label and a hairline, then its buttons wrapped five to a row.
+  The label is the operator's own word (`DRAW`, `TRANSFORM`, `VECTOR EDIT`, `VIEW`); an unlabelled rail stops
+  working past a dozen glyphs, which is why the shell abandoned its 52 px rail.
+- **Palette button** — 32 px target; active is `sel-soft` fill plus a 1 px `sel` border; the glyph keeps its 1.6
   weight, so selection never changes the drawing. Every icon-only control carries a tooltip with its name and key.
 - **Primary action** — the `cut` colour, one per screen (`Generate G-code`). Destructive or expensive actions are
   never primary-coloured.

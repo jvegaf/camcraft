@@ -40,6 +40,15 @@ use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
 use crate::{Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
 
+/// One palette entry: the glyph, the word it answers to, and the command it runs.
+type PaletteEntry = (Icon, &'static str, UiAction);
+
+/// A labelled run of palette entries: the group's name and the buttons under it.
+type PaletteRun = (&'static str, Vec<PaletteEntry>);
+
+/// A rail command: which group it belongs to, its glyph, its word, and the command.
+type GroupedCommand = (&'static str, Icon, &'static str, UiAction);
+
 /// The nine canvas gestures, as a `'static` slice so the rail can borrow it.
 static DESIGN_TOOLS: [Tool; 9] = Tool::ALL;
 
@@ -334,102 +343,143 @@ impl Shell {
     });
   }
 
-  /// The left rail: the current stage's tools, and the three that are always there.
-  pub(crate) fn rail(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+  /// The left palette: the current stage's commands, grouped and labelled.
+  ///
+  /// The reference app settles a question this shell got wrong first. A rail of unlabelled glyphs stops
+  /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
+  /// to hide behind icons nobody could name. Twenty commands in labelled groups stay findable, and the
+  /// label is the word a machinist already uses.
+  pub(crate) fn palette_panel(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    output: &mut ShellOutput,
+  ) {
     let palette = self.palette();
     let metrics = self.metrics();
-    egui::Panel::left("rail")
-      .exact_size(metrics.rail_width)
+    egui::Panel::left("palette")
+      .exact_size(metrics.palette_width)
       .show(ui, |ui| {
-        ui.vertical_centered(|ui| {
-          ui.add_space(metrics.space(1));
-          let mut rail: Vec<String> = Vec::new();
+        egui::ScrollArea::vertical()
+          .id_salt("palette")
+          .show(ui, |ui| {
+            let mut offered: Vec<String> = Vec::new();
+            let centre = app.camera().center();
 
-          for tool in self.stage.tools() {
-            if icon_button(
-              ui,
-              &palette,
-              tool_icon(*tool),
-              tool.label(),
-              self.active_tool == *tool,
-              true,
-              20.0,
-            )
-            .clicked()
-            {
-              self.active_tool = *tool;
+            match self.stage {
+              Stage::Design => {
+                section(ui, &palette, "DRAW");
+                ui.horizontal_wrapped(|ui| {
+                  for tool in self.stage.tools() {
+                    if icon_button(
+                      ui,
+                      &palette,
+                      tool_icon(*tool),
+                      tool.label(),
+                      self.active_tool == *tool,
+                      true,
+                      20.0,
+                    )
+                    .clicked()
+                    {
+                      self.active_tool = *tool;
+                    }
+                    offered.push(tool.label().to_owned());
+                  }
+                  // Text is the one "tool" that needs a value before it acts, so it reads the number from
+                  // the Tools tab and lands in the middle of the view.
+                  if icon_button(ui, &palette, Icon::Text, "Add text", false, true, 20.0).clicked()
+                  {
+                    output.actions.push(UiAction::AddText {
+                      text: self.text.clone(),
+                      height: self.text_height,
+                      origin: centre,
+                    });
+                  }
+                  offered.push("Add text".to_owned());
+                });
+              }
+              Stage::Edit => {
+                // Grouped by runs, so a command list with three groups needs no second table to say
+                // which group a command is in.
+                let mut runs: Vec<PaletteRun> = Vec::new();
+                for (group, icon, label, action) in self.rail_commands(app) {
+                  match runs.last_mut() {
+                    Some((name, entries)) if *name == group => entries.push((icon, label, action)),
+                    _ => runs.push((group, vec![(icon, label, action)])),
+                  }
+                }
+                for (group, entries) in runs {
+                  section(ui, &palette, group);
+                  ui.horizontal_wrapped(|ui| {
+                    for (icon, label, action) in entries {
+                      if icon_button(ui, &palette, icon, label, false, true, 20.0).clicked() {
+                        output.actions.push(action);
+                      }
+                      offered.push(label.to_owned());
+                    }
+                  });
+                }
+              }
+              Stage::Relief | Stage::Toolpaths | Stage::Prove => {
+                let title = self.stage.label().to_uppercase();
+                section(ui, &palette, &title);
+                note(ui, &palette, self.stage.note());
+              }
             }
-            rail.push(tool.label().to_owned());
-          }
 
-          // Commands, not armed gestures: these read the numbers in Tools and act at once.
-          for (icon, label, action) in self.rail_commands(app) {
-            if icon_button(ui, &palette, icon, label, false, true, 20.0).clicked() {
-              output.actions.push(action);
-            }
-            rail.push(label.to_owned());
-          }
+            ui.add_space(metrics.space(3));
+            section(ui, &palette, "VIEW");
+            ui.horizontal_wrapped(|ui| {
+              if icon_button(
+                ui,
+                &palette,
+                Icon::Grid,
+                "Grid and snapping",
+                self.snapping,
+                true,
+                20.0,
+              )
+              .clicked()
+              {
+                self.snapping = !self.snapping;
+              }
+              offered.push("Grid".to_owned());
+              if icon_button(
+                ui,
+                &palette,
+                Icon::Layers,
+                "Inspector — collapse or expand",
+                self.inspector_open,
+                true,
+                20.0,
+              )
+              .clicked()
+              {
+                self.inspector_open = !self.inspector_open;
+              }
+              offered.push("Layers".to_owned());
+              if icon_button(
+                ui,
+                &palette,
+                Icon::Help,
+                "Shortcuts and help",
+                false,
+                true,
+                20.0,
+              )
+              .clicked()
+              {
+                self.show_shortcuts = !self.show_shortcuts;
+              }
+              offered.push("Help".to_owned());
+            });
 
-          if rail.is_empty() {
-            ui.label(
-              RichText::new("—")
-                .size(theme::CAPTION)
-                .color(palette.get(Role::TextOff)),
-            )
-            .on_hover_text(self.stage.note());
-          }
-
-          ui.add_space(metrics.space(3));
-          ui.separator();
-
-          if icon_button(
-            ui,
-            &palette,
-            Icon::Grid,
-            "Grid and snapping",
-            self.snapping,
-            true,
-            20.0,
-          )
-          .clicked()
-          {
-            self.snapping = !self.snapping;
-          }
-          rail.push("Grid".to_owned());
-          if icon_button(
-            ui,
-            &palette,
-            Icon::Layers,
-            "Inspector — collapse or expand",
-            self.inspector_open,
-            true,
-            20.0,
-          )
-          .clicked()
-          {
-            self.inspector_open = !self.inspector_open;
-          }
-          rail.push("Layers".to_owned());
-          if icon_button(
-            ui,
-            &palette,
-            Icon::Help,
-            "Shortcuts and help",
-            false,
-            true,
-            20.0,
-          )
-          .clicked()
-          {
-            self.show_shortcuts = !self.show_shortcuts;
-          }
-          rail.push("Help".to_owned());
-
-          // What the rail offered: `DrawnState` is the shell's own report of what it drew, and the
-          // rail is the part of the frame that carries no text.
-          output.drawn.stage = self.stage;
-          output.drawn.rail = rail;
-        });
+            // What the palette offered: `DrawnState` is the shell's report of what it drew, and the
+            // palette is the part of the frame that carries no text of its own.
+            output.drawn.stage = self.stage;
+            output.drawn.palette = offered;
+          });
       });
   }
 
@@ -438,11 +488,12 @@ impl Shell {
   /// These are the same constructions the Tools tab draws as labelled buttons. Keeping one
   /// implementation would mean extracting them into a shared command module — worth doing, and this
   /// note is the reminder that leaving two is a debt rather than a decision.
-  fn rail_commands(&self, app: &AppState) -> Vec<(Icon, &'static str, UiAction)> {
+  fn rail_commands(&self, app: &AppState) -> Vec<GroupedCommand> {
     let centre = app.camera().center();
     match self.stage {
       Stage::Edit => vec![
         (
+          "TRANSFORM",
           Icon::Move,
           "Move",
           UiAction::Transform(Transform::Translate {
@@ -450,6 +501,7 @@ impl Shell {
           }),
         ),
         (
+          "TRANSFORM",
           Icon::Rotate,
           "Rotate",
           UiAction::Transform(Transform::Rotate {
@@ -458,6 +510,7 @@ impl Shell {
           }),
         ),
         (
+          "TRANSFORM",
           Icon::Scale,
           "Scale",
           UiAction::Transform(Transform::Scale {
@@ -468,6 +521,7 @@ impl Shell {
           }),
         ),
         (
+          "TRANSFORM",
           Icon::MirrorH,
           "Mirror",
           UiAction::Transform(Transform::Mirror {
@@ -476,6 +530,7 @@ impl Shell {
           }),
         ),
         (
+          "TRANSFORM",
           Icon::ArrayGrid,
           "Array",
           UiAction::Array {
@@ -486,13 +541,14 @@ impl Shell {
           },
         ),
         (
+          "VECTOR EDIT",
           Icon::Offset,
           "Offset",
           UiAction::Offset {
             distance: self.offset_distance,
           },
         ),
-        (Icon::Union, "Join", UiAction::Join),
+        ("VECTOR EDIT", Icon::Union, "Join", UiAction::Join),
       ],
       Stage::Design | Stage::Relief | Stage::Toolpaths | Stage::Prove => Vec::new(),
     }
@@ -605,26 +661,53 @@ impl Shell {
   }
 
   /// The job tab: what is being cut, and out of what.
+  ///
+  /// Fields are labelled above and two to a row, the way the reference app lays out MATERIAL: a
+  /// machinist reads "Width X 600" and "Thickness Z 18" as one block, not as a list of sentences.
   fn job_section(&self, app: &AppState, ui: &mut egui::Ui, palette: &Palette) {
     let job = &app.document().job;
-    for (label, value) in [
-      ("Width", format!("{:.2} mm", job.width.mm())),
-      ("Height", format!("{:.2} mm", job.height.mm())),
-      ("Thickness", format!("{:.2} mm", job.thickness.mm())),
-      ("Toolpaths", app.document().toolpaths.len().to_string()),
-      ("Layers", app.document().layers.len().to_string()),
-    ] {
-      ui.horizontal(|ui| {
-        ui.label(
-          RichText::new(label)
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
+    section(ui, palette, "MATERIAL");
+    egui::Grid::new("job-material")
+      .num_columns(2)
+      .spacing([8.0, 6.0])
+      .show(ui, |ui| {
+        field(ui, palette, "Width X", &format!("{:.0} mm", job.width.mm()));
+        field(
+          ui,
+          palette,
+          "Height Y",
+          &format!("{:.0} mm", job.height.mm()),
         );
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-          ui.label(RichText::new(value).text_style(egui::TextStyle::Monospace));
-        });
+        ui.end_row();
+        field(
+          ui,
+          palette,
+          "Thickness Z",
+          &format!("{:.0} mm", job.thickness.mm()),
+        );
+        field(ui, palette, "Grid", &format!("{:.2} mm", self.grid_spacing));
+        ui.end_row();
       });
-    }
+
+    section(ui, palette, "DOCUMENT");
+    egui::Grid::new("job-document")
+      .num_columns(2)
+      .spacing([8.0, 6.0])
+      .show(ui, |ui| {
+        field(
+          ui,
+          palette,
+          "Toolpaths",
+          &app.document().toolpaths.len().to_string(),
+        );
+        field(
+          ui,
+          palette,
+          "Layers",
+          &app.document().layers.len().to_string(),
+        );
+        ui.end_row();
+      });
     ui.add_space(6.0);
     note(ui, palette, Stage::Toolpaths.note());
   }
@@ -765,6 +848,54 @@ fn paint_mark(ui: &mut egui::Ui, palette: &Palette, size: f32) {
     palette.get(Role::Sel),
     theme::ICON_STROKE * size / theme::ICON_SIZE,
   );
+}
+
+/// One labelled value box: the label above, the number inside a bordered field.
+///
+/// Read-only for now, because nothing in the document's job is editable from the shell yet; the shape is
+/// what matters, and it is the shape the reference app uses for every material measurement.
+fn field(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
+  ui.vertical(|ui| {
+    ui.label(
+      RichText::new(label)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(122.0, 24.0), Sense::hover());
+    let radius = egui::CornerRadius::same(4);
+    ui.painter()
+      .rect_filled(rect, radius, palette.get(Role::Raised));
+    ui.painter().rect_stroke(
+      rect,
+      radius,
+      egui::Stroke::new(1.0, palette.get(Role::Border)),
+      egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+      rect.right_center() - egui::vec2(8.0, 0.0),
+      egui::Align2::RIGHT_CENTER,
+      value,
+      egui::FontId::monospace(theme::SMALL),
+      palette.get(Role::TextHi),
+    );
+  });
+}
+
+/// A palette or inspector section label: small, uppercase, dim, with a hairline under it.
+///
+/// The reference app labels every group this way and it is the single cheapest thing that made a wall of
+/// commands readable: the word is already in the operator's vocabulary, and it costs one line.
+fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
+  ui.add_space(4.0);
+  ui.label(
+    RichText::new(label)
+      .size(theme::CAPTION)
+      .color(palette.get(Role::TextDim)),
+  );
+  let width = ui.available_width();
+  let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
+  ui.painter()
+    .rect_filled(rect, 0.0, palette.get(Role::Hairline));
 }
 
 /// A sentence in the shell's teaching voice, used where a stage has nothing to show yet.

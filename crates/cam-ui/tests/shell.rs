@@ -204,19 +204,19 @@ fn the_stage_bar_reports_what_each_stage_can_prove() {
 }
 
 #[test]
-fn switching_stage_changes_what_the_rail_offers() {
+fn switching_stage_changes_what_the_palette_offers() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (design, _) = frame(&mut shell, &mut app);
   assert!(
-    design.drawn.rail.iter().any(|entry| entry == "Line"),
-    "the drawing tools belong on the Design rail: {:?}",
-    design.drawn.rail
+    design.drawn.palette.iter().any(|entry| entry == "Line"),
+    "the drawing tools belong on the Design palette: {:?}",
+    design.drawn.palette
   );
   assert!(
-    !design.drawn.rail.iter().any(|entry| entry == "Offset"),
-    "an edit command must not be on the Design rail: {:?}",
-    design.drawn.rail
+    !design.drawn.palette.iter().any(|entry| entry == "Offset"),
+    "an edit command must not be on the Design palette: {:?}",
+    design.drawn.palette
   );
 
   shell.set_stage(Stage::Edit);
@@ -226,16 +226,52 @@ fn switching_stage_changes_what_the_rail_offers() {
     "Move", "Rotate", "Scale", "Mirror", "Array", "Offset", "Join",
   ] {
     assert!(
-      edit.drawn.rail.iter().any(|entry| entry == expected),
+      edit.drawn.palette.iter().any(|entry| entry == expected),
       "missing {expected:?} in {:?}",
-      edit.drawn.rail
+      edit.drawn.palette
     );
   }
   assert!(
-    !edit.drawn.rail.iter().any(|entry| entry == "Line"),
-    "a drawing tool must not be on the Edit rail: {:?}",
-    edit.drawn.rail
+    !edit.drawn.palette.iter().any(|entry| entry == "Line"),
+    "a drawing tool must not be on the Edit palette: {:?}",
+    edit.drawn.palette
   );
+}
+
+#[test]
+fn the_palette_labels_its_groups() {
+  // The reference app's lesson: a labelled group is what keeps twenty commands findable, and an
+  // unlabelled rail is what made the seven Edit commands nameless.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("DRAW"),
+    "Design must label its drawing group: {all}"
+  );
+  assert!(
+    all.contains("VIEW"),
+    "the invariants get their own group: {all}"
+  );
+
+  shell.set_stage(Stage::Edit);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(all.contains("TRANSFORM"), "{all}");
+  assert!(all.contains("VECTOR EDIT"), "{all}");
+}
+
+#[test]
+fn the_job_tab_shows_labelled_measurements_in_two_columns() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["MATERIAL", "Width X", "Height Y", "Thickness Z", "DOCUMENT"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
 }
 
 #[test]
@@ -319,10 +355,14 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   // The rail is where the gestures live now, and it says so in its own report rather than in pixels.
   for tool in Tool::ALL {
     assert!(
-      output.drawn.rail.iter().any(|entry| entry == tool.label()),
+      output
+        .drawn
+        .palette
+        .iter()
+        .any(|entry| entry == tool.label()),
       "{:?} must be on the rail: {:?}",
       tool,
-      output.drawn.rail
+      output.drawn.palette
     );
   }
 }
