@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Campilot — 2D shell</title>
+<style>
+  :root{
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b;
+    --bg-overlay:#232a32; --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#06080a;font-family:var(--f);font-size:13px;color:var(--text);
+    -webkit-font-smoothing:antialiased}
+  .app{width:1440px;height:900px;display:flex;flex-direction:column;background:var(--bg-app);overflow:hidden}
+
+  /* ---------- app bar ---------- */
+  .appbar{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 10px 0 12px;
+    background:var(--bg-app);border-bottom:1px solid var(--line-hair)}
+  .logo{display:flex;align-items:center;gap:8px;padding-right:4px}
+  .logo svg{width:20px;height:20px;fill:none;stroke:var(--sel);stroke-width:1.6;stroke-linejoin:round}
+  .logo b{font-size:13px;font-weight:600;color:var(--text-hi);letter-spacing:-.01em}
+  .sep{width:1px;height:20px;background:var(--line-hair);margin:0 2px}
+  .ib{width:28px;height:28px;display:grid;place-items:center;border:1px solid transparent;border-radius:4px;
+    background:none;color:var(--text);cursor:pointer}
+  .ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .ib:hover{background:var(--bg-raised)}
+  .ib:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+  .ib[disabled]{color:var(--text-off)}
+  .doc{display:flex;align-items:center;gap:7px;height:26px;padding:0 9px;border:1px solid var(--line-hair);
+    border-radius:6px;background:var(--bg-panel);font-size:12px;color:var(--text)}
+  .doc .dot{width:6px;height:6px;border-radius:50%;background:var(--cut)}
+  .doc .x{color:var(--text-off);font-size:11px}
+  .grow{flex:1}
+  .chip{height:22px;padding:0 8px;border:1px solid var(--line-hair);border-radius:999px;font-size:11px;
+    color:var(--text-dim);display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
+  .btn{height:26px;padding:0 11px;border-radius:4px;border:1px solid var(--line-strong);background:var(--bg-raised);
+    color:var(--text-hi);font:inherit;font-size:12px;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+  .btn:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+  .btn.cut{background:var(--cut);border-color:var(--cut);color:#1a1206;font-weight:600}
+  .btn.cut svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- stage bar ---------- */
+  .stages{height:32px;flex:none;display:flex;align-items:center;gap:0;padding:0 10px;
+    background:var(--bg-panel);border-bottom:1px solid var(--line-hair)}
+  .stage{display:flex;align-items:center;gap:7px;height:22px;padding:0 10px 0 8px;border-radius:999px;
+    font-size:12px;color:var(--text-dim);white-space:nowrap}
+  .stage .num{width:15px;height:15px;border-radius:50%;border:1px solid var(--line-strong);display:grid;
+    place-items:center;font-size:9px;font-variant-numeric:tabular-nums;color:var(--text-dim)}
+  .stage.done{color:var(--text)}
+  .stage.done .num{border-color:var(--ok);color:var(--ok)}
+  .stage.now{background:var(--sel-soft);color:var(--sel);border:1px solid var(--sel)}
+  .stage.now .num{border-color:var(--sel);color:var(--sel)}
+  .stage .n{font-size:11px;color:var(--text-off);font-variant-numeric:tabular-nums}
+  .stage.now .n{color:var(--sel);opacity:.85}
+  .arrow{color:var(--text-off);font-size:10px;padding:0 2px}
+  .stages .right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-dim)}
+  .dot-ok{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block}
+
+  /* ---------- body ---------- */
+  .body{flex:1;display:flex;min-height:0}
+
+  /* rail */
+  .rail{width:52px;flex:none;background:var(--bg-panel);border-right:1px solid var(--line-hair);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+  .rb{width:32px;height:32px;display:grid;place-items:center;border-radius:4px;border:1px solid transparent;
+    background:none;color:var(--text);cursor:pointer;position:relative}
+  .rb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .rb:hover{background:var(--bg-raised)}
+  .rb:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+  .rb.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  .rail .hair{width:22px;height:1px;background:var(--line-hair);margin:5px 0}
+  .rail .bottom{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .badge{position:absolute;right:1px;bottom:1px;width:5px;height:5px;border-radius:50%;background:var(--cut)}
+
+  /* canvas */
+  .canvas{flex:1;position:relative;background:var(--bg-canvas);min-width:0;overflow:hidden}
+  .canvas svg.scene{position:absolute;inset:0;width:100%;height:100%}
+  .ruler-h{position:absolute;top:0;left:0;right:0;height:20px;background:var(--bg-panel);
+    border-bottom:1px solid var(--line-hair);display:flex;align-items:flex-end;color:var(--text-off);
+    font-size:9px;font-variant-numeric:tabular-nums}
+  .ruler-v{position:absolute;top:0;left:0;bottom:0;width:20px;background:var(--bg-panel);
+    border-right:1px solid var(--line-hair)}
+  .tick-h,.tick-v{position:absolute;background:var(--line-strong)}
+  .tick-h{width:1px;height:4px;bottom:0}
+  .tick-h.major{height:7px}
+  .tick-v{height:1px;width:4px;right:0}
+  .tick-v.major{width:7px}
+  .ruler-h .lab{position:absolute;bottom:8px;font-size:9px;transform:translateX(3px)}
+  .ruler-v .lab{position:absolute;left:9px;font-size:9px;transform:rotate(-90deg);transform-origin:left top}
+
+  .viewtoggle{position:absolute;top:32px;left:50%;transform:translateX(-50%);display:flex;gap:0;
+    background:var(--bg-overlay);border:1px solid var(--line-strong);border-radius:999px;padding:2px}
+  .viewtoggle button{height:22px;padding:0 12px;border-radius:999px;border:0;background:none;color:var(--text-dim);
+    font:inherit;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .viewtoggle button svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .viewtoggle button.on{background:var(--sel-soft);color:var(--sel);box-shadow:inset 0 0 0 1px var(--sel)}
+  .viewtoggle button:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+
+  .navwidget{position:absolute;left:32px;bottom:16px;display:flex;align-items:center;gap:2px;
+    background:var(--bg-overlay);border:1px solid var(--line-strong);border-radius:6px;padding:2px}
+  .navwidget button{width:24px;height:24px;display:grid;place-items:center;border:0;background:none;
+    color:var(--text);border-radius:4px;cursor:pointer}
+  .navwidget button:hover{background:var(--bg-raised)}
+  .navwidget button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
+  .navwidget .z{font-size:11px;color:var(--text);font-variant-numeric:tabular-nums;padding:0 6px;
+    border-left:1px solid var(--line-hair);border-right:1px solid var(--line-hair);margin:0 2px}
+
+  .toast{position:absolute;right:16px;bottom:16px;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;
+    background:var(--bg-overlay);border:1px solid var(--line-strong);border-radius:6px;font-size:12px;color:var(--text)}
+  .toast svg{width:15px;height:15px;fill:none;stroke:var(--warn);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+  /* dock */
+  .dockwrap{width:300px;flex:none;display:flex;background:var(--bg-panel);border-left:1px solid var(--line-hair)}
+  .collapse{width:11px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--bg-app);
+    border-right:1px solid var(--line-hair);color:var(--text-off);cursor:pointer}
+  .collapse svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .collapse:hover{color:var(--sel);background:var(--bg-raised)}
+  .dock{flex:1;display:flex;flex-direction:column;min-width:0}
+  .dockhead{height:32px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 12px;
+    border-bottom:1px solid var(--line-hair)}
+  .dockhead b{font-size:12px;font-weight:600;color:var(--text-hi);letter-spacing:.01em}
+  .tabs{display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--line-hair);flex:none}
+  .tab{height:22px;padding:0 9px;border-radius:999px;border:1px solid transparent;background:none;
+    color:var(--text-dim);font:inherit;font-size:11px;cursor:pointer}
+  .tab.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  .tab:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+  .sect{padding:10px 12px 12px;border-bottom:1px solid var(--line-hair)}
+  .sect h4{margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim)}
+  .kv{display:flex;align-items:center;height:22px;font-size:12px}
+  .kv .k{color:var(--text-dim);flex:1}
+  .kv .v{color:var(--text-hi);font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:11px}
+  .field{display:flex;align-items:center;height:24px;border:1px solid var(--line-strong);border-radius:4px;
+    background:var(--bg-raised);padding:0 7px;font-family:var(--mono);font-size:11px;color:var(--text-hi);
+    font-variant-numeric:tabular-nums;margin-top:4px}
+  .field .u{margin-left:auto;color:var(--text-off);padding-left:6px}
+  .lbl{font-size:11px;color:var(--text-dim);margin-top:8px}
+  .layers{flex:1;display:flex;flex-direction:column;min-height:0}
+  .lhead{height:30px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 12px;
+    border-bottom:1px solid var(--line-hair)}
+  .lhead b{font-size:12px;font-weight:600;color:var(--text-hi)}
+  .lhead .count{font-size:10px;color:var(--text-off);font-variant-numeric:tabular-nums}
+  .lrow{display:flex;align-items:center;gap:7px;height:26px;margin:0 6px;padding:0 6px;border-radius:4px;font-size:12px}
+  .lrow:hover{background:var(--bg-raised)}
+  .lrow.on{background:var(--sel-soft);box-shadow:inset 0 0 0 1px var(--sel)}
+  .lrow .ico{width:14px;height:14px;flex:none;color:var(--text-dim);display:grid;place-items:center}
+  .lrow.on .ico{color:var(--sel)}
+  .lrow svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .lrow .nm{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lrow.on .nm{color:var(--text-hi)}
+  .lrow.off .nm{color:var(--text-off)}
+  .lrow .n{font-size:10px;color:var(--text-off);font-variant-numeric:tabular-nums}
+  .lfoot{flex:none;height:26px;display:flex;align-items:center;gap:8px;padding:0 12px;
+    border-top:1px solid var(--line-hair);font-size:11px;color:var(--text-off)}
+
+  /* status */
+  .status{height:26px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;
+    background:var(--bg-panel);border-top:1px solid var(--line-hair);font-size:11px;color:var(--text-dim);
+    font-variant-numeric:tabular-nums}
+  .status .v{color:var(--text)}
+  .status .sep2{width:1px;height:12px;background:var(--line-hair)}
+  .status .right{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .status svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;vertical-align:-2px;margin-right:4px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="Campilot shell">
+
+  <!-- APP BAR -->
+  <header class="appbar">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8.5 5v9l-8.5 5-8.5-5v-9z"/><path d="M12 8.5l4 2.4v4.2L12 17.5l-4-2.4V10.9z"/></svg>
+      <b>Campilot</b>
+    </div>
+    <div class="sep" role="separator"></div>
+    <button class="ib" aria-label="Undo (Ctrl+Z)" title="Undo — Ctrl+Z">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button class="ib" aria-label="Redo (Ctrl+Y)" title="Redo — Ctrl+Y" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <div class="sep" role="separator"></div>
+    <div class="doc" title="letreiro-farmacia.c2d — 3 changes since the last save">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3h11L19.5 7v14h-15z"/><path d="M8 3v5h7"/></svg>
+      letreiro-farmacia.c2d <span class="dot" title="Unsaved changes"></span>
+    </div>
+    <div class="grow"></div>
+    <span class="chip" title="Working units">mm</span>
+    <button class="ib" aria-label="Theme: dark (click for light)" title="Theme — dark · light · follow system">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+    <button class="ib" aria-label="Shortcuts and help (F1)" title="Shortcuts and help — F1">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.3"/><path d="M12 17.4v.2"/></svg></button>
+    <button class="btn cut" title="Write the G-code program for the active toolpaths">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h5M9 15.5h4"/></svg>
+      Generate G-code</button>
+  </header>
+
+  <!-- STAGE BAR -->
+  <nav class="stages" aria-label="Workflow stages">
+    <span class="stage done"><span class="num" aria-hidden="true">✓</span>Design <span class="n">48</span></span>
+    <span class="arrow" aria-hidden="true">›</span>
+    <span class="stage done"><span class="num" aria-hidden="true">✓</span>Edit <span class="n">done</span></span>
+    <span class="arrow" aria-hidden="true">›</span>
+    <span class="stage now"><span class="num" aria-hidden="true">3</span>Toolpaths <span class="n">3</span></span>
+    <span class="arrow" aria-hidden="true">›</span>
+    <span class="stage"><span class="num" aria-hidden="true">4</span>Simulate <span class="n">not run</span></span>
+    <span class="arrow" aria-hidden="true">›</span>
+    <span class="stage"><span class="num" aria-hidden="true">5</span>G-code <span class="n">—</span></span>
+    <div class="right">
+      <span class="dot-ok" aria-hidden="true"></span> MDF 600 × 400 × 15
+    </div>
+  </nav>
+
+  <div class="body">
+    <!-- RAIL -->
+    <aside class="rail" aria-label="Tools">
+      <button class="rb on" aria-label="Select, active tool (V)" title="Select — V">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
+      <button class="rb" aria-label="Edit nodes (N)" title="Edit nodes — N">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18c3-9 6 2 9-3s5-6 8-8"/><rect x="2" y="16.5" width="3" height="3"/><rect x="19" y="4.5" width="3" height="3"/></svg></button>
+      <div class="hair" role="separator"></div>
+      <button class="rb" aria-label="Line (L)" title="Line and polyline — L">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18l4.5-8 4.5 5.5L20 6"/></svg></button>
+      <button class="rb" aria-label="Arc (A)" title="Arc by three points — A">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18A11 11 0 0 1 19.5 11.5"/><circle cx="4" cy="18" r="1.3"/><circle cx="19.5" cy="11.5" r="1.3"/></svg></button>
+      <button class="rb" aria-label="Circle (C)" title="Circle by centre and radius — C">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.3"/></svg></button>
+      <button class="rb" aria-label="Ellipse" title="Ellipse in a box">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="5.5"/></svg></button>
+      <button class="rb" aria-label="Rectangle (R)" title="Rectangle — R">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></button>
+      <button class="rb" aria-label="Polygon" title="Regular polygon">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l7.4 4.3v8.4L12 20.5 4.6 16.2V7.8z"/></svg></button>
+      <button class="rb" aria-label="Star" title="Star">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.6 6.1.8-4.4 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.3 9.9l6.1-.8z"/></svg></button>
+      <button class="rb" aria-label="Text (T)" title="Text — T">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5V4.5h14v2"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></svg></button>
+      <button class="rb" aria-label="Dimension" title="Dimension">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v9M20 6v9"/><path d="M4 10h16"/><path d="M6.5 8.2L4 10l2.5 1.8M17.5 8.2L20 10l-2.5 1.8"/></svg></button>
+      <div class="hair" role="separator"></div>
+      <button class="rb" aria-label="Trim" title="Trim to the nearest intersection">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h6.5M14.5 12H21"/><path d="M11.2 8.5v7M12.8 8.5v7"/></svg></button>
+      <button class="rb" aria-label="Fillet" title="Fillet — round a corner">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 20V11a6 6 0 0 1 6-6h9.5"/><path d="M4.5 5.5h3M4.5 5.5v3" opacity=".45"/></svg></button>
+      <button class="rb" aria-label="Offset" title="Offset">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="7.5" y="7.5" width="9" height="9" rx="1"/></svg></button>
+      <button class="rb" aria-label="Union" title="Union — merge closed vectors">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/><path d="M12 7.3a5 5 0 0 1 0 9.4 5 5 0 0 1 0-9.4z" fill="currentColor" fill-opacity=".22"/></svg></button>
+      <button class="rb" aria-label="Move" title="Move — M">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/><path d="M12 3l-2.4 2.6M12 3l2.4 2.6M12 21l-2.4-2.6M12 21l2.4-2.6M3 12l2.6-2.4M3 12l2.6 2.4M21 12l-2.6-2.4M21 12l-2.6 2.4"/></svg></button>
+      <button class="rb" aria-label="Rotate" title="Rotate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v4.5h-4.5"/></svg></button>
+      <button class="rb" aria-label="Nest" title="Nest the parts into the sheet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1" stroke-dasharray="2 2"/><rect x="6" y="7" width="8" height="5" rx="1"/><rect x="6" y="14" width="4" height="4" rx="1"/><rect x="12" y="14" width="5" height="4" rx="1"/></svg></button>
+      <div class="bottom">
+        <div class="hair" role="separator"></div>
+        <button class="rb" aria-label="Tool library (T)" title="Tool library — 12 tools"><span class="badge" aria-hidden="true"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h4v5.5l-1 2v6l-1 2-1-2v-6l-1-2z"/></svg></button>
+        <button class="rb" aria-label="Grid and snapping" title="Grid and snapping">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
+        <button class="rb" aria-label="Layers and dock" title="Layers — Ctrl+L">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></svg></button>
+      </div>
+    </aside>
+
+    <!-- CANVAS -->
+    <section class="canvas" aria-label="Drawing surface">
+      <div class="ruler-h" aria-hidden="true">
+        <span class="tick-h" style="left:60px"></span><span class="tick-h major" style="left:120px"></span><span class="lab" style="left:120px">50</span>
+        <span class="tick-h" style="left:180px"></span><span class="tick-h major" style="left:240px"></span><span class="lab" style="left:240px">100</span>
+        <span class="tick-h" style="left:300px"></span><span class="tick-h major" style="left:360px"></span><span class="lab" style="left:360px">150</span>
+        <span class="tick-h" style="left:420px"></span><span class="tick-h major" style="left:480px"></span><span class="lab" style="left:480px">200</span>
+        <span class="tick-h" style="left:540px"></span><span class="tick-h major" style="left:600px"></span><span class="lab" style="left:600px">250</span>
+        <span class="tick-h" style="left:660px"></span><span class="tick-h major" style="left:720px"></span><span class="lab" style="left:720px">300</span>
+        <span class="tick-h" style="left:780px"></span><span class="tick-h major" style="left:840px"></span><span class="lab" style="left:840px">350</span>
+        <span class="tick-h" style="left:900px"></span><span class="tick-h major" style="left:960px"></span><span class="lab" style="left:960px">400</span>
+        <span class="tick-h" style="left:1020px"></span>
+      </div>
+      <div class="ruler-v" aria-hidden="true">
+        <span class="tick-v" style="top:60px"></span><span class="tick-v major" style="top:120px"></span>
+        <span class="tick-v" style="top:180px"></span><span class="tick-v major" style="top:240px"></span>
+        <span class="tick-v" style="top:300px"></span><span class="tick-v major" style="top:360px"></span>
+        <span class="tick-v" style="top:420px"></span><span class="tick-v major" style="top:480px"></span>
+        <span class="tick-v" style="top:540px"></span><span class="tick-v major" style="top:600px"></span>
+        <span class="tick-v" style="top:660px"></span><span class="tick-v major" style="top:720px"></span>
+      </div>
+
+      <svg class="scene" viewBox="0 0 1088 802" preserveAspectRatio="xMidYMid meet" role="img"
+           aria-label="A pharmacy sign on a sheet of MDF: an outer rounded plaque selected in cyan, four mounting holes, the V-carve centreline, and the profile toolpath in amber outside the contour">
+        <defs>
+          <pattern id="gridbg" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M20 0H0V20" fill="none" stroke="#14181e" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect x="0" y="20" width="1088" height="782" fill="url(#gridbg)" opacity=".85"/>
+
+        <!-- stock -->
+        <g transform="translate(184 96)">
+          <rect x="0" y="0" width="680" height="454" fill="#101520" stroke="#2c353f" stroke-width="1.2"/>
+          <text x="8" y="-6" fill="#5c6673" font-family="Inter, system-ui, sans-serif" font-size="10">
+            stock — MDF 600 × 400 × 15 mm · origin X0 Y0 bottom-left</text>
+
+          <!-- toolpath: profile, outside, offset 3.2 -->
+          <rect x="-6.4" y="-6.4" width="692.8" height="466.8" fill="none" stroke="#f5a623" stroke-width="2"
+                stroke-dasharray="9 5" opacity=".92" rx="14"/>
+
+          <!-- plaque: unselected geometry (relief contour) -->
+          <rect x="18" y="18" width="644" height="418" fill="none" stroke="#4a545f" stroke-width="1.4" rx="10"/>
+
+          <!-- holes -->
+          <g stroke="#8b95a3" stroke-width="1.4" fill="none">
+            <circle cx="40" cy="40" r="9"/><circle cx="640" cy="40" r="9"/>
+            <circle cx="40" cy="414" r="9"/><circle cx="640" cy="414" r="9"/>
+          </g>
+
+          <!-- selected outer contour -->
+          <rect x="60" y="70" width="560" height="314" fill="#6fd3e808" stroke="#6fd3e8" stroke-width="1.8" rx="14"/>
+          <!-- selection nodes -->
+          <g fill="#0d1014" stroke="#6fd3e8" stroke-width="1.6">
+            <rect x="56" y="66" width="8" height="8"/><rect x="336" y="66" width="8" height="8"/>
+            <rect x="616" y="66" width="8" height="8"/><rect x="56" y="223" width="8" height="8"/>
+            <rect x="616" y="223" width="8" height="8"/><rect x="56" y="380" width="8" height="8"/>
+            <rect x="336" y="380" width="8" height="8"/><rect x="616" y="380" width="8" height="8"/>
+          </g>
+
+          <!-- V-carve text (the sign's content, drawn as contours in the app) -->
+          <text x="340" y="196" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="62"
+                font-weight="600" letter-spacing="2" fill="none" stroke="#c3ccd8" stroke-width="1.3">FARMÁCIA</text>
+          <text x="340" y="252" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="26"
+                letter-spacing="7" fill="none" stroke="#8b95a3" stroke-width="1.2">SÃO JOÃO</text>
+
+          <!-- V-carve centreline preview inside the letters -->
+          <path d="M120 300c40 0 40-34 80-34s40 34 80 34 40-34 80-34 40 34 80 34 40-34 80-34"
+                fill="none" stroke="#f5a623" stroke-width="1.6" stroke-dasharray="4 3" opacity=".75"/>
+
+          <!-- dimension: plaque width -->
+          <g stroke="#5c6673" stroke-width="1" fill="none">
+            <path d="M60 404v22M620 404v22M60 415h560"/>
+            <path d="M66 411l-6 4 6 4M614 411l6 4-6 4"/>
+          </g>
+          <text x="340" y="438" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="10" fill="#8b95a3">168.00 mm</text>
+
+          <!-- crosshair at the cursor -->
+          <g stroke="#6fd3e8" stroke-width="1" opacity=".55">
+            <path d="M404 250h56M432 222v56"/>
+          </g>
+          <circle cx="432" cy="250" r="3" fill="#6fd3e8"/>
+        </g>
+      </svg>
+
+      <div class="viewtoggle" role="group" aria-label="View mode">
+        <button class="on" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 15l3-6 3 4 2-2 2 4"/></svg>2D</button>
+        <button aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>3D</button>
+      </div>
+
+      <div class="navwidget" role="group" aria-label="Zoom">
+        <button aria-label="Zoom out" title="Zoom out — wheel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        <span class="z">214 %</span>
+        <button aria-label="Zoom in" title="Zoom in — wheel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button aria-label="Fit the stock in the window (F9)" title="Fit — F9">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg></button>
+      </div>
+
+      <div class="toast" role="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.2"/></svg>
+        Tool 3.2 mm cannot enter the 2.5 mm gap at node 61 — will be left uncut
+      </div>
+    </section>
+
+    <!-- DOCK -->
+    <div class="dockwrap">
+      <div class="collapse" role="separator" aria-label="Collapse the dock; it reopens when the pointer touches the edge"
+           title="Collapse — reopens on edge hover">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      </div>
+      <aside class="dock" aria-label="Inspector">
+        <div class="dockhead">
+          <b>Inspector</b>
+          <div class="grow"></div>
+          <button class="ib" aria-label="More actions" title="More actions">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></button>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Inspector tabs">
+          <button class="tab on" role="tab" aria-selected="true">Selection</button>
+          <button class="tab" role="tab" aria-selected="false">Toolpath</button>
+          <button class="tab" role="tab" aria-selected="false">Material</button>
+        </div>
+
+        <div class="sect">
+          <h4>Selection</h4>
+          <div class="kv"><span class="k">Type</span><span class="v">closed contour</span></div>
+          <div class="kv"><span class="k">Vectors</span><span class="v">2 of 48</span></div>
+          <div class="kv"><span class="k">Length</span><span class="v">1 842.6 mm</span></div>
+          <div class="kv"><span class="k">Area</span><span class="v">21 380.4 mm²</span></div>
+          <div class="kv"><span class="k">Nodes</span><span class="v">128</span></div>
+          <div class="kv"><span class="k">Closed</span><span class="v" style="color:#5ec27f">yes</span></div>
+        </div>
+
+        <div class="sect">
+          <h4>Toolpath on this selection</h4>
+          <div class="kv"><span class="k">Strategy</span><span class="v">V-carve</span></div>
+          <div class="kv"><span class="k">Tool</span><span class="v">60° V · flat 0.2</span></div>
+          <div class="kv"><span class="k">Max depth</span><span class="v">3.200 mm</span></div>
+          <div class="kv"><span class="k">Moves</span><span class="v">4 812</span></div>
+          <div class="lbl">Stepover</div>
+          <div class="field">0.200<span class="u">mm</span></div>
+          <div class="lbl">Feed · plunge</div>
+          <div class="field">1200 · 300<span class="u">mm/min</span></div>
+        </div>
+
+        <div class="layers">
+          <div class="lhead">
+            <b>Layers</b><span class="count">4</span>
+            <div class="grow"></div>
+            <button class="ib" aria-label="New layer" title="New layer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+          <div class="lrow">
+            <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <span class="nm">Cut outside</span><span class="n">14</span></div>
+          <div class="lrow on">
+            <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <span class="nm">Engrave V</span><span class="n">31</span>
+            <span class="ico" style="color:#5c6673"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span></div>
+          <div class="lrow off">
+            <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" opacity=".35"/><path d="M4 4l16 16"/></svg></span>
+            <span class="nm">Holes</span><span class="n">4</span></div>
+          <div class="lrow">
+            <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <span class="nm">Relief</span><span class="n">2</span></div>
+          <div class="lfoot">4 layers · 51 vectors · 3 toolpaths</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- STATUS -->
+  <footer class="status" aria-label="Status">
+    <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17L12 3l8 14"/></svg>mm</span>
+    <span class="sep2" role="separator"></span>
+    <span>snap <span class="v">1.00</span> mm</span>
+    <span>grid <span class="v">0.10</span> mm</span>
+    <span class="sep2" role="separator"></span>
+    <span>X <span class="v">128.40</span></span>
+    <span>Y <span class="v">96.75</span></span>
+    <span>Z <span class="v">0.00</span></span>
+    <div class="right">
+      <span><span class="v">2</span> vectors selected</span>
+      <span><span class="v">3</span> toolpaths · <span class="v">12 480</span> moves</span>
+      <span>zoom <span class="v">214 %</span></span>
+      <span>MDF <span class="v">15.00</span> mm</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Campilot — visual tokens</title>
+<style>
+  :root {
+    /* graphite neutrals — dark (default) */
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b;
+    --bg-overlay:#232a32; --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    /* signals */
+    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    /* type */
+    --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --t-cap:11px; --t-sec:12px; --t-body:13px; --t-title:15px; --t-dialog:20px; --t-hero:28px;
+    /* geometry */
+    --r-ctl:4px; --r-panel:6px; --r-dialog:10px; --r-pill:999px;
+    --s1:2px; --s2:4px; --s3:6px; --s4:8px; --s5:12px; --s6:16px; --s7:24px; --s8:32px;
+    --ctl-h:24px; --row-h:26px; --bar-h:40px; --rail-w:52px; --dock-w:288px; --status-h:26px;
+  }
+  .light {
+    --bg-app:#eef1f5; --bg-canvas:#f7f9fb; --bg-panel:#ffffff; --bg-raised:#f2f5f8;
+    --bg-overlay:#ffffff; --line-hair:#dde3ea; --line-strong:#c3ccd6;
+    --text-hi:#12181f; --text:#2b3440; --text-dim:#5f6b7a; --text-off:#8b95a3;
+    --sel:#0d7c92; --sel-soft:#0d7c9218; --cut:#a86200; --cut-soft:#a8620014;
+    --ok:#1f7a43; --warn:#96610a; --danger:#b3342f;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:#0a0c0f; color:var(--text); font-family:var(--f);
+    font-size:var(--t-body); -webkit-font-smoothing:antialiased; }
+  .board { width:1440px; margin:0 auto; padding:28px 32px 56px; }
+  h1 { font-size:var(--t-hero); font-weight:600; letter-spacing:-.015em; color:var(--text-hi); margin:0 0 6px; }
+  .lede { color:var(--text-dim); max-width:74ch; margin:0 0 4px; }
+  .lede b { color:var(--text); font-weight:500; }
+  h2 { font-size:var(--t-title); font-weight:600; color:var(--text-hi); margin:36px 0 12px;
+       display:flex; align-items:center; gap:10px; }
+  h2::after { content:""; flex:1; height:1px; background:var(--line-hair); }
+  h2 .n { font-size:var(--t-cap); color:var(--text-off); font-weight:500; letter-spacing:.08em; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .card { background:var(--bg-panel); border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:16px 18px; }
+  .card h3 { margin:0 0 2px; font-size:var(--t-body); font-weight:600; color:var(--text-hi); }
+  .card .sub { color:var(--text-off); font-size:var(--t-cap); margin-bottom:14px; }
+  .sw { display:flex; align-items:center; gap:10px; padding:3px 0; }
+  .chip { width:46px; height:26px; border-radius:var(--r-ctl); border:1px solid var(--line-strong); flex:none; }
+  .sw code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:var(--t-cap);
+             color:var(--text-hi); min-width:92px; }
+  .sw .v { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:var(--t-cap);
+           color:var(--text-dim); min-width:74px; font-variant-numeric:tabular-nums; }
+  .sw .u { font-size:var(--t-cap); color:var(--text-off); }
+  .signals { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:12px; }
+  .sig { border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:12px 14px; background:var(--bg-panel); }
+  .sig .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; vertical-align:1px; }
+  .sig b { color:var(--text-hi); font-weight:600; font-size:var(--t-sec); }
+  .sig p { margin:6px 0 0; font-size:var(--t-cap); color:var(--text-dim); }
+  .sig code { font-family:ui-monospace, Menlo, monospace; color:var(--text-dim); }
+  table.type { width:100%; border-collapse:collapse; }
+  table.type td { padding:6px 0; border-bottom:1px solid var(--line-hair); vertical-align:baseline; }
+  table.type td:first-child { width:140px; color:var(--text-off); font-size:var(--t-cap);
+    font-family:ui-monospace, Menlo, monospace; }
+  table.type td:last-child { color:var(--text-off); font-size:var(--t-cap); }
+  .grid-ruler { display:flex; gap:6px; align-items:flex-end; margin-top:8px; }
+  .grid-ruler div { background:var(--sel-soft); border:1px solid var(--line-strong);
+    border-radius:2px; text-align:center; font-size:9px; color:var(--text-dim); line-height:1; padding-top:4px; }
+  .specs { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .spec { background:var(--bg-raised); border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:12px 14px; }
+  .spec b { display:block; color:var(--text-hi); font-size:var(--t-sec); margin-bottom:4px; }
+  .spec span { font-family:ui-monospace, Menlo, monospace; font-size:var(--t-cap); color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  .states { display:flex; flex-wrap:wrap; gap:26px; align-items:flex-start; }
+  .stack { display:flex; flex-direction:column; gap:8px; }
+  .stack .cap { font-size:var(--t-cap); color:var(--text-off); letter-spacing:.04em; text-transform:uppercase; }
+  .btn { height:var(--ctl-h); padding:0 10px; border-radius:var(--r-ctl); border:1px solid var(--line-strong);
+    background:var(--bg-raised); color:var(--text-hi); font:inherit; font-size:var(--t-body); display:inline-flex;
+    align-items:center; gap:6px; }
+  .btn:hover { background:#252d36; }
+  .btn:focus-visible { outline:2px solid var(--sel); outline-offset:1px; }
+  .btn[disabled] { color:var(--text-off); border-color:var(--line-hair); background:transparent; }
+  .btn.cut { background:var(--cut); border-color:var(--cut); color:#1a1206; font-weight:600; }
+  .btn.cut:hover { filter:brightness(1.06); }
+  .iconbtn { width:28px; height:28px; display:grid; place-items:center; border-radius:var(--r-ctl);
+    border:1px solid transparent; background:transparent; color:var(--text); }
+  .iconbtn svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6;
+    stroke-linecap:round; stroke-linejoin:round; }
+  .iconbtn.on { background:var(--sel-soft); border-color:var(--sel); color:var(--sel); }
+  .field { display:inline-flex; align-items:center; height:var(--ctl-h); border:1px solid var(--line-strong);
+    border-radius:var(--r-ctl); background:var(--bg-raised); font-variant-numeric:tabular-nums;
+    font-size:var(--t-body); color:var(--text-hi); padding:0 8px; min-width:78px; }
+  .field .u2 { color:var(--text-off); margin-left:auto; padding-left:8px; font-size:var(--t-cap); }
+  .pill { height:20px; padding:0 8px; border-radius:var(--r-pill); font-size:var(--t-cap);
+    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); color:var(--text-dim); }
+  .pill.on { color:var(--sel); border-color:var(--sel); background:var(--sel-soft); }
+  .row { display:flex; align-items:center; gap:8px; height:var(--row-h); padding:0 8px;
+    border-radius:var(--r-ctl); font-size:var(--t-body); color:var(--text); }
+  .row.hov { background:var(--bg-raised); }
+  .row.sel { background:var(--sel-soft); color:var(--text-hi); }
+  .swatchline { display:flex; align-items:center; gap:8px; font-size:var(--t-cap); color:var(--text-off); }
+  .swatchline i { width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid var(--line-strong); }
+  .rule { margin-top:10px; padding:10px 12px; border-left:2px solid var(--cut); background:var(--cut-soft);
+    border-radius:0 var(--r-ctl) var(--r-ctl) 0; font-size:var(--t-sec); color:var(--text); }
+  .rule b { color:var(--text-hi); }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<main class="board">
+  <h1>Campilot — visual tokens</h1>
+  <p class="lede">The reference app's charm is not decoration: it is a <b>graphite canvas, one line weight, and two signals</b>
+  that never compete. Geometry you touch is cyan; material the tool will remove is amber. Everything else is neutral.
+  Values below are the only ones the shell is allowed to use.</p>
+
+  <h2><span class="n">01</span> Surfaces, text, hairlines <span class="n" style="margin-left:auto">dark is the default; light is a full peer</span></h2>
+  <div class="cols">
+    <section class="card">
+      <h3>Dark — workshop default</h3>
+      <div class="sub">A dark shop, a bright screen, a dusty part: the canvas must beat the panels for attention.</div>
+      <div class="sw"><i class="chip" style="background:#12151a"></i><code>bg-app</code><span class="v">#12151a</span><span class="u">window frame, app bar</span></div>
+      <div class="sw"><i class="chip" style="background:#0d1014"></i><code>bg-canvas</code><span class="v">#0d1014</span><span class="u">drawing surface — the darkest</span></div>
+      <div class="sw"><i class="chip" style="background:#171b21"></i><code>bg-panel</code><span class="v">#171b21</span><span class="u">rail, dock, status bar</span></div>
+      <div class="sw"><i class="chip" style="background:#1e242b"></i><code>bg-raised</code><span class="v">#1e242b</span><span class="u">inputs, hovered rows</span></div>
+      <div class="sw"><i class="chip" style="background:#232a32"></i><code>bg-overlay</code><span class="v">#232a32</span><span class="u">menus, tooltips, popovers</span></div>
+      <div class="sw"><i class="chip" style="background:#262d36"></i><code>line-hair</code><span class="v">#262d36</span><span class="u">1 px division, always</span></div>
+      <div class="sw"><i class="chip" style="background:#35404c"></i><code>line-strong</code><span class="v">#35404c</span><span class="u">input and control borders</span></div>
+      <div class="sw"><i class="chip" style="background:#e7ecf3"></i><code>text-hi</code><span class="v">#e7ecf3</span><span class="u">titles, values, labels</span></div>
+      <div class="sw"><i class="chip" style="background:#c3ccd8"></i><code>text</code><span class="v">#c3ccd8</span><span class="u">body, list rows</span></div>
+      <div class="sw"><i class="chip" style="background:#8b95a3"></i><code>text-dim</code><span class="v">#8b95a3</span><span class="u">help, units, secondary</span></div>
+      <div class="sw"><i class="chip" style="background:#5c6673"></i><code>text-off</code><span class="v">#5c6673</span><span class="u">disabled only — never for reading</span></div>
+    </section>
+
+    <section class="card light">
+      <h3>Light — office, quoting, printing</h3>
+      <div class="sub">Same geometry, same weight. Signals darken until they pass AA on white instead of glowing.</div>
+      <div class="sw"><i class="chip" style="background:#eef1f5"></i><code>bg-app</code><span class="v">#eef1f5</span><span class="u">window frame, app bar</span></div>
+      <div class="sw"><i class="chip" style="background:#f7f9fb"></i><code>bg-canvas</code><span class="v">#f7f9fb</span><span class="u">drawing surface</span></div>
+      <div class="sw"><i class="chip" style="background:#ffffff"></i><code>bg-panel</code><span class="v">#ffffff</span><span class="u">rail, dock, status bar</span></div>
+      <div class="sw"><i class="chip" style="background:#f2f5f8"></i><code>bg-raised</code><span class="v">#f2f5f8</span><span class="u">inputs, hovered rows</span></div>
+      <div class="sw"><i class="chip" style="background:#ffffff"></i><code>bg-overlay</code><span class="v">#ffffff</span><span class="u">menus — shadow, not fill</span></div>
+      <div class="sw"><i class="chip" style="background:#dde3ea"></i><code>line-hair</code><span class="v">#dde3ea</span><span class="u">1 px division</span></div>
+      <div class="sw"><i class="chip" style="background:#c3ccd6"></i><code>line-strong</code><span class="v">#c3ccd6</span><span class="u">control borders</span></div>
+      <div class="sw"><i class="chip" style="background:#12181f"></i><code>text-hi</code><span class="v">#12181f</span><span class="u">titles, values</span></div>
+      <div class="sw"><i class="chip" style="background:#2b3440"></i><code>text</code><span class="v">#2b3440</span><span class="u">body</span></div>
+      <div class="sw"><i class="chip" style="background:#5f6b7a"></i><code>text-dim</code><span class="v">#5f6b7a</span><span class="u">help, units</span></div>
+      <div class="sw"><i class="chip" style="background:#8b95a3"></i><code>text-off</code><span class="v">#8b95a3</span><span class="u">disabled</span></div>
+    </section>
+  </div>
+
+  <h2><span class="n">02</span> The two signals</h2>
+  <div class="signals">
+    <div class="sig"><span class="dot" style="background:var(--sel)"></span><b>Selection</b>
+      <p>Anything the pointer owns: selection, hover, focus ring, active tool, active tab.</p>
+      <p><code>--sel #6fd3e8</code> · <code>--sel-soft 13%</code></p></div>
+    <div class="sig"><span class="dot" style="background:var(--cut)"></span><b>Cut</b>
+      <p>What the tool does to material: toolpath preview, depth, feeds, and the one primary action.</p>
+      <p><code>--cut #f5a623</code> · <code>--cut-soft 13%</code></p></div>
+    <div class="sig"><span class="dot" style="background:var(--ok)"></span><b>Pass</b>
+      <p>Verification only: simulation clean, no gouge, no uncut, file written.</p>
+      <p><code>--ok #5ec27f</code></p></div>
+    <div class="sig"><span class="dot" style="background:var(--warn)"></span><b>Watch</b>
+      <p>Something is legal but unwise: tool too wide, toolpath deeper than the stock.</p>
+      <p><code>--warn #f0b429</code></p></div>
+    <div class="sig"><span class="dot" style="background:var(--danger)"></span><b>Stop</b>
+      <p>Gouge, crash, open vector where a closed one is required. Always paired with words.</p>
+      <p><code>--danger #f2635f</code></p></div>
+  </div>
+  <div class="rule"><b>Rule:</b> a colour never carries a message alone. Cut and Selection differ in hue and in weight
+  (toolpaths are 2 px dashed, geometry is 1.4 px solid), so the screen survives a monochrome screenshot and a colour-blind operator.</div>
+
+  <h2><span class="n">03</span> Type — Inter if installed, system sans otherwise</h2>
+  <div class="cols">
+    <section class="card">
+      <h3>Scale</h3>
+      <table class="type">
+        <tr><td>--t-hero 28/600</td><td style="font-size:28px;font-weight:600;color:#e7ecf3;letter-spacing:-.02em">Empty state only</td><td>1 line, centred</td></tr>
+        <tr><td>--t-dialog 20/600</td><td style="font-size:20px;font-weight:600;color:#e7ecf3">New toolpath</td><td>dialog title</td></tr>
+        <tr><td>--t-title 15/600</td><td style="font-size:15px;font-weight:600;color:#e7ecf3">Toolpath settings</td><td>dock section, group header</td></tr>
+        <tr><td>--t-body 13/400</td><td style="font-size:13px;color:#c3ccd8">Outside drops the part, Inside cuts holes</td><td>everything readable</td></tr>
+        <tr><td>--t-sec 12/400</td><td style="font-size:12px;color:#c3ccd8">60° V-bit · 12.7 mm</td><td>secondary row, chip</td></tr>
+        <tr><td>--t-cap 11/400</td><td style="font-size:11px;color:#8b95a3">mm · X 128.40 · zoom 214%</td><td>status bar, units, help</td></tr>
+      </table>
+    </section>
+    <section class="card">
+      <h3>Numbers are furniture</h3>
+      <div class="sub">Every value that a machinist may compare sits in a column, so it gets tabular figures and a unit column.</div>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums;color:#c3ccd8;line-height:1.9">
+        <div><span style="color:#8b95a3">depth</span> <span style="float:right;color:#e7ecf3">6.000</span> mm</div>
+        <div><span style="color:#8b95a3">stepdown</span> <span style="float:right;color:#e7ecf3">2.000</span> mm</div>
+        <div><span style="color:#8b95a3">feed</span> <span style="float:right;color:#e7ecf3">1200.0</span> mm/min</div>
+        <div><span style="color:#8b95a3">plunge</span> <span style="float:right;color:#e7ecf3">300.0</span> mm/min</div>
+        <div><span style="color:#8b95a3">rpm</span> <span style="float:right;color:#e7ecf3">18000</span> rpm</div>
+      </div>
+      <div class="rule" style="--cut:#6fd3e8"><b>Never</b> mix units in one column, and never hide the unit: the status bar says
+      <span style="font-family:ui-monospace,Menlo,monospace">mm</span> and no field repeats it.</div>
+    </section>
+  </div>
+
+  <h2><span class="n">04</span> Geometry — spacing, radii, control sizes</h2>
+  <div class="specs">
+    <div class="spec"><b>Spacing</b><span>2 · 4 · 6 · 8 · 12 · 16 · 24 · 32</span>
+      <div class="grid-ruler"><div style="width:2px;height:14px"></div><div style="width:4px;height:14px"></div>
+      <div style="width:8px;height:14px"></div><div style="width:16px;height:14px"></div><div style="width:32px;height:14px"></div></div></div>
+    <div class="spec"><b>Radii</b><span>4 control · 6 panel · 10 dialog · 999 pill</span>
+      <div style="display:flex;gap:8px;margin-top:10px"><i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:4px"></i>
+      <i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:6px"></i>
+      <i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:10px"></i></div></div>
+    <div class="spec"><b>Control heights</b><span>24 field · 26 row · 40 app bar · 26 status</span>
+      <div style="margin-top:10px;color:#8b95a3;font-size:11px">Rail 52 wide, dock 288, both fixed</div></div>
+    <div class="spec"><b>Elevation</b><span>1 px hairline, only 2 shadows exist</span>
+      <div style="margin-top:10px;color:#8b95a3;font-size:11px">Floating menu: 0 8px 24px #0008<br>Dialog: 0 24px 64px #000a</div></div>
+  </div>
+
+  <h2><span class="n">05</span> Component states</h2>
+  <div class="card">
+    <div class="states">
+      <div class="stack"><span class="cap">Button</span>
+        <button class="btn">Default</button>
+        <button class="btn" style="background:#252d36">Hover</button>
+        <button class="btn" style="outline:2px solid var(--sel);outline-offset:1px">Focus</button>
+        <button class="btn" disabled>Disabled</button></div>
+
+      <div class="stack"><span class="cap">Primary — the cut</span>
+        <button class="btn cut">Generate G-code</button>
+        <button class="btn cut" style="filter:brightness(1.06)">Hover</button>
+        <button class="btn cut" disabled style="background:#3a2e17;border-color:#3a2e17;color:#7a6a4d">Generate</button></div>
+
+      <div class="stack"><span class="cap">Rail icon button</span>
+        <div style="display:flex;gap:6px">
+          <button class="iconbtn" aria-label="Select"><svg viewBox="0 0 24 24"><path d="M4 3l7 17 2.2-6.8L20 11z"/></svg></button>
+          <button class="iconbtn on" aria-label="Select, active"><svg viewBox="0 0 24 24"><path d="M4 3l7 17 2.2-6.8L20 11z"/></svg></button>
+        </div>
+        <div style="font-size:11px;color:#5c6673">active = cyan fill 13% + 1 px cyan border, icon itself stays the same weight</div></div>
+
+      <div class="stack"><span class="cap">Field</span>
+        <span class="field">6.000<span class="u2">mm</span></span>
+        <span class="field" style="outline:1px solid var(--sel)">12.7<span class="u2">mm</span></span>
+        <span class="field" style="color:#5c6673;border-color:#262d36">—<span class="u2">mm</span></span></div>
+
+      <div class="stack"><span class="cap">Tabs &amp; pills</span>
+        <span class="pill on">Properties</span>
+        <span class="pill">Layers</span>
+        <span class="pill">Tools</span>
+        <div style="margin-top:6px"><span class="pill on">2D</span> <span class="pill">3D</span> <span class="pill on">snap 1 mm</span></div></div>
+
+      <div class="stack" style="width:240px"><span class="cap">Rows — layer dock</span>
+        <div class="row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Cut outside<span style="margin-left:auto;color:#5c6673;font-size:11px">14</span></div>
+        <div class="row sel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6fd3e8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Engrave V<span style="margin-left:auto;color:#8b95a3;font-size:11px">31</span></div>
+        <div class="row hov"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M4 4l16 16"/></svg><span style="color:#5c6673">Holes (hidden)</span></div>
+        <div class="row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Relief<span style="margin-left:auto;color:#5c6673;font-size:11px">2</span></div></div>
+    </div>
+  </div>
+
+  <h2><span class="n">06</span> What this rules out</h2>
+  <div class="cols">
+    <div class="card"><h3>Banished</h3>
+      <div class="sub">Each one is a thing the current shell does, or would drift into.</div>
+      <p style="margin:0;color:#c3ccd8;line-height:1.75">
+      · A second accent hue “just for this panel”<br>
+      · Filled or gradient icon sets beside the line set<br>
+      · Widgets of more than three heights in one column<br>
+      · Shadows on docked surfaces — hierarchy is a hairline<br>
+      · Colour-only meaning, at any level<br>
+      · A raw <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">DragValue</span> with no unit and no label</p></div>
+    <div class="card"><h3>Mandatory</h3>
+      <div class="sub">The parts a plain egui `ui.label` layout cannot express today.</div>
+      <p style="margin:0;color:#c3ccd8;line-height:1.75">
+      · Every interactive element has a focus ring and a text alternative<br>
+      · Every icon-only control carries a tooltip with its name and shortcut<br>
+      · Numeric fields align right on tabular figures, unit in a fixed column<br>
+      · Destructive or expensive actions are never the primary colour<br>
+      · Motion respects <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">prefers-reduced-motion</span> and never exceeds 140 ms</p></div>
+  </div>
+</main>
+</body>
+</html>
