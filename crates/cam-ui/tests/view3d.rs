@@ -1085,3 +1085,177 @@ fn a_cut_stock_is_still_shaded_by_depth_after_the_ramp_became_tokens() {
     );
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// T11 — the simulation's progress is a bar with a clock on both sides, not a text percentage.
+// ---------------------------------------------------------------------------------------------
+
+/// A program whose moves all take no time at all: every rate is zero, so the clock's total is `0.0`.
+///
+/// The fixture exists for the one case the readout must not lie about: a program the shell can still
+/// play to its end while computing no time at all to spend.
+fn timeless_program() -> MoveStream {
+  let mut stream = playback_program();
+  for segment in &mut stream.segments {
+    segment.feed_rate = 0.0;
+    segment.plunge_rate = 0.0;
+  }
+  stream
+}
+
+/// The two rectangles the progress bar painted in the last frame: its trough, then its fill.
+///
+/// Found by colour rather than by position, which is the point: the trough is the theme's deepest
+/// surface and the fill is the cut signal, so a bar painted with a literal of its own would not be
+/// found at all. The bar is not inside the surface's own clip rectangle — the playback controls sit
+/// above it — so the panel is the clip rect that *contains* the surface mesh's viewport, and every
+/// other panel's clip is disjoint from it.
+fn bar_rects(harness: &Harness) -> (egui::Rect, egui::Rect) {
+  let palette = Theme::Dark.palette();
+  let surface_vertices = 3 * harness.output.drawn.painted_triangles;
+  assert!(surface_vertices > 0, "the frame painted no surface");
+  let viewport = harness
+    .shapes
+    .iter()
+    .find(|clipped| {
+      matches!(&clipped.shape, egui::Shape::Mesh(mesh) if mesh.vertices.len() == surface_vertices)
+    })
+    .map(|clipped| clipped.clip_rect)
+    .expect("the surface reached the painter as a mesh");
+  let rects_in_panel = || {
+    harness
+      .shapes
+      .iter()
+      .filter(move |clipped| clipped.clip_rect.contains_rect(viewport))
+      .filter_map(|clipped| match &clipped.shape {
+        egui::Shape::Rect(rect) => Some((rect.fill, rect.rect)),
+        _ => None,
+      })
+  };
+  let fill = rects_in_panel()
+    .find(|(colour, _)| *colour == palette.get(Role::Cut))
+    .map(|(_, rect)| rect)
+    .expect("the panel painted no progress bar fill in the cut signal");
+  let trough = rects_in_panel()
+    .find(|(colour, rect)| *colour == palette.get(Role::Canvas) && rect.contains_rect(fill))
+    .map(|(_, rect)| rect)
+    .expect("the panel painted no progress bar trough under its fill");
+  (trough, fill)
+}
+
+#[test]
+fn the_panel_states_the_elapsed_time_and_the_total_as_clocks() {
+  let mut harness = Harness::playing();
+  // The fixture lasts exactly one second: 0.2 s rapid, 0.2 s plunge, 0.5 s feed, 0.1 s retract.
+  assert_eq!(harness.output.drawn.preview_progress, 0.0);
+  assert_eq!(
+    harness.output.drawn.preview_clock, "0:00 of 0:01",
+    "a program that has not started reads as nothing spent of its total"
+  );
+
+  harness
+    .shell
+    .preview_mut()
+    .expect("the harness loaded a preview")
+    .set_speed(600.0);
+  harness
+    .shell
+    .preview_mut()
+    .expect("the harness loaded a preview")
+    .set_playing(true);
+  for _ in 0..10 {
+    harness.frame(Vec::new());
+    if harness.preview().finished() {
+      break;
+    }
+  }
+  assert!(
+    harness.preview().finished(),
+    "the panel must play the program to its end"
+  );
+  assert_eq!(
+    harness.output.drawn.preview_clock, "0:01 of 0:01",
+    "a finished program reads as all of its time spent"
+  );
+  assert_eq!(harness.output.drawn.preview_bar, 1.0);
+}
+
+#[test]
+fn the_progress_bar_is_painted_in_the_cut_signal_and_follows_the_clock() {
+  let mut harness = Harness::playing();
+  let (trough, start_fill) = bar_rects(&harness);
+  assert_eq!(
+    start_fill.width(),
+    0.0,
+    "a program that has not started fills nothing, not even a bead of progress"
+  );
+  assert!(
+    trough.width() > 0.0 && trough.height() > 0.0,
+    "the empty bar still draws its track, so the row does not jump when playback starts"
+  );
+
+  harness
+    .shell
+    .preview_mut()
+    .expect("the harness loaded a preview")
+    .set_speed(600.0);
+  harness
+    .shell
+    .preview_mut()
+    .expect("the harness loaded a preview")
+    .set_playing(true);
+  for _ in 0..10 {
+    harness.frame(Vec::new());
+    if harness.preview().finished() {
+      break;
+    }
+  }
+  let (end_trough, end_fill) = bar_rects(&harness);
+  assert_eq!(
+    (end_trough.width(), end_trough.height()),
+    (trough.width(), trough.height()),
+    "the bar cannot change size as it fills"
+  );
+  assert_eq!(
+    end_fill.width(),
+    end_trough.width(),
+    "a finished program fills the track exactly"
+  );
+}
+
+#[test]
+fn a_program_with_no_time_paints_an_empty_bar_and_says_so() {
+  let mut harness = Harness::bare();
+  harness
+    .shell
+    .set_preview(untouched(), timeless_program(), &job());
+  harness.frame(Vec::new());
+  assert_eq!(
+    harness.output.drawn.preview_clock, "0:00 of 0:00",
+    "a program with no time to spend states that on both sides"
+  );
+  assert_eq!(
+    harness.output.drawn.preview_bar, 0.0,
+    "a clock with no total must not fill the bar"
+  );
+
+  harness
+    .shell
+    .preview_mut()
+    .expect("the harness loaded a preview")
+    .set_playing(true);
+  harness.frame(Vec::new());
+  assert!(
+    harness.preview().finished(),
+    "every move takes no time, so one frame plays the program to its end"
+  );
+  assert_eq!(
+    harness.output.drawn.preview_progress, 1.0,
+    "the clock's own answer is unchanged: the program really is played out"
+  );
+  assert_eq!(
+    harness.output.drawn.preview_bar, 0.0,
+    "and the bar still claims no time, because there is no total to spend"
+  );
+  assert_eq!(harness.output.drawn.preview_clock, "0:00 of 0:00");
+}

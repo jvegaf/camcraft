@@ -36,7 +36,11 @@
 //! and its own face; cutting moves are
 //! [`Role::Cut`], which is what the cut signal means; rapids and retracts are [`Role::TextDim`], the
 //! role the 2D canvas paints construction geometry with — present, but not the thing being shown;
-//! and the surface is [`Palette::stock_shade`], a ramp with a role at each end.
+//! and the surface is [`Palette::stock_shade`], a ramp with a role at each end. The playback bar's
+//! fill is [`Role::Cut`] for the same reason the cutting moves are: it measures how much of the
+//! program has been cut, so the amber in the picture and the amber in the bar say one thing. Nothing
+//! here keeps a colour literal, and the bar's own test finds both of its rectangles by role rather
+//! than by position (`tests/view3d.rs`), because a literal would paint a bar no role test could see.
 //!
 //! # Why the geometry is not computed here
 //!
@@ -80,6 +84,19 @@ pub const DEFAULT_SPEED: f64 = 60.0;
 /// How much larger than the stock's diagonal the camera's distance is when the panel opens, so the
 /// stock sits inside the picture with a margin rather than touching its edges.
 const FRAME_MARGIN: f64 = 1.4;
+
+/// How wide the playback progress bar is, in points.
+///
+/// Five steps of the spacing scale's largest token, wide enough that a part-played program and a
+/// finished one are told apart at a glance, and narrow enough to share a row with the playback
+/// controls instead of pushing the panel's own readout onto a second line.
+const BAR_WIDTH: f32 = 160.0;
+
+/// How tall the playback progress bar is, in points.
+///
+/// A track, not a button: the bar is a measurement under a row of controls, and a full control height
+/// would make it the loudest thing in the panel.
+const BAR_HEIGHT: f32 = 8.0;
 
 /// How much of a pixel an arc may deviate by when the painter flattens it, in pixels.
 ///
@@ -346,13 +363,20 @@ impl Preview3d {
     self.playing = false;
   }
 
-  /// The play/pause, step and reset controls, with the program's progress readout.
+  /// The play/pause, step and reset controls, with the program's progress bar and its clock.
   ///
   /// These are view state: they move the cursor over the program the caller handed in and push no
   /// [`UiAction`](crate::UiAction), which is what keeps the preview off the document's authoring
   /// path (D-M5-9). The speed slider is limited to the range the panel offers rather than the one
   /// [`Preview3d::set_speed`] accepts, so a drag cannot make the animation meaningless.
-  pub fn controls(&mut self, ui: &mut egui::Ui) {
+  ///
+  /// Progress is a bar and a clock, not a percentage: how far the program has played is a *time*, and
+  /// `0:42 of 3:07` says of what, which `42` alone does not (S7). The bar's fill is the cut signal —
+  /// the same [`Role`] this panel paints the cutting moves in, so the amber in the picture and the
+  /// amber in the bar mean one thing — and its trough is the theme's deepest surface. `drawn` carries
+  /// the three facts a headless test can read back: the clock's own fraction, the bar's own fill, and
+  /// the sentence between them.
+  pub fn controls(&mut self, ui: &mut egui::Ui, drawn: &mut DrawnState, palette: &Palette) {
     let label = if self.playing { "Pause" } else { "Play" };
     if ui
       .add_enabled(self.playing || !self.finished(), egui::Button::new(label))
@@ -381,12 +405,22 @@ impl Preview3d {
         .range(0.1..=600.0)
         .suffix("x"),
     );
-    ui.label(format!(
-      "{:>5.1}% · move {} / {}",
-      self.progress() * 100.0,
-      self.cursor,
-      self.steps.len()
-    ));
+    let fill = bar_fill(self.progress(), self.duration());
+    let clock = progress_text(self.elapsed(), self.duration());
+    ui.add(
+      egui::ProgressBar::new(fill)
+        .desired_width(BAR_WIDTH)
+        .desired_height(BAR_HEIGHT)
+        // Square, on purpose. `ProgressBar` paints the fill at least as wide as its corner radius, so a
+        // rounded bar shows a bead of progress at `0.0` — the one place this readout must be silent,
+        // because a program with no time to spend never gets past it.
+        .corner_radius(0.0)
+        .fill(palette.get(Role::Cut)),
+    );
+    ui.label(egui::RichText::new(&clock).color(palette.get(Role::TextHi)));
+    drawn.preview_progress = self.progress();
+    drawn.preview_bar = fill;
+    drawn.preview_clock = clock;
   }
 
   /// Apply one whole move to the field.
@@ -799,4 +833,108 @@ fn arc_sweep(
     }
   }
   sweep
+}
+
+/// A moment of the program's own time, in the form the panel writes it: `m:ss`, seconds truncated.
+///
+/// Minutes accumulate instead of opening an hour field — a 40 m pocket reads as `40:00`, not `0:40:00` —
+/// because the readout sits inside one line of a control row. Truncating rather than rounding is the
+/// only honest direction on both sides of the sentence: `3:07` for a 187.9 s program and `0:42` for a
+/// 42.9 s elapsed never have the clocks claim a second the machine has not spent. A value that is not
+/// a finite, non-negative number is no time at all, so it reads as `0:00` rather than as a lie.
+pub fn clock_text(seconds: f64) -> String {
+  let whole = if seconds.is_finite() && seconds > 0.0 {
+    seconds.floor() as u64
+  } else {
+    0
+  };
+  format!("{}:{:02}", whole / 60, whole % 60)
+}
+
+/// The bar's readout: how much of the program has played, and of how much, as one sentence.
+///
+/// `0:42 of 3:07` rather than `42`, because a number without a unit is not something a person can
+/// read (S7): the pair of clocks says what is being measured, and `of` says which way round it is.
+pub fn progress_text(elapsed: f64, total: f64) -> String {
+  format!("{} of {}", clock_text(elapsed), clock_text(total))
+}
+
+/// How full the playback bar is painted, in `0.0..=1.0`, from the clock's own two numbers.
+///
+/// The bar's length is *time*, so a program whose clock reports no total — an empty program, or one
+/// whose moves all take zero seconds — paints an empty bar instead of a full one. That case is not
+/// hypothetical: [`Preview3d::progress`] answers `1.0` for such a program once it is played out,
+/// which is correct about the program and would be a lie about the time, so the bar does not take
+/// its fill from `progress` alone. A value outside the range, or one that is not a number, is
+/// clamped rather than trusted: the bar can neither overfill nor run backwards.
+pub fn bar_fill(progress: f64, total: f64) -> f32 {
+  if !total.is_finite() || total <= 0.0 || !progress.is_finite() {
+    return 0.0;
+  }
+  progress.clamp(0.0, 1.0) as f32
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{bar_fill, clock_text, progress_text};
+
+  /// The form a moment of the program's own time is written in: `m:ss`, seconds truncated.
+  #[test]
+  fn a_known_moment_reads_as_a_known_clock() {
+    for (seconds, expected) in [
+      (0.0, "0:00"),
+      // Seconds are two digits, so a seven second total is not `0:7` beside a `3:07`.
+      (7.0, "0:07"),
+      // Truncated, not rounded: a clock that says `3:08` for 3:07.9 is a second nobody spent.
+      (187.9, "3:07"),
+      (42.4, "0:42"),
+      (60.0, "1:00"),
+      // Minutes accumulate instead of opening an hour field: a 40 m pocket is `40:00`, and an operator
+      // reads it faster than `0:40:00` on a control this small.
+      (3_600.0, "60:00"),
+    ] {
+      assert_eq!(
+        clock_text(seconds),
+        expected,
+        "{seconds} s must read as {expected}"
+      );
+    }
+  }
+
+  /// A moment that is not a number is not a moment: it reads as nothing spent rather than as a lie.
+  #[test]
+  fn a_moment_that_is_not_a_number_reads_as_no_time() {
+    for seconds in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+      assert_eq!(
+        clock_text(seconds),
+        "0:00",
+        "{seconds} must not format as a time"
+      );
+    }
+  }
+
+  /// The readout names what both numbers are: `0:42 of 3:07`, never a bare pair of counts.
+  #[test]
+  fn the_readout_states_the_total_beside_the_elapsed() {
+    assert_eq!(progress_text(42.0, 187.0), "0:42 of 3:07");
+    // A program with no time to spend still reads as a time, on both sides (S7: no number without a unit).
+    assert_eq!(progress_text(0.0, 0.0), "0:00 of 0:00");
+  }
+
+  /// The bar's fill, and the one case it refuses to fill: a clock with no total.
+  #[test]
+  fn a_clock_with_no_total_paints_an_empty_bar() {
+    assert_eq!(bar_fill(0.5, 10.0), 0.5);
+    assert_eq!(bar_fill(0.0, 10.0), 0.0);
+    assert_eq!(bar_fill(1.0, 10.0), 1.0);
+    // Out of range values are clamped rather than trusted: the bar cannot overfill or run backwards.
+    assert_eq!(bar_fill(2.0, 10.0), 1.0);
+    assert_eq!(bar_fill(-2.0, 10.0), 0.0);
+    assert_eq!(bar_fill(f64::NAN, 10.0), 0.0);
+    // Nothing to divide by, so nothing is claimed: a finished program with a zero-duration clock does not
+    // paint a full bar even though `progress()` reports `1.0` for it.
+    assert_eq!(bar_fill(1.0, 0.0), 0.0);
+    assert_eq!(bar_fill(1.0, -1.0), 0.0);
+    assert_eq!(bar_fill(1.0, f64::NAN), 0.0);
+  }
 }

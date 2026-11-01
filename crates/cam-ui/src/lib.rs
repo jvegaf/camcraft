@@ -609,10 +609,26 @@ pub struct DrawnState {
   pub menu_hits: Vec<(String, (f32, f32))>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
-  /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
+  /// The value the clock itself reports: exactly `0.0` while the preview stands on its first
   /// move and exactly `1.0` once the program has finished (M5 A10). Stays `0.0` when the panel is
-  /// closed, because a closed panel is not a clock.
+  /// closed, because a closed panel is not a clock. Read it as "the program is played out", not as
+  /// "the bar is full": a program whose moves all take zero time reports `1.0` here while
+  /// [`Self::preview_bar`] stays `0.0`, because there is no time for a bar to fill with.
   pub preview_progress: f64,
+  /// How full the 3D panel's progress bar was painted, in `0.0..=1.0`.
+  ///
+  /// The same number the bar's own `egui::ProgressBar` is given, which is not always
+  /// [`Self::preview_progress`]: a program with no total duration paints an empty bar however far it
+  /// has played, so the readout never claims a completion the clock could not measure. Stays `0.0`
+  /// when the panel is closed or holds no preview.
+  pub preview_bar: f32,
+  /// The two clocks the progress bar's readout states, as one sentence: `0:42 of 3:07`.
+  ///
+  /// Painted beside the bar and mirrored here because a headless test can read a string where it
+  /// cannot read a painted clock: the formatter is unit-tested, and this field is what proves the
+  /// panel writes its output rather than something of its own. Empty when the panel is closed or
+  /// holds no preview, because a bar nobody drew has no clock.
+  pub preview_clock: String,
 }
 
 /// What one frame produced.
@@ -1085,7 +1101,7 @@ impl Shell {
             // would appear to play only when the mouse moves.
             ui.ctx().request_repaint();
           }
-          preview.controls(ui);
+          preview.controls(ui, &mut output.drawn, &palette);
           ui.separator();
           ui.label(
             egui::RichText::new(format!(
@@ -1098,7 +1114,6 @@ impl Shell {
             .size(theme::CAPTION)
             .color(palette.get(Role::TextDim)),
           );
-          output.drawn.preview_progress = preview.progress();
         } else {
           ui.label(
             egui::RichText::new(
