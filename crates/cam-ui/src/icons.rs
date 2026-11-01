@@ -955,6 +955,51 @@ const RELIEF: &[Part] = &[
 
 /// Every glyph, in the artboard's order. The order is load-bearing: [`Icon`] indexes
 /// this table by its discriminant, so appending here means appending a variant there.
+/// An arrow curving back on itself: undo.
+///
+/// Added for the app bar, which the artboard draws with a glyph the first sheet did not contain: the
+/// vocabulary has to cover the frame that uses it, or the shell invents an icon at the call site.
+const UNDO: &[Part] = &[
+  stroke(&[at(9.0, 14.0), to(4.0, 9.0), to(9.0, 4.0)]),
+  stroke(&[
+    at(4.0, 9.0),
+    to(14.0, 9.0),
+    arc(6.0, 6.0, false, true, (14.0, 21.0)),
+    to(11.0, 21.0),
+  ]),
+];
+
+/// [`UNDO`] mirrored: redo.
+const REDO: &[Part] = &[
+  stroke(&[at(15.0, 14.0), to(20.0, 9.0), to(15.0, 4.0)]),
+  stroke(&[
+    at(20.0, 9.0),
+    to(10.0, 9.0),
+    arc(6.0, 6.0, false, false, (10.0, 21.0)),
+    to(13.0, 21.0),
+  ]),
+];
+
+/// A sun: the light set is showing, and pressing gives the dark one.
+const THEME_LIGHT: &[Part] = &[
+  stroke(&[ellipse((12.0, 12.0), 4.0, 4.0)]),
+  stroke(&[at(12.0, 2.5), to(12.0, 5.0)]),
+  stroke(&[at(12.0, 19.0), to(12.0, 21.5)]),
+  stroke(&[at(2.5, 12.0), to(5.0, 12.0)]),
+  stroke(&[at(19.0, 12.0), to(21.5, 12.0)]),
+  stroke(&[at(5.3, 5.3), to(7.0, 7.0)]),
+  stroke(&[at(17.0, 17.0), to(18.7, 18.7)]),
+  stroke(&[at(18.7, 5.3), to(17.0, 7.0)]),
+  stroke(&[at(7.0, 17.0), to(5.3, 18.7)]),
+];
+
+/// A crescent: the dark set is showing.
+const THEME_DARK: &[Part] = &[stroke(&[
+  at(20.0, 14.5),
+  arc(8.0, 8.0, true, true, (9.5, 4.0)),
+  arc(8.0, 8.0, true, false, (20.0, 14.5)),
+])];
+
 const GLYPHS: &[Glyph] = &[
   Glyph {
     name: "new",
@@ -1219,6 +1264,22 @@ const GLYPHS: &[Glyph] = &[
   Glyph {
     name: "relief",
     parts: RELIEF,
+  },
+  Glyph {
+    name: "undo",
+    parts: UNDO,
+  },
+  Glyph {
+    name: "redo",
+    parts: REDO,
+  },
+  Glyph {
+    name: "theme-light",
+    parts: THEME_LIGHT,
+  },
+  Glyph {
+    name: "theme-dark",
+    parts: THEME_DARK,
   },
 ];
 
@@ -1594,6 +1655,14 @@ pub enum Icon {
   PostProcessor,
   /// A dome washed above a baseline.
   Relief,
+  /// An arrow curving back: undo.
+  Undo,
+  /// An arrow curving forward: redo.
+  Redo,
+  /// A sun: the light set.
+  ThemeLight,
+  /// A crescent: the dark set.
+  ThemeDark,
 }
 
 impl Icon {
@@ -1665,6 +1734,10 @@ impl Icon {
     Icon::ToolpathVcarve,
     Icon::PostProcessor,
     Icon::Relief,
+    Icon::Undo,
+    Icon::Redo,
+    Icon::ThemeLight,
+    Icon::ThemeDark,
   ];
 
   /// The artboard's kebab-case name, which is what a tooltip, a settings file or a test looks up.
@@ -1842,7 +1915,11 @@ mod tests {
     // `design/camui-shell/03-iconography.html` holds 66 glyph cells, although its COUNT heading still
     // says 65 and §03's family hints sum to 61. The cells are the drawing, so the cells are what is
     // transliterated: a glyph that is drawn but not shipped is worse than a stale sentence.
-    assert_eq!(Icon::ALL.len(), 66, "the artboard draws 66 glyphs");
+    assert_eq!(
+      Icon::ALL.len(),
+      70,
+      "the artboard draws 66 glyphs plus the four the app bar needs"
+    );
     let mut names: Vec<&str> = Vec::new();
     for (index, &icon) in Icon::ALL.iter().enumerate() {
       assert_eq!(

@@ -27,7 +27,7 @@ use cam_units::Length;
 fn main() -> eframe::Result<()> {
   let options = eframe::NativeOptions {
     viewport: eframe::egui::ViewportBuilder::default()
-      .with_inner_size([1280.0, 800.0])
+      .with_inner_size([1440.0, 900.0])
       .with_min_inner_size([800.0, 600.0])
       .with_title("campilot"),
     ..Default::default()
@@ -35,7 +35,13 @@ fn main() -> eframe::Result<()> {
   eframe::run_native(
     "campilot",
     options,
-    Box::new(|_creation| Ok(Box::new(Editor::new()))),
+    Box::new(|creation| {
+      let mut editor = Editor::new();
+      // Publish the tokens before the first frame: this host hands the shell a `Ui` it built itself,
+      // so the only moment the theme can reach every widget of frame one is here, on the context.
+      editor.shell.publish_theme(&creation.egui_ctx);
+      Ok(Box::new(editor))
+    }),
   )
 }
 

@@ -95,3 +95,53 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
   symlink alone is not enough, which is worth knowing before trusting a green `check.sh` in this harness. The first
   gate run also appeared to pass while failing, because `check.sh | tail` swallows the exit status — the gate must
   be run without swallowing it.
+## Next phase (planned, not started, not authorised)
+
+The foundations are delivered. What remains of the concept, in the order the design argues for:
+
+| ID | Task | Specs |
+| --- | --- | --- |
+| T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
+| T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
+| T8 | Object context menus and the embedded help panel: the teaching voice, one `d`/`u` pair per command | S2 S4 |
+| T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
+
+- **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
+  in the project's real stack. Use the artboard as the visual spec: map its parts to the project's existing
+  components and styles, and do not copy the artboard HTML verbatim."*
+- **L11 (T6 delivered, the frame).** New module `crates/cam-ui/src/chrome.rs` (≈640 lines) holds the frame and the
+  two enums it needs: `Stage` (Design, Edit, Relief, Toolpaths, Prove) and `Tab` (Tools, Selection, Job).
+  `Shell::show_in` now composes `app_bar` → `stage_bar` → `view3d` → `status_bar` → `rail` → `inspector` → canvas,
+  in that order because egui lays panels out in the order they are added and a central panel must come last.
+  `command_bar`, `layer_dock`, `properties` and `authoring` stopped being panels and became inspector sections;
+  `layer_dock`/`properties`/`authoring` are otherwise unchanged in content, so every command keeps its own
+  implementation and its tests.
+  The stage is **view state**: switching it pushes no `UiAction` and never touches the document. Counts are only
+  shown where the document can prove them — vectors for Design, `document.toolpaths.len()` for Toolpaths — and the
+  rest show a dash while the inspector says in words that those commands live in `cam-cli` today. The rail is
+  stage-scoped: the nine canvas gestures on Design, seven immediate commands on Edit, and a one-line explanation
+  where a stage has no tools of its own. Collapsing the inspector leaves a 12 px strip that reopens when the
+  pointer touches it.
+- **L12 (three regressions the tests caught, and one design gap).** Deleting `command_bar` silently removed three
+  affordances: the rectangle-by-numbers `Add`, `Delete selection`, and the 2D/3D toggle. The tests failed on each,
+  and each was put back where it now belongs — `Add rectangle` beside the drawing tools, `Delete selection` in the
+  Selection tab, the `2D | 3D` toggle in the app bar. Two further defects came from the same run: a `RichText`
+  style lookup panicked because a `Ui` captures its `Style` when it is created, so publishing the tokens inside the
+  frame reaches the *next* frame's widgets; fixed by `Shell::publish_theme` (called before the root `Ui` by
+  `Shell::show`, and by `cam-desktop` at creation) plus explicit `.size()` on the frame's own text. And the 12 px
+  strip's hover target rounded to nothing inside a panel's margin, so it reads the pointer from the frame input
+  instead of a widget's hover state, which egui resolves from the previous pass. The four control heights, the two
+  signals and the type scale come from `theme.rs`; nothing in `chrome.rs` names a colour or a pixel size.
+- **L13 (evidence, and what is not verified).** `./scripts/check.sh` green: fmt, clippy `-D warnings`, **1 071 tests
+  across 91 suites**. Four new tests pin the frame as behaviour rather than pixels: the stage bar's real counts vs
+  its dashes, the rail changing with the stage, an empty stage naming where its work lives, and the collapse/reopen
+  round trip (`DrawnState` gained `stage` and `rail` — the rail carries no text, so this is the only way a headless
+  test can see it). The input harness now asserts every computed click lands on the canvas, which is what caught
+  the coordinate assumptions breaking. Visual check: the shell was run on the machine's X display and captured
+  (`/tmp/shell3.png`); it matches the artboard's structure. **Not** verified: pixel-level comparison at 1440 × 900,
+  because the window manager maximises the frame to the full display — and the sample document opens the M5 3D
+  preview, which the artboard's 2D shell does not show.
+- **L14 (debt this slice adds, stated rather than hidden).** `Shell::rail_commands` builds the seven Edit commands
+  from the same fields the Tools tab's buttons read: two construction sites for one command. The fix is a command
+  module both call, which is a refactor with no visible effect and therefore its own slice. `view3d.rs` still holds
+  its own shading constants (T9). Object context menus and the per-command help pairs (T8) are untouched.

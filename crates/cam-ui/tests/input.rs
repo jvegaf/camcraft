@@ -127,12 +127,26 @@ impl Harness {
   }
 
   /// Convert a world position into a window position through the live camera.
+  ///
+  /// Asserts the result really lands on the drawing surface: the shell's chrome takes the frame's
+  /// border, and a click that misses the canvas is swallowed by a rail or a bar. Without this an
+  /// innocent layout change turns every canvas test into a silent pass or a mystery failure.
   fn at(&self, world: Point2) -> egui::Pos2 {
     let screen = self.app.camera().world_to_screen(world);
-    egui::Pos2::new(
+    let position = egui::Pos2::new(
       (screen.x + self.output.canvas.x) as f32,
       (screen.y + self.output.canvas.y) as f32,
-    )
+    );
+    let canvas = &self.output.canvas;
+    let bounds = egui::Rect::from_min_size(
+      egui::Pos2::new(canvas.x as f32, canvas.y as f32),
+      egui::vec2(canvas.width as f32, canvas.height as f32),
+    );
+    assert!(
+      bounds.contains(position),
+      "{world:?} maps to {position:?}, outside the canvas {bounds:?}"
+    );
+    position
   }
 
   fn click(&mut self, position: egui::Pos2) {
@@ -189,9 +203,10 @@ fn clicking_empty_space_clears_the_selection() {
   let mut harness = Harness::new();
   harness.app.select(vec!["E1".to_owned()]);
   harness.frame(Vec::new());
-  // The shell frames the drawing, so the visible area is roughly 30 mm around the 100x60 rectangle.
-  // This point is inside that view and well clear of every edge.
-  let position = harness.at(Point2::new(-10.0, 90.0));
+  // The shell frames the drawing, so the visible area reaches well past the 100x60 rectangle. This
+  // point is inside that view and clear of every edge — but near it, because the chrome moved the
+  // canvas and a point 90 mm up is no longer on screen.
+  let position = harness.at(Point2::new(-8.0, 30.0));
   harness.click(position);
   assert!(
     harness.app.selection().is_empty(),
@@ -203,7 +218,7 @@ fn clicking_empty_space_clears_the_selection() {
 fn dragging_a_box_selects_what_it_touches() {
   let mut harness = Harness::new();
   // A box whose edges cross the rectangle's left edge (x = 0) and bottom edge (y = 0).
-  let from = harness.at(Point2::new(-12.0, -30.0));
+  let from = harness.at(Point2::new(-8.0, -8.0));
   let to = harness.at(Point2::new(30.0, 30.0));
   let modifiers = egui::Modifiers::default();
 
