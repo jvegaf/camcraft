@@ -9,7 +9,8 @@ use cam_geom::{Contour, Point2, Vec2};
 use cam_model::{Document, Job, Layer};
 use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
-  handle_action, DrawShape, Shell, ShellOutput, Stage, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
+  handle_action, DrawShape, Readiness, Shell, ShellOutput, Stage, Tab, Tool, UiAction,
+  DEFAULT_TOLERANCE_MM,
 };
 
 fn document_with_rectangle() -> Document {
@@ -2220,4 +2221,224 @@ fn every_palette_chip_is_named_by_its_tooltip() {
       );
     }
   }
+}
+
+/// A document with one closed rectangle on one layer: Design's fact, and no toolpath yet.
+fn document_with_one_vector() -> Document {
+  document_with_rectangle()
+}
+
+/// The sentence a not-ready stage owes, as it is written down: the bar, the hover and the Job tab all
+/// read it from one place, so the tests name it once.
+const NOTHING_DRAWN: &str = "Nothing drawn yet";
+const NOTHING_TO_CUT: &str = "Nothing to cut yet";
+
+#[test]
+fn the_job_tab_names_the_stage_in_view_and_never_another_one() {
+  // The defect T13 fixes: the Job section printed `Stage::Toolpaths.note()` whatever stage was showing,
+  // so on the four other stages the section talked about work the operator was not doing. The section
+  // may only say what is true for the stage in view, and nothing at all when that stage owes nothing.
+  let mut app = AppState::new(document_with_one_vector());
+  let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    !all.contains("cam-cli toolpath"),
+    "the Job tab names Toolpaths while Design is showing: {all}"
+  );
+  assert!(
+    !all.contains(NOTHING_TO_CUT),
+    "Design is ready with one vector, so the section owes no sentence: {all}"
+  );
+
+  // Toolpaths is showing and the document holds none, so the section names the missing step.
+  shell.set_stage(Stage::Toolpaths);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains(NOTHING_TO_CUT),
+    "the Job tab must say what Toolpaths is missing: {all}"
+  );
+
+  // An empty sheet on Design: the same rule, the other countable stage.
+  let mut empty = AppState::new(Document::new(Job::default_sheet()));
+  let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut empty);
+  let all = joined(&texts);
+  assert!(
+    all.contains(NOTHING_DRAWN),
+    "the Job tab must say what Design is missing: {all}"
+  );
+
+  // A stage nothing measures claims nothing: no sentence is true here, so none is printed.
+  let mut unmeasured = AppState::new(Document::new(Job::default_sheet()));
+  let mut shell = Shell::new();
+  shell.set_stage(Stage::Edit);
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut unmeasured);
+  let all = joined(&texts);
+  assert!(
+    !all.contains(NOTHING_DRAWN) && !all.contains(NOTHING_TO_CUT),
+    "an unmeasured stage must not name a missing step: {all}"
+  );
+}
+
+/// A document holding `count` toolpaths over the same one vector.
+fn document_with_toolpaths(count: usize) -> Document {
+  let mut document = document_with_one_vector();
+  for index in 0..count {
+    document.toolpaths.push(cam_model::Toolpath {
+      id: format!("TP{}", index + 1),
+      name: format!("Profile {}", index + 1),
+      entity_ids: vec!["E1".to_owned()],
+      island_ids: Vec::new(),
+      tool_number: 1,
+      operation: cam_model::Operation::Profile(cam_model::ProfileParams::default()),
+    });
+  }
+  document
+}
+
+#[test]
+fn design_is_ready_at_one_vector_and_not_before() {
+  let empty = AppState::new(Document::new(Job::default_sheet()));
+  assert!(
+    matches!(
+      Stage::Design.readiness(&empty),
+      Readiness::NotReady(step) if step.starts_with(NOTHING_DRAWN)
+    ),
+    "an empty sheet is not a design, and the answer must name the step: {:?}",
+    Stage::Design.readiness(&empty)
+  );
+
+  let drawn = AppState::new(document_with_one_vector());
+  assert_eq!(
+    Stage::Design.readiness(&drawn),
+    Readiness::Ready(1),
+    "one vector on the sheet is the whole rule for Design"
+  );
+}
+
+#[test]
+fn toolpaths_is_ready_at_one_toolpath_and_not_before() {
+  let none = AppState::new(document_with_one_vector());
+  assert!(
+    matches!(
+      Stage::Toolpaths.readiness(&none),
+      Readiness::NotReady(step) if step.starts_with(NOTHING_TO_CUT)
+    ),
+    "a document with no toolpath cannot be a finished Toolpaths stage: {:?}",
+    Stage::Toolpaths.readiness(&none)
+  );
+
+  let one = AppState::new(document_with_toolpaths(1));
+  assert_eq!(
+    Stage::Toolpaths.readiness(&one),
+    Readiness::Ready(1),
+    "one toolpath in the document is the whole rule for Toolpaths"
+  );
+}
+
+#[test]
+fn the_three_unmeasured_stages_claim_neither_state() {
+  // Nothing in `AppState` measures Edit, Relief or Prove: no self-intersection report, no relief and no
+  // simulation result reaches it. So they must answer `Unmeasured` for every document, never "ready" and
+  // never "not ready" — a false `false` is exactly what the three-way answer exists to prevent (S9).
+  let documents = [
+    Document::new(Job::default_sheet()),
+    document_with_one_vector(),
+    document_with_toolpaths(1),
+  ];
+  for document in documents {
+    let app = AppState::new(document);
+    for stage in [Stage::Edit, Stage::Relief, Stage::Prove] {
+      assert_eq!(
+        stage.readiness(&app),
+        Readiness::Unmeasured,
+        "{stage:?} claims a state nothing measures"
+      );
+    }
+  }
+}
+
+#[test]
+fn every_refusal_names_the_number_it_counts() {
+  // S4's third rule, and the one a test can hold: a refusal names a number. Both sentences say `0`, which
+  // is the count the bar shows beside them — one answer, read twice.
+  for (stage, fact) in [
+    (Stage::Design, NOTHING_DRAWN),
+    (Stage::Toolpaths, NOTHING_TO_CUT),
+  ] {
+    let app = AppState::new(Document::new(Job::default_sheet()));
+    match stage.readiness(&app) {
+      Readiness::NotReady(step) => {
+        assert!(step.starts_with(fact), "{stage:?} says {step:?}");
+        assert!(
+          step.contains('0'),
+          "{stage:?} refuses without naming the number it counted: {step:?}"
+        );
+      }
+      other => panic!("{stage:?} on an empty document answered {other:?}"),
+    }
+  }
+}
+
+#[test]
+fn the_number_on_the_bar_and_the_readiness_are_one_answer() {
+  // The rule that makes this true is structural — `Stage::count` renders `Stage::readiness` — so the test
+  // reads both through the frame: the painted chip must be the number the readiness carries, and a stage
+  // that is not ready must show `0`, never a number that contradicts the sentence.
+  for (name, document) in [
+    ("empty", Document::new(Job::default_sheet())),
+    ("one", document_with_one_vector()),
+    ("three", document_with_toolpaths(3)),
+  ] {
+    let mut app = AppState::new(document);
+    let mut shell = Shell::new();
+    let (_, texts) = frame(&mut shell, &mut app);
+    let all = joined(&texts);
+    for stage in Stage::ALL {
+      let chip = match stage.readiness(&app) {
+        Readiness::Ready(count) => format!("{}  {count}", stage.label()),
+        Readiness::NotReady(_) => format!("{}  0", stage.label()),
+        Readiness::Unmeasured => format!("{}  —", stage.label()),
+      };
+      assert!(
+        all.contains(&chip),
+        "on the {name} document the bar must print {chip:?}: {all}"
+      );
+    }
+  }
+}
+
+#[test]
+fn a_stage_keeps_its_own_sentence_and_leads_with_the_missing_step() {
+  // The chip's hover text is existing behaviour: each stage explains what it asks of the operator. T13
+  // touches that string, so the previous reading is pinned — a ready stage and an unmeasured one still
+  // show exactly their note — and the new one is pinned beside it: a not-ready stage says what is
+  // missing first and how the work is done second (consequence before mechanics, S4).
+  let drawn = AppState::new(document_with_one_vector());
+  assert_eq!(
+    Stage::Design.hover(&drawn),
+    Stage::Design.note(),
+    "a ready stage has nothing missing to announce"
+  );
+  assert_eq!(
+    Stage::Edit.hover(&drawn),
+    Stage::Edit.note(),
+    "an unmeasured stage must not announce a missing step either"
+  );
+
+  let empty = AppState::new(Document::new(Job::default_sheet()));
+  let hover = Stage::Design.hover(&empty);
+  assert!(
+    hover.starts_with(NOTHING_DRAWN),
+    "the missing step leads the hover: {hover:?}"
+  );
+  assert!(
+    hover.ends_with(Stage::Design.note()),
+    "and the stage's own sentence is still there: {hover:?}"
+  );
 }

@@ -61,7 +61,7 @@ pub mod icons;
 pub mod params;
 pub mod theme;
 
-pub use chrome::{Stage, Tab};
+pub use chrome::{Readiness, Stage, Tab};
 pub mod view3d;
 
 pub use view3d::Preview3d;

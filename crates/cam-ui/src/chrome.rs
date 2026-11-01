@@ -27,6 +27,17 @@
 //! where those commands live today (`cam-cli`). A stage bar claiming `0 problems` for a validation
 //! nobody runs is worse than one that shows nothing.
 //!
+//! **A stage is done when a fact says so, not when the operator feels done.** Design is ready at one
+//! vector and Toolpaths at one toolpath, and both readings come from [`Stage::readiness`] — the same
+//! answer the bar's number is rendered from, so the bar cannot print `3` beside "nothing drawn yet". A
+//! countable stage that holds none of its fact names the step that changes that, in the voice
+//! `02-stages.html` §04 states; the three stages nothing measures answer [`Readiness::Unmeasured`] and
+//! say nothing at all. What the count cannot prove the stage does not claim: the artboard gates Design
+//! on "every vector either closed or knowingly open; nothing off the sheet" and Toolpaths on every path
+//! having "a tool, a depth inside the stock, and no unreachable corner left unannounced" — none of
+//! which `AppState` measures — so the shell counts the one fact it has instead of certifying a gate it
+//! cannot see.
+//!
 //! **The rail is stage-scoped, and that is the point of it.** Sixty-odd commands do not fit on one
 //! screen and never did; the rail shows the current stage's tools, so "what can I do right now" is one
 //! glance instead of one search. The cost — an expert pays a stage switch — is the trade the artboard
@@ -46,6 +57,32 @@ type PaletteChip = (Icon, Command);
 
 /// A labelled run of palette chips: the group's name and the chips under it.
 type PaletteRun = (Group, Vec<PaletteChip>);
+
+/// What the document proves about a stage: a count, a missing step, or nothing measurable at all.
+///
+/// Three answers, and deliberately not a boolean. `false` cannot tell "the sheet is still empty" from
+/// "nobody measures this stage", and the second of those is the state this shell has to be able to say
+/// out loud: Edit, Relief and Prove have no fact in `AppState` behind them — no self-intersection report,
+/// no relief, no simulation result — so a stage that answered "not ready" for them would be reporting a
+/// check nobody ran (S9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Readiness {
+  /// The document holds this stage's fact, and this is how many of it there are.
+  Ready(usize),
+  /// The stage can be counted and the count is zero. The sentence names the step that changes that.
+  NotReady(&'static str),
+  /// Nothing in the document measures this stage, so it is neither ready nor not ready.
+  Unmeasured,
+}
+
+/// A count turned into an answer: the number it proved, or the sentence naming the step it is missing.
+fn counted(count: usize, next_step: &'static str) -> Readiness {
+  if count > 0 {
+    Readiness::Ready(count)
+  } else {
+    Readiness::NotReady(next_step)
+  }
+}
 
 /// The stages a job walks through, in the order the artboard draws them.
 ///
@@ -130,21 +167,61 @@ impl Stage {
     }
   }
 
+  /// Whether this stage's work is in the document, out of it, or impossible to see from here.
+  ///
+  /// One rule per countable stage, and one fact behind each: **Design is done when the drawing holds at
+  /// least one entity** — a vector on the sheet, on any layer, visible or not, because the count is about
+  /// the drawing and not about the view — and **Toolpaths is done when the document holds at least one
+  /// toolpath**. Both are read from the document and nothing else, so a stage can never be ready on the
+  /// strength of what the frame happens to be showing.
+  ///
+  /// Only two of the five stages answer at all. Edit, Relief and Prove have no fact behind them in
+  /// `AppState`, and [`Readiness::Unmeasured`] is how a stage declines to invent one.
+  pub fn readiness(self, app: &AppState) -> Readiness {
+    match self {
+      Self::Design => counted(
+        app
+          .document()
+          .layers
+          .iter()
+          .map(|layer| layer.entities.len())
+          .sum(),
+        "Nothing drawn yet — 0 vectors on the sheet. Draw or import the shape you want to cut.",
+      ),
+      Self::Toolpaths => counted(
+        app.document().toolpaths.len(),
+        "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` \
+         and lands here finished.",
+      ),
+      Self::Edit | Self::Relief | Self::Prove => Readiness::Unmeasured,
+    }
+  }
+
   /// The number this stage can prove from the document, if any.
+  ///
+  /// Rendered from [`Stage::readiness`] rather than counted again: the bar's number and the bar's state are
+  /// one answer read twice, which is what stops it printing `3` beside "nothing drawn yet".
   ///
   /// A dash means "nothing to count yet", never "zero". The distinction matters: an empty sheet really
   /// does hold zero vectors, while a count of zero problems would be a claim about a check nobody ran.
   fn count(self, app: &AppState) -> String {
-    match self {
-      Self::Design => app
-        .document()
-        .layers
-        .iter()
-        .map(|layer| layer.entities.len())
-        .sum::<usize>()
-        .to_string(),
-      Self::Toolpaths => app.document().toolpaths.len().to_string(),
-      Self::Edit | Self::Relief | Self::Prove => "—".to_owned(),
+    match self.readiness(app) {
+      Readiness::Ready(count) => count.to_string(),
+      // A countable stage that is not ready holds zero of its fact, and a measured zero is a fact too.
+      Readiness::NotReady(_) => "0".to_owned(),
+      Readiness::Unmeasured => "—".to_owned(),
+    }
+  }
+
+  /// What the stage chip says on hover: what the stage asks, preceded by what it is missing.
+  ///
+  /// Consequence before mechanics is the artboard's first rule for every string (§04), so a stage that is
+  /// not ready leads with the missing step and then says how the work is done. Every other stage shows its
+  /// [`Stage::note`] unchanged.
+  pub fn hover(self, app: &AppState) -> String {
+    match self.readiness(app) {
+      Readiness::NotReady(step) => format!("{step}\n{}", self.note()),
+      Readiness::Ready(_) | Readiness::Unmeasured => self.note().to_owned(),
     }
   }
 
@@ -341,7 +418,7 @@ impl Shell {
             RichText::new(format!("{}  {}", stage.label(), stage.count(app))).size(theme::CAPTION);
           if ui
             .selectable_label(*stage == self.stage, text)
-            .on_hover_text(stage.note())
+            .on_hover_text(stage.hover(app))
             .clicked()
           {
             self.set_stage(*stage);
@@ -732,8 +809,13 @@ impl Shell {
         );
         ui.end_row();
       });
-    ui.add_space(6.0);
-    note(ui, palette, Stage::Toolpaths.note());
+    // The section reports the document, so the one sentence it can add is what the stage in view still
+    // needs. A stage that is ready or unmeasured owes nothing here: printing another stage's sentence —
+    // which is what `Stage::Toolpaths.note()` did, on all five stages — was the one lie in this section.
+    if let Readiness::NotReady(step) = self.stage.readiness(app) {
+      ui.add_space(6.0);
+      note(ui, palette, step);
+    }
   }
 
   /// Toggle one kind of snap target.
