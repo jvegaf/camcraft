@@ -487,3 +487,30 @@ design argues for:
   decision, not this session's. Deliberately untouched: the merged branch `feat/camui-t8-context-help` (merged is not
   deleted), the untracked `.atl/` directory, and the two unburned lineages in L36, which a session that can reach a
   review model should still be the one to burn.
+
+- **L38 (the review of T9 reached the provider and died at the session boundary, measured this time).** Owner:
+  *"dale con todo"*. The cycle ran further than L36 did and stopped at the same wall, but the cause is now pinned to a
+  timestamp instead of inferred.
+  `assess` refused at first because `.atl/` is untracked: that directory is the generated skill-registry cache
+  (`gentle-ai skill-registry refresh`), not part of any candidate, so the scope was declared `exclude`. `inspect` then
+  offered the **accumulated** range `c24f690..f5e8935` — 12 paths, 2 906 lines, T8.1 through T9 — which is the shape
+  L36 already recorded as refused by `lens_context_budget_exceeded`. A review candidate is one work unit, never the
+  branch, so START was narrowed with `baseRef` at `725d9fc`. That was refused with
+  `native-start-retained-selection-candidate-mismatch` and `mutation_performed: false`: the retained intended-untracked
+  selection belongs to the candidate it was computed for, so narrowing the range invalidated it. A second `inspect`
+  with the narrowed range produced a fresh target (`sha256:615a946f…`) and the right six paths, and START accepted it:
+  lineage `review-3592c554bf15c02f`, tier **high**, 6 files, 672 changed lines, one lens (`review-reliability`),
+  correction budget 200.
+  `collect` offered a single materialize slot; its forecast said one model run over `pi_host_relay`; the acknowledged
+  capture returned `reviewer-config-invalid` — *"no model is configured for review-reliability"*.
+  **The cause is a session boundary, and it is measurable:** `install/agent/subagents.json` carries all six review keys
+  (four lenses, refuter, validator) and `models-store.json` knows `deepseek-v4.1-flash`, which is also this session's
+  own `PI_MODEL`. But that file's mtime is **07:32** and this session started at **06:45** (`PI_SESSION_FILE`). A
+  session freezes its agent routing at startup, so a file written 47 minutes later cannot reach it — L36's diagnosis was
+  right and this is the proof rather than the report of it.
+  **No retry.** A configuration failure is not repaired by repeating the capture, and the contract forbids replaying one
+  from transcript inference. Three lineages are now stalled and unburned: `review-3ebc68eeba5006f5` (frame),
+  `review-89edc321cc30ebdb` (T9's first shape) and `review-3592c554bf15c02f` (T9, this one). The session that burns
+  them is one that starts **after** the routing file exists; nothing written while this one lives can reach the lens.
+  T9 stays shipped on the gate, the two visual passes and the invariants L35 added — the disposition of L30 and L36
+  unchanged, and now with a dated reason.
