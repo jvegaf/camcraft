@@ -25,6 +25,19 @@
 //! field at the end is cell-for-cell the field [`cam_sim::sweep::apply`] produces for the whole
 //! stream: the animation and the report cannot disagree.
 //!
+//! # Colours, and where they come from
+//!
+//! The panel chooses no colour of its own: every one it paints is a [`Role`] of the current theme,
+//! or a stop on the depth ramp between two of them. The 3D view used to keep five shading literals
+//! (L7 left them there on purpose), which made it the last place in the shell painting a colour no
+//! role knew about. The mapping is a meaning, not a rename: the stock's box edges are
+//! [`Role::StockEdge`] — a silhouette, not the [`Role::Border`] hairline the 2D canvas outlines the
+//! stock with, because a block against a field with no grid needs a value that clears both the canvas
+//! and its own face; cutting moves are
+//! [`Role::Cut`], which is what the cut signal means; rapids and retracts are [`Role::TextDim`], the
+//! role the 2D canvas paints construction geometry with — present, but not the thing being shown;
+//! and the surface is [`Palette::stock_shade`], a ramp with a role at each end.
+//!
 //! # Why the geometry is not computed here
 //!
 //! The projection ([`Camera3d`]) and the surface ([`build_surface`]) are data, tested headless in
@@ -39,8 +52,9 @@ use cam_move::{Move, MoveStream, Point3, ToolShape};
 use cam_sim::{sweep, Heightfield};
 use cam_units::Length;
 use cam_view::{build_stock_box, build_surface, Camera3d, Line3, FIELD_OF_VIEW, MIN_DISTANCE};
-use egui::{Color32, Pos2, Stroke};
+use egui::{Pos2, Stroke};
 
+use crate::theme::{Palette, Role};
 use crate::DrawnState;
 
 /// How far the camera turns per pixel of drag, in radians.
@@ -72,22 +86,6 @@ const FRAME_MARGIN: f64 = 1.4;
 /// The same half-pixel rule the 2D canvas uses: the flattening belongs to the painter, and the
 /// tolerance is expressed in what the user can see, not in millimetres.
 const ARC_TOLERANCE_PX: f64 = 0.5;
-
-/// Colours, in one place so the picture stays consistent with the 2D canvas.
-mod palette {
-  use egui::Color32;
-
-  /// The stock's edges.
-  pub const STOCK: Color32 = Color32::from_rgb(88, 132, 178);
-  /// Cutting moves of the previewed program.
-  pub const CUT: Color32 = Color32::from_rgb(255, 176, 59);
-  /// Rapids and retracts: present, but not the thing being shown.
-  pub const TRAVEL: Color32 = Color32::from_rgb(96, 104, 116);
-  /// The untouched top of the stock, at the `0.0` end of the depth ramp.
-  pub const SURFACE_TOP: Color32 = Color32::from_rgb(214, 220, 230);
-  /// The stock's bottom, at the `1.0` end of the depth ramp.
-  pub const SURFACE_BOTTOM: Color32 = Color32::from_rgb(38, 74, 122);
-}
 
 /// One program's preview: the simulated stock, the camera that looks at it, and where playback stands.
 ///
@@ -415,8 +413,10 @@ impl Preview3d {
   /// The region is whatever the frame gives it, because the 3D view now *is* the central area rather
   /// than a strip stacked over the drawing. The camera therefore learns a new viewport on resize, which
   /// is what a filling view does; the old fixed height existed to stop the framing jumping while the
-  /// strip resized itself, and that trade disappeared with the stacking.
-  pub fn show(&mut self, ui: &mut egui::Ui, drawn: &mut DrawnState) {
+  /// strip resized itself, and that trade disappeared with the stacking. `palette` is the current
+  /// theme's colours: the panel takes them as an argument instead of holding any of its own, so a
+  /// theme flip repaints the stock without the panel knowing a theme exists.
+  pub fn show(&mut self, ui: &mut egui::Ui, drawn: &mut DrawnState, palette: &Palette) {
     // A region squeezed narrower than nothing paints nothing rather than allocating a negative area:
     // `egui` asserts on that, and a window that small is a layout in progress.
     let size = egui::vec2(
@@ -429,7 +429,7 @@ impl Preview3d {
     // drawn; `cam-view` owns the arithmetic and knows nothing about egui's rectangles.
     self.camera.viewport = Viewport::new(f64::from(rect.width()), f64::from(rect.height()));
     self.take_input(ui, &response);
-    self.paint(&painter, rect, drawn);
+    self.paint(&painter, rect, drawn, palette);
   }
 
   /// Turn the camera, and zoom it about the target.
@@ -461,17 +461,29 @@ impl Preview3d {
   /// That order is the only depth ordering `egui::Mesh` can be given: it has no depth buffer, so the
   /// surface's own triangles arrive back to front from [`build_surface`] and the lines are drawn on
   /// top of a picture that is already correct.
-  fn paint(&self, painter: &egui::Painter, rect: egui::Rect, drawn: &mut DrawnState) {
-    self.paint_surface(painter, rect, drawn);
-    self.paint_stock(painter, rect, drawn);
-    self.paint_program(painter, rect, drawn);
+  fn paint(
+    &self,
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    drawn: &mut DrawnState,
+    palette: &Palette,
+  ) {
+    self.paint_surface(painter, rect, drawn, palette);
+    self.paint_stock(painter, rect, drawn, palette);
+    self.paint_program(painter, rect, drawn, palette);
   }
 
   /// Convert the surface mesh into one [`egui::Mesh`], shaded by each vertex's depth (A11).
   ///
   /// A triangle with a vertex the camera cannot project is skipped, not clamped: drawing it would
   /// mean inventing a screen position, and the surface would then say something the field does not.
-  fn paint_surface(&self, painter: &egui::Painter, rect: egui::Rect, drawn: &mut DrawnState) {
+  fn paint_surface(
+    &self,
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    drawn: &mut DrawnState,
+    palette: &Palette,
+  ) {
     let surface = build_surface(&self.field, &self.camera, self.stride);
     if surface.is_empty() {
       return;
@@ -479,14 +491,14 @@ impl Preview3d {
     let mut mesh = egui::Mesh::default();
     for triangle in &surface.triangles {
       let mut corners = [Pos2::ZERO; 3];
-      let mut colours = [Color32::BLACK; 3];
+      let mut depths = [0.0_f32; 3];
       let mut visible = true;
       for (slot, index) in triangle.iter().enumerate() {
         let vertex = surface.vertices[*index];
         match self.screen(rect, vertex.position) {
           Some(position) => {
             corners[slot] = position;
-            colours[slot] = depth_colour(vertex.depth);
+            depths[slot] = vertex.depth;
           }
           None => {
             visible = false;
@@ -502,7 +514,9 @@ impl Preview3d {
         mesh.vertices.push(egui::epaint::Vertex {
           pos: corners[corner],
           uv: egui::epaint::WHITE_UV,
-          color: colours[corner],
+          // Depth becomes value through the theme's ramp: the same field says the same thing about
+          // an 18 mm sheet and a 6 mm one, and both ends are roles like every other colour here.
+          color: palette.stock_shade(depths[corner]),
         });
       }
       mesh.indices.extend([base, base + 1, base + 2]);
@@ -514,13 +528,25 @@ impl Preview3d {
   }
 
   /// Paint the stock's twelve edges.
-  fn paint_stock(&self, painter: &egui::Painter, rect: egui::Rect, drawn: &mut DrawnState) {
+  fn paint_stock(
+    &self,
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    drawn: &mut DrawnState,
+    palette: &Palette,
+  ) {
     for line in &self.stock {
       let (Some(start), Some(end)) = (self.screen(rect, line.start), self.screen(rect, line.end))
       else {
         continue;
       };
-      painter.line_segment([start, end], Stroke::new(1.0, palette::STOCK));
+      // The silhouette of the material. Not `Border`: a control's hairline divides two surfaces inside
+      // one panel, and at 1.8:1 against the canvas it let a dark block's lower edges dissolve into the
+      // background. This role is held to 3:1 against both the canvas and the face it bounds.
+      // 1.6, the icon set's own line weight, not a hairline: measured on the running app, a 1.0 stroke is
+      // antialiased over about two pixels and reaches 2.32:1 against the stock's face where the token
+      // promises 4.90:1. A silhouette that carries an object's shape has to survive being rendered.
+      painter.line_segment([start, end], Stroke::new(1.6, palette.get(Role::StockEdge)));
       drawn.painted_3d_lines += 1;
     }
   }
@@ -532,17 +558,25 @@ impl Preview3d {
   /// end the camera cannot project is dropped rather than drawn through a made-up point. The
   /// segment's first move starts a polyline instead of being joined to the previous toolpath: the
   /// stream carries no start position, and inventing one would draw a line the program never made.
-  fn paint_program(&self, painter: &egui::Painter, rect: egui::Rect, drawn: &mut DrawnState) {
+  fn paint_program(
+    &self,
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    drawn: &mut DrawnState,
+    palette: &Palette,
+  ) {
     let tolerance = self.flatten_tolerance_mm();
     for segment in &self.program.segments {
       let mut previous: Option<Point3> = None;
       for movement in &segment.moves {
         let to = movement.destination();
+        // Amber is the cut signal; a rapid's line exists only so the eye can find the cut between
+        // them, so it is the secondary role rather than a signal of its own.
         let stroke = match movement {
           Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
-            Stroke::new(1.6, palette::CUT)
+            Stroke::new(1.6, palette.get(Role::Cut))
           }
-          Move::Rapid { .. } | Move::Retract { .. } => Stroke::new(1.0, palette::TRAVEL),
+          Move::Rapid { .. } | Move::Retract { .. } => Stroke::new(1.0, palette.get(Role::TextDim)),
         };
         if let Some(from) = previous {
           for pair in path_points(from, *movement, tolerance) {
@@ -765,27 +799,4 @@ fn arc_sweep(
     }
   }
   sweep
-}
-
-/// The colour a vertex with this depth is painted with.
-///
-/// `depth` is the mesh's own ramp coordinate, `0.0` at the untouched top and `1.0` at the stock's
-/// bottom, so the same palette says the same thing about an 18 mm sheet and a 6 mm one. A value that
-/// is not a number reads as the top rather than as a colour a shader would have to defend against.
-fn depth_colour(depth: f32) -> Color32 {
-  let t = if depth.is_finite() {
-    depth.clamp(0.0, 1.0)
-  } else {
-    0.0
-  };
-  let mix = |top: u8, bottom: u8| -> u8 {
-    let top = f32::from(top);
-    let bottom = f32::from(bottom);
-    (top + (bottom - top) * t).round().clamp(0.0, 255.0) as u8
-  };
-  Color32::from_rgb(
-    mix(palette::SURFACE_TOP.r(), palette::SURFACE_BOTTOM.r()),
-    mix(palette::SURFACE_TOP.g(), palette::SURFACE_BOTTOM.g()),
-    mix(palette::SURFACE_TOP.b(), palette::SURFACE_BOTTOM.b()),
-  )
 }

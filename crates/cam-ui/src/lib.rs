@@ -1100,7 +1100,7 @@ impl Shell {
       });
       ui.separator();
       if let Some(preview) = self.preview.as_mut() {
-        preview.show(ui, &mut output.drawn);
+        preview.show(ui, &mut output.drawn, &palette);
       } else {
         // An empty 3D view still holds its region: a collapsing view would hand the click to whatever is
         // underneath and read as a bug.

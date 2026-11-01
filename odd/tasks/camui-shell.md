@@ -106,7 +106,7 @@ The foundations are delivered. What remains of the concept, in the order the des
 | T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
 | T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
 | T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
-| T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
+| T9 | 🔨 in progress from `725d9fc` — `view3d.rs` shading onto the tokens: five literals (`STOCK`, `CUT`, `TRAVEL`, `SURFACE_TOP`, `SURFACE_BOTTOM`) and a depth ramp are the last colours in the shell that no `Role` owns | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
   in the project's real stack. Use the artboard as the visual spec: map its parts to the project's existing
@@ -408,3 +408,60 @@ The foundations are delivered. What remains of the concept, in the order the des
   opens (pre-existing z-order). *(3)* `icons.rs` documents `tests::the_families_cover_the_set_in_order`, which **does not
   exist**; family contiguity rests only on `family()` being one ordered `match`, so the doc promises a guard the tree
   does not have. Recorded, not papered over.
+
+- **L34 (owner, verbatim).** *"t9"* — T9 authorised from `725d9fc`: `view3d.rs` shading onto the tokens. The module holds a
+  `shading` block with five own literals — `STOCK` `(88,132,178)`, `CUT` `(255,176,59)`, `TRAVEL` `(96,104,116)`,
+  `SURFACE_TOP` `(214,220,230)`, `SURFACE_BOTTOM` `(38,74,122)` — plus `depth_colour`, which interpolates between the
+  two surface ends by depth. `theme.rs` owns 18 roles and none of them is a ramp, which is exactly the question L7
+  left open when it said a 3D surface ramp is not the 2D token set. So the first thing this slice does is **ask the
+  tokens artboard**, not invent: `04-tokens.html` is the authority for whether a ramp exists, and if it does not, the
+  roles it gains are named for what they mean and documented in `design/system.md` like every other.
+
+- **L35 (T9: the tokens, the ramp, and the regression a screenshot caught before the commit).** `view3d.rs` paints
+  every colour through the theme now — **zero `Color32` left in the module**, and the `shading` block plus
+  `depth_colour` are gone, replaced by `Role::StockTop`/`Role::StockBottom` and `Palette::stock_shade`. `STOCK` mapped
+  to `Border`, `CUT` to `Cut` (L7: the cut signal owns amber), `TRAVEL` to `TextDim` — by meaning, not by rename.
+  **`04-tokens.html` specifies no material tokens at all**: its surfaces ladder ends at `bg-canvas`, "drawing surface
+  — the darkest", with no step for stock, so the ramp is a **proposal** and `design/system.md` says so in those words.
+  Then the screenshot refused to ship it: the proposed light ramp used `#FFFFFF` on a `#F7F9FB` canvas, which is
+  **1.06:1 on paper and a 2-to-5 code difference on screen** — the light-theme stock stopped being a solid and became
+  a hairline rectangle on a white page, the worst possible misread ("nothing is loaded"). It was a regression T9
+  introduced, and 1 106 green tests did not see it because every existing contrast test compares *text to a surface*,
+  never *material to the canvas*. The dark theme lost its accent in the same change: `STOCK`→`Border` took the stock's
+  rim from 4.9:1 to 1.9:1, because a control hairline is not a solid's silhouette.
+  The fix, measured rather than chosen: light `StockTop` `#FFFFFF`→**`#C6D1DD`** (1.06→1.47 token, **1.51 rendered**,
+  Δ53 codes on the row the regression was found on), `StockBottom` `#8B95A3`→**`#A6B3C3`**, and a new **`StockEdge`**
+  role held to 3:1 against *both* the canvas and the stock's face, because no existing neutral sits in that band in
+  either set. The light canvas was measured as an alternative and rejected: moving it lowers every ratio it already
+  guards. The ceiling is forced by the **cut**, not by taste — `#A86200` needs ≥3:1 on the fill, which pins
+  `L_top ≥ 0.612` and caps the ramp at 1.50:1, so the light ramp narrowed from 3.03:1 to 1.40:1 as the price of a
+  visible solid *and* a visible amber. The amber on the deepest stop is 2.23:1 (2.18 rendered), still under the 3:1
+  stroke floor and **not fixable inside the tokens**: it needs a lighter paper amber — an artboard change — or a ramp
+  so shallow it stops meaning depth.
+  A new invariant holds it: `the_stock_reads_as_a_solid_against_the_canvas`, both sets, both ramp ends ≥1.45:1 off the
+  canvas and the silhouette ≥3:1 off canvas and face — RED against `#FFFFFF` at 1.06:1 before the values moved.
+  One more thing only rendering could teach: the silhouette test passed at token 4.90:1 while the screen delivered
+  **2.32:1**, because a 1.0 px stroke is antialiased over two. The stock's edges now draw at **1.6**, the icon set's own
+  line weight, so the invariant is also true of the pixels. Verified on screen afterwards: light fill 1.51:1 with a
+  rim peak of `124,132,143` and visible thickness on the near edges; dark edges 3.79:1 off the canvas and 2.99:1 off
+  the face, **92 % of the pre-T9 blue silhouette**; light 2D differing by 12 565 px of 3.5 M, all of them the cursor
+  and the status line.
+  **Recorded, not fixed:** the dark theme's amber on the bright stock top measures **1.37:1** — the pocket reads only
+  because the raster is dense, and a sparser toolpath would vanish on that face (pre-existing, not caused here); and
+  the depth ramp itself is **unobservable in the sample document**, whose pocket is 100 % covered by the cut raster, so
+  neither a test nor an eye can see the gradient until a fixture has an uncut region.
+
+- **L36 (the review could not run in this session, and why — the routing is frozen at startup).** Five attempts, one
+  error every time: `reviewer-config-invalid`, "no model is configured for review-reliability". The cause is not
+  misconfiguration and not the candidate: `session-profile-freeze.ts` states it — a session *"resolves the shared
+  defaults … once, at startup, and keeps that snapshot with its origin. Changing a default later only affects new
+  sessions."* So no file written while this session lives can reach the lens. Two candidate shapes were measured on the
+  way: the accumulated branch is refused by `lens_context_budget_exceeded` (a review candidate is one work unit, never
+  the branch), and this build accepts **one** lens per start — two returned `lenses-invalid` twice.
+  What is left in place for the next launch: `install/agent/subagents.json` (the agent-home routing map, read by
+  `agents-config.ts`) carrying the six review keys — the four lenses plus the refuter and the validator — each pointed at
+  `opencode-go/deepseek-v4.1-flash` with thinking `high`, the model the explorer already runs on.
+  **Owner disposition:** ship T9 on the gate and the two visual passes, and release the two live lineages
+  (`review-89edc321cc30ebdb` for this slice, `review-3ebc68eeba5006f5` for the frame). The natural first candidates for a
+  session that *can* review are `f06b43a`, `d511df8`, `99290d8` and this T9 commit — each one work unit under the
+  budget.

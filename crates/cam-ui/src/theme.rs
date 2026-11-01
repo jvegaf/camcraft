@@ -37,6 +37,17 @@ pub const HERO: f32 = 28.0;
 pub const AA_BODY: f32 = 4.5;
 /// WCAG AA for large text, and the floor we accept for a signal drawn as a stroke rather than as a word.
 pub const AA_LARGE: f32 = 3.0;
+/// The floor for a solid against the surface it stands on: 1.45:1.
+///
+/// The 3D stock is a filled block, not a word and not a hairline, so neither [`AA_BODY`] nor
+/// [`AA_LARGE`] is the right yardstick: 3:1 against the canvas would make the material darker than the
+/// cut signal it carries, and 1:1 is what the light set shipped before this was measured. 1.45:1 is the
+/// largest step the light set can afford — the fill is capped by the darkest stop the artboard's
+/// `#a86200` toolpath still reads on — and it is a step a shadow-lifting compositor cannot eat: measured
+/// on the running app, an 8-code difference between `#ffffff` and `#f7f9fb` arrived as 2–5 codes, so a
+/// 37-code difference survives as 10–20. Compare ratios with
+/// [`contrast_ratio`]: `(lighter + 0.05) / (darker + 0.05)` on WCAG relative luminance.
+pub const SOLID_ON_CANVAS: f32 = 1.45;
 
 /// The box every glyph in [`crate::icons`] is authored in.
 pub const ICON_SIZE: f32 = 24.0;
@@ -98,6 +109,51 @@ pub enum Role {
   Warn,
   /// Verdict: gouge, crash, or a refusal.
   Danger,
+  /// The untouched top of the stock: the `0.0` end of the 3D depth ramp.
+  StockTop,
+  /// The stock's floor: the `1.0` end of the 3D depth ramp.
+  StockBottom,
+  /// The silhouette of a solid: the 3D stock box's twelve edges.
+  ///
+  /// Not [`Role::Border`], and the difference is a job, not a taste. A border is a one-pixel division
+  /// *inside* one surface — a field's outline, a menu's frame — where 1.8:1 is right and 5:1 would draw
+  /// a cage. The edge of a 3D block is the only thing that says "this object ends here" against a field
+  /// with no grid, no shadow and no perspective cue, so it has to clear [`AA_LARGE`] against *both* the
+  /// canvas behind it and the face it bounds. Only a value in a narrow band does both (see the ramp's
+  /// values in `dark()` and `light()`), which is why this is a role and not a reuse.
+  StockEdge,
+}
+
+impl Role {
+  /// Every role, so an audit can walk the set instead of keeping a second list in step with it.
+  ///
+  /// The order is the palette's own: surfaces, text, the two signals, then the verdicts and the
+  /// stock's ramp. A test that
+  /// asserts "no widget paints a colour no role owns" needs the whole set, and a hand-written copy
+  /// of it would grow a hole the day a role is added.
+  pub const ALL: [Role; 21] = [
+    Role::App,
+    Role::Canvas,
+    Role::Panel,
+    Role::Raised,
+    Role::Overlay,
+    Role::Hairline,
+    Role::Border,
+    Role::TextHi,
+    Role::Text,
+    Role::TextDim,
+    Role::TextOff,
+    Role::Sel,
+    Role::SelSoft,
+    Role::Cut,
+    Role::CutSoft,
+    Role::Ok,
+    Role::Warn,
+    Role::Danger,
+    Role::StockTop,
+    Role::StockBottom,
+    Role::StockEdge,
+  ];
 }
 
 /// Every colour the shell may draw with.
@@ -121,6 +177,9 @@ pub struct Palette {
   ok: Color32,
   warn: Color32,
   danger: Color32,
+  stock_top: Color32,
+  stock_bottom: Color32,
+  stock_edge: Color32,
 }
 
 impl Palette {
@@ -145,7 +204,27 @@ impl Palette {
       Role::Ok => self.ok,
       Role::Warn => self.warn,
       Role::Danger => self.danger,
+      Role::StockTop => self.stock_top,
+      Role::StockBottom => self.stock_bottom,
+      Role::StockEdge => self.stock_edge,
     }
+  }
+
+  /// The colour a point `depth` into the stock is painted with: the 3D surface's shading.
+  ///
+  /// `depth` is the mesh's own ramp coordinate — `0.0` at the untouched top, `1.0` at the stock's
+  /// floor — so the same palette says the same thing about an 18 mm sheet and a 6 mm one. Both ends
+  /// are roles, and this is the only place in the shell a colour is *mixed* rather than chosen: a
+  /// gradient whose ends live outside the palette is a colour the palette does not own, which is
+  /// what [`Role::StockTop`] and [`Role::StockBottom`] exist to prevent. A value that is not a
+  /// number reads as the top rather than as a colour a shader would have to defend against.
+  pub fn stock_shade(&self, depth: f32) -> Color32 {
+    let t = if depth.is_finite() {
+      depth.clamp(0.0, 1.0)
+    } else {
+      0.0
+    };
+    mix(self.get(Role::StockTop), self.get(Role::StockBottom), t)
   }
 
   /// The default set.
@@ -170,6 +249,17 @@ impl Palette {
       ok: Color32::from_rgb(0x5e, 0xc2, 0x7f),
       warn: Color32::from_rgb(0xf0, 0xb4, 0x29),
       danger: Color32::from_rgb(0xf2, 0x63, 0x5f),
+      // The material, and how deep the tool has gone into it. The top is the set's brightest
+      // neutral — the picture has to land on the stock before it lands on the chrome — and the
+      // floor is a graphite that is still clearly above the canvas, so the deepest cut reads as
+      // material rather than as a hole in the screen.
+      stock_top: Color32::from_rgb(0xd6, 0xdc, 0xe6),
+      stock_bottom: Color32::from_rgb(0x42, 0x4c, 0x58),
+      // The band that clears both the canvas (4.42:1) and the stock's own top (3.13:1) at AA large
+      // text: `#8b95a3`, the set's secondary text, is 6.29:1 off the canvas but only 2.20:1 against
+      // the face it has to bound, and `#35404c`, the control border, is 1.81:1 off the canvas, which
+      // is how T9 lost the block's lower edges in the first place.
+      stock_edge: Color32::from_rgb(0x6e, 0x7b, 0x8a),
     }
   }
 
@@ -194,8 +284,40 @@ impl Palette {
       ok: Color32::from_rgb(0x1f, 0x7a, 0x43),
       warn: Color32::from_rgb(0x96, 0x61, 0x0a),
       danger: Color32::from_rgb(0xb3, 0x34, 0x2f),
+      // The same design on paper, and the one place the two sets are not a mirror. A dark set can put
+      // a near-white solid on a near-black canvas; paper cannot, so the material has to be *darker*
+      // than the page to read at all. `#c6d1dd` is as dark as the fill can go without losing the
+      // artboard's `#a86200` toolpath on it (3.08:1, the stroke floor this file already holds every
+      // signal to): it stands 1.47:1 off the canvas, a 37-code step that a compositor which turned an
+      // 8-code step into 2–5 codes cannot flatten. The floor is a mid grey 1.40:1 under the top, so
+      // depth still reads as value while the amber on the deepest stop measures 2.23:1 instead of the
+      // 1.57:1 the old `#8b95a3` floor gave it.
+      stock_top: Color32::from_rgb(0xc6, 0xd1, 0xdd),
+      stock_bottom: Color32::from_rgb(0xa6, 0xb3, 0xc3),
+      // 7.18:1 off the canvas and 4.90:1 against the stock's top — darker than the page and darker than
+      // the face it bounds, the way a drawn silhouette is. Deliberately not `text_dim`'s `#5f6b7a` in
+      // this set: that is the ink a rapid travels in, and two 1 px lines in the same picture must not be
+      // the same colour, so this sits 1.40:1 below it.
+      stock_edge: Color32::from_rgb(0x4a, 0x55, 0x63),
     }
   }
+}
+
+/// Interpolates between two ends on the sRGB curve, `t` in `0.0..=1.0`.
+///
+/// One shared function so the two ends and every value between them are painted by one rule: the
+/// ramp is a line through the palette, not a second gradient somebody re-derived.
+fn mix(top: Color32, bottom: Color32, t: f32) -> Color32 {
+  let channel = |top: u8, bottom: u8| -> u8 {
+    let top = f32::from(top);
+    let bottom = f32::from(bottom);
+    (top + (bottom - top) * t).round().clamp(0.0, 255.0) as u8
+  };
+  Color32::from_rgb(
+    channel(top.r(), bottom.r()),
+    channel(top.g(), bottom.g()),
+    channel(top.b(), bottom.b()),
+  )
 }
 
 /// The measurements, which are the same in both sets because a token that changes with the theme is not a
@@ -460,7 +582,9 @@ fn hue(c: Color32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-  use super::{contrast_ratio, hue_degrees, luminance, Role, Theme, AA_BODY, AA_LARGE};
+  use super::{
+    contrast_ratio, hue_degrees, luminance, Role, Theme, AA_BODY, AA_LARGE, SOLID_ON_CANVAS,
+  };
 
   /// Every pair of (foreground, background) roles the shell actually paints words on.
   ///
@@ -547,6 +671,103 @@ mod tests {
       assert!(
         apart >= 60.0,
         "{theme:?}: selection and cut are only {apart:.0}° apart; a colour-blind operator reads one signal"
+      );
+    }
+  }
+
+  #[test]
+  fn the_stock_ramp_darkens_with_depth_in_both_sets() {
+    // The 3D surface says "this is how deep the tool went" with value alone, so the ramp has to be a
+    // ramp in both sets: two distinct ends, and the floor darker than the top. If this drifts, the
+    // picture still draws and stops meaning anything.
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      let (top, bottom) = (Role::StockTop, Role::StockBottom);
+      assert_ne!(
+        palette.get(top),
+        palette.get(bottom),
+        "{theme:?}: the stock's two ends are the same colour, so depth is invisible"
+      );
+      assert!(
+        luminance(palette.get(bottom)) < luminance(palette.get(top)),
+        "{theme:?}: the stock's floor must be darker than its top, or the ramp reads upside down"
+      );
+      // The material also has to be distinguishable from the surface it sits on: a stock the same
+      // colour as the canvas is a stock nobody can see.
+      assert_ne!(
+        palette.get(bottom),
+        palette.get(Role::Canvas),
+        "{theme:?}: the deepest cut is the canvas's own colour"
+      );
+    }
+  }
+
+  #[test]
+  fn the_stock_reads_as_a_solid_against_the_canvas() {
+    // A solid has to be distinguishable from the surface it stands on before any of its shading means
+    // anything, and the fill is the only thing that says so over the whole silhouette: an edge can
+    // outline a block, but it cannot make a white slab look loaded. This is the assertion the
+    // screenshot asked for — the light set shipped `#ffffff` on a `#f7f9fb` canvas, which is 1.06:1 and
+    // arrived on screen as a 2-to-5 code difference, so the stock disappeared into the page.
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      // Every stop on the ramp is material, so every stop is held to the same margin: the top of the
+      // sheet and the floor of a pocket both have to stand off the canvas, or the deepest cut reads as a
+      // hole in the screen rather than as a place the tool has been.
+      for (label, role) in [("top", Role::StockTop), ("floor", Role::StockBottom)] {
+        let ratio = contrast_ratio(palette.get(role), palette.get(Role::Canvas));
+        assert!(
+          ratio >= SOLID_ON_CANVAS,
+          "{theme:?}: the stock's {label} is {ratio:.2}:1 against the canvas, under the \
+           {SOLID_ON_CANVAS:.2}:1 a solid needs to read as a solid"
+        );
+      }
+      // The silhouette is what carries the block when the fill is a page-light grey, so it is held to
+      // the stroke floor against the field behind it *and* against the face it bounds: an edge that
+      // merges with either one is a hairline rectangle again.
+      for (label, other) in [
+        ("canvas", Role::Canvas),
+        ("the stock's top", Role::StockTop),
+      ] {
+        let ratio = contrast_ratio(palette.get(Role::StockEdge), palette.get(other));
+        assert!(
+          ratio >= AA_LARGE,
+          "{theme:?}: the stock's edge is {ratio:.2}:1 against {label}, under the {AA_LARGE:.1}:1 a \
+           silhouette needs"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn the_stock_shade_returns_its_ends_and_interpolates_between_them() {
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      let (top, bottom) = (Role::StockTop, Role::StockBottom);
+      assert_eq!(
+        palette.stock_shade(0.0),
+        palette.get(top),
+        "{theme:?}: depth 0.0 is the untouched top"
+      );
+      assert_eq!(
+        palette.stock_shade(1.0),
+        palette.get(bottom),
+        "{theme:?}: depth 1.0 is the stock's floor"
+      );
+      let middle = palette.stock_shade(0.5);
+      assert!(
+        luminance(palette.get(bottom)) < luminance(middle)
+          && luminance(middle) < luminance(palette.get(top)),
+        "{theme:?}: half depth must sit strictly between the two ends, not on one of them"
+      );
+      // Out-of-range and non-finite depths clamp where the painter clamps them: the ends, never a
+      // colour nobody specified.
+      assert_eq!(palette.stock_shade(-1.0), palette.get(top), "{theme:?}");
+      assert_eq!(palette.stock_shade(2.0), palette.get(bottom), "{theme:?}");
+      assert_eq!(
+        palette.stock_shade(f32::NAN),
+        palette.get(top),
+        "{theme:?}: a depth that is not a number reads as the top"
       );
     }
   }

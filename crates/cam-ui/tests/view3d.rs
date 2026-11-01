@@ -16,6 +16,7 @@ use cam_geom::{Contour, Point2};
 use cam_model::{Document, Job, Layer};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield, Volumes};
+use cam_ui::theme::{Palette, Role, Theme};
 use cam_ui::{Preview3d, Shell, ShellOutput};
 use cam_units::Length;
 
@@ -194,6 +195,8 @@ struct Harness {
   mesh_vertices: Vec<usize>,
   /// Every piece of text the frame drew.
   texts: Vec<String>,
+  /// Every shape the frame drew, so a test can read the colours the panel painted (T9).
+  shapes: Vec<egui::epaint::ClippedShape>,
 }
 
 impl Harness {
@@ -206,6 +209,7 @@ impl Harness {
       output: ShellOutput::default(),
       mesh_vertices: Vec::new(),
       texts: Vec::new(),
+      shapes: Vec::new(),
     };
     // The first frames lay the panels out and frame the 2D document, exactly as in `input.rs`.
     for _ in 0..3 {
@@ -258,6 +262,7 @@ impl Harness {
         _ => None,
       })
       .collect();
+    self.shapes = full.shapes.clone();
     // The texture deltas belong to a renderer we do not have headless; dropping them silently is
     // exactly what epaint forbids, so say so explicitly.
     full.drop_without_applying_deltas();
@@ -905,4 +910,178 @@ fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
     4,
     "four moves: the helix is one of them, not a staircase"
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// T9 — the 3D view's colours are the design's, not its own (L7 left this open; L34 authorises it).
+// ---------------------------------------------------------------------------------------------
+
+/// Every colour the 3D panel painted in the last frame.
+///
+/// The panel is found by its surface mesh — the one mesh whose vertex count is three per painted
+/// triangle — and every shape clipped to that same rectangle is the panel's own output: the bars,
+/// the palette, the dock and the canvas each paint inside their own clip rectangle, so this is the
+/// frame's 3D view and nothing else.
+fn colours_in_the_3d_panel(harness: &Harness) -> Vec<egui::Color32> {
+  let surface_vertices = 3 * harness.output.drawn.painted_triangles;
+  assert!(surface_vertices > 0, "the frame painted no surface");
+  let panel = harness
+    .shapes
+    .iter()
+    .find(|clipped| {
+      matches!(&clipped.shape, egui::Shape::Mesh(mesh) if mesh.vertices.len() == surface_vertices)
+    })
+    .map(|clipped| clipped.clip_rect)
+    .expect("the surface reached the painter as a mesh");
+  let mut colours = Vec::new();
+  for clipped in harness
+    .shapes
+    .iter()
+    .filter(|clipped| clipped.clip_rect == panel)
+  {
+    collect_colours(&clipped.shape, &mut colours);
+  }
+  colours
+}
+
+/// The colours one shape paints, appended to `colours`.
+fn collect_colours(shape: &egui::Shape, colours: &mut Vec<egui::Color32>) {
+  match shape {
+    egui::Shape::Vec(shapes) => {
+      for shape in shapes {
+        collect_colours(shape, colours);
+      }
+    }
+    egui::Shape::Mesh(mesh) => colours.extend(mesh.vertices.iter().map(|vertex| vertex.color)),
+    egui::Shape::LineSegment { stroke, .. } => colours.push(stroke.color),
+    egui::Shape::Path(path) => {
+      if let egui::epaint::ColorMode::Solid(colour) = path.stroke.color {
+        colours.push(colour);
+      }
+      colours.push(path.fill);
+    }
+    egui::Shape::Rect(rect) => {
+      colours.push(rect.fill);
+      colours.push(rect.stroke.color);
+    }
+    egui::Shape::Circle(circle) => {
+      colours.push(circle.fill);
+      colours.push(circle.stroke.color);
+    }
+    egui::Shape::Text(text) => colours.push(text.fallback_color),
+    _ => {}
+  }
+}
+
+/// Whether `colour` sits on the closed segment between the ramp's two ends.
+///
+/// The ramp is a mix, so a painted vertex can be any stop on it, not just a named role. Each channel
+/// pins `t` to an interval — a channel's value is the mix rounded, so `t` may be half a step either
+/// side — and the colour is on the ramp when all three intervals share a point. This is the honest
+/// form of "reachable from the theme": it accepts exactly the colours [`Palette::stock_shade`] can
+/// produce and nothing else.
+fn on_the_stock_ramp(palette: &Palette, colour: egui::Color32) -> bool {
+  let (top, bottom) = (palette.get(Role::StockTop), palette.get(Role::StockBottom));
+  let mut low = 0.0_f32;
+  let mut high = 1.0_f32;
+  for (top, bottom, value) in [
+    (top.r(), bottom.r(), colour.r()),
+    (top.g(), bottom.g(), colour.g()),
+    (top.b(), bottom.b(), colour.b()),
+  ] {
+    let (top, bottom, value) = (f32::from(top), f32::from(bottom), f32::from(value));
+    let delta = bottom - top;
+    if delta == 0.0 {
+      if (value - top).abs() > 0.5 {
+        return false;
+      }
+      continue;
+    }
+    let edge = |offset: f32| (value + offset - top) / delta;
+    let (first, second) = (edge(-0.5), edge(0.5));
+    low = low.max(first.min(second));
+    high = high.min(first.max(second));
+  }
+  low <= high + 1.0e-4
+}
+
+/// The colours the audit collected, with the invisible ones dropped and the rest deduplicated so a
+/// failure names each offender once instead of once per vertex.
+fn distinct_visible(colours: Vec<egui::Color32>) -> Vec<egui::Color32> {
+  let mut distinct: Vec<egui::Color32> = Vec::new();
+  for colour in colours {
+    // An alpha-zero fill paints nothing, so it is not a colour the view chooses.
+    if colour.a() == 0 || distinct.contains(&colour) {
+      continue;
+    }
+    distinct.push(colour);
+  }
+  distinct
+}
+
+#[test]
+fn the_3d_panel_paints_only_colours_the_theme_owns() {
+  // The claim the slice makes: the 3D view no longer owns a single colour. Everything it paints is
+  // either a role of the set that is showing or a stop on the stock's ramp between two of them, and
+  // the audit reads what actually reached the painter rather than what the code meant to paint.
+  for theme in [Theme::Dark, Theme::Light] {
+    let mut harness = Harness::new();
+    harness.shell.set_theme(theme);
+    harness.frame(Vec::new());
+    let painted = distinct_visible(colours_in_the_3d_panel(&harness));
+    assert!(
+      painted.len() >= 4,
+      "{theme:?}: the audit saw only {painted:?}, so it did not read the panel"
+    );
+    let palette = theme.palette();
+    let roles: Vec<egui::Color32> = Role::ALL.iter().map(|role| palette.get(*role)).collect();
+    let stray: Vec<egui::Color32> = painted
+      .iter()
+      .copied()
+      .filter(|colour| !roles.contains(colour) && !on_the_stock_ramp(&palette, *colour))
+      .collect();
+    assert!(
+      stray.is_empty(),
+      "{theme:?}: the 3D panel painted {stray:?}, which no `Role` owns — the view is still \
+       shading with literals of its own"
+    );
+  }
+}
+
+#[test]
+fn a_cut_stock_is_still_shaded_by_depth_after_the_ramp_became_tokens() {
+  // The one thing this slice could quietly destroy: the surface used to interpolate between two
+  // literals, and now interpolates between two roles. A field that has been cut must still show more
+  // than one shade, every shade must be on the ramp, and the shades must still be ordered by depth —
+  // darker where the tool went deeper.
+  for theme in [Theme::Dark, Theme::Light] {
+    let mut harness = Harness::bare();
+    harness
+      .shell
+      .set_preview(whole_program_field(), program(), &job());
+    harness.shell.set_theme(theme);
+    harness.frame(Vec::new());
+    let palette = theme.palette();
+    let painted = distinct_visible(colours_in_the_3d_panel(&harness));
+    let shades: Vec<egui::Color32> = painted
+      .into_iter()
+      .filter(|colour| on_the_stock_ramp(&palette, *colour))
+      .collect();
+    assert!(
+      shades.len() >= 2,
+      "{theme:?}: the cut surface is painted in one shade ({shades:?}), so the depth ramp is gone"
+    );
+    let deepest = shades
+      .iter()
+      .map(|colour| cam_ui::theme::luminance(*colour))
+      .fold(1.0_f32, f32::min);
+    assert!(
+      deepest < cam_ui::theme::luminance(palette.get(Role::StockTop)),
+      "{theme:?}: every shade is the untouched top, so nothing reads as cut"
+    );
+    assert!(
+      deepest > cam_ui::theme::luminance(palette.get(Role::StockBottom)),
+      "{theme:?}: the deepest shade is off the bottom of the ramp"
+    );
+  }
 }
