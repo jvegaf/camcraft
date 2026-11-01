@@ -557,6 +557,8 @@ pub struct DrawnState {
   /// The stage the frame drew, and the rail entries it offered in order.
   ///
   pub stage: Stage,
+  /// The sentence the status bar showed at its right end.
+  pub hint: String,
   /// What the left palette offered, in the order it drew them.
   ///
   /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
@@ -1365,21 +1367,33 @@ impl Shell {
 
   fn status_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
+    let snapping = self.snapping;
+    let mut toggled: Vec<SnapKind> = Vec::new();
+    let mut magnet = false;
+    let mut hint = String::new();
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
-        for (label, value) in [
-          ("units", "mm".to_owned()),
-          ("snap", format!("{:.2} mm", self.grid_spacing)),
-          (
-            "snapping",
-            if self.snapping { "on" } else { "off" }.to_owned(),
-          ),
+        ui.label(
+          RichText::new("mm")
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.separator();
+        // One chip per snap kind, the reference's `Ponta | Meio | Centro` strip: what the pointer will
+        // stick to is a thing an operator arms and disarms while working, not a setting in a dialog.
+        for (kind, label) in [
+          (SnapKind::Endpoint, "Endpoint"),
+          (SnapKind::Midpoint, "Midpoint"),
+          (SnapKind::Center, "Centre"),
+          (SnapKind::Grid, "Grid"),
         ] {
-          ui.label(
-            RichText::new(format!("{label} {value}"))
-              .size(theme::CAPTION)
-              .color(palette.get(Role::TextDim)),
-          );
+          let on = self.snap_kinds.contains(&kind);
+          if chrome::chip(ui, &palette, label, on).clicked() {
+            toggled.push(kind);
+          }
+        }
+        if chrome::chip(ui, &palette, "magnet", snapping).clicked() {
+          magnet = true;
         }
         ui.separator();
         let cursor = match self.cursor_world {
@@ -1403,9 +1417,29 @@ impl Shell {
           self.status
         );
         ui.monospace(&line);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+          // The right end belongs to one sentence: what the current gesture will do. It is the cheapest
+          // teaching in the interface and it changes with the tool instead of lying about it.
+          ui.add(
+            egui::Label::new(
+              RichText::new(self.hint())
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            )
+            .truncate(),
+          );
+        });
+        hint = self.hint();
         output.drawn.status_line = line;
       });
     });
+    for kind in toggled {
+      self.toggle_snap(kind);
+    }
+    if magnet {
+      self.snapping = !self.snapping;
+    }
+    output.drawn.hint = hint;
   }
 
   fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {

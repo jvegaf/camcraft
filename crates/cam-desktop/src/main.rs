@@ -64,9 +64,9 @@ impl Editor {
       // start state is the same on every launch, so the animation is as deterministic as the moves.
       preview.set_playing(true);
     }
-    shell.status =
-      "sample document — click an edge to select it, drag the 3D view to orbit, pause to inspect"
-        .to_owned();
+    // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
+    // outcome of the last command, and on a fresh window there is no command yet.
+    shell.status.clear();
     Self { app, shell }
   }
 }

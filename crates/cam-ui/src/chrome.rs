@@ -275,14 +275,11 @@ impl Shell {
                 Theme::Light => Theme::Dark,
               };
             }
-            // The view toggle the artboard floats over the canvas. It lives in the app bar instead:
-            // it is view state for the whole frame, and a floating control over the drawing surface
-            // would be one more thing between the pointer and the geometry.
-            if ui.selectable_label(self.show_3d, "3D").clicked() {
-              self.show_3d = true;
-            }
-            if ui.selectable_label(!self.show_3d, "2D").clicked() {
-              self.show_3d = false;
+            // The view toggle the artboard floats over the canvas. It lives in the app bar instead, and it
+            // is a segmented control because the choice is exclusive: two alternatives, visible at once, so
+            // choosing is a comparison and not a memory test.
+            if let Some(pick) = segmented(ui, &palette, &["2D", "3D"], usize::from(self.show_3d)) {
+              self.show_3d = pick == 1;
             }
             ui.separator();
             ui.label(
@@ -712,6 +709,44 @@ impl Shell {
     note(ui, palette, Stage::Toolpaths.note());
   }
 
+  /// Toggle one kind of snap target.
+  ///
+  /// The chips in the status bar call this and nothing else, so the rule lives in one place: at least one
+  /// kind stays armed, because a snapping strip with everything off is a magnet with no field.
+  pub fn toggle_snap(&mut self, kind: cam_view::SnapKind) {
+    match self.snap_kinds.iter().position(|armed| *armed == kind) {
+      Some(index) if self.snap_kinds.len() > 1 => {
+        self.snap_kinds.remove(index);
+      }
+      Some(_) => {}
+      None => self.snap_kinds.push(kind),
+    }
+  }
+
+  /// Whether a snap kind is armed.
+  pub fn snap_armed(&self, kind: cam_view::SnapKind) -> bool {
+    self.snap_kinds.contains(&kind)
+  }
+
+  /// The line the status bar shows at its right end: what the current gesture will do.
+  ///
+  /// The reference app keeps a sentence like this next to its snap chips ("Clique para selecionar · arraste
+  /// da esquerda p/ direita"), and it is the cheapest teaching in the whole interface: it answers "what
+  /// happens if I drag now" without a manual, and it changes with the tool instead of lying about it.
+  pub fn hint(&self) -> String {
+    if self.show_3d {
+      return "3D — drag to orbit, wheel to zoom; press 2D for the drawing".to_owned();
+    }
+    if self.active_tool.draws() {
+      return format!(
+        "{} — drag on the sheet to place it; Esc cancels",
+        self.active_tool.label()
+      );
+    }
+    "click to pick · drag left→right keeps what is fully inside · right→left takes what it crosses"
+      .to_owned()
+  }
+
   /// The shortcuts that exist today, in one window.
   ///
   /// Help listing keys nobody implemented would be a promise the shell does not keep, so the list is
@@ -848,6 +883,111 @@ fn paint_mark(ui: &mut egui::Ui, palette: &Palette, size: f32) {
     palette.get(Role::Sel),
     theme::ICON_STROKE * size / theme::ICON_SIZE,
   );
+}
+
+/// A chip: a small pill that is either on or off, in the reference's `Ponta | Meio | Centro` strip.
+pub(crate) fn chip(ui: &mut egui::Ui, palette: &Palette, label: &str, on: bool) -> egui::Response {
+  let font = egui::FontId::proportional(theme::CAPTION);
+  let galley = ui
+    .painter()
+    .layout_no_wrap(label.to_owned(), font.clone(), palette.get(Role::Text));
+  let size = egui::vec2(galley.size().x + 14.0, 18.0);
+  let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+  let radius = egui::CornerRadius::same(9);
+  if on {
+    ui.painter()
+      .rect_filled(rect, radius, palette.get(Role::SelSoft));
+    ui.painter().rect_stroke(
+      rect,
+      radius,
+      egui::Stroke::new(1.0, palette.get(Role::Sel)),
+      egui::StrokeKind::Inside,
+    );
+  } else if response.hovered() {
+    ui.painter()
+      .rect_filled(rect, radius, palette.get(Role::Raised));
+  }
+  let ink = if on {
+    palette.get(Role::Sel)
+  } else {
+    palette.get(Role::TextDim)
+  };
+  ui.painter()
+    .text(rect.center(), egui::Align2::CENTER_CENTER, label, font, ink);
+  response
+}
+
+/// A segmented control: mutually exclusive choices in one joined strip.
+///
+/// The reference uses these for every small decision (`Material | Último vetor`, `Não | De 90° | Livre`,
+/// `2D | 3D`) and it is the right shape: the alternatives are visible, so choosing is a comparison instead
+/// of a search. Returns the index the operator picked, if any.
+pub(crate) fn segmented(
+  ui: &mut egui::Ui,
+  palette: &Palette,
+  labels: &[&str],
+  active: usize,
+) -> Option<usize> {
+  let font = egui::FontId::proportional(theme::CAPTION);
+  let mut widths = Vec::with_capacity(labels.len());
+  for label in labels {
+    let galley =
+      ui.painter()
+        .layout_no_wrap((*label).to_owned(), font.clone(), palette.get(Role::Text));
+    widths.push(galley.size().x + 18.0);
+  }
+  let total: f32 = widths.iter().sum();
+  let (rect, response) = ui.allocate_exact_size(egui::vec2(total, 22.0), Sense::click());
+  let radius = egui::CornerRadius::same(11);
+  ui.painter()
+    .rect_filled(rect, radius, palette.get(Role::Raised));
+  ui.painter().rect_stroke(
+    rect,
+    radius,
+    egui::Stroke::new(1.0, palette.get(Role::Border)),
+    egui::StrokeKind::Inside,
+  );
+  let mut left = rect.left();
+  let mut clicked = None;
+  for (index, label) in labels.iter().enumerate() {
+    let cell = egui::Rect::from_min_size(
+      egui::Pos2::new(left, rect.top()),
+      egui::vec2(widths[index], rect.height()),
+    );
+    let on = index == active;
+    if on {
+      ui.painter()
+        .rect_filled(cell, radius, palette.get(Role::SelSoft));
+      ui.painter().rect_stroke(
+        cell,
+        radius,
+        egui::Stroke::new(1.0, palette.get(Role::Sel)),
+        egui::StrokeKind::Inside,
+      );
+    }
+    let ink = if on {
+      palette.get(Role::Sel)
+    } else {
+      palette.get(Role::TextDim)
+    };
+    ui.painter().text(
+      cell.center(),
+      egui::Align2::CENTER_CENTER,
+      *label,
+      font.clone(),
+      ink,
+    );
+    if response.clicked()
+      && ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| cell.contains(p))
+    {
+      clicked = Some(index);
+    }
+    left += widths[index];
+  }
+  clicked
 }
 
 /// One labelled value box: the label above, the number inside a bordered field.

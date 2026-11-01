@@ -239,6 +239,75 @@ fn switching_stage_changes_what_the_palette_offers() {
 }
 
 #[test]
+fn the_status_bar_offers_a_chip_per_snap_kind() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["Endpoint", "Midpoint", "Centre", "Grid", "magnet"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+}
+
+#[test]
+fn the_snap_chips_arm_and_disarm_a_kind_but_never_leave_none() {
+  use cam_view::SnapKind;
+  // No document and no frame: arming a snap kind is shell state, and this is the whole rule.
+  let mut shell = Shell::new();
+  assert!(shell.snap_armed(SnapKind::Midpoint));
+
+  shell.toggle_snap(SnapKind::Midpoint);
+  assert!(
+    !shell.snap_armed(SnapKind::Midpoint),
+    "a chip turns its kind off"
+  );
+  shell.toggle_snap(SnapKind::Midpoint);
+  assert!(shell.snap_armed(SnapKind::Midpoint), "and back on");
+
+  // The last armed kind stays: a snapping strip with everything off is a magnet with no field.
+  for kind in [SnapKind::Endpoint, SnapKind::Midpoint, SnapKind::Center] {
+    shell.toggle_snap(kind);
+  }
+  shell.toggle_snap(SnapKind::Grid);
+  assert!(
+    shell.snap_armed(SnapKind::Grid),
+    "the last kind cannot be disarmed"
+  );
+}
+
+#[test]
+fn the_hint_names_the_current_gesture() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, texts) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.contains("left→right"),
+    "Select must explain the marquee directions: {}",
+    output.drawn.hint
+  );
+  assert!(
+    joined(&texts).contains("left→right"),
+    "and the bar must show it"
+  );
+
+  shell.active_tool = Tool::Line;
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.starts_with("Line"),
+    "an armed tool names itself: {}",
+    output.drawn.hint
+  );
+
+  shell.set_view_3d(true);
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.contains("orbit"),
+    "the 3D view has its own gestures: {}",
+    output.drawn.hint
+  );
+}
+
+#[test]
 fn the_palette_labels_its_groups() {
   // The reference app's lesson: a labelled group is what keeps twenty commands findable, and an
   // unlabelled rail is what made the seven Edit commands nameless.

@@ -205,3 +205,15 @@ The foundations are delivered. What remains of the concept, in the order the des
   stage, and the Job tab shows its measurements labelled. Gates: fmt, clippy `-D warnings`, **1 073 tests** across
   91 suites. Artboard `01-shell-2d` was updated in the same pass (its rail became the palette with the same ten plus
   three buttons), and `design/system.md` now carries `palette_width` and the palette-group rule instead of the rail's.
+
+- **L22 (the status bar becomes the reference's chip strip, and the shell gets a voice).** Three things the
+  screenshots show at the bottom of every frame, implemented: **one chip per snap kind** (`Endpoint`, `Midpoint`,
+  `Centre`, `Grid`) plus a `magnet` chip, which is real behaviour and not decoration — `Shell::toggle_snap` arms and
+  disarms a kind and refuses to disarm the last one, because a snapping strip with everything off is a magnet with no
+  field; **a hint line** at the right end, one sentence naming what the current gesture will do, taken from the
+  reference's own `Clique para selecionar · arraste da esquerda p/ direita` and changed with the tool instead of lying
+  about it; and **the `2D | 3D` toggle became a segmented control**, which is the shape the reference gives every
+  exclusive small choice. Two pieces of copy were wrong and the screenshot caught them: the 3D hint read "the 2D
+  drawing is behind the 2D tab", and the sample's status message repeated what the hint now says (a fresh window has
+  no last command, so that slot is empty instead of chatty). `DrawnState.hint` reports the sentence for tests.
+  Gates: fmt, clippy `-D warnings`, **1 076 tests** across 91 suites.

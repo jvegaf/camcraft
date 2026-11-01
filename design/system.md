@@ -121,7 +121,14 @@ menus (`0 8px 24px`) and dialogs (`0 24px 64px`).
 - **Primary action** — the `cut` colour, one per screen (`Generate G-code`). Destructive or expensive actions are
   never primary-coloured.
 - **Field** — right-aligned value on tabular figures, unit in a fixed column, `control_height`.
-- **Tab / chip** — pill radius; active is `sel-soft` fill plus `sel` border and `sel` text.
+- **Chip** — 18 px pill, `sel-soft` fill plus a `sel` border when on, `text-dim` when off; the status bar's
+  snap strip is a row of them, because arming what the pointer sticks to is something an operator does while
+  working, not a setting in a dialog.
+- **Segmented control** — 22 px joined pill, one cell per alternative, active cell `sel-soft` + `sel` border. Used
+  wherever the choice is exclusive and small (`2D | 3D`): both alternatives stay visible, so choosing is a
+  comparison instead of a memory test.
+- **Hint line** — the status bar's right end holds one sentence naming what the current gesture does. It changes
+  with the tool, so it is teaching rather than decoration.
 - **List row** — `row_height`; hover `raised`; active `sel-soft` with an inset `sel` ring.
 - **Signal meaning** — never colour alone: `cut` paths are dashed and 2 px, geometry is solid and 1.4 px, so a
   monochrome screenshot still separates them.
