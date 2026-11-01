@@ -53,6 +53,8 @@ use crate::icons::{Family, Icon};
 use crate::theme::{Palette, Role, Theme};
 
 pub mod chrome;
+/// The command table and its teaching voice.
+pub mod help;
 pub mod icons;
 pub mod theme;
 
@@ -564,6 +566,13 @@ pub struct DrawnState {
   /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
   /// read an icon: this is how "switching stage really changed what the operator can reach" is asserted.
   pub palette: Vec<String>,
+  /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
+  /// command rows, and finally the focused command's `what` and `how`.
+  ///
+  /// Empty while the panel is closed, because a panel nobody opened drew no row. A headless test reads
+  /// this to prove that every command in the table is listed, which is the one claim a screenshot of a
+  /// long list of labels cannot make.
+  pub help: Vec<String>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
@@ -698,6 +707,14 @@ pub struct Shell {
   inspector_open: bool,
   /// Whether the shortcuts window is open.
   show_shortcuts: bool,
+  /// Whether the `F1` help panel is open.
+  ///
+  /// View state, like the icon sheet: opening the panel is not an edit and is not in the undo history.
+  /// `F1` toggles it and `Esc` closes it, so the operator never has to aim at a close box to get the
+  /// drawing back.
+  pub show_help: bool,
+  /// The command the help panel is teaching: whichever row was pressed last, or the first one.
+  help_focus: crate::help::Command,
 }
 
 impl Default for Shell {
@@ -745,6 +762,8 @@ impl Default for Shell {
       inspector_tab: Tab::default(),
       inspector_open: true,
       show_shortcuts: false,
+      show_help: false,
+      help_focus: crate::help::Command::ALL[0],
     }
   }
 }
@@ -763,6 +782,14 @@ impl Shell {
   /// Whether the 3D view is the one showing.
   pub fn view_3d(&self) -> bool {
     self.show_3d
+  }
+
+  /// The command the help panel is currently teaching.
+  ///
+  /// The panel opens on the first command in the table and follows the last row the operator pressed,
+  /// so a test can state which command's sentences it is about to look for.
+  pub fn help_focused(&self) -> crate::help::Command {
+    self.help_focus
   }
 
   /// Show the 3D view (`true`) or the drawing (`false`).
@@ -956,6 +983,19 @@ impl Shell {
     }
     if self.show_icons {
       self.icon_sheet(&ctx);
+    }
+    // `F1` is the same idea one level up: `F2` shows the vocabulary of shapes, `F1` shows the vocabulary
+    // of commands with the two sentences each one teaches (T8, S2, S4).
+    if ctx.input(|input| input.key_pressed(egui::Key::F1)) {
+      self.show_help = !self.show_help;
+    }
+    // `Esc` closes the panel and touches nothing else, so reading help can never cancel a gesture the
+    // operator did not mean to cancel.
+    if self.show_help && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.show_help = false;
+    }
+    if self.show_help {
+      self.help_window(&ctx, &mut output);
     }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive

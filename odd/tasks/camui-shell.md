@@ -103,7 +103,9 @@ The foundations are delivered. What remains of the concept, in the order the des
 | --- | --- | --- |
 | T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
 | T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
-| T8 | 🔨 in progress from `c24f690` — object context menus and the embedded help panel: the teaching voice, one `d`/`u` pair per command | S2 S4 |
+| T8.1 | 🔨 in progress — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
+| T8.2 | The palette reads the command table instead of seven hardcoded labels and three inline group literals, closing the two-site construction recorded in L14 | S2 S4 |
+| T8.3 | Object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
 | T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
@@ -234,3 +236,83 @@ The foundations are delivered. What remains of the concept, in the order the des
 
 - **L25 (owner, verbatim).** *"seguimos con t8"* — T8 authorised on `master` `c24f690`: object context menus and the
   embedded help panel, in the teaching voice, with one `d`/`u` pair per command (S2, S4).
+
+- **L26 (review, blocked twice, and what the attempts taught).** Receipt-driven development flagged the branch as an
+  unreviewed candidate (`sha256:80fde7a3…`, 29 paths, **7 178 changed lines**). Three attempts, in order:
+  *(1)* `assess` agreed: `reviewDue: true`, native risk high, reason `process_boundary` on `crates/cam-ui/src/lib.rs`.
+  *(2)* START on the whole candidate was refused in preflight with **`lens_context_budget_exceeded`** — no authority
+  created, nothing to abandon. The rule this states plainly: a review candidate is a work unit, never the accumulated
+  feature branch. *(3)* The owner chose to review only the risky part, so a temporary worktree
+  (`.worktrees/camui-frame-review`, detached at `7e09653`) anchored a candidate for **tokens + frame only**; START with
+  two lenses returned `lenses-invalid`, one lens (`reliability`) was accepted, and authority
+  `review-3ebc68eeba5006f5` was created (tier high, 4 640 original changed lines, correction budget 200).
+  The capture forecast one host-relay model run; the run then failed with **`reviewer-config-invalid`**: *"no model is
+  configured for review-reliability; assign it a model in the agent model routing config"*. The lineage stays
+  `reviewing` and unburned — a fresh STATUS reoffers the same slot, so the review resumes the moment a model is
+  assigned to the lens. Two mechanical lessons: **abbreviated commit ids are rejected** as `base-ref-unresolvable`
+  (full 40-character ids only), and `baseRef..HEAD` always sweeps to the branch tip, so a middle commit can only be
+  isolated from a worktree parked on it.
+
+- **L27 (environment, and the gate could not run).** The session runs inside
+  `gentle-shell-*.service` with **`MemoryMax=3G`** and **`TasksMax=64`**. Every `cargo test` link dies there:
+  `rust-lld` / `collect2` abort with `std::system_error: Resource temporarily unavailable`, and bash itself reports
+  `fork: retry: Resource temporarily unavailable`, with `memory.current` peaking at 3 026 MB of 3 072 MB. Serialising
+  (`CARGO_BUILD_JOBS=1`, `RUST_TEST_THREADS=1`) does not help, and `cargo test -p cam-ui` alone fails the same way.
+  What does pass inside the cap: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings`.
+  The same cap is what killed the background explorer and several shell commands earlier in the session (L24) — it was
+  never the repository. The unblock is a host setting, not a code change:
+  `systemctl --user set-property gentle-shell-<id>.service MemoryMax=12G TasksMax=512` (runtime; the unit name carries
+  a per-session hash, so a durable fix belongs in the gentle-shell launcher).
+  **Resolved:** the owner raised the unit to `MemoryMax=16G` / `TasksMax=512`, and the full gate then ran clean on
+  `master` `c24f690` — fmt, clippy `-D warnings`, **1 076 tests across 91 suites**, 0 failed, exit 0, in 1 m 03 s.
+  That is the recorded baseline of `6e59b91` reached again after the merge, so the shell on `master` is verified.
+
+- **L28 (map, and the four constraints T8 inherits).** A read-only pass over the shell fixed what T8 can build on.
+  *(1)* **There is no command table.** `UiAction` (`lib.rs:392`) is 17 parameterised variants — `AddRectangle{width,
+  height}`, not `AddRectangle` — and every user-visible label is a literal at its call site (`chrome.rs:497-548`).
+  `rail_commands` returns `(&'static str, Icon, &'static str, UiAction)` with the group as a bare string, and
+  `UiAction::label()` (`lib.rs:472`) only words the status bar. So a `d`/`u` pair cannot hang off `UiAction`: the unit
+  that owns help is the *command*, which has no parameters. T8.1 introduces that identity.
+  *(2)* **Selection is not shell state.** It lives on `AppState` (`Selection { ids: BTreeSet<String> }`,
+  `cam-app/src/lib.rs:34`, read through `selection()`), and `handle_action` (`lib.rs:1987`) remains the only mutator —
+  so a context menu scopes itself by asking `AppState` and emits `UiAction`s, never touching the document.
+  *(3)* **Right-click is unused.** `PointerButton::Secondary` appears nowhere in `crates/`; the canvas senses
+  `click_and_drag()` (`lib.rs:1451`) and that must stay. egui is **0.37**, whose `Response::context_menu` is the API,
+  and no `menu`/`popup`/`context_menu` call exists yet: T8.3 is the shell's first.
+  *(4)* **Two overlay precedents exist**: the `F2` icon sheet (`Shell::icon_sheet`, `lib.rs:871`) and the Shortcuts
+  window (`chrome.rs:754`), whose app-bar tooltip already reads *"Shortcuts and help"*. The design draws a per-command
+  card bound to `F1`, so the help panel is its own window and the shortcuts list keeps its own.
+  The panel's shape and the three voice rules are already drawn in `02-stages.html` §04 — consequence before
+  mechanics, second person without jargon, every refusal naming a number; the `d` is the first rule's one sentence and
+  the `u` is the body that follows it.
+
+- **L29 (T8.1 delivered: 33 commands find their voice, and `F1` opens it).** `crates/cam-ui/src/help.rs` (496 lines)
+  holds the identity T8 needed: `Group` (DRAW, TRANSFORM, VECTOR EDIT, **HISTORY**, VIEW), `Command` (33 variants),
+  `Help { what, how, related }`, `label()` reusing the literals the UI already shows, and `action()` for the commands
+  that take no parameter. `chrome.rs::help_window` (+80) draws the design's card — grouped rows, the focused command's
+  *what* as a strong paragraph, its *how*, then `Related:` — using only `theme::` tokens and the existing helpers.
+  `lib.rs` (+40) carries `Shell::show_help`, `Shell::help_focused`, `DrawnState.help`, and the `F1`/`Esc` wiring beside
+  the `F2` block. Seven tests (+219 in `tests/shell.rs`; no existing test altered), RED by build — `unresolved import
+  cam_ui::help`, `no field show_help`, `no field help` — GREEN at **1 083 tests across 91 suites**, exit 0 (baseline
+  1 076; +7).
+  The writer's judgements, kept because each is a real decision and not an accident: **a fifth group, HISTORY**, because
+  Undo/Redo are app-bar commands and filing them under VIEW would be a lie in the one place the shell is meant to be
+  exact (T8.2 either gives the palette that run or folds them back); `Align` is in, since its six modes are live buttons
+  in the Tools tab; `Import` is in although it has **no button and no shortcut** today, and its `how` says so plainly
+  ("a host opens the file by path"); `Node edit` is one command naming all three of its buttons; `View3d` is labelled
+  `3D`, the only word the shell shows for it. Left out deliberately: `SetSelection` (a click's effect, not a command),
+  `ToggleLayerVisible` (a per-layer checkbox), the six Align modes (sub-choices of one `Align`), and stage/tab
+  switching (view state, pushes no action).
+  **Flagged for T8.2:** the palette's `Help` button still opens the Shortcuts window. `Command::Help` is the `F1` panel
+  and `Command::Shortcuts` is that window; rewiring needs Shortcuts to keep a mouse path, so it is T8.2's job, not a
+  side effect of this one.
+  **Incident, and why the scope check matters.** The writer ran `cargo fmt` *without* `XDG_CONFIG_HOME`, the redirected
+  `HOME` hid the repo's `tab_spaces = 2`, and the whole workspace was reformatted to four spaces. It re-ran `cargo fmt`
+  with the variable and no `git checkout/restore/reset`; the parent then proved `git diff --name-only HEAD` lists only
+  the three in-scope files plus this document, with `help.rs` untracked — so the revert is real and not asserted. The
+  rule L9 found for the gate applies to the loose invocation too: **`cargo fmt` always needs
+  `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config` in this harness.**
+  **Parent verification, independent of the report:** the scope check above, the gate re-run by the parent (exit 0,
+  1 083 tests, 91 suites), and one factual spot check of the prose — `Trim`'s *how* says "the lower id is the target and
+  the other one cuts it", which `lib.rs:1354` states and the arm at `lib.rs:1360` implements by destructuring
+  `selected.as_slice()`. Help that describes behaviour the code does not have would be worse than no help.

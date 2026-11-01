@@ -36,6 +36,7 @@ use cam_app::{AppState, Transform};
 use cam_geom::Vec2;
 use egui::{Align, Layout, RichText, Sense};
 
+use crate::help::{Command, Group};
 use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
 use crate::{Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
@@ -745,6 +746,85 @@ impl Shell {
     }
     "click to pick · drag left→right keeps what is fully inside · right→left takes what it crosses"
       .to_owned()
+  }
+
+  /// The `F1` help panel: the whole command table, in the design's teaching voice.
+  ///
+  /// `design/camui-shell/02-stages.html` §04 draws the shape, and this is it: a header with the command's
+  /// own name and the key that opened it, then one strong paragraph of what the command gives or costs,
+  /// then how to run it, then the neighbours usually wanted next, then the table itself grouped the way
+  /// the palette groups commands. The panel only teaches — a row here focuses help, it never runs a
+  /// command — which is what lets the operator read about a destructive command safely.
+  ///
+  /// Sizes and colours come from [`crate::theme`] and nowhere else: the sentence an operator reads is
+  /// [`theme::BODY`], the table is [`theme::SMALL`], and the group labels are the palette's own
+  /// [`section`] run, so help looks like the frame it explains.
+  pub(crate) fn help_window(&mut self, ctx: &egui::Context, output: &mut ShellOutput) {
+    let palette = self.palette();
+    let metrics = self.metrics();
+    let mut open = self.show_help;
+    egui::Window::new("Help")
+      .open(&mut open)
+      .resizable(true)
+      // As wide as the two docked columns together: the frame's own measurement for "a panel of text".
+      .default_width(metrics.palette_width + metrics.dock_width)
+      .show(ctx, |ui| {
+        let help = self.help_focus.help();
+        ui.horizontal(|ui| {
+          ui.label(RichText::new(self.help_focus.label()).size(theme::TITLE));
+          ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            chip(ui, &palette, "F1", true);
+          });
+        });
+        ui.add_space(metrics.space(1));
+        // Consequence before mechanics: the `what` is the one sentence the operator came for, so it is
+        // the only text in the panel drawn in the bright ink.
+        ui.label(
+          RichText::new(help.what)
+            .size(theme::BODY)
+            .color(palette.get(Role::TextHi)),
+        );
+        ui.label(
+          RichText::new(help.how)
+            .size(theme::BODY)
+            .color(palette.get(Role::Text)),
+        );
+        if !help.related.is_empty() {
+          let related: Vec<&str> = help.related.iter().map(|command| command.label()).collect();
+          ui.label(
+            RichText::new(format!("Related: {}", related.join(" · ")))
+              .size(theme::CAPTION)
+              .color(palette.get(Role::TextDim)),
+          );
+        }
+        ui.add_space(metrics.space(2));
+        // The table, in the palette's own order and with the palette's own group labels: a command is
+        // learned where it is found, and that grouping is the one thing the frame already teaches.
+        for group in Group::ALL {
+          section(ui, &palette, group.label());
+          output.drawn.help.push(group.label().to_owned());
+          ui.horizontal_wrapped(|ui| {
+            for command in Command::ALL
+              .iter()
+              .filter(|command| command.group() == group)
+            {
+              let focused = self.help_focus == *command;
+              if ui
+                .selectable_label(focused, RichText::new(command.label()).size(theme::SMALL))
+                .clicked()
+              {
+                self.help_focus = *command;
+              }
+              output.drawn.help.push(command.label().to_owned());
+            }
+          });
+        }
+        // The two sentences the panel drew, reported last so a test can read them back without
+        // walking the whole table looking for them.
+        output.drawn.help.push(help.what.to_owned());
+        output.drawn.help.push(help.how.to_owned());
+      });
+    self.show_help = open;
   }
 
   /// The shortcuts that exist today, in one window.

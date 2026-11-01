@@ -7,6 +7,7 @@
 use cam_app::{AlignMode, AppState, Transform, VertexEdit};
 use cam_geom::{Contour, Point2, Vec2};
 use cam_model::{Document, Job, Layer};
+use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
   handle_action, DrawShape, Shell, ShellOutput, Stage, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
 };
@@ -52,8 +53,20 @@ fn frame_with(
   shell: &mut Shell,
   app: &mut AppState,
 ) -> (ShellOutput, Vec<String>) {
+  frame_with_events(ctx, shell, app, Vec::new())
+}
+
+/// Run one frame with explicit events, and return what the shell produced plus its painted text.
+fn frame_with_events(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  events: Vec<egui::Event>,
+) -> (ShellOutput, Vec<String>) {
   let mut captured: Option<ShellOutput> = None;
-  let full = ctx.run_pass(raw_input(), |ctx| {
+  let mut input = raw_input();
+  input.events = events;
+  let full = ctx.run_pass(input, |ctx| {
     captured = Some(shell.show(app, ctx));
   });
   let texts = painted_text(&full);
@@ -61,6 +74,29 @@ fn frame_with(
   // silently is exactly what epaint forbids, so say so explicitly.
   full.drop_without_applying_deltas();
   (captured.expect("the shell ran"), texts)
+}
+
+/// Press one key and report the frame the press was read in.
+///
+/// A press is two frames — down then up — the way a keyboard reports it. The second frame is what
+/// makes the next press a press instead of a held key, and it is dropped: what a test asserts on is
+/// the frame the shell acted in.
+fn press(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  key: egui::Key,
+) -> (ShellOutput, Vec<String>) {
+  let key_event = |pressed: bool| egui::Event::Key {
+    key,
+    physical_key: None,
+    pressed,
+    repeat: false,
+    modifiers: egui::Modifiers::default(),
+  };
+  let frame = frame_with_events(ctx, shell, app, vec![key_event(true)]);
+  let _ = frame_with_events(ctx, shell, app, vec![key_event(false)]);
+  frame
 }
 
 fn frame(shell: &mut Shell, app: &mut AppState) -> (ShellOutput, Vec<String>) {
@@ -1481,4 +1517,186 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
 
   assert_eq!(app.document_json(), original);
   std::fs::remove_dir_all(&directory).ok();
+}
+
+// ---- T8.1: the command table and the F1 help panel --------------------------------------------
+
+#[test]
+fn every_command_has_a_what_and_a_how() {
+  for command in HelpCommand::ALL {
+    let help = command.help();
+    assert!(
+      !help.what.trim().is_empty(),
+      "{command:?} has no consequence to state"
+    );
+    assert!(
+      !help.how.trim().is_empty(),
+      "{command:?} has no instruction to give"
+    );
+  }
+}
+
+#[test]
+fn a_what_is_one_sentence() {
+  // The design's first rule: one sentence of consequence, before any mechanics. A paragraph here is a
+  // manual nobody reads, and a second line is a sentence the operator has to pick from.
+  for command in HelpCommand::ALL {
+    let what = command.help().what;
+    assert!(
+      !what.contains('\n'),
+      "{command:?} says {what:?}, which is more than one line"
+    );
+    assert!(
+      what.ends_with('.'),
+      "{command:?} says {what:?}, which is not a sentence"
+    );
+    assert!(
+      !what.contains('!'),
+      "{command:?} says {what:?}, and the shell has no business shouting"
+    );
+    assert!(
+      what.chars().count() <= 140,
+      "{command:?} says {what:?} in {} characters, and one sentence is at most 140",
+      what.chars().count()
+    );
+  }
+}
+
+#[test]
+fn every_related_command_is_a_real_command() {
+  for command in HelpCommand::ALL {
+    for related in command.help().related {
+      assert!(
+        HelpCommand::ALL.contains(related),
+        "{command:?} points at {related:?}, which this shell does not offer"
+      );
+    }
+  }
+}
+
+#[test]
+fn the_palette_and_the_table_agree_on_labels() {
+  // The rail's own literals are the truth; the table follows them. Without this the help would slowly
+  // become a second vocabulary for the same command.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_stage(Stage::Edit);
+  let (output, _) = frame(&mut shell, &mut app);
+  let offered = output.drawn.palette;
+  for command in [
+    HelpCommand::Move,
+    HelpCommand::Rotate,
+    HelpCommand::Scale,
+    HelpCommand::Mirror,
+    HelpCommand::Array,
+    HelpCommand::Offset,
+    HelpCommand::Join,
+  ] {
+    assert!(
+      offered.contains(&command.label().to_owned()),
+      "the palette offers {offered:?} but the table calls this command {:?}",
+      command.label()
+    );
+  }
+}
+
+#[test]
+fn f1_opens_the_help_panel_and_it_names_every_group() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  assert!(shell.show_help, "F1 must open the help panel");
+  // One more frame: the panel's own size settles on the second pass, exactly as a real window does.
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+
+  for group in Group::ALL {
+    assert!(
+      output.drawn.help.contains(&group.label().to_owned()),
+      "the panel must name the {} group: {:?}",
+      group.label(),
+      output.drawn.help
+    );
+  }
+  for command in HelpCommand::ALL {
+    assert!(
+      output.drawn.help.contains(&command.label().to_owned()),
+      "the panel must list {:?}: {:?}",
+      command.label(),
+      output.drawn.help
+    );
+  }
+  assert!(
+    joined(&texts).contains("Help"),
+    "the window must say what it is: {}",
+    joined(&texts)
+  );
+  // The panel has no scroll area, so a row that does not fit is a command nobody can read about. These
+  // three words are painted by the panel and by nothing else in the frame, and they are at the bottom.
+  for alone in ["Icon set", "Shortcuts", "Fit the job"] {
+    assert!(
+      joined(&texts).contains(alone),
+      "{alone:?} is below the fold of the help panel: {}",
+      joined(&texts)
+    );
+  }
+}
+
+#[test]
+fn the_help_panel_says_what_a_command_does_and_how() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+
+  let focused = HelpCommand::ALL[0];
+  assert_eq!(
+    shell.help_focused(),
+    focused,
+    "the panel opens on the first command"
+  );
+  let help = focused.help();
+  let all = joined(&texts);
+  assert!(
+    all.contains(help.what),
+    "the panel must state what {focused:?} gives: {all}"
+  );
+  assert!(
+    all.contains(help.how),
+    "the panel must say how to run {focused:?}: {all}"
+  );
+  assert!(
+    output.drawn.help.contains(&help.what.to_owned())
+      && output.drawn.help.contains(&help.how.to_owned()),
+    "the panel must report the two sentences it drew: {:?}",
+    output.drawn.help
+  );
+}
+
+#[test]
+fn escape_closes_the_help_panel() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  assert!(shell.show_help);
+
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::Escape);
+  assert!(!shell.show_help, "Esc must close the help panel");
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    output.drawn.help.is_empty(),
+    "a closed panel draws no rows: {:?}",
+    output.drawn.help
+  );
+  assert!(
+    !joined(&texts).contains(HelpCommand::ALL[0].help().what),
+    "a closed panel teaches nothing: {}",
+    joined(&texts)
+  );
 }
