@@ -30,11 +30,11 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | — |
-| T2 | `cam-ui/src/icons.rs`: 65 glyphs on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24 | S1 S2 S3 S6 | worker | — |
-| T3 | Icon sheet as an `egui::Window` behind a keystroke, so all 65 can be inspected without touching the layout | S3 S5 | inline | — |
-| T4 | Apply the theme at startup in `cam-desktop` and route the existing `palette` through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | — |
-| T5 | `design/system.md` + `design/system.html` synced from `theme.rs` once it is the project's token source | S3 | inline | — |
+| T1 | ✅ delivered — `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | `3ecf6ac` |
+| T2 | ✅ delivered — `cam-ui/src/icons.rs`: the glyph set on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24. Landed at 66 glyphs, later `4cfb497` (families), `725d9fc` (keyboard), 71 today | S1 S2 S3 S6 | worker | `3ecf6ac` |
+| T3 | ✅ delivered — icon sheet as an `egui::Window` behind `F2`, so the whole set can be inspected without touching the layout | S3 S5 | inline | `3ecf6ac` |
+| T4 | ✅ delivered — theme applied at startup in `cam-desktop` and the existing `palette` routed through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | `3ecf6ac` |
+| T5 | ✅ delivered — `design/system.md` + `design/system.html` synced from `theme.rs` once it became the project's token source. Created `d8e1ff9`, re-synced in `28de0db`, `6e59b91` and `a6a2685` as the token set grew | S3 | inline | `d8e1ff9` |
 
 ## Log
 
@@ -95,16 +95,19 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
   symlink alone is not enough, which is worth knowing before trusting a green `check.sh` in this harness. The first
   gate run also appeared to pass while failing, because `check.sh | tail` swallows the exit status — the gate must
   be run without swallowing it.
-## Next phase (planned, not started, not authorised)
+## Next phase (delivered, except T7 which is planned and not authorised)
 
-The foundations are delivered. What remains of the concept, in the order the design argues for:
+The foundations are delivered, and so is every slice below except T7. What remains of the concept, in the order the
+design argues for:
 
 | ID | Task | Specs |
 | --- | --- | --- |
-| T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
+| T6 | ✅ delivered `7e09653` — the shell frame: app bar, stage bar, the stage-scoped rail (52 px then, the 200 px labelled palette since `28de0db`), the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented. This row used to name `4318205`, a pre-rewrite commit no branch contains | S1 S2 S3 S7 |
 | T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
-| T8 | Object context menus and the embedded help panel: the teaching voice, one `d`/`u` pair per command | S2 S4 |
-| T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
+| T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
+| T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
+| T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
+| T9 | ✅ delivered `a6a2685` — `view3d.rs` paints only through the theme: the five literals and `depth_colour` are gone, replaced by `StockTop`/`StockBottom`/`StockEdge` and `Palette::stock_shade`, with a material-to-canvas invariant the suite did not have before | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
   in the project's real stack. Use the artboard as the visual spec: map its parts to the project's existing
@@ -217,3 +220,249 @@ The foundations are delivered. What remains of the concept, in the order the des
   drawing is behind the 2D tab", and the sample's status message repeated what the hint now says (a fresh window has
   no last command, so that slot is empty instead of chatty). `DrawnState.hint` reports the sentence for tests.
   Gates: fmt, clippy `-D warnings`, **1 076 tests** across 91 suites.
+
+- **L23 (owner, verbatim).** *"primero mergea la rama a master"* and, in the same breath, *"y de ahi salimos limpio"*.
+  `feat/camui-shell` merged into `master` with `--no-ff` at `c24f690`, parents `e9dcb01` + `46d73f2`: 29 files,
+  **+6 730 / −431**, the four artboards, `design/system.{md,html}` and this document included. Not pushed. The tree is
+  clean, and the two untracked outputs were resolved by understanding them rather than by deleting them: the design
+  canvas state (`design/camui-shell/comments.json`, `handoffs.json`) is now committed — it records the owner's one
+  design comment and the artboard the implementation was handed, so it belongs beside the artboards — and `data/`,
+  the owner's 17 MB reference application, is ignored as a design input rather than committed.
+
+- **L24 (incident, environment).** While a background explorer ran, every attempt to spawn a process failed with
+  `EAGAIN` — `bash`, `codemode`, and even `echo` — and the harness reported no tool calls made, so nothing was lost.
+  `free` and `uptime` came back normal once the subagent was cancelled (load 0.9, 24 GB available), which makes the
+  subagent's own process tree the suspect, not the machine. Recorded because the failure mode is indistinguishable
+  from a broken repository: when spawning dies, cancel the running subagent before concluding anything about the work.
+
+- **L25 (owner, verbatim).** *"seguimos con t8"* — T8 authorised on `master` `c24f690`: object context menus and the
+  embedded help panel, in the teaching voice, with one `d`/`u` pair per command (S2, S4).
+
+- **L26 (review, blocked twice, and what the attempts taught).** Receipt-driven development flagged the branch as an
+  unreviewed candidate (`sha256:80fde7a3…`, 29 paths, **7 178 changed lines**). Three attempts, in order:
+  *(1)* `assess` agreed: `reviewDue: true`, native risk high, reason `process_boundary` on `crates/cam-ui/src/lib.rs`.
+  *(2)* START on the whole candidate was refused in preflight with **`lens_context_budget_exceeded`** — no authority
+  created, nothing to abandon. The rule this states plainly: a review candidate is a work unit, never the accumulated
+  feature branch. *(3)* The owner chose to review only the risky part, so a temporary worktree
+  (`.worktrees/camui-frame-review`, detached at `7e09653`) anchored a candidate for **tokens + frame only**; START with
+  two lenses returned `lenses-invalid`, one lens (`reliability`) was accepted, and authority
+  `review-3ebc68eeba5006f5` was created (tier high, 4 640 original changed lines, correction budget 200).
+  The capture forecast one host-relay model run; the run then failed with **`reviewer-config-invalid`**: *"no model is
+  configured for review-reliability; assign it a model in the agent model routing config"*. The lineage stays
+  `reviewing` and unburned — a fresh STATUS reoffers the same slot, so the review resumes the moment a model is
+  assigned to the lens. Two mechanical lessons: **abbreviated commit ids are rejected** as `base-ref-unresolvable`
+  (full 40-character ids only), and `baseRef..HEAD` always sweeps to the branch tip, so a middle commit can only be
+  isolated from a worktree parked on it.
+
+- **L27 (environment, and the gate could not run).** The session runs inside
+  `gentle-shell-*.service` with **`MemoryMax=3G`** and **`TasksMax=64`**. Every `cargo test` link dies there:
+  `rust-lld` / `collect2` abort with `std::system_error: Resource temporarily unavailable`, and bash itself reports
+  `fork: retry: Resource temporarily unavailable`, with `memory.current` peaking at 3 026 MB of 3 072 MB. Serialising
+  (`CARGO_BUILD_JOBS=1`, `RUST_TEST_THREADS=1`) does not help, and `cargo test -p cam-ui` alone fails the same way.
+  What does pass inside the cap: `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings`.
+  The same cap is what killed the background explorer and several shell commands earlier in the session (L24) — it was
+  never the repository. The unblock is a host setting, not a code change:
+  `systemctl --user set-property gentle-shell-<id>.service MemoryMax=12G TasksMax=512` (runtime; the unit name carries
+  a per-session hash, so a durable fix belongs in the gentle-shell launcher).
+  **Resolved:** the owner raised the unit to `MemoryMax=16G` / `TasksMax=512`, and the full gate then ran clean on
+  `master` `c24f690` — fmt, clippy `-D warnings`, **1 076 tests across 91 suites**, 0 failed, exit 0, in 1 m 03 s.
+  That is the recorded baseline of `6e59b91` reached again after the merge, so the shell on `master` is verified.
+
+- **L28 (map, and the four constraints T8 inherits).** A read-only pass over the shell fixed what T8 can build on.
+  *(1)* **There is no command table.** `UiAction` (`lib.rs:392`) is 17 parameterised variants — `AddRectangle{width,
+  height}`, not `AddRectangle` — and every user-visible label is a literal at its call site (`chrome.rs:497-548`).
+  `rail_commands` returns `(&'static str, Icon, &'static str, UiAction)` with the group as a bare string, and
+  `UiAction::label()` (`lib.rs:472`) only words the status bar. So a `d`/`u` pair cannot hang off `UiAction`: the unit
+  that owns help is the *command*, which has no parameters. T8.1 introduces that identity.
+  *(2)* **Selection is not shell state.** It lives on `AppState` (`Selection { ids: BTreeSet<String> }`,
+  `cam-app/src/lib.rs:34`, read through `selection()`), and `handle_action` (`lib.rs:1987`) remains the only mutator —
+  so a context menu scopes itself by asking `AppState` and emits `UiAction`s, never touching the document.
+  *(3)* **Right-click is unused.** `PointerButton::Secondary` appears nowhere in `crates/`; the canvas senses
+  `click_and_drag()` (`lib.rs:1451`) and that must stay. egui is **0.37**, whose `Response::context_menu` is the API,
+  and no `menu`/`popup`/`context_menu` call exists yet: T8.3 is the shell's first.
+  *(4)* **Two overlay precedents exist**: the `F2` icon sheet (`Shell::icon_sheet`, `lib.rs:871`) and the Shortcuts
+  window (`chrome.rs:754`), whose app-bar tooltip already reads *"Shortcuts and help"*. The design draws a per-command
+  card bound to `F1`, so the help panel is its own window and the shortcuts list keeps its own.
+  The panel's shape and the three voice rules are already drawn in `02-stages.html` §04 — consequence before
+  mechanics, second person without jargon, every refusal naming a number; the `d` is the first rule's one sentence and
+  the `u` is the body that follows it.
+
+- **L29 (T8.1 delivered: 33 commands find their voice, and `F1` opens it).** `crates/cam-ui/src/help.rs` (496 lines)
+  holds the identity T8 needed: `Group` (DRAW, TRANSFORM, VECTOR EDIT, **HISTORY**, VIEW), `Command` (33 variants),
+  `Help { what, how, related }`, `label()` reusing the literals the UI already shows, and `action()` for the commands
+  that take no parameter. `chrome.rs::help_window` (+80) draws the design's card — grouped rows, the focused command's
+  *what* as a strong paragraph, its *how*, then `Related:` — using only `theme::` tokens and the existing helpers.
+  `lib.rs` (+40) carries `Shell::show_help`, `Shell::help_focused`, `DrawnState.help`, and the `F1`/`Esc` wiring beside
+  the `F2` block. Seven tests (+219 in `tests/shell.rs`; no existing test altered), RED by build — `unresolved import
+  cam_ui::help`, `no field show_help`, `no field help` — GREEN at **1 083 tests across 91 suites**, exit 0 (baseline
+  1 076; +7).
+  The writer's judgements, kept because each is a real decision and not an accident: **a fifth group, HISTORY**, because
+  Undo/Redo are app-bar commands and filing them under VIEW would be a lie in the one place the shell is meant to be
+  exact (T8.2 either gives the palette that run or folds them back); `Align` is in, since its six modes are live buttons
+  in the Tools tab; `Import` is in although it has **no button and no shortcut** today, and its `how` says so plainly
+  ("a host opens the file by path"); `Node edit` is one command naming all three of its buttons; `View3d` is labelled
+  `3D`, the only word the shell shows for it. Left out deliberately: `SetSelection` (a click's effect, not a command),
+  `ToggleLayerVisible` (a per-layer checkbox), the six Align modes (sub-choices of one `Align`), and stage/tab
+  switching (view state, pushes no action).
+  **Flagged for T8.2:** the palette's `Help` button still opens the Shortcuts window. `Command::Help` is the `F1` panel
+  and `Command::Shortcuts` is that window; rewiring needs Shortcuts to keep a mouse path, so it is T8.2's job, not a
+  side effect of this one.
+  **Incident, and why the scope check matters.** The writer ran `cargo fmt` *without* `XDG_CONFIG_HOME`, the redirected
+  `HOME` hid the repo's `tab_spaces = 2`, and the whole workspace was reformatted to four spaces. It re-ran `cargo fmt`
+  with the variable and no `git checkout/restore/reset`; the parent then proved `git diff --name-only HEAD` lists only
+  the three in-scope files plus this document, with `help.rs` untracked — so the revert is real and not asserted. The
+  rule L9 found for the gate applies to the loose invocation too: **`cargo fmt` always needs
+  `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config` in this harness.**
+  **Parent verification, independent of the report:** the scope check above, the gate re-run by the parent (exit 0,
+  1 083 tests, 91 suites), and one factual spot check of the prose — `Trim`'s *how* says "the lower id is the target and
+  the other one cuts it", which `lib.rs:1354` states and the arm at `lib.rs:1360` implements by destructuring
+  `selected.as_slice()`. Help that describes behaviour the code does not have would be worse than no help.
+
+- **L30 (owner disposition: the T8 slices ship unreviewed, on purpose).** `inspect` offered review.start again for
+  the same accumulated candidate (29 paths, base `e9dcb01`, now past 8 000 lines), which is the shape the provider
+  already refused with `lens_context_budget_exceeded`, and the lens that would have to run it still has no model. The
+  owner chose *"Dejá T8 sin review por ahora y seguí"*. So the T8 slices carry the gate — `fmt`, `clippy
+  -D warnings`, the full workspace suite — plus the parent reading the change against this document, and no native
+  receipt. Two facts are recorded rather than buried: the frame lineage `review-3ebc68eeba5006f5` is still
+  `reviewing` and **unburned**, waiting for a model routed to `review-reliability`; and the accumulated candidate
+  cannot be started at all, because a review candidate is one work unit and never the branch. When the lenses get
+  their model, T8.1 (`f06b43a`, 918 lines) is the natural first candidate — one worktree anchor away.
+
+- **L31 (T8.2 delivered, and the differential that checked it).** `rail_commands`, `GroupedCommand`, `Stage::tools()`
+  and `DESIGN_TOOLS` are gone. The palette derives every run, word, glyph and command from `Command::ALL` with
+  `group()`, `label()` and `in_palette()`; the DRAW chips arm `active_tool` through the new `Command::tool()`, which is
+  the only command→tool mapping left; the app bar takes Undo/Redo/Fit from their command with `can_undo`/`can_redo`
+  still gating them; and both help paths now open the `F1` panel while a new VIEW `Shortcuts` chip keeps the keys sheet
+  reachable by mouse. Six tests, plus two report fields (`DrawnState.palette_hits`, `DrawnState.app_bar`) because egui
+  offers no widget-by-text lookup — a click test presses a recorded point instead of guessing at a margin. Gate:
+  **1 089 tests across 91 suites** (+6), exit 0. Tooltips the rewrite made false were corrected with it: the help
+  button no longer says "Shortcuts and help" now that it opens the help panel.
+  Because the slice rewrites 443 lines of `chrome.rs`, the claim "same palette" was **measured, not trusted**: a probe
+  in a worktree at `f06b43a` and the same probe in the working tree printed `DrawnState.palette` for every stage, and
+  the transcripts were diffed. **One difference, on all five stages: `Shortcuts` after `Help`** — the chip the brief
+  asked for, so a declared change rather than a regression. The group runs, their order, the headings (`DRAW`,
+  `TRANSFORM`, `VECTOR EDIT`, `VIEW`) and the other twenty labels: zero differences, and the whole-frame painted text
+  diffed word by word to zero. The verifier also corrected the writer's own wording: `in_palette()` is **not** the old
+  palette — it has **four** VIEW chips, not three, because Shortcuts was added.
+  That transcript is now a committed golden, `crates/cam-ui/tests/palette.rs` (two tests: the per-stage list in order,
+  and no stage offering a history chip). A test that derives its expectation from the table cannot notice the table
+  changing; writing the measured chips down can.
+  **Residual, stated rather than hidden:** the palette no longer holds a *list*, but the *construction* of the
+  parameterised actions — Move, Rotate, Scale, Mirror, Array, Offset, Add text, with their numbers — still exists
+  twice: `chrome.rs::palette_action` and the Tools tab's `authoring()`. The brief asked for the list; folding the
+  constructions into one module is its own slice. Also flagged: the icon set has no keyboard glyph, so `Shortcuts`
+  uses `Icon::Text` with a comment instead of an invented glyph, and the app-bar `?` rewiring carries no mouse-level
+  test because its rect is not reported — the palette chip test pins the same one-line toggle.
+
+- **L32 (T8.3 delivered: the canvas grows a second mouse button).** Right-clicking the sheet opens a context menu with
+  two scopes. **Object** — Move, Rotate, Scale, Mirror, Array, Offset, Join, Trim, Node edit, Delete selection —
+  because every one of those takes its operand from the selection and would only refuse over empty canvas. **Canvas** —
+  Add text, Add rectangle, Undo, Redo, 3D, Grid, Layers, Theme, Fit the job. Left out on purpose: `Align`, whose six
+  modes *are* what Align means (a menu row that must then ask which one is a submenu nobody asked for), and `Select`
+  with the nine gestures, since arming a gesture while opening a sheet over the drawing is two gestures at once.
+  `help.rs::MenuScope` is the only list of either scope and it filters `Command::ALL`, so rows inherit the table's
+  words and order; a row runs through `run_command`, the same runner the palette chips use. The scope is decided on
+  the right-click in `handle_input` (`lib.rs:1865`) and remembered in `Shell::menu_scope` as **view state** — a
+  right-click on empty canvas must keep the existing selection and still mean the canvas menu, which recomputing the
+  pick inside the popup would break. Pointing at an unselected entity emits exactly one `UiAction::SetSelection`, the
+  same effect a plain click has. The report surface is `DrawnState.menu` plus `DrawnState.menu_hits` — the popup only
+  exists while the button has opened it and egui offers no widget-by-text lookup from outside a frame, so the tests
+  press a recorded point (the same shape as L31's `palette_hits`).
+  Nine tests (+275 lines in `tests/input.rs`), RED by build (`no field menu` six times, `menu_hits` once) — with the
+  writer's own honesty that two Trim tests had no RED, since they were written after the menu compiled. Gate:
+  **1 100 tests across 92 suites** (+9), exit 0. `Sense::click_and_drag()` is untouched, which the parent checked by
+  grep: the drawing gesture is the one thing a context menu could silently break.
+  **Differential on the shared code**, because this slice renamed `run_palette_command` → `run_command` and added four
+  arms: every palette chip on all five stages clicked in a base tree and in the working tree with a shared scratch
+  target, comparing emitted actions verbatim (Transform/Array/Offset/AddText payloads and camera centres included),
+  armed tool, snapping, inspector, 3D, help panel, theme, status, hint, selection and the whole document JSON —
+  **zero differences**; and the Tools tab's Trim button for selections `[E1]`, `[E1,E2]`, `[E2]` — zero differences.
+  **Judgements kept:** the canvas menu says **"Fit the job"**, the table's own word, rather than inventing "Zoom to
+  fit" (a second name for one command is exactly what the menu rule forbids); `Node edit` is a single row that can only
+  mean move-node, so its hover slightly over-promises — flagged rather than papered over, and a future slice either
+  turns it into a submenu or splits the three node edits into their own commands; `Trim` is the one dark row, and its
+  target/cutter pairing moved into `chrome::trim_action` so the button and the row cannot cut differently.
+  **egui 0.37 facts a later slice needs:** `Response::context_menu` opens on `secondary_clicked()` and
+  `Sense::click_and_drag()` already satisfies it; a right-click does not make `clicked()` true; the popup is
+  `at_pointer_fixed` with `CloseOnClick`, so it does not follow the pointer; its **first frame is a sizing pass**
+  (invisible, not interactable), so a headless test needs one quiet frame before reading `menu_hits`; a press on a
+  disabled row does not fall through to the canvas underneath; and the open state lives in the context, not in
+  `Shell`, so a second right-click re-anchors instead of stacking menus.
+
+- **L33 (the screenshot's defect, fixed, and re-checked by the same eye).** The visual pass on T8.3 found that the new
+  `Shortcuts` chip was **indistinguishable from `Add text`**: both drew `Icon::Text` — the same `T` — and its tooltip
+  read "The keys the shell answers to", which never names it. The tests passed because they read
+  `DrawnState.palette` strings, not pixels: the L18/L22 class again. Fixed in three parts. A keyboard glyph — two
+  keycaps over a space bar, `(3,5)+(7,6)`, `(14,5)+(7,6)`, `(6,14)+(12,5)` on the 24 grid — joined the set in the
+  `ViewDocument` family right after `Help`, the range widening `46..=62` and the `Icon::ALL` length assert moving
+  70 → 71. `palette_tooltip` now builds every entry from `Command::label()`, so no chip can depend on a sentence that
+  never says what it is; the RED for that found a **second** unnamed chip (`Layers` said "Inspector — collapse or
+  expand"). And two tests pin the pixel fact in the only way a headless test can:
+  `shortcuts_has_a_glyph_and_a_word_of_its_own` (the two glyphs must differ) and
+  `every_palette_chip_is_named_by_its_tooltip`. Gate: **1 102 tests across 92 suites** (+2).
+  Re-checked on screen at the same 2533×1383 window: distinguishable at actual size without hovering, tooltip naming
+  it, the sheet reading `71 glyphs` with `View, document, display · 17` and the new stroke matching the `?` beside it.
+  Three honest leftovers, none of them fixed here: *(1)* adding the 17th member pushed `toolpath-pocket` onto a third
+  row and the sheet now **clips `toolpath-profile`'s label** at its right edge — the same pre-existing column-width
+  problem with a new victim; remedy is widening `min_col_width` or shortening the label, and it deserves the test that
+  can see it. *(2)* A palette chip's tooltip still draws **above** the `F2` sheet when the pointer rests on a chip as it
+  opens (pre-existing z-order). *(3)* `icons.rs` documents `tests::the_families_cover_the_set_in_order`, which **does not
+  exist**; family contiguity rests only on `family()` being one ordered `match`, so the doc promises a guard the tree
+  does not have. Recorded, not papered over.
+
+- **L34 (owner, verbatim).** *"t9"* — T9 authorised from `725d9fc`: `view3d.rs` shading onto the tokens. The module holds a
+  `shading` block with five own literals — `STOCK` `(88,132,178)`, `CUT` `(255,176,59)`, `TRAVEL` `(96,104,116)`,
+  `SURFACE_TOP` `(214,220,230)`, `SURFACE_BOTTOM` `(38,74,122)` — plus `depth_colour`, which interpolates between the
+  two surface ends by depth. `theme.rs` owns 18 roles and none of them is a ramp, which is exactly the question L7
+  left open when it said a 3D surface ramp is not the 2D token set. So the first thing this slice does is **ask the
+  tokens artboard**, not invent: `04-tokens.html` is the authority for whether a ramp exists, and if it does not, the
+  roles it gains are named for what they mean and documented in `design/system.md` like every other.
+
+- **L35 (T9: the tokens, the ramp, and the regression a screenshot caught before the commit).** `view3d.rs` paints
+  every colour through the theme now — **zero `Color32` left in the module**, and the `shading` block plus
+  `depth_colour` are gone, replaced by `Role::StockTop`/`Role::StockBottom` and `Palette::stock_shade`. `STOCK` mapped
+  to `Border`, `CUT` to `Cut` (L7: the cut signal owns amber), `TRAVEL` to `TextDim` — by meaning, not by rename.
+  **`04-tokens.html` specifies no material tokens at all**: its surfaces ladder ends at `bg-canvas`, "drawing surface
+  — the darkest", with no step for stock, so the ramp is a **proposal** and `design/system.md` says so in those words.
+  Then the screenshot refused to ship it: the proposed light ramp used `#FFFFFF` on a `#F7F9FB` canvas, which is
+  **1.06:1 on paper and a 2-to-5 code difference on screen** — the light-theme stock stopped being a solid and became
+  a hairline rectangle on a white page, the worst possible misread ("nothing is loaded"). It was a regression T9
+  introduced, and 1 106 green tests did not see it because every existing contrast test compares *text to a surface*,
+  never *material to the canvas*. The dark theme lost its accent in the same change: `STOCK`→`Border` took the stock's
+  rim from 4.9:1 to 1.9:1, because a control hairline is not a solid's silhouette.
+  The fix, measured rather than chosen: light `StockTop` `#FFFFFF`→**`#C6D1DD`** (1.06→1.47 token, **1.51 rendered**,
+  Δ53 codes on the row the regression was found on), `StockBottom` `#8B95A3`→**`#A6B3C3`**, and a new **`StockEdge`**
+  role held to 3:1 against *both* the canvas and the stock's face, because no existing neutral sits in that band in
+  either set. The light canvas was measured as an alternative and rejected: moving it lowers every ratio it already
+  guards. The ceiling is forced by the **cut**, not by taste — `#A86200` needs ≥3:1 on the fill, which pins
+  `L_top ≥ 0.612` and caps the ramp at 1.50:1, so the light ramp narrowed from 3.03:1 to 1.40:1 as the price of a
+  visible solid *and* a visible amber. The amber on the deepest stop is 2.23:1 (2.18 rendered), still under the 3:1
+  stroke floor and **not fixable inside the tokens**: it needs a lighter paper amber — an artboard change — or a ramp
+  so shallow it stops meaning depth.
+  A new invariant holds it: `the_stock_reads_as_a_solid_against_the_canvas`, both sets, both ramp ends ≥1.45:1 off the
+  canvas and the silhouette ≥3:1 off canvas and face — RED against `#FFFFFF` at 1.06:1 before the values moved.
+  One more thing only rendering could teach: the silhouette test passed at token 4.90:1 while the screen delivered
+  **2.32:1**, because a 1.0 px stroke is antialiased over two. The stock's edges now draw at **1.6**, the icon set's own
+  line weight, so the invariant is also true of the pixels. Verified on screen afterwards: light fill 1.51:1 with a
+  rim peak of `124,132,143` and visible thickness on the near edges; dark edges 3.79:1 off the canvas and 2.99:1 off
+  the face, **92 % of the pre-T9 blue silhouette**; light 2D differing by 12 565 px of 3.5 M, all of them the cursor
+  and the status line.
+  **Recorded, not fixed:** the dark theme's amber on the bright stock top measures **1.37:1** — the pocket reads only
+  because the raster is dense, and a sparser toolpath would vanish on that face (pre-existing, not caused here); and
+  the depth ramp itself is **unobservable in the sample document**, whose pocket is 100 % covered by the cut raster, so
+  neither a test nor an eye can see the gradient until a fixture has an uncut region.
+
+- **L36 (the review could not run in this session, and why — the routing is frozen at startup).** Five attempts, one
+  error every time: `reviewer-config-invalid`, "no model is configured for review-reliability". The cause is not
+  misconfiguration and not the candidate: `session-profile-freeze.ts` states it — a session *"resolves the shared
+  defaults … once, at startup, and keeps that snapshot with its origin. Changing a default later only affects new
+  sessions."* So no file written while this session lives can reach the lens. Two candidate shapes were measured on the
+  way: the accumulated branch is refused by `lens_context_budget_exceeded` (a review candidate is one work unit, never
+  the branch), and this build accepts **one** lens per start — two returned `lenses-invalid` twice.
+  What is left in place for the next launch: `install/agent/subagents.json` (the agent-home routing map, read by
+  `agents-config.ts`) carrying the six review keys — the four lenses plus the refuter and the validator — each pointed at
+  `opencode-go/deepseek-v4.1-flash` with thinking `high`, the model the explorer already runs on.
+  **Owner disposition:** ship T9 on the gate and the two visual passes, and release the two live lineages
+  (`review-89edc321cc30ebdb` for this slice, `review-3ebc68eeba5006f5` for the frame). The natural first candidates for a
+  session that *can* review are `f06b43a`, `d511df8`, `99290d8` and this T9 commit — each one work unit under the
+  budget.

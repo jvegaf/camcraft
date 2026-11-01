@@ -53,6 +53,8 @@ use crate::icons::{Family, Icon};
 use crate::theme::{Palette, Role, Theme};
 
 pub mod chrome;
+/// The command table and its teaching voice.
+pub mod help;
 pub mod icons;
 pub mod theme;
 
@@ -564,6 +566,36 @@ pub struct DrawnState {
   /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
   /// read an icon: this is how "switching stage really changed what the operator can reach" is asserted.
   pub palette: Vec<String>,
+  /// Where the palette drew each chip: its word and the point in the window that presses it.
+  ///
+  /// egui cannot be asked for a widget by its text from outside a frame, so the palette reports the
+  /// point it drew each chip at and a click test presses that point instead of guessing at the layout.
+  pub palette_hits: Vec<(String, (f32, f32))>,
+  /// The words the app bar's three command buttons answer to, in the order it drew them.
+  ///
+  /// Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test can
+  /// read is the one the command table gives them: this is the app bar's own report of it.
+  pub app_bar: Vec<String>,
+  /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
+  /// command rows, and finally the focused command's `what` and `how`.
+  ///
+  /// Empty while the panel is closed, because a panel nobody opened drew no row. A headless test reads
+  /// this to prove that every command in the table is listed, which is the one claim a screenshot of a
+  /// long list of labels cannot make.
+  pub help: Vec<String>,
+  /// The words the canvas context menu drew, in the order it drew them.
+  ///
+  /// Empty while no menu is open, because a popup nobody opened drew no row. The menu is the one part of
+  /// the frame that only exists while the secondary button has been pressed, so this is how a headless test
+  /// sees it at all — and its entries are [`crate::help::Command`] labels, which is what makes "every entry
+  /// can be explained" checkable rather than asserted.
+  pub menu: Vec<String>,
+  /// Where the context menu drew each entry: its word and the point in the window that presses it.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason: egui offers no
+  /// widget-by-text lookup from outside a frame, so a test that has to press a menu row is given the point
+  /// the row was drawn at instead of guessing at the popup's margins.
+  pub menu_hits: Vec<(String, (f32, f32))>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
@@ -698,6 +730,21 @@ pub struct Shell {
   inspector_open: bool,
   /// Whether the shortcuts window is open.
   show_shortcuts: bool,
+  /// Whether the `F1` help panel is open.
+  ///
+  /// View state, like the icon sheet: opening the panel is not an edit and is not in the undo history.
+  /// `F1` toggles it and `Esc` closes it, so the operator never has to aim at a close box to get the
+  /// drawing back.
+  pub show_help: bool,
+  /// The command the help panel is teaching: whichever row was pressed last, or the first one.
+  help_focus: crate::help::Command,
+  /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
+  ///
+  /// View state, like [`Shell::drag_box`]: it is what the menu offers, never what the document holds. The
+  /// right-click decides it ([`Shell::handle_input`]) because the selection cannot — a right-click on empty
+  /// canvas keeps an existing selection and still means the canvas menu — and it is re-decided on every
+  /// right-click, so a menu can never outlive the click that opened it.
+  menu_scope: crate::help::MenuScope,
 }
 
 impl Default for Shell {
@@ -745,6 +792,9 @@ impl Default for Shell {
       inspector_tab: Tab::default(),
       inspector_open: true,
       show_shortcuts: false,
+      show_help: false,
+      help_focus: crate::help::Command::ALL[0],
+      menu_scope: crate::help::MenuScope::default(),
     }
   }
 }
@@ -763,6 +813,14 @@ impl Shell {
   /// Whether the 3D view is the one showing.
   pub fn view_3d(&self) -> bool {
     self.show_3d
+  }
+
+  /// The command the help panel is currently teaching.
+  ///
+  /// The panel opens on the first command in the table and follows the last row the operator pressed,
+  /// so a test can state which command's sentences it is about to look for.
+  pub fn help_focused(&self) -> crate::help::Command {
+    self.help_focus
   }
 
   /// Show the 3D view (`true`) or the drawing (`false`).
@@ -957,6 +1015,19 @@ impl Shell {
     if self.show_icons {
       self.icon_sheet(&ctx);
     }
+    // `F1` is the same idea one level up: `F2` shows the vocabulary of shapes, `F1` shows the vocabulary
+    // of commands with the two sentences each one teaches (T8, S2, S4).
+    if ctx.input(|input| input.key_pressed(egui::Key::F1)) {
+      self.show_help = !self.show_help;
+    }
+    // `Esc` closes the panel and touches nothing else, so reading help can never cancel a gesture the
+    // operator did not mean to cancel.
+    if self.show_help && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.show_help = false;
+    }
+    if self.show_help {
+      self.help_window(&ctx, &mut output);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -1029,7 +1100,7 @@ impl Shell {
       });
       ui.separator();
       if let Some(preview) = self.preview.as_mut() {
-        preview.show(ui, &mut output.drawn);
+        preview.show(ui, &mut output.drawn, &palette);
       } else {
         // An empty 3D view still holds its region: a collapsing view would hand the click to whatever is
         // underneath and read as a bug.
@@ -1128,7 +1199,9 @@ impl Shell {
   /// a panel that cannot fit them all would hide half of them.
   fn authoring(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let centre = app.camera().center();
-    let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+    // The trim this selection asks for, built by the same rule the canvas menu's row uses: None while fewer
+    // than two vectors are selected, which is what leaves the button dark.
+    let trim = chrome::trim_action(app);
 
     {
       ui.heading("Authoring");
@@ -1310,18 +1383,13 @@ impl Shell {
         if ui.button("Join").clicked() {
           output.actions.push(UiAction::Join);
         }
-        // Trim needs to know which of the two selected entities is the target and which the cutter;
-        // the selection is ordered by id, so the first id is the target and the second the cutter.
+        // Trim needs to know which of the two selected entities is the target and which the cutter; the
+        // pairing lives in `chrome::trim_action`, so the button and the context menu's row cannot disagree.
         if ui
-          .add_enabled(selected.len() >= 2, egui::Button::new("Trim"))
+          .add_enabled(trim.is_some(), egui::Button::new("Trim"))
           .clicked()
         {
-          if let [target, cutter, ..] = selected.as_slice() {
-            output.actions.push(UiAction::Trim {
-              target: target.clone(),
-              cutter: cutter.clone(),
-            });
-          }
+          output.actions.extend(trim.clone());
         }
       });
       ui.label(RichText::new("Nodes").size(theme::SMALL));
@@ -1467,6 +1535,9 @@ impl Shell {
         }
 
         self.handle_input(app, ui, &response, &canvas, output);
+        // The context menu is drawn after the input that opens it, so a right-click and the rows it scopes
+        // arrive in the same frame; the popup's own memory decides whether it is open at all.
+        self.canvas_menu(app, &response, output);
         self.paint(painter, &canvas, app, output);
       });
   }
@@ -1784,6 +1855,32 @@ impl Shell {
           output.actions.push(UiAction::SetSelection(
             hit.map(|hit| vec![hit.entity]).unwrap_or_default(),
           ));
+        }
+      }
+    }
+
+    // The secondary button scopes the canvas context menu, and that is all it does. Pointing at an entity
+    // selects it first, so the command picked from the menu acts on what the operator pointed at; a pointer
+    // over empty canvas offers the canvas' own commands instead and leaves the selection alone.
+    if response.secondary_clicked() {
+      if let Some(position) = response.interact_pointer_pos() {
+        let scene = build_scene(app.document(), app.selection());
+        let hit = pick(
+          &scene,
+          app.camera(),
+          canvas.to_screen(position),
+          PICK_TOLERANCE_PX,
+        );
+        self.menu_scope = match hit {
+          Some(_) => crate::help::MenuScope::Object,
+          None => crate::help::MenuScope::Canvas,
+        };
+        if let Some(hit) = hit {
+          if !app.selection().contains(&hit.entity) {
+            output
+              .actions
+              .push(UiAction::SetSelection(vec![hit.entity]));
+          }
         }
       }
     }

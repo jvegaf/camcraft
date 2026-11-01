@@ -6,6 +6,7 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Job, Layer};
+use cam_ui::help::Command as HelpCommand;
 use cam_ui::{handle_action, DrawShape, Shell, ShellOutput, Tool, UiAction};
 
 fn rectangle(x: f64, y: f64, width: f64, height: f64) -> Contour {
@@ -166,6 +167,34 @@ impl Harness {
       pressed: false,
       modifiers,
     }]);
+  }
+
+  /// Right-click at one window point: move there, then press and release the secondary button.
+  ///
+  /// A right-click is the two frames a left click is, with the other button, and this is the harness's
+  /// only secondary gesture because the context menu is the shell's only secondary command.
+  fn right_click(&mut self, position: egui::Pos2) {
+    let modifiers = egui::Modifiers::default();
+    self.frame(vec![
+      egui::Event::PointerMoved(position),
+      egui::Event::PointerButton {
+        pos: position,
+        button: egui::PointerButton::Secondary,
+        pressed: true,
+        modifiers,
+      },
+    ]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos: position,
+      button: egui::PointerButton::Secondary,
+      pressed: false,
+      modifiers,
+    }]);
+  }
+
+  /// One quiet frame, so a menu opened by the last click has drawn its entries.
+  fn settle(&mut self) {
+    self.frame(Vec::new());
   }
 
   fn key(&mut self, key: egui::Key, modifiers: egui::Modifiers) {
@@ -602,5 +631,251 @@ fn a_rectangle_drag_along_one_axis_is_cancelled_with_a_hint() {
     harness.shell.status.contains("drag in both directions"),
     "the status bar must say why nothing was drawn: {}",
     harness.shell.status
+  );
+}
+
+// ---- T8.3: the canvas context menu ------------------------------------------------------------
+
+/// The point the context menu drew one entry at.
+///
+/// The menu reports where it drew each word ([`cam_ui::DrawnState::menu_hits`]), because egui cannot be
+/// asked for a widget by its text from outside a frame and a test that guessed at the popup's layout
+/// would break the day a margin moved. This is the same surface the palette reports its chips on.
+fn menu_hit(harness: &Harness, label: &str) -> egui::Pos2 {
+  harness
+    .output
+    .drawn
+    .menu_hits
+    .iter()
+    .find(|(word, _)| word == label)
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .unwrap_or_else(|| {
+      panic!(
+        "no {label:?} menu entry: drew {:?}",
+        harness.output.drawn.menu
+      )
+    })
+}
+
+#[test]
+fn right_clicking_an_entity_offers_its_commands() {
+  let mut harness = Harness::new();
+  // The bottom edge of E1: over an entity, and not its interior, which is what picking measures.
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.right_click(position);
+  harness.settle();
+
+  let menu = &harness.output.drawn.menu;
+  assert!(
+    menu.iter().any(|entry| entry == "Move"),
+    "an object menu must offer the transform family: {menu:?}"
+  );
+  assert!(
+    menu.iter().any(|entry| entry == "Delete selection"),
+    "and the command that removes what was pointed at: {menu:?}"
+  );
+  assert!(
+    !menu.iter().any(|entry| entry == "Add text"),
+    "an object menu is not the canvas menu: {menu:?}"
+  );
+}
+
+#[test]
+fn right_clicking_empty_canvas_offers_canvas_commands() {
+  let mut harness = Harness::new();
+  // Clear of every edge, as in the click-to-clear test: the chrome leaves this much view around a
+  // 100 x 60 mm rectangle.
+  let position = harness.at(Point2::new(-8.0, 30.0));
+  harness.right_click(position);
+  harness.settle();
+
+  let menu = &harness.output.drawn.menu;
+  assert!(
+    menu.iter().any(|entry| entry == "Add rectangle"),
+    "the canvas menu must offer the typed rectangle: {menu:?}"
+  );
+  // The brief calls this entry "Zoom to fit"; the shell already has one command for it and its word
+  // is `Fit the job`, so the menu draws the command's own label rather than a second name for it.
+  assert!(
+    menu.iter().any(|entry| entry == "Fit the job"),
+    "and the command that frames the drawing: {menu:?}"
+  );
+  assert!(
+    !menu.iter().any(|entry| entry == "Delete selection"),
+    "empty canvas has nothing to delete: {menu:?}"
+  );
+}
+
+#[test]
+fn right_clicking_an_unselected_entity_selects_it() {
+  let mut harness = Harness::new();
+  assert!(
+    harness.app.selection().is_empty(),
+    "nothing starts selected"
+  );
+
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.right_click(position);
+  harness.settle();
+
+  assert_eq!(
+    harness.app.selection().ids().collect::<Vec<_>>(),
+    vec!["E1"],
+    "pointing at E1 and right-clicking must select it, so the picked command acts on it"
+  );
+}
+
+#[test]
+fn a_menu_entry_runs_its_command() {
+  let mut harness = Harness::new();
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.right_click(position);
+  harness.settle();
+
+  let entry = menu_hit(&harness, "Delete selection");
+  harness.click(entry);
+
+  assert_eq!(
+    harness.app.document().entities().count(),
+    0,
+    "pressing the menu's Delete selection must remove the entity it was opened on: {}",
+    harness.shell.status
+  );
+  assert_eq!(
+    harness.app.history_depth(),
+    1,
+    "and be one undo step, like the same command from any other place"
+  );
+}
+
+#[test]
+fn the_menu_entries_all_have_help() {
+  // Both scopes, because a menu that offers a word the table does not know is a menu the `F1` panel
+  // cannot explain.
+  for position in [Point2::new(50.0, 0.0), Point2::new(-8.0, 30.0)] {
+    let mut harness = Harness::new();
+    let screen = harness.at(position);
+    harness.right_click(screen);
+    harness.settle();
+
+    let menu = harness.output.drawn.menu.clone();
+    assert!(
+      !menu.is_empty(),
+      "a menu over {position:?} must offer something"
+    );
+    for entry in menu {
+      let command = HelpCommand::ALL
+        .iter()
+        .copied()
+        .find(|command| command.label() == entry)
+        .unwrap_or_else(|| panic!("{entry:?} is not a command in the table"));
+      assert!(
+        !command.help().what.trim().is_empty(),
+        "{entry:?} has no consequence for the help panel to state"
+      );
+    }
+  }
+}
+
+#[test]
+fn the_trim_row_is_dark_until_two_vectors_are_selected() {
+  let mut harness = Harness::new();
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.right_click(position);
+  harness.settle();
+
+  // One vector, so a trim has a target and no cutter: the row is offered, dark, and its `how` says why.
+  assert_eq!(harness.app.selection().len(), 1);
+  let trim = menu_hit(&harness, "Trim");
+  harness.click(trim);
+
+  assert!(
+    !harness
+      .output
+      .actions
+      .iter()
+      .any(|action| matches!(action, UiAction::Trim { .. })),
+    "a dark row must not push the command it cannot run: {:?}",
+    harness.output.actions
+  );
+  assert_eq!(
+    harness.app.selection().len(),
+    1,
+    "and pressing it must not fall through to the canvas and clear the selection"
+  );
+}
+
+#[test]
+fn the_trim_row_cuts_the_lower_id_with_the_other_one() {
+  let mut harness = Harness::new();
+  // A second vector, then both selected by hand, so the row has its two operands.
+  handle_action(
+    &mut harness.app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("added");
+  harness.app.select(vec!["E1".to_owned(), "E2".to_owned()]);
+  harness.settle();
+  assert_eq!(harness.app.selection().len(), 2);
+
+  // E1 is already selected, so the right-click keeps the pair and the menu is scoped to the object under it.
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.right_click(position);
+  harness.settle();
+  let trim = menu_hit(&harness, "Trim");
+  harness.click(trim);
+
+  assert!(
+    harness.output.actions.iter().any(|action| matches!(
+      action,
+      UiAction::Trim { target, cutter } if target == "E1" && cutter == "E2"
+    )),
+    "the selection is ordered by id, so E1 is the target and E2 the cutter: {:?}",
+    harness.output.actions
+  );
+}
+
+#[test]
+fn a_canvas_menu_row_runs_its_command_and_the_menu_closes() {
+  let mut harness = Harness::new();
+  let position = harness.at(Point2::new(-8.0, 30.0));
+  harness.right_click(position);
+  harness.settle();
+  assert!(harness.shell.snapping, "snapping starts armed");
+
+  let grid = menu_hit(&harness, "Grid");
+  harness.click(grid);
+
+  assert!(
+    !harness.shell.snapping,
+    "the canvas menu's Grid row must switch snapping off, like the palette chip does"
+  );
+  harness.settle();
+  assert!(
+    harness.output.drawn.menu.is_empty(),
+    "one row runs one command and the menu closes: {:?}",
+    harness.output.drawn.menu
+  );
+}
+
+#[test]
+fn a_left_click_opens_no_menu() {
+  let mut harness = Harness::new();
+  let position = harness.at(Point2::new(50.0, 0.0));
+  harness.click(position);
+  harness.settle();
+
+  assert!(
+    harness.output.drawn.menu.is_empty(),
+    "the menu is the secondary button's, and a left click still just selects: {:?}",
+    harness.output.drawn.menu
+  );
+  assert_eq!(
+    harness.app.selection().ids().collect::<Vec<_>>(),
+    vec!["E1"],
+    "a left click on an edge still picks it"
   );
 }

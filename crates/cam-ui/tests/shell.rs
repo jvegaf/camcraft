@@ -7,6 +7,7 @@
 use cam_app::{AlignMode, AppState, Transform, VertexEdit};
 use cam_geom::{Contour, Point2, Vec2};
 use cam_model::{Document, Job, Layer};
+use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
   handle_action, DrawShape, Shell, ShellOutput, Stage, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
 };
@@ -52,8 +53,20 @@ fn frame_with(
   shell: &mut Shell,
   app: &mut AppState,
 ) -> (ShellOutput, Vec<String>) {
+  frame_with_events(ctx, shell, app, Vec::new())
+}
+
+/// Run one frame with explicit events, and return what the shell produced plus its painted text.
+fn frame_with_events(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  events: Vec<egui::Event>,
+) -> (ShellOutput, Vec<String>) {
   let mut captured: Option<ShellOutput> = None;
-  let full = ctx.run_pass(raw_input(), |ctx| {
+  let mut input = raw_input();
+  input.events = events;
+  let full = ctx.run_pass(input, |ctx| {
     captured = Some(shell.show(app, ctx));
   });
   let texts = painted_text(&full);
@@ -63,9 +76,86 @@ fn frame_with(
   (captured.expect("the shell ran"), texts)
 }
 
+/// Press one key and report the frame the press was read in.
+///
+/// A press is two frames — down then up — the way a keyboard reports it. The second frame is what
+/// makes the next press a press instead of a held key, and it is dropped: what a test asserts on is
+/// the frame the shell acted in.
+fn press(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  key: egui::Key,
+) -> (ShellOutput, Vec<String>) {
+  let key_event = |pressed: bool| egui::Event::Key {
+    key,
+    physical_key: None,
+    pressed,
+    repeat: false,
+    modifiers: egui::Modifiers::default(),
+  };
+  let frame = frame_with_events(ctx, shell, app, vec![key_event(true)]);
+  let _ = frame_with_events(ctx, shell, app, vec![key_event(false)]);
+  frame
+}
+
 fn frame(shell: &mut Shell, app: &mut AppState) -> (ShellOutput, Vec<String>) {
   let ctx = egui::Context::default();
   frame_with(&ctx, shell, app)
+}
+
+/// Press the pointer at one window point: move there, press, then release.
+///
+/// A click is two frames, the way a mouse reports it, and the frame that reports the click is the one
+/// the release lands in. The move is repeated in both passes because egui decides what is under the
+/// pointer from the input it ended the previous pass with.
+fn click_at(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  at: egui::Pos2,
+) -> (ShellOutput, Vec<String>) {
+  let mut last: Option<(ShellOutput, Vec<String>)> = None;
+  for pressed in [true, false] {
+    let mut input = raw_input();
+    input.events.push(egui::Event::PointerMoved(at));
+    input.events.push(egui::Event::PointerButton {
+      pos: at,
+      button: egui::PointerButton::Primary,
+      pressed,
+      modifiers: egui::Modifiers::default(),
+    });
+    let mut captured: Option<ShellOutput> = None;
+    let full = ctx.run_pass(input, |ctx| {
+      captured = Some(shell.show(app, ctx));
+    });
+    let texts = painted_text(&full);
+    full.drop_without_applying_deltas();
+    last = Some((captured.expect("the shell ran"), texts));
+  }
+  last.expect("a click is two frames")
+}
+
+/// Click one palette chip by the word on it.
+///
+/// The palette reports the point it drew each chip at ([`cam_ui::DrawnState::palette_hits`]), because
+/// egui cannot be asked for a widget by its text from outside a frame and a test that guessed at the
+/// layout would break the day a margin moved.
+fn click_palette_chip(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  label: &str,
+) -> (ShellOutput, Vec<String>) {
+  let (output, _) = frame_with(ctx, shell, app);
+  let at = output
+    .drawn
+    .palette_hits
+    .iter()
+    .find(|(word, _)| word == label)
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .unwrap_or_else(|| panic!("no {label:?} chip: {:?}", output.drawn.palette));
+  click_at(ctx, shell, app, at)
 }
 
 /// Every piece of text the frame actually drew.
@@ -1481,4 +1571,427 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
 
   assert_eq!(app.document_json(), original);
   std::fs::remove_dir_all(&directory).ok();
+}
+
+// ---- T8.1: the command table and the F1 help panel --------------------------------------------
+
+#[test]
+fn every_command_has_a_what_and_a_how() {
+  for command in HelpCommand::ALL {
+    let help = command.help();
+    assert!(
+      !help.what.trim().is_empty(),
+      "{command:?} has no consequence to state"
+    );
+    assert!(
+      !help.how.trim().is_empty(),
+      "{command:?} has no instruction to give"
+    );
+  }
+}
+
+#[test]
+fn a_what_is_one_sentence() {
+  // The design's first rule: one sentence of consequence, before any mechanics. A paragraph here is a
+  // manual nobody reads, and a second line is a sentence the operator has to pick from.
+  for command in HelpCommand::ALL {
+    let what = command.help().what;
+    assert!(
+      !what.contains('\n'),
+      "{command:?} says {what:?}, which is more than one line"
+    );
+    assert!(
+      what.ends_with('.'),
+      "{command:?} says {what:?}, which is not a sentence"
+    );
+    assert!(
+      !what.contains('!'),
+      "{command:?} says {what:?}, and the shell has no business shouting"
+    );
+    assert!(
+      what.chars().count() <= 140,
+      "{command:?} says {what:?} in {} characters, and one sentence is at most 140",
+      what.chars().count()
+    );
+  }
+}
+
+#[test]
+fn every_related_command_is_a_real_command() {
+  for command in HelpCommand::ALL {
+    for related in command.help().related {
+      assert!(
+        HelpCommand::ALL.contains(related),
+        "{command:?} points at {related:?}, which this shell does not offer"
+      );
+    }
+  }
+}
+
+#[test]
+fn the_palette_and_the_table_agree_on_labels() {
+  // The rail's own literals are the truth; the table follows them. Without this the help would slowly
+  // become a second vocabulary for the same command.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_stage(Stage::Edit);
+  let (output, _) = frame(&mut shell, &mut app);
+  let offered = output.drawn.palette;
+  for command in [
+    HelpCommand::Move,
+    HelpCommand::Rotate,
+    HelpCommand::Scale,
+    HelpCommand::Mirror,
+    HelpCommand::Array,
+    HelpCommand::Offset,
+    HelpCommand::Join,
+  ] {
+    assert!(
+      offered.contains(&command.label().to_owned()),
+      "the palette offers {offered:?} but the table calls this command {:?}",
+      command.label()
+    );
+  }
+}
+
+#[test]
+fn f1_opens_the_help_panel_and_it_names_every_group() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  assert!(shell.show_help, "F1 must open the help panel");
+  // One more frame: the panel's own size settles on the second pass, exactly as a real window does.
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+
+  for group in Group::ALL {
+    assert!(
+      output.drawn.help.contains(&group.label().to_owned()),
+      "the panel must name the {} group: {:?}",
+      group.label(),
+      output.drawn.help
+    );
+  }
+  for command in HelpCommand::ALL {
+    assert!(
+      output.drawn.help.contains(&command.label().to_owned()),
+      "the panel must list {:?}: {:?}",
+      command.label(),
+      output.drawn.help
+    );
+  }
+  assert!(
+    joined(&texts).contains("Help"),
+    "the window must say what it is: {}",
+    joined(&texts)
+  );
+  // The panel has no scroll area, so a row that does not fit is a command nobody can read about. These
+  // three words are painted by the panel and by nothing else in the frame, and they are at the bottom.
+  for alone in ["Icon set", "Shortcuts", "Fit the job"] {
+    assert!(
+      joined(&texts).contains(alone),
+      "{alone:?} is below the fold of the help panel: {}",
+      joined(&texts)
+    );
+  }
+}
+
+#[test]
+fn the_help_panel_says_what_a_command_does_and_how() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+
+  let focused = HelpCommand::ALL[0];
+  assert_eq!(
+    shell.help_focused(),
+    focused,
+    "the panel opens on the first command"
+  );
+  let help = focused.help();
+  let all = joined(&texts);
+  assert!(
+    all.contains(help.what),
+    "the panel must state what {focused:?} gives: {all}"
+  );
+  assert!(
+    all.contains(help.how),
+    "the panel must say how to run {focused:?}: {all}"
+  );
+  assert!(
+    output.drawn.help.contains(&help.what.to_owned())
+      && output.drawn.help.contains(&help.how.to_owned()),
+    "the panel must report the two sentences it drew: {:?}",
+    output.drawn.help
+  );
+}
+
+#[test]
+fn escape_closes_the_help_panel() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::F1);
+  assert!(shell.show_help);
+
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::Escape);
+  assert!(!shell.show_help, "Esc must close the help panel");
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    output.drawn.help.is_empty(),
+    "a closed panel draws no rows: {:?}",
+    output.drawn.help
+  );
+  assert!(
+    !joined(&texts).contains(HelpCommand::ALL[0].help().what),
+    "a closed panel teaches nothing: {}",
+    joined(&texts)
+  );
+}
+
+// ---- T8.2: the palette and the app bar read the command table --------------------------------
+
+/// The groups one stage shows, VIEW last: the palette's four runs, and never HISTORY.
+fn palette_groups(stage: Stage) -> Vec<Group> {
+  let mut groups = match stage {
+    Stage::Design => vec![Group::Draw],
+    Stage::Edit => vec![Group::Transform, Group::VectorEdit],
+    Stage::Relief | Stage::Toolpaths | Stage::Prove => Vec::new(),
+  };
+  groups.push(Group::View);
+  groups
+}
+
+/// The words the palette must offer for one stage, in the table's own order.
+///
+/// Derived from [`HelpCommand::ALL`] and not from a list of expectations: the point of the slice is
+/// that the table is the only list, so a test that wrote its own second list would not test that.
+fn palette_words(stage: Stage) -> Vec<String> {
+  let groups = palette_groups(stage);
+  HelpCommand::ALL
+    .iter()
+    .filter(|command| groups.contains(&command.group()) && command.in_palette())
+    .map(|command| command.label().to_owned())
+    .collect()
+}
+
+#[test]
+fn every_palette_entry_comes_from_the_table() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  for stage in [Stage::Design, Stage::Edit, Stage::Toolpaths] {
+    shell.set_stage(stage);
+    let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+    let offered = output.drawn.palette.clone();
+    assert_eq!(
+      offered,
+      palette_words(stage),
+      "the {stage:?} palette must be the table's own run, in its order"
+    );
+    for word in &offered {
+      assert!(
+        HelpCommand::ALL
+          .iter()
+          .any(|command| command.label() == word),
+        "{word:?} is on the palette but no command in the table answers to it: {offered:?}"
+      );
+    }
+  }
+}
+
+#[test]
+fn the_palette_shows_no_history_run() {
+  // HISTORY is the app bar's run: Undo and Redo are buttons up there, and filing them under VIEW in
+  // the palette would be a lie in the one place the shell is supposed to be exact (L29).
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  shell.set_stage(Stage::Design);
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let design = joined(&texts);
+  assert!(
+    design.contains(Group::Draw.label()) && design.contains(Group::View.label()),
+    "Design must label DRAW and VIEW: {design}"
+  );
+  assert!(
+    !design.contains(Group::History.label()),
+    "the palette must never draw a HISTORY run: {design}"
+  );
+
+  shell.set_stage(Stage::Edit);
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let edit = joined(&texts);
+  for group in [Group::Transform, Group::VectorEdit, Group::View] {
+    assert!(
+      edit.contains(group.label()),
+      "Edit must label the {} run: {edit}",
+      group.label()
+    );
+  }
+  assert!(
+    !edit.contains(Group::History.label()),
+    "the palette must never draw a HISTORY run: {edit}"
+  );
+}
+
+#[test]
+fn the_help_button_opens_the_help_panel() {
+  // "Help" means the F1 panel now: the panel teaches every command, so a help button that opened a
+  // list of chords instead would be answering a smaller question than the one asked.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    output.drawn.help.is_empty(),
+    "no panel is open before the click: {:?}",
+    output.drawn.help
+  );
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Help.label());
+  assert!(shell.show_help, "the VIEW Help chip must open the F1 panel");
+
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    !output.drawn.help.is_empty(),
+    "the panel must draw its table"
+  );
+  assert!(
+    output
+      .drawn
+      .help
+      .contains(&HelpCommand::Help.label().to_owned()),
+    "the panel must list the command that opened it: {:?}",
+    output.drawn.help
+  );
+  assert!(
+    !joined(&texts).contains("Zoom about the pointer"),
+    "the Help chip must not open the shortcuts sheet: {}",
+    joined(&texts)
+  );
+}
+
+#[test]
+fn the_shortcuts_chip_still_opens_the_shortcuts_sheet() {
+  // The sheet keeps a mouse path of its own, so rewiring Help does not make the keys unreachable.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Shortcuts.label());
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    joined(&texts).contains("Zoom about the pointer"),
+    "the Shortcuts chip must open the shortcuts sheet: {}",
+    joined(&texts)
+  );
+  assert!(
+    !shell.show_help,
+    "the Shortcuts chip must not open the help panel"
+  );
+}
+
+#[test]
+fn the_app_bar_labels_match_the_table() {
+  // Three icon-only buttons whose words live in the table now, in the order the bar draws them.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, _) = frame(&mut shell, &mut app);
+  let expected: Vec<String> = [HelpCommand::Undo, HelpCommand::Redo, HelpCommand::FitJob]
+    .iter()
+    .map(|command| command.label().to_owned())
+    .collect();
+  assert_eq!(
+    output.drawn.app_bar, expected,
+    "the app bar must answer to the table's own words"
+  );
+}
+
+#[test]
+fn the_palette_chips_still_arm_toggle_and_run() {
+  // PRESERVE (T8.2): the palette is built from the table now, and every chip has to do exactly what it
+  // did when the list was hand-written — arm a gesture, flip a view flag, or push the Tools tab's
+  // numbers as an action.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Line.label());
+  assert_eq!(
+    shell.active_tool,
+    Tool::Line,
+    "a DRAW chip arms its gesture"
+  );
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Grid.label());
+  assert!(!shell.snapping, "the Grid chip toggles snapping off");
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Layers.label());
+  assert!(
+    !shell.inspector_open(),
+    "the Layers chip collapses the inspector"
+  );
+
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::AddText.label());
+  match output.actions.as_slice() {
+    [UiAction::AddText { text, height, .. }] => {
+      assert_eq!(
+        text.as_str(),
+        "CAM",
+        "the text chip reads the Tools tab's words"
+      );
+      assert_eq!(*height, 10.0, "and its cap height");
+    }
+    other => panic!("the Add text chip must push one AddText action, got {other:?}"),
+  }
+
+  shell.set_stage(Stage::Edit);
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Move.label());
+  match output.actions.as_slice() {
+    [UiAction::Transform(Transform::Translate { delta })] => assert_eq!(
+      *delta,
+      Vec2::new(10.0, 0.0),
+      "the Move chip reads the Tools tab's offset"
+    ),
+    other => panic!("the Move chip must push one Translate action, got {other:?}"),
+  }
+}
+
+#[test]
+fn every_palette_chip_is_named_by_its_tooltip() {
+  // The T8.2 defect was invisible to every test here: the Shortcuts chip drew the same glyph as Add text
+  // and its hover text was a sentence that never said "Shortcuts". A headless frame reads neither the
+  // pixels nor the hover card, so the closest thing it can assert is that the words a chip shows on hover
+  // contain the word the chip itself stands for.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  for stage in Stage::ALL {
+    shell.set_stage(stage);
+    let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+    for word in &output.drawn.palette {
+      let command = HelpCommand::ALL
+        .iter()
+        .copied()
+        .find(|command| command.label() == word)
+        .unwrap_or_else(|| panic!("{word:?} is drawn on the palette but no command answers to it"));
+      let tooltip = cam_ui::chrome::palette_tooltip(command);
+      assert!(
+        tooltip.contains(word),
+        "the {word:?} chip's tooltip is {tooltip:?}, which never names the chip"
+      );
+    }
+  }
 }

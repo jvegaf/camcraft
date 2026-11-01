@@ -30,7 +30,7 @@ Values are `sRGB` hex; `-soft` entries are premultiplied RGBA washes used as fil
 | `raised` | `#1e242b` | Inputs, hovered rows |
 | `overlay` | `#232a32` | Menus, tooltips, popovers (the only surfaces allowed a shadow) |
 | `hairline` | `#262d36` | One-pixel divisions |
-| `border` | `#35404c` | Input and control borders |
+| `border` | `#35404c` | Input and control borders; the 2D canvas's stock outline |
 | `text-hi` | `#e7ecf3` | Titles, values, labels |
 | `text` | `#c3ccd8` | Body, list rows |
 | `text-dim` | `#8b95a3` | Help, units, secondary information |
@@ -42,6 +42,9 @@ Values are `sRGB` hex; `-soft` entries are premultiplied RGBA washes used as fil
 | `ok` | `#5ec27f` | Verdict: verifies |
 | `warn` | `#f0b429` | Verdict: legal but unwise |
 | `danger` | `#f2635f` | Verdict: gouge, crash, refusal |
+| `stock_top` | `#d6dce6` | The 3D stock's untouched top — the `0.0` end of the depth ramp |
+| `stock_bottom` | `#424c58` | The 3D stock's floor — the `1.0` end of the depth ramp |
+| `stock_edge` | `#6e7b8a` | The 3D stock box's silhouette: 4.42:1 off the canvas, 3.13:1 off the stock's top |
 
 ### Light — `theme.rs::Palette::light`
 
@@ -53,7 +56,7 @@ Values are `sRGB` hex; `-soft` entries are premultiplied RGBA washes used as fil
 | `raised` | `#f2f5f8` | Inputs, hovered rows |
 | `overlay` | `#ffffff` | Menus — a shadow, not a fill, separates them |
 | `hairline` | `#dde3ea` | One-pixel divisions |
-| `border` | `#c3ccd6` | Control borders |
+| `border` | `#c3ccd6` | Control borders; the 2D canvas's stock outline |
 | `text-hi` | `#12181f` | Titles, values |
 | `text` | `#2b3440` | Body |
 | `text-dim` | `#5f6b7a` | Help, units |
@@ -65,6 +68,43 @@ Values are `sRGB` hex; `-soft` entries are premultiplied RGBA washes used as fil
 | `ok` | `#1f7a43` | Verdict: verifies |
 | `warn` | `#96610a` | Verdict: warns |
 | `danger` | `#b3342f` | Verdict: stops |
+| `stock_top` | `#c6d1dd` | The 3D stock's untouched top — 1.47:1 off the canvas |
+| `stock_bottom` | `#a6b3c3` | The 3D stock's floor — 1.40:1 under the top |
+| `stock_edge` | `#4a5563` | The 3D stock box's silhouette: 7.18:1 off the canvas, 4.90:1 off the stock's top |
+
+### The one gradient — `theme.rs::Palette::stock_shade`
+
+The 3D surface is the only thing in the shell whose colour is not chosen but **mixed**: a vertex is
+painted at the position its depth gives it on a line between two roles. Both ends are tokens
+(`stock_top` at depth `0.0`, `stock_bottom` at `1.0`), so the ramp cannot drift away from the set, and
+the floor is darker than the top in both sets — depth has to read as value on a monochrome screenshot,
+exactly as the cut signal has to read as a dash. A depth outside `0.0..=1.0` clamps to the ends, and a
+depth that is not a number reads as the untouched top.
+
+The rest of the 3D picture asks by role like everything else: the stock's box edges are `stock_edge`, a
+cutting move is `cut` at 1.6 px, and a rapid or a retract is `text-dim` at 1 px — present, but not the
+thing being shown, the same role construction geometry wears on the canvas.
+
+`stock_edge` is its own role and not `border`, because the two have different jobs. A border is a
+one-pixel division *inside* one surface — a field's outline, a menu's frame — where 1.8:1 against the
+canvas is right and 5:1 would draw a cage. The edge of a 3D solid is the only thing saying "this object
+ends here" on a field with no grid, no shadow and no perspective cue, so it is held to **3:1 against
+both the canvas behind it and the face it bounds**. In each set only a narrow band of neutrals does
+both: in dark, `#35404c` is 1.81:1 off the canvas (how the T9 regression lost the block's lower edges)
+and `text-dim`'s `#8b95a3` is 6.29:1 off the canvas but only 2.20:1 against the stock's own top.
+
+In the light set the material is **darker than the page**, because on paper a white solid on a white
+sheet is no solid: `stock_top` is `#c6d1dd`, 1.47:1 off the canvas — a 37-code step, where the previous
+`#ffffff` gave 1.06:1 (8 codes, and 2–5 codes after the compositor's shadow lift, which is why the slab
+read as a hairline rectangle). It is as dark as the fill can go: the artboard's `#a86200` toolpath
+measures 3.08:1 on it, the stroke floor this system already holds every signal to, so a darker material
+would cost the cut. The floor is `#a6b3c3`, 1.40:1 under the top, which keeps depth readable as value
+and gives the amber on the deepest stop 2.23:1 where the old `#8b95a3` floor gave it 1.57:1.
+
+**This ramp is a proposal.** `04-tokens.html` specifies no material tokens at all — the artboard's
+surface story stops at the canvas — so `stock_top`, `stock_bottom` and `stock_edge` are values this
+system derived and proved by test, not values the artboard argues for. They are the numbers to bring
+to the next artboard pass, not the numbers that came from one.
 
 ### Contrast, proven not asserted
 
@@ -72,7 +112,9 @@ Values are `sRGB` hex; `-soft` entries are premultiplied RGBA washes used as fil
 (`text-hi`, `text`, `text-dim` on `app`, `panel`, `canvas`) or below **3:1** for a signal drawn as a stroke
 (`sel`, `cut`, `ok`, `warn` on `panel` and `canvas`). `text-off` is excluded because it is disabled-only.
 Two further invariants are tests, not conventions: the canvas sits at the end of the luminance ladder, and the two
-signals are at least 60° apart in hue.
+signals are at least 60° apart in hue. The stock adds three more: its floor is darker than its top in both sets, its
+top clears the canvas by **1.45:1** (`SOLID_ON_CANVAS` — a solid, not a word, is measured against the surface it
+stands on), and its edge clears **3:1** against both that canvas and that top.
 
 ## Typography
 

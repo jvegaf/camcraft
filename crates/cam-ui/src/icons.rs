@@ -1,4 +1,4 @@
-//! The shell's icon set: sixty-six glyphs, drawn with egui primitives instead of rasterised.
+//! The shell's icon set: seventy-one glyphs, drawn with egui primitives instead of rasterised.
 //!
 //! `design/camui-shell/03-iconography.html` is the authority for the drawings; this file is their
 //! transliteration, one [`Cmd`] per SVG command, so a glyph can be read against the artboard line by
@@ -953,6 +953,18 @@ const RELIEF: &[Part] = &[
   ]),
 ];
 
+/// A keyboard: two keycaps over a space bar. Added for the `Shortcuts` palette chip, which had been
+/// drawn with the letterform `Add text` already used — two chips, one picture (T8.2).
+///
+/// Three rounded outlines rather than one body with key marks: at 16 px a body would have to hold its
+/// keys inside a 1.6 stroke, and a keycap two units tall is a smear. Three outlines at this spacing are
+/// still three separate shapes at the rail's smallest size, and nothing in the set is shaped like them.
+const SHORTCUTS: &[Part] = &[
+  stroke(&[rect((3.0, 5.0), (7.0, 6.0), 1.5)]),
+  stroke(&[rect((14.0, 5.0), (7.0, 6.0), 1.5)]),
+  stroke(&[rect((6.0, 14.0), (12.0, 5.0), 1.5)]),
+];
+
 /// Every glyph, in the artboard's order. The order is load-bearing: [`Icon`] indexes
 /// this table by its discriminant, so appending here means appending a variant there.
 /// An arrow curving back on itself: undo.
@@ -1220,6 +1232,10 @@ const GLYPHS: &[Glyph] = &[
   Glyph {
     name: "help",
     parts: HELP,
+  },
+  Glyph {
+    name: "shortcuts",
+    parts: SHORTCUTS,
   },
   Glyph {
     name: "view-2d",
@@ -1633,6 +1649,8 @@ pub enum Icon {
   Unlocked,
   /// A question mark in a circle.
   Help,
+  /// A keyboard: two keycaps over a space bar.
+  Shortcuts,
   /// A frame with a profile line inside it.
   View2d,
   /// The cube, seen from one corner.
@@ -1723,6 +1741,7 @@ impl Icon {
     Icon::Locked,
     Icon::Unlocked,
     Icon::Help,
+    Icon::Shortcuts,
     Icon::View2d,
     Icon::View3d,
     Icon::ThemeAuto,
@@ -1765,7 +1784,7 @@ impl Icon {
 
 /// The six families the sheet groups the set into, in the order the artboard draws them.
 ///
-/// A family is documentation, not behaviour: nothing in the shell branches on it. It exists so seventy
+/// A family is documentation, not behaviour: nothing in the shell branches on it. It exists so seventy-one
 /// glyphs can be read as six arguments instead of one wall, which is also why the sheet in the app groups
 /// them the same way the artboard does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1821,7 +1840,7 @@ impl Icon {
       11..=22 => Family::Draw,
       23..=35 => Family::VectorEdit,
       36..=45 => Family::Transform,
-      46..=61 => Family::ViewDocument,
+      46..=62 => Family::ViewDocument,
       _ => Family::Cutting,
     }
   }
@@ -1989,8 +2008,9 @@ mod tests {
     // transliterated: a glyph that is drawn but not shipped is worse than a stale sentence.
     assert_eq!(
       Icon::ALL.len(),
-      70,
-      "the artboard draws 66 glyphs plus the four the app bar needs"
+      71,
+      "the artboard draws 66 glyphs, plus the four the app bar needs, plus the keyboard the \
+       Shortcuts chip needs"
     );
     let mut names: Vec<&str> = Vec::new();
     for (index, &icon) in Icon::ALL.iter().enumerate() {
