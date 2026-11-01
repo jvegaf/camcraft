@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Campilot — design system</title>
+<style>
+  :root{
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
+    --line-hair:#262d36; --line-strong:#35404c; --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0a0c0f;color:var(--text);font-family:var(--f);font-size:13px;-webkit-font-smoothing:antialiased}
+  main{width:1440px;margin:0 auto;padding:28px 32px 40px}
+  h1{font-size:28px;font-weight:600;letter-spacing:-.015em;color:var(--text-hi);margin:0 0 6px}
+  .lede{color:var(--text-dim);margin:0 0 6px;max-width:84ch}
+  .lede code{font-family:var(--mono);font-size:12px;color:var(--text)}
+  h2{font-size:15px;font-weight:600;color:var(--text-hi);margin:28px 0 12px;display:flex;align-items:baseline;gap:10px}
+  h2 span{margin-left:auto;font-size:11px;color:var(--text-off);font-weight:400;font-family:var(--mono)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;padding:15px 17px}
+  .card h3{margin:0 0 3px;font-size:13px;color:var(--text-hi)}
+  .card .src{font-size:10px;font-family:var(--mono);color:var(--text-off);margin-bottom:12px}
+  .sw{display:flex;align-items:center;gap:9px;padding:2px 0}
+  .sw i{width:34px;height:20px;border-radius:3px;border:1px solid var(--line-strong);flex:none}
+  .sw code{font-family:var(--mono);font-size:10px;color:var(--text-hi);min-width:76px}
+  .sw em{font-family:var(--mono);font-size:10px;color:var(--text-dim);font-style:normal;min-width:66px;font-variant-numeric:tabular-nums}
+  .sw b{font-size:10px;color:var(--text-off);font-weight:400}
+  .light .sw code{color:#12181f}
+  .light{background:#fff;border-color:#dde3ea}
+  .light h3{color:#12181f} .light .src,.light .sw b{color:#8b95a3} .light .sw em{color:#5f6b7a}
+  .type div{display:flex;align-items:baseline;gap:12px;padding:5px 0;border-bottom:1px solid var(--line-hair)}
+  .type div:last-child{border-bottom:0}
+  .type .k{font-family:var(--mono);font-size:10px;color:var(--text-off);min-width:132px}
+  .geo{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .geo div{background:var(--bg-raised);border:1px solid var(--line-hair);border-radius:6px;padding:10px 12px}
+  .geo b{display:block;font-size:11px;color:var(--text-hi);margin-bottom:3px}
+  .geo span{font-family:var(--mono);font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .comp{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+  .stack{display:flex;flex-direction:column;gap:7px}
+  .cap{font-size:10px;color:var(--text-off);text-transform:uppercase;letter-spacing:.07em}
+  .btn{height:24px;padding:0 10px;border-radius:4px;border:1px solid var(--line-strong);background:var(--bg-raised);
+    color:var(--text-hi);font:inherit;font-size:13px;cursor:pointer}
+  .btn:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+  .btn.cut{background:var(--cut);border-color:var(--cut);color:#1a1206;font-weight:600}
+  .field{display:inline-flex;align-items:center;height:24px;min-width:84px;padding:0 8px;border:1px solid var(--line-strong);
+    border-radius:4px;background:var(--bg-raised);font-family:var(--mono);font-size:11px;color:var(--text-hi)}
+  .field em{font-style:normal;color:var(--text-off);margin-left:auto;padding-left:8px;font-size:10px}
+  .pill{height:20px;padding:0 8px;border-radius:999px;border:1px solid var(--line-hair);color:var(--text-dim);
+    font-size:11px;display:inline-flex;align-items:center}
+  .pill.on{border-color:var(--sel);background:var(--sel-soft);color:var(--sel)}
+  .row{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:4px;font-size:12px}
+  .row.on{background:var(--sel-soft);box-shadow:inset 0 0 0 1px var(--sel)}
+  .row svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .rail{display:flex;gap:5px;background:var(--bg-app);border:1px solid var(--line-hair);border-radius:6px;padding:5px}
+  .rail span{width:28px;height:28px;display:grid;place-items:center;border-radius:4px;border:1px solid transparent;color:var(--text)}
+  .rail span.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  .rail svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .rules{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .rules p{margin:0 0 7px;font-size:12px;color:var(--text-dim);line-height:1.7}
+  .rules b{color:var(--text)}
+  .rules code{font-family:var(--mono);font-size:11px;color:var(--text)}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Campilot — design system</h1>
+  <p class="lede">The runtime truth is <code>crates/cam-ui/src/theme.rs</code>; this board renders the same values so a
+  new screen can be drawn without opening the source. Every colour below is a <code>Role</code>, not a hex: widgets
+  ask for a role and both sets re-resolve.</p>
+
+  <h2>Colour <span>theme.rs::Palette</span></h2>
+  <div class="cols">
+    <section class="card">
+      <h3>Dark — default</h3>
+      <div class="src">Palette::dark()</div>
+      <div class="sw"><i style="background:#12151a"></i><code>app</code><em>#12151a</em><b>window frame, app bar</b></div>
+      <div class="sw"><i style="background:#0d1014"></i><code>canvas</code><em>#0d1014</em><b>drawing surface — darkest</b></div>
+      <div class="sw"><i style="background:#171b21"></i><code>panel</code><em>#171b21</em><b>rail, dock, status</b></div>
+      <div class="sw"><i style="background:#1e242b"></i><code>raised</code><em>#1e242b</em><b>inputs, hover</b></div>
+      <div class="sw"><i style="background:#232a32"></i><code>overlay</code><em>#232a32</em><b>menus, tooltips</b></div>
+      <div class="sw"><i style="background:#262d36"></i><code>hairline</code><em>#262d36</em><b>1 px division</b></div>
+      <div class="sw"><i style="background:#35404c"></i><code>border</code><em>#35404c</em><b>control borders</b></div>
+      <div class="sw"><i style="background:#e7ecf3"></i><code>text-hi</code><em>#e7ecf3</em><b>titles, values</b></div>
+      <div class="sw"><i style="background:#c3ccd8"></i><code>text</code><em>#c3ccd8</em><b>body</b></div>
+      <div class="sw"><i style="background:#8b95a3"></i><code>text-dim</code><em>#8b95a3</em><b>help, units</b></div>
+      <div class="sw"><i style="background:#5c6673"></i><code>text-off</code><em>#5c6673</em><b>disabled only</b></div>
+      <div class="sw"><i style="background:#6fd3e8"></i><code>sel</code><em>#6fd3e8</em><b>selection signal</b></div>
+      <div class="sw"><i style="background:#f5a623"></i><code>cut</code><em>#f5a623</em><b>cut signal</b></div>
+      <div class="sw"><i style="background:#5ec27f"></i><code>ok</code><em>#5ec27f</em><b>verdict</b></div>
+      <div class="sw"><i style="background:#f0b429"></i><code>warn</code><em>#f0b429</em><b>verdict</b></div>
+      <div class="sw"><i style="background:#f2635f"></i><code>danger</code><em>#f2635f</em><b>verdict</b></div>
+    </section>
+    <section class="card light">
+      <h3>Light — same design on paper</h3>
+      <div class="src">Palette::light()</div>
+      <div class="sw"><i style="background:#eef1f5"></i><code>app</code><em>#eef1f5</em><b>window frame</b></div>
+      <div class="sw"><i style="background:#f7f9fb"></i><code>canvas</code><em>#f7f9fb</em><b>drawing surface</b></div>
+      <div class="sw"><i style="background:#ffffff"></i><code>panel</code><em>#ffffff</em><b>rail, dock, status</b></div>
+      <div class="sw"><i style="background:#f2f5f8"></i><code>raised</code><em>#f2f5f8</em><b>inputs, hover</b></div>
+      <div class="sw"><i style="background:#ffffff"></i><code>overlay</code><em>#ffffff</em><b>menus, shadow</b></div>
+      <div class="sw"><i style="background:#dde3ea"></i><code>hairline</code><em>#dde3ea</em><b>1 px division</b></div>
+      <div class="sw"><i style="background:#c3ccd6"></i><code>border</code><em>#c3ccd6</em><b>control borders</b></div>
+      <div class="sw"><i style="background:#12181f"></i><code>text-hi</code><em>#12181f</em><b>titles, values</b></div>
+      <div class="sw"><i style="background:#2b3440"></i><code>text</code><em>#2b3440</em><b>body</b></div>
+      <div class="sw"><i style="background:#5f6b7a"></i><code>text-dim</code><em>#5f6b7a</em><b>help, units</b></div>
+      <div class="sw"><i style="background:#8b95a3"></i><code>text-off</code><em>#8b95a3</em><b>disabled only</b></div>
+      <div class="sw"><i style="background:#0d7c92"></i><code>sel</code><em>#0d7c92</em><b>selection, darkened for AA</b></div>
+      <div class="sw"><i style="background:#a86200"></i><code>cut</code><em>#a86200</em><b>cut signal</b></div>
+      <div class="sw"><i style="background:#1f7a43"></i><code>ok</code><em>#1f7a43</em><b>verdict</b></div>
+      <div class="sw"><i style="background:#96610a"></i><code>warn</code><em>#96610a</em><b>verdict</b></div>
+      <div class="sw"><i style="background:#b3342f"></i><code>danger</code><em>#b3342f</em><b>verdict</b></div>
+    </section>
+  </div>
+
+  <h2>Type <span>theme.rs::apply — egui's own variants are re-sized, the extras are named</span></h2>
+  <div class="card type">
+    <div><span class="k">hero() 28/600</span><span style="font-size:28px;font-weight:600;color:#e7ecf3;letter-spacing:-.02em">Empty drawing</span></div>
+    <div><span class="k">dialog() 20/600</span><span style="font-size:20px;font-weight:600;color:#e7ecf3">New toolpath</span></div>
+    <div><span class="k">title() 15/600</span><span style="font-size:15px;font-weight:600;color:#e7ecf3">Toolpath settings</span></div>
+    <div><span class="k">Body 13/400</span><span style="font-size:13px">Outside drops the part free. Inside cuts holes and windows.</span></div>
+    <div><span class="k">Button 13/500</span><span style="font-size:13px;font-weight:500;color:#e7ecf3">Generate G-code</span></div>
+    <div><span class="k">Small 12/400</span><span style="font-size:12px">60° V-bit · 12.7 mm</span></div>
+    <div><span class="k">caption() 11/400</span><span style="font-size:11px;color:#8b95a3">X 128.40 · zoom 214 %</span></div>
+    <div><span class="k">Monospace 12/400</span><span style="font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums">6.000 mm · 1200 mm/min</span></div>
+  </div>
+
+  <h2>Geometry <span>Metrics::shell()</span></h2>
+  <div class="geo">
+    <div><b>spacing</b><span>2 4 6 8 12 16 24 32</span></div>
+    <div><b>radii</b><span>4 control · 6 panel · 10 dialog · 999 pill</span></div>
+    <div><b>heights</b><span>24 control · 26 row · 40 bar · 26 status</span></div>
+    <div><b>fixed widths</b><span>rail 52 · dock 288</span></div>
+    <div><b>hairline</b><span>1 px — the only border weight</span></div>
+    <div><b>icons</b><span>24 box · 1.6 stroke</span></div>
+    <div><b>shadows</b><span>0 8 24 menu · 0 24 64 dialog</span></div>
+    <div><b>motion</b><span>≤ 140 ms, reduced-motion aware</span></div>
+  </div>
+
+  <h2>Components</h2>
+  <div class="card">
+    <div class="comp">
+      <div class="stack"><span class="cap">Rail — active glyph keeps its weight</span>
+        <div class="rail">
+          <span class="on"><svg viewBox="0 0 24 24"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></span>
+          <span><svg viewBox="0 0 24 24"><path d="M4 19L20 6"/><circle cx="4" cy="19" r="1.3"/></svg></span>
+          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></span>
+          <span><svg viewBox="0 0 24 24"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></span>
+          <span><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.6 6.1.8-4.4 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.3 9.9l6.1-.8z"/></svg></span>
+        </div>
+      </div>
+      <div class="stack"><span class="cap">Buttons</span>
+        <button class="btn">Cancel</button>
+        <button class="btn" style="outline:2px solid var(--sel);outline-offset:1px">Focus</button>
+        <button class="btn cut">Generate G-code</button>
+      </div>
+      <div class="stack"><span class="cap">Field — tabular, unit once</span>
+        <span class="field">6.000<em>mm</em></span>
+        <span class="field">1200<em>mm/min</em></span>
+      </div>
+      <div class="stack"><span class="cap">Tabs</span>
+        <span class="pill on">Selection</span>
+        <span class="pill">Toolpath</span>
+        <span class="pill">Material</span>
+      </div>
+      <div class="stack" style="width:236px"><span class="cap">Layer rows</span>
+        <div class="row"><svg viewBox="0 0 24 24" style="color:#8b95a3"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Cut outside<span style="margin-left:auto;font-size:10px;color:#5c6673">14</span></div>
+        <div class="row on"><svg viewBox="0 0 24 24" style="color:#6fd3e8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Engrave V<span style="margin-left:auto;font-size:10px;color:#8b95a3">31</span></div>
+        <div class="row" style="color:#5c6673"><svg viewBox="0 0 24 24" style="color:#5c6673;opacity:.7"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M4 4l16 16"/></svg>Holes (hidden)</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Rules</h2>
+  <div class="rules">
+    <div class="card"><h3>Mandatory</h3>
+      <p>· Every pair the shell writes on meets <b>AA (4.5:1)</b>; strokes and signals meet <b>3:1</b> — proven by test, not by eye.</p>
+      <p>· Every interactive element has a <b>2 px focus ring</b> on both sets.</p>
+      <p>· Every icon-only control carries a tooltip with its name and key.</p>
+      <p>· Numeric fields align right on tabular figures, unit in a fixed column.</p>
+    </div>
+    <div class="card"><h3>Forbidden</h3>
+      <p>· A second accent hue, or a filled variant beside the line icon set.</p>
+      <p>· Shadows on docked surfaces, or a border weight other than 1 px.</p>
+      <p>· Colour as the only carrier of meaning.</p>
+      <p>· Any gap that is not on the spacing scale, any numeric field without a unit.</p>
+    </div>
+  </div>
+</main>
+</body>
+</html>

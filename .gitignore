@@ -3,6 +3,9 @@
 /evidence/installer-extract/
 /evidence/derived/
 
+# The owner's reference application, used as a design input only.
+/data/
+
 # Rust
 /target/
 .worktrees/

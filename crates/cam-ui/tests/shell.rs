@@ -7,7 +7,9 @@
 use cam_app::{AlignMode, AppState, Transform, VertexEdit};
 use cam_geom::{Contour, Point2, Vec2};
 use cam_model::{Document, Job, Layer};
-use cam_ui::{handle_action, DrawShape, Shell, ShellOutput, Tool, UiAction, DEFAULT_TOLERANCE_MM};
+use cam_ui::{
+  handle_action, DrawShape, Shell, ShellOutput, Stage, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
+};
 
 fn document_with_rectangle() -> Document {
   let mut document = Document::new(Job::default_sheet());
@@ -78,6 +80,51 @@ fn painted_text(output: &egui::FullOutput) -> Vec<String> {
     .collect()
 }
 
+/// Read a scrollable panel all the way down.
+///
+/// egui paints only what falls inside a scroll area's clip rect, so one frame shows the top of a long
+/// tab and nothing below it. This walks the pointer into the panel and turns the wheel until the
+/// painted text stops growing — which is what an operator does to read the same list.
+fn texts_scrolled_to_the_end(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  at: egui::Pos2,
+) -> Vec<String> {
+  let mut seen: Vec<String> = Vec::new();
+  let mut input = raw_input();
+  input.events.push(egui::Event::PointerMoved(at));
+  for _ in 0..16 {
+    input.events.push(egui::Event::MouseWheel {
+      unit: egui::MouseWheelUnit::Point,
+      delta: egui::vec2(0.0, -160.0),
+      phase: egui::TouchPhase::Move,
+      source: egui::MouseWheelSource::Unknown,
+      modifiers: egui::Modifiers::default(),
+    });
+    let mut captured: Option<ShellOutput> = None;
+    let full = ctx.run_pass(input.clone(), |ctx| {
+      captured = Some(shell.show(app, ctx));
+    });
+    let texts = painted_text(&full);
+    full.drop_without_applying_deltas();
+    let before = seen.len();
+    for text in texts {
+      if !seen.contains(&text) {
+        seen.push(text);
+      }
+    }
+    let actions = captured.expect("the shell ran").actions;
+    for action in actions {
+      shell.apply_action(app, &action);
+    }
+    if seen.len() == before {
+      break;
+    }
+  }
+  seen
+}
+
 fn joined(texts: &[String]) -> String {
   texts.join(" | ")
 }
@@ -122,16 +169,229 @@ fn the_layer_dock_reports_every_layer_and_paints_its_name() {
 }
 
 #[test]
-fn the_properties_panel_shows_the_job_and_the_selection() {
+fn the_selection_tab_shows_the_job_and_the_selection() {
   let mut app = AppState::new(document_with_rectangle());
   app.select(vec!["E1".to_owned()]);
   let mut shell = Shell::new();
+  shell.set_tab(Tab::Selection);
   let (output, texts) = frame(&mut shell, &mut app);
 
   let properties = output.drawn.property_lines.join(" | ");
   assert!(properties.contains("Job:"), "{properties}");
   assert!(properties.contains("E1: contour"), "{properties}");
-  assert!(joined(&texts).contains("Properties"));
+  assert!(joined(&texts).contains("Inspector"));
+  assert!(joined(&texts).contains("Delete selection"));
+}
+
+#[test]
+fn the_stage_bar_reports_what_each_stage_can_prove() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert_eq!(output.drawn.stage, Stage::Design);
+  // One vector for Design, and the count the document can actually prove for toolpaths.
+  assert!(
+    all.contains("Design  1"),
+    "the vector count must be real: {all}"
+  );
+  assert!(
+    all.contains("Toolpaths  0"),
+    "the document holds no toolpaths and the bar must say so: {all}"
+  );
+  // The stages the shell cannot finish yet show a dash, never a zero it did not measure.
+  assert!(all.contains("Edit  —"), "{all}");
+}
+
+#[test]
+fn switching_stage_changes_what_the_palette_offers() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (design, _) = frame(&mut shell, &mut app);
+  assert!(
+    design.drawn.palette.iter().any(|entry| entry == "Line"),
+    "the drawing tools belong on the Design palette: {:?}",
+    design.drawn.palette
+  );
+  assert!(
+    !design.drawn.palette.iter().any(|entry| entry == "Offset"),
+    "an edit command must not be on the Design palette: {:?}",
+    design.drawn.palette
+  );
+
+  shell.set_stage(Stage::Edit);
+  let (edit, _) = frame(&mut shell, &mut app);
+  assert_eq!(edit.drawn.stage, Stage::Edit);
+  for expected in [
+    "Move", "Rotate", "Scale", "Mirror", "Array", "Offset", "Join",
+  ] {
+    assert!(
+      edit.drawn.palette.iter().any(|entry| entry == expected),
+      "missing {expected:?} in {:?}",
+      edit.drawn.palette
+    );
+  }
+  assert!(
+    !edit.drawn.palette.iter().any(|entry| entry == "Line"),
+    "a drawing tool must not be on the Edit palette: {:?}",
+    edit.drawn.palette
+  );
+}
+
+#[test]
+fn the_status_bar_offers_a_chip_per_snap_kind() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["Endpoint", "Midpoint", "Centre", "Grid", "magnet"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+}
+
+#[test]
+fn the_snap_chips_arm_and_disarm_a_kind_but_never_leave_none() {
+  use cam_view::SnapKind;
+  // No document and no frame: arming a snap kind is shell state, and this is the whole rule.
+  let mut shell = Shell::new();
+  assert!(shell.snap_armed(SnapKind::Midpoint));
+
+  shell.toggle_snap(SnapKind::Midpoint);
+  assert!(
+    !shell.snap_armed(SnapKind::Midpoint),
+    "a chip turns its kind off"
+  );
+  shell.toggle_snap(SnapKind::Midpoint);
+  assert!(shell.snap_armed(SnapKind::Midpoint), "and back on");
+
+  // The last armed kind stays: a snapping strip with everything off is a magnet with no field.
+  for kind in [SnapKind::Endpoint, SnapKind::Midpoint, SnapKind::Center] {
+    shell.toggle_snap(kind);
+  }
+  shell.toggle_snap(SnapKind::Grid);
+  assert!(
+    shell.snap_armed(SnapKind::Grid),
+    "the last kind cannot be disarmed"
+  );
+}
+
+#[test]
+fn the_hint_names_the_current_gesture() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, texts) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.contains("left→right"),
+    "Select must explain the marquee directions: {}",
+    output.drawn.hint
+  );
+  assert!(
+    joined(&texts).contains("left→right"),
+    "and the bar must show it"
+  );
+
+  shell.active_tool = Tool::Line;
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.starts_with("Line"),
+    "an armed tool names itself: {}",
+    output.drawn.hint
+  );
+
+  shell.set_view_3d(true);
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output.drawn.hint.contains("orbit"),
+    "the 3D view has its own gestures: {}",
+    output.drawn.hint
+  );
+}
+
+#[test]
+fn the_palette_labels_its_groups() {
+  // The reference app's lesson: a labelled group is what keeps twenty commands findable, and an
+  // unlabelled rail is what made the seven Edit commands nameless.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("DRAW"),
+    "Design must label its drawing group: {all}"
+  );
+  assert!(
+    all.contains("VIEW"),
+    "the invariants get their own group: {all}"
+  );
+
+  shell.set_stage(Stage::Edit);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(all.contains("TRANSFORM"), "{all}");
+  assert!(all.contains("VECTOR EDIT"), "{all}");
+}
+
+#[test]
+fn the_job_tab_shows_labelled_measurements_in_two_columns() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["MATERIAL", "Width X", "Height Y", "Thickness Z", "DOCUMENT"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+}
+
+#[test]
+fn a_stage_with_no_tools_of_its_own_says_where_its_work_lives() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_stage(Stage::Toolpaths);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("cam-cli toolpath"),
+    "an empty stage must explain itself: {all}"
+  );
+}
+
+#[test]
+fn collapsing_the_inspector_widens_the_canvas_and_the_strip_opens_it_again() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let (open, _) = frame_with(&ctx, &mut shell, &mut app);
+
+  shell.set_inspector_open(false);
+  let (closed, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    !joined(&texts).contains("Inspector"),
+    "the panel must be gone"
+  );
+  assert!(
+    closed.canvas.width > open.canvas.width,
+    "the canvas must take the width back: {} vs {}",
+    closed.canvas.width,
+    open.canvas.width
+  );
+
+  // Touching the strip brings it back: that is what makes collapsing usable rather than modal.
+  let strip = egui::pos2(
+    (closed.canvas.x + closed.canvas.width) as f32 + 6.0,
+    (closed.canvas.y + 40.0) as f32,
+  );
+  // Two passes with the pointer there: egui decides what is hovered from the interaction state the
+  // previous pass ended with, so one pass with a moved pointer reports hover on the next frame.
+  for _ in 0..2 {
+    let mut input = raw_input();
+    input.events.push(egui::Event::PointerMoved(strip));
+    let full = ctx.run_pass(input, |ctx| {
+      shell.show(&mut app, ctx);
+    });
+    full.drop_without_applying_deltas();
+  }
+  assert!(shell.inspector_open(), "hovering the strip must reopen it");
 }
 
 #[test]
@@ -153,13 +413,26 @@ fn the_canvas_paints_the_geometry_the_grid_and_the_zoom_readout() {
 }
 
 #[test]
-fn the_command_bar_offers_undo_redo_and_the_drawing_tools() {
+fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  let (_, texts) = frame(&mut shell, &mut app);
+  let (output, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  for label in ["Undo", "Redo", "Zoom to fit", "Add", "Delete selection"] {
+  for label in ["campilot", "untitled.c2d", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+  // The rail is where the gestures live now, and it says so in its own report rather than in pixels.
+  for tool in Tool::ALL {
+    assert!(
+      output
+        .drawn
+        .palette
+        .iter()
+        .any(|entry| entry == tool.label()),
+      "{:?} must be on the rail: {:?}",
+      tool,
+      output.drawn.palette
+    );
   }
 }
 
@@ -334,6 +607,7 @@ fn toggling_a_missing_layer_reports_why() {
 fn selecting_through_an_action_updates_the_properties_panel() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
+  shell.set_tab(Tab::Selection);
   let _ = frame(&mut shell, &mut app);
   handle_action(&mut app, &UiAction::SetSelection(vec!["E1".to_owned()])).expect("select");
   let (output, _) = frame(&mut shell, &mut app);
@@ -1051,10 +1325,19 @@ fn a_refused_command_puts_the_kernel_reason_in_the_status_bar_and_changes_nothin
 }
 
 #[test]
-fn the_tools_area_offers_every_authoring_command() {
+fn the_tools_tab_offers_every_authoring_command() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  let (_, texts) = frame(&mut shell, &mut app);
+  let ctx = egui::Context::default();
+  let (output, first) = frame_with(&ctx, &mut shell, &mut app);
+  let inspector = egui::pos2(
+    (output.canvas.x + output.canvas.width) as f32 + 100.0,
+    (output.canvas.y + 120.0) as f32,
+  );
+  let mut texts = first;
+  texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
   let all = joined(&texts);
   for label in [
     "Select",
@@ -1084,6 +1367,7 @@ fn the_tools_area_offers_every_authoring_command() {
     "Insert node",
     "Delete node",
     "Add text",
+    "Add rectangle",
   ] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
@@ -1109,7 +1393,7 @@ fn every_tool_can_be_armed_and_the_shell_still_runs_headless() {
       "{tool:?} must not act without input: {:?}",
       output.actions
     );
-    assert!(joined(&texts).contains("Properties"));
+    assert!(joined(&texts).contains("Inspector"));
   }
 }
 

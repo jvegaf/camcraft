@@ -27,7 +27,7 @@ use cam_units::Length;
 fn main() -> eframe::Result<()> {
   let options = eframe::NativeOptions {
     viewport: eframe::egui::ViewportBuilder::default()
-      .with_inner_size([1280.0, 800.0])
+      .with_inner_size([1440.0, 900.0])
       .with_min_inner_size([800.0, 600.0])
       .with_title("campilot"),
     ..Default::default()
@@ -35,7 +35,13 @@ fn main() -> eframe::Result<()> {
   eframe::run_native(
     "campilot",
     options,
-    Box::new(|_creation| Ok(Box::new(Editor::new()))),
+    Box::new(|creation| {
+      let mut editor = Editor::new();
+      // Publish the tokens before the first frame: this host hands the shell a `Ui` it built itself,
+      // so the only moment the theme can reach every widget of frame one is here, on the context.
+      editor.shell.publish_theme(&creation.egui_ctx);
+      Ok(Box::new(editor))
+    }),
   )
 }
 
@@ -58,9 +64,9 @@ impl Editor {
       // start state is the same on every launch, so the animation is as deterministic as the moves.
       preview.set_playing(true);
     }
-    shell.status =
-      "sample document — click an edge to select it, drag the 3D view to orbit, pause to inspect"
-        .to_owned();
+    // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
+    // outcome of the last command, and on a fresh window there is no command yet.
+    shell.status.clear();
     Self { app, shell }
   }
 }

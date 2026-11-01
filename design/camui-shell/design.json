@@ -1,0 +1,34 @@
+{
+  "title": "Campilot shell",
+  "brief": "Redesign the Campilot (Rust + egui CAM app) desktop shell after the visual and structural concept extracted from the reference app Prancheta CNC: one line-weight icon language, a graphite canvas that outranks the panels, named workflow stages with gates, a collapsible inspector, and teaching strings inside the tool.",
+  "artboards": [
+    {
+      "file": "01-shell-2d.html",
+      "title": "2D shell — app bar, stage bar, labelled palette, collapsible inspector, status bar",
+      "tradeoff": "One screen, one job: the operator always knows the next step, but the palette can only show one stage of commands at a time and experts pay a stage switch.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-stages.html",
+      "title": "The staged workflow and its gates",
+      "tradeoff": "Gates turn 'looks done' into a checkable fact and teach the app through its own help panel; the cost is a linear path that fits sign work but not exploration.",
+      "width": 1440,
+      "height": 1560
+    },
+    {
+      "file": "03-iconography.html",
+      "title": "Icon set — 66 glyphs on one 24 × 24 grid",
+      "tradeoff": "A single stroke weight reads as one hand and never shimmers when selection moves; the cost is that no icon can carry fine detail, so complex strategies rely on labels.",
+      "width": 1440,
+      "height": 1760
+    },
+    {
+      "file": "04-tokens.html",
+      "title": "Visual tokens — dark and light, two signals, type and geometry",
+      "tradeoff": "Two signal colours keep cut and selection unambiguous in monochrome and for colour-blind operators; the cost is a monochrome UI that needs icon quality to carry the personality.",
+      "width": 1440,
+      "height": 1300
+    }
+  ]
+}

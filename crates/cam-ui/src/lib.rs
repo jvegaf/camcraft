@@ -47,8 +47,16 @@ use cam_view::{
   box_select, build_grid, build_scene, choose_snap, pick, SceneItem, Snap, SnapKind, Style,
   PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
 };
-use egui::{Context, Pos2, Sense, Stroke};
+use egui::{Context, Pos2, RichText, Sense, Stroke};
 
+use crate::icons::{Family, Icon};
+use crate::theme::{Palette, Role, Theme};
+
+pub mod chrome;
+pub mod icons;
+pub mod theme;
+
+pub use chrome::{Stage, Tab};
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -80,24 +88,6 @@ pub const JOIN_TOLERANCE_MM: f64 = cam_geom::DEFAULT_TOLERANCE;
 /// A press and release in the same place is a cancel: a zero-size rectangle or a zero-length line is
 /// not something the user can see, select or undo on purpose, so it is never submitted.
 pub const MIN_DRAW_DRAG_PX: f64 = 3.0;
-
-/// Colours, in one place so the picture stays consistent.
-mod palette {
-  use egui::Color32;
-
-  /// Background of the drawing area.
-  pub const CANVAS: Color32 = Color32::from_rgb(24, 26, 30);
-  /// Grid lines.
-  pub const GRID: Color32 = Color32::from_rgb(44, 48, 56);
-  /// Ordinary geometry.
-  pub const GEOMETRY: Color32 = Color32::from_rgb(206, 212, 222);
-  /// Selected geometry.
-  pub const SELECTED: Color32 = Color32::from_rgb(255, 176, 59);
-  /// The stock outline.
-  pub const JOB: Color32 = Color32::from_rgb(88, 132, 178);
-  /// Snap markers and the selection marquee.
-  pub const SNAP: Color32 = Color32::from_rgb(120, 220, 160);
-}
 
 /// The tool armed on the canvas.
 ///
@@ -564,6 +554,16 @@ pub struct DrawnState {
   pub painted_triangles: usize,
   /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
   pub painted_3d_lines: usize,
+  /// The stage the frame drew, and the rail entries it offered in order.
+  ///
+  pub stage: Stage,
+  /// The sentence the status bar showed at its right end.
+  pub hint: String,
+  /// What the left palette offered, in the order it drew them.
+  ///
+  /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
+  /// read an icon: this is how "switching stage really changed what the operator can reach" is asserted.
+  pub palette: Vec<String>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the panel's own readout ends on: exactly `0.0` while the preview stands on its first
@@ -616,6 +616,9 @@ pub struct Shell {
   pub star_points: usize,
   /// Inner/outer radius ratio used by the star tool. Default 0.5, the classic five-point star.
   pub star_inner_ratio: f64,
+  /// The colour set this shell draws in. [`Theme::Dark`] is the design default: a dark shop, a bright
+  /// screen. Widgets never name a colour, so switching sets re-resolves the whole picture.
+  pub theme: Theme,
   /// Rows and columns the array command uses. Default 2 x 3.
   pub array_grid: (usize, usize),
   /// Column and row spacing the array command uses, in millimetres. Default 50 x 25 mm.
@@ -681,6 +684,20 @@ pub struct Shell {
   /// if pointer tracking uses last frame's canvas geometry. That is the standard immediate-mode
   /// approach and it keeps the readout a frame fresh instead of a frame stale.
   last_canvas: CanvasRect,
+  /// The set egui was last told about. `theme::apply` clones styles, so it runs when the set changes
+  /// rather than once per frame.
+  applied_theme: Option<Theme>,
+  /// Whether the icon sheet is open. Until the shell has a rail to hang glyphs on, this is the only
+  /// way to look at the whole set beside the rest of it.
+  show_icons: bool,
+  /// Which stage of the job the frame is showing. View state: switching it pushes no command.
+  stage: Stage,
+  /// Which inspector tab is showing.
+  inspector_tab: Tab,
+  /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
+  inspector_open: bool,
+  /// Whether the shortcuts window is open.
+  show_shortcuts: bool,
 }
 
 impl Default for Shell {
@@ -691,6 +708,7 @@ impl Default for Shell {
       polygon_sides: 6,
       star_points: 5,
       star_inner_ratio: 0.5,
+      theme: Theme::Dark,
       array_grid: (2, 3),
       array_spacing: (50.0, 25.0),
       offset_distance: 2.0,
@@ -721,6 +739,12 @@ impl Default for Shell {
       auto_frame: true,
       framed: false,
       last_canvas: CanvasRect::default(),
+      applied_theme: None,
+      show_icons: false,
+      stage: Stage::default(),
+      inspector_tab: Tab::default(),
+      inspector_open: true,
+      show_shortcuts: false,
     }
   }
 }
@@ -729,6 +753,36 @@ impl Shell {
   /// A shell with default widget values.
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// The colour set this shell draws in.
+  pub fn theme(&self) -> Theme {
+    self.theme
+  }
+
+  /// Whether the 3D view is the one showing.
+  pub fn view_3d(&self) -> bool {
+    self.show_3d
+  }
+
+  /// Show the 3D view (`true`) or the drawing (`false`).
+  pub fn set_view_3d(&mut self, showing: bool) {
+    self.show_3d = showing;
+  }
+
+  /// Switch the colour set. It takes effect on the next frame, because a frame is what publishes it.
+  pub fn set_theme(&mut self, theme: Theme) {
+    self.theme = theme;
+  }
+
+  /// The palette of the current set, resolved once per frame by whoever needs several roles.
+  pub fn palette(&self) -> Palette {
+    self.theme.palette()
+  }
+
+  /// The measurements of the current set.
+  pub fn metrics(&self) -> theme::Metrics {
+    self.theme.metrics()
   }
 
   /// Apply one action and show what it produced in the status bar.
@@ -784,8 +838,105 @@ impl Shell {
   /// Actions are returned rather than applied: one frame of latency is invisible, and a pure shell
   /// is what makes the interface testable.
   pub fn show(&mut self, app: &mut AppState, ctx: &Context) -> ShellOutput {
+    // Before the root `Ui` exists, because a `Ui` captures its style when it is created: publishing the
+    // tokens from inside the frame would reach the next frame's widgets and not this one's.
+    self.publish_theme(ctx);
     // egui 0.37 stacks panels on the root `Ui`; every panel of one frame goes through one borrow.
     ctx.root_ui(|ui| self.show_in(app, ui))
+  }
+
+  /// Publish the tokens into a context, once per change.
+  ///
+  /// Public because a host that owns its own root `Ui` (eframe hands one in) has to call this before it
+  /// builds that `Ui`; [`Self::show`] calls it for hosts that do not.
+  pub fn publish_theme(&mut self, ctx: &Context) {
+    // The cache is only valid for the context it was written into: a host may replace the context, and
+    // a fresh one has none of the named styles the shell asks for. The marker in the style itself is
+    // therefore the authority, and `applied_theme` is only the fast path.
+    let styled = ctx
+      .style_of(self.theme.egui())
+      .text_styles
+      .contains_key(&theme::title());
+    if !styled || self.applied_theme != Some(self.theme) {
+      theme::apply(ctx, self.theme);
+      self.applied_theme = Some(self.theme);
+    }
+  }
+
+  /// The whole glyph set, on one window.
+  ///
+  /// A glyph is only checkable against its neighbours: one drawn at a 2.4 stroke looks fine alone and
+  /// wrong beside sixty-five drawn at 1.6. The window is deliberately plain — a grid and names —
+  /// because it is an instrument, not a screen the operator ever sees.
+  fn icon_sheet(&mut self, ctx: &Context) {
+    let palette = self.palette();
+    let metrics = self.metrics();
+    let mut open = self.show_icons;
+    egui::Window::new("Icons")
+      .open(&mut open)
+      .resizable(true)
+      .default_width(760.0)
+      .show(ctx, |ui| {
+        ui.label(
+          egui::RichText::new(format!(
+            "{} glyphs · stroke {} in a {} box · F2 closes",
+            Icon::ALL.len(),
+            metrics.icon_stroke,
+            metrics.icon_size
+          ))
+          .size(theme::CAPTION)
+          .color(palette.get(Role::TextDim)),
+        );
+        egui::ScrollArea::vertical()
+          .id_salt("icon-sheet")
+          .show(ui, |ui| {
+            // The artboard's structure: six families, each with its count, so seventy glyphs read as six
+            // arguments instead of one wall. `min_col_width` keeps a long name like `toolpath-profile`
+            // inside its cell instead of printing over its neighbour.
+            for family in Family::ALL {
+              ui.add_space(metrics.space(3));
+              ui.label(
+                egui::RichText::new(format!(
+                  "{}  ·  {}",
+                  family.label(),
+                  Icon::in_family(family).count()
+                ))
+                .size(theme::SMALL)
+                .color(palette.get(Role::TextHi)),
+              );
+              egui::Grid::new(family.label())
+                .num_columns(8)
+                .min_col_width(84.0)
+                .spacing([metrics.space(4), metrics.space(3)])
+                .show(ui, |ui| {
+                  for (index, icon) in Icon::in_family(family).enumerate() {
+                    ui.vertical(|ui| {
+                      ui.spacing_mut().item_spacing.y = metrics.space(0);
+                      let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(28.0, 28.0), Sense::hover());
+                      let scale = rect.width() / metrics.icon_size;
+                      icons::paint(
+                        ui.painter(),
+                        rect,
+                        icon,
+                        palette.get(Role::Text),
+                        metrics.icon_stroke * scale,
+                      );
+                      ui.label(
+                        egui::RichText::new(icon.name())
+                          .size(theme::CAPTION)
+                          .color(palette.get(Role::TextDim)),
+                      );
+                    });
+                    if index % 8 == 7 {
+                      ui.end_row();
+                    }
+                  }
+                });
+            }
+          });
+      });
+    self.show_icons = open;
   }
 
   /// Build one frame into an existing root [`egui::Ui`].
@@ -795,205 +946,178 @@ impl Shell {
   pub fn show_in(&mut self, app: &mut AppState, ui: &mut egui::Ui) -> ShellOutput {
     let mut output = ShellOutput::default();
     let ctx = ui.ctx().clone();
+    // A host may hand in a `Ui` it built before calling us; the styles are still worth publishing for
+    // whatever this frame creates from here on, and `publish_theme` is idempotent.
+    self.publish_theme(&ctx);
+    // F2 opens the glyph set: the vocabulary is part of the design, so it has to be inspectable from
+    // inside the app that uses it rather than only from the artboard.
+    if ctx.input(|input| input.key_pressed(egui::Key::F2)) {
+      self.show_icons = !self.show_icons;
+    }
+    if self.show_icons {
+      self.icon_sheet(&ctx);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
     // breakpoint) must not jump the animation forward by the length of the stall.
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     self.track_pointer(app, &ctx);
-    self.command_bar(app, ui, &mut output);
-    self.view3d(ui, &mut output, dt);
-    self.layer_dock(app, ui, &mut output);
-    self.properties(app, ui, &mut output);
+    // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
+    // and a central panel must come last or it would claim the space the sides need.
+    self.app_bar(app, ui, &mut output);
+    self.stage_bar(app, ui);
     self.status_bar(app, ui, &mut output);
-    self.authoring(app, ui, &mut output);
-    self.canvas(app, ui, &mut output);
+    self.palette_panel(app, ui, &mut output);
+    self.inspector(app, ui, &mut output);
+    // One view or the other, never both: the toggle is a mode, and the mode owns the central area.
+    if self.show_3d {
+      self.view3d(ui, &mut output, dt);
+    } else {
+      self.canvas(app, ui, &mut output);
+    }
+    if self.show_shortcuts {
+      self.shortcuts_window(&ctx);
+    }
     output
   }
 
-  fn command_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
-    egui::Panel::top("command_bar").show(ui, |ui| {
-      ui.horizontal(|ui| {
-        ui.heading("campilot");
-        ui.separator();
-
-        if ui
-          .add_enabled(app.can_undo(), egui::Button::new("Undo"))
-          .clicked()
-        {
-          output.actions.push(UiAction::Undo);
-        }
-        if ui
-          .add_enabled(app.can_redo(), egui::Button::new("Redo"))
-          .clicked()
-        {
-          output.actions.push(UiAction::Redo);
-        }
-        ui.separator();
-        if ui.button("Zoom to fit").clicked() {
-          output.actions.push(UiAction::ZoomToFit);
-        }
-        ui.separator();
-        // The 3D panel is view state, so the button toggles it here rather than pushing an action:
-        // an action is a document command, and the preview never edits the document (M5 D-M5-9).
-        if ui.selectable_label(self.show_3d, "3D").clicked() {
-          self.show_3d = !self.show_3d;
-        }
-        ui.separator();
-
-        ui.label("Rectangle");
-        ui.add(
-          egui::DragValue::new(&mut self.rectangle_size.0)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        ui.label("x");
-        ui.add(
-          egui::DragValue::new(&mut self.rectangle_size.1)
-            .speed(1.0)
-            .suffix(" mm"),
-        );
-        if ui.button("Add").clicked() {
-          output.actions.push(UiAction::AddRectangle {
-            width: self.rectangle_size.0,
-            height: self.rectangle_size.1,
-          });
-        }
-
-        ui.separator();
-        if ui
-          .add_enabled(
-            !app.selection().is_empty(),
-            egui::Button::new("Delete selection"),
-          )
-          .clicked()
-        {
-          output.actions.push(UiAction::DeleteSelection);
-        }
-      });
-    });
-  }
-
+  /// The 3D view, drawn where the canvas would be.
+  ///
+  /// A mode, not a panel stacked over the drawing: the preview used to take a slice of the top and leave
+  /// the canvas the rest, which gave both views half a screen and neither a usable one. Two views that are
+  /// never on screen together also means the hidden one costs nothing — no playback clock, no mesh, no
+  /// region. The surface fills whatever the frame gives it.
   fn view3d(&mut self, ui: &mut egui::Ui, output: &mut ShellOutput, dt: f64) {
-    if !self.show_3d {
-      return;
-    }
-    egui::Panel::top("preview_3d").show(ui, |ui| {
+    let palette = self.palette();
+    egui::CentralPanel::default().show(ui, |ui| {
       ui.horizontal(|ui| {
-        ui.heading("Preview");
+        ui.label(egui::RichText::new("3D").size(theme::TITLE));
         ui.separator();
         if let Some(preview) = self.preview.as_mut() {
-          // Playback advances only while the panel is open: a closed panel is not a hidden clock, and
+          // Playback advances only while this view is the one showing: a hidden view is not a clock, and
           // the 2D path pays nothing for a preview nobody is looking at (A12).
           preview.advance(dt);
           if preview.playing() {
-            // Without this the window would only repaint on input, and a program that plays to its
-            // end would appear to play only when the mouse moves.
+            // Without this the window would repaint only on input, and a program that plays to its end
+            // would appear to play only when the mouse moves.
             ui.ctx().request_repaint();
           }
           preview.controls(ui);
           ui.separator();
-          ui.label(format!(
-            "{} move(s), {} x {} cells, stride {}",
-            preview.program().move_count(),
-            preview.field().grid().columns,
-            preview.field().grid().rows,
-            preview.stride()
-          ));
+          ui.label(
+            egui::RichText::new(format!(
+              "{} move(s), {} × {} cells, stride {}",
+              preview.program().move_count(),
+              preview.field().grid().columns,
+              preview.field().grid().rows,
+              preview.stride()
+            ))
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+          );
           output.drawn.preview_progress = preview.progress();
         } else {
-          ui.label("no program to preview: simulate one with `cam-cli` and hand it in");
+          ui.label(
+            egui::RichText::new(
+              "No program to preview. Simulate one with `cam-cli simulate` and hand it in.",
+            )
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+          );
         }
       });
-      match self.preview.as_mut() {
-        Some(preview) => preview.show(ui, &mut output.drawn),
-        None => {
-          // An open panel with nothing to show still needs its region allocated, or the panel would
-          // collapse and the user's next click would land on the canvas instead.
-          let size = egui::vec2(ui.available_width(), view3d::PREVIEW_HEIGHT);
-          ui.allocate_space(size);
-        }
+      ui.separator();
+      if let Some(preview) = self.preview.as_mut() {
+        preview.show(ui, &mut output.drawn);
+      } else {
+        // An empty 3D view still holds its region: a collapsing view would hand the click to whatever is
+        // underneath and read as a bug.
+        ui.allocate_space(ui.available_size());
       }
     });
   }
 
   fn layer_dock(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
-    egui::Panel::left("layer_dock")
-      .default_size(220.0)
-      .show(ui, |ui| {
-        ui.heading("Layers");
-        ui.separator();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-          for layer in &app.document().layers {
-            let mut visible = layer.visible;
-            ui.horizontal(|ui| {
-              if ui.checkbox(&mut visible, "").changed() {
-                output.actions.push(UiAction::ToggleLayerVisible {
-                  layer_id: layer.id.clone(),
-                });
-              }
-              ui.label(format!("{} — {}", layer.id, layer.name));
-            });
-            ui.label(format!("  {} entit(ies)", layer.entities.len()));
-            output
-              .drawn
-              .layer_rows
-              .push((layer.id.clone(), layer.entities.len(), layer.visible));
-            ui.separator();
-          }
-        });
+    {
+      egui::ScrollArea::vertical().show(ui, |ui| {
+        for layer in &app.document().layers {
+          let mut visible = layer.visible;
+          ui.horizontal(|ui| {
+            if ui.checkbox(&mut visible, "").changed() {
+              output.actions.push(UiAction::ToggleLayerVisible {
+                layer_id: layer.id.clone(),
+              });
+            }
+            ui.label(format!("{} — {}", layer.id, layer.name));
+          });
+          ui.label(format!("  {} entit(ies)", layer.entities.len()));
+          output
+            .drawn
+            .layer_rows
+            .push((layer.id.clone(), layer.entities.len(), layer.visible));
+          ui.separator();
+        }
       });
+    }
   }
 
   fn properties(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
-    egui::Panel::right("properties")
-      .default_size(260.0)
-      .show(ui, |ui| {
-        ui.heading("Properties");
-        ui.separator();
-        let job = &app.document().job;
-        let mut lines = vec![
-          format!(
-            "Job: {:.1} x {:.1} x {:.1} mm",
-            job.width.mm(),
-            job.height.mm(),
-            job.thickness.mm()
-          ),
-          format!("Units: {:?}, origin {:?}", job.units, job.origin),
-          format!("Safe Z: {:.1} mm", job.safe_z.mm()),
-        ];
-        ui.label(&lines[0]);
-        ui.label(&lines[1]);
-        ui.label(&lines[2]);
-        ui.separator();
+    {
+      ui.heading("Properties");
+      ui.separator();
+      if ui
+        .add_enabled(
+          !app.selection().is_empty(),
+          egui::Button::new("Delete selection"),
+        )
+        .clicked()
+      {
+        output.actions.push(UiAction::DeleteSelection);
+      }
+      let job = &app.document().job;
+      let mut lines = vec![
+        format!(
+          "Job: {:.1} x {:.1} x {:.1} mm",
+          job.width.mm(),
+          job.height.mm(),
+          job.thickness.mm()
+        ),
+        format!("Units: {:?}, origin {:?}", job.units, job.origin),
+        format!("Safe Z: {:.1} mm", job.safe_z.mm()),
+      ];
+      ui.label(&lines[0]);
+      ui.label(&lines[1]);
+      ui.label(&lines[2]);
+      ui.separator();
 
-        let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
-        if selected.is_empty() {
-          lines.push("Selection: none".to_owned());
-          ui.label("Selection: none");
-        } else {
-          for id in &selected {
-            let summary = match app
-              .document()
-              .entity(id)
-              .and_then(|entity| entity.kind.as_contour())
-            {
-              Some(contour) => format!(
-                "{id}: contour, {:.1} mm perimeter, area {:.1} mm²",
-                contour.perimeter(),
-                contour.signed_area().abs()
-              ),
-              None => format!("{id}: (missing)"),
-            };
-            ui.label(&summary);
-            lines.push(summary);
-          }
+      let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
+      if selected.is_empty() {
+        lines.push("Selection: none".to_owned());
+        ui.label("Selection: none");
+      } else {
+        for id in &selected {
+          let summary = match app
+            .document()
+            .entity(id)
+            .and_then(|entity| entity.kind.as_contour())
+          {
+            Some(contour) => format!(
+              "{id}: contour, {:.1} mm perimeter, area {:.1} mm²",
+              contour.perimeter(),
+              contour.signed_area().abs()
+            ),
+            None => format!("{id}: (missing)"),
+          };
+          ui.label(&summary);
+          lines.push(summary);
         }
-        ui.separator();
-        lines.push(format!("History: {} step(s)", app.history_depth()));
-        ui.label(format!("History: {} step(s)", app.history_depth()));
-        output.drawn.property_lines = lines;
-      });
+      }
+      ui.separator();
+      lines.push(format!("History: {} step(s)", app.history_depth()));
+      ui.label(format!("History: {} step(s)", app.history_depth()));
+      output.drawn.property_lines = lines;
+    }
   }
 
   /// The authoring dock: which tool is armed, and the numbers the commands use.
@@ -1006,221 +1130,272 @@ impl Shell {
     let centre = app.camera().center();
     let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
 
-    egui::Panel::right("authoring")
-      .default_size(240.0)
-      .show(ui, |ui| {
-        // A short window scrolls the dock instead of hiding the last rows: egui culls widgets that
-        // fall outside their panel, so without this a 600 px tall window would silently lose the
-        // node-edit and text controls.
-        egui::ScrollArea::vertical().show(ui, |ui| {
-          ui.heading("Authoring");
-          ui.separator();
-          ui.horizontal_wrapped(|ui| {
-            for tool in Tool::ALL {
-              if ui
-                .selectable_label(self.active_tool == tool, tool.label())
-                .clicked()
-              {
-                self.active_tool = tool;
-              }
-            }
-            ui.label(if self.active_tool.draws() {
-              "drag on the canvas to draw"
-            } else {
-              "click to select, drag to marquee"
-            });
-          });
-
-          ui.horizontal_wrapped(|ui| {
-            ui.label("Polygon sides");
-            ui.add(egui::DragValue::new(&mut self.polygon_sides).range(3..=64));
-            ui.label("Star tips");
-            ui.add(egui::DragValue::new(&mut self.star_points).range(3..=64));
-            ui.label("inner ratio");
-            ui.add(
-              egui::DragValue::new(&mut self.star_inner_ratio)
-                .speed(0.05)
-                .range(0.05..=0.95),
-            );
-            ui.separator();
-            ui.label("Text");
-            ui.add(egui::TextEdit::singleline(&mut self.text).desired_width(70.0));
-            ui.add(
-              egui::DragValue::new(&mut self.text_height)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            if ui.button("Add text").clicked() {
-              output.actions.push(UiAction::AddText {
-                text: self.text.clone(),
-                height: self.text_height,
-                origin: centre,
-              });
-            }
-          });
-
-          ui.horizontal_wrapped(|ui| {
-            ui.label("Move");
-            ui.add(
-              egui::DragValue::new(&mut self.move_delta.0)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            ui.add(
-              egui::DragValue::new(&mut self.move_delta.1)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            if ui.button("Move").clicked() {
-              output
-                .actions
-                .push(UiAction::Transform(Transform::Translate {
-                  delta: Vec2::new(self.move_delta.0, self.move_delta.1),
-                }));
-            }
-            ui.separator();
-            ui.label("Rotate");
-            ui.add(
-              egui::DragValue::new(&mut self.rotate_degrees)
-                .speed(1.0)
-                .suffix("°"),
-            );
-            if ui.button("Rotate").clicked() {
-              output.actions.push(UiAction::Transform(Transform::Rotate {
-                radians: self.rotate_degrees.to_radians(),
-                about: centre,
-              }));
-            }
-            ui.separator();
-            ui.label("Scale");
-            ui.add(egui::DragValue::new(&mut self.scale_factors.0).speed(0.05));
-            ui.add(egui::DragValue::new(&mut self.scale_factors.1).speed(0.05));
-            if ui.button("Scale").clicked() {
-              output.actions.push(UiAction::Transform(Transform::Scale {
-                sx: self.scale_factors.0,
-                sy: self.scale_factors.1,
-                about: centre,
-                tolerance: DEFAULT_TOLERANCE_MM,
-              }));
-            }
-            if ui.button("Mirror").clicked() {
-              output.actions.push(UiAction::Transform(Transform::Mirror {
-                point: centre,
-                direction: Vec2::Y_AXIS,
-              }));
-            }
-          });
-
-          ui.horizontal_wrapped(|ui| {
-            ui.label("Array");
-            ui.add(egui::DragValue::new(&mut self.array_grid.0).range(1..=64));
-            ui.add(egui::DragValue::new(&mut self.array_grid.1).range(1..=64));
-            ui.add(
-              egui::DragValue::new(&mut self.array_spacing.0)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            ui.add(
-              egui::DragValue::new(&mut self.array_spacing.1)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            if ui.button("Array").clicked() {
-              output.actions.push(UiAction::Array {
-                rows: self.array_grid.0,
-                columns: self.array_grid.1,
-                dx: self.array_spacing.0,
-                dy: self.array_spacing.1,
-              });
-            }
-            ui.separator();
-            ui.label("Align");
-            for (label, mode) in [
-              ("Left", AlignMode::Left),
-              ("Right", AlignMode::Right),
-              ("Top", AlignMode::Top),
-              ("Bottom", AlignMode::Bottom),
-              ("Centre H", AlignMode::HorizontalCentre),
-              ("Centre V", AlignMode::VerticalCentre),
-            ] {
-              if ui.button(label).clicked() {
-                output.actions.push(UiAction::Align(mode));
-              }
-            }
-          });
-
-          ui.horizontal_wrapped(|ui| {
-            ui.label("Offset");
-            ui.add(
-              egui::DragValue::new(&mut self.offset_distance)
-                .speed(0.5)
-                .suffix(" mm"),
-            );
-            if ui.button("Offset").clicked() {
-              output.actions.push(UiAction::Offset {
-                distance: self.offset_distance,
-              });
-            }
-            if ui.button("Join").clicked() {
-              output.actions.push(UiAction::Join);
-            }
-            // Trim needs to know which of the two selected entities is the target and which the cutter;
-            // the selection is ordered by id, so the first id is the target and the second the cutter.
-            if ui
-              .add_enabled(selected.len() >= 2, egui::Button::new("Trim"))
-              .clicked()
-            {
-              if let [target, cutter, ..] = selected.as_slice() {
-                output.actions.push(UiAction::Trim {
-                  target: target.clone(),
-                  cutter: cutter.clone(),
-                });
-              }
-            }
-            ui.separator();
-            ui.label("Node edit");
-            ui.add(egui::DragValue::new(&mut self.vertex_index));
-            ui.add(egui::DragValue::new(&mut self.segment_index));
-            ui.add(
-              egui::DragValue::new(&mut self.vertex_position.0)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            ui.add(
-              egui::DragValue::new(&mut self.vertex_position.1)
-                .speed(1.0)
-                .suffix(" mm"),
-            );
-            let vertex_at = Point2::new(self.vertex_position.0, self.vertex_position.1);
-            if ui.button("Move node").clicked() {
-              output.actions.push(UiAction::EditVertex(VertexEdit::Move {
-                index: self.vertex_index,
-                to: vertex_at,
-              }));
-            }
-            if ui.button("Insert node").clicked() {
-              output
-                .actions
-                .push(UiAction::EditVertex(VertexEdit::Insert {
-                  segment_index: self.segment_index,
-                  at: vertex_at,
-                }));
-            }
-            if ui.button("Delete node").clicked() {
-              output
-                .actions
-                .push(UiAction::EditVertex(VertexEdit::Delete {
-                  index: self.vertex_index,
-                }));
-            }
-          });
+    {
+      ui.heading("Authoring");
+      ui.separator();
+      ui.horizontal_wrapped(|ui| {
+        for tool in Tool::ALL {
+          if ui
+            .selectable_label(self.active_tool == tool, tool.label())
+            .clicked()
+          {
+            self.active_tool = tool;
+          }
+        }
+        ui.label(if self.active_tool.draws() {
+          "drag on the canvas to draw"
+        } else {
+          "click to select, drag to marquee"
         });
       });
+
+      // A rectangle by its numbers, next to the tool that draws one by hand: the same command, one
+      // gesture or two typed values.
+      ui.horizontal_wrapped(|ui| {
+        ui.add(
+          egui::DragValue::new(&mut self.rectangle_size.0)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        ui.label("x");
+        ui.add(
+          egui::DragValue::new(&mut self.rectangle_size.1)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        if ui.button("Add rectangle").clicked() {
+          output.actions.push(UiAction::AddRectangle {
+            width: self.rectangle_size.0,
+            height: self.rectangle_size.1,
+          });
+        }
+      });
+
+      ui.horizontal_wrapped(|ui| {
+        ui.label("Polygon sides");
+        ui.add(egui::DragValue::new(&mut self.polygon_sides).range(3..=64));
+        ui.label("Star tips");
+        ui.add(egui::DragValue::new(&mut self.star_points).range(3..=64));
+        ui.label("inner ratio");
+        ui.add(
+          egui::DragValue::new(&mut self.star_inner_ratio)
+            .speed(0.05)
+            .range(0.05..=0.95),
+        );
+        ui.separator();
+        ui.label("Text");
+        ui.add(egui::TextEdit::singleline(&mut self.text).desired_width(70.0));
+        ui.add(
+          egui::DragValue::new(&mut self.text_height)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        if ui.button("Add text").clicked() {
+          output.actions.push(UiAction::AddText {
+            text: self.text.clone(),
+            height: self.text_height,
+            origin: centre,
+          });
+        }
+      });
+
+      ui.separator();
+      ui.label(RichText::new("Transform").size(theme::SMALL));
+      ui.horizontal_wrapped(|ui| {
+        ui.label("Move");
+        ui.add(
+          egui::DragValue::new(&mut self.move_delta.0)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        ui.add(
+          egui::DragValue::new(&mut self.move_delta.1)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        if ui.button("Move").clicked() {
+          output
+            .actions
+            .push(UiAction::Transform(Transform::Translate {
+              delta: Vec2::new(self.move_delta.0, self.move_delta.1),
+            }));
+        }
+        ui.separator();
+        ui.label("Rotate");
+        ui.add(
+          egui::DragValue::new(&mut self.rotate_degrees)
+            .speed(1.0)
+            .suffix("°"),
+        );
+        if ui.button("Rotate").clicked() {
+          output.actions.push(UiAction::Transform(Transform::Rotate {
+            radians: self.rotate_degrees.to_radians(),
+            about: centre,
+          }));
+        }
+        ui.separator();
+        ui.label("Scale");
+        ui.add(egui::DragValue::new(&mut self.scale_factors.0).speed(0.05));
+        ui.add(egui::DragValue::new(&mut self.scale_factors.1).speed(0.05));
+        if ui.button("Scale").clicked() {
+          output.actions.push(UiAction::Transform(Transform::Scale {
+            sx: self.scale_factors.0,
+            sy: self.scale_factors.1,
+            about: centre,
+            tolerance: DEFAULT_TOLERANCE_MM,
+          }));
+        }
+        if ui.button("Mirror").clicked() {
+          output.actions.push(UiAction::Transform(Transform::Mirror {
+            point: centre,
+            direction: Vec2::Y_AXIS,
+          }));
+        }
+      });
+
+      ui.separator();
+      ui.label(RichText::new("Repeat and align").size(theme::SMALL));
+      ui.horizontal_wrapped(|ui| {
+        ui.label("Array");
+        ui.add(egui::DragValue::new(&mut self.array_grid.0).range(1..=64));
+        ui.add(egui::DragValue::new(&mut self.array_grid.1).range(1..=64));
+        ui.add(
+          egui::DragValue::new(&mut self.array_spacing.0)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        ui.add(
+          egui::DragValue::new(&mut self.array_spacing.1)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        if ui.button("Array").clicked() {
+          output.actions.push(UiAction::Array {
+            rows: self.array_grid.0,
+            columns: self.array_grid.1,
+            dx: self.array_spacing.0,
+            dy: self.array_spacing.1,
+          });
+        }
+        ui.separator();
+        ui.label("Align");
+        for (label, mode) in [
+          ("Left", AlignMode::Left),
+          ("Right", AlignMode::Right),
+          ("Top", AlignMode::Top),
+          ("Bottom", AlignMode::Bottom),
+          ("Centre H", AlignMode::HorizontalCentre),
+          ("Centre V", AlignMode::VerticalCentre),
+        ] {
+          if ui.button(label).clicked() {
+            output.actions.push(UiAction::Align(mode));
+          }
+        }
+      });
+
+      ui.separator();
+      ui.label(RichText::new("Vectors").size(theme::SMALL));
+      ui.horizontal_wrapped(|ui| {
+        ui.label("Offset");
+        ui.add(
+          egui::DragValue::new(&mut self.offset_distance)
+            .speed(0.5)
+            .suffix(" mm"),
+        );
+        if ui.button("Offset").clicked() {
+          output.actions.push(UiAction::Offset {
+            distance: self.offset_distance,
+          });
+        }
+        if ui.button("Join").clicked() {
+          output.actions.push(UiAction::Join);
+        }
+        // Trim needs to know which of the two selected entities is the target and which the cutter;
+        // the selection is ordered by id, so the first id is the target and the second the cutter.
+        if ui
+          .add_enabled(selected.len() >= 2, egui::Button::new("Trim"))
+          .clicked()
+        {
+          if let [target, cutter, ..] = selected.as_slice() {
+            output.actions.push(UiAction::Trim {
+              target: target.clone(),
+              cutter: cutter.clone(),
+            });
+          }
+        }
+      });
+      ui.label(RichText::new("Nodes").size(theme::SMALL));
+      ui.horizontal_wrapped(|ui| {
+        ui.label("Node edit");
+        ui.add(egui::DragValue::new(&mut self.vertex_index));
+        ui.add(egui::DragValue::new(&mut self.segment_index));
+        ui.add(
+          egui::DragValue::new(&mut self.vertex_position.0)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        ui.add(
+          egui::DragValue::new(&mut self.vertex_position.1)
+            .speed(1.0)
+            .suffix(" mm"),
+        );
+        let vertex_at = Point2::new(self.vertex_position.0, self.vertex_position.1);
+        if ui.button("Move node").clicked() {
+          output.actions.push(UiAction::EditVertex(VertexEdit::Move {
+            index: self.vertex_index,
+            to: vertex_at,
+          }));
+        }
+        if ui.button("Insert node").clicked() {
+          output
+            .actions
+            .push(UiAction::EditVertex(VertexEdit::Insert {
+              segment_index: self.segment_index,
+              at: vertex_at,
+            }));
+        }
+        if ui.button("Delete node").clicked() {
+          output
+            .actions
+            .push(UiAction::EditVertex(VertexEdit::Delete {
+              index: self.vertex_index,
+            }));
+        }
+      });
+    }
   }
 
   fn status_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+    let palette = self.palette();
+    let snapping = self.snapping;
+    let mut toggled: Vec<SnapKind> = Vec::new();
+    let mut magnet = false;
+    let mut hint = String::new();
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
+        ui.label(
+          RichText::new("mm")
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.separator();
+        // One chip per snap kind, the reference's `Ponta | Meio | Centro` strip: what the pointer will
+        // stick to is a thing an operator arms and disarms while working, not a setting in a dialog.
+        for (kind, label) in [
+          (SnapKind::Endpoint, "Endpoint"),
+          (SnapKind::Midpoint, "Midpoint"),
+          (SnapKind::Center, "Centre"),
+          (SnapKind::Grid, "Grid"),
+        ] {
+          let on = self.snap_kinds.contains(&kind);
+          if chrome::chip(ui, &palette, label, on).clicked() {
+            toggled.push(kind);
+          }
+        }
+        if chrome::chip(ui, &palette, "magnet", snapping).clicked() {
+          magnet = true;
+        }
+        ui.separator();
         let cursor = match self.cursor_world {
           Some(point) => format!("X {:.2}  Y {:.2} mm", point.x, point.y),
           None => "—".to_owned(),
@@ -1242,14 +1417,35 @@ impl Shell {
           self.status
         );
         ui.monospace(&line);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+          // The right end belongs to one sentence: what the current gesture will do. It is the cheapest
+          // teaching in the interface and it changes with the tool instead of lying about it.
+          ui.add(
+            egui::Label::new(
+              RichText::new(self.hint())
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            )
+            .truncate(),
+          );
+        });
+        hint = self.hint();
         output.drawn.status_line = line;
       });
     });
+    for kind in toggled {
+      self.toggle_snap(kind);
+    }
+    if magnet {
+      self.snapping = !self.snapping;
+    }
+    output.drawn.hint = hint;
   }
 
   fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+    let palette = self.palette();
     egui::CentralPanel::default()
-      .frame(egui::Frame::NONE.fill(palette::CANVAS))
+      .frame(egui::Frame::NONE.fill(palette.get(Role::Canvas)))
       .show(ui, |ui| {
         let available = ui.available_rect_before_wrap();
         let (response, painter) = ui.allocate_painter(available.size(), Sense::click_and_drag());
@@ -1622,13 +1818,14 @@ impl Shell {
     app: &AppState,
     output: &mut ShellOutput,
   ) {
+    let palette = self.palette();
     let camera = *app.camera();
     self.grid_spacing = cam_view::nice_spacing(camera.pixels_per_mm(), TARGET_GRID_PIXELS);
 
     let grid = build_grid(&camera, TARGET_GRID_PIXELS);
     output.drawn.painted_grid_lines = grid.len();
     for item in &grid.items {
-      paint_item(&painter, canvas, &camera, item, 1.0);
+      paint_item(&painter, canvas, &camera, item, 1.0, &palette);
     }
 
     // The stock outline, so the user can see where the material ends.
@@ -1639,12 +1836,13 @@ impl Shell {
       &camera,
       Point2::new(0.0, 0.0),
       Point2::new(job.width.mm(), job.height.mm()),
+      &palette,
     );
 
     let scene = build_scene(app.document(), app.selection());
     output.drawn.painted_items = scene.len();
     for item in &scene.items {
-      paint_item(&painter, canvas, &camera, item, 1.6);
+      paint_item(&painter, canvas, &camera, item, 1.6, &palette);
     }
 
     if let Some((_, point)) = self.snap_marker {
@@ -1655,14 +1853,14 @@ impl Shell {
           Pos2::new(position.x - size, position.y),
           Pos2::new(position.x + size, position.y),
         ],
-        Stroke::new(1.5, palette::SNAP),
+        Stroke::new(1.5, palette.get(Role::Sel)),
       );
       painter.line_segment(
         [
           Pos2::new(position.x, position.y - size),
           Pos2::new(position.x, position.y + size),
         ],
-        Stroke::new(1.5, palette::SNAP),
+        Stroke::new(1.5, palette.get(Role::Sel)),
       );
     }
 
@@ -1674,7 +1872,7 @@ impl Shell {
         painter.rect_stroke(
           marquee,
           0.0,
-          Stroke::new(1.0, palette::SNAP),
+          Stroke::new(1.0, palette.get(Role::Sel)),
           egui::StrokeKind::Inside,
         );
       }
@@ -1687,12 +1885,12 @@ impl Shell {
       let from = canvas.to_window(camera.world_to_screen(start));
       let to = canvas.to_window(camera.world_to_screen(current));
       if matches!(self.active_tool, Tool::Line | Tool::Polyline) {
-        painter.line_segment([from, to], Stroke::new(1.5, palette::SELECTED));
+        painter.line_segment([from, to], Stroke::new(1.5, palette.get(Role::Sel)));
       } else {
         painter.rect_stroke(
           egui::Rect::from_two_pos(from, to),
           0.0,
-          Stroke::new(1.5, palette::SELECTED),
+          Stroke::new(1.5, palette.get(Role::Sel)),
           egui::StrokeKind::Inside,
         );
       }
@@ -1703,7 +1901,7 @@ impl Shell {
       egui::Align2::LEFT_TOP,
       format!("{:.2} px/mm", camera.pixels_per_mm()),
       egui::FontId::monospace(12.0),
-      palette::GEOMETRY,
+      palette.get(Role::TextDim),
     );
   }
 }
@@ -1715,12 +1913,15 @@ fn paint_item(
   camera: &Camera,
   item: &SceneItem,
   width: f32,
+  palette: &Palette,
 ) {
+  // Four roles carry the whole scene vocabulary: what is drawn, what is selected, what is only
+  // construction, and the grid. A fifth would be a fifth kind of geometry.
   let colour = match item.style() {
-    Style::Normal => palette::GEOMETRY,
-    Style::Selected => palette::SELECTED,
-    Style::Construction => palette::JOB,
-    Style::Grid => palette::GRID,
+    Style::Normal => palette.get(Role::Text),
+    Style::Selected => palette.get(Role::Sel),
+    Style::Construction => palette.get(Role::TextDim),
+    Style::Grid => palette.get(Role::Hairline),
   };
   let points: Vec<Pos2> = match item {
     SceneItem::Polyline { points, .. } => points
@@ -1759,6 +1960,7 @@ fn paint_world_rect(
   camera: &Camera,
   min: Point2,
   max: Point2,
+  palette: &Palette,
 ) {
   let corners = [
     Point2::new(min.x, min.y),
@@ -1771,7 +1973,10 @@ fn paint_world_rect(
     .iter()
     .map(|point| canvas.to_window(camera.world_to_screen(*point)))
     .collect();
-  painter.add(egui::Shape::line(points, Stroke::new(1.0, palette::JOB)));
+  painter.add(egui::Shape::line(
+    points,
+    Stroke::new(1.0, palette.get(Role::Border)),
+  ));
 }
 
 /// Apply one action to the application state.
