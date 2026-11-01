@@ -103,7 +103,7 @@ The foundations are delivered. What remains of the concept, in the order the des
 | --- | --- | --- |
 | T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
 | T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
-| T8 | Object context menus and the embedded help panel: the teaching voice, one `d`/`u` pair per command | S2 S4 |
+| T8 | 🔨 in progress from `c24f690` — object context menus and the embedded help panel: the teaching voice, one `d`/`u` pair per command | S2 S4 |
 | T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
@@ -217,3 +217,20 @@ The foundations are delivered. What remains of the concept, in the order the des
   drawing is behind the 2D tab", and the sample's status message repeated what the hint now says (a fresh window has
   no last command, so that slot is empty instead of chatty). `DrawnState.hint` reports the sentence for tests.
   Gates: fmt, clippy `-D warnings`, **1 076 tests** across 91 suites.
+
+- **L23 (owner, verbatim).** *"primero mergea la rama a master"* and, in the same breath, *"y de ahi salimos limpio"*.
+  `feat/camui-shell` merged into `master` with `--no-ff` at `c24f690`, parents `e9dcb01` + `46d73f2`: 29 files,
+  **+6 730 / −431**, the four artboards, `design/system.{md,html}` and this document included. Not pushed. The tree is
+  clean, and the two untracked outputs were resolved by understanding them rather than by deleting them: the design
+  canvas state (`design/camui-shell/comments.json`, `handoffs.json`) is now committed — it records the owner's one
+  design comment and the artboard the implementation was handed, so it belongs beside the artboards — and `data/`,
+  the owner's 17 MB reference application, is ignored as a design input rather than committed.
+
+- **L24 (incident, environment).** While a background explorer ran, every attempt to spawn a process failed with
+  `EAGAIN` — `bash`, `codemode`, and even `echo` — and the harness reported no tool calls made, so nothing was lost.
+  `free` and `uptime` came back normal once the subagent was cancelled (load 0.9, 24 GB available), which makes the
+  subagent's own process tree the suspect, not the machine. Recorded because the failure mode is indistinguishable
+  from a broken repository: when spawning dies, cancel the running subagent before concluding anything about the work.
+
+- **L25 (owner, verbatim).** *"seguimos con t8"* — T8 authorised on `master` `c24f690`: object context menus and the
+  embedded help panel, in the teaching voice, with one `d`/`u` pair per command (S2, S4).
