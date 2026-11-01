@@ -103,9 +103,9 @@ The foundations are delivered. What remains of the concept, in the order the des
 | --- | --- | --- |
 | T6 | ✅ delivered — the shell frame: app bar, stage bar, the 52 px stage-scoped rail, the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented; commit `4318205` | S1 S2 S3 S7 |
 | T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
-| T8.1 | 🔨 in progress — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
-| T8.2 | The palette reads the command table instead of seven hardcoded labels and three inline group literals, closing the two-site construction recorded in L14 | S2 S4 |
-| T8.3 | Object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
+| T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
+| T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
+| T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
 | T9 | `view3d.rs` shading onto the tokens — the surface ramp is the last place with its own colours | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
