@@ -11,3 +11,9 @@
 .worktrees/
 .m3-brief.md
 .t9-brief.md
+
+# Generated skill-registry cache (gentle-ai)
+.atl/
+# Stray downloads that land in the tree and would pollute a review scope
+*.m4a*
+*.ytdl
