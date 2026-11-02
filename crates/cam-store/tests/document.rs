@@ -14,6 +14,17 @@ fn scratch(name: &str) -> PathBuf {
   directory.join("part.c2d")
 }
 
+/// The names in `directory`, sorted, so a test can assert a directory is exactly as it found it.
+fn listing(directory: &std::path::Path) -> Vec<String> {
+  let mut names: Vec<String> = std::fs::read_dir(directory)
+    .expect("the directory lists")
+    .filter_map(|entry| entry.ok())
+    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+    .collect();
+  names.sort();
+  names
+}
+
 fn sample_document() -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
@@ -144,6 +155,34 @@ fn saving_over_an_existing_document_replaces_it_without_a_temporary_leftover() {
     .collect();
   assert!(leftovers.is_empty(), "temporary file left behind");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+}
+
+/// A rename that fails must not leave the temporary file it wrote beside the target.
+///
+/// A directory where the document should go is the one target the atomic writer cannot rename onto, so
+/// it is the error path that can leave a write half-done: the bytes are written to a sibling `.name.tmp`
+/// and the rename then fails. A save that fails changes nothing (S5), which includes the directory it
+/// was writing into — the temporary file is the writer's own and goes with the error.
+#[test]
+fn a_save_that_cannot_be_renamed_leaves_the_directory_exactly_as_it_found_it() {
+  let path = scratch("rename-fails");
+  let directory = path.parent().expect("parent").to_path_buf();
+  std::fs::create_dir(&path).expect("a directory named like a document");
+  let before = listing(&directory);
+
+  let error = save_document(&path, &sample_document()).expect_err("a directory cannot be replaced");
+
+  assert!(matches!(error, StoreError::Io { .. }), "{error:?}");
+  assert!(
+    path.is_dir(),
+    "the target the save could not replace must be untouched"
+  );
+  assert_eq!(
+    listing(&directory),
+    before,
+    "a failed save must leave the directory exactly as it found it, with no temporary sibling behind"
+  );
+  std::fs::remove_dir_all(&directory).ok();
 }
 
 #[test]

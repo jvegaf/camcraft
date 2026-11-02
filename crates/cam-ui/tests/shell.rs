@@ -1944,22 +1944,103 @@ fn opening_a_file_clears_the_preview_the_tool_snapshot_and_the_material_drafts()
 }
 
 #[test]
-fn one_undo_after_an_open_brings_the_previous_document_back() {
+fn an_open_is_not_undoable_and_undo_leaves_the_opened_document_alone() {
   let directory = scratch("open-undo");
   let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(3));
   let mut app = AppState::new(document_with_rectangle());
   let original = app.document_json();
   let mut shell = Shell::new();
 
-  shell.apply_action(&mut app, &UiAction::OpenFile { path });
-  assert_eq!(app.document().entities().count(), 3);
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+  assert_eq!(
+    app.history_depth(),
+    0,
+    "an open records no undo step: it replaces the drawing and the recorded path together"
+  );
+  let opened = app.document_json();
 
   shell.apply_action(&mut app, &UiAction::Undo);
 
   assert_eq!(
     app.document_json(),
+    opened,
+    "an undo after an open leaves the opened drawing on screen"
+  );
+  assert_ne!(
+    app.document_json(),
     original,
-    "an open replaces the drawing, so it has to be one undo away from the one it replaced"
+    "an undo must not reach back across the open to the drawing it replaced"
+  );
+  assert_eq!(
+    shell.document_path(),
+    Some(path.as_path()),
+    "the recorded path still names the drawing on screen"
+  );
+  assert_eq!(
+    app.history_depth(),
+    0,
+    "an undo with nothing to step back to records no step of its own"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The class the verifier reproduced: an undo that crosses a document boundary lets a save write the wrong
+/// drawing over the file the bar still names, dropping that file's archive entries.
+///
+/// Nothing in this shell can make that undo: an open records no history entry, so `Undo` after the second
+/// open has nothing to step back to. The assertions below are one-sided on purpose — they fail if the open
+/// is ever made undoable again, because the save would then write the first document, and its bytes and
+/// archive entries, over the second file.
+#[test]
+fn an_undo_between_two_opens_cannot_make_a_save_overwrite_the_wrong_document() {
+  let directory = scratch("open-two-undo-save");
+  let first = write_c2d_with_extras(&directory, "first.c2d", &document_with_squares(3));
+  let second = write_c2d_with_extras(&directory, "second.c2d", &document_with_squares(1));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: first });
+  shell.apply_action(
+    &mut app,
+    &UiAction::OpenFile {
+      path: second.clone(),
+    },
+  );
+  let second_document = app.document_json();
+  let before_bytes = std::fs::read(&second).expect("the second file as it was before the save");
+  let before_extras = DocumentFile::load(&second)
+    .expect("the second file loads before the save")
+    .extras;
+
+  shell.apply_action(&mut app, &UiAction::Undo);
+
+  assert_eq!(
+    app.document_json(),
+    second_document,
+    "an undo after opens must not step back across a document boundary"
+  );
+  shell.apply_action(&mut app, &UiAction::Save);
+
+  assert_eq!(shell.status, "save document — wrote second.c2d");
+  assert_eq!(
+    shell.document_path(),
+    Some(second.as_path()),
+    "the recorded path still names the second file"
+  );
+  assert_eq!(
+    std::fs::read(&second).expect("the second file after the save"),
+    before_bytes,
+    "the file the bar names must come out of an undo and a save byte for byte as it went in"
+  );
+  let after = DocumentFile::load(&second).expect("the second file loads after the save");
+  assert_eq!(
+    after.extras, before_extras,
+    "the second file's archive entries must survive the save"
+  );
+  assert_eq!(
+    &after.document,
+    app.document(),
+    "the drawing on disk is the one on screen"
   );
   std::fs::remove_dir_all(&directory).ok();
 }
@@ -2107,6 +2188,65 @@ fn save_with_no_recorded_path_is_refused_and_points_at_save_as() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+/// The names in `directory`, sorted, so a test can assert a directory is exactly as it found it.
+fn listing(directory: &std::path::Path) -> Vec<String> {
+  let mut names: Vec<String> = std::fs::read_dir(directory)
+    .expect("the directory lists")
+    .filter_map(|entry| entry.ok())
+    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+    .collect();
+  names.sort();
+  names
+}
+
+#[test]
+fn save_as_with_an_empty_path_is_refused_and_writes_nothing_into_the_working_directory() {
+  let directory = scratch("save-empty-path");
+  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(1));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::OpenFile {
+      path: opened.clone(),
+    },
+  );
+  // An empty path names the process's own working directory, so the writer would compose its temporary
+  // sibling there and leave it behind if the write failed: the one place a save must never reach, which
+  // is why the refusal comes before anything touches the filesystem.
+  let working_directory = std::env::current_dir().expect("the working directory");
+  let before = listing(&working_directory);
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::SaveFile {
+      path: std::path::PathBuf::from(""),
+    },
+  );
+
+  assert!(
+    shell.status.starts_with("refused: "),
+    "an empty path must be refused, got {:?}",
+    shell.status
+  );
+  assert!(
+    shell.status.contains("empty"),
+    "the refusal must say what is missing, got {:?}",
+    shell.status
+  );
+  assert_eq!(
+    shell.document_path(),
+    Some(opened.as_path()),
+    "a refused save leaves the recorded path as it was"
+  );
+  assert_eq!(
+    listing(&working_directory),
+    before,
+    "a refused save must create nothing in the working directory, not even a temporary file"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 #[test]
 fn save_writes_the_opened_document_back_and_clears_the_dirty_flag() {
   let directory = scratch("save-current");
@@ -2227,6 +2367,152 @@ fn an_archive_entry_this_build_does_not_interpret_survives_a_save() {
     "an entry a later build understands must not be dropped on the floor by a save"
   );
   assert_eq!(&reloaded.document, app.document());
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_save_of_a_document_that_does_not_validate_writes_nothing() {
+  let directory = scratch("save-invalid-document");
+  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(1));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+  let before_bytes = std::fs::read(&path).expect("the file the drawing came from");
+  let before_listing = listing(&directory);
+  // A schema tag this build neither writes nor reads: the store's validation refuses the document, so the
+  // save must refuse too, before any byte of it reaches the filesystem (S5).
+  let mut unsupported = document_with_squares(1);
+  unsupported.schema = "c2d/document@3".to_owned();
+  app.replace_document_undoable(unsupported);
+
+  shell.apply_action(&mut app, &UiAction::Save);
+
+  assert!(
+    shell.status.starts_with("refused: "),
+    "an invalid document must not be written, got {:?}",
+    shell.status
+  );
+  assert!(
+    shell.status.contains("unsupported document schema"),
+    "the refusal must carry the kernel's own message, got {:?}",
+    shell.status
+  );
+  assert_eq!(
+    shell.document_path(),
+    Some(path.as_path()),
+    "a refused save leaves the recorded path as it was"
+  );
+  assert_eq!(
+    std::fs::read(&path).expect("the file still reads"),
+    before_bytes,
+    "a refused save leaves the file's bytes as they were"
+  );
+  assert_eq!(
+    listing(&directory),
+    before_listing,
+    "a refused save leaves no temporary file behind either"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn every_uninterpreted_entry_survives_a_save_including_one_with_no_bytes() {
+  let directory = scratch("save-every-entry");
+  let path = write_c2d_with_extras(&directory, "with-entries.c2d", &document_with_squares(1));
+  // Two more entries beside the asset: a text note and one that holds no bytes at all, which is the one
+  // entry a map that conflated "empty" with "absent" would lose without saying so.
+  let mut file = DocumentFile::load(&path).expect("the archive loads again");
+  file
+    .extras
+    .insert("meta/notes.txt".to_owned(), b"kept".to_vec());
+  file.extras.insert("empty.bin".to_owned(), Vec::new());
+  file
+    .save(&path)
+    .expect("the archive with all three entries");
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+  assert_eq!(
+    shell.document_extras().len(),
+    3,
+    "opening carries every entry this build does not read, got {:?}",
+    shell.document_extras().keys().collect::<Vec<_>>()
+  );
+  // An edit, so the save really rewrites the archive rather than leaving the old bytes in place.
+  handle_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("the rectangle is added");
+
+  shell.apply_action(&mut app, &UiAction::Save);
+
+  let reloaded = DocumentFile::load(&path).expect("the saved file loads again");
+  assert_eq!(
+    &reloaded.extras,
+    shell.document_extras(),
+    "every entry this build does not interpret must come back unchanged"
+  );
+  assert_eq!(
+    reloaded.extras.get("meta/notes.txt"),
+    Some(&b"kept".to_vec()),
+    "an entry's bytes must come back as they went in"
+  );
+  assert_eq!(
+    reloaded.extras.get("empty.bin"),
+    Some(&Vec::new()),
+    "an entry with no bytes must come back as an empty entry, not as a missing one"
+  );
+  assert_eq!(&reloaded.document, app.document());
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_archive_entries_belong_to_the_file_and_not_to_the_history() {
+  let directory = scratch("save-extras-undo");
+  let path = write_c2d_with_extras(&directory, "with-asset.c2d", &document_with_squares(1));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+  handle_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("the rectangle is added");
+  // History snapshots the bare document, so an undo steps the drawing back without touching what the file
+  // carries beside it (S7).
+  shell.apply_action(&mut app, &UiAction::Undo);
+  assert_eq!(
+    app.document().entities().count(),
+    1,
+    "the undo stepped the drawing back to what was opened"
+  );
+  assert_eq!(
+    shell.document_extras().get("assets/logo.png"),
+    Some(&vec![1, 2, 3, 4]),
+    "an undo leaves the entries the file carries where they were"
+  );
+
+  shell.apply_action(&mut app, &UiAction::Save);
+
+  assert_eq!(shell.status, "save document — wrote with-asset.c2d");
+  let reloaded = DocumentFile::load(&path).expect("the saved file loads again");
+  assert_eq!(
+    reloaded.extras.get("assets/logo.png"),
+    Some(&vec![1, 2, 3, 4]),
+    "the entries belong to the file, so a save after an undo writes them back too"
+  );
+  assert_eq!(
+    &reloaded.document,
+    app.document(),
+    "the document on disk is the one on screen"
+  );
   std::fs::remove_dir_all(&directory).ok();
 }
 

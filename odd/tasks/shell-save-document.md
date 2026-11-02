@@ -27,7 +27,10 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   and has never been called. And because the window can now save, opening a **dirty** document is refused
   with a message telling the user to save or undo first — the explicit rule advisory
   `R3-dirty-open-unproved` says no test covers. Nothing is discarded silently, and the refusal leaves
-  document, history, path and name untouched.
+  document, history, path and name untouched. **Amended after the verifier ran (L5):** an open also enters
+  **no** history entry, because an undo that crossed a document boundary left the recorded path describing a
+  different drawing, and the next save overwrote the wrong file. The owner took that decision explicitly, as
+  *"Abrir deja de ser deshacible"*, and it supersedes `shell-open-document`'s S4.
 - **S5 — a failed save changes nothing.** On any write or validation error the dirty flag stays as it was, the
   recorded path stays as it was, and the status line says `refused: …`. The file on disk is the atomic
   writer's business — it either has the old bytes or the new ones, never half of each.
@@ -96,3 +99,33 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   **Gate:** exit 0, **96 suites, 1 192 passed, 0 failed** — the previous 1 184 plus exactly the eight added,
   with `fmt --check` and `clippy -D warnings` inside it, the whole run alone on this box (`CARGO_BUILD_JOBS=1`
   and the linker thread cap, or it dies spawning threads).
+- **L5 (the independent verifier, and what it found that we had not).** Verdicts: R1, R2, R4 and R5 **PASS**;
+  R3 passed every clause **except** "leaves no temporary behind", which it reproduced and failed. What it
+  handed back, and what was done with each:
+  **Fixed, both with RED observed before the fix:** **A1** — a failed rename left `.{name}.tmp` beside the
+  user's file, pre-existing in `write_atomically` (`cam-store` byte-identical to the base) but newly reachable
+  from the window, and a direct contradiction of S5; the writer now unlinks its own temporary and returns the
+  same error. **A2** — `SaveFile { path: "" }` wrote `.document.tmp` into the process working directory; both
+  save arms now refuse an empty path before any filesystem call.
+  **Decided by the owner:** **A6** — open `a.c2d`, open `b.c2d`, `Undo`, `Save` overwrote `b.c2d` with a's
+  drawing and dropped its archive entries. That is the class this feature exists to prevent, and it came from
+  the undoable open the *previous* feature promised. The owner chose *"Abrir deja de ser deshacible"* over
+  recording it as a limit or making undo forget the path; the open now swaps through `replace_document`, so no
+  history entry can cross a document boundary and the invariant holds by construction. Both new tests fail if
+  the arm is ever made undoable again. It costs the owner one honesty, recorded here: an accidental open is no
+  longer one key from being undone, and since the shell keeps no recent-file list, getting back is manual.
+  The dirty refusal is what makes that safe — no edits are lost — and the help text that still promised
+  "one undo brings the drawing back" was corrected, because a shipped UI sentence contradicting the rule is
+  its own defect.
+  **Recorded and deliberately not fixed:** **A3** a save through a symlink replaces the link and leaves the
+  target stale; **A4** a missing parent directory is created instead of failing; **A5** the writer can emit an
+  archive `load` refuses, because a NaN coordinate serialises as `null` and `validate()` does not check
+  finiteness — latent, since both user-facing entry points that could produce a non-finite value already
+  refuse it; and **A8** a Save As copies the source file's uninterpreted entries into the new file, which is
+  S7 working as specified. The first three are behaviours of the shared writer that `cam-cli` also inherits;
+  changing them is a separate decision, not a fix to smuggle into this feature.
+  **Not verified by it, and named rather than assumed:** the whole-workspace gate; the desktop host's dialog
+  (read, not executed — no display); zip directory entries, which `load` skips and a save therefore drops; and
+  a mid-write `ENOSPC`, whose invariant is argued from write-temp-then-rename plus the three failure probes.
+  Every finding above was reproduced by the verifier itself, with the reproducer, which is why they are
+  recorded as findings and not as worries.

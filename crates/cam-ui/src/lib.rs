@@ -488,14 +488,20 @@ pub enum UiAction {
     /// The file to read; its extension decides the format.
     path: String,
   },
-  /// Open a `.c2d` document and replace the drawing with it, undoably.
+  /// Open a `.c2d` document and replace the drawing with it.
   ///
   /// The path comes from the caller — the shell has no file dialog and no dialog dependency, so a host
   /// answers [`UiAction::RequestOpenFile`] with the platform's picker and applies this action with what
   /// it returned. The load is [`cam_store::document::DocumentFile::load`], the same archive scan,
-  /// migration and validation the CLI's private loader performs, and the replacement is undoable because
-  /// opening replaces the drawing: one undo puts it back, which is what makes the refusal over a dirty
-  /// document a guard rather than the only protection.
+  /// migration and validation the CLI's private loader performs.
+  ///
+  /// The replacement is **not undoable**, and the reason is an invariant rather than a taste for fewer
+  /// history entries: the open replaces the drawing and the file the shell records in one step, so an undo
+  /// that crossed that boundary would leave the recorded path naming a file whose drawing is no longer on
+  /// screen — and the next [`UiAction::Save`] would overwrite that file with the wrong document, losing its
+  /// archive entries. Clearing the history is what makes "the recorded path describes what is on screen"
+  /// true by construction. The edits an undo step used to protect are protected instead by the refusal: an
+  /// open over unsaved work is refused before anything is read.
   OpenFile {
     /// The `.c2d` to load.
     path: PathBuf,
@@ -2317,6 +2323,14 @@ const NO_SHELL_FOR_SAVE: &str =
   "a save needs the archive entries the shell is holding, and this entry point has no shell — a write \
    here would drop them; apply the action through Shell::apply_action";
 
+/// What a save to an empty path answers.
+///
+/// An empty path is not a file name: the writer would compose its temporary sibling in the process's own
+/// working directory, so the refusal comes before any filesystem call and the save reaches nothing.
+const EMPTY_SAVE_PATH: &str =
+  "a save needs a file to write, and this path is empty — use Save As to name one, and no save writes \
+   into the directory the window was started from";
+
 /// The file the drawing came from, as the shell holds it: the recorded path and the archive's other
 /// entries.
 ///
@@ -2442,12 +2456,16 @@ fn handle_action_with_file(
         document,
         extras: carried,
       } = opened;
-      app.replace_document_undoable(document);
-      // What was opened is exactly what is in the file, so nothing is unsaved. The replacement still goes
-      // through the undoable path, which marks the document dirty for import's sake: the undo step is what
-      // an accidental open is one key away from, and the dirty flag is a claim about the file that an open
-      // makes true instead of false.
-      app.mark_saved();
+      // The replacement is **not** undoable (S4, the owner's "abrir deja de ser deshacible"): the open
+      // replaces the drawing and the recorded path together, so a history entry that crossed it would let an
+      // undo step back to a drawing the shell no longer names — and the next Save would then write the wrong
+      // document over the file the path still points at, dropping that file's archive entries. The
+      // non-undoable replacement clears the history and the selection, which is what keeps "the recorded path
+      // describes what is on screen" true by construction. No operator edit is lost by that: an open over
+      // unsaved work is refused above, before the file is even read.
+      app.replace_document(document);
+      // No `mark_saved` follows: `replace_document` already clears the dirty flag, because what was opened is
+      // exactly what is in the file.
       // The entries ride on the shell and are written back by the next save. A caller with no shell keeps
       // none — and a save from that state refuses, so nothing is ever written without them (S3).
       if let Some(file) = file {
@@ -2477,6 +2495,11 @@ fn handle_action_with_file(
       let Some(target) = file.path.as_deref() else {
         return Err(NO_RECORDED_PATH.to_owned());
       };
+      // A recorded path is never empty through this shell, and the rule belongs to saving rather than to
+      // Save As: an empty path names no file, so it is refused here too instead of reaching the writer.
+      if target.as_os_str().is_empty() {
+        return Err(EMPTY_SAVE_PATH.to_owned());
+      }
       write_document(app, target, file.extras)?;
       Ok(ActionReport {
         label: action.label(),
@@ -2491,6 +2514,11 @@ fn handle_action_with_file(
       let Some(file) = file else {
         return Err(NO_SHELL_FOR_SAVE.to_owned());
       };
+      // Refused before the writer is reached: an empty path names no file, and the writer would compose
+      // its temporary sibling in the working directory of the process instead (S2, S5).
+      if target.as_os_str().is_empty() {
+        return Err(EMPTY_SAVE_PATH.to_owned());
+      }
       write_document(app, target, file.extras)?;
       // Save As becomes the file: the bar names what was just written, and the next Save writes there. Set
       // after the write and not before, so a failed save leaves the recorded path as it was (S5).

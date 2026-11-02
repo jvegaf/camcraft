@@ -180,10 +180,18 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
     path: temporary.display().to_string(),
     source,
   })?;
-  std::fs::rename(&temporary, path).map_err(|source| StoreError::Io {
-    path: display,
-    source,
-  })
+  if let Err(source) = std::fs::rename(&temporary, path) {
+    // A failed write must leave the directory exactly as it found it, so the temporary file — which is
+    // the writer's own, never the caller's — is removed before the error comes back. The rename is what
+    // failed and the error the caller sees is the rename's: a failure to clean up afterwards is not
+    // allowed to replace the reason the save did not happen.
+    let _ = std::fs::remove_file(&temporary);
+    return Err(StoreError::Io {
+      path: display,
+      source,
+    });
+  }
+  Ok(())
 }
 
 /// The sibling temporary path used while writing `path`.

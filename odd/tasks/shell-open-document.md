@@ -125,3 +125,12 @@ This feature connects the three.
   candidate is still a review that has not seen a Save path, because there is none to see.
   **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary
   repository policy and the owner's decisions.
+- **L6 (S4 superseded: an open is not undoable any more).** This document's S4 kept an open in the history so
+  an accidental one was "one undo away". `odd/tasks/shell-save-document.md`'s verifier reproduced what that
+  costs once the window can write: open `a.c2d`, open `b.c2d`, `Undo`, `Save` overwrote `b.c2d` with a's
+  drawing and dropped its archive entries, because the recorded path kept naming `b` while the screen showed
+  `a`. The owner's decision, verbatim: *"Abrir deja de ser deshacible"*. An open now swaps through
+  `replace_document`, entering no history entry, so no undo can cross a document boundary; the protection for
+  unsaved work moved to the refusal added in the same feature, which is what S4's undo step was standing in
+  for. The reason this entry exists: anyone reading S4 above will find a promise that no longer holds, and
+  "fixing" the code back to it would reintroduce the overwrite.
