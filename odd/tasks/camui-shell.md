@@ -589,3 +589,36 @@ design argues for:
   `crates/cam-ui/src/lib.rs`, and parallel writers on one file are a collision, not a speed-up. The writers found three
   things this record's briefs had wrong (the DragValue clamp, `Preview3d::progress` answering 1.0 at zero time, and the
   artboard gates being unreachable), which is the argument for stating measured facts in a brief instead of conclusions.
+
+- **L42 (T12 delivered by a writer that vanished, and this feature closed).** `74f292a`. Gate: exit 0, 92 suites,
+  **1 132 tests** (+9) — the parent's run, not a writer's claim, because there was no writer's claim to check.
+  The Job section's numbers are editable now: a material dialog with the sheet card and the rotary one over a plan
+  drawn live with the theme's painters and annotated as the numbers move, writing through `UiAction::SetJob` into
+  `cam_app::Command::SetJob`.
+  **The defect it closed is one layer down, and it was found rather than created.** `SetJob` assigned width, height
+  and thickness with no positivity check while `Job::outline` panics on a non-positive dimension; `AppState` catches
+  a zero only by validating *after* the assignment, and `apply` is public, so a caller handing a document in directly
+  got an invalid job and the next `outline` panicked. The refusal now runs before anything is assigned and reuses
+  `ModelError::NonPositiveJobDimension` instead of spelling one rule twice. The rotary card is drawn, cannot be
+  chosen, and names its own absence — the document has no axis mode and `cam-model` and the format were out of scope,
+  so a card that wrote nothing would have been a dead control.
+  **The incident, recorded because it changed how this slice was verified.** The writer's task **disappeared from the
+  registry without returning a report**, leaving 1 110 lines and no RED, no defended decisions and no gate. What it
+  left also failed the gate: 18 tests in `cam-ui --test input`, all of them clicks that stopped reaching the canvas.
+  The cause was `Shell::new()` shipping `show_material: true` — a dialog open at birth swallowing the first click,
+  which is L108's `show_icons: true` wearing a different hat. Now `false`, with the reason written at the value.
+  So nothing here rests on a report: the refusal is asserted to name the field and the number and to leave
+  `document.job` unchanged, `outline()` is reachable afterwards without a panic, the rotary card is asserted to write
+  nothing, `the_plan_is_a_drawing_and_not_a_caption` counts painted quads so the diagram is checked as a drawing, and
+  the diff adds zero `Color32` literals. The 1 110-line single commit is declared in its message rather than hidden:
+  the dialog, the plan, the action path and the validation are mutually dependent.
+  **Two rows in this document close with it.** **T7** (the stage model) is delivered by **T13**, not abandoned: the
+  readiness rule, the gates it can and cannot certify, and the strings that name the next step are exactly what T7
+  described. **T14** (the current-tool card and the estimated time) left this feature: it became
+  `odd/tasks/camui-toolpath.md`, because the exploration showed `cam_app` has no toolpath command at all and the
+  shell cannot reach the tool library — a missing layer, not a missing button.
+  **What this feature leaves behind, none of it hidden**: the light theme's progress trough at 1.06:1 with no
+  field/track role in the token set; a stage readiness that is a lower bound on the artboard's gates rather than a
+  certificate for them; a colour audit whose clip excludes the playback row it now misses; and three review lineages
+  stalled and unburned (`review-3ebc68eeba5006f5`, `review-89edc321cc30ebdb`, `review-3592c554bf15c02f`) waiting for
+  a session that starts after the routing file exists.
