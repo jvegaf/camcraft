@@ -359,3 +359,26 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   from the opened document, so `Document.tools_ref` remains a filename only `cam-cli` resolves. The card is honest
   about the empty case — it says the number is not in the library it was given — but the library the CLI would open
   is still not loaded by any window, which is T1's remaining hole rather than a new one.
+
+- **L17 (the hole L5, L14 and L16 all named is closed, and none of those three statements is reworded).** L5
+  recorded it as "`cam-desktop` passes an **empty** snapshot: … `Document.tools_ref` is a filename only `cam-cli`
+  resolves", L14 as the one thing the feature left "true and unfinished", and L16 as "T1's remaining hole rather
+  than a new one". All three were true of this document and are no longer true of the window: the rule they said
+  nobody had moved is `odd/tasks/shell-tools-ref.md`'s S2, which resolves the loaded document's `tools_ref`
+  **relative to the document's own directory** through `tools_beside_document`
+  (`crates/cam-ui/src/lib.rs:2752-2798`) on a successful open and hands `ToolLibrary::tools()` to `set_tools`
+  (`:1081-1090`). Nothing in this document's own surface changed with it: the snapshot is still a
+  `Vec<StoredTool>` the card and the estimate read, both consumers are still `chrome.rs`'s, and the host still
+  calls `set_tools(Vec::new())` at launch (`cam-desktop/src/main.rs:73`) because the sample document is not a file
+  and names no library. **What is now precise instead of open:** an open whose document names no `tools_ref`, or
+  names a library that cannot be used, still leaves the snapshot **empty**, which is why the card's "T4 is not in
+  the tool library this window was given" sentence (`crates/cam-ui/src/chrome.rs:822-830`) is untouched and still
+  the honest answer to that state — the window's new sentence goes on the status line instead. And the rule the
+  window took is not the CLI's: an absolute reference or one carrying a `..` is refused before anything is read,
+  where `cam-cli` still accepts both — `camui-shell.md` L46 records that divergence and the lexical limit that
+  remains, neither of which this document's card or estimate depends on. Six tests in
+  `crates/cam-ui/tests/shell.rs:1971-2203` pin the resolution and its refusals, and the first of them is what
+  turns this document's promise into a picture: the card draws the `T4 - {tool name}` title (`chrome.rs:807`)
+  over the library's `Ø 6.00 mm`, and the cutting-time line stops being `No estimated cutting time — {error}`
+  (`chrome.rs:845`) and becomes `Estimated cutting time · …`. **The code is uncommitted in the working tree**
+  when this entry was written, so it cites no commit. **No gate was run for this entry**: it is documentation.

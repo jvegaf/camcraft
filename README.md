@@ -117,12 +117,23 @@ it, and opening a document over unsaved changes is **refused** with a sentence t
 where it used to discard the edits with undo as the only way back. A failed save changes nothing — the flag and
 the recorded path stay as they were and the status line says `refused: …`, naming the file it could not write.
 
+Opening also resolves the tool library the document names, so the card has something to resolve against.
+`tools_ref` is a reference **relative to the document's own directory** — what [docs/format.md](docs/format.md)
+already says the field means — so an open joins it that way, loads it through
+`cam_store::tools::ToolLibrary::open` and hands the entries to the current-tool card and the cutting-time
+estimate; a document with no `tools_ref` opens in exactly the sentence it printed before, with an empty
+snapshot. A library that is missing, unreadable or not a library **does not cost the drawing**: it still opens,
+the card goes on saying the number it was asked for is not in the library it was given, and the status line
+appends the library and the reason to the open's own sentence. A reference that is **absolute, or that carries
+a `..`**, is refused before anything is read — the window reads nothing outside the document's directory and
+creates nothing anywhere, which is what makes the guard load-bearing: `ToolLibrary::open` creates the parent
+directory and the file it is pointed at. `cam-cli` joins the same way without that guard, so a document's
+`tools_ref` may still be absolute or climb out of the directory when the CLI reads it.
+
 What is not there yet: **toolpath forms** (M4's and M6's strategies are still authored through
 `cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`
-authors one — rather than a panel that creates one), and **what saving does not reach yet**: a `tools_ref`
-is serialized and survives a load → save round trip, but the window does not resolve it, so the tool card
-still has nothing to resolve against; and Save has no keyboard shortcut — the keys the shell answers to are
-`Ctrl+Z`, `Ctrl+Shift+Z`, `Delete`/`Backspace`, `F`, `F1`, `F2` and `Esc`.
+authors one — rather than a panel that creates one), and Save has no keyboard shortcut — the keys the shell
+answers to are `Ctrl+Z`, `Ctrl+Shift+Z`, `Delete`/`Backspace`, `F`, `F1`, `F2` and `Esc`.
 
 Known cosmetic detail: auto-framing fits the canvas as measured when the panel layout settles, so the
 first fit can be a few percent tighter than `Zoom to fit` (`F`), which is exact.

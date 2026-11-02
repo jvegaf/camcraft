@@ -154,3 +154,24 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   separate later work, never a reason to re-run this review.
   **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary repository
   policy and the owner's decisions.
+
+- **L7 (S7's last clause is now historical: the window resolves the `tools_ref` it preserves).** S7's first two
+  sentences stand unqualified — a legacy `c2d/document@1` file is rewritten as `@2`, and extras are file-level
+  and outside the undo history — and its third, "a `tools_ref` is serialized and survives the round trip, but
+  the window still does not resolve it — that stays the next feature", is answered by
+  `odd/tasks/shell-tools-ref.md`. The answer is about opening, which is why nothing in this document's save path
+  moved: on a successful open the shell resolves the loaded document's `tools_ref` **relative to the document's
+  own directory** through `tools_beside_document` (`crates/cam-ui/src/lib.rs:2752-2798`) and hands
+  `ToolLibrary::tools()` to `set_tools` (`:1081-1090`), so a document this window saved with a `tools_ref`
+  naming a library beside it now resolves that library when it is opened again. The round trip S7 describes is
+  untouched: the open reads the field the save wrote and writes nothing back into the document. Two properties
+  of the resolution matter to a reader of *this* document, because both concern data this writer produces. A
+  library that is missing, unreadable or not a library **does not cost the drawing** — the file opens, the card
+  says the tool's number is not in the library it was given, and the status line keeps the open's own sentence
+  and appends the library and the reason (`:1100-1102`) — so a `tools_ref` written here can never make a saved
+  document unopenable. And a reference that is **absolute or carries a `..`** is refused before anything is
+  read: the window reads nothing outside the document's directory and creates nothing anywhere, because
+  `ToolLibrary::open` (`crates/cam-store/src/tools.rs:220-242`) creates the parent directory and the file it is
+  pointed at when the path is absent, which is why existence is checked first (`lib.rs:2788-2795`). Six tests in
+  `crates/cam-ui/tests/shell.rs:1971-2203` pin it. **The code is uncommitted in the working tree** when this
+  entry was written, so it cites no commit. **No gate was run for this entry**: it is documentation.

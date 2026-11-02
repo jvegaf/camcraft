@@ -134,3 +134,22 @@ This feature connects the three.
   unsaved work moved to the refusal added in the same feature, which is what S4's undo step was standing in
   for. The reason this entry exists: anyone reading S4 above will find a promise that no longer holds, and
   "fixing" the code back to it would reintroduce the overwrite.
+
+- **L7 (S4's third reset now has a refill, and the gap both earlier entries left open is closed elsewhere).**
+  S4 requires an open to clear every piece of state derived from the previous document, `Shell.tools` among
+  them, and nothing of the previous document survives an open (`crates/cam-ui/src/lib.rs:1074-1090`); what
+  changed is what the snapshot holds afterwards. On a successful open the shell resolves the loaded document's
+  `tools_ref` — a reference **relative to the document's own directory**, which is the meaning `docs/format.md`
+  gives the field — through
+  `tools_beside_document` (`:2752-2798`) and hands the entries to `set_tools`, so the snapshot S4 clears is the
+  *previous* document's library and no longer the last word about the new one. S4's sentence is left exactly as
+  written, because its rule is unchanged: nothing stale survives an open. The feature that owns the resolution
+  is `odd/tasks/shell-tools-ref.md` (S2–S4), and it extends this document's own open rather than replacing it —
+  same `DocumentFile::load`, same `replace_document` swap with no history entry (L6), same host dialog — with one
+  addition that matters to S3: a library that is missing, unreadable or not a library does **not** turn the open
+  into a refusal, it keeps the open's own status sentence and appends the library and the reason to it
+  (`:1100-1102`), so the drawing the user asked for is never lost to an accessory. A reference that is absolute
+  or carries a `..` is refused before anything is read, so the window neither reads outside the document's
+  directory nor creates a file there. Six tests in `crates/cam-ui/tests/shell.rs:1971-2203` pin all of it, beside
+  this feature's own open tests, which none of it touched. **The code is uncommitted in the working tree** when
+  this entry was written, so it cites no commit. **No gate was run for this entry**: it is documentation.

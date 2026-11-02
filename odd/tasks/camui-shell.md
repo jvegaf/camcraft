@@ -693,3 +693,39 @@ remains of the concept, in the order the design argues for:
   `F2` and `Esc` (`lib.rs:2097-2118`). The insertions moved L44's citations by roughly forty lines (`lib.rs:1013-1020`
   is now `:1061-1066`); its numbers are left as written, because a period record is not renumbered.
   **No gate was run for this entry**: it is documentation, and the code it describes arrived with its own.
+
+- **L46 (the sentence L40, L44 and L45 shared is now false: an open fills the tool snapshot from the library
+  the document names).** The three entries said the same thing in three tenses — `Document.tools_ref` "is still
+  a filename only `cam-cli` resolves", an open "keeps clearing the tool snapshot", and "filling it from the
+  opened document's library is the next slice, because resolving that filename the way `cam-cli` does is a rule
+  nobody has moved yet". That slice is `odd/tasks/shell-tools-ref.md`: on a successful open the shell resolves
+  the loaded document's `tools_ref` **relative to the document's own directory** through `tools_beside_document`
+  (`crates/cam-ui/src/lib.rs:2752-2798`) and hands `ToolLibrary::tools()` to `set_tools` (`:1081-1090`,
+  `:1169`), so the snapshot an open leaves behind is the document's library instead of nothing. L40's reason for
+  leaving the estimate unstarted — "`cam-ui` has no dependency on either crate and no library handle on `Shell`"
+  — is moot for exactly this half: the resolver imports `cam_store::tools::ToolLibrary` itself (`:49`), which is
+  the crate `cam-ui` already reached for the load. **The rule the window took is stricter than the CLI's, on
+  purpose:** a reference that is absolute or carries a `..` is refused before any filesystem call (`:2773-2781`),
+  and existence is checked with `try_exists` before `ToolLibrary::open` (`:2788-2795`) because that `open`
+  (`crates/cam-store/src/tools.rs:220-242`) creates the parent directory and the file it is pointed at — so a
+  document can neither read outside its own directory nor make the window write anything. That stricter rule is
+  the window's alone: `cam-cli` still joins the same reference with no guard at all
+  (`crates/cam-cli/src/main.rs:1828-1844` for `emit`, `:1924-1942` for `simulate`, `:1634-1659` for the
+  `toolpath` default), so it still accepts an absolute `tools_ref` and one that climbs out through `..`, and
+  nothing in the repository pins that either way — the only CLI tests that set a `tools_ref` set an absolute
+  path (`crates/cam-cli/tests/cli.rs:49-85`, `:976`, `:1017`). **What the containment still does not buy, stated
+  rather than implied:** it is **lexical**. `tools_beside_document` refuses on the reference's own components and
+  never canonicalises, so a symlink *inside* the document's directory that points outside is still followed and
+  read; it cannot *create* anything out there, because `try_exists` follows the link and a dangling one reads as
+  absent, so the write surface is closed and what stays open is reading a file whoever owns that directory put
+  there. Canonicalising would close that read and would also refuse a legitimate shared-library symlink, so the
+  trade is stated and not taken silently (`shell-tools-ref` L3). Two cases stay deliberately unpinned:
+  `sub/../tools.sqlite` is refused although it lands back inside, and an unreadable library is untested — only
+  "missing" and "not a library" are. Failure is soft: the drawing opens, the snapshot stays empty, the card keeps
+  its own "not in the tool library this window was given" sentence (`crates/cam-ui/src/chrome.rs:822-830`), and
+  the open's own sentence gains an appended ` — …` naming the library and the reason (`:1100-1102`), which is
+  S9's rule holding rather than bending: a stage that cannot be counted says so. `cam-desktop` still passes
+  `set_tools(Vec::new())` at launch (`cam-desktop/src/main.rs:73`) and now records why the host never needs the
+  rule. Six tests in `crates/cam-ui/tests/shell.rs:1971-2203` pin the resolution, the two hostile references and
+  the document-that-names-nothing case. **The code is uncommitted in the working tree** when this entry was
+  written, so it cites no commit. **No gate was run for this entry**: it is documentation.
