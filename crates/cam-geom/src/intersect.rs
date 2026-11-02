@@ -274,6 +274,10 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
 /// when they share a length of curve: a pair that touches at a single angle meets at one point, and
 /// a pair that shares no angle does not meet at all. Deciding this from the two centres and radii
 /// answers for the *circles*, which is not the question an arc asks.
+///
+/// The tolerance decides how much of a shared length counts as a length rather than a point, never
+/// whether the pair meets. A shared length below it still collapses to a point, because the
+/// alternative would be a `None` that the distance between the same arcs denies.
 fn one_circle(first: Arc, second: Arc, tolerance: f64) -> Intersections {
   let radius = first.radius();
   let angular = if radius > 0.0 {
@@ -292,6 +296,19 @@ fn one_circle(first: Arc, second: Arc, tolerance: f64) -> Intersections {
         touch = touch.or(Some(first_end));
       } else if angle_apart(second_end, first_start) <= angular {
         touch = touch.or(Some(second_end));
+      } else if overlap > 0.0 {
+        // An overlap shorter than the tolerance is still an overlap: one arc's sweep sits inside the
+        // other's, end to end inside it. It is indistinguishable from a point, so it is reported as
+        // one — the midpoint of the shared interval lies on both by construction. Falling through to
+        // `None` here would contradict the distance between the same two arcs, which is zero.
+        //
+        // Averaging is safe across the seam because `coverage` splits a sweep that crosses `0`/`TAU`
+        // into two intervals before this loop ever sees it: both ends of a shared interval are always
+        // clipped from the same side, so their midpoint is a real shared angle and not the middle of
+        // the circle. Splitting is what makes the average meaningful; it is not an optimization.
+        touch = touch.or(Some(
+          0.5 * (first_start.max(second_start) + first_end.min(second_end)),
+        ));
       }
     }
   }

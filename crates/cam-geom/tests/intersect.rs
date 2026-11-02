@@ -361,13 +361,22 @@ proptest! {
 
 // ---- an oracle for the sweeps, computed without `intersect`'s own `coverage` -------------
 
-fn angle_covered(arc: Arc, theta: f64) -> bool {
+/// The kernel's angular tolerance for a circle of this radius: the linear tolerance read as an
+/// angle, with the floor it uses at radius zero. The oracle states the same rule on purpose — it
+/// has to arbitrate *the* rule, not a constant of its own, or a disagreement it reports may be
+/// about two unrelated thresholds rather than about the sweeps.
+fn angular_tolerance(radius: f64) -> f64 {
+  TOL / radius + 1.0e-12
+}
+
+/// Whether `theta` lies on `arc`'s sweep, within `slack` radians of either end.
+fn angle_covered(arc: Arc, theta: f64, slack: f64) -> bool {
   if arc.sweep() >= 0.0 {
     let f = (theta - arc.start_angle()).rem_euclid(TAU);
-    f <= arc.sweep() + 1e-12 || (TAU - f) <= 1e-12
+    f <= arc.sweep() + slack || (TAU - f) <= slack
   } else {
     let b = (arc.start_angle() - theta).rem_euclid(TAU);
-    b <= -arc.sweep() + 1e-12 || (TAU - b) <= 1e-12
+    b <= -arc.sweep() + slack || (TAU - b) <= slack
   }
 }
 
@@ -392,7 +401,9 @@ fn overlap_measure(a: Arc, b: Arc) -> f64 {
     .windows(2)
     .filter(|w| {
       let mid = 0.5 * (w[0] + w[1]);
-      angle_covered(a, mid) && angle_covered(b, mid)
+      // A window never contains one of the four boundaries, so a midpoint is strictly interior and
+      // needs no slack: any slack here would only hide a boundary that is not where it claims to be.
+      angle_covered(a, mid, 0.0) && angle_covered(b, mid, 0.0)
     })
     .map(|w| w[1] - w[0])
     .sum()
@@ -443,8 +454,76 @@ fn a_full_turn_overlaps_a_tiny_sweep() {
   );
 }
 
+/// Two arcs of one circle that genuinely overlap by less than the tolerance are not `None`: the
+/// overlap is still a meeting, collapsed to the point it is indistinguishable from. `None` here
+/// would contradict `segment_to_segment`, which answers a distance of zero for the same pair — the
+/// disagreement this whole area exists to prevent, in the one window the grid cannot reach.
+#[test]
+fn an_overlap_below_the_tolerance_is_a_point_and_never_nothing() {
+  let all = arc(Point2::ORIGIN, 5.0, 0.0, TAU);
+  // 1e-11 rad is two orders of magnitude below `TOL / radius`, and lies wholly inside the turn.
+  let sliver = arc(Point2::ORIGIN, 5.0, PI, 1.0e-11);
+  for (first, second) in [(all, sliver), (sliver, all)] {
+    let answer = intersect::intersect(first, second, TOL);
+    assert!(!answer.is_empty(), "a real overlap is never None");
+    assert!(
+      !answer.is_coincident(),
+      "below the tolerance the overlap is a point, not a length"
+    );
+    assert_eq!(
+      segment_to_segment(first, second, TOL),
+      0.0,
+      "distance and intersect must agree that the pair meets"
+    );
+    let points = answer.points();
+    assert_eq!(points.len(), 1, "got {points:?}");
+    assert!(
+      points[0].distance_to(Point2::new(-5.0, 0.0)) <= TOL,
+      "the point must be where the sliver is, got {:?}",
+      points[0]
+    );
+  }
+}
+
+/// A tiny overlap on the seam is reported where the seam is, not halfway around the circle from it.
+/// `coverage` splits a sweep that crosses `0`/`TAU` into two intervals, so the two endpoints the
+/// fallback averages are always clipped from the same side of the seam — the raw `max(start)` and
+/// `min(end)` it reads never come from opposite branches.
+///
+/// Both ways of reaching the answer are pinned, because only the second one is the fallback this
+/// test exists for: a sliver at `0` is caught by the endpoint comparison, and a sliver at `5` sits
+/// strictly inside the wrapped arc's second interval, so only the shared-interval midpoint can
+/// answer. Reading `350` and `0` as one interval would put that midpoint at `175`.
+#[test]
+fn a_tiny_overlap_on_the_seam_is_a_point_on_the_seam() {
+  let through_350 = arc(Point2::ORIGIN, 5.0, 350.0 * PI / 180.0, 20.0 * PI / 180.0);
+  for degrees in [0.0, 5.0] {
+    let start = degrees * PI / 180.0;
+    let sliver = arc(Point2::ORIGIN, 5.0, start, 1.0e-11);
+    let expected = Point2::new(5.0 * start.cos(), 5.0 * start.sin());
+    for (first, second) in [(through_350, sliver), (sliver, through_350)] {
+      let answer = intersect::intersect(first, second, TOL);
+      assert!(!answer.is_empty(), "the two arcs meet at {degrees} degrees");
+      assert!(!answer.is_coincident(), "below the tolerance it is a point");
+      let points = answer.points();
+      assert_eq!(points.len(), 1, "got {points:?}");
+      assert!(
+        points[0].distance_to(expected) <= TOL,
+        "the point must be on the seam at {degrees} degrees, not halfway round: got {:?}",
+        points[0]
+      );
+    }
+  }
+}
+
 /// Every same-circle pair answers for the sweeps and not for the circles, checked against an oracle
 /// that measures angle coverage a different way, and against `segment_to_segment` in the same pass.
+///
+/// The oracle shares the tolerance *formula* with the kernel and nothing else: the measurement is
+/// independent, the rule is the contract's. An oracle with a threshold of its own (this one used
+/// `1.0e-6` for coincidence and `1e-12` for touch, which are not `TOL / radius + 1e-12`) agrees on
+/// this grid only because every non-zero overlap in it is a multiple of `PI / 8`. The window below
+/// the tolerance is pinned separately, by `an_overlap_below_the_tolerance_is_a_point_and_never_nothing`.
 #[test]
 fn same_circle_pairs_are_decided_by_their_sweeps_not_their_circles() {
   let starts: Vec<f64> = (0..16)
@@ -475,13 +554,14 @@ fn same_circle_pairs_are_decided_by_their_sweeps_not_their_circles() {
     for second in &arcs {
       let (a, b) = (arc_of(*first), arc_of(*second));
       let measure = overlap_measure(a, b);
+      let angular = angular_tolerance(a.radius());
       let shares_angle = [a.start_angle(), a.start_angle() + a.sweep()]
         .iter()
-        .any(|theta| angle_covered(b, *theta))
+        .any(|theta| angle_covered(b, *theta, angular))
         || [b.start_angle(), b.start_angle() + b.sweep()]
           .iter()
-          .any(|theta| angle_covered(a, *theta));
-      let expected = if measure > 1.0e-6 {
+          .any(|theta| angle_covered(a, *theta, angular));
+      let expected = if measure > angular {
         "coincident"
       } else if shares_angle {
         "one point"
