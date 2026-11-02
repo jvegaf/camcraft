@@ -2771,10 +2771,14 @@ fn file_label(path: &Path) -> String {
 /// says which library could not be used and why (S4).
 fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<StoredTool>, String> {
   let named = Path::new(reference);
-  if named.is_absolute()
-    || named
-      .components()
-      .any(|component| matches!(component, Component::ParentDir))
+  // Every component must be a plain name. Naming what is *allowed* rather than what is refused is what
+  // keeps this rule total: refusing `..` and anything `is_absolute()` missed the two Windows shapes that
+  // are neither — a root-relative `\drv\file` (a `RootDir` with no prefix) and a drive-relative
+  // `C:file` (a `Prefix` with no root) — and `join` resolves both outside the document's directory. A
+  // list of refusals is a list to forget something on; this one has nothing left to forget.
+  if named
+    .components()
+    .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
   {
     return Err(format!(
       "the tool library {reference} could not be used: it is not inside the document's directory"
