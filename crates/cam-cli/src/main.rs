@@ -14,12 +14,13 @@ use std::process::ExitCode;
 use cam_model::{Document, Operation, Toolpath};
 use cam_move::MoveStream;
 use cam_post::{emit, parse_post, ProgramMeta};
+use cam_program::program_for;
 use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  circle_centre, drill, inlay, program_for, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
-  ProgramTool, ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
+  circle_centre, drill, inlay, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
+  ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
 };
 use cam_units::{Format, Length};
 
@@ -1847,11 +1848,11 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
   let post = parse_post(&post_text)
     .map_err(|error| Failure::post(format!("{}: {error}", post_path.display())))?;
 
-  // The program is the document's toolpaths, built by the library's own law (T4): one function for
-  // the emitter, the simulation and, later, the shell's estimate, so no two of them can disagree
-  // about what the document cuts.
-  let tools = program_tools(&document, &library)?;
-  let stream = program_for(&document, &tools).map_err(|error| Failure::input(error.to_string()))?;
+  // The program is the document's toolpaths, built by the library's own law (T4) through the one
+  // crate that can see both halves of it (T2.0), so the emitter, the simulation and, later, the
+  // shell's estimate cannot disagree about what the document cuts.
+  let stream =
+    program_for(&document, &library).map_err(|error| Failure::input(error.to_string()))?;
 
   let meta = ProgramMeta {
     file_name: document_path
@@ -1871,43 +1872,6 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
     None => print!("{}", emitted.text),
   }
   Ok(())
-}
-
-/// Resolve the document's tools the way the program builder needs them (S6).
-///
-/// `cam-toolpath` gains no `cam-store` edge, so the mapping from a stored tool onto the builder's own
-/// types happens here, where both are known. One entry per distinct tool number, in document order —
-/// and a number the library does not hold is left *out* rather than refused here: the builder names
-/// the missing tool and the toolpath that asked for it, so the sentence is the same one whether the
-/// tool is missing from a list of specs or from a library.
-fn program_tools(document: &Document, library: &ToolLibrary) -> Result<Vec<ProgramTool>, Failure> {
-  let mut tools: Vec<ProgramTool> = Vec::new();
-  for toolpath in &document.toolpaths {
-    let number = toolpath.tool_number;
-    if tools.iter().any(|tool| tool.spec.number == number) {
-      continue;
-    }
-    let Some((geometry, cutting)) = library
-      .tool_for_number(number)
-      .map_err(|error| Failure::input(error.to_string()))?
-    else {
-      continue;
-    };
-    tools.push(ProgramTool {
-      spec: ToolSpec {
-        number,
-        // A tool whose diameter the library does not record keeps the builder's own refusal: zero is
-        // the spec's way of saying "no diameter", and the builder names the tool when it sees one.
-        diameter: geometry.diameter.unwrap_or(Length::ZERO),
-        included_angle: geometry.included_angle,
-        feed_rate: cutting.feed_rate.unwrap_or(0.0),
-        plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
-        spindle_speed: cutting.spindle_speed.unwrap_or(0),
-      },
-      flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
-    });
-  }
-  Ok(tools)
 }
 
 /// The cell size, as a fraction of which the deviation tolerance is stated.
@@ -1979,8 +1943,8 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
 
   // The program is the one `emit` would run (D-M5-1): the same segments, built by the same
   // function, so the simulation cannot disagree with the machine about what was cut.
-  let tools = program_tools(&document, &library)?;
-  let stream = program_for(&document, &tools).map_err(|error| Failure::input(error.to_string()))?;
+  let stream =
+    program_for(&document, &library).map_err(|error| Failure::input(error.to_string()))?;
 
   let cell = Length::from_mm(resolution);
   let mut field =

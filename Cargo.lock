@@ -632,6 +632,7 @@ dependencies = [
  "cam-model",
  "cam-move",
  "cam-post",
+ "cam-program",
  "cam-sim",
  "cam-store",
  "cam-toolpath",
@@ -704,6 +705,19 @@ version = "0.0.1"
 dependencies = [
  "cam-geom",
  "cam-move",
+ "cam-units",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "cam-program"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-model",
+ "cam-move",
+ "cam-store",
+ "cam-toolpath",
  "cam-units",
  "thiserror 2.0.21",
 ]
