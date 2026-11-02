@@ -208,3 +208,21 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   `4ddbb72` (`rustfmt.toml`) is repository hygiene that this defect needed in order to be gated; `da5e978` and the
   commit carrying this entry are the record. Nothing in the work unit can be split further without leaving a commit
   whose tests do not run.
+
+- **L8 (the review, and it approved without a correction).** The owner asked for it explicitly after the verifier
+  came back clean. Lineage **`review-66c509705f3d15fe`**, target `sha256:d9aa7b29…`, tier `medium`, lenses
+  **`review-risk` + `review-reliability`**, 7 paths / 584 changed lines, correction budget **200**. Result:
+  **approved**, no correction round opened, no blocker, and the budget spent is zero. The group forecast named 2
+  model runs over the Pi host relay; both were prepared and submitted, the risk lens returned no finding, and the
+  authority is **burned** (`gentle-ai.review-acknowledged/v1`, consumed revision `sha256:e54afb34…`).
+  **Two advisories came back, both `informational`, both from `reliability`, neither of them a correction:**
+  `R3-001` at `crates/cam-geom/src/intersect.rs:301-307` and `R3-002` at `crates/cam-geom/tests/intersect.rs:484-490`.
+  Their **text is not quoted here on purpose** — it lives in the native receipt, and a document that retypes a
+  finding from memory is the failure mode the previous feature's L11 named. What can be said without inventing
+  anything is where they are: the first is the `touch → Point` construction for a single shared angle, the second
+  is the oracle's own classification threshold (`measure > 1.0e-6`). The review's own statement about them is the one
+  that matters for the next session: *none opened a correction, none reopens this review, and no correction
+  transition is offered for this candidate; treat them as separate later work, never as a reason to re-run review on
+  this candidate.*
+  **What this receipt does not authorise:** delivery. Commit, push, pull request and merge stay ordinary repository
+  policy, and the branch is still five commits sitting on top of `master` with nothing published.
