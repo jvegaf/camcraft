@@ -126,3 +126,29 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   candidate, and `256798a` is the work unit inside it.
   **Order is now T2.** The estimate can be published and shown against a program that belongs to the document,
   which was the whole reason T4 came first (L5). T3 stays last: it needs T1's list to pick a number from.
+
+- **L7 (T4's review: approved, one lineage, three advisories, no correction).** The native review ran on the
+  work-unit candidate `256798a` alone — base `master` @ `5cb0652`, **5 paths / 1 185 lines**, tier **high**
+  (`process_boundary` on `cam-toolpath/src/lib.rs`), four lenses (`review-risk`, `review-resilience`,
+  `review-readability`, `review-reliability`), `correction_budget: 200`, forecast of 4 model runs and the owner's
+  `"1"` to spend them. Lineage `review-2630423c51d0b9e1`, state **approved**, authority **burned** with
+  `gentle-ai.review-acknowledged/v1`.
+  **No correction was required and no blocker was raised.** Three findings came back, all `informational` and
+  explicitly non-blocking — the provider's own statement is that none opened a correction, none reopens the review,
+  and no correction transition is offered for this candidate:
+
+  | ID | Lens | Location | Severity |
+  | --- | --- | --- | --- |
+  | R2-001 | readability | `crates/cam-toolpath/src/lib.rs:73-76` | SUGGESTION |
+  | R2-002 | readability | `crates/cam-toolpath/src/lib.rs:328-333` | SUGGESTION |
+  | R4-001 | resilience | `crates/cam-toolpath/src/lib.rs:1019` | WARNING |
+
+  They are **later work, never a reason to re-run this review**. The message bodies live in the native receipt, not
+  in the closure projection this session saw, so this document records their identity and location and nothing more
+  — quoting a finding's text from memory would be inventing it.
+  **What the review did NOT cover, stated so it is not assumed:** the candidate was T4's work unit, so `camui-shell`'s
+  T8/T9 gap (L37 of `camui-shell.md`) is still unreviewed. And the harness separately offered to review **the whole
+  branch against `origin/master`** (`c24f6905`, 24 commits, 26 files, target `sha256:5dbb1fda…`, lineage
+  `review-552701826bd439cd`). That start was **not** taken: it is the accumulated feature branch rather than a work
+  unit, and it would have opened a second live lineage over the same trees as this one. It remains unstarted, not
+  burned.
