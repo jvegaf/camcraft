@@ -416,3 +416,19 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
+- **L11** — A5's lattice is superseded, by the owner's decision recorded in
+  `odd/tasks/raster-far-edge-pass.md`. M5's differential found what "the last one is the last grid line
+  that fits" costs: on a 100 mm square at a 4 mm stepover the rows stop short of the offset region's far
+  edge and the strip the tool's own disc could have cut is never cut, `uncut: 984.000 mm3
+  over 164 cell(s)` (`odd/tasks/m5-simulation.md` D-M5-12, L10). The parent offered that as a
+  decision because delivering it changes this document's contract, and the owner answered verbatim
+  **`si, acepto`**; the contract changes. `raster_rows` now finishes the lattice with exactly one row on
+  `region.max.y` when the grid `min.y + k*stepover` stops short of it, and emits no extra row when a grid
+  row already lands there, so A5's "32 rows ending at `min.y + 93`" is no longer the behaviour: the
+  94 mm-tall region at 3 mm gives **33 rows** (3, 6, … 96 on the grid plus the finishing row at 97), the
+  island fixture 33 rows and 41 spans, the full-width band 25 and 25, the narrow strip 15 and 25, and the
+  radius-17 circle 10 rows — 9 on the grid plus a tangent finishing row whose retried chord is
+  about 0.037 mm. The no-duplicate half is pinned where it can fail: the 1…99 lattice keeps its 50 rows and
+  every raster program whose far edge already sits on the grid stays byte-identical. A5, the T2
+  pseudo-code's "last row clamped to max.y" and the T2 test line above are left as written — this log is
+  a period record, and the superseded lattice is exactly what those entries recorded.

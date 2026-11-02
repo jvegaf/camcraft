@@ -555,3 +555,13 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   and the same run exposed D-M5-12, a raster lattice that stops 2 mm short of the far edge and leaves
   `984 mm³` standing. That one is recorded and not fixed, because finishing the far edge changes M4's
   documented raster contract — a decision for the owner, not for a simulation milestone.
+- **L11 (D-M5-12 decided and delivered).** L10 closed this milestone with that decision outstanding; the
+  owner has now taken it, verbatim **`si, acepto`**, to the parent's offer *"D-M5-12 (raster de
+  simulación, 984 mm³ sin cortar) … necesita tu decisión porque cambia el contrato de M4"*. What changed:
+  the raster lattice now finishes itself with exactly one row on `region.max.y` when the grid
+  `min.y + k·stepover` stops short of it, and emits no extra row when a grid row already lands there, so
+  the strip D-M5-12 measured is cut by a row on the far edge instead of being left standing. The work,
+  its specs (S1–S6) and its evidence are in `odd/tasks/raster-far-edge-pass.md`; M4's contract and its
+  worked example now say thirty-three rows (`docs/m4-toolpaths.md`). D-M5-12 and L10 above are left as
+  written — they are what the milestone recorded at the time, and the `984 mm³` is that old lattice's
+  measurement, not a re-measurement of the finished one.

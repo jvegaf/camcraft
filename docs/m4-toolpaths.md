@@ -97,8 +97,14 @@ never emitted as a degenerate path. Rings keep their arcs as arcs.
 ### Raster rows
 
 The boundary is inset once by `inset` to give the region; a refused or unproven inset is
-`OffsetCollapsed`. Rows sit on the grid `region.min.y + k·stepover`, and the last row is the last grid
-line that fits inside `region.max.y`.
+`OffsetCollapsed`. Rows sit on the grid `region.min.y + k·stepover` while the line fits inside
+`region.max.y`, and the lattice is then **finished**: when that grid stops short of `region.max.y` —
+the stepover does not divide the region's height — exactly one more row is cut on `region.max.y`
+itself. When a grid row already lands on `region.max.y` no extra row is emitted, because that row is
+already cut and already retried onto the material, and appending would plunge into the same strip a
+second time; the gap is compared against the kernel tolerance, so a row a millionth of a millimetre
+from the edge counts as on it. The finishing row is clipped, zigzagged and retracted exactly like a
+grid row, because it is one.
 
 Each row is clipped by intersecting a horizontal line with every segment of the region: the x of every
 intersection is sorted, deduped within the kernel tolerance (two segments meeting at a vertex both
@@ -286,7 +292,8 @@ Twelve rings, outermost first, and the 51 mm inset is where the region collapses
 
 ### Raster pocket: the same square at a 3 mm stepover
 
-The inset region spans `y = 3 … 97`, 94 mm tall, so the rows are the grid `y = 3 + 3k` that fits:
+The inset region spans `y = 3 … 97`, 94 mm tall, so the rows are the grid `y = 3 + 3k` that fits,
+finished with one row on the far edge:
 
 | Row | y |
 | --- | --- |
@@ -294,10 +301,18 @@ The inset region spans `y = 3 … 97`, 94 mm tall, so the rows are the grid `y =
 | 2 | 6 mm |
 | … | … |
 | 32 | 96 mm |
-| — | 99 mm is past 97, so there is no 33rd row |
+| 33 | 97 mm — the finishing row, on the far edge |
 
-Thirty-two rows, each spanning `x = 3 … 97`. The first row sits exactly on the region's lower edge,
-which makes its clipping ambiguous, so it is the one the `1e-5 mm` retry exists for.
+`96 + 3 = 99` is past 97, so the grid stops at 32 rows and ends `1 mm` short of the region's far edge;
+the lattice is therefore finished with one row on `region.max.y`, giving **thirty-three rows**, each
+spanning `x = 3 … 97`. The first row sits exactly on the region's lower edge, which makes its clipping
+ambiguous, so it is the one the `1e-5 mm` retry exists for. A far edge the grid already reaches gains
+nothing: the same square with a 2 mm tool at a 2 mm stepover keeps its `50` rows at `y = 1, 3, … 99`,
+because `99` *is* a grid row and cutting it twice would plunge into the strip it already clears. A
+circular region shows the consequence rather than a special case: a 40 mm circle under a 6 mm tool
+leaves the inset radius 17, whose region is `y = 33 … 67`; the grid ends at `65`, and the finishing row
+at `67` is tangent, so the retry cuts the chord `2·√(17² − (17 − 1e-5)²) ≈ 0.037 mm` — which is why
+`circle_raster_spans_match_the_analytic_chord` expects 10 rows and not 9.
 
 ### Drill bank: holes at x = 0, 10, 40, 100 with 3 drills at 32 mm
 
