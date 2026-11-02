@@ -435,6 +435,23 @@ impl Command {
         height,
         thickness,
       } => {
+        // Checked before anything is assigned, so a refusal leaves the job exactly as it was. The
+        // check has to live here and not only in `AppState::execute_with_outcome`: that path does
+        // catch a zero, but only by validating the document *after* the assignment, and `apply` is
+        // public — a caller that hands a document in directly would get an invalid job back and the
+        // next `Job::outline` would panic on it. This is the last place before that panic, so the
+        // three dimensions are refused here, with the model's own error: `Document::validate` refuses
+        // a non-positive dimension by exactly this name, and a second spelling of the same rule would
+        // be a second answer to one question.
+        for (field, value) in [
+          ("width", *width),
+          ("height", *height),
+          ("thickness", *thickness),
+        ] {
+          if !value.is_finite() || value <= 0.0 {
+            return Err(ModelError::NonPositiveJobDimension { field, value }.into());
+          }
+        }
         document.job.width = cam_units::Length::from_mm(*width);
         document.job.height = cam_units::Length::from_mm(*height);
         document.job.thickness = cam_units::Length::from_mm(*thickness);

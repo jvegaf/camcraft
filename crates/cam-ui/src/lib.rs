@@ -401,6 +401,20 @@ pub enum UiAction {
   Redo,
   /// Frame the whole drawing.
   ZoomToFit,
+  /// Replace the stock size. Values are millimetres and must be positive.
+  ///
+  /// The material dialog is the only thing that pushes this today, and it is the shell's first
+  /// *document-level* edit: everything else here changes geometry inside a job whose size was taken as
+  /// given. The three positivity rules travel with [`cam_app::Command::SetJob`] rather than with this
+  /// action, so a caller feeding it a zero is refused in the same words wherever it came from.
+  SetJob {
+    /// Stock size along X, in millimetres.
+    width: f64,
+    /// Stock size along Y, in millimetres.
+    height: f64,
+    /// Stock thickness, in millimetres.
+    thickness: f64,
+  },
   /// Add a rectangle of an explicit size, centred on the current view.
   ///
   /// This is the parameter-driven path M1 shipped and the command bar still offers; the canvas
@@ -479,6 +493,7 @@ impl UiAction {
       Self::Undo => "undo",
       Self::Redo => "redo",
       Self::ZoomToFit => "zoom to fit",
+      Self::SetJob { .. } => "set job size",
       Self::AddRectangle { .. } => "add rectangle",
       Self::Draw(shape) => shape.label(),
       Self::Transform(transform) => match transform {
@@ -607,6 +622,28 @@ pub struct DrawnState {
   /// widget-by-text lookup from outside a frame, so a test that has to press a menu row is given the point
   /// the row was drawn at instead of guessing at the popup's margins.
   pub menu_hits: Vec<(String, (f32, f32))>,
+  /// The words the material dialog drew, in the order it drew them: the title, the two cards with their
+  /// subtitles, the three measurement labels with their values, the plan's annotations, the caption under
+  /// the plan, and the footer.
+  ///
+  /// Empty while the dialog is closed, because a dialog nobody opened drew nothing. This is how a headless
+  /// test reads the one screen in the shell whose content is a picture: the annotated plan is painted with
+  /// a painter, and its three dimension labels are the only part of it a test can quote back.
+  pub material: Vec<String>,
+  /// Where the material path drew each pressable thing: the Job tab's opener while the dialog is closed,
+  /// then the dialog's two cards and its two footer buttons while it is open.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason: egui offers no
+  /// widget-by-text lookup from outside a frame, so a test that has to press a card is given the point the
+  /// card was drawn at instead of guessing at the dialog's margins.
+  pub material_hits: Vec<(String, (f32, f32))>,
+  /// The sentence the material dialog is showing because one of its numbers cannot describe a stock.
+  ///
+  /// Empty while the numbers are usable and while the dialog is closed. The dialog refuses before it pushes
+  /// anything, so a non-empty answer here is also the reason [`ShellOutput::actions`] holds no
+  /// [`UiAction::SetJob`] for that frame — and [`cam_app::Command::SetJob`] refuses the same three numbers
+  /// by the model's own rule if anything else ever does.
+  pub material_refusal: String,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the clock itself reports: exactly `0.0` while the preview stands on its first
@@ -763,6 +800,18 @@ pub struct Shell {
   /// `F1` toggles it and `Esc` closes it, so the operator never has to aim at a close box to get the
   /// drawing back.
   pub show_help: bool,
+  /// Whether the material dialog is open.
+  ///
+  /// View state: opening the dialog and cancelling it out of it are not edits, and only `Continue` writes.
+  /// `Esc` closes it without writing, the same rule the help panel follows.
+  pub show_material: bool,
+  /// The three numbers the material dialog is editing, in millimetres: width X, height Y, thickness Z.
+  ///
+  /// Drafts, not the document: they are seeded from the job when the dialog opens and written back only
+  /// when `Continue` is pressed, so a half-typed size never reaches the document and `Cancel` costs
+  /// nothing. Public and flat the way every other parameter of this shell is ([`Self::rectangle_size`]),
+  /// because a dialog whose numbers could not be set is a dialog that cannot be tested.
+  pub material_size: (f64, f64, f64),
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   help_focus: crate::help::Command,
   /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
@@ -820,6 +869,15 @@ impl Default for Shell {
       inspector_open: true,
       show_shortcuts: false,
       show_help: false,
+      // Closed at birth, like every other panel here: a dialog that opens by itself swallows the first
+      // click on the canvas, which is what `cam-ui --test input` caught on eighteen tests. The Job tab
+      // is how it opens (L108's lesson: a temporary default nobody meant to ship).
+      show_material: false,
+      material_size: (
+        Job::default_sheet().width.mm(),
+        Job::default_sheet().height.mm(),
+        Job::default_sheet().thickness.mm(),
+      ),
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }
@@ -1055,12 +1113,24 @@ impl Shell {
     if self.show_help {
       self.help_window(&ctx, &mut output);
     }
+    // The material dialog is the shell's one modal: `Esc` leaves it without writing, the rule the help panel
+    // already follows, and `Continue` is the only thing in the dialog that touches the document.
+    if self.show_material && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.show_material = false;
+    }
+    if self.show_material {
+      self.material_dialog(&ctx, app, &mut output);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
     // breakpoint) must not jump the animation forward by the length of the stall.
     let dt = f64::from(ctx.input(|input| input.stable_dt));
-    self.track_pointer(app, &ctx);
+    // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
+    // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
+    if !self.show_material {
+      self.track_pointer(app, &ctx);
+    }
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
     // and a central panel must come last or it would claim the space the sides need.
     self.app_bar(app, ui, &mut output);
@@ -2130,6 +2200,18 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionRepo
         ..ActionReport::default()
       })
     }
+    UiAction::SetJob {
+      width,
+      height,
+      thickness,
+    } => apply_command(
+      app,
+      Command::SetJob {
+        width: *width,
+        height: *height,
+        thickness: *thickness,
+      },
+    ),
     UiAction::AddRectangle { width, height } => {
       let layer_id = drawing_layer(app)?;
       let centre = app.camera().center();

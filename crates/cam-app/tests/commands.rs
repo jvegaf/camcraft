@@ -2864,3 +2864,50 @@ fn undoing_a_vertex_edit_restores_the_document_exactly() {
     },
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The material: the one command that writes `document.job` (T12, S4, S7).
+// ---------------------------------------------------------------------------------------------
+
+/// A `SetJob` carrying a dimension no stock can have is refused, with the number in the sentence.
+///
+/// `Job::outline` panics on a non-positive dimension. `AppState` only catches that by validating the
+/// whole document *after* `apply` has run, so `Command::apply` — the public entry point a caller can
+/// hand a document to directly — was the last place a zero could reach the panic. The shell's material
+/// dialog is the first thing that can type one, so the refusal lives with the command and names the
+/// field and the value (S4: every refusal names a number).
+#[test]
+fn set_job_refuses_a_dimension_a_stock_cannot_have() {
+  let cases = [
+    ("width", 0.0, "got 0"),
+    ("height", 0.0, "got 0"),
+    ("thickness", 0.0, "got 0"),
+    ("width", -600.0, "got -600"),
+    ("height", f64::NAN, "got NaN"),
+  ];
+  for (field, bad, number) in cases {
+    let command = Command::SetJob {
+      width: if field == "width" { bad } else { 600.0 },
+      height: if field == "height" { bad } else { 400.0 },
+      thickness: if field == "thickness" { bad } else { 18.0 },
+    };
+    let mut document = Document::new(Job::default_sheet());
+    let before = document.job;
+    let error = command
+      .apply(&mut document)
+      .expect_err("a stock needs three positive dimensions")
+      .to_string();
+    assert!(
+      error.contains(&format!("job {field}")),
+      "the refusal does not name the {field}: {error}"
+    );
+    assert!(
+      error.contains(number),
+      "the refusal does not name the number the caller typed ({number}): {error}"
+    );
+    assert_eq!(document.job, before, "a refused job changed the job anyway");
+    // The proof that matters: the document still describes a rectangle, so nothing downstream can
+    // reach the panic `Job::outline` documents.
+    assert_eq!(document.job.outline(), Job::default_sheet().outline());
+  }
+}
