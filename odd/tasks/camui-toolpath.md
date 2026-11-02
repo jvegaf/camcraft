@@ -173,3 +173,32 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   anticipate; what it does **not** do is create a cycle — `cam-store` still refuses `cam-toolpath` and `cam-toolpath`
   still refuses `cam-store`, because the join lives one level above both. A third copy of the mapping is what the
   owner refused.
+
+- **L9 (T2.0 delivered: the join has a crate, and the binary kept its one implementation).** `ee155ff`, gate
+  **exit 0, 96 suites, 1 147 tests** by the parent's own run (+5 tests, +2 suite lines: `cam-program`'s unit suite
+  and its doc-test suite). New member `crates/cam-program` (`cam-model`, `cam-move`, `cam-store`, `cam-toolpath`,
+  `cam-units`), **402 insertions against the ~400 slice** — this one lands inside the guideline, unlike T4.
+  Its surface is one function: `program_for(&Document, &ToolLibrary) -> Result<MoveStream, ProgramError>`.
+  `program_tools` is moved **verbatim and stays private** — a caller holding `ProgramTool`s calls
+  `cam-toolpath::program_for` directly, and widening the mapping is a later decision, not something this slice
+  assumed. `ProgramError` has **two causes and no wording of its own**: `#[error("{0}")]` delegates `Display` to
+  `cam_store::StoreError` or `cam_toolpath::ToolpathError`, because the sentences an operator reads belong to the
+  failure that produced them, and `Failure` — a type about process exit codes — stays in the binary. `#[from]`
+  replaces the old `map_err(|e| Failure::input(e.to_string()))` at both call sites.
+  **Differential:** `crates/cam-cli/tests/cli.rs` is unedited and still reads `121 passed; 0 failed`; `git status`
+  for `cam-store` and `cam-toolpath` is empty, so neither gained the edge S6 forbids, and `cam-cli` ends with one
+  implementation instead of two. **RED**, with the moved body stubbed to `unimplemented!()`: `1 passed; 4 failed`;
+  the fifth (the wrapper test) passed in both states because it asserts `Display` delegation — stated, not counted.
+  **Environment, again from L5.** The first attempt died with `spawn … EAGAIN`: the cgroup's `pids.max` had
+  regressed from 4096 back to **64**, saturated at 64/64. The worker wrote **nothing** rather than leave unverified
+  code, which was the right call and cost one turn. Raised to 4096 with the owner's explicit authorisation (a write
+  outside the repository, so it was asked for by absolute path); the task then re-ran from a clean tree. If `EAGAIN`
+  returns, it is that file, not a slow machine.
+  **Next is T2.1**, and it is now possible at all: `cam-ui` gains the `cam-program` edge, `view3d.rs` publishes
+  `seconds_for` over the one formula `move_seconds` already implements, and the `clock_text` readout draws beside
+  the card. Nothing about it needs the mapping widened.
+  **The harness's other candidate, for the record (third offer).** Targets `sha256:5dbb1fda…`, `sha256:85b7ec67…`
+  and `sha256:7ce326156…` all carried the **same `paths_digest` (`sha256:87486b28…`)** — the accumulated branch
+  against `origin/master`, 26 files / 24 commits, changed only in the document's own bytes. Each was declined and
+  none was burned; the reminder fires once per mutation generation, so it will keep arriving until the owner either
+  reviews that branch deliberately or decides to leave it.
