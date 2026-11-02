@@ -9,11 +9,17 @@ use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, ProfileParams, Toolpath};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
+use cam_ui::view3d::{clock_text, seconds_for};
 use cam_ui::{Shell, ShellOutput, Stage};
 use cam_units::{Angle, Length, UnitSystem};
 
 /// A document with one rectangle and one profile toolpath that cuts with `tool_number`.
 fn document_with_toolpath(tool_number: u32) -> Document {
+  document_with_toolpaths(tool_number, 1)
+}
+
+/// The same document with `count` profile toolpaths, all cutting with `tool_number`.
+fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
   let mut document = Document::new(Job::default_sheet());
   let contour = Contour::from_points(
     &[
@@ -34,14 +40,16 @@ fn document_with_toolpath(tool_number: u32) -> Document {
       kind: EntityKind::Contour { contour },
     }],
   });
-  document.toolpaths.push(Toolpath {
-    id: "P1".to_owned(),
-    name: "Perfil 01".to_owned(),
-    entity_ids: vec!["E1".to_owned()],
-    island_ids: Vec::new(),
-    tool_number,
-    operation: cam_model::Operation::Profile(ProfileParams::default()),
-  });
+  for index in 0..count {
+    document.toolpaths.push(Toolpath {
+      id: format!("P{}", index + 1),
+      name: format!("Perfil {:02}", index + 1),
+      entity_ids: vec!["E1".to_owned()],
+      island_ids: Vec::new(),
+      tool_number,
+      operation: cam_model::Operation::Profile(ProfileParams::default()),
+    });
+  }
   document
 }
 
@@ -146,13 +154,22 @@ fn a_number_the_snapshot_does_not_hold_says_so_and_names_the_number() {
   // The snapshot holds T4, and the document cuts with T7 — the state that would otherwise be a blank card.
   shell.set_tools(vec![stored_tool("G4", 4, Some(12.7), Some(90.0), Some(2))]);
 
+  let (output, _) = toolpaths_frame(&mut shell, &mut app);
+
   assert_eq!(
-    card_of(&mut shell, &mut app),
+    output.drawn.tool_card,
     vec![
       "TOOL — Perfil 01".to_owned(),
       "T7 is not in the tool library this window was given, so this toolpath has no tool to show."
         .to_owned(),
     ],
+  );
+  // No tool, no program, no time: the estimate says why instead of printing `0:00` beside a card that
+  // has just said the tool is missing.
+  assert!(
+    output.drawn.cutting_time.contains("T7") && !output.drawn.cutting_time.contains(':'),
+    "the estimate must name the missing tool rather than measure nothing: {:?}",
+    output.drawn.cutting_time
   );
 }
 
@@ -187,6 +204,59 @@ fn a_document_with_no_toolpath_draws_no_card() {
   assert!(
     card.is_empty(),
     "a card for a toolpath the document does not hold would be describing nothing: {card:?}"
+  );
+}
+
+#[test]
+fn the_estimate_beside_the_card_is_the_documents_own_cutting_time() {
+  let mut app = AppState::new(document_with_toolpath(4));
+  let mut shell = Shell::new();
+  let tools = vec![stored_tool("G4", 4, Some(12.7), Some(90.0), Some(2))];
+  shell.set_tools(tools.clone());
+
+  let (output, _) = toolpaths_frame(&mut shell, &mut app);
+
+  // The card is exactly the three lines S2 allows: the estimate did not become a fourth field.
+  assert_eq!(
+    output.drawn.tool_card.len(),
+    3,
+    "{:?}",
+    output.drawn.tool_card
+  );
+
+  // The time is this document's own program — the shell builds it from the document's toolpaths and
+  // the snapshot — and it is written by the playback clock's formatter, not by one of its own.
+  let program = cam_program::program_for_snapshot(app.document(), &tools).expect("a program");
+  assert_eq!(
+    output.drawn.cutting_time,
+    format!(
+      "Estimated cutting time · {}",
+      clock_text(seconds_for(&program))
+    )
+  );
+  // And not an empty program wearing a clock: the fixture's own profile is 13 whole seconds of
+  // cutting at 100 mm/s, written the way the playback bar writes a moment.
+  assert_eq!(output.drawn.cutting_time, "Estimated cutting time · 0:13");
+}
+
+#[test]
+fn the_estimate_moves_when_the_document_does() {
+  // A second toolpath of the same shape is more path to cut, so the estimate grows: this is what makes
+  // it the document's time rather than a constant drawn beside the card.
+  let mut app = AppState::new(document_with_toolpaths(4, 2));
+  let mut shell = Shell::new();
+  shell.set_tools(vec![stored_tool("G4", 4, Some(12.7), Some(90.0), Some(2))]);
+  let (two, _) = toolpaths_frame(&mut shell, &mut app);
+
+  let mut single = AppState::new(document_with_toolpaths(4, 1));
+  let mut other_shell = Shell::new();
+  other_shell.set_tools(vec![stored_tool("G4", 4, Some(12.7), Some(90.0), Some(2))]);
+  let (one, _) = toolpaths_frame(&mut other_shell, &mut single);
+
+  assert_ne!(
+    two.drawn.cutting_time, one.drawn.cutting_time,
+    "two passes take longer than one: {:?} vs {:?}",
+    two.drawn.cutting_time, one.drawn.cutting_time
   );
 }
 

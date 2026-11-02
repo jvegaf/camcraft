@@ -655,6 +655,18 @@ pub struct DrawnState {
   /// from outside a frame — and it is the only place that pairs a document's `tool_number` with the
   /// library snapshot (camui-toolpath S2).
   pub tool_card: Vec<String>,
+  /// The estimated cutting time drawn beside the current-tool card, as one line of text.
+  ///
+  /// A line of its own and not a fourth card field, because the card's fields are exactly the ones the
+  /// reference frame shows and must not grow (camui-toolpath S2): the time is about the document's
+  /// program, not about the tool. The seconds are the published law
+  /// ([`view3d::seconds_for`](crate::view3d::seconds_for)) and the text is
+  /// [`view3d::clock_text`](crate::view3d::clock_text)'s, so this reads what the playback clock reads.
+  ///
+  /// Empty while the frame is not on the Toolpaths stage and while the document holds no toolpath, for
+  /// the same reason [`Self::tool_card`] is; when the document's program cannot be built it holds the
+  /// emitter's own sentence instead of a duration nobody can measure.
+  pub cutting_time: String,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the clock itself reports: exactly `0.0` while the preview stands on its first

@@ -275,7 +275,7 @@ impl Preview3d {
 
   /// How many seconds of the program's own time it lasts.
   pub fn duration(&self) -> f64 {
-    self.cumulative.last().copied().unwrap_or(0.0)
+    total_seconds(&self.cumulative)
   }
 
   /// How many seconds of the program's own time the cursor has consumed.
@@ -691,6 +691,31 @@ fn steps_for(program: &MoveStream) -> (Vec<Step>, Vec<f64>) {
     }
   }
   (steps, cumulative)
+}
+
+/// The last entry of a running total: how long the whole program lasts, and `0.0` for a total with no
+/// moves in it.
+///
+/// One projection, two readers — [`seconds_for`] over a program it has just timed, and
+/// [`Preview3d::duration`] over the total it already keeps — so the estimate beside a toolpath and the
+/// playback clock cannot drift apart.
+fn total_seconds(cumulative: &[f64]) -> f64 {
+  cumulative.last().copied().unwrap_or(0.0)
+}
+
+/// How many seconds of its own time `program` lasts.
+///
+/// The published form of the law [`steps_for`] already implements: each move is timed by
+/// [`move_seconds`] — the segment's plunge rate for a move that travels in Z alone, its feed rate
+/// otherwise, an arc along its own circle, a helix along the hypotenuse — and the program's length is
+/// their sum (camui-toolpath S5). Nothing here holds a second opinion, which is what makes the
+/// estimate beside the current-tool card the same number the playback clock reports for the same
+/// program rather than a number that merely looks like it.
+///
+/// A program with no timed moves lasts `0.0`, which [`clock_text`] writes as `0:00` rather than as a
+/// lie.
+pub fn seconds_for(program: &MoveStream) -> f64 {
+  total_seconds(&steps_for(program).1)
 }
 
 /// How many seconds of the program's own time one move takes.

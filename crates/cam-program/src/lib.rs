@@ -13,7 +13,9 @@
 
 use cam_model::Document;
 use cam_move::MoveStream;
-use cam_store::tools::ToolLibrary;
+use cam_store::tools::{
+  stored_tool_for_number, CuttingData, StoredTool, ToolGeometry, ToolLibrary,
+};
 use cam_toolpath::{ProgramTool, ToolSpec};
 use cam_units::Length;
 
@@ -41,48 +43,95 @@ pub enum ProgramError {
 /// already holds the tools as [`ProgramTool`]s calls `cam-toolpath::program_for` directly; this is
 /// the function for a caller that holds a database.
 pub fn program_for(document: &Document, library: &ToolLibrary) -> Result<MoveStream, ProgramError> {
-  let tools = program_tools(document, library)?;
+  let tools = program_tools(
+    document,
+    |number| -> Result<Option<ProgramTool>, ProgramError> {
+      Ok(
+        library
+          .tool_for_number(number)?
+          .map(|(geometry, cutting)| program_tool(number, &geometry, &cutting)),
+      )
+    },
+  )?;
   Ok(cam_toolpath::program_for(document, &tools)?)
+}
+
+/// The program a document asks for, with every tool resolved from a library *snapshot*.
+///
+/// The shell holds no [`ToolLibrary`] — it owns a rusqlite connection and is not `Clone`, so a window
+/// is given `Vec<StoredTool>` instead (S4) — which leaves [`program_for`] unreachable from it. This is
+/// the same program for a caller that holds those records and does no I/O of its own: the numbers
+/// resolve through [`cam_store::tools::stored_tool_for_number`], the one rule the current-tool card
+/// already uses (S3), and each record becomes the builder's tool through the same mapping the library
+/// path uses.
+///
+/// There is no query here, so there is nothing to fail on the library: the only failure is the
+/// emitter's, and a number the snapshot does not hold is left out exactly as it is in [`program_for`],
+/// so the builder names the missing tool and the toolpath that asked for it.
+pub fn program_for_snapshot(
+  document: &Document,
+  tools: &[StoredTool],
+) -> Result<MoveStream, cam_toolpath::ToolpathError> {
+  let resolved = program_tools(
+    document,
+    |number| -> Result<Option<ProgramTool>, cam_toolpath::ToolpathError> {
+      Ok(
+        stored_tool_for_number(tools, number)
+          .map(|tool| program_tool(number, &tool.geometry, &tool.cutting)),
+      )
+    },
+  )?;
+  cam_toolpath::program_for(document, &resolved)
 }
 
 /// Resolve the document's tools the way the program builder needs them (S6).
 ///
 /// `cam-toolpath` gains no `cam-store` edge, so the mapping from a stored tool onto the builder's
 /// own types happens here, where both are known. One entry per distinct tool number, in document
-/// order — and a number the library does not hold is left *out* rather than refused here: the
+/// order — and a number the entry point cannot find is left *out* rather than refused here: the
 /// builder names the missing tool and the toolpath that asked for it, so the sentence is the same
 /// one whether the tool is missing from a list of specs or from a library.
-fn program_tools(
-  document: &Document,
-  library: &ToolLibrary,
-) -> Result<Vec<ProgramTool>, ProgramError> {
+///
+/// The two entry points differ in one thing only — how a number becomes a record, `resolve` — so this
+/// loop and [`program_tool`] are written once. The error type is the caller's: the library path's
+/// query can fail, the snapshot path's cannot.
+fn program_tools<E, F>(document: &Document, mut resolve: F) -> Result<Vec<ProgramTool>, E>
+where
+  F: FnMut(u32) -> Result<Option<ProgramTool>, E>,
+{
   let mut tools: Vec<ProgramTool> = Vec::new();
   for toolpath in &document.toolpaths {
     let number = toolpath.tool_number;
     if tools.iter().any(|tool| tool.spec.number == number) {
       continue;
     }
-    let Some((geometry, cutting)) = library
-      .tool_for_number(number)
-      .map_err(ProgramError::Library)?
-    else {
+    let Some(tool) = resolve(number)? else {
       continue;
     };
-    tools.push(ProgramTool {
-      spec: ToolSpec {
-        number,
-        // A tool whose diameter the library does not record keeps the builder's own refusal: zero is
-        // the spec's way of saying "no diameter", and the builder names the tool when it sees one.
-        diameter: geometry.diameter.unwrap_or(Length::ZERO),
-        included_angle: geometry.included_angle,
-        feed_rate: cutting.feed_rate.unwrap_or(0.0),
-        plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
-        spindle_speed: cutting.spindle_speed.unwrap_or(0),
-      },
-      flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
-    });
+    tools.push(tool);
   }
   Ok(tools)
+}
+
+/// One stored tool record, in the shape the program builder reads it (S6).
+///
+/// The single mapping both entry points resolve through: the library path hands it what
+/// `ToolLibrary::tool_for_number` returned and the snapshot path what `stored_tool_for_number` found,
+/// so the two cannot describe the same tool differently.
+fn program_tool(number: u32, geometry: &ToolGeometry, cutting: &CuttingData) -> ProgramTool {
+  ProgramTool {
+    spec: ToolSpec {
+      number,
+      // A tool whose diameter the library does not record keeps the builder's own refusal: zero is
+      // the spec's way of saying "no diameter", and the builder names the tool when it sees one.
+      diameter: geometry.diameter.unwrap_or(Length::ZERO),
+      included_angle: geometry.included_angle,
+      feed_rate: cutting.feed_rate.unwrap_or(0.0),
+      plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
+      spindle_speed: cutting.spindle_speed.unwrap_or(0),
+    },
+    flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
+  }
 }
 
 #[cfg(test)]
@@ -263,6 +312,36 @@ mod tests {
       outside_profile("TP3", "Third", 1),
     ]);
     let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
+    link_second_tool(&library);
+
+    let program = program_for(&document, &library).expect("a program");
+
+    // Every toolpath becomes its own segment, in document order, and a number used twice resolves to
+    // the same tool both times.
+    let seen: Vec<(&str, u32, f64)> = program
+      .segments
+      .iter()
+      .map(|segment| {
+        (
+          segment.name.as_str(),
+          segment.tool_number,
+          segment.feed_rate,
+        )
+      })
+      .collect();
+    assert_eq!(
+      seen,
+      vec![
+        ("First", 1, 100.0),
+        ("Second", 2, 50.0),
+        ("Third", 1, 100.0)
+      ]
+    );
+  }
+
+  /// A second tool, program number `2`, whose rates differ from the first one's so a segment's own
+  /// numbers say which tool it resolved.
+  fn link_second_tool(library: &ToolLibrary) {
     library
       .put_geometry(&ToolGeometry {
         id: "G2".to_owned(),
@@ -295,30 +374,45 @@ mod tests {
     library
       .link("T2", "G2", "C2", None, None)
       .expect("the second tool is linked");
+  }
 
-    let program = program_for(&document, &library).expect("a program");
+  #[test]
+  fn the_snapshot_and_the_library_build_the_same_program() {
+    let document = document_with(vec![
+      outside_profile("TP1", "First", 1),
+      outside_profile("TP2", "Second", 2),
+      outside_profile("TP3", "Third", 1),
+    ]);
+    let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
+    link_second_tool(&library);
+    let snapshot = library.tools().expect("the snapshot reads");
 
-    // Every toolpath becomes its own segment, in document order, and a number used twice resolves to
-    // the same tool both times.
-    let seen: Vec<(&str, u32, f64)> = program
-      .segments
-      .iter()
-      .map(|segment| {
-        (
-          segment.name.as_str(),
-          segment.tool_number,
-          segment.feed_rate,
-        )
-      })
-      .collect();
+    let from_library = program_for(&document, &library).expect("a program");
+    let from_snapshot = program_for_snapshot(&document, &snapshot).expect("a program");
+
+    // One per-record mapping, two ways of finding the record: the same tool numbers become the same
+    // program, field for field — the tool, its shape, its rates and the order the toolpaths keep.
+    assert_eq!(from_snapshot, from_library);
+  }
+
+  #[test]
+  fn a_number_the_snapshot_does_not_hold_is_named_with_its_toolpath() {
+    let document = document_with(vec![outside_profile("TP1", "Outside", 7)]);
+    let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
+    let snapshot = library.tools().expect("the snapshot reads");
+
+    let error = program_for_snapshot(&document, &snapshot).expect_err("the tool is missing");
+
+    // No library, so no `ProgramError`: the snapshot path's only failure is the emitter's, and the
+    // sentence is the one the library path prints for the same absence (L6).
     assert_eq!(
-      seen,
-      vec![
-        ("First", 1, 100.0),
-        ("Second", 2, 50.0),
-        ("Third", 1, 100.0)
-      ]
+      error.to_string(),
+      "tool T7 used by toolpath \"TP1\" is not in the library"
     );
+    assert!(matches!(
+      error,
+      ToolpathError::ToolNotInLibrary { tool_number: 7, .. }
+    ));
   }
 
   #[test]

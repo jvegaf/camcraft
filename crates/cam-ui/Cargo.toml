@@ -13,6 +13,7 @@ cam-geom.workspace = true
 cam-import.workspace = true
 cam-model.workspace = true
 cam-move.workspace = true
+cam-program.workspace = true
 cam-sim.workspace = true
 cam-store.workspace = true
 cam-units.workspace = true

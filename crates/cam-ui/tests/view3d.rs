@@ -10,6 +10,10 @@
 //! feed rate — so the cursor, the fraction of the current move and the removed volume are all
 //! asserted against numbers written out by hand, and the field at the end is compared cell for cell
 //! with the whole-program [`sweep::apply`] the report uses.
+//!
+//! The published seconds (`seconds_for`) are held to the same standard: the estimate beside the
+//! toolpath card may not be a second time formula, so a test asserts it is exactly the number the
+//! playback clock reports for the same program (camui-toolpath S5).
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
@@ -17,6 +21,7 @@ use cam_model::{Document, Job, Layer};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield, Volumes};
 use cam_ui::theme::{Palette, Role, Theme};
+use cam_ui::view3d::{clock_text, seconds_for};
 use cam_ui::{Preview3d, Shell, ShellOutput};
 use cam_units::Length;
 
@@ -922,6 +927,39 @@ fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
 /// triangle — and every shape clipped to that same rectangle is the panel's own output: the bars,
 /// the palette, the dock and the canvas each paint inside their own clip rectangle, so this is the
 /// frame's 3D view and nothing else.
+#[test]
+fn seconds_for_is_the_time_laws_total_and_not_a_second_opinion() {
+  // `playback_program`'s four moves are 20 mm at 100 mm/s, a 10 mm plunge at 50 mm/s, a 50 mm feed at
+  // 100 mm/s and a 10 mm retract at 100 mm/s: one second, exactly what the clock's own arithmetic
+  // answers. The plunge is the case a second formula gets wrong — it is timed at the *plunge* rate.
+  let seconds = seconds_for(&playback_program());
+  assert!(
+    (seconds - 1.0).abs() < 1e-12,
+    "the four moves are one second, not {seconds}"
+  );
+}
+
+#[test]
+fn the_published_seconds_agree_with_the_playback_clock() {
+  let program = playback_program();
+  let mut preview = Preview3d::new(untouched(), program.clone(), &job());
+
+  // The estimate and the playback bar are one number with two readers (S5): the published total is
+  // the preview's own duration, not a parallel computation that happens to agree here.
+  assert_eq!(seconds_for(&program), preview.duration());
+
+  // And it is the number the clock really runs out on: played to its end, the readout has consumed
+  // exactly the published seconds.
+  preview.set_playing(true);
+  preview.advance(10.0);
+  assert!(
+    preview.finished(),
+    "ten seconds of wall clock play one second out"
+  );
+  assert_eq!(preview.elapsed(), seconds_for(&program));
+  assert_eq!(clock_text(seconds_for(&program)), "0:01");
+}
+
 fn colours_in_the_3d_panel(harness: &Harness) -> Vec<egui::Color32> {
   let surface_vertices = 3 * harness.output.drawn.painted_triangles;
   assert!(surface_vertices > 0, "the frame painted no surface");
