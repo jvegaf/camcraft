@@ -65,14 +65,11 @@ impl Editor {
       // start state is the same on every launch, so the animation is as deterministic as the moves.
       preview.set_playing(true);
     }
-    // The tool library the inspector's tool card resolves a toolpath's number against. It starts empty and
-    // opening a document empties it again, and that is a gap stated rather than a path invented
-    // (camui-toolpath T1, S4; shell-open-document S4): a document names its library only by a filename
-    // (`Document::tools_ref`), which `cam-cli` resolves against the document's own directory. There is no
-    // honest default here — inventing one would make the card describe somebody's library instead of this
-    // job's — and the sample document holds no toolpath either, so no card is drawn. What would fill this
-    // in: `cam_store::tools::ToolLibrary::open(tools_ref)` behind the open action, which is the next step
-    // and not this one, because resolving that filename is a rule the CLI already owns.
+    // The tool library the inspector's tool card resolves a toolpath's number against. At launch it is empty
+    // on purpose: the sample document is not a file and names no library, so there is nothing to resolve and
+    // inventing one would make the card describe somebody's library instead of this job's. Once a document is
+    // opened, the **shell** fills this from that document's `tools_ref` — resolved against the document's own
+    // directory and contained to it — so the host never has to know the rule.
     shell.set_tools(Vec::new());
     // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
     // outcome of the last command, and on a fresh window there is no command yet.

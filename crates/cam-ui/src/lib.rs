@@ -39,14 +39,14 @@
 #![warn(missing_docs)]
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
 use cam_model::Job;
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
-use cam_store::tools::StoredTool;
+use cam_store::tools::{StoredTool, ToolLibrary};
 use cam_view::{
   box_select, build_grid, build_scene, choose_snap, pick, SceneItem, Snap, SnapKind, Style,
   PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
@@ -829,9 +829,11 @@ pub struct Shell {
   /// The tool library as a snapshot: every tool this window was given, in the library's own order.
   ///
   /// A snapshot and not a library: [`cam_store::tools::ToolLibrary`] owns a rusqlite connection and is
-  /// not `Clone`, so the shell cannot hold one and opens no files of its own (camui-toolpath S4). Empty
-  /// until a host hands one in, and empty is a real answer — the card then says the number it was asked
-  /// for is not in the library it was given.
+  /// not `Clone`, so the shell cannot hold one. It is filled from two places — an open resolves the
+  /// library its document names, read from beside that document (shell-tools-ref S2, S3), and a host may
+  /// hand one in with [`Shell::set_tools`]. It is empty after an open whose document names no library, or
+  /// one that cannot be used, and empty is a real answer — the card then says the number it was asked for
+  /// is not in the library it was given.
   tools: Vec<StoredTool>,
   /// The file the drawing was opened from, once a host has opened or saved one.
   ///
@@ -1060,13 +1062,32 @@ impl Shell {
     );
     // An open replaces the document, so everything the shell derived from the previous one goes with it.
     // None of these three is in the undo history — the preview is a picture of a program, the tool
-    // snapshot is what this window was handed, and the drafts are numbers the dialog has not written
-    // yet — so a bare swap would leave the 3D panel playing the old drawing's program and the dialog
-    // holding the old stock. The view is handed back to the shell for the same reason: the new drawing
+    // snapshot belongs to the drawing that was showing, and the drafts are numbers the dialog has not
+    // written yet — so a bare swap would leave the 3D panel playing the old drawing's program and the
+    // dialog holding the old stock. The snapshot is not simply emptied: the opened document names the
+    // library it was written against, so that library is resolved from beside it (S2), and a library that
+    // is missing or unusable costs the drawing nothing (S4) — the open's sentence stays and says why the
+    // library could not be used. The view is handed back to the shell for the same reason: the new drawing
     // is framed, because the old drawing's zoom was never a choice about this one.
+    let mut library_note: Option<String> = None;
     if applied.is_ok() && matches!(action, UiAction::OpenFile { .. }) {
       self.clear_preview();
-      self.set_tools(Vec::new());
+      let resolved = self.document_path.as_deref().and_then(|document_path| {
+        app
+          .document()
+          .tools_ref
+          .as_deref()
+          .map(|reference| tools_beside_document(document_path, reference))
+      });
+      match resolved {
+        Some(Ok(tools)) => self.set_tools(tools),
+        Some(Err(reason)) => {
+          self.set_tools(Vec::new());
+          library_note = Some(reason);
+        }
+        // No `tools_ref`: today's empty snapshot and today's sentence, unchanged (S2).
+        None => self.set_tools(Vec::new()),
+      }
       self.material_size = default_material_size();
       self.auto_frame = true;
     }
@@ -1074,6 +1095,11 @@ impl Shell {
       Ok(report) => report.message(),
       Err(message) => format!("refused: {message}"),
     };
+    // Added after the open's own sentence rather than folded into it, so a document with no `tools_ref`
+    // prints exactly what it printed before this resolution existed.
+    if let Some(note) = library_note {
+      self.status.push_str(&format!(" — {note}"));
+    }
   }
 
   /// The file the drawing was opened from or last written to, once a host has opened or saved one.
@@ -1133,11 +1159,13 @@ impl Shell {
 
   /// Hand the shell the tool library as a snapshot, for the current-tool card to resolve numbers with.
   ///
-  /// A snapshot rather than a library because [`cam_store::tools::ToolLibrary`] owns a connection and the
-  /// shell does no I/O (camui-toolpath S4): the host decides where the library comes from and when it is
-  /// read, and the shell only resolves the numbers the document's toolpaths name. Replacing the snapshot
-  /// replaces what the card can describe, and an empty one is legal — it makes every number unresolved,
-  /// which is the state the card says out loud instead of drawing a blank tool.
+  /// A snapshot rather than a library because [`cam_store::tools::ToolLibrary`] owns a connection: the
+  /// host decides where the library comes from and when it is read, and the shell only resolves the
+  /// numbers the document's toolpaths name. An open is the one exception, and it is not a second rule:
+  /// it resolves the library the loaded document names from beside that document (shell-tools-ref S2)
+  /// and calls this with the entries. Replacing the snapshot replaces what the card can describe, and an
+  /// empty one is legal — it makes every number unresolved, which is the state the card says out loud
+  /// instead of drawing a blank tool.
   pub fn set_tools(&mut self, tools: Vec<StoredTool>) {
     self.tools = tools;
   }
@@ -2719,6 +2747,54 @@ fn file_label(path: &Path) -> String {
     .file_name()
     .map(|name| name.to_string_lossy().into_owned())
     .unwrap_or_else(|| path.display().to_string())
+}
+
+/// The tools an opened document names, read from the directory that document was opened from.
+///
+/// `tools_ref` is relative to the document's own directory (`docs/format.md`), which is the whole of the
+/// rule the join below implements: an absolute reference, or one that leaves the directory through `..`,
+/// is **refused before the filesystem is touched**, because it is not a reference relative to that
+/// directory at all. This is the one place the window is stricter than `cam-cli` (S3, S7), and the reason
+/// is [`cam_store::tools::ToolLibrary::open`]: it creates the parent directory and the file it is pointed
+/// at, so an unchecked reference in a document would let the window write anywhere the process can.
+///
+/// The rule is checked on the reference rather than decided by canonicalising both sides. `..` is refused
+/// by name wherever it appears, even in `sub/../tools.sqlite`, which would land back inside the
+/// directory: a canonicalised comparison needs both ends to exist, so it would turn "the library is
+/// missing" — the ordinary, soft failure S4 is about — into a containment verdict, and answering a
+/// question about the path would read the filesystem before the guard did. A path with a `..` in it is
+/// not a path relative to the document's directory, and refusing it costs the user one field.
+///
+/// A reference that stays inside the directory and names nothing is not a refused open: the drawing is
+/// the user's and the library is an accessory, so the answer is the empty snapshot plus the sentence that
+/// says which library could not be used and why (S4).
+fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<StoredTool>, String> {
+  let named = Path::new(reference);
+  if named.is_absolute()
+    || named
+      .components()
+      .any(|component| matches!(component, Component::ParentDir))
+  {
+    return Err(format!(
+      "the tool library {reference} could not be used: it is not inside the document's directory"
+    ));
+  }
+  let directory = document_path.parent().unwrap_or_else(|| Path::new("."));
+  let path = directory.join(named);
+  // Checked before the library is opened, because opening creates whatever it is pointed at: a library
+  // that is not there is a fact this window reports, never a file it brings into being (S3). `try_exists`
+  // rather than `exists` so a directory the process may not read is reported as the error it is instead
+  // of being told the file is missing.
+  let present = path
+    .try_exists()
+    .map_err(|error| format!("the tool library {reference} could not be used: {error}"))?;
+  if !present {
+    return Err(format!(
+      "the tool library {reference} could not be used: the document's directory holds no such file"
+    ));
+  }
+  let library = ToolLibrary::open(&path).map_err(|error| error.to_string())?;
+  library.tools().map_err(|error| error.to_string())
 }
 
 /// The layer new geometry is drawn into: the first one.
