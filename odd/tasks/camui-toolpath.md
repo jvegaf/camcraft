@@ -202,3 +202,42 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   against `origin/master`, 26 files / 24 commits, changed only in the document's own bytes. Each was declined and
   none was burned; the reminder fires once per mutation generation, so it will keep arriving until the owner either
   reviews that branch deliberately or decides to leave it.
+
+- **L10 (two reviews approved, T2.1 delivered, and a pre-existing flake found).** Both work units of this feature
+  that carry a contract now hold a native receipt. **T4** — lineage `review-2630423c51d0b9e1`, candidate `256798a`
+  alone (5 paths / 1 185 lines), **approved**, authority burned, 0 blockers, 3 advisories (R2-001, R2-002
+  readability, R4-001 resilience WARNING). **T2.0** — lineage `review-526430ccfe87cf3e`, candidate
+  `ad4be20..ee155ff` (7 paths / 498 lines), **approved**, burned, 0 blockers, 2 advisories (R2-001
+  `cam-program/src/lib.rs:65-68`, R2-002 `cam-program/Cargo.toml:17-23`). All advisory, none opened a correction and
+  none reopens anything: they are later work, listed here by id and location only, because their bodies live in the
+  native receipt and would otherwise be reconstructed from memory.
+  **T2.1 delivered `d617648`** — 8 paths, 323 insertions, inside the ~400 slice. Gate **exit 0, 96 suites, 1 153
+  tests** by the parent's own run (+6), `crates/cam-cli/tests/cli.rs` still unedited at **121/0**. The estimate is
+  the first thing in this feature that describes the operator's document rather than a demonstrator's sample.
+  **The hole L8 did not foresee, and the fix.** `cam-program`'s T2.0 entry point takes a `&ToolLibrary`, and the
+  shell has none: S4 hands it a `Vec<StoredTool>` snapshot and no I/O. T2.1 as first scoped was therefore written
+  against an API the UI could never call. `cam-program` gained `program_for_snapshot(&Document, &[StoredTool])` over
+  `cam_store::tools::stored_tool_for_number` — the rule T1 already published — and the mapping was refactored into one
+  shared loop plus `program_tool(number, &geometry, &cutting)`, so both entry points resolve through a single
+  per-record rule. One rule, two sources, still no third copy.
+  **One time formula, verified by reading it.** `move_seconds` is the law; `total_seconds` projects the running
+  total; `seconds_for` and `Preview3d::duration()` are its two readers. The estimate is a **line of its own**, not a
+  fourth card field (S2), and when no program can be built it prints the emitter's sentence instead of `0:00` beside
+  a card that has just said the tool is missing.
+  **RED, three stubs, three real counts:** `program_for_snapshot` stubbed → `5 passed; 2 failed`; `seconds_for`
+  stubbed → `25 passed; 2 failed`; field present but nothing drawn → `4 passed; 3 failed`. The pre-existing tests
+  passed in the RED run and after, which is what says the refactor kept its ground.
+  **Two things stated rather than hidden.** The estimate rebuilds the program **on every frame** it is drawn — a
+  cache needs a document revision the shell does not carry, so it was left honest at O(moves) per frame rather than
+  guessed at. And **the gate is flaky for a reason that predates this feature**: `cam-geom --test distance`'s
+  `the_distance_is_zero_exactly_when_the_segments_meet` finds two concentric arcs where `intersect` answers
+  `Coincident` while `segment_to_segment` answers 7.071. It reproduces on a pristine `git archive HEAD` tree with the
+  same persisted seed, so it is **not ours** — but it can fail a gate run and it appends a seed to the tracked
+  `crates/cam-geom/tests/distance.proptest-regressions`. That file was restored to HEAD content, never edited. This is
+  a real defect in `cam-geom` and it deserves its own feature document; it is recorded here so nobody spends another
+  turn proving it is not the current change.
+  **Slice boundary, so the number is not misread.** The harness reports this branch at 8 331 authored lines across 29
+  commits against `origin/master` — that is `camui-shell`'s delivered work plus T1, T4 and T2 riding on an unpushed
+  `master`, not one slice. T2.1 is `d617648`, 323 insertions.
+  **Next is T3**, now unblocked: T1 gave the shell a tool list to pick a number from, and the vocabulary in `cam-app`
+  is the last piece. It is item 3 for the same reason T4 was, so it gets its own commit and its own candidate.
