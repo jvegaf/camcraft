@@ -45,6 +45,7 @@
 
 use cam_app::{AppState, VertexEdit};
 use cam_geom::Point2;
+use cam_program::program_for_snapshot;
 use cam_store::tools::{render_name, stored_tool_for_number, StoredTool, ToolGeometry};
 use cam_units::Format;
 use egui::{Align, Layout, RichText, Sense};
@@ -52,6 +53,7 @@ use egui::{Align, Layout, RichText, Sense};
 use crate::help::{Command, Group, MenuScope};
 use crate::icons::Icon;
 use crate::theme::{self, Palette, Role, Theme};
+use crate::view3d::{clock_text, seconds_for};
 use crate::{Shell, ShellOutput, Tool, UiAction};
 
 /// One palette chip: the glyph and the command it runs.
@@ -743,6 +745,14 @@ impl Shell {
   ///
   /// The shell has no toolpath selection yet, so the card describes the document's **first** toolpath and
   /// names it in the heading. When authoring lands (T3) the selection is what the heading reads from.
+  ///
+  /// Below the card's own lines sits the **estimated cutting time** — a line of its own, not a fourth
+  /// field, because the card's fields are exactly the frame's (S2). Its seconds are
+  /// [`seconds_for`] over the program this document's own toolpaths build from the same snapshot, so the
+  /// number describes what the machine would cut and is the number the playback clock would report for
+  /// it (S5); [`clock_text`] writes it, so the two readouts are formatted by one rule. When that program
+  /// cannot be built there is no time to show, and the emitter's sentence says which tool or toolpath
+  /// stopped it instead.
   fn tool_card(
     &mut self,
     app: &AppState,
@@ -788,6 +798,24 @@ impl Shell {
         output.drawn.tool_card.push(sentence);
       }
     }
+
+    // A line of its own rather than a field of the card (S2), measured over the document's own program
+    // and written by the playback clock's formatter (S5). No second time formula, no second clock.
+    let estimate = match program_for_snapshot(app.document(), &self.tools) {
+      Ok(program) => format!(
+        "Estimated cutting time · {}",
+        clock_text(seconds_for(&program))
+      ),
+      // No program, no time: naming what stopped it is more use than a `0:00` beside a card that has
+      // just said the tool is missing.
+      Err(error) => format!("No estimated cutting time — {error}"),
+    };
+    ui.label(
+      RichText::new(&estimate)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    output.drawn.cutting_time = estimate;
     ui.add_space(6.0);
   }
 

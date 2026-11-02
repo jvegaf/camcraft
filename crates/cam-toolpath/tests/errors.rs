@@ -76,6 +76,48 @@ fn every_variant() -> Vec<ToolpathError> {
       width: 20.0,
       height: 20.0,
     },
+    ToolpathError::ToolNotInLibrary {
+      tool_number: 7,
+      toolpath: "TP1".to_owned(),
+    },
+    ToolpathError::ToolWithoutDiameter { tool_number: 3 },
+    ToolpathError::ChamferNeedsAngle {
+      tool_number: 3,
+      toolpath: "TP1".to_owned(),
+    },
+    ToolpathError::ChamferNeedsSharpBit {
+      tool_number: 3,
+      toolpath: "TP1".to_owned(),
+      flat_diameter: 0.4,
+      chamfer_width: 2.0,
+    },
+    ToolpathError::VCarveNeedsAngle {
+      tool_number: 3,
+      toolpath: "TP1".to_owned(),
+    },
+    ToolpathError::VCarveNeedsSharpTip {
+      tool_number: 3,
+      toolpath: "TP1".to_owned(),
+      flat_diameter: 0.4,
+    },
+    ToolpathError::UnknownEntity {
+      toolpath: "TP1".to_owned(),
+      entity: "E9".to_owned(),
+    },
+    ToolpathError::NotAContour {
+      entity: "E9".to_owned(),
+    },
+    ToolpathError::UnknownIsland {
+      toolpath: "TP1".to_owned(),
+      island: "E9".to_owned(),
+    },
+    ToolpathError::IslandNotAContour {
+      island: "E9".to_owned(),
+    },
+    ToolpathError::InToolpath {
+      toolpath: "TP1".to_owned(),
+      source: Box::new(ToolpathError::NoHoles),
+    },
   ]
 }
 
@@ -84,7 +126,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    24,
+    35,
     "every variant must be listed exactly once"
   );
 
@@ -181,6 +223,66 @@ fn every_variant_keeps_its_message() {
            mm region: every point of the region is within that distance of its boundary, so the \
            medial axis is empty and there is no tip to plunge"
         )
+      }
+      ToolpathError::ToolNotInLibrary {
+        tool_number,
+        toolpath,
+      } => format!("tool T{tool_number} used by toolpath {toolpath:?} is not in the library"),
+      ToolpathError::ToolWithoutDiameter { tool_number } => {
+        format!("tool T{tool_number} has no diameter, so a profile offset cannot be computed")
+      }
+      ToolpathError::ChamferNeedsAngle {
+        tool_number,
+        toolpath,
+      } => {
+        format!(
+          "tool T{tool_number} has no included angle, so toolpath {toolpath:?} cannot cut a chamfer: \
+           a V-bit strategy needs the tool's angle, and defaulting 90 degrees would cut a different \
+           bevel"
+        )
+      }
+      ToolpathError::ChamferNeedsSharpBit {
+        tool_number,
+        toolpath,
+        flat_diameter,
+        chamfer_width,
+      } => {
+        format!(
+          "tool T{tool_number} has a {flat_diameter} mm flat tip, so toolpath {toolpath:?} would cut \
+           a bevel wider than its {chamfer_width} mm chamfer width: a chamfer needs a sharp V-bit"
+        )
+      }
+      ToolpathError::VCarveNeedsAngle {
+        tool_number,
+        toolpath,
+      } => {
+        format!(
+          "tool T{tool_number} has no included angle, so toolpath {toolpath:?} cannot carve: a \
+           V-carve's depth cannot be derived, and defaulting 90 degrees would cut a different carve"
+        )
+      }
+      ToolpathError::VCarveNeedsSharpTip {
+        tool_number,
+        toolpath,
+        flat_diameter,
+      } => {
+        format!(
+          "tool T{tool_number} has a {flat_diameter} mm flat tip, so toolpath {toolpath:?} would not \
+           carve to a sharp edge: a V-carve needs a sharp V-bit"
+        )
+      }
+      ToolpathError::UnknownEntity { toolpath, entity } => {
+        format!("toolpath {toolpath:?} cites unknown entity {entity:?}")
+      }
+      ToolpathError::NotAContour { entity } => format!("entity {entity:?} is not a contour"),
+      ToolpathError::UnknownIsland { toolpath, island } => {
+        format!("toolpath {toolpath:?} cites unknown island {island:?}")
+      }
+      ToolpathError::IslandNotAContour { island } => {
+        format!("island {island:?} is not a contour")
+      }
+      ToolpathError::InToolpath { toolpath, source } => {
+        format!("toolpath {toolpath:?}: {source}")
       }
     };
     assert_eq!(error.to_string(), expected, "{error:?}");

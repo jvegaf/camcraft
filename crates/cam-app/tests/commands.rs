@@ -3,7 +3,10 @@
 use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit};
 use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::{primitive, transform, Point2, Vec2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
+use cam_model::{
+  Document, EngraveParams, Entity, EntityKind, Job, Layer, ModelError, Operation, PocketParams,
+  ProfileParams,
+};
 
 fn state_with_layers(layer_ids: &[&str]) -> AppState {
   let mut document = Document::new(Job::default_sheet());
@@ -2910,4 +2913,330 @@ fn set_job_refuses_a_dimension_a_stock_cannot_have() {
     // reach the panic `Job::outline` documents.
     assert_eq!(document.job.outline(), Job::default_sheet().outline());
   }
+}
+
+// --- the toolpath vocabulary: add, retool, re-operate and delete (S7) --------------------------
+//
+// `cam_app::Command` had no toolpath word at all before this layer: authoring lived only in
+// `cam-cli toolpath`, so a form in the shell had nothing to call. The four commands below are that
+// vocabulary and nothing more. None of them reads a tool library — `cam-app` has no `cam-store`
+// edge, and whether the library holds a number is the emitter's refusal, not this layer's (L5).
+
+/// One `AddToolpath` over `entity_ids`, profiling, with no islands.
+fn add_toolpath(toolpath_id: &str, entity_ids: Vec<String>, tool_number: u32) -> Command {
+  Command::AddToolpath {
+    toolpath_id: toolpath_id.to_owned(),
+    name: format!("{toolpath_id} profile"),
+    entity_ids,
+    island_ids: Vec::new(),
+    tool_number,
+    operation: Operation::Profile(ProfileParams::default()),
+  }
+}
+
+#[test]
+fn adding_a_toolpath_stores_its_tool_number_and_operation() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the toolpath is added");
+
+  let stored = app
+    .document()
+    .toolpaths
+    .first()
+    .expect("the toolpath is stored");
+  assert_eq!(stored.id, "TP1");
+  assert_eq!(stored.name, "TP1 profile");
+  assert_eq!(stored.tool_number, 4);
+  assert_eq!(stored.entity_ids, vec![rectangle]);
+  assert!(stored.island_ids.is_empty());
+  assert_eq!(
+    stored.operation,
+    Operation::Profile(ProfileParams::default())
+  );
+}
+
+#[test]
+fn undoing_an_added_toolpath_restores_the_document_exactly() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  assert_single_undo_restores(&mut app, add_toolpath("TP1", vec![rectangle], 4));
+  assert!(
+    app.document().toolpaths.is_empty(),
+    "the undo leaves no toolpath behind"
+  );
+}
+
+#[test]
+fn adding_a_toolpath_whose_id_is_taken_is_refused_naming_the_toolpath() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the first toolpath is added");
+
+  let error = assert_refused_atomically(&mut app, add_toolpath("TP1", vec![rectangle], 5));
+  assert_eq!(
+    error,
+    CommandError::DuplicateToolpath("TP1".to_owned()),
+    "{error:?}"
+  );
+  assert_eq!(error.to_string(), "toolpath \"TP1\" already exists");
+  assert_eq!(
+    app.document().toolpaths.len(),
+    1,
+    "the refusal stores nothing"
+  );
+}
+
+#[test]
+fn adding_a_toolpath_naming_no_entity_is_refused() {
+  let mut app = state_with_layer();
+  let error = assert_refused_atomically(&mut app, add_toolpath("TP1", Vec::new(), 4));
+  assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
+  assert_eq!(error.to_string(), "no entities were selected");
+  assert!(app.document().toolpaths.is_empty());
+}
+
+#[test]
+fn adding_a_toolpath_naming_an_absent_entity_is_refused_naming_both() {
+  let mut app = state_with_layer();
+  let error = assert_refused_atomically(&mut app, add_toolpath("TP1", vec!["E99".to_owned()], 4));
+  assert_eq!(
+    error,
+    CommandError::Invalid(ModelError::UnknownEntity {
+      toolpath: "TP1".to_owned(),
+      entity: "E99".to_owned(),
+    }),
+    "{error:?}"
+  );
+  assert_eq!(
+    error.to_string(),
+    "the command was refused: toolpath \"TP1\" references unknown entity \"E99\""
+  );
+  assert!(app.document().toolpaths.is_empty());
+}
+
+#[test]
+fn setting_a_toolpaths_tool_number_leaves_the_rest_of_it_alone() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the toolpath is added");
+  let before = app.document().toolpaths[0].clone();
+
+  assert_single_undo_restores(
+    &mut app,
+    Command::SetToolpathToolNumber {
+      toolpath_id: "TP1".to_owned(),
+      tool_number: 7,
+    },
+  );
+  // The undo above restored the old number, so set it again and compare the rest of the record.
+  app
+    .execute(Command::SetToolpathToolNumber {
+      toolpath_id: "TP1".to_owned(),
+      tool_number: 7,
+    })
+    .expect("the tool number is set");
+
+  let after = app.document().toolpaths[0].clone();
+  assert_eq!(after.tool_number, 7);
+  assert_eq!(after.id, before.id);
+  assert_eq!(after.name, before.name);
+  assert_eq!(after.entity_ids, before.entity_ids);
+  assert_eq!(after.operation, before.operation);
+}
+
+#[test]
+fn setting_a_tool_number_on_an_absent_toolpath_is_refused_naming_it() {
+  let mut app = state_with_layer();
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::SetToolpathToolNumber {
+      toolpath_id: "TP9".to_owned(),
+      tool_number: 7,
+    },
+  );
+  assert_eq!(
+    error,
+    CommandError::UnknownToolpath("TP9".to_owned()),
+    "{error:?}"
+  );
+  assert_eq!(error.to_string(), "toolpath \"TP9\" does not exist");
+}
+
+#[test]
+fn setting_a_toolpaths_operation_keeps_the_tool_and_the_entities() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the toolpath is added");
+
+  app
+    .execute(Command::SetToolpathOperation {
+      toolpath_id: "TP1".to_owned(),
+      operation: Operation::Pocket(PocketParams::default()),
+    })
+    .expect("the operation is set");
+
+  let stored = &app.document().toolpaths[0];
+  assert_eq!(stored.operation, Operation::Pocket(PocketParams::default()));
+  assert_eq!(stored.tool_number, 4);
+  assert_eq!(stored.entity_ids, vec![rectangle]);
+}
+
+#[test]
+fn setting_an_operation_the_toolpaths_geometry_cannot_cut_is_refused_naming_the_entity() {
+  let mut app = state_with_layer();
+  let line = draw_line(&mut app, Point2::ORIGIN, Point2::new(20.0, 0.0));
+  // Engraving an open vector is legal — it is the operation that exists for one — so the toolpath
+  // starts valid and only the *change* to a pocket is what the geometry cannot pay for.
+  app
+    .execute(Command::AddToolpath {
+      toolpath_id: "TP1".to_owned(),
+      name: "TP1 engrave".to_owned(),
+      entity_ids: vec![line.clone()],
+      island_ids: Vec::new(),
+      tool_number: 4,
+      operation: Operation::Engrave(EngraveParams::default()),
+    })
+    .expect("engraving an open line is legal");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::SetToolpathOperation {
+      toolpath_id: "TP1".to_owned(),
+      operation: Operation::Pocket(PocketParams::default()),
+    },
+  );
+  assert_eq!(
+    error,
+    CommandError::Invalid(ModelError::OpenContourNotCuttable {
+      toolpath: "TP1".to_owned(),
+      entity: line.clone(),
+    }),
+    "{error:?}"
+  );
+  assert_eq!(
+    error.to_string(),
+    format!(
+      "the command was refused: toolpath \"TP1\" needs closed geometry, entity {line:?} is open"
+    )
+  );
+  assert_eq!(
+    app.document().toolpaths[0].operation,
+    Operation::Engrave(EngraveParams::default()),
+    "the refusal leaves the operation as it was"
+  );
+}
+
+#[test]
+fn setting_an_operation_on_an_absent_toolpath_is_refused_naming_it() {
+  let mut app = state_with_layer();
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::SetToolpathOperation {
+      toolpath_id: "TP9".to_owned(),
+      operation: Operation::Pocket(PocketParams::default()),
+    },
+  );
+  assert_eq!(
+    error,
+    CommandError::UnknownToolpath("TP9".to_owned()),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn deleting_a_toolpath_removes_only_that_one() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the first toolpath is added");
+  app
+    .execute(add_toolpath("TP2", vec![rectangle], 5))
+    .expect("the second toolpath is added");
+
+  assert_single_undo_restores(
+    &mut app,
+    Command::DeleteToolpath {
+      toolpath_id: "TP1".to_owned(),
+    },
+  );
+  app
+    .execute(Command::DeleteToolpath {
+      toolpath_id: "TP1".to_owned(),
+    })
+    .expect("the toolpath is deleted");
+
+  let remaining: Vec<&str> = app
+    .document()
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.id.as_str())
+    .collect();
+  assert_eq!(remaining, vec!["TP2"]);
+  assert_eq!(
+    app.document().entities().count(),
+    1,
+    "geometry is untouched"
+  );
+}
+
+#[test]
+fn deleting_an_absent_toolpath_is_refused_naming_it_and_leaves_the_others() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle], 4))
+    .expect("the toolpath is added");
+
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::DeleteToolpath {
+      toolpath_id: "TP9".to_owned(),
+    },
+  );
+  assert_eq!(
+    error,
+    CommandError::UnknownToolpath("TP9".to_owned()),
+    "{error:?}"
+  );
+  assert_eq!(error.to_string(), "toolpath \"TP9\" does not exist");
+  assert_eq!(app.document().toolpaths.len(), 1);
+}
+
+#[test]
+fn the_toolpath_commands_have_human_labels() {
+  assert_eq!(add_toolpath("TP1", Vec::new(), 4).label(), "add toolpath");
+  assert_eq!(
+    Command::SetToolpathToolNumber {
+      toolpath_id: "TP1".to_owned(),
+      tool_number: 4,
+    }
+    .label(),
+    "set toolpath tool"
+  );
+  assert_eq!(
+    Command::SetToolpathOperation {
+      toolpath_id: "TP1".to_owned(),
+      operation: Operation::Profile(ProfileParams::default()),
+    }
+    .label(),
+    "set toolpath operation"
+  );
+  assert_eq!(
+    Command::DeleteToolpath {
+      toolpath_id: "TP1".to_owned(),
+    }
+    .label(),
+    "delete toolpath"
+  );
 }
