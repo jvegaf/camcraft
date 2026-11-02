@@ -12,16 +12,19 @@ CLI does not have.
   las dos features"*.
 - **S2 — the resolution.** On a successful open, the shell resolves the loaded document's `tools_ref`
   **relative to that document's own directory** — which is what `docs/format.md:105` already says the field
-  is — loads it through `ToolLibrary::open`, and hands the entries to `set_tools`. A document with no
+  is — loads it through a **read-only** open, and hands the entries to `set_tools`. A document with no
   `tools_ref` leaves the snapshot empty, exactly as today. This is the same join `cam-cli` performs
-  (`cam-cli/src/main.rs:1828-1844`).
+  (`cam-cli/src/main.rs:1828-1844`), with one difference the CLI does not have: the window **never writes a
+  library**, so the open cannot create, migrate or touch one.
 - **S3 — containment, which the CLI does not have.** A reference that is absolute, or that escapes the
   document's directory through `..`, is **refused**: the window reads nothing outside that directory and
   creates nothing anywhere. This is not a tightening of the documented rule but its implementation — a
   reference that leaves the directory is not a reference relative to it. The guard also matters because
   `ToolLibrary::open` (`cam-store/src/tools.rs:219-241`) creates the parent directory and the file when the
   path does not exist, so a hostile document could otherwise make the window write into arbitrary paths. The
-  window checks existence before opening, so a library that is not there is never created by looking at it.
+  window checks existence before opening, so a library that is not there is never created by looking at it,
+  **and it opens read-only, so looking at one never writes it either** — which is what closes the case the
+  verifier found in L4, a symlink beside the document pointing at an existing file outside it.
 - **S4 — a library that cannot be used does not cost the user the drawing.** Missing, unreadable, or not a
   library: the document still opens, the snapshot stays empty, and the status line says the library could not
   be used and why. The card already names an unresolved tool in its own words
@@ -81,3 +84,27 @@ CLI does not have.
   tested (only "missing" and "not a library"), and `Some("")` resolves to the document's own directory and
   fails softly through SQLite. The parent also fixed the host's own comment, which still said resolving
   `tools_ref` was "the next step".
+- **L4 (L3's write claim was false, and the verifier broke it).** L3 said the write surface was closed because
+  `try_exists` follows a symlink and a dangling one reads as absent. That covers **creating**. It does not cover
+  **writing into a file that already exists**, and the verifier reproduced exactly that: a symlink beside the
+  document pointing at an existing zero-length file outside it passes `try_exists`, `ToolLibrary::open` runs,
+  and `migrate` writes its schema into the outside file — **0 → 73 728 bytes**, silently, with the status
+  `open file — opened cut.c2d` and no note. A hostile `.c2d` could therefore write into any existing file
+  outside its own directory. It was **caused by this feature**: at the baseline the window opened no library at
+  all.
+  **The fix is not another path guard.** Canonicalising would close the write and also refuse the shared-library
+  symlink L3 chose to keep working. `cam-store` gained `ToolLibrary::open_read_only` — `SQLITE_OPEN_READ_ONLY`,
+  no `create_dir_all`, no `migrate`, with a version gate in the constructor — and the resolver uses it. The
+  window now reads a library and cannot write one, through a symlink or otherwise, and the TOCTOU between
+  `try_exists` and the open stops mattering for writes because there is no write to race into.
+  **The trade, stated because it is real:** read-only refuses what `open` used to accept by writing — a file
+  that was never initialised, a library **below head** (a legacy library a user still has, refused with a
+  message naming both versions), one above head, and a missing path. All of them are soft in the window (the
+  drawing opens, the card says the tool is not in the library), and `cam-cli` is untouched because it keeps
+  calling `open` and still migrates. Migrating a legacy library from the window is therefore impossible by
+  design, and that is the price of never writing.
+  **Evidence:** the blocker test failed before the fix with `left: 73728 right: 0` and passes after; `cam-store`
+  went 7 → 10 tests and `shell.rs` 104 → 108, with no existing test moved. The other three probes the verifier
+  handed over — the climb-back refusal, the unusable-reference soft path and the stale-card class — are pinned
+  now too, and the stale-card one closed a gap neither the spec nor the unit had thought about: a card from the
+  previous document must not survive an open whose library fails to resolve.
