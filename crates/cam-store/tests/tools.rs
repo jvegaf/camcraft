@@ -1,7 +1,8 @@
 //! Behaviour tests for the SQLite tool library (A4).
 
 use cam_store::tools::{
-  head_version, render_name, CuttingData, Machine, Material, ToolGeometry, ToolLibrary, MIGRATIONS,
+  head_version, render_name, CuttingData, Machine, Material, StoredTool, ToolGeometry, ToolLibrary,
+  MIGRATIONS,
 };
 use cam_units::{Angle, Length, UnitSystem};
 
@@ -34,6 +35,15 @@ fn cutting(id: &str, feed: f64, stepdown: f64) -> CuttingData {
     tool_number: Some(1),
     notes: None,
   }
+}
+
+/// A scratch directory under the system temp directory, named so two tests cannot collide.
+fn scratch(name: &str) -> std::path::PathBuf {
+  let directory =
+    std::env::temp_dir().join(format!("campilot-tools-{name}-{}", std::process::id()));
+  let _ = std::fs::remove_dir_all(&directory);
+  std::fs::create_dir_all(&directory).expect("scratch directory");
+  directory
 }
 
 #[test]
@@ -161,6 +171,105 @@ fn an_older_library_is_migrated_forward_without_losing_rows() {
       })
       .expect("v2 tables are usable");
   }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_read_only_open_reads_a_library_and_writes_nothing() {
+  let directory = scratch("read-only");
+  let path = directory.join("tools.sqlite");
+  {
+    let library = ToolLibrary::open(&path).expect("the owner writes the library");
+    let tool = StoredTool {
+      geometry: end_mill(),
+      cutting: cutting("C1", 100.0, 4.0),
+    };
+    library.put_geometry(&tool.geometry).expect("geometry");
+    library.put_cutting_data(&tool.cutting).expect("cutting");
+    library
+      .link("E1", &tool.geometry.id, &tool.cutting.id, None, None)
+      .expect("link");
+  }
+  let bytes = std::fs::read(&path).expect("the library is there");
+
+  {
+    let library = ToolLibrary::open_read_only(&path).expect("an existing library opens");
+    assert_eq!(
+      library.schema_version().expect("version"),
+      head_version(),
+      "a read-only open reads the version the file records"
+    );
+    let tools = library.tools().expect("the tools read");
+    assert_eq!(tools.len(), 1, "the tool the file holds is read: {tools:?}");
+    assert_eq!(tools[0].geometry, end_mill());
+    assert_eq!(tools[0].cutting.feed_rate, Some(100.0));
+    let resolved = library
+      .tool_for_number(1)
+      .expect("the query runs")
+      .expect("T1 is in the library");
+    assert_eq!(resolved.0.id, "G1");
+    assert_eq!(resolved.1.id, "C1");
+  }
+
+  assert_eq!(
+    std::fs::read(&path).expect("the library is still there"),
+    bytes,
+    "reading a library through the read-only constructor leaves every byte of it alone"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_read_only_open_of_an_empty_file_fails_and_leaves_it_zero_bytes() {
+  let directory = scratch("read-only-empty");
+  let path = directory.join("empty.sqlite");
+  std::fs::write(&path, b"").expect("an empty file");
+
+  let error = match ToolLibrary::open_read_only(&path) {
+    Ok(_) => panic!("an empty file holds no library, so the open must fail"),
+    Err(error) => error,
+  };
+  let message = error.to_string();
+  assert!(
+    message.contains("empty.sqlite") && message.contains("cannot be used"),
+    "the error must name the file and say it cannot be used, got {message:?}"
+  );
+  assert!(
+    message.contains("never been initialised"),
+    "the error must say the file was never initialised, got {message:?}"
+  );
+  assert_eq!(
+    std::fs::metadata(&path)
+      .expect("the file is still there")
+      .len(),
+    0,
+    "a read-only open must not write a schema into the file it was pointed at"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_read_only_open_of_a_missing_path_fails_and_creates_nothing() {
+  let directory = scratch("read-only-missing");
+  let parent = directory.join("nested");
+  let path = parent.join("tools.sqlite");
+
+  let error = match ToolLibrary::open_read_only(&path) {
+    Ok(_) => panic!("there is no library to read, so the open must fail"),
+    Err(error) => error,
+  };
+  assert!(
+    error.to_string().contains("cannot be used"),
+    "the error must say the library cannot be used, got {error}"
+  );
+  assert!(
+    !path.exists(),
+    "a read-only open must not create the library it was pointed at"
+  );
+  assert!(
+    !parent.exists(),
+    "a read-only open must not create the directory the library would live in"
+  );
   std::fs::remove_dir_all(&directory).ok();
 }
 

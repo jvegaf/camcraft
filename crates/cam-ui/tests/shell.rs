@@ -2173,6 +2173,235 @@ fn a_tools_ref_that_climbs_out_of_the_directory_is_refused_and_creates_nothing()
 }
 
 #[test]
+fn a_symlink_to_an_empty_file_outside_is_not_written_through() {
+  let base = scratch("open-tools-symlink");
+  let directory = base.join("drawings");
+  std::fs::create_dir_all(&directory).expect("document directory");
+  // The file outside the document's directory already exists and is empty: the link resolves, so the
+  // existence guard sees a library, and what happens to those zero bytes is the whole of this test.
+  let outside = base.join("outside.sqlite");
+  std::fs::write(&outside, b"").expect("empty file outside the directory");
+  std::os::unix::fs::symlink(&outside, directory.join("linked.sqlite"))
+    .expect("symlink beside the document");
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("linked.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let before = listing(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the drawing opens: a library it cannot use costs it nothing"
+  );
+  assert_eq!(
+    std::fs::metadata(&outside)
+      .expect("the outside file is still there")
+      .len(),
+    0,
+    "reading a tool library must never write one: a symlink beside the document may be followed for \
+     reading, and the window must not bring the file outside it into being as a library"
+  );
+  assert_eq!(
+    listing(&directory),
+    before,
+    "looking at a library must create nothing beside the document either"
+  );
+  assert!(
+    shell.status.starts_with("open file — opened cut.c2d"),
+    "the open's own sentence stays and the library's reason is added to it, got {:?}",
+    shell.status
+  );
+  let (output, _) = toolpaths_frame(&mut shell, &mut app);
+  assert!(
+    output
+      .drawn
+      .tool_card
+      .iter()
+      .any(|line| line.contains("T4 is not in the tool library")),
+    "the empty file holds no tool, so the card names the number it cannot resolve: {:?}",
+    output.drawn.tool_card
+  );
+  std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn a_reference_that_climbs_back_into_the_directory_is_still_refused() {
+  let directory = scratch("open-tools-climb-back");
+  std::fs::create_dir_all(directory.join("sub")).expect("subdirectory");
+  let library = directory.join("tools.sqlite");
+  write_library(&library, 4);
+  let bytes = std::fs::read(&library).expect("the library is there");
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("sub/../tools.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert!(
+    shell.status.starts_with("open file — opened cut.c2d"),
+    "a reference that lands back inside is soft, not a refused open, got {:?}",
+    shell.status
+  );
+  assert!(
+    shell.status.contains("sub/../tools.sqlite")
+      && shell.status.contains("not inside the document's directory"),
+    "the status must name the reference and the rule that refused it, got {:?}",
+    shell.status
+  );
+  assert_eq!(
+    std::fs::read(&library).expect("the library is still there"),
+    bytes,
+    "a refused reference is read nowhere, so the library it lands on is untouched"
+  );
+  let (output, _) = toolpaths_frame(&mut shell, &mut app);
+  assert!(
+    !output
+      .drawn
+      .tool_card
+      .iter()
+      .any(|line| line.starts_with("T4 - ")),
+    "a refused reference is not read, so the card must not resolve the tool it names: {:?}",
+    output.drawn.tool_card
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_unusable_tools_ref_is_soft_and_creates_nothing() {
+  let directory = scratch("open-tools-unusable");
+  let locked = directory.join("locked.sqlite");
+  write_library(&locked, 4);
+  let mut permissions = std::fs::metadata(&locked)
+    .expect("the library is there")
+    .permissions();
+  std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o000);
+  std::fs::set_permissions(&locked, permissions).expect("the library is locked");
+  let mut document = document_with_toolpath(2, 4);
+  let path = write_c2d(&directory, "cut.c2d", &document);
+
+  // The reason differs by case and must: a reference that names nothing is reported by the guard that
+  // names the reference, and one that names something this build cannot read by the store's own sentence.
+  for (reference, refusal) in [
+    ("locked.sqlite", "cannot be used"),
+    ("", "cannot be used"),
+    (".", "cannot be used"),
+    ("missing.sqlite", "holds no such file"),
+  ] {
+    let before = listing(&directory);
+    document.tools_ref = Some(reference.to_owned());
+    save_document(&path, &document).expect("document written");
+    let mut app = AppState::new(document_with_rectangle());
+    let mut shell = Shell::new();
+
+    shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+    assert_eq!(
+      app.document().entities().count(),
+      2,
+      "{reference:?}: the drawing opens whatever the library does"
+    );
+    assert!(
+      !shell.status.starts_with("refused: "),
+      "{reference:?}: a library that cannot be used is soft, got {:?}",
+      shell.status
+    );
+    assert!(
+      shell.status.starts_with("open file — opened cut.c2d — "),
+      "{reference:?}: the open's own sentence stays and the library's reason is added to it, got {:?}",
+      shell.status
+    );
+    assert!(
+      shell.status.contains("tool library") && shell.status.contains(refusal),
+      "{reference:?}: the status must name the library and the reason, got {:?}",
+      shell.status
+    );
+    let reason = shell
+      .status
+      .split_once(" used: ")
+      .map(|(_, reason)| reason)
+      .unwrap_or_default();
+    assert!(
+      !reason.trim().is_empty(),
+      "{reference:?}: the status must say why, got {:?}",
+      shell.status
+    );
+    assert_eq!(
+      listing(&directory),
+      before,
+      "{reference:?}: looking at a library must create nothing beside the document"
+    );
+    let (output, _) = toolpaths_frame(&mut shell, &mut app);
+    assert!(
+      !output
+        .drawn
+        .tool_card
+        .iter()
+        .any(|line| line.starts_with("T4 - ")),
+      "{reference:?}: an unusable library leaves the snapshot empty: {:?}",
+      output.drawn.tool_card
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_open_after_a_resolved_library_leaves_no_card_from_the_previous_document() {
+  let directory = scratch("open-tools-stale-card");
+  write_library(&directory.join("tools.sqlite"), 4);
+  let mut resolved = document_with_toolpath(2, 4);
+  resolved.tools_ref = Some("tools.sqlite".to_owned());
+  let a = write_c2d(&directory, "a.c2d", &resolved);
+  let mut unresolved = document_with_toolpath(1, 4);
+  unresolved.tools_ref = Some("gone.sqlite".to_owned());
+  let b = write_c2d(&directory, "b.c2d", &unresolved);
+  let c = write_c2d(&directory, "c.c2d", &document_with_toolpath(1, 4));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: a });
+  let (output, _) = toolpaths_frame(&mut shell, &mut app);
+  assert!(
+    output
+      .drawn
+      .tool_card
+      .iter()
+      .any(|line| line.starts_with("T4 - ")),
+    "the fixture must start with a resolved tool: {:?}",
+    output.drawn.tool_card
+  );
+
+  for path in [b, c] {
+    shell.apply_action(&mut app, &UiAction::OpenFile { path });
+    let (output, _) = toolpaths_frame(&mut shell, &mut app);
+    assert!(
+      !output
+        .drawn
+        .tool_card
+        .iter()
+        .any(|line| line.starts_with("T4 - ")),
+      "the previous document's tool must not survive into this one: {:?}",
+      output.drawn.tool_card
+    );
+    assert!(
+      output
+        .drawn
+        .tool_card
+        .iter()
+        .any(|line| line.contains("T4 is not in the tool library")),
+      "the card names the number it cannot resolve: {:?}",
+      output.drawn.tool_card
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn a_document_with_no_tools_ref_keeps_todays_open_sentence_and_an_empty_snapshot() {
   let directory = scratch("open-tools-none");
   let path = write_c2d(&directory, "cut.c2d", &document_with_toolpath(2, 4));

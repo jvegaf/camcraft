@@ -15,7 +15,7 @@
 use std::path::Path;
 
 use cam_units::{Angle, Format, Length, UnitSystem};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use crate::StoreError;
 
@@ -240,6 +240,62 @@ impl ToolLibrary {
     Ok(library)
   }
 
+  /// Open an existing library **read-only**: no directory is created, no file is created, nothing is
+  /// ever written, and no migration runs.
+  ///
+  /// This is the constructor for a caller that reads a library it does not own — the window, resolving
+  /// the `tools_ref` a document names (camui-shell S3). It is a connection flag rather than a check on
+  /// the path, because the flag is enforced by SQLite for every statement the connection ever runs: the
+  /// window reads a library and cannot write one, whatever it asks the connection to do. A check on the
+  /// path, or a canonicalised comparison of it, would only decide *which* file the window is willing to
+  /// write to, so a symlink beside a document could still make the writer create a library in a file
+  /// outside the document's directory — which is exactly the hole this constructor closes.
+  ///
+  /// The price is that a library this build cannot read without writing is **refused** rather than
+  /// repaired: a file that has never been initialised has no schema to read, and a library left at an
+  /// older [`MIGRATIONS`] rung needs a migration this constructor will not perform. Both are
+  /// [`StoreError::ToolLibrary`] errors naming the file and the reason. An owner that means to create or
+  /// migrate its own library still calls [`Self::open`], which keeps doing exactly that.
+  pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+    let path = path.as_ref();
+    let display = path.display().to_string();
+    let connection = Connection::open_with_flags(
+      path,
+      OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|source| StoreError::ToolLibrary {
+      path: display.clone(),
+      reason: source.to_string(),
+    })?;
+    let library = Self {
+      connection,
+      path: display,
+    };
+    let version = library
+      .stored_version()
+      .map_err(|source| StoreError::ToolLibrary {
+        path: library.path.clone(),
+        reason: format!(
+          "it holds no tool library schema, so it has never been initialised ({source})"
+        ),
+      })?;
+    match version {
+      Some(version) if version == head_version() => Ok(library),
+      Some(version) => Err(StoreError::ToolLibrary {
+        path: library.path.clone(),
+        reason: format!(
+          "it is at schema version {version} and this build reads version {}; a library is never \
+           moved forward by reading it",
+          head_version()
+        ),
+      }),
+      None => Err(StoreError::ToolLibrary {
+        path: library.path.clone(),
+        reason: "it holds no schema version, so it has never been initialised".to_owned(),
+      }),
+    }
+  }
+
   /// Open an in-memory library. Used by tests and by tools that need a scratch library.
   pub fn open_in_memory() -> Result<Self, StoreError> {
     let connection = Connection::open_in_memory().map_err(|source| StoreError::ToolLibrary {
@@ -261,13 +317,19 @@ impl ToolLibrary {
 
   /// The schema version currently stored.
   pub fn schema_version(&self) -> Result<u32, StoreError> {
-    let version: Option<u32> = self
-      .connection
-      .query_row("SELECT MAX(version) FROM migration", [], |row| row.get(0))
-      .optional()
-      .map_err(|source| self.error(source))?
-      .flatten();
+    let version = self.stored_version().map_err(|source| self.error(source))?;
     Ok(version.unwrap_or(0))
+  }
+
+  /// The highest version the `migration` table records, or `None` when it records none.
+  fn stored_version(&self) -> Result<Option<u32>, rusqlite::Error> {
+    self
+      .connection
+      .query_row("SELECT MAX(version) FROM migration", [], |row| {
+        row.get::<_, Option<u32>>(0)
+      })
+      .optional()
+      .map(|version| version.flatten())
   }
 
   /// Apply every migration the file has not seen yet, in one transaction.

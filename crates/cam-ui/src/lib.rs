@@ -2755,8 +2755,9 @@ fn file_label(path: &Path) -> String {
 /// rule the join below implements: an absolute reference, or one that leaves the directory through `..`,
 /// is **refused before the filesystem is touched**, because it is not a reference relative to that
 /// directory at all. This is the one place the window is stricter than `cam-cli` (S3, S7), and the reason
-/// is [`cam_store::tools::ToolLibrary::open`]: it creates the parent directory and the file it is pointed
-/// at, so an unchecked reference in a document would let the window write anywhere the process can.
+/// is the write half of the same rule: a document names a file the window reads, so the window opens it
+/// with [`ToolLibrary::open_read_only`], which never creates a file, never creates its directory and never
+/// migrates — a hostile document therefore has nothing to point the window's writer at.
 ///
 /// The rule is checked on the reference rather than decided by canonicalising both sides. `..` is refused
 /// by name wherever it appears, even in `sub/../tools.sqlite`, which would land back inside the
@@ -2781,10 +2782,11 @@ fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<St
   }
   let directory = document_path.parent().unwrap_or_else(|| Path::new("."));
   let path = directory.join(named);
-  // Checked before the library is opened, because opening creates whatever it is pointed at: a library
-  // that is not there is a fact this window reports, never a file it brings into being (S3). `try_exists`
-  // rather than `exists` so a directory the process may not read is reported as the error it is instead
-  // of being told the file is missing.
+  // Checked before the library is opened, because the sentence a missing library deserves is the one that
+  // names the reference the user wrote and the directory that holds no such file, rather than SQLite's
+  // description of a path it could not open (S4). The read-only open below creates nothing either way, so
+  // this is the message and not the write surface. `try_exists` rather than `exists` so a directory the
+  // process may not read is reported as the error it is instead of being told the file is missing.
   let present = path
     .try_exists()
     .map_err(|error| format!("the tool library {reference} could not be used: {error}"))?;
@@ -2793,7 +2795,11 @@ fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<St
       "the tool library {reference} could not be used: the document's directory holds no such file"
     ));
   }
-  let library = ToolLibrary::open(&path).map_err(|error| error.to_string())?;
+  // Read-only, so the window reads a library and can never write one — not even through a symlink beside
+  // the document that points at a file outside it (S3). A library this build cannot read without writing
+  // (a file that was never initialised, or one left at an older schema version) is refused with the
+  // store's own reason, and that refusal is soft (S4).
+  let library = ToolLibrary::open_read_only(&path).map_err(|error| error.to_string())?;
   library.tools().map_err(|error| error.to_string())
 }
 
