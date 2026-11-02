@@ -11,18 +11,15 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use cam_geom::Point2;
 use cam_model::{Document, Operation, Toolpath};
-use cam_move::{MoveStream, Segment, ToolShape};
+use cam_move::MoveStream;
 use cam_post::{emit, parse_post, ProgramMeta};
 use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  chamfer, circle_centre, drill, engrave, female, fluting, inlay, male, pocket, profile, texture,
-  thread, vcarve, ChamferRequest, DrillHole, DrillRequest, EngraveRequest, FlutingRequest,
-  InlayRequest, PocketRequest, ProfileRequest, TextureRequest, ThreadRequest, ToolSpec,
-  ToolpathError, VCarveRequest,
+  circle_centre, drill, inlay, program_for, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
+  ProgramTool, ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
 };
 use cam_units::{Format, Length};
 
@@ -1850,12 +1847,11 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
   let post = parse_post(&post_text)
     .map_err(|error| Failure::post(format!("{}: {error}", post_path.display())))?;
 
-  let mut stream = MoveStream::new(document.job.safe_z, Point2::new(0.0, 0.0));
-  for toolpath in &document.toolpaths {
-    stream
-      .segments
-      .push(build_segment(&document, toolpath, &library)?);
-  }
+  // The program is the document's toolpaths, built by the library's own law (T4): one function for
+  // the emitter, the simulation and, later, the shell's estimate, so no two of them can disagree
+  // about what the document cuts.
+  let tools = program_tools(&document, &library)?;
+  let stream = program_for(&document, &tools).map_err(|error| Failure::input(error.to_string()))?;
 
   let meta = ProgramMeta {
     file_name: document_path
@@ -1877,334 +1873,41 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
   Ok(())
 }
 
-/// Turn one document toolpath into a segment of machine moves.
-fn build_segment(
-  document: &Document,
-  toolpath: &Toolpath,
-  library: &ToolLibrary,
-) -> Result<Segment, Failure> {
-  let number = toolpath.tool_number;
-  let (geometry, cutting) = library
-    .tool_for_number(number)
-    .map_err(|error| Failure::input(error.to_string()))?
-    .ok_or_else(|| {
-      Failure::input(format!(
-        "tool T{number} used by toolpath {:?} is not in the library",
-        toolpath.id
-      ))
-    })?;
-
-  let diameter = geometry.diameter.ok_or_else(|| {
-    Failure::input(format!(
-      "tool T{number} has no diameter, so a profile offset cannot be computed"
-    ))
-  })?;
-
-  let spec = ToolSpec {
-    number,
-    diameter,
-    included_angle: geometry.included_angle,
-    feed_rate: cutting.feed_rate.unwrap_or(0.0),
-    plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
-    spindle_speed: cutting.spindle_speed.unwrap_or(0),
-  };
-
-  // The shape the simulation sweeps (A8). A chamfer is the only operation that cuts with a cone, and
-  // its cone is the library's own geometry: the bit's included angle and its flat, zero when the
-  // library does not record one. A chamfer on a tool with no angle is refused by name rather than
-  // defaulted to 90 degrees, because that would cut a different bevel (D-M6-9).
-  let tool_shape = match &toolpath.operation {
-    Operation::Chamfer(params) => {
-      let included_angle = geometry.included_angle.ok_or_else(|| {
-        Failure::input(format!(
-          "tool T{number} has no included angle, so toolpath {:?} cannot cut a chamfer: a V-bit \
-           strategy needs the tool's angle, and defaulting 90 degrees would cut a different bevel",
-          toolpath.id
-        ))
-      })?;
-      // The same refusal as at authoring, repeated here because the library can change under a
-      // document that was written against a sharp bit: a flat widens the bevel to
-      // `chamfer_width + flat/2`, and the document's derived depth knows nothing of it (D-M6-10).
-      // A program that would cut a bevel nobody asked for is not written, and the simulation refuses
-      // the same shape, so the bit fails at every boundary that can see it.
-      let flat_diameter = geometry.flat_diameter.unwrap_or(Length::ZERO);
-      if flat_diameter.mm() > 0.0 {
-        return Err(Failure::input(format!(
-          "tool T{number} has a {} mm flat tip, so toolpath {:?} would cut a bevel wider than its \
-           {} mm chamfer width: a chamfer needs a sharp V-bit",
-          flat_diameter.mm(),
-          toolpath.id,
-          params.chamfer_width.mm()
-        )));
-      }
-      ToolShape::v_bit(included_angle, flat_diameter)
+/// Resolve the document's tools the way the program builder needs them (S6).
+///
+/// `cam-toolpath` gains no `cam-store` edge, so the mapping from a stored tool onto the builder's own
+/// types happens here, where both are known. One entry per distinct tool number, in document order —
+/// and a number the library does not hold is left *out* rather than refused here: the builder names
+/// the missing tool and the toolpath that asked for it, so the sentence is the same one whether the
+/// tool is missing from a list of specs or from a library.
+fn program_tools(document: &Document, library: &ToolLibrary) -> Result<Vec<ProgramTool>, Failure> {
+  let mut tools: Vec<ProgramTool> = Vec::new();
+  for toolpath in &document.toolpaths {
+    let number = toolpath.tool_number;
+    if tools.iter().any(|tool| tool.spec.number == number) {
+      continue;
     }
-    // An engrave, a flute or a texture carries the tool's real shape, whatever it is: a V-bit when the
-    // library records an angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it —
-    // a groove's depth is authored and a ramp is a length — but the simulation must sweep the groove the
-    // bit actually cuts, and a segment that said "cylinder" for a V-bit would report a correct engrave
-    // as gouge, and a correct V-groove flute or texture as a flat slot.
-    Operation::Engrave(_) | Operation::Fluting(_) | Operation::Texture(_) => {
-      match geometry.included_angle {
-        Some(included_angle) => ToolShape::v_bit(
-          included_angle,
-          geometry.flat_diameter.unwrap_or(Length::ZERO),
-        ),
-        None => ToolShape::cylinder(spec.diameter),
-      }
-    }
-    // A V-carve's cone is the bit's own, and the simulation must sweep the shape the machine really
-    // has: the program's Z says `clearance / tan(document's angle / 2)`, and if the library's angle is
-    // not that one, the carve really is a different shape and the report must say so rather than
-    // restating the document's assumption (M6 A8's rule for a groove, applied to a cone). A tool the
-    // library does not describe as an angled bit, or one with a flat, is refused by name here as it is
-    // at authoring and in the strategy: the library can change under a document.
-    Operation::VCarve(_) => {
-      let included_angle = geometry.included_angle.ok_or_else(|| {
-        Failure::input(format!(
-          "tool T{number} has no included angle, so toolpath {:?} cannot carve: a V-carve's depth \
-           cannot be derived, and defaulting 90 degrees would cut a different carve",
-          toolpath.id
-        ))
-      })?;
-      let flat_diameter = geometry.flat_diameter.unwrap_or(Length::ZERO);
-      if flat_diameter.mm() > 0.0 {
-        return Err(Failure::input(format!(
-          "tool T{number} has a {} mm flat tip, so toolpath {:?} would not carve to a sharp edge: a \
-           V-carve needs a sharp V-bit",
-          flat_diameter.mm(),
-          toolpath.id
-        )));
-      }
-      ToolShape::v_bit(included_angle, flat_diameter)
-    }
-    _ => ToolShape::cylinder(spec.diameter),
-  };
-
-  let mut moves = Vec::new();
-  match &toolpath.operation {
-    Operation::Profile(params) => {
-      for entity_id in &toolpath.entity_ids {
-        let entity = document.entity(entity_id).ok_or_else(|| {
-          Failure::input(format!(
-            "toolpath {:?} cites unknown entity {entity_id:?}",
-            toolpath.id
-          ))
-        })?;
-        let contour = entity
-          .kind
-          .as_contour()
-          .ok_or_else(|| Failure::input(format!("entity {entity_id:?} is not a contour")))?;
-        moves.extend(
-          profile(&ProfileRequest {
-            contour,
-            params,
-            tool: &spec,
-            job: &document.job,
-          })
-          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-        );
-      }
-    }
-    Operation::Pocket(params) => {
-      // Each selected contour is its own outer boundary, and the toolpath's islands are holes in
-      // every one of them (A9, D-RB-1: the document names the islands, nothing is inferred from
-      // nesting). A nested selection therefore still pockets both contours, without the inner one
-      // silently becoming a hole.
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        let mut islands = Vec::with_capacity(toolpath.island_ids.len());
-        for island_id in &toolpath.island_ids {
-          // `Document::validate` already refuses an island that does not resolve, but a toolpath
-          // reaching `emit` without having been validated must fail by name, not panic.
-          let island = document.entity(island_id).ok_or_else(|| {
-            Failure::input(format!(
-              "toolpath {:?} cites unknown island {island_id:?}",
-              toolpath.id
-            ))
-          })?;
-          let island = island
-            .kind
-            .as_contour()
-            .ok_or_else(|| Failure::input(format!("island {island_id:?} is not a contour")))?;
-          islands.push(island);
-        }
-        let path = pocket(&PocketRequest {
-          contour,
-          islands: &islands,
-          params,
-          tool: &spec,
-          job: &document.job,
-        })
-        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
-        moves.extend(path.moves);
-      }
-    }
-    Operation::Drilling(params) => {
-      let mut holes = Vec::with_capacity(toolpath.entity_ids.len());
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        let centre = circle_centre(contour).ok_or_else(|| {
-          Failure::input(format!(
-            "toolpath {:?}: {}",
-            toolpath.id,
-            ToolpathError::NotACircle {
-              entity: entity_id.clone()
-            }
-          ))
-        })?;
-        holes.push(DrillHole {
-          entity: entity_id.clone(),
-          centre,
-        });
-      }
-      let path = drill(&DrillRequest {
-        holes: &holes,
-        params,
-        tool: &spec,
-        job: &document.job,
-      })
-      .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?;
-      moves.extend(path.moves);
-    }
-    Operation::Chamfer(params) => {
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        moves.extend(
-          chamfer(&ChamferRequest {
-            contour,
-            params,
-            tool: &spec,
-            job: &document.job,
-          })
-          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-        );
-      }
-    }
-    Operation::VCarve(params) => {
-      // One region, and its parity rule is what turns an appended contour into a hole (D-RB-2), so the
-      // walk is asked for the whole selection at once rather than once per entity: a V-carve of two
-      // nested contours is the ring between them, exactly as a pocket of the same vectors is.
-      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
-      for entity_id in &toolpath.entity_ids {
-        contours.push(contour_of(document, &toolpath.id, entity_id)?);
-      }
-      moves.extend(
-        vcarve(&VCarveRequest {
-          contours: &contours,
-          params,
-          tool: &spec,
-          flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
-          job: &document.job,
-        })
-        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-      );
-    }
-    Operation::Fluting(params) => {
-      // Open and closed alike, like an engrave: a flute is one groove per vector (D-M6-5).
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        moves.extend(
-          fluting(&FlutingRequest {
-            contour,
-            params,
-            tool: &spec,
-            job: &document.job,
-          })
-          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-        );
-      }
-    }
-    Operation::Engrave(params) => {
-      // Open and closed vectors alike: engraving an open one is the strategy's point (D-M6-4).
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        moves.extend(
-          engrave(&EngraveRequest {
-            contour,
-            params,
-            tool: &spec,
-            job: &document.job,
-          })
-          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-        );
-      }
-    }
-    Operation::Texture(params) => {
-      // Every selected contour is a boundary of **one** region, and the region's parity rule is what
-      // turns an appended contour into a hole (D-RB-2), so the pattern is clipped against the whole
-      // selection at once rather than once per entity (D-M6-6).
-      let mut contours = Vec::with_capacity(toolpath.entity_ids.len());
-      for entity_id in &toolpath.entity_ids {
-        contours.push(contour_of(document, &toolpath.id, entity_id)?);
-      }
-      moves.extend(
-        texture(&TextureRequest {
-          contours: &contours,
-          params,
-          tool: &spec,
-          job: &document.job,
-        })
-        .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-      );
-    }
-    Operation::Thread(params) => {
-      // One descent per selected circle, and each is its own thread: a thread's diameter is the entity's
-      // own, so two circles are two threads with two orbits and never one shared one (M6 A7).
-      for entity_id in &toolpath.entity_ids {
-        let contour = contour_of(document, &toolpath.id, entity_id)?;
-        moves.extend(
-          thread(&ThreadRequest {
-            entity: entity_id,
-            contour,
-            params,
-            tool: &spec,
-            job: &document.job,
-          })
-          .map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-        );
-      }
-    }
-    Operation::Inlay(params) => {
-      // One half per toolpath, and the document says which half it is (see
-      // `cam_model::InlayParams`): the female names the region it clears, and the male names that same
-      // region as the islands it leaves standing inside the job rectangle, whose boundary is not an
-      // entity at all.
-      let ids = if toolpath.island_ids.is_empty() {
-        &toolpath.entity_ids
-      } else {
-        &toolpath.island_ids
-      };
-      let mut contours = Vec::with_capacity(ids.len());
-      for entity_id in ids {
-        contours.push(contour_of(document, &toolpath.id, entity_id)?);
-      }
-      let request = InlayRequest {
-        contours: &contours,
-        params,
-        tool: &spec,
-        job: &document.job,
-      };
-      let half = if toolpath.island_ids.is_empty() {
-        female(&request)
-      } else {
-        male(&request)
-      };
-      moves.extend(
-        half.map_err(|error| Failure::input(format!("toolpath {:?}: {error}", toolpath.id)))?,
-      );
-    }
+    let Some((geometry, cutting)) = library
+      .tool_for_number(number)
+      .map_err(|error| Failure::input(error.to_string()))?
+    else {
+      continue;
+    };
+    tools.push(ProgramTool {
+      spec: ToolSpec {
+        number,
+        // A tool whose diameter the library does not record keeps the builder's own refusal: zero is
+        // the spec's way of saying "no diameter", and the builder names the tool when it sees one.
+        diameter: geometry.diameter.unwrap_or(Length::ZERO),
+        included_angle: geometry.included_angle,
+        feed_rate: cutting.feed_rate.unwrap_or(0.0),
+        plunge_rate: cutting.plunge_rate.unwrap_or(0.0),
+        spindle_speed: cutting.spindle_speed.unwrap_or(0),
+      },
+      flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
+    });
   }
-
-  Ok(Segment {
-    name: toolpath.name.clone(),
-    tool_number: number,
-    tool: tool_shape,
-    feed_rate: spec.feed_rate,
-    plunge_rate: spec.plunge_rate,
-    spindle_speed: spec.spindle_speed,
-    moves,
-  })
+  Ok(tools)
 }
 
 /// The cell size, as a fraction of which the deviation tolerance is stated.
@@ -2276,12 +1979,8 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
 
   // The program is the one `emit` would run (D-M5-1): the same segments, built by the same
   // function, so the simulation cannot disagree with the machine about what was cut.
-  let mut stream = MoveStream::new(document.job.safe_z, Point2::new(0.0, 0.0));
-  for toolpath in &document.toolpaths {
-    stream
-      .segments
-      .push(build_segment(&document, toolpath, &library)?);
-  }
+  let tools = program_tools(&document, &library)?;
+  let stream = program_for(&document, &tools).map_err(|error| Failure::input(error.to_string()))?;
 
   let cell = Length::from_mm(resolution);
   let mut field =
