@@ -278,3 +278,49 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   unreviewed T8/T9 (L7 of that document). **One reminder loop:** the harness offers a review of the accumulated
   branch against `origin/master` on every mutation generation — five offers so far, all declined, none burned,
   because it is not a work unit. If a future session sees that offer, the answer is in this paragraph.
+
+- **L13 (T3 delivered, and the review it did not get — by the lifecycle's own rule).** `762b0d7`, 2 paths, **469
+  insertions** against the ~400 slice, kept as one commit on purpose because `cam_app::Command` is a contract others
+  consume. Gate **exit 0, 96 suites, 1 166 tests** by the parent's own run (+13); `cam-cli/tests/cli.rs` unedited at
+  **121/0**; `cam-app`'s `commands` suite at **87/0** with the thirteen new cases inside it; the known `cam-geom`
+  flake did not trip and `distance.proptest-regressions` is byte-identical to HEAD.
+  **`next_toolpath` was not paid for, so it was not invented.** `Document` has no toolpath counter, `AppState` carries
+  only `next_entity`, and the single `TPn` minter in the tree is `cam-cli::next_toolpath_id`, private to that binary.
+  `AddToolpath` therefore takes a caller-supplied `toolpath_id`, exactly as `AddRectangle` takes `entity_id`, which
+  keeps `apply` a pure function of its arguments. **The consequence is a task for later, not a hole:** the shell must
+  mint the id, and giving `AppState` a toolpath counter is a decision nobody has taken.
+  **The boundary held.** No refusal names a tool number, because no rule for one exists — `tool_number` is a `u32`
+  with no rule in `cam-model::validate` and `cam-cli`'s `parse_count` accepts `0`, so the only tool-number refusal in
+  the tree is library membership, which is the emitter's and the card's (L5). Reaching it would have meant a
+  `cam-store` edge on `cam-app`; `crates/cam-app/Cargo.toml` holds **zero** occurrences of it, and the worker stopped
+  at the seam and said so rather than crossing it. Two new `CommandError` variants (`UnknownToolpath`,
+  `DuplicateToolpath`); `EmptySelection` was already there and is reused, not duplicated.
+  **RED twice, and the second one is the interesting one.** The thirteen new cases with stubbed bodies gave
+  `FAILED. 75 passed; 12 failed` — the thirteenth passes in that state because `label()` needs no body, stated rather
+  than counted. The second RED came from the test's own premise: the operation-swap test first failed with
+  `profiling an open line is legal: Invalid(OpenContourNotCuttable { … })`, because `Profile` needs closed geometry
+  and nothing can start there. The test starts from `Engrave`, the operation that exists for an open vector.
+  **The review, and why there is none.** `assess` returned **`nativeRisk: medium`, `reviewDue: false`**
+  (`under_budget`), on `executable_change` rather than `process_boundary` — unlike T4, T2.0 and T2.1, which all came
+  back `high` and were reviewed. The lifecycle is explicit that a review starts only when `reviewDue` is true or the
+  owner asks, and the tier native measures wins over an agent's own estimate, so **no review was started and no model
+  runs were spent**. That is a decision the rule made, not a shortcut: recorded here so nobody later reads T3's
+  missing receipt as an oversight. If the owner wants it reviewed anyway, that is one request away.
+  **L12's numbers are superseded by this entry:** the gate is 1 166 tests and the receipt count is **three**, because
+  T3 never had one to burn.
+
+- **L14 (the feature closes).** Every task in the table is delivered: **T1** `ad2676a` (the current-tool card),
+  **T4** `256798a` (the emitter's law moved into `cam-toolpath`), **T2.0** `ee155ff` (the join has a crate),
+  **T2.1** `d617648` (the estimate, over the document's own toolpaths), **T3** `762b0d7` (the authoring vocabulary).
+  **T2 was split** by the owner's `b` (L8) and both halves landed. The two reference-screenshot patterns that opened
+  this document are both taken. Three native receipts burned (T4, T2.0, T2.1); T3 owed none.
+  **Where it stands, so the next session does not have to work it out.** Branch `feat/camui-toolpath-t4`, from `master`
+  @ `5cb0652`, **unpushed and unmerged** — push, PR and merge are the owner's decisions and none has been taken. The
+  gate is green at 96 suites / **1 166 tests**. Ten advisory findings across the three reviewed units are carried
+  forward, all non-blocking, listed by id and location only in L7, L10 and L11; the sharpest of them is the single
+  line `crates/cam-ui/src/chrome.rs:804`, where three independent lenses converged (L11). Two debts belong to other
+  features: the `cam-geom` proptest flake (L10) and `camui-shell`'s unreviewed T8/T9.
+  **One thing this feature leaves true and unfinished:** the shell still cannot open a `.c2d`, so `Document.tools_ref`
+  remains a filename only `cam-cli` resolves and `cam-desktop` still hands the shell an empty tool snapshot (L5). The
+  card and the estimate are honest about that state — either names what is missing instead of drawing a number — but
+  the feature that makes the shell open a document is not this one.
