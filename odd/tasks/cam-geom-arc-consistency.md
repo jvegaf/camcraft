@@ -105,7 +105,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   one angle meet at that point (including the pair that meets across the seam at angle 0), and a full-turn arc
   covers every quarter — reachable because `Arc::new` clamps a sweep at `TAU` (`arc.rs:32-37`) and rejects more.
   `concentric_circles_either_coincide_or_miss` (`tests/intersect.rs:195-203`) still passes **unedited**, which is
-  the preservation S4 demanded; `tests/intersect` went 19 → **23 passed, 0 failed**.
+  the preservation S4 demanded; `tests/intersect` went 18 (master) → **23 passed, 0 failed**.
   **The proptest's docstring was the second false statement in this story, and it is corrected rather than
   satisfied by a filter.** It claimed the generator draws distinct centres and radii; `any_arc`
   (`distance.rs:317-352`) guards nothing. It now says the case is reachable and arbitrated, and that the
@@ -118,7 +118,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
 - **L5 (T5: the consumers, and the gate this sandbox would not run until the linker was told to use one thread).**
   **Four of the six consumers can see an arc/arc answer and were re-read one by one; two cannot, and that is a
   property of their arguments rather than a hope.** `medial::seam_is_clear` compares `Segment::Line` against
-  `Segment::Line` (`medial.rs:968-972`), and `region_offset`'s single `intersect` call is always handed
+  `Segment::Line` (`medial.rs:970-973`), and `region_offset`'s single `intersect` call is always handed
   `Segment::Line` first (`region_offset.rs:212`), so `arc_arc` is unreachable from both. The four that can:
   `boolean.rs:170` used to set `re_cut = true` for disjoint same-circle arcs without ever adding a split point
   (the other arc's ends are not interior to this one) and now falls to `None`; `winding.rs:270` used to answer
@@ -127,7 +127,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   `validate.rs:85` used to report a self-intersection at the first arc's start for a pair that does not intersect.
   **Every suite that touches them is green, measured per binary** because the workspace link is what this session
   could not do in one shot: `validate` 10, `winding` 9 (`boolean` is reached through `region.rs:181`), `trim` 7,
-  `region_offset` 17, `medial` 14, `region` 11, `region_distance` 16, `medial_coverage` 3, `intersect` 23,
+  `region_offset` 17, `medial` 14, `region` 16, `region_distance` 11, `medial_coverage` 3, `intersect` 23,
   `distance` 14 at 4 000 cases.
   **The gate, and the environment that had to be told twice.** `scripts/check.sh` on this session's cgroup aborted
   inside `rust-lld` (`std::__throw_system_error` → `ld terminated with signal 6`) on targets unrelated to this
@@ -148,3 +148,63 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   commit, because it is repository hygiene and not this defect.
   **Not claimed here:** the gate was run with a different `RUSTFLAGS` than the 1 166 run, so it proves the tests,
   not that a bare `scripts/check.sh` passes in an unconstrained shell.
+
+- **L6 (independent verification: seven specs met, three of this document's own numbers wrong, and the case nobody had
+  pinned).** A read-only verifier that was told the log is not evidence re-derived every claim. **Verdicts: S1-S7
+  all `met`, no blockers, no correction round.** Its own oracle — angle coverage computed from boundary midpoints
+  instead of the interval list `intersect` builds — swept 308 same-circle arcs (23 starts including `-TAU` and
+  `TAU + π/8`; 10 sweeps from `π/8` to `±TAU`) over **94 864 ordered pairs: 0 mismatches** against the expected
+  `Coincident`/`Point`/`None` split of 66 922 / 7 478 / 20 464, and the same grid asserted
+  `(distance == 0) == !intersect.is_empty()` on every pair. That is the answer this entry wanted and could not give
+  itself: the two functions now agree everywhere the grid can see.
+  **It also found the case the original proptest needed a million draws to reach,** and at `master` it reproduces:
+  `first = Arc(center (-5,11), r 1, start π, sweep π/2)`, `second = Arc(center (-5,11), r 1, start π/4, sweep -π/2)`
+  — `distance 0.7653668647301798 and intersect Coincident disagree`. At HEAD `intersect` answers `None` and the
+  reference distance is unchanged, which is the sharpest form of "one function was wrong, not two".
+  **What it corrected in this document, and these are corrections, not quibbles:** L4 said `tests/intersect` went
+  **19 → 23**; master is **18**, and 19 was this feature's own intermediate RED state — the honest statement is
+  18 → 23, and it is now what this document says. L5 listed `region` 11 and `region_distance` 16 **transposed**
+  (they are 16 and 11), and cited `medial.rs:968-972` where the `intersect` call is at `:973`. All three are fixed
+  in place rather than annotated, because a record that keeps a wrong number beside the right one teaches the next
+  session to trust neither.
+  **The seed's fate is now measured in both directions**: restoring `cc 53f0ee71…` gives 14 passed at HEAD *and* at
+  master, so it was already stale before this change and removing it lost nothing; and the master failure appended a
+  **new** seed by itself (`cc 34160a92…`), which is the second failure mode S6 exists for.
+  **S7 held under an independent read**: no `cam_geom::intersect` or `segment_to_segment` call outside the crate;
+  `cam-view`'s `segments_cross` (`pick.rs:129`) is a local cross-product helper, not this function; `medial` and
+  `region_offset` cannot reach `arc_arc` because their first argument is a `Segment::Line`, as L2 claimed.
+  **Two advisories this document does not act on, recorded so nobody rediscovers them as bugs:**
+  `Intersections::Point` is documented as "a transverse crossing" (`intersect.rs:24-26`) while a shared endpoint is
+  not transverse — the new arc/arc answer uses `Point` there, matching what `collinear_overlap` already did for
+  lines (`intersect.rs:142-153`), so the stale part is the enum's wording and not this change. And an overlap
+  smaller than the angular tolerance answers `Point`, the same convention `collinear_overlap` uses for
+  `overlap > tolerance`, observable only at a `1e-10` radian overlap.
+  **What the verifier did not verify, correctly stated:** the workspace-wide gate (96 suites / 1 171 passed),
+  `clippy --workspace` and `fmt --check`. It ran `-p cam-geom` only and said so, which is why L5's hedge about a
+  bare `scripts/check.sh` stays exactly as it is.
+
+- **L7 (the oracle becomes a test, and this entry corrects the size this document first claimed for it).** The
+  verifier's grid was scratch; the rule deserves a committed one. `546220f` appends two oracle helpers and three
+  tests to `tests/intersect.rs`: **190 arcs** (19 start angles — `k·π/8` for `k` in `0..16`, plus `-π`, `-TAU` and
+  `TAU + π/8` — crossed with 10 sweeps from `π/8` to `-TAU`), **36 100 ordered pairs**, asserting per pair that the
+  answer matches the midpoint-measure oracle, that it is the `Coincident`/`Point`/`None` the oracle classifies, and
+  that `segment_to_segment == 0.0` exactly when `intersect` is not empty. It runs in 0.05 s. Two cases keep their
+  names: the pair the proptest found at `master` (distance `0.7653668647301798`) and a full turn against a sweep too
+  small to matter, both directions.
+  **A correction against this document's own brief, made before anyone could read it as cover:** the grid the
+  parent asked for was described as 308 arcs / 94 864 pairs, which was the *verifier's* wider scratch sweep (23 start
+  angles) and not the set the parent actually specified. What is committed is the smaller, precisely enumerated grid
+  above. The number in L6 belongs to the verification run and to nothing else.
+  **One advisory from the writer worth keeping, because it is a boundary and not a doubt:** the oracle's thresholds
+  (`measure > 1e-6`, and `1e-12` slack in `angle_covered`) are not provably equivalent to the kernel's
+  `angular = TOL/radius + 1e-12` for arbitrary inputs. They agree on this grid only because every non-zero overlap in
+  it is a multiple of `π/8`, far above both thresholds. A future refinement that makes overlaps arbitrarily small
+  would have to reconcile them; today's rule does not need it.
+  **The gate, re-run after these tests:** exit 0, **96 suites, 1 174 passed, 0 failed, 0 ignored** — the 1 171 of L5
+  plus exactly the three added. Same `RUSTFLAGS="-C link-arg=-Wl,--threads=1"` caveat as L5, and for the same
+  measured reason: the session's cgroup still caps tasks at 64.
+  **Slice boundary, so the size is not misread.** Five commits on `fix/cam-geom-arc-consistency`: `e12dc61` (the fix
+  and its five tests, 215 authored lines) and `546220f` (the oracle, 159) are the **work unit**, 374 lines together;
+  `4ddbb72` (`rustfmt.toml`) is repository hygiene that this defect needed in order to be gated; `da5e978` and the
+  commit carrying this entry are the record. Nothing in the work unit can be split further without leaving a commit
+  whose tests do not run.
