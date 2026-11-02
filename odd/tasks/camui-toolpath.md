@@ -75,3 +75,24 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   those questions are about pixels. The parent read the PNG directly instead of accepting a provisional verdict.
   Worth remembering for this harness: **an explorer here cannot necessarily list a directory**, so any brief that
   depends on discovering a filename should either hand the exact path over or expect to do that step itself.
+
+- **L5 (T1 delivered, and the table's order changed for a real dependency).** `ad2676a`, gate **1 139 tests across
+  93 suites** by the parent's own run. The resolution rule now exists once — `stored_tool_for_number` in `cam-store`,
+  with `ToolLibrary::tool_for_number` calling it — so the emitter and the card agree by construction instead of by two
+  copies of a query. The card shows the toolpath's name, then the tool's number and name, then type, diameter, included
+  angle and flute count, and **nothing the frame does not show**. Differential over nine CLI steps against a build of
+  the base commit: identical exit codes and byte-identical stdout, stderr and `out.nc`, including two tools sharing T1
+  (so the ordering rule is observable) and the refusal naming an absent tool.
+  **Two gaps stated, not filled.** `cam-desktop` passes an **empty** snapshot: the shell opens no `.c2d` files and
+  `Document.tools_ref` is a filename only `cam-cli` resolves, so any default path would have been invented. And
+  `tool_type` is a `u8` whose mapping `cam-store` documents as unestablished, so the card draws the raw code rather
+  than a table nobody evidenced. Both are the kind of hole a later slice should fill with a decision, not a guess.
+  **The table's order was wrong about T2 and T4.** The estimated time cannot be shown honestly before the shell can
+  turn *the document's* toolpaths into a program: today the only program in the shell is `cam-desktop`'s sample, so
+  T2's visible half would have displayed a duration for something the user did not author. **T4 runs first**, then T2
+  publishes the seconds and displays them against a program that belongs to the document.
+  **Environment fact worth keeping**, because it cost two agents a diagnosis: this session's cgroup shipped
+  `pids.max=64` with 52 already in use, so `cargo build` and even a directory listing died with
+  `failed to spawn thread … Resource temporarily unavailable`. That is the same failure L4 of this document recorded
+  for the explorer's `find` — it was never a slow machine. It was raised to 4096 for the gentle-shell service to run
+  the gate; the original value is 64 and reverting it is a one-line write to that cgroup file.
