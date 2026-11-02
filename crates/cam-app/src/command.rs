@@ -15,7 +15,7 @@ use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::transform;
 use cam_geom::trim::trim;
 use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
-use cam_model::{Document, Entity, EntityKind, ModelError};
+use cam_model::{Document, Entity, EntityKind, ModelError, Operation, Toolpath};
 
 /// One geometric transform applied to a whole selection.
 ///
@@ -371,6 +371,61 @@ pub enum Command {
     /// Which node edit to apply.
     edit: VertexEdit,
   },
+  /// Add a toolpath, binding selected geometry to a tool number and an operation.
+  ///
+  /// This is the layer the shell's toolpath form calls (S7): before it, authoring existed only as
+  /// `cam-cli toolpath`, which pushes a [`cam_model::Toolpath`] directly. The variant builds that
+  /// same record and nothing else, so the document gains no field and no rule from it.
+  ///
+  /// It does **not** consult the tool library: `cam-app` has no `cam-store` edge, and a number the
+  /// library does not hold is refused by `emit`, where the library is actually read. What it does
+  /// check is what the document can check without one — the selection is not empty, the id is free,
+  /// and the document still validates afterwards, which is what refuses an absent entity or a
+  /// cutting operation over an open contour, naming both.
+  ///
+  /// The id is supplied by the caller rather than minted here, the way every drawing variant takes
+  /// its `entity_id`: the document carries no toolpath counter to mint one from, so applying the
+  /// command stays a pure function of its arguments.
+  AddToolpath {
+    /// Identifier for the new toolpath; it must be free.
+    toolpath_id: String,
+    /// Display name, as the toolpath list shows it.
+    name: String,
+    /// Entities the toolpath is computed from; at least one.
+    entity_ids: Vec<String>,
+    /// Closed contours inside the region that must be left standing; empty for none.
+    island_ids: Vec<String>,
+    /// Tool number, matched against the tool library at emission time.
+    tool_number: u32,
+    /// The operation and its parameters.
+    operation: Operation,
+  },
+  /// Give an existing toolpath a different tool, leaving its geometry and operation alone.
+  ///
+  /// This is the tool card's "choose another tool": one number changes and nothing else does. The
+  /// number is not checked against the library for the reason [`Command::AddToolpath`] gives.
+  SetToolpathToolNumber {
+    /// Identifier of the toolpath to retool.
+    toolpath_id: String,
+    /// The new tool number.
+    tool_number: u32,
+  },
+  /// Replace one toolpath's operation, with its parameters, and leave the rest of it alone.
+  ///
+  /// An operation that cannot cut the toolpath's own selection — a pocket over an open vector, say —
+  /// is refused by [`Document::validate`], naming the toolpath and the entity, and the document is
+  /// left exactly as it was.
+  SetToolpathOperation {
+    /// Identifier of the toolpath to change.
+    toolpath_id: String,
+    /// The new operation and its parameters.
+    operation: Operation,
+  },
+  /// Remove a toolpath from the document, leaving its geometry and every other toolpath alone.
+  DeleteToolpath {
+    /// Identifier of the toolpath to remove.
+    toolpath_id: String,
+  },
   /// Show or hide a layer.
   SetLayerVisible {
     /// Layer to change.
@@ -412,6 +467,10 @@ impl Command {
         VertexEdit::Insert { .. } => "insert vertex",
         VertexEdit::Delete { .. } => "delete vertex",
       },
+      Self::AddToolpath { .. } => "add toolpath",
+      Self::SetToolpathToolNumber { .. } => "set toolpath tool",
+      Self::SetToolpathOperation { .. } => "set toolpath operation",
+      Self::DeleteToolpath { .. } => "delete toolpath",
     }
   }
 
@@ -641,6 +700,51 @@ impl Command {
         *first_entity_index,
       ),
       Self::EditVertex { entity_id, edit } => edit_vertex(document, entity_id, *edit),
+      Self::AddToolpath {
+        toolpath_id,
+        name,
+        entity_ids,
+        island_ids,
+        tool_number,
+        operation,
+      } => {
+        // The order is the drawing commands' order, so a refusal names the first thing that was
+        // wrong: something to cut, then an id nobody holds. What is left — an absent entity, an open
+        // vector under a cutting operation — is the document's own rule and is refused by
+        // validation, which is why this variant adds no second spelling of it.
+        require_selection(entity_ids)?;
+        ensure_toolpath_id_is_free(document, toolpath_id)?;
+        document.toolpaths.push(Toolpath {
+          id: toolpath_id.clone(),
+          name: name.clone(),
+          entity_ids: entity_ids.clone(),
+          island_ids: island_ids.clone(),
+          tool_number: *tool_number,
+          operation: operation.clone(),
+        });
+        Ok(CommandOutcome::default())
+      }
+      Self::SetToolpathToolNumber {
+        toolpath_id,
+        tool_number,
+      } => {
+        let index = toolpath_index(document, toolpath_id)?;
+        document.toolpaths[index].tool_number = *tool_number;
+        Ok(CommandOutcome::default())
+      }
+      Self::SetToolpathOperation {
+        toolpath_id,
+        operation,
+      } => {
+        let index = toolpath_index(document, toolpath_id)?;
+        document.toolpaths[index].operation = operation.clone();
+        Ok(CommandOutcome::default())
+      }
+      Self::DeleteToolpath { toolpath_id } => {
+        let index = toolpath_index(document, toolpath_id)?;
+        document.toolpaths.remove(index);
+        Ok(CommandOutcome::default())
+      }
       Self::SetLayerVisible { layer_id, visible } => {
         let layer = document
           .layers
@@ -689,6 +793,12 @@ pub enum CommandError {
   /// The target entity does not exist.
   #[error("entity {0:?} does not exist")]
   UnknownEntity(String),
+  /// The target toolpath does not exist.
+  #[error("toolpath {0:?} does not exist")]
+  UnknownToolpath(String),
+  /// A toolpath with that identifier already exists.
+  #[error("toolpath {0:?} already exists")]
+  DuplicateToolpath(String),
   /// The command needs at least one entity and was given none.
   #[error("no entities were selected")]
   EmptySelection,
@@ -764,6 +874,34 @@ fn ensure_layer_exists(document: &Document, layer_id: &str) -> Result<(), Comman
     return Ok(());
   }
   Err(CommandError::UnknownLayer(layer_id.to_owned()))
+}
+
+/// The index of the toolpath a command targets, refusing an id the document does not hold.
+///
+/// An index rather than a reference for the reason [`EntitySite`] is one: the command reads the
+/// toolpath and then writes it back, and holding a borrow across that write is not possible.
+fn toolpath_index(document: &Document, toolpath_id: &str) -> Result<usize, CommandError> {
+  document
+    .toolpaths
+    .iter()
+    .position(|toolpath| toolpath.id == toolpath_id)
+    .ok_or_else(|| CommandError::UnknownToolpath(toolpath_id.to_owned()))
+}
+
+/// Refuse a toolpath id the document already holds.
+///
+/// The same rule [`ensure_id_is_free`] applies to entities, and the same reason: `Document::validate`
+/// refuses a duplicate toolpath id, and a command that reported success while leaving a document its
+/// own validation rejects would be lying to the caller that applies it directly.
+fn ensure_toolpath_id_is_free(document: &Document, toolpath_id: &str) -> Result<(), CommandError> {
+  if document
+    .toolpaths
+    .iter()
+    .any(|toolpath| toolpath.id == toolpath_id)
+  {
+    return Err(CommandError::DuplicateToolpath(toolpath_id.to_owned()));
+  }
+  Ok(())
 }
 
 /// Where an entity lives: its layer index and its index inside that layer.
