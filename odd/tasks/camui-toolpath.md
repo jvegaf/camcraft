@@ -96,3 +96,33 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `failed to spawn thread … Resource temporarily unavailable`. That is the same failure L4 of this document recorded
   for the explorer's `find` — it was never a slow machine. It was raised to 4096 for the gentle-shell service to run
   the gate; the original value is 64 and reverting it is a one-line write to that cgroup file.
+
+- **L6 (T4 delivered; the law moved instead of being copied).** `256798a` on `feat/camui-toolpath-t4`, branched
+  from `master` at `5cb0652` so the contract move has its own reviewable branch. Gate **exit 0, 94 suites, 1 142
+  tests** (+3, +1 suite = `crates/cam-toolpath/tests/program.rs`) by the parent's own run.
+  `cam-toolpath::program_for(&Document, &[ProgramTool]) -> Result<MoveStream, ToolpathError>` is
+  `cam-cli::build_segment`'s body **moved, not rewritten**: the strategy dispatch, the cone-or-cylinder law and its
+  refusals are the same statements. What changed is who owns the failure — `Failure` is a type about process exit
+  codes, so the refusals became `ToolpathError` variants with `#[error]`, and `tests/errors.rs` gained a table
+  pinning each sentence byte for byte. `ProgramTool` = `ToolSpec` + the flat at the tip, because the flat is read by
+  the program and by no strategy. S6 holds by construction: `cam-cli::program_tools` does the `cam-store` →
+  `cam-toolpath` mapping where both types are known, and a number the library does not hold is left out of the list
+  so the builder names it — the sentence is the same whether the tool is missing from a list of specs or from a
+  database.
+  **Differential, because this is the emitter's law.** `git archive HEAD` into a scratch tree, both trees built in
+  isolation, the same unmodified `crates/cam-cli/tests/cli.rs` — **121 passed / 0 failed on both**. Those 121 pin the
+  emitted bytes rather than describing them: three hard-coded golden programs (pocket+drilling and the island
+  variant), the 15-line expected profile program, the arc-word flips at three origins, and every refusal's exact
+  stderr. A textual audit agrees: 229 of the 339 lines removed from `main.rs` have an exact counterpart in
+  `cam-toolpath`; the other 110 are the ones whose type changed, the two call sites and the signature. `Segment` is
+  not replaced — `use cam_move::{… Segment as MoveSegment}` keeps it apart from `cam_geom::Segment`.
+  **Two things stated, not hidden.** RED was not recorded for the three `tests/program.rs` cases; they arrived with
+  the move, so what stands behind them is the differential, not a red run anybody saw. And the commit is **808
+  insertions / 347 deletions** against a ~400-line review slice, one commit on purpose: a move split in two would
+  leave a tree whose emitter builds nothing.
+  **Slice-boundary note, so a number is not misread.** The harness reports this branch at 7 605 authored lines across
+  23 commits against `origin/master`. That is `camui-shell`'s delivered work plus T1 accumulating on an unpushed
+  `master` (L36 of `camui-shell.md`), not one slice; T4 is the single commit `256798a`. The branch is T4's review
+  candidate, and `256798a` is the work unit inside it.
+  **Order is now T2.** The estimate can be published and shown against a program that belongs to the document,
+  which was the whole reason T4 came first (L5). T3 stays last: it needs T1's list to pick a number from.
