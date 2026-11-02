@@ -324,3 +324,25 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   remains a filename only `cam-cli` resolves and `cam-desktop` still hands the shell an empty tool snapshot (L5). The
   card and the estimate are honest about that state — either names what is missing instead of drawing a number — but
   the feature that makes the shell open a document is not this one.
+
+- **L15 (owner, verbatim: `mergea todo a master` … `y despues haz limpia`. Merged, and the record corrected).**
+  **This supersedes L14's "unpushed and unmerged"** — that paragraph was true when it was written and this entry is what
+  makes it false, which is the only way a record stays worth reading.
+  `d806f8d` is `git merge --no-ff` of `feat/camui-toolpath-t4` into `master`, and `--no-ff` on purpose: the feature stays
+  one readable island in the history instead of eleven anonymous commits. **The merge changed no content** —
+  `git diff --stat feat/camui-toolpath-t4 HEAD` is empty — so every gate run this branch recorded applies undiluted to
+  `master`. Gate re-run **on master** by the parent: exit 0, **96 suites, 1 166 tests**, 0 failed; `cam-app` 87/0,
+  `cam-cli` 121/0, `cam-toolpath`'s `program.rs` 3/0.
+  **What arrived in `master`:** 11 commits — four of code (T4, T2.0, T2.1, T3) and seven of record (L6–L14), 18 paths,
+  +2 144 / −363. Three of the four work units carry an approved native receipt with burned authority; T3 owed none
+  (`under_budget`, L13).
+  **The limpia, and its exact scope, so nothing is guessed at later.** The three local branches are gone —
+  `feat/camui-shell`, `feat/camui-t8-context-help` and `feat/camui-toolpath-t4`. `git branch --merged master` proved all
+  three were fully contained in `master` before `git branch -d` ran, and `git branch --no-merged master` was empty, so
+  no commit was orphaned by the deletion: this document's own branch no longer exists and that is deliberate. The
+  stale `git worktree` at `/tmp/campilot-probe-base` (detached at `f816371`, directory already gone, `prunable`) was
+  pruned. Eight `/tmp/gate*.log` scratch files were removed. **Nothing of the owner's was touched**: the repository has
+  no untracked files at all after the merge, and no `git clean`, no `reset`, and no blanket restore was run anywhere.
+  **What is deliberately still true:** `master` is **33 commits ahead of `origin/master` and not pushed**. Merging and
+  publishing are different acts and only the first was asked for. If a future session is tempted to push, the answer
+  is that the owner has not asked for it.
