@@ -541,34 +541,21 @@ impl ToolLibrary {
   }
 
   /// The tool whose cutting data carries this program number.
+  ///
+  /// Reads the library as a snapshot and hands it to [`stored_tool_for_number`], which is what the
+  /// shell's tool card resolves the same number with: one rule, so a tool the emitter can find is a
+  /// tool the card can describe and a number the emitter refuses is a number the card says is missing.
+  /// The cost is one scan of the library per call instead of one indexed query — the price of the two
+  /// agreeing by construction rather than by a copy of the query (camui-toolpath S3).
   pub fn tool_for_number(
     &self,
     number: u32,
   ) -> Result<Option<(ToolGeometry, CuttingData)>, StoreError> {
-    let pair: Option<(String, String)> = self
-      .connection
-      .query_row(
-        "SELECT tool_entity.tool_geometry_id, tool_entity.tool_cutting_data_id
-         FROM tool_entity
-         JOIN tool_cutting_data ON tool_cutting_data.id = tool_entity.tool_cutting_data_id
-         WHERE tool_cutting_data.tool_number = ?1
-         ORDER BY tool_entity.id
-         LIMIT 1",
-        params![number],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-      )
-      .optional()
-      .map_err(|source| self.error(source))?;
-    let Some((geometry_id, cutting_id)) = pair else {
-      return Ok(None);
-    };
-    match (
-      self.geometry(&geometry_id)?,
-      self.cutting_data(&cutting_id)?,
-    ) {
-      (Some(geometry), Some(cutting)) => Ok(Some((geometry, cutting))),
-      _ => Ok(None),
-    }
+    let tools = self.tools()?;
+    Ok(
+      stored_tool_for_number(&tools, number)
+        .map(|tool| (tool.geometry.clone(), tool.cutting.clone())),
+    )
   }
 
   /// Record a material.
@@ -617,6 +604,23 @@ impl ToolLibrary {
       reason: source.to_string(),
     }
   }
+}
+
+/// The tool a program number names, read from a snapshot of the library.
+///
+/// `tools` is the library in its own order — the order [`ToolLibrary::tools`] returns, which is
+/// `tool_entity.id` ascending, the order the library itself resolves a number in. A number more than
+/// one tool carries resolves to the first of them in that order, and a number no tool carries resolves
+/// to `None` rather than to a neighbour.
+///
+/// This is the one place a number becomes a tool. [`ToolLibrary::tool_for_number`] calls it, and so
+/// does the shell's tool card, which is what keeps the two from disagreeing: a card that said "T7 is
+/// not in the library" beside a program that cuts with T7 would be a second opinion about a library
+/// that has only one answer (camui-toolpath S3, T1).
+pub fn stored_tool_for_number(tools: &[StoredTool], number: u32) -> Option<&StoredTool> {
+  tools
+    .iter()
+    .find(|tool| tool.cutting.tool_number == Some(number))
 }
 
 /// Render a tool display name from its template.
@@ -747,5 +751,93 @@ fn decode_units(value: i64) -> UnitSystem {
     UnitSystem::Mm
   } else {
     UnitSystem::Inch
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{stored_tool_for_number, CuttingData, StoredTool, ToolGeometry, ToolLibrary};
+  use cam_units::{Length, UnitSystem};
+
+  /// One stored tool, geometry and cutting data, with `number` as its program number.
+  fn stored(id: &str, number: Option<u32>) -> StoredTool {
+    StoredTool {
+      geometry: ToolGeometry {
+        id: format!("{id}-geometry"),
+        name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+        tool_type: 0,
+        units: UnitSystem::Mm,
+        diameter: Some(Length::from_mm(6.0)),
+        included_angle: None,
+        flat_diameter: None,
+        num_flutes: Some(2),
+        flute_length: None,
+        tip_radius: None,
+        custom_attributes: None,
+      },
+      cutting: CuttingData {
+        id: format!("{id}-cutting"),
+        rate_units: UnitSystem::Mm,
+        feed_rate: Some(100.0),
+        plunge_rate: Some(30.0),
+        spindle_speed: Some(18_000),
+        stepdown: None,
+        stepover: None,
+        clear_stepover: None,
+        tool_number: number,
+        notes: None,
+      },
+    }
+  }
+
+  #[test]
+  fn the_first_tool_in_library_order_carrying_the_number_is_the_one_that_resolves() {
+    let tools = vec![
+      stored("E1", Some(1)),
+      stored("E2", Some(7)),
+      stored("E3", Some(7)),
+    ];
+    assert_eq!(
+      stored_tool_for_number(&tools, 7).map(|tool| tool.geometry.id.as_str()),
+      Some("E2-geometry"),
+      "two entities carrying one number resolve to the first in library order"
+    );
+    assert_eq!(
+      stored_tool_for_number(&tools, 1).map(|tool| tool.geometry.id.as_str()),
+      Some("E1-geometry")
+    );
+    assert!(
+      stored_tool_for_number(&tools, 9).is_none(),
+      "a number no tool carries resolves to nothing rather than to a neighbour"
+    );
+    assert!(
+      stored_tool_for_number(&[stored("E1", None)], 1).is_none(),
+      "a tool with no program number carries no number"
+    );
+  }
+
+  #[test]
+  fn the_library_and_a_snapshot_of_it_resolve_a_number_the_same_way() {
+    let library = ToolLibrary::open_in_memory().expect("opens");
+    for (id, number) in [("E2", 7_u32), ("E1", 7_u32), ("E3", 4_u32)] {
+      let tool = stored(id, Some(number));
+      library.put_geometry(&tool.geometry).expect("geometry");
+      library.put_cutting_data(&tool.cutting).expect("cutting");
+      library
+        .link(id, &tool.geometry.id, &tool.cutting.id, None, None)
+        .expect("link");
+    }
+    let snapshot = library.tools().expect("the library reads");
+
+    for number in [1_u32, 4, 7, 9] {
+      let from_library = library.tool_for_number(number).expect("the query runs");
+      assert_eq!(
+        from_library
+          .as_ref()
+          .map(|(geometry, _cutting)| geometry.id.as_str()),
+        stored_tool_for_number(&snapshot, number).map(|tool| tool.geometry.id.as_str()),
+        "T{number} must resolve to the same tool whether it is asked of the library or of a snapshot of it"
+      );
+    }
   }
 }

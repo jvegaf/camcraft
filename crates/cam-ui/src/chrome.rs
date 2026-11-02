@@ -45,6 +45,8 @@
 
 use cam_app::{AppState, VertexEdit};
 use cam_geom::Point2;
+use cam_store::tools::{render_name, stored_tool_for_number, StoredTool, ToolGeometry};
+use cam_units::Format;
 use egui::{Align, Layout, RichText, Sense};
 
 use crate::help::{Command, Group, MenuScope};
@@ -697,6 +699,12 @@ impl Shell {
           .max_height(body)
           .show(ui, |ui| {
             ui.add_space(metrics.space(2));
+            // The card belongs to a toolpath, so it is drawn on the stage whose subject is toolpaths —
+            // and only while the document holds one, because a card for a toolpath that does not exist
+            // would be describing nothing.
+            if self.stage == Stage::Toolpaths {
+              self.tool_card(app, ui, &palette, output);
+            }
             match self.inspector_tab {
               Tab::Tools => {
                 if self.stage.runs().is_empty() {
@@ -716,6 +724,71 @@ impl Shell {
           .id_salt("inspector_layers")
           .show(ui, |ui| self.layer_dock(app, ui, output));
       });
+  }
+
+  /// The current-tool card: the tool a toolpath cuts with, in the two lines the reference frame uses.
+  ///
+  /// `03-27-41`'s `Novo percurso — Chanfro` flyout puts a card at the top of a toolpath form: the tool's
+  /// number and name, then its type with the shape's numbers and its flute count. **Nothing else is on
+  /// it** (S2): the frame shows no material, no machine and no feed, plunge or spindle rate, so the card
+  /// does not grow them. That is also what makes the card honest —
+  /// [`cam_store::tools::stored_tool_for_number`] takes no material and no machine (S3), so a rate on
+  /// this card would have to claim a material the document does not carry.
+  ///
+  /// The number resolves through the same function the emitter resolves it with, so the card cannot say
+  /// "T7 is missing" beside a program that cuts with T7: the two read one rule (S3). The unresolved case
+  /// is a state and not a blank — it names the number and says the library the window was given does not
+  /// hold it, because a card that drew nothing would leave the operator guessing whether the tool is
+  /// missing or the panel is.
+  ///
+  /// The shell has no toolpath selection yet, so the card describes the document's **first** toolpath and
+  /// names it in the heading. When authoring lands (T3) the selection is what the heading reads from.
+  fn tool_card(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    output: &mut ShellOutput,
+  ) {
+    let Some(toolpath) = app.document().toolpaths.first() else {
+      return;
+    };
+    let heading = format!("TOOL — {}", toolpath.name);
+    section(ui, palette, &heading);
+    output.drawn.tool_card.push(heading);
+
+    let number = toolpath.tool_number;
+    match stored_tool_for_number(&self.tools, number) {
+      Some(tool) => {
+        let title = format!("T{number} - {}", tool_name(&tool.geometry));
+        let shape = tool_shape_line(tool);
+        ui.label(
+          RichText::new(&title)
+            .size(theme::TITLE)
+            .color(palette.get(Role::TextHi)),
+        );
+        ui.label(
+          RichText::new(&shape)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        output.drawn.tool_card.push(title);
+        output.drawn.tool_card.push(shape);
+      }
+      None => {
+        let sentence = format!(
+          "T{number} is not in the tool library this window was given, so this toolpath has no tool \
+           to show."
+        );
+        ui.label(
+          RichText::new(&sentence)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::Danger)),
+        );
+        output.drawn.tool_card.push(sentence);
+      }
+    }
+    ui.add_space(6.0);
   }
 
   /// The 12 px strip the inspector leaves behind when it is collapsed.
@@ -1531,6 +1604,49 @@ fn field(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
       palette.get(Role::TextHi),
     );
   });
+}
+
+/// The word every tool display name in this build is rendered with, where the tool's type would go.
+///
+/// The library keeps a tool's type as a raw integer and says in its own header that the numeric mapping
+/// is not established from the artifact (`cam-store::tools`), so this build has no vocabulary to put
+/// there — and inventing one, a table of codes to "end mill" and "V-bit", would be inventing a fact
+/// about a file nobody has read. `cam-cli tools list` renders the same templates with this same word,
+/// which is the point: one library read by two programs may not name one tool two different things.
+const TOOL_TYPE_LABEL: &str = "Tool";
+
+/// A tool's display name: its `name_format` template rendered, or its id when the template names a field
+/// the tool does not set — the same fallback `cam-cli tools list` prints for the same failure.
+fn tool_name(geometry: &ToolGeometry) -> String {
+  render_name(&geometry.name_format, TOOL_TYPE_LABEL, geometry)
+    .unwrap_or_else(|_| geometry.id.clone())
+}
+
+/// The card's second line: the tool's type code, then the three numbers S2 puts beside it.
+///
+/// The type is the library's raw code, marked as one, because no build of this shell has a word for it
+/// (see [`TOOL_TYPE_LABEL`]). A dash stands where the library holds no number: that is a reading of what
+/// the library has, where a `0` would be a number the tool does not have.
+fn tool_shape_line(tool: &StoredTool) -> String {
+  let diameter = tool
+    .geometry
+    .diameter
+    .map(|diameter| format!("Ø {} mm", Format::fixed(2).apply(diameter.mm())))
+    .unwrap_or_else(|| "Ø —".to_owned());
+  let angle = tool
+    .geometry
+    .included_angle
+    .map(|angle| format!("{}°", Format::fixed(1).apply(angle.degrees())))
+    .unwrap_or_else(|| "—".to_owned());
+  let flutes = tool
+    .geometry
+    .num_flutes
+    .map(|flutes| format!("{flutes} flutes"))
+    .unwrap_or_else(|| "—".to_owned());
+  format!(
+    "code {} · {diameter} · {angle} · {flutes}",
+    tool.geometry.tool_type
+  )
 }
 
 /// A palette or inspector section label: small, uppercase, dim, with a hairline under it.

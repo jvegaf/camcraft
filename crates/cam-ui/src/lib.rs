@@ -43,6 +43,7 @@ use cam_geom::Point2;
 use cam_model::Job;
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
+use cam_store::tools::StoredTool;
 use cam_view::{
   box_select, build_grid, build_scene, choose_snap, pick, SceneItem, Snap, SnapKind, Style,
   PICK_TOLERANCE_PX, SNAP_TOLERANCE_PX, TARGET_GRID_PIXELS,
@@ -644,6 +645,16 @@ pub struct DrawnState {
   /// [`UiAction::SetJob`] for that frame — and [`cam_app::Command::SetJob`] refuses the same three numbers
   /// by the model's own rule if anything else ever does.
   pub material_refusal: String,
+  /// The words the current-tool card drew, in the order it drew them: the section naming the toolpath it
+  /// belongs to, then either the tool's two lines — number and name, then type, diameter, angle and flute
+  /// count — or the one sentence saying the number is not in the library this window was given.
+  ///
+  /// Empty while the frame is not on the Toolpaths stage, and empty while the document holds no toolpath:
+  /// a card for a toolpath that does not exist would be describing nothing. This is how a headless test
+  /// reads the card, for the same reason [`Self::material`] exists — egui offers no widget-by-text lookup
+  /// from outside a frame — and it is the only place that pairs a document's `tool_number` with the
+  /// library snapshot (camui-toolpath S2).
+  pub tool_card: Vec<String>,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the clock itself reports: exactly `0.0` while the preview stands on its first
@@ -745,6 +756,13 @@ pub struct Shell {
   pub show_3d: bool,
   /// The program preview the 3D panel draws, once a caller has handed one in.
   preview: Option<Preview3d>,
+  /// The tool library as a snapshot: every tool this window was given, in the library's own order.
+  ///
+  /// A snapshot and not a library: [`cam_store::tools::ToolLibrary`] owns a rusqlite connection and is
+  /// not `Clone`, so the shell cannot hold one and opens no files of its own (camui-toolpath S4). Empty
+  /// until a host hands one in, and empty is a real answer — the card then says the number it was asked
+  /// for is not in the library it was given.
+  tools: Vec<StoredTool>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -845,6 +863,7 @@ impl Default for Shell {
       text_height: 10.0,
       show_3d: false,
       preview: None,
+      tools: Vec::new(),
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -964,6 +983,17 @@ impl Shell {
   pub fn clear_preview(&mut self) {
     self.preview = None;
     self.show_3d = false;
+  }
+
+  /// Hand the shell the tool library as a snapshot, for the current-tool card to resolve numbers with.
+  ///
+  /// A snapshot rather than a library because [`cam_store::tools::ToolLibrary`] owns a connection and the
+  /// shell does no I/O (camui-toolpath S4): the host decides where the library comes from and when it is
+  /// read, and the shell only resolves the numbers the document's toolpaths name. Replacing the snapshot
+  /// replaces what the card can describe, and an empty one is legal — it makes every number unresolved,
+  /// which is the state the card says out loud instead of drawing a blank tool.
+  pub fn set_tools(&mut self, tools: Vec<StoredTool>) {
+    self.tools = tools;
   }
 
   /// The preview the 3D panel draws, when a caller has handed one in.

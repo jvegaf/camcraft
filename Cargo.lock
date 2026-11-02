@@ -755,6 +755,7 @@ dependencies = [
  "cam-model",
  "cam-move",
  "cam-sim",
+ "cam-store",
  "cam-units",
  "cam-view",
  "egui",
