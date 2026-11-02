@@ -76,7 +76,7 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
 ## The editor
 
 ```bash
-cargo run -p cam-desktop          # opens the window with a sample document
+cargo run -p cam-desktop          # sample document at launch; Open loads a .c2d (no Save)
 ```
 
 ```
@@ -92,12 +92,18 @@ What works: pan, zoom about the cursor, zoom-to-fit, grid with a 1/2/5 spacing, 
 distance, marquee selection, snapping to endpoints/midpoints/arc centres/grid, undo/redo with a bounded
 history, layer visibility, and the authoring half of the product — line, polyline, arc, circle, ellipse,
 rectangle, polygon and star by dragging, single-stroke text, node editing, join, trim, offset,
-mirror/rotate/scale, array copy and align, plus importing a file by path as one undoable step.
+mirror/rotate/scale, array copy and align, plus importing a file by path and opening a `.c2d` you picked
+in the system's file dialog, each as one undoable step. Open is a button in the app bar: the shell only asks
+the window, which owns the dialog (`rfd`, in `cam-desktop` and not in `cam-ui`), and the file it answers with
+is loaded through `cam_store::document::DocumentFile::load` — the archive scan, migration and `validate()`
+`cam-cli`'s own loader performs for every command that reads a document — so the bar names that file where it
+said `untitled.c2d`, a refused one changes nothing and says `refused: …`, and a good one is one undo away.
+Nothing in the window writes a `.c2d` yet.
 
 What is not there yet: **toolpath forms** (M4's and M6's strategies are still authored through
 `cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`
-authors one — rather than a panel that creates one), and a file menu for saving and opening (the
-formats and the CLI exist; the window still takes documents from its caller).
+authors one — rather than a panel that creates one), and **saving** (the formats and the CLI exist; the
+window opens a `.c2d` and writes none, so an edit made in it has nowhere to go).
 
 Known cosmetic detail: auto-framing fits the canvas as measured when the panel layout settles, so the
 first fit can be a few percent tighter than `Zoom to fit` (`F`), which is exact.

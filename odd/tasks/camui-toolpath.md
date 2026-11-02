@@ -346,3 +346,16 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   **What is deliberately still true:** `master` is **33 commits ahead of `origin/master` and not pushed**. Merging and
   publishing are different acts and only the first was asked for. If a future session is tempted to push, the answer
   is that the owner has not asked for it.
+
+- **L16 (L14's second half is now delivered elsewhere: the shell opens a `.c2d`).** L14 and L5 both recorded that
+  "the shell still cannot open a `.c2d` … the feature that makes the shell open a document is not this one". That
+  feature is `odd/tasks/shell-open-document.md`, which landed the Open button (`UiAction::RequestOpenFile`,
+  `crates/cam-ui/src/chrome.rs:334-348`), the host's dialog (`rfd` in `cam-desktop` only,
+  `crates/cam-desktop/src/main.rs:95-102` — the dependency `odd/tasks/m3-import.md:113` had left undecided) and
+  the load through `cam_store::document::DocumentFile::load` as one undoable replacement
+  (`crates/cam-ui/src/lib.rs:2320-2336`). Uncommitted in the working tree when this entry was written; no gate here.
+  **What this document's own hand-off still needs, unchanged:** the card resolves a toolpath's number against the
+  snapshot it is *handed*, and an open now empties that snapshot on purpose (`lib.rs:1013-1020`) instead of filling it
+  from the opened document, so `Document.tools_ref` remains a filename only `cam-cli` resolves. The card is honest
+  about the empty case — it says the number is not in the library it was given — but the library the CLI would open
+  is still not loaded by any window, which is T1's remaining hole rather than a new one.

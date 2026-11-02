@@ -634,3 +634,24 @@ remains of the concept, in the order the design argues for:
   three stalled lineages) and `camui-toolpath`'s own hand-off — the shell still cannot open a `.c2d`, so
   `Document.tools_ref` remains a filename only `cam-cli` resolves. `master` is 33 commits ahead of `origin/master` and
   still unpushed; the owner merged and cleaned the branches, not the remote.
+
+- **L44 (the hand-off L43 recorded is now half closed: the shell opens a `.c2d`).** The follow-up feature that L43
+  named as `camui-toolpath`'s hand-off landed as `odd/tasks/shell-open-document.md` — its S2–S4, not its T4, and
+  uncommitted in the working tree when this entry was written. The app bar's Open button emits
+  `UiAction::RequestOpenFile` and nothing else (`crates/cam-ui/src/chrome.rs:334-348`); the host answers it with
+  `rfd::FileDialog::pick_file` (`crates/cam-desktop/src/main.rs:95-102`), which is the file-dialog dependency
+  decision this project had left undecided, taken in the **host** crate only — `cam-ui` gains no dialog crate; and
+  `UiAction::OpenFile { path }` loads through `cam_store::document::DocumentFile::load`, the same archive scan,
+  `migrate()` and `validate()` `cam-cli`'s own loader performs for every command that reads a document
+  (`crates/cam-cli/src/main.rs:218-223`, used by `validate`, `inspect`, `check`, `emit` and `simulate`), and
+  replaces the drawing through `replace_document_undoable` (`crates/cam-ui/src/lib.rs:2320-2336`) so the open is one
+  undo away. `Shell::document_name` (`:1041-1048`) then names the file where the bar said `untitled.c2d`, and the
+  success-only reset (`:1013-1020`) clears `preview`, `tools` and `material_size` and re-frames. Six tests in
+  `crates/cam-ui/tests/shell.rs:1781-2012` pin it: the name in the bar, three refusal cases (missing, not an archive,
+  invalid) leaving document, history depth, dirty flag and name untouched, the cleared preview/snapshot/drafts, one
+  undo back to the `document_json` the window started from, the re-frame, and the Open button emitting the intent
+  alone. **What L43's sentence still says, and this entry does not change:** `Document.tools_ref`
+  is still a filename only `cam-cli` resolves. Opening *clears* the tool snapshot (`lib.rs:1017`, and
+  `cam-desktop/src/main.rs:76` still passes `set_tools(Vec::new())`); filling it from the opened document's
+  library is the next slice, because resolving that filename the way `cam-cli` does is a rule nobody has moved yet.
+  **No gate was run for this entry**: it is documentation, and the code it describes arrived with its own.
