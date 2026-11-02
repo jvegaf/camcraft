@@ -129,3 +129,28 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   a mid-write `ENOSPC`, whose invariant is argued from write-temp-then-rename plus the three failure probes.
   Every finding above was reproduced by the verifier itself, with the reproducer, which is why they are
   recorded as findings and not as worries.
+- **L6 (the review: approved, four advisories, and two failed attempts to start it).** Lineage
+  **`review-6e601ec08a007c8e`**, target `sha256:986a350c…`, tier **`high`** on the provider's own
+  `process_boundary` signal, lenses **`review-risk` + `review-reliability`**, 11 paths / **1 354 changed
+  lines**, correction budget 200. Result: **approved on the first admitted event**, no correction round, no
+  blocker, budget unspent. Both reviewers ran over the Pi host relay (risk: 97 654 B prompt, 2 522 B result;
+  reliability: 97 679 B / 2 600 B) and the authority is **burned** (`gentle-ai.review-acknowledged/v1`,
+  consumed revision `sha256:0f30ccf4…`).
+  **Two failed attempts to start it, recorded because both were avoidable and neither was the provider's
+  fault:** the first was rejected `base-ref-unresolvable` because the parent copied the commit id with a
+  digit missing — the provider's message named the problem exactly, no lineage was created, and there was
+  nothing to reconcile. The second resolved the id but died in `git grep` with `failed to create thread:
+  Resource temporarily unavailable`, the box's own process limit, again with no mutation and no lineage; the
+  controller reconciled through target-scoped STATUS and the third attempt created the lineage. Both are the
+  same lesson this session learned four times over: this box runs one thing at a time, and the limit is the
+  user's process count, not the project's.
+  **Four advisories came back, all `informational`, all `WARNING`, none a correction**, and their text is not
+  quoted here on purpose — it lives in the native receipt. What can be said from the locations: `R1-001` at
+  `cam-ui/src/lib.rs:2503` and `R3-002` at `:2445` sit in the save path's own bookkeeping; `R3-001` at
+  `:2711`; and `R1-002` at `crates/cam-store/src/document.rs:183-188`, which is **exactly the region the
+  verifier's A1 punched a hole in** and where the fix now unlinks the writer's temporary on a failed rename.
+  The review saw that region with the fix in place and approved, so what it names there is something beyond
+  the fix, not the leftover itself. A future reader should treat all four as the review's own statement says:
+  separate later work, never a reason to re-run this review.
+  **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary repository
+  policy and the owner's decisions.
