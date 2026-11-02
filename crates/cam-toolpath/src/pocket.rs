@@ -306,24 +306,41 @@ fn raster_rows(
     if y > bounds.max.y {
       break;
     }
-    // A row that misses the material is an empty span list, not an ambiguous one: nothing is cut,
-    // and neither an empty nor a dropped row is emitted — half a row is worse than no row, because
-    // it leaves the tool in material it cannot reach from the other side. A row that lands **on** a
-    // boundary is the other case, and it is material: `row_spans` retries it to either side, which
-    // is what keeps the region's far edge from being the one row the lattice never cuts.
-    if let Some((row_y, spans)) = row_spans(&offset.region, y) {
-      if !spans.is_empty() {
-        rows.push(
-          spans
-            .into_iter()
-            .map(|(left, right)| (Point2::new(left, row_y), Point2::new(right, row_y)))
-            .collect(),
-        );
-      }
-    }
+    // A row that lands **on** a boundary is material: `row_spans` retries it to either side, which
+    // is what keeps a row the lattice lands on from being dropped. `emit_row` owns both cases.
+    emit_row(&mut rows, &offset.region, y);
     index += 1;
   }
+  // The grid ends on the last line that fits, which is one stepover short of the far edge whenever the
+  // stepover does not divide the region's height — and the strip between them is material only the
+  // tool's disc at that edge reaches. So the lattice is *finished*: one more row, on the edge itself.
+  //
+  // Skipped when the grid already ends there. The break above is a strict `y > bounds.max.y`, so a row
+  // that lands exactly on the edge is already emitted and already retried onto the material; appending
+  // here would plunge into that same strip a second time. The gap is compared against the kernel's
+  // tolerance for the same reason: a row a millionth of a millimetre from the edge is the same row.
+  let last_grid_row = bounds.min.y + index.saturating_sub(1) as f64 * stepover;
+  if bounds.max.y - last_grid_row > DEFAULT_TOLERANCE {
+    emit_row(&mut rows, &offset.region, bounds.max.y);
+  }
   Ok((rows, offset.flattened))
+}
+
+/// Emit one row at `y`, if the region has material on it.
+///
+/// A row that misses the material is dropped rather than emitted empty: half a row is worse than no
+/// row, because it leaves the tool in material it cannot reach from the other side.
+fn emit_row(rows: &mut Vec<Row>, region: &Region, y: f64) {
+  if let Some((row_y, spans)) = row_spans(region, y) {
+    if !spans.is_empty() {
+      rows.push(
+        spans
+          .into_iter()
+          .map(|(left, right)| (Point2::new(left, row_y), Point2::new(right, row_y)))
+          .collect(),
+      );
+    }
+  }
 }
 
 /// The spans of one raster row, and the `y` they were really clipped at.

@@ -199,34 +199,41 @@ fn row_y(unit: &[Move]) -> f64 {
 fn a_row_crossing_an_island_is_cut_as_two_spans() {
   // A 100 mm square with a centred r10 island, 6 mm tool, 3 mm stepover. The tool centre rides 3 mm
   // inside the wall, so the outer region is 3…97 and the island grows to r = 10 + 3 = 13 about
-  // (50, 50). Rows sit on the M4 grid y = 3 + 3k while they fit the region, so k = 0…31: **32 rows**,
-  // exactly the island-free row count in `tests/pocket.rs`, because the island is inside the boundary
-  // and cannot move it.
+  // (50, 50). Rows sit on the M4 grid y = 3 + 3k while they fit the region, so k = 0…31, plus the one
+  // row that finishes the far edge at y = 97: **33 rows**, exactly the island-free row count in
+  // `tests/pocket.rs`, because the island is inside the boundary and cannot move it. The finishing row
+  // is 47 mm from the island's centre, far outside its 13 mm reach, so it is one span like the rows
+  // that miss the island.
   let boundary = square(100.0);
   let island = circle(Point2::new(50.0, 50.0), 10.0);
   let path = run(&boundary, &[&island], 3.0);
 
-  assert_eq!(path.rings, 32, "the row grid is the island-free grid");
+  assert_eq!(path.rings, 33, "the row grid is the island-free grid");
 
   // A row crosses the grown island where |y - 50| < 13, which on this grid is y = 39, 42, … 60:
   // k = 12…19, **8 rows**. Those cut **two** spans; the other 24 cut one. y = 63 is exactly tangent
   // (|63 - 50| = 13), so the kernel refuses it as ambiguous and the strategy's retry resolves it just
   // outside the island: it still cuts one span.
-  let expected_spans: Vec<usize> = (0..32)
+  let expected_spans: Vec<usize> = (0..33)
     .map(|k| if (12..=19).contains(&k) { 2 } else { 1 })
     .collect();
   assert_eq!(
     expected_spans.iter().sum::<usize>(),
-    40,
-    "24 single-span rows plus 8 two-span rows"
+    41,
+    "25 single-span rows plus 8 two-span rows"
   );
 
   let units = work_units(&path.moves);
-  assert_eq!(units.len(), 40, "one work unit per span");
+  assert_eq!(units.len(), 41, "one work unit per span");
 
   let mut unit = 0usize;
   for (k, span_count) in expected_spans.iter().enumerate() {
-    let y = 3.0 + 3.0 * k as f64;
+    // The last entry is the finishing row on the far edge; the grid never reaches it (3 + 33 * 3 = 102).
+    let y = if k + 1 == expected_spans.len() {
+      97.0
+    } else {
+      3.0 + 3.0 * k as f64
+    };
     let first = &units[unit];
     assert!(
       (row_y(first) - y).abs() < ROW_TOLERANCE,
@@ -316,17 +323,21 @@ fn no_cutting_move_passes_through_the_island() {
 fn a_row_the_island_covers_entirely_emits_nothing() {
   // A 100 mm square split by a full-width island band: the island spans x 4…96, so once it grows by
   // the 3 mm inset it reaches past the shrunken wall on both sides and the material is two bands —
-  // y 3…37 and y 63…97. Rows live on y = 3 + 3k as before, so 32 rows fit; the 8 of them that fall
-  // **inside** the island band (y = 39, 42, … 60) cross no material at all and are not cut. The
-  // arithmetic the test asserts is 32 - 8 = 24 rows and 24 spans.
+  // y 3…37 and y 63…97. Rows live on y = 3 + 3k as before, so 32 grid rows fit; the 8 of them that
+  // fall **inside** the island band (y = 39, 42, … 60) cross no material at all and are not cut. The
+  // finishing row at y = 97 lands in the upper band, so it is cut like the rest: the arithmetic the
+  // test asserts is (32 - 8) + 1 = 25 rows and 25 spans.
   let boundary = square(100.0);
   let island = rectangle(Point2::new(4.0, 40.0), Point2::new(96.0, 60.0));
   let path = run(&boundary, &[&island], 3.0);
 
-  assert_eq!(path.rings, 24, "32 grid rows less the 8 the island covers");
+  assert_eq!(
+    path.rings, 25,
+    "32 grid rows less the 8 the island covers, plus the finishing row"
+  );
 
   let units = work_units(&path.moves);
-  assert_eq!(units.len(), 24, "every surviving row is one span");
+  assert_eq!(units.len(), 25, "every surviving row is one span");
   let rows: Vec<f64> = units.iter().map(|unit| row_y(unit)).collect();
 
   for (index, y) in rows.iter().enumerate() {
@@ -343,10 +354,12 @@ fn a_row_the_island_covers_entirely_emits_nothing() {
     );
   }
 
-  // The surviving rows are the 12 below the band and the 12 above it, on the same grid.
+  // The surviving rows are the 12 below the band, the 12 above it on the same grid, and the finishing
+  // row on the far edge itself.
   let expected: Vec<f64> = (0..12)
     .map(|k| 3.0 + 3.0 * k as f64)
     .chain((0..12).map(|k| 63.0 + 3.0 * k as f64))
+    .chain([97.0])
     .collect();
   for (index, expected) in expected.iter().enumerate() {
     assert!(
@@ -367,23 +380,32 @@ fn a_row_touching_a_narrow_island_strip_never_emits_an_unpaired_span() {
   let island = rectangle(Point2::new(40.0, 20.0), Point2::new(60.0, 80.0));
   let path = run(&boundary, &[&island], 7.0);
 
-  // Rows at y = 3 + 7k fit the 3…97 region up to k = 13: **14 rows**. Ten of them cross the strip —
-  // y = 17, 24, … 80 (k = 2…11), the first of those the retried tangent row — and cut 2 spans each.
-  // The other four (y = 3, 10, 87, 94) miss it and cut 1 span each: **24 spans**.
-  let expected_spans: Vec<usize> = vec![1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1];
+  // Rows at y = 3 + 7k fit the 3…97 region up to k = 13: 14 grid rows, plus the finishing row on the
+  // far edge: **15 rows**. Ten of them cross the strip — y = 17, 24, … 80 (k = 2…11), the first of those
+  // the retried tangent row — and cut 2 spans each. The other four (y = 3, 10, 87, 94) miss it, and so
+  // does the finishing row at 97, past the strip's grown top at 83: 5 single-span rows, **25 spans**.
+  let expected_spans: Vec<usize> = vec![1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1];
   assert_eq!(
     expected_spans.iter().sum::<usize>(),
-    24,
-    "10 two-span rows and 4 single-span rows"
+    25,
+    "10 two-span rows and 5 single-span rows"
   );
 
   let units = work_units(&path.moves);
-  assert_eq!(path.rings, 14, "14 rows fit the grid");
-  assert_eq!(units.len(), 24, "one work unit per span");
+  assert_eq!(
+    path.rings, 15,
+    "15 rows fit the grid and finish the far edge"
+  );
+  assert_eq!(units.len(), 25, "one work unit per span");
 
   let mut unit = 0usize;
   for (k, span_count) in expected_spans.iter().enumerate() {
-    let y = 3.0 + 7.0 * k as f64;
+    // The last entry is the finishing row on the far edge; the grid stops at y = 94 (3 + 13 * 7).
+    let y = if k + 1 == expected_spans.len() {
+      97.0
+    } else {
+      3.0 + 7.0 * k as f64
+    };
     let first = &units[unit];
     assert!(
       (row_y(first) - y).abs() < ROW_TOLERANCE,
@@ -447,5 +469,5 @@ fn raster_pocket_with_an_island_is_deterministic() {
     first.moves, second.moves,
     "identical input, identical moves"
   );
-  assert_eq!(work_units(&first.moves).len(), 40);
+  assert_eq!(work_units(&first.moves).len(), 41);
 }

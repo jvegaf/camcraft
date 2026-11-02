@@ -257,11 +257,14 @@ fn raster_square_cuts_rows_at_stepover_spacing() {
     &params(PocketStrategy::Raster, 0.0, 3.0, 20.0, 12.0),
   );
 
-  assert_eq!(path.rings, 32, "a 94 mm span at 3 mm stepover");
+  assert_eq!(
+    path.rings, 33,
+    "a 94 mm span at 3 mm stepover, plus the finishing row"
+  );
   let units = work_units(&path.moves);
-  assert_eq!(units.len(), 32, "one span per row on a convex square");
+  assert_eq!(units.len(), 33, "one span per row on a convex square");
 
-  for (index, unit) in units.iter().enumerate() {
+  for (index, unit) in units.iter().take(32).enumerate() {
     let y = 3.0 + 3.0 * index as f64;
     let spans = cut_spans(unit);
     assert_eq!(spans.len(), 1, "row {index} is one straight piece");
@@ -280,14 +283,97 @@ fn raster_square_cuts_rows_at_stepover_spacing() {
     assert_eq!(arc_moves(unit), 0, "raster rows are straight");
   }
 
-  // A uniform grid from the region's lower edge: the last row is at 3 + 31 * 3 = 96, one step
-  // below the region's upper edge at 97.
+  // The grid runs from the region's lower edge to 3 + 31 * 3 = 96, one step below the region's upper
+  // edge at 97, so the lattice is finished with one row on that edge rather than stopping short of it.
   let last = units.last().expect("at least one row");
   let (start, _) = cut_spans(last)[0];
   assert!(
-    (start.y - 96.0).abs() < ROW_TOLERANCE,
-    "the last row sits at y = 96, got {}",
+    (start.y - 97.0).abs() < ROW_TOLERANCE,
+    "the finishing row sits on the far edge at y = 97, got {}",
     start.y
+  );
+}
+
+/// S2: the lattice reaches the region's far edge, and it reaches it exactly once.
+///
+/// A 94 mm span at a 3 mm stepover puts the last grid row at 96 while the region ends at 97, so the
+/// strip the region's edge is the end of is never cut. One more row at 97 clears it — and it is the
+/// row a region whose far edge already sits on the grid must not get twice, which is why the same
+/// test checks the 1…99 lattice against the count it already had.
+#[test]
+fn a_stepover_that_stops_short_is_finished_at_the_far_edge_and_never_twice() {
+  let short = run(
+    &square(100.0),
+    &params(PocketStrategy::Raster, 0.0, 3.0, 20.0, 12.0),
+  );
+  let units = work_units(&short.moves);
+  assert_eq!(units.len(), 33, "32 grid rows and one finishing row");
+
+  // The grid itself is untouched: the finishing row is appended, not spread.
+  for (index, unit) in units.iter().take(32).enumerate() {
+    let y = 3.0 + 3.0 * index as f64;
+    let (start, _) = cut_spans(unit)[0];
+    assert!(
+      (start.y - y).abs() < ROW_TOLERANCE,
+      "row {index} should still lie at y = {y}, got {}",
+      start.y
+    );
+  }
+
+  // The finishing row sits on the far edge and spans the region the way every other row does.
+  let (start, end) = cut_spans(units.last().expect("at least one row"))[0];
+  assert!(
+    (start.y - 97.0).abs() < ROW_TOLERANCE && (end.y - 97.0).abs() < ROW_TOLERANCE,
+    "the finishing row sits on the far edge at y = 97, got {} and {}",
+    start.y,
+    end.y
+  );
+  let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
+  assert!(
+    (min_x - 3.0).abs() < TOLERANCE && (max_x - 97.0).abs() < TOLERANCE,
+    "the finishing row should span x 3…97, got {min_x}…{max_x}"
+  );
+
+  // Exactly one row lands on the far edge: the finishing row is not the grid's last row respelled.
+  let on_the_edge = units
+    .iter()
+    .filter(|unit| {
+      cut_spans(unit)
+        .iter()
+        .any(|(start, _)| (start.y - 97.0).abs() < ROW_TOLERANCE)
+    })
+    .count();
+  assert_eq!(on_the_edge, 1, "the far edge is cut once");
+
+  // The strip the old lattice left standing is now cut — that is the whole point of the row. The old
+  // last row at 96 with a 3 mm radius reached y = 99, so every cell centre at y = 99.5 had nothing
+  // over it; the finishing row reaches the wall. Checked on the 1 mm lattice's top row of cell centres,
+  // over the columns the spans actually run across: the square's own corners stay standing because a
+  // round tool cannot reach an inside corner (D-M5-11), and that is a different limit than this one.
+  for column in 3..97 {
+    let centre = Point2::new(column as f64 + 0.5, 99.5);
+    let covered = units.iter().any(|unit| {
+      cut_spans(unit)
+        .iter()
+        .any(|(start, end)| distance_to_span(centre, *start, *end) <= 3.0)
+    });
+    assert!(
+      covered,
+      "the cell at x = {column}, y = 99.5 is the strip D-M5-12 measured and must be cut"
+    );
+  }
+
+  // And a lattice that already ends on the edge keeps the row count it had: appending unconditionally
+  // would make this 51 and cut the last row twice.
+  let reached = run_with(
+    &square(100.0),
+    &params(PocketStrategy::Raster, 0.0, 2.0, 20.0, 6.0),
+    &tool(2.0),
+  );
+  assert_eq!(
+    work_units(&reached.moves).len(),
+    50,
+    "a far edge already on the grid is not finished twice"
   );
 }
 
@@ -466,7 +552,11 @@ fn circle_raster_spans_match_the_analytic_chord() {
   );
   let units = work_units(&path.moves);
   assert_eq!(path.rings, units.len(), "one span per row");
-  assert_eq!(units.len(), 9, "rows at y = 33, 37, … 65");
+  assert_eq!(
+    units.len(),
+    10,
+    "rows at y = 33, 37, … 65, plus the finishing row on the far edge"
+  );
 
   for unit in &units {
     let spans = cut_spans(unit);
