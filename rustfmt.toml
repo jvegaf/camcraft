@@ -1,0 +1,4 @@
+# The project's own formatting, so the gate's `cargo fmt --check` answers for this tree instead of for
+# rustfmt's defaults. Two spaces and nothing else: measured clean across every crate of the workspace
+# on this toolchain, and versioned because the gate cannot pass without it.
+tab_spaces = 2
