@@ -11,7 +11,7 @@ use crate::arc::Arc;
 use crate::point::{Point2, Vec2};
 use crate::segment::{LineSeg, Segment};
 
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 
 /// How two segments meet.
 #[derive(Clone, Debug, PartialEq)]
@@ -211,11 +211,11 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
   let distance = between.length();
 
   if distance <= tolerance {
-    return if (r1 - r2).abs() <= tolerance {
-      Intersections::Coincident
-    } else {
-      Intersections::None
-    };
+    if (r1 - r2).abs() > tolerance {
+      return Intersections::None;
+    }
+    // One circle: the answer is entirely a question about the two sweeps.
+    return one_circle(first, second, tolerance);
   }
   let unit: Vec2 = between * (1.0 / distance);
 
@@ -266,6 +266,75 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
       }
     }
   }
+}
+
+/// Two arcs whose supporting circles coincide, decided by their sweeps.
+///
+/// The pair meets exactly where the sweeps do, so [`Intersections::Coincident`] is the answer only
+/// when they share a length of curve: a pair that touches at a single angle meets at one point, and
+/// a pair that shares no angle does not meet at all. Deciding this from the two centres and radii
+/// answers for the *circles*, which is not the question an arc asks.
+fn one_circle(first: Arc, second: Arc, tolerance: f64) -> Intersections {
+  let radius = first.radius();
+  let angular = if radius > 0.0 {
+    tolerance / radius + 1.0e-12
+  } else {
+    1.0e-12
+  };
+  let mut shared = 0.0;
+  let mut touch: Option<f64> = None;
+  for (first_start, first_end) in coverage(first) {
+    for (second_start, second_end) in coverage(second) {
+      let overlap = first_end.min(second_end) - first_start.max(second_start);
+      if overlap > angular {
+        shared += overlap;
+      } else if angle_apart(first_end, second_start) <= angular {
+        touch = touch.or(Some(first_end));
+      } else if angle_apart(second_end, first_start) <= angular {
+        touch = touch.or(Some(second_end));
+      }
+    }
+  }
+  if shared > angular {
+    return Intersections::Coincident;
+  }
+  match touch {
+    Some(angle) => Intersections::Point(Point2::new(
+      first.center().x + radius * angle.cos(),
+      first.center().y + radius * angle.sin(),
+    )),
+    None => Intersections::None,
+  }
+}
+
+/// An arc's sweep as intervals of absolute angle in `[0, TAU]`, split where it crosses the seam. A
+/// full turn is the whole circle and needs no split.
+fn coverage(arc: Arc) -> Vec<(f64, f64)> {
+  let sweep = arc.sweep();
+  if sweep.abs() >= TAU {
+    return vec![(0.0, TAU)];
+  }
+  let start = arc.start_angle().rem_euclid(TAU);
+  // A negative sweep runs *backwards* from the start angle, so the angles it covers are the interval
+  // that ends there rather than the one that begins there. Reading it as positive would answer for a
+  // quarter of the circle the arc never visits.
+  let (low, high) = if sweep >= 0.0 {
+    (start, start + sweep)
+  } else {
+    (start + sweep, start)
+  };
+  if low < 0.0 {
+    vec![(0.0, high), (low + TAU, TAU)]
+  } else if high > TAU {
+    vec![(low, TAU), (0.0, high - TAU)]
+  } else {
+    vec![(low, high)]
+  }
+}
+
+/// The shortest unsigned angle between two angles, in radians, in `[0, PI]`.
+fn angle_apart(first: f64, second: f64) -> f64 {
+  ((second - first + PI).rem_euclid(TAU) - PI).abs()
 }
 
 fn param_inside(parameter: f64, length: f64, tolerance: f64) -> bool {

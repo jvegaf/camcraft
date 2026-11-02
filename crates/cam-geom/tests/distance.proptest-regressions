@@ -4,4 +4,3 @@
 #
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
-cc 53f0ee71fc8e8021b30e3d316dabd42091ddac3d5b74fbcafeaf2c2adf487f03 # shrinks to first = Arc(Arc { center: Point2 { x: 0.0, y: 2.0 }, radius: 2.0, start_angle: 0.0, sweep: 1.5707963267948966 }), second = Line(LineSeg { start: Point2 { x: -5.0, y: 2.0 }, end: Point2 { x: 3.0, y: 3.0 } })

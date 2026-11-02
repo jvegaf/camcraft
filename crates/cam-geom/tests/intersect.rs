@@ -3,6 +3,7 @@
 //! Trim depends on these, so the cases that a naive implementation silently drops — tangency,
 //! coincidence, and a single root that falls inside the segment — are the ones tested hardest.
 
+use cam_geom::distance::segment_to_segment;
 use cam_geom::intersect::{self, Intersections};
 use cam_geom::{Arc, LineSeg, Point2, Segment};
 use proptest::prelude::*;
@@ -21,6 +22,14 @@ fn circle(center: Point2, radius: f64) -> Segment {
 
 fn half_circle(center: Point2, radius: f64, start: f64) -> Segment {
   Segment::Arc(Arc::new(center, radius, start, PI).expect("half arc"))
+}
+
+fn quarter(center: Point2, radius: f64, start: f64) -> Segment {
+  Segment::Arc(Arc::new(center, radius, start, PI / 2.0).expect("quarter arc"))
+}
+
+fn arc(center: Point2, radius: f64, start: f64, sweep: f64) -> Segment {
+  Segment::Arc(Arc::new(center, radius, start, sweep).expect("arc"))
 }
 
 fn sorted(mut points: Vec<Point2>) -> Vec<(f64, f64)> {
@@ -202,6 +211,91 @@ fn concentric_circles_either_coincide_or_miss() {
 }
 
 #[test]
+fn two_quarters_of_one_circle_that_share_no_angle_do_not_meet() {
+  // The case the distance proptest kept finding: same centre, same radius, sweeps that share no
+  // angle. The supporting circles coincide; the arcs do not, and an arc is the thing `intersect`
+  // is asked about, so `Coincident` here would contradict its own contract.
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let west = quarter(Point2::ORIGIN, 5.0, PI);
+  let apart = segment_to_segment(east, west, TOL);
+  assert!(
+    (apart - 50.0_f64.sqrt()).abs() <= TOL,
+    "two disjoint quarters of one radius-5 circle are 5*sqrt(2) apart, measured {apart}"
+  );
+  assert_eq!(
+    intersect::intersect(east, west, TOL),
+    Intersections::None,
+    "the distance says they are {} apart, so they do not meet",
+    apart
+  );
+}
+
+#[test]
+fn two_quarters_of_one_circle_that_overlap_share_a_length() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let north_east = quarter(Point2::ORIGIN, 5.0, PI / 4.0);
+  assert_eq!(
+    intersect::intersect(east, north_east, TOL),
+    Intersections::Coincident
+  );
+}
+
+#[test]
+fn two_quarters_of_one_circle_that_only_touch_meet_at_one_point() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let north = quarter(Point2::ORIGIN, 5.0, PI / 2.0);
+  match intersect::intersect(east, north, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(0.0, 5.0)) <= TOL,
+      "the quarters share only the angle {}",
+      PI / 2.0
+    ),
+    other => panic!("a shared endpoint is one point, not {other:?}"),
+  }
+  // The same touch across the seam, where one sweep ends at a full turn and the other starts at 0.
+  let below = quarter(Point2::ORIGIN, 5.0, 3.0 * PI / 2.0);
+  match intersect::intersect(below, east, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      "the seam is where the sweeps meet"
+    ),
+    other => panic!("a shared endpoint across the seam is one point, not {other:?}"),
+  }
+}
+
+#[test]
+fn a_clockwise_quarter_covers_the_angles_it_runs_back_through() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  // The same quarter, drawn backwards: a negative sweep covers the angles that *end* at its start.
+  let backwards = arc(Point2::ORIGIN, 5.0, PI / 2.0, -PI / 2.0);
+  assert_eq!(
+    intersect::intersect(east, backwards, TOL),
+    Intersections::Coincident
+  );
+  // And a quarter that runs backwards from angle 0 covers the fourth quadrant, not the first: it
+  // shares exactly one angle with `east`, so reading a negative sweep as positive would make these
+  // two coincide when they share a single point.
+  let below = arc(Point2::ORIGIN, 5.0, 0.0, -PI / 2.0);
+  match intersect::intersect(below, east, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      "a clockwise and a counter-clockwise quarter from angle 0 touch only at angle 0"
+    ),
+    other => panic!("two quarters meeting at one angle are one point, not {other:?}"),
+  }
+}
+
+#[test]
+fn a_full_turn_arc_covers_every_quarter_of_its_circle() {
+  let all = Segment::Arc(Arc::new(Point2::ORIGIN, 5.0, 0.0, TAU).expect("one full turn"));
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  assert_eq!(
+    intersect::intersect(all, east, TOL),
+    Intersections::Coincident
+  );
+}
+
+#[test]
 fn circles_that_do_not_reach_each_other_do_not_meet() {
   let first = circle(Point2::ORIGIN, 1.0);
   let second = circle(Point2::new(10.0, 0.0), 1.0);
@@ -261,6 +355,165 @@ proptest! {
     for point in intersect::intersect(a, b, TOL).points() {
       prop_assert!(a.distance_to_point(point) < 1.0e-6, "{point:?} not on the line");
       prop_assert!(b.distance_to_point(point) < 1.0e-6, "{point:?} not on the arc");
+    }
+  }
+}
+
+// ---- an oracle for the sweeps, computed without `intersect`'s own `coverage` -------------
+
+fn angle_covered(arc: Arc, theta: f64) -> bool {
+  if arc.sweep() >= 0.0 {
+    let f = (theta - arc.start_angle()).rem_euclid(TAU);
+    f <= arc.sweep() + 1e-12 || (TAU - f) <= 1e-12
+  } else {
+    let b = (arc.start_angle() - theta).rem_euclid(TAU);
+    b <= -arc.sweep() + 1e-12 || (TAU - b) <= 1e-12
+  }
+}
+
+/// The measure of the two sweeps' intersection, taken from boundary midpoints rather than from the
+/// interval list the kernel builds, so the two agree only if both are right.
+fn overlap_measure(a: Arc, b: Arc) -> f64 {
+  let mut bounds = vec![0.0, TAU];
+  for angle in [
+    a.start_angle(),
+    a.start_angle() + a.sweep(),
+    b.start_angle(),
+    b.start_angle() + b.sweep(),
+  ] {
+    let m = angle.rem_euclid(TAU);
+    if m > 0.0 && m < TAU {
+      bounds.push(m);
+    }
+  }
+  bounds.sort_by(|x, y| x.partial_cmp(y).unwrap());
+  bounds.dedup();
+  bounds
+    .windows(2)
+    .filter(|w| {
+      let mid = 0.5 * (w[0] + w[1]);
+      angle_covered(a, mid) && angle_covered(b, mid)
+    })
+    .map(|w| w[1] - w[0])
+    .sum()
+}
+
+fn arc_of(segment: Segment) -> Arc {
+  match segment {
+    Segment::Arc(arc) => arc,
+    Segment::Line(_) => panic!("expected an arc"),
+  }
+}
+
+/// The pair the distance proptest found at master with a million cases: one centre, one radius,
+/// sweeps that share no angle. `intersect` answered `Coincident` while the distance was
+/// 0.7653668647301798, so the two functions disagreed about the same two arcs.
+#[test]
+fn the_proptest_case_of_equal_circles_with_disjoint_sweeps_does_not_meet() {
+  let first = arc(Point2::new(-5.0, 11.0), 1.0, PI, PI / 2.0);
+  let second = arc(Point2::new(-5.0, 11.0), 1.0, PI / 4.0, -PI / 2.0);
+  assert!((segment_to_segment(first, second, TOL) - 0.7653668647301798).abs() <= 1e-12);
+  assert_eq!(
+    intersect::intersect(first, second, TOL),
+    Intersections::None
+  );
+  assert_eq!(
+    intersect::intersect(second, first, TOL),
+    Intersections::None
+  );
+}
+
+/// A full turn overlaps every sweep, including one far too small to matter, in either direction.
+#[test]
+fn a_full_turn_overlaps_a_tiny_sweep() {
+  let all = arc(Point2::ORIGIN, 5.0, 0.0, TAU);
+  let tiny = arc(Point2::ORIGIN, 5.0, PI, 1.0e-3);
+  assert_eq!(
+    intersect::intersect(all, tiny, TOL),
+    Intersections::Coincident
+  );
+  assert_eq!(
+    intersect::intersect(tiny, all, TOL),
+    Intersections::Coincident
+  );
+  let backwards = arc(Point2::ORIGIN, 5.0, 0.0, -TAU);
+  assert_eq!(
+    intersect::intersect(backwards, quarter(Point2::ORIGIN, 5.0, 0.0), TOL),
+    Intersections::Coincident
+  );
+}
+
+/// Every same-circle pair answers for the sweeps and not for the circles, checked against an oracle
+/// that measures angle coverage a different way, and against `segment_to_segment` in the same pass.
+#[test]
+fn same_circle_pairs_are_decided_by_their_sweeps_not_their_circles() {
+  let starts: Vec<f64> = (0..16)
+    .map(|k| f64::from(k) * PI / 8.0)
+    .chain([-PI, -TAU, TAU + PI / 8.0])
+    .collect();
+  let sweeps = [
+    PI / 8.0,
+    PI / 2.0,
+    PI,
+    3.0 * PI / 2.0,
+    TAU,
+    -PI / 8.0,
+    -PI / 2.0,
+    -PI,
+    -3.0 * PI / 2.0,
+    -TAU,
+  ];
+  let arcs: Vec<Segment> = starts
+    .iter()
+    .flat_map(|start| {
+      sweeps
+        .iter()
+        .map(move |sweep| arc(Point2::ORIGIN, 5.0, *start, *sweep))
+    })
+    .collect();
+  for first in &arcs {
+    for second in &arcs {
+      let (a, b) = (arc_of(*first), arc_of(*second));
+      let measure = overlap_measure(a, b);
+      let shares_angle = [a.start_angle(), a.start_angle() + a.sweep()]
+        .iter()
+        .any(|theta| angle_covered(b, *theta))
+        || [b.start_angle(), b.start_angle() + b.sweep()]
+          .iter()
+          .any(|theta| angle_covered(a, *theta));
+      let expected = if measure > 1.0e-6 {
+        "coincident"
+      } else if shares_angle {
+        "one point"
+      } else {
+        "none"
+      };
+      let answer = intersect::intersect(*first, *second, TOL);
+      let got = if answer.is_coincident() {
+        "coincident"
+      } else if answer.is_empty() {
+        "none"
+      } else {
+        "one point"
+      };
+      assert_eq!(
+        got,
+        expected,
+        "({}, {}) vs ({}, {})",
+        a.start_angle(),
+        a.sweep(),
+        b.start_angle(),
+        b.sweep()
+      );
+      assert_eq!(
+        segment_to_segment(*first, *second, TOL) == 0.0,
+        !answer.is_empty(),
+        "distance and intersect disagree on ({}, {}) vs ({}, {})",
+        a.start_angle(),
+        a.sweep(),
+        b.start_angle(),
+        b.sweep()
+      );
     }
   }
 }

@@ -404,10 +404,13 @@ proptest! {
   /// the kernel's own nanometre rather than `0.0`, because `intersect` decides membership on the
   /// circle by comparing radii with the tolerance — at `0.0` its own floating-point noise makes it
   /// miss a crossing this algebra finds (a quarter arc and a line that really does pass through it),
-  /// which is `intersect`'s limit and not the distance's. The one configuration this cannot arbitrate
-  /// is two arcs on the very same circle with disjoint sweeps, where `intersect` reports a coincidence
-  /// of the whole circle; the generator draws distinct centres and radii so that case is not
-  /// reachable.
+  /// which is `intersect`'s limit and not the distance's. The one configuration this case could not
+  /// arbitrate — two arcs on the very same circle with disjoint sweeps, where `intersect` used to
+  /// report a coincidence of the whole circle — is reachable, because `any_arc` guards no distinctness:
+  /// two independently drawn arcs can share a centre and a radius. It is arbitrated now, because
+  /// `intersect::arc_arc` decides one circle by the sweeps, and the case this test kept finding is its
+  /// first assertion. The generator stays unfiltered on purpose: a guard against equal centres and
+  /// radii would delete the evidence instead of answering it.
   #[test]
   fn the_distance_is_zero_exactly_when_the_segments_meet(
     first in any_segment(),
