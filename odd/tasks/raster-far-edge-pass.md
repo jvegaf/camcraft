@@ -107,3 +107,21 @@ raster contract. The owner has now taken that decision.
   Two things the writer left deliberately and flagged instead of silently fixing: roadmap §4.7's cell that
   still says `tests/pocket.rs` needed no edit (true of an earlier task, odd in a current-state table) and
   §4.6's period narrative about the old 32 rows. Both are record, not contract, and stay as evidence.
+- **L7 (the review: approved, no correction, one advisory).** Lineage **`review-bc0a2a25edc35c9f`**, target
+  `sha256:6f989aaf…`, tier `medium`, lenses **`review-risk` + `review-reliability`**, 10 paths / 504
+  changed lines, correction budget **200**. Result: **approved on the first admitted event** — no correction
+  round opened, no blocker, budget spent zero. Both reviewers ran over the Pi host relay (prompts 64 070
+  and 64 095 bytes, results 1 104 and 1 646 bytes) and the authority is **burned**
+  (`gentle-ai.review-acknowledged/v1`, consumed revision `sha256:6d078d5c…`).
+  **One thing to record honestly about the scope:** the provider chose the committed range from
+  `34f198bf`, so the candidate included the *previous* feature's `cam-geom` commit as well as this one's
+  two. That was its projection decision and it was followed unchanged, not narrowed to the commit the
+  parent would have picked — but it means this receipt covers slightly more than this document does.
+  **One advisory came back, `informational`, not a correction:** `R3-001` at
+  `crates/cam-toolpath/src/pocket.rs:322-324` — the `emit_row` call the finishing row goes through. Its
+  **text is not quoted here on purpose**: it lives in the native receipt, and a document that retypes a
+  finding from memory is the failure mode the previous feature's L8 named. The review's own statement is
+  the one that matters: none opened a correction, none reopens this review, no correction transition is
+  offered for this candidate; treat it as separate later work, never as a reason to re-run review here.
+  **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary
+  repository policy and the owner's decisions, and `master` is now two commits further along, unpublished.
