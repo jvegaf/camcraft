@@ -3,6 +3,7 @@
 //! Trim depends on these, so the cases that a naive implementation silently drops — tangency,
 //! coincidence, and a single root that falls inside the segment — are the ones tested hardest.
 
+use cam_geom::distance::segment_to_segment;
 use cam_geom::intersect::{self, Intersections};
 use cam_geom::{Arc, LineSeg, Point2, Segment};
 use proptest::prelude::*;
@@ -21,6 +22,14 @@ fn circle(center: Point2, radius: f64) -> Segment {
 
 fn half_circle(center: Point2, radius: f64, start: f64) -> Segment {
   Segment::Arc(Arc::new(center, radius, start, PI).expect("half arc"))
+}
+
+fn quarter(center: Point2, radius: f64, start: f64) -> Segment {
+  Segment::Arc(Arc::new(center, radius, start, PI / 2.0).expect("quarter arc"))
+}
+
+fn arc(center: Point2, radius: f64, start: f64, sweep: f64) -> Segment {
+  Segment::Arc(Arc::new(center, radius, start, sweep).expect("arc"))
 }
 
 fn sorted(mut points: Vec<Point2>) -> Vec<(f64, f64)> {
@@ -199,6 +208,91 @@ fn concentric_circles_either_coincide_or_miss() {
   );
   let inner = circle(Point2::ORIGIN, 3.0);
   assert_eq!(intersect::intersect(same, inner, TOL), Intersections::None);
+}
+
+#[test]
+fn two_quarters_of_one_circle_that_share_no_angle_do_not_meet() {
+  // The case the distance proptest kept finding: same centre, same radius, sweeps that share no
+  // angle. The supporting circles coincide; the arcs do not, and an arc is the thing `intersect`
+  // is asked about, so `Coincident` here would contradict its own contract.
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let west = quarter(Point2::ORIGIN, 5.0, PI);
+  let apart = segment_to_segment(east, west, TOL);
+  assert!(
+    (apart - 50.0_f64.sqrt()).abs() <= TOL,
+    "two disjoint quarters of one radius-5 circle are 5*sqrt(2) apart, measured {apart}"
+  );
+  assert_eq!(
+    intersect::intersect(east, west, TOL),
+    Intersections::None,
+    "the distance says they are {} apart, so they do not meet",
+    apart
+  );
+}
+
+#[test]
+fn two_quarters_of_one_circle_that_overlap_share_a_length() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let north_east = quarter(Point2::ORIGIN, 5.0, PI / 4.0);
+  assert_eq!(
+    intersect::intersect(east, north_east, TOL),
+    Intersections::Coincident
+  );
+}
+
+#[test]
+fn two_quarters_of_one_circle_that_only_touch_meet_at_one_point() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  let north = quarter(Point2::ORIGIN, 5.0, PI / 2.0);
+  match intersect::intersect(east, north, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(0.0, 5.0)) <= TOL,
+      "the quarters share only the angle {}",
+      PI / 2.0
+    ),
+    other => panic!("a shared endpoint is one point, not {other:?}"),
+  }
+  // The same touch across the seam, where one sweep ends at a full turn and the other starts at 0.
+  let below = quarter(Point2::ORIGIN, 5.0, 3.0 * PI / 2.0);
+  match intersect::intersect(below, east, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      "the seam is where the sweeps meet"
+    ),
+    other => panic!("a shared endpoint across the seam is one point, not {other:?}"),
+  }
+}
+
+#[test]
+fn a_clockwise_quarter_covers_the_angles_it_runs_back_through() {
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  // The same quarter, drawn backwards: a negative sweep covers the angles that *end* at its start.
+  let backwards = arc(Point2::ORIGIN, 5.0, PI / 2.0, -PI / 2.0);
+  assert_eq!(
+    intersect::intersect(east, backwards, TOL),
+    Intersections::Coincident
+  );
+  // And a quarter that runs backwards from angle 0 covers the fourth quadrant, not the first: it
+  // shares exactly one angle with `east`, so reading a negative sweep as positive would make these
+  // two coincide when they share a single point.
+  let below = arc(Point2::ORIGIN, 5.0, 0.0, -PI / 2.0);
+  match intersect::intersect(below, east, TOL) {
+    Intersections::Point(point) => assert!(
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      "a clockwise and a counter-clockwise quarter from angle 0 touch only at angle 0"
+    ),
+    other => panic!("two quarters meeting at one angle are one point, not {other:?}"),
+  }
+}
+
+#[test]
+fn a_full_turn_arc_covers_every_quarter_of_its_circle() {
+  let all = Segment::Arc(Arc::new(Point2::ORIGIN, 5.0, 0.0, TAU).expect("one full turn"));
+  let east = quarter(Point2::ORIGIN, 5.0, 0.0);
+  assert_eq!(
+    intersect::intersect(all, east, TOL),
+    Intersections::Coincident
+  );
 }
 
 #[test]
