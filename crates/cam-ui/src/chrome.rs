@@ -347,6 +347,27 @@ impl Shell {
           }
           report_app_bar(output, Command::Open, open.rect);
 
+          // Save writes the file the bar names and Save As asks for a new one. Both are glyphs beside Open
+          // because they are the same sentence about the same file, and Save stays enabled with no file yet:
+          // a disabled button could not say why, and its refusal is the one place the difference between the
+          // two commands is explained. Save As asks the host exactly as Open does — an intent out of the
+          // shell, the platform's dialog in the host, a path back in as an action (S2).
+          for command in [Command::Save, Command::SaveAs] {
+            let response = icon_button(
+              ui,
+              &palette,
+              command_icon(command),
+              command.label(),
+              false,
+              true,
+              18.0,
+            );
+            if response.clicked() {
+              output.actions.extend(command.action());
+            }
+            report_app_bar(output, command, response.rect);
+          }
+
           // The bar names the file the drawing came from, and says whether it is modified. Until a host
           // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
           let dirty = if app.is_dirty() { " · modified" } else { "" };
@@ -1394,6 +1415,8 @@ fn command_icon(command: Command) -> Icon {
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
     Command::Open => Icon::Open,
+    Command::Save => Icon::Save,
+    Command::SaveAs => Icon::SaveAs,
     Command::FitJob => Icon::ZoomFit,
     // The rest are not drawn as glyphs anywhere in the frame: they are labelled buttons in the Tools tab
     // or reached by a key, so this arm is the honest "no symbol of its own" answer rather than a new

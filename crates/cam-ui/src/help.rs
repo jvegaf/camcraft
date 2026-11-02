@@ -176,6 +176,10 @@ pub enum Command {
   Import,
   /// Replace the drawing with a saved document, chosen in the system's file dialog.
   Open,
+  /// Write the drawing back to the file the app bar names.
+  Save,
+  /// Write the drawing to a new file, chosen in the system's save dialog.
+  SaveAs,
   /// Slide the selection.
   Move,
   /// Turn the selection.
@@ -253,6 +257,8 @@ impl Command {
     Command::AddRectangle,
     Command::Import,
     Command::Open,
+    Command::Save,
+    Command::SaveAs,
     Command::Move,
     Command::Rotate,
     Command::Scale,
@@ -296,6 +302,8 @@ impl Command {
       Self::AddRectangle => "Add rectangle",
       Self::Import => "Import",
       Self::Open => "Open",
+      Self::Save => "Save",
+      Self::SaveAs => "Save as",
       Self::Move => "Move",
       Self::Rotate => "Rotate",
       Self::Scale => "Scale",
@@ -335,7 +343,9 @@ impl Command {
       | Self::AddText
       | Self::AddRectangle
       | Self::Import
-      | Self::Open => Group::Draw,
+      | Self::Open
+      | Self::Save
+      | Self::SaveAs => Group::Draw,
       Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
         Group::Transform
       }
@@ -380,8 +390,8 @@ impl Command {
   /// gestures plus text, the five transforms the Tools tab also runs, offset and join, and the four view
   /// chips. Everything else is reached from somewhere the palette is not — `Add rectangle`, `Align`,
   /// `Trim` and the node edits from the Tools tab, `Undo`, `Redo`, `3D`, `Theme` and `Fit the job` from
-  /// the app bar, `Icon set` from `F2`, `Open` from the app bar, and `Import` from a host, which is why it
-  /// has no button at all.
+  /// the app bar, `Icon set` from `F2`, `Open`, `Save` and `Save as` from the app bar, and `Import` from a
+  /// host, which is why it has no button at all.
   ///
   /// [`Group::History`] is never here: Undo and Redo are the app bar's run, so the palette has no
   /// HISTORY section and the help panel is the only place that groups them.
@@ -417,6 +427,8 @@ impl Command {
       Self::DeleteSelection => Some(UiAction::DeleteSelection),
       Self::FitJob => Some(UiAction::ZoomToFit),
       Self::Open => Some(UiAction::RequestOpenFile),
+      Self::Save => Some(UiAction::Save),
+      Self::SaveAs => Some(UiAction::RequestSaveAs),
       _ => None,
     }
   }
@@ -507,6 +519,19 @@ impl Command {
               is framed to it, and the bar then names the file. A file that will not load is refused in the \
               status bar and changes nothing.",
         related: &[Command::Import, Command::Undo, Command::FitJob],
+      },
+      Self::Save => Help {
+        what: "Writes the drawing straight back to the file the bar names, and marks it saved.",
+        how: "Press Save in the app bar. Until the drawing has a file there is nothing to write to, so \
+              Save is refused and points at Save As; from then on Save writes the file the bar names, \
+              entries this build does not read included.",
+        related: &[Command::SaveAs, Command::Open, Command::Undo],
+      },
+      Self::SaveAs => Help {
+        what: "Writes the drawing to a new file you choose, and the bar names it from then on.",
+        how: "Press Save As in the app bar. Your system's save dialog asks where, and the path you pick \
+              becomes the file Save writes; cancel the dialog and nothing is written.",
+        related: &[Command::Save, Command::Open, Command::Undo],
       },
       Self::Move => Help {
         what: "Slides the selected vectors by the offset you set, and nothing else in the drawing moves.",

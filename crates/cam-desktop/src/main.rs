@@ -100,6 +100,18 @@ impl eframe::App for Editor {
           // Cancelled: no action, no message, nothing touched.
           None => continue,
         },
+        // Save As asks the same question in the other direction: the shell names the file it currently has so
+        // the dialog opens near it, and the answer re-enters the shell as the path to write (shell-save-document
+        // S2). Everything after the path — the extras, the dirty flag, the recorded name — stays in
+        // `apply_action`, where a refusal is a sentence instead of a silent no-op.
+        UiAction::RequestSaveAs => match rfd::FileDialog::new()
+          .add_filter("campilot document", &["c2d"])
+          .set_file_name(self.shell.document_name())
+          .save_file()
+        {
+          Some(path) => UiAction::SaveFile { path },
+          None => continue,
+        },
         other => other,
       };
       // Through the shell, not the bare handler: the shell turns the command's outcome into the

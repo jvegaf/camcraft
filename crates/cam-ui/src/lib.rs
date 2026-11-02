@@ -38,6 +38,7 @@
 
 #![warn(missing_docs)]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
@@ -492,8 +493,9 @@ pub enum UiAction {
   /// The path comes from the caller — the shell has no file dialog and no dialog dependency, so a host
   /// answers [`UiAction::RequestOpenFile`] with the platform's picker and applies this action with what
   /// it returned. The load is [`cam_store::document::DocumentFile::load`], the same archive scan,
-  /// migration and validation `cam-cli open` uses, and the replacement is undoable because the shell has
-  /// no Save: an accidental open has to be one undo away from the drawing it replaced.
+  /// migration and validation the CLI's private loader performs, and the replacement is undoable because
+  /// opening replaces the drawing: one undo puts it back, which is what makes the refusal over a dirty
+  /// document a guard rather than the only protection.
   OpenFile {
     /// The `.c2d` to load.
     path: PathBuf,
@@ -503,6 +505,29 @@ pub enum UiAction {
   /// An intent and nothing more: the shell does not open a dialog, read a path or touch the document when
   /// it receives this, which is what keeps `cam-ui` free of a dialog crate and testable without a display.
   RequestOpenFile,
+  /// Write the drawing back to the file the shell recorded.
+  ///
+  /// The write is [`cam_store::document::DocumentFile::save`], carrying the archive entries this build does
+  /// not interpret, so a load/save cycle never drops an entry a later build understands. With no recorded
+  /// path there is nowhere to write and the action is **refused** with a sentence pointing at
+  /// [`UiAction::RequestSaveAs`]; on success the dirty flag clears; on any failure the dirty flag and the
+  /// recorded path stay exactly as they were and the status bar says `refused: …`.
+  Save,
+  /// Write the drawing to `path` and make it the file the app bar names.
+  ///
+  /// This is the answer to [`UiAction::RequestSaveAs`]: the host asks the platform's save dialog and applies
+  /// this action with the path it returned, exactly as [`UiAction::OpenFile`] answers
+  /// [`UiAction::RequestOpenFile`]. The shell writes nothing when the dialog is cancelled, because a
+  /// cancelled dialog pushes no action.
+  SaveFile {
+    /// Where to write the archive.
+    path: PathBuf,
+  },
+  /// Ask the host for a path to save under; the host shows its save dialog and applies [`UiAction::SaveFile`].
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: the shell shows no
+  /// dialog, writes no file and touches no document when it receives this.
+  RequestSaveAs,
 }
 
 impl UiAction {
@@ -537,6 +562,8 @@ impl UiAction {
       Self::ToggleLayerVisible { .. } => "layer visibility",
       Self::ImportFile { .. } => "import file",
       Self::OpenFile { .. } | Self::RequestOpenFile => "open file",
+      Self::Save => "save document",
+      Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
     }
   }
 }
@@ -617,10 +644,10 @@ pub struct DrawnState {
   /// press only one of them could not prove they agree. Only those seven are listed — the tab's other
   /// buttons are not built from [`crate::params`], so nothing needs their points.
   pub authoring_hits: Vec<(String, (f32, f32))>,
-  /// The words the app bar's four command buttons answer to, in the order it drew them.
+  /// The words the app bar's command buttons answer to, in the order it drew them.
   ///
-  /// Open, Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test
-  /// can read is the one the command table gives them: this is the app bar's own report of it.
+  /// Open, Save, Save As, Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a
+  /// headless test can read is the one the command table gives them: this is the app bar's own report of it.
   pub app_bar: Vec<String>,
   /// Where the app bar drew each command button: its word and the point in the window that presses it.
   ///
@@ -800,12 +827,21 @@ pub struct Shell {
   /// until a host hands one in, and empty is a real answer — the card then says the number it was asked
   /// for is not in the library it was given.
   tools: Vec<StoredTool>,
-  /// The file the drawing was opened from, once a host has opened one.
+  /// The file the drawing was opened from, once a host has opened or saved one.
   ///
-  /// `None` until [`UiAction::OpenFile`] succeeds, which is when the app bar stops saying `untitled.c2d`
-  /// and starts naming the file. The shell keeps the path only so the bar can name it: it opens no dialog
-  /// and saves nothing, so this is a record of what was read and not a file handle.
+  /// `None` until [`UiAction::OpenFile`] or [`UiAction::SaveFile`] succeeds, which is when the app bar stops
+  /// saying `untitled.c2d` and starts naming the file. The shell keeps the path so the bar can name it and
+  /// [`UiAction::Save`] can write to it: the shell shows no dialog of its own, so this is a record of what
+  /// was read or written and not a file handle.
   document_path: Option<PathBuf>,
+  /// The archive entries this build does not interpret, carried from the last load.
+  ///
+  /// [`cam_store::document::DocumentFile`] exists so an entry a later build understands is part of the
+  /// document rather than something dropped on the floor, and opening is the moment it is known: the shell
+  /// keeps these beside the path and [`UiAction::Save`] writes them back under their own names. They are
+  /// **file-level, not document-level** — the undo history snapshots bare [`cam_model::Document`]s, so an
+  /// undo cannot restore or lose them, and a drawing that was never opened has no entries to carry.
+  document_extras: BTreeMap<String, Vec<u8>>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -917,6 +953,7 @@ impl Default for Shell {
       preview: None,
       tools: Vec::new(),
       document_path: None,
+      document_extras: BTreeMap::new(),
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -999,25 +1036,33 @@ impl Shell {
   /// Apply one action and show what it produced in the status bar.
   ///
   /// This is what a host calls for every action [`Self::show`] returned. It keeps the one-command
-  /// rule — the work itself happens in [`handle_action`] — and turns the outcome the command layer
-  /// reports (entity count, ellipse radial error, arcs lost to tessellation) and any refusal, with the
-  /// kernel's own message, into the sentence the user reads.
+  /// rule — the work itself happens in the action handler, which is [`handle_action`] with this shell's file
+  /// handed in — and turns the outcome the command layer reports (entity count, ellipse radial error, arcs
+  /// lost to tessellation) and any refusal, with the kernel's own message, into the sentence the user reads.
   pub fn apply_action(&mut self, app: &mut AppState, action: &UiAction) {
-    let applied = handle_action(app, action);
+    // The file behind the drawing is the shell's, not the application's: the path it was read from and the
+    // archive entries this build does not interpret travel with the window, so they are handed to the one
+    // handler that touches `AppState` instead of being patched back in here after the fact. That is what
+    // lets an open carry its extras and a save write them back without a second copy of either.
+    let applied = handle_action_with_file(
+      app,
+      action,
+      Some(&mut DocumentFileState {
+        path: &mut self.document_path,
+        extras: &mut self.document_extras,
+      }),
+    );
     // An open replaces the document, so everything the shell derived from the previous one goes with it.
     // None of these three is in the undo history — the preview is a picture of a program, the tool
     // snapshot is what this window was handed, and the drafts are numbers the dialog has not written
     // yet — so a bare swap would leave the 3D panel playing the old drawing's program and the dialog
     // holding the old stock. The view is handed back to the shell for the same reason: the new drawing
     // is framed, because the old drawing's zoom was never a choice about this one.
-    if applied.is_ok() {
-      if let UiAction::OpenFile { path } = action {
-        self.document_path = Some(path.clone());
-        self.clear_preview();
-        self.set_tools(Vec::new());
-        self.material_size = default_material_size();
-        self.auto_frame = true;
-      }
+    if applied.is_ok() && matches!(action, UiAction::OpenFile { .. }) {
+      self.clear_preview();
+      self.set_tools(Vec::new());
+      self.material_size = default_material_size();
+      self.auto_frame = true;
     }
     self.status = match applied {
       Ok(report) => report.message(),
@@ -1025,19 +1070,27 @@ impl Shell {
     };
   }
 
-  /// The file the drawing was opened from, once a host has opened one.
+  /// The file the drawing was opened from or last written to, once a host has opened or saved one.
   ///
-  /// `None` while the frame holds a document nobody opened from disk, which is the state the app bar
-  /// still calls `untitled.c2d`.
+  /// `None` while the frame holds a document that has no file yet, which is the state the app bar still
+  /// calls `untitled.c2d` and the state in which [`UiAction::Save`] is refused.
   pub fn document_path(&self) -> Option<&Path> {
     self.document_path.as_deref()
   }
 
+  /// The archive entries this build does not interpret, carried from the last load.
+  ///
+  /// Reported so a host or a test can see what a save will write back without opening the file: the shell
+  /// writes them through [`cam_store::document::DocumentFile`] and never inspects them.
+  pub fn document_extras(&self) -> &BTreeMap<String, Vec<u8>> {
+    &self.document_extras
+  }
+
   /// The name the app bar shows for the drawing.
   ///
-  /// The opened file's own name once there is one, and `untitled.c2d` before that: the shell had no
-  /// document path of its own until a host could hand it one, which is why the bar named the frame
-  /// rather than a file (M0).
+  /// The opened or saved file's own name once there is one, and `untitled.c2d` before that: the shell had no
+  /// document path of its own until a host could hand it one, which is why the bar named the frame rather
+  /// than a file (M0).
   pub fn document_name(&self) -> String {
     self
       .document_path
@@ -2252,12 +2305,58 @@ fn paint_world_rect(
   ));
 }
 
-/// Apply one action to the application state.
+/// What a save with no recorded path answers: the one command that can supply one.
+const NO_RECORDED_PATH: &str =
+  "this drawing has no file yet — use Save As to name one, and Save writes to it from then on";
+
+/// What a save from an entry point that holds no shell answers.
+///
+/// The archive's entries belong to the shell, so a write here could only be a document-only archive written
+/// over a file that held more: the refusal names what is missing instead of losing it.
+const NO_SHELL_FOR_SAVE: &str =
+  "a save needs the archive entries the shell is holding, and this entry point has no shell — a write \
+   here would drop them; apply the action through Shell::apply_action";
+
+/// The file the drawing came from, as the shell holds it: the recorded path and the archive's other
+/// entries.
+///
+/// Handed to [`handle_action_with_file`] as an `Option` because the bare [`handle_action`] entry point has
+/// no shell and therefore neither: a save there refuses rather than write a file it cannot carry the
+/// entries into.
+struct DocumentFileState<'a> {
+  /// The path the shell recorded, `None` until an open or a Save As succeeds.
+  path: &'a mut Option<PathBuf>,
+  /// Uninterpreted archive entries, carried from the last load and written back by the next save.
+  extras: &'a mut BTreeMap<String, Vec<u8>>,
+}
+
+/// Apply one action that needs nothing but the application state.
+///
+/// **A bare save is refused.** The shell owns the path the drawing came from and the archive entries this
+/// build does not interpret, and a write without those entries would drop them from the operator's file —
+/// the one damage [`cam_store::document::DocumentFile`] exists to prevent. [`UiAction::Save`] and
+/// [`UiAction::SaveFile`] therefore answer `refused: …` here, create no file and modify none, and a host
+/// applies every action through [`Shell::apply_action`], which is this handler with the shell's file handed
+/// in.
+///
+/// Reading needs no such state: [`UiAction::OpenFile`] still loads and applies a document here, because an
+/// open writes no file — it only leaves the recorded path empty, which is what makes a save refuse after it.
+pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionReport, String> {
+  handle_action_with_file(app, action, None)
+}
+
+/// Apply one action to the application state, with the file the drawing came from.
 ///
 /// The only place the shell touches [`AppState`], so a test can drive the whole interface by feeding
 /// actions. Every authoring arm builds exactly one [`Command`] and runs it through
-/// [`apply_command`]; nothing here mutates the document itself.
-pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionReport, String> {
+/// [`apply_command`]; nothing here mutates the document itself. The three file actions take the shell's
+/// [`DocumentFileState`]: `Save` and `SaveFile` refuse without it, because there is nothing they could
+/// write the archive's other entries from.
+fn handle_action_with_file(
+  app: &mut AppState,
+  action: &UiAction,
+  file: Option<&mut DocumentFileState<'_>>,
+) -> Result<ActionReport, String> {
   match action {
     UiAction::Undo => {
       app.undo();
@@ -2317,26 +2416,93 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionRepo
         ..ActionReport::default()
       })
     }
-    UiAction::OpenFile { path } => {
+    UiAction::OpenFile { path: opening } => {
+      // A drawing with unsaved changes is refused **before** the file is read. The shell can save now, so
+      // silently discarding edits is no longer a service, and refusing first is what makes the refusal total:
+      // the document, the history, the recorded path and the name are untouched, instead of an open that half
+      // happens and leaves the bar naming a file the drawing did not come from (S4).
+      if app.is_dirty() {
+        let name = file
+          .as_deref()
+          .and_then(|file| file.path.as_deref())
+          .map(file_label)
+          .unwrap_or_else(|| "this drawing".to_owned());
+        return Err(format!(
+          "{name} has unsaved changes — save or undo them before opening {}",
+          opening.display()
+        ));
+      }
       // The loader `cam-cli open` uses, so the archive scan, the migration and the validation are one
       // rule (S2) — and `DocumentFile` rather than `load_document`, because the entries this build does
-      // not interpret are part of the document rather than something to drop on the floor.
+      // not interpret are part of the document rather than something to drop on the floor: they are carried
+      // on the shell and written back by the next save.
       let opened =
-        cam_store::document::DocumentFile::load(path).map_err(|error| error.to_string())?;
-      let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string());
-      app.replace_document_undoable(opened.document);
+        cam_store::document::DocumentFile::load(opening).map_err(|error| error.to_string())?;
+      let cam_store::document::DocumentFile {
+        document,
+        extras: carried,
+      } = opened;
+      app.replace_document_undoable(document);
+      // What was opened is exactly what is in the file, so nothing is unsaved. The replacement still goes
+      // through the undoable path, which marks the document dirty for import's sake: the undo step is what
+      // an accidental open is one key away from, and the dirty flag is a claim about the file that an open
+      // makes true instead of false.
+      app.mark_saved();
+      // The entries ride on the shell and are written back by the next save. A caller with no shell keeps
+      // none — and a save from that state refuses, so nothing is ever written without them (S3).
+      if let Some(file) = file {
+        *file.extras = carried;
+        *file.path = Some(opening.clone());
+      }
       Ok(ActionReport {
         label: action.label(),
-        note: Some(format!("opened {file_name}")),
+        note: Some(format!("opened {}", file_label(opening))),
         ..ActionReport::default()
       })
     }
     // An intent the host answers: nothing to apply, and nothing to refuse either, because the shell has
     // already said everything it has to say about it by asking.
     UiAction::RequestOpenFile => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    UiAction::Save => {
+      // The shell will not invent a path: a save with nowhere to go would write into whatever directory the
+      // window was started from, or pick a name the operator never chose, so it is refused and points at the
+      // one command that can ask for a name (S2). A caller with no shell has no recorded path either, so it
+      // refuses in the same sentence instead of guessing at a file.
+      let Some(file) = file else {
+        return Err(NO_RECORDED_PATH.to_owned());
+      };
+      let Some(target) = file.path.as_deref() else {
+        return Err(NO_RECORDED_PATH.to_owned());
+      };
+      write_document(app, target, file.extras)?;
+      Ok(ActionReport {
+        label: action.label(),
+        note: Some(format!("wrote {}", file_label(target))),
+        ..ActionReport::default()
+      })
+    }
+    UiAction::SaveFile { path: target } => {
+      // Refused before anything touches the filesystem when there is no shell to take the entries from: the
+      // store would happily write a document-only archive, which is exactly the silent loss S3 exists to
+      // prevent, and refusing first is also what leaves no temporary file behind.
+      let Some(file) = file else {
+        return Err(NO_SHELL_FOR_SAVE.to_owned());
+      };
+      write_document(app, target, file.extras)?;
+      // Save As becomes the file: the bar names what was just written, and the next Save writes there. Set
+      // after the write and not before, so a failed save leaves the recorded path as it was (S5).
+      *file.path = Some(target.clone());
+      Ok(ActionReport {
+        label: action.label(),
+        note: Some(format!("wrote {}", file_label(target))),
+        ..ActionReport::default()
+      })
+    }
+    // The open intent's mirror image: ask the host for a path, and change nothing while asking (S2).
+    UiAction::RequestSaveAs => Ok(ActionReport {
       label: action.label(),
       ..ActionReport::default()
     }),
@@ -2493,6 +2659,38 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionRepo
       )
     }
   }
+}
+
+/// Write the drawing to `path`, carrying the archive entries the shell is holding.
+///
+/// [`cam_store::document::DocumentFile::save`] and not `save_document`: the latter builds a file with no
+/// extras on purpose, which is right for a CLI document that authors a new file and wrong here, where the
+/// entries belong to the file the operator opened. The store validates the document first and writes a
+/// sibling temporary file before renaming it into place, so a save that fails leaves the previous bytes on
+/// disk untouched and no truncating write ever reaches a drawing (S5).
+///
+/// The dirty flag clears only after the write returned: an error leaves it, and the recorded path, exactly
+/// as they were.
+fn write_document(
+  app: &mut AppState,
+  path: &Path,
+  extras: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), String> {
+  let file = cam_store::document::DocumentFile {
+    document: app.document().clone(),
+    extras: extras.clone(),
+  };
+  file.save(path).map_err(|error| error.to_string())?;
+  app.mark_saved();
+  Ok(())
+}
+
+/// The name a status message calls a file by: its own file name, or its whole path when it has none.
+fn file_label(path: &Path) -> String {
+  path
+    .file_name()
+    .map(|name| name.to_string_lossy().into_owned())
+    .unwrap_or_else(|| path.display().to_string())
 }
 
 /// The layer new geometry is drawn into: the first one.
