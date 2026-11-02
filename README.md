@@ -76,7 +76,7 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
 ## The editor
 
 ```bash
-cargo run -p cam-desktop          # sample document at launch; Open loads a .c2d (no Save)
+cargo run -p cam-desktop          # sample document at launch; Open loads a .c2d, Save writes it back
 ```
 
 ```
@@ -98,12 +98,31 @@ the window, which owns the dialog (`rfd`, in `cam-desktop` and not in `cam-ui`),
 is loaded through `cam_store::document::DocumentFile::load` — the archive scan, migration and `validate()`
 `cam-cli`'s own loader performs for every command that reads a document — so the bar names that file where it
 said `untitled.c2d`, a refused one changes nothing and says `refused: …`, and a good one is one undo away.
-Nothing in the window writes a `.c2d` yet.
+
+Save and **Save as** sit beside Open, and they are the other half of that sentence. `Save` writes the file the
+bar names, and with no file yet it is refused — the status line reads `refused: this drawing has no file yet —
+use Save As to name one, and Save writes to it from then on` — instead of inventing a path; `Save as` asks the
+host for one through the route Open takes (an intent out of the shell, `rfd`'s save dialog in `cam-desktop`, a
+path back in as `UiAction::SaveFile`) and becomes the current file, so the bar names what was just written. Both
+write through `cam_store::document::DocumentFile::save`, which validates the document first and writes a sibling
+`.{name}.tmp` before renaming it into place, so an interrupted save leaves the previous archive on disk rather
+than half of each.
+
+Both also carry the archive entries this build does not interpret, which is why the window does **not** call
+`save_document`: that function — the one `cam-cli` uses — builds a `DocumentFile` with no extras on purpose, and
+a load → edit → save cycle in the window must not drop an `assets/…` entry a later build understands. A save
+from an entry point with no shell to hold those entries is refused rather than performed. The dirty flag now
+means what it says: a freshly opened document is not modified (it is exactly what is in its file), a save clears
+it, and opening a document over unsaved changes is **refused** with a sentence telling you to save or undo first,
+where it used to discard the edits with undo as the only way back. A failed save changes nothing — the flag and
+the recorded path stay as they were and the status line says `refused: …`, naming the file it could not write.
 
 What is not there yet: **toolpath forms** (M4's and M6's strategies are still authored through
 `cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`
-authors one — rather than a panel that creates one), and **saving** (the formats and the CLI exist; the
-window opens a `.c2d` and writes none, so an edit made in it has nowhere to go).
+authors one — rather than a panel that creates one), and **what saving does not reach yet**: a `tools_ref`
+is serialized and survives a load → save round trip, but the window does not resolve it, so the tool card
+still has nothing to resolve against; and Save has no keyboard shortcut — the keys the shell answers to are
+`Ctrl+Z`, `Ctrl+Shift+Z`, `Delete`/`Backspace`, `F`, `F1`, `F2` and `Esc`.
 
 Known cosmetic detail: auto-framing fits the canvas as measured when the panel layout settles, so the
 first fit can be a few percent tighter than `Zoom to fit` (`F`), which is exact.

@@ -655,3 +655,41 @@ remains of the concept, in the order the design argues for:
   `cam-desktop/src/main.rs:76` still passes `set_tools(Vec::new())`); filling it from the opened document's
   library is the next slice, because resolving that filename the way `cam-cli` does is a rule nobody has moved yet.
   **No gate was run for this entry**: it is documentation, and the code it describes arrived with its own.
+
+- **L45 (L44's other half: the window writes the `.c2d` it opened, and the archive's other entries survive it).**
+  The feature `odd/tasks/shell-save-document.md` specifies landed as its S2–S5 and T1–T3; T4's gate, commits and
+  independent verification stay the parent's, so this entry cites no commit — the code is uncommitted in the working
+  tree. `UiAction` gained `Save`, `SaveFile { path }`
+  and `RequestSaveAs` (`crates/cam-ui/src/lib.rs:508-530`); the app bar draws Save and Save as beside Open
+  (`crates/cam-ui/src/chrome.rs:350-369`), in the order `undo · redo · open · save · save as · fit the job`
+  (`crates/cam-ui/tests/shell.rs:2802-2825`), and the host answers `RequestSaveAs` with `rfd`'s `save_file()`
+  seeded with the name the bar shows — `rfd::FileDialog::new().add_filter("campilot document", &["c2d"])
+  .set_file_name(...)` (`crates/cam-desktop/src/main.rs:107-114`) — the same one-dialog route Open took, so
+  `cam-ui` still names no dialog crate. The write is `cam_store::document::DocumentFile::save`
+  (`crates/cam-store/src/document.rs:93-104`), which validates first (`:96-102`) and goes through
+  `write_atomically` (`:168-187`): a sibling `.{name}.tmp` (`:190-196`) then a rename, never a truncating write in
+  place. It is **not** `save_document` (`:148`), which builds a `DocumentFile` with `extras: BTreeMap::new()` on
+  purpose for a CLI document that authors a new file: the shell carries the entries it does not interpret in
+  `document_extras` (`lib.rs:844`, `:1085-1087`), an open fills them (`:2439-2456`), and a save writes them back
+  under their own names — the half of this that matters, since the alternative is deleting an entry a later build
+  understands. A save whose entry point holds no shell refuses instead of writing a document-only archive over the
+  file (`NO_SHELL_FOR_SAVE`, `:2316-2318`, reached by the `SaveFile` arm at `:2487-2503`), and `Save` with no
+  recorded path refuses in one sentence that names Save As (`NO_RECORDED_PATH`, `:2309-2310`, arm `:2469-2486`).
+  Two lies of the open feature are gone with it: a freshly opened document is no longer dirty (`mark_saved()`
+  after the undoable replacement, `:2450`, so the bar stops saying `· modified` over a file nobody touched), and
+  opening over unsaved work is refused with *"… has unsaved changes — save or undo them before opening …"*
+  (`:2424-2434`) instead of discarding the edits with undo as the only way back; the refusal files the failure
+  under `refused: …` at `:1069`, as every other refusal does. Eight tests in `crates/cam-ui/tests/shell.rs:2061-2470`
+  pin the behaviour: the refusal with no recorded path and the empty directory it leaves, the write plus the
+  cleared flag plus the three-entity document read back from disk, Save as becoming the file the bar names and the
+  old name leaving it, an `assets/logo.png` entry surviving a load → edit → save, a failed save leaving the flag,
+  the recorded path and the previous bytes untouched, the dirty-open refusal with the save that then lets the open
+  through, both app-bar buttons emitting exactly their action, and the bare `handle_action` refusing both save
+  actions while the same action through the shell writes the entries the shell is holding.
+  **What it does not fix, unchanged from L43/L44:** `Document.tools_ref` is serialized in `document.json` and now
+  survives a load → save round trip, and the window still does not resolve it — opening keeps clearing the tool
+  snapshot, so the tool card still has nothing to resolve against and that stays the next slice. There is also no
+  keyboard shortcut for Save: the shell's key handling is `Ctrl+Z`, `Ctrl+Shift+Z`, `Delete`/`Backspace`, `F`, `F1`,
+  `F2` and `Esc` (`lib.rs:2097-2118`). The insertions moved L44's citations by roughly forty lines (`lib.rs:1013-1020`
+  is now `:1061-1066`); its numbers are left as written, because a period record is not renumbered.
+  **No gate was run for this entry**: it is documentation, and the code it describes arrived with its own.
