@@ -101,3 +101,27 @@ This feature connects the three.
   **What the gate cannot cover:** the dialog itself. The window needs a display, which this project already
   states (`cam-desktop/src/main.rs`), so `rfd` returning a path is verified by building — and everything
   after it is verified headless through `apply_action`, the same path the button's answer takes.
+- **L5 (the review: approved, no correction, four advisories).** Lineage **`review-327fd8b1f8d37057`**,
+  target `sha256:7f3a69e5…`, tier **`high`** — the provider's own `process_boundary` signal, raised by the
+  dialog call in `cam-ui/src/lib.rs` — lenses **`review-risk` + `review-reliability`**, 12 paths / 952
+  changed lines, correction budget **200**. Result: **approved on the first admitted event**, no correction
+  round, no blocker, budget unspent. Both reviewers ran over the Pi host relay (prompts 76 798 and 76 823
+  bytes, results 2 472 and 3 329), and the authority is **burned** (`gentle-ai.review-acknowledged/v1`,
+  consumed revision `sha256:9735c094…`).
+  **Operational note worth keeping:** the first START was rejected as `lenses-invalid` with
+  `lineage_created: false`, and the only thing that changed between that attempt and the accepted one was
+  the length of `lensesReason`. Nothing was created by the rejected attempt, so nothing needed
+  reconciling — but the lesson is that a long prose reason can cost a round trip.
+  **Four advisories came back, all `informational`, none of them a correction**, and their text is not
+  quoted here on purpose — it lives in the native receipt, and retyping a finding from memory is the
+  failure the previous features' logs named. What can be said from the locations alone:
+  `R1-001` (risk, WARNING) at `cam-ui/src/lib.rs:1013` and `R3-stale-document-path` (reliability, WARNING)
+  at `:1014-1019` both point at the open bookkeeping block in `apply_action`;
+  `R3-dirty-open-unproved` (SUGGESTION) at `tests/shell.rs:1781-2012` points at what the open tests do
+  **not** cover; and `R3-extras-dropped` (SUGGESTION) at `lib.rs:2321-2329` points at the loader path
+  S2 deliberately chose to keep the archive extras. Two of these are WARNINGs and they are not dressed
+  down here: a future **Save** feature meets all four head-on, because they are about what a document
+  carries beyond its model and what happens to it when it is swapped. A review that approved this
+  candidate is still a review that has not seen a Save path, because there is none to see.
+  **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary
+  repository policy and the owner's decisions.
