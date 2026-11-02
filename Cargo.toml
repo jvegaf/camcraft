@@ -52,3 +52,7 @@ flate2 = "1"
 proptest = "1"
 egui = "0.37"
 eframe = "0.37"
+# The window's file dialog, and the only platform-facing piece of opening a document: the shell emits
+# the intent and the host answers with a path, so the editor crate stays free of the desktop toolkit
+# (shell-open-document S1, taking the decision `odd/tasks/m3-import.md:113` had deferred).
+rfd = "0.15"

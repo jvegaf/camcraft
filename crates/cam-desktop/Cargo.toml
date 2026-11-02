@@ -17,3 +17,4 @@ cam-sim.workspace = true
 cam-toolpath.workspace = true
 cam-units.workspace = true
 eframe.workspace = true
+rfd.workspace = true

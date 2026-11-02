@@ -315,7 +315,7 @@ impl Shell {
             (Command::Redo, app.can_redo(), "Ctrl+Y"),
           ] {
             let tooltip = format!("{} — {keys}", command.label());
-            if icon_button(
+            let response = icon_button(
               ui,
               &palette,
               command_icon(command),
@@ -323,20 +323,35 @@ impl Shell {
               false,
               enabled,
               18.0,
-            )
-            .clicked()
-            {
+            );
+            if response.clicked() {
               output.actions.extend(command.action());
             }
-            output.drawn.app_bar.push(command.label().to_owned());
+            report_app_bar(output, command, response.rect);
           }
           ui.separator();
 
-          // The document has no file name yet: `cam-cli` owns document paths (M0), and the shell only
-          // knows whether the frame it holds is modified.
+          // Open asks the host for a path and does nothing else with it: the file dialog belongs to the
+          // host crate, so this button means "ask", never "open" (S2, S5).
+          let open = icon_button(
+            ui,
+            &palette,
+            command_icon(Command::Open),
+            Command::Open.label(),
+            false,
+            true,
+            18.0,
+          );
+          if open.clicked() {
+            output.actions.extend(Command::Open.action());
+          }
+          report_app_bar(output, Command::Open, open.rect);
+
+          // The bar names the file the drawing came from, and says whether it is modified. Until a host
+          // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
           let dirty = if app.is_dirty() { " · modified" } else { "" };
           ui.label(
-            RichText::new(format!("untitled.c2d{dirty}"))
+            RichText::new(format!("{}{dirty}", self.document_name()))
               .size(theme::CAPTION)
               .color(palette.get(Role::TextDim)),
           );
@@ -386,7 +401,7 @@ impl Shell {
             )
             .on_hover_text("Working units. Every length in the shell is millimetres.");
             ui.separator();
-            if icon_button(
+            let fit = icon_button(
               ui,
               &palette,
               command_icon(Command::FitJob),
@@ -394,12 +409,11 @@ impl Shell {
               false,
               true,
               18.0,
-            )
-            .clicked()
-            {
+            );
+            if fit.clicked() {
               output.actions.extend(Command::FitJob.action());
             }
-            output.drawn.app_bar.push(Command::FitJob.label().to_owned());
+            report_app_bar(output, Command::FitJob, fit.rect);
           });
         });
       });
@@ -1379,12 +1393,27 @@ fn command_icon(command: Command) -> Icon {
     Command::Shortcuts => Icon::Shortcuts,
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
+    Command::Open => Icon::Open,
     Command::FitJob => Icon::ZoomFit,
     // The rest are not drawn as glyphs anywhere in the frame: they are labelled buttons in the Tools tab
     // or reached by a key, so this arm is the honest "no symbol of its own" answer rather than a new
     // symbol nobody has ever seen.
     _ => Icon::Select,
   }
+}
+
+/// Record one app-bar button: the word the command table gives it, and the point that presses it.
+///
+/// The point is reported for the reason the palette reports its own ([`crate::DrawnState::palette_hits`]): every
+/// button in this bar is a glyph with no text beside it, so a headless test can neither find one by its
+/// label nor guess where the bar put it.
+fn report_app_bar(output: &mut ShellOutput, command: Command, rect: egui::Rect) {
+  let centre = rect.center();
+  output.drawn.app_bar.push(command.label().to_owned());
+  output
+    .drawn
+    .app_bar_hits
+    .push((command.label().to_owned(), (centre.x, centre.y)));
 }
 
 /// The words a palette chip shows on hover.

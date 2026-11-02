@@ -174,6 +174,8 @@ pub enum Command {
   AddRectangle,
   /// Replace the drawing with the vectors in a file.
   Import,
+  /// Replace the drawing with a saved document, chosen in the system's file dialog.
+  Open,
   /// Slide the selection.
   Move,
   /// Turn the selection.
@@ -250,6 +252,7 @@ impl Command {
     Command::AddText,
     Command::AddRectangle,
     Command::Import,
+    Command::Open,
     Command::Move,
     Command::Rotate,
     Command::Scale,
@@ -292,6 +295,7 @@ impl Command {
       Self::AddText => "Add text",
       Self::AddRectangle => "Add rectangle",
       Self::Import => "Import",
+      Self::Open => "Open",
       Self::Move => "Move",
       Self::Rotate => "Rotate",
       Self::Scale => "Scale",
@@ -330,7 +334,8 @@ impl Command {
       | Self::Star
       | Self::AddText
       | Self::AddRectangle
-      | Self::Import => Group::Draw,
+      | Self::Import
+      | Self::Open => Group::Draw,
       Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
         Group::Transform
       }
@@ -375,7 +380,8 @@ impl Command {
   /// gestures plus text, the five transforms the Tools tab also runs, offset and join, and the four view
   /// chips. Everything else is reached from somewhere the palette is not — `Add rectangle`, `Align`,
   /// `Trim` and the node edits from the Tools tab, `Undo`, `Redo`, `3D`, `Theme` and `Fit the job` from
-  /// the app bar, `Icon set` from `F2`, and `Import` from a host, which is why it has no button at all.
+  /// the app bar, `Icon set` from `F2`, `Open` from the app bar, and `Import` from a host, which is why it
+  /// has no button at all.
   ///
   /// [`Group::History`] is never here: Undo and Redo are the app bar's run, so the palette has no
   /// HISTORY section and the help panel is the only place that groups them.
@@ -410,6 +416,7 @@ impl Command {
       Self::Join => Some(UiAction::Join),
       Self::DeleteSelection => Some(UiAction::DeleteSelection),
       Self::FitJob => Some(UiAction::ZoomToFit),
+      Self::Open => Some(UiAction::RequestOpenFile),
       _ => None,
     }
   }
@@ -489,9 +496,17 @@ impl Command {
       },
       Self::Import => Help {
         what: "Replaces the drawing with the vectors in a file, and one undo brings the old drawing back.",
-        how: "There is no file dialog yet, so a host opens the file by path. The status bar then names \
+        how: "Import has no dialog of its own — the Open button's dialog opens documents, not imports — \
+              so a host still opens the file by path. The status bar then names \
               the file, its contour count and how many curves were skipped.",
         related: &[Command::Select, Command::Undo, Command::FitJob],
+      },
+      Self::Open => Help {
+        what: "Replaces the drawing with a `.c2d` you chose, and one undo brings the drawing you had back.",
+        how: "Press Open in the app bar. Your system's file dialog asks which `.c2d` to open, the drawing \
+              is framed to it, and the bar then names the file. A file that will not load is refused in the \
+              status bar and changes nothing.",
+        related: &[Command::Import, Command::Undo, Command::FitJob],
       },
       Self::Move => Help {
         what: "Slides the selected vectors by the offset you set, and nothing else in the drawing moves.",

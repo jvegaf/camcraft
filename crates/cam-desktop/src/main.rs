@@ -1,4 +1,5 @@
-//! Native window binary: opens the editor with a sample document and plays its 3D preview.
+//! Native window binary: opens the editor with a sample document, which the Open button replaces with
+//! a `.c2d` the user picks, and plays its 3D preview.
 //!
 //! The window itself needs a display, so it is verified by building rather than by automation; the
 //! behaviour it exposes lives in `cam-app`, `cam-sim`, `cam-view` and `cam-ui`, all tested headless.
@@ -21,7 +22,7 @@ use cam_model::{Document, Entity, EntityKind, Job, Layer, PocketParams, PocketSt
 use cam_move::{MoveStream, Segment, ToolShape};
 use cam_sim::{Heightfield, DEFAULT_CELL};
 use cam_toolpath::{pocket, PocketRequest, ToolSpec};
-use cam_ui::Shell;
+use cam_ui::{Shell, UiAction};
 use cam_units::Length;
 
 fn main() -> eframe::Result<()> {
@@ -64,13 +65,14 @@ impl Editor {
       // start state is the same on every launch, so the animation is as deterministic as the moves.
       preview.set_playing(true);
     }
-    // The tool library the inspector's tool card resolves a toolpath's number against. It is empty, and
-    // that is a gap stated rather than a path invented (camui-toolpath T1, S4): this window opens no
-    // `.c2d` and a document names its library only by a filename (`Document::tools_ref`), which `cam-cli`
-    // resolves against the document's own directory. There is no honest default here — inventing one
-    // would make the card describe somebody's library instead of this job's — and the sample document
-    // holds no toolpath either, so no card is drawn. What would fill this in: a document open path plus a
-    // `cam_store::tools::ToolLibrary::open(tools_ref)` behind it, which the window does not have yet.
+    // The tool library the inspector's tool card resolves a toolpath's number against. It starts empty and
+    // opening a document empties it again, and that is a gap stated rather than a path invented
+    // (camui-toolpath T1, S4; shell-open-document S4): a document names its library only by a filename
+    // (`Document::tools_ref`), which `cam-cli` resolves against the document's own directory. There is no
+    // honest default here — inventing one would make the card describe somebody's library instead of this
+    // job's — and the sample document holds no toolpath either, so no card is drawn. What would fill this
+    // in: `cam_store::tools::ToolLibrary::open(tools_ref)` behind the open action, which is the next step
+    // and not this one, because resolving that filename is a rule the CLI already owns.
     shell.set_tools(Vec::new());
     // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
     // outcome of the last command, and on a fresh window there is no command yet.
@@ -85,6 +87,21 @@ impl eframe::App for Editor {
     // The shell never mutates the document itself; its actions are applied here, and a refusal
     // becomes a status-bar message instead of a silent no-op.
     for action in output.actions {
+      // A file dialog is the host's: the shell emits the intent, the window asks the platform, and the
+      // answer re-enters the shell as a path. Keeping the load behind `apply_action` is what keeps the
+      // refusal sentence, the undo step and the post-open bookkeeping in one place (shell-open-document
+      // S2, S3) — the dialog only decides *which* path, never what happens to it.
+      let action = match action {
+        UiAction::RequestOpenFile => match rfd::FileDialog::new()
+          .add_filter("campilot document", &["c2d"])
+          .pick_file()
+        {
+          Some(path) => UiAction::OpenFile { path },
+          // Cancelled: no action, no message, nothing touched.
+          None => continue,
+        },
+        other => other,
+      };
       // Through the shell, not the bare handler: the shell turns the command's outcome into the
       // sentence the user reads, including created counts, an ellipse's radial error and how many
       // arcs a non-uniform scale cost (M2 A5, D-M2-2).

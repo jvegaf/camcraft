@@ -38,6 +38,8 @@
 
 #![warn(missing_docs)]
 
+use std::path::{Path, PathBuf};
+
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
 use cam_model::Job;
@@ -485,6 +487,22 @@ pub enum UiAction {
     /// The file to read; its extension decides the format.
     path: String,
   },
+  /// Open a `.c2d` document and replace the drawing with it, undoably.
+  ///
+  /// The path comes from the caller — the shell has no file dialog and no dialog dependency, so a host
+  /// answers [`UiAction::RequestOpenFile`] with the platform's picker and applies this action with what
+  /// it returned. The load is [`cam_store::document::DocumentFile::load`], the same archive scan,
+  /// migration and validation `cam-cli open` uses, and the replacement is undoable because the shell has
+  /// no Save: an accidental open has to be one undo away from the drawing it replaced.
+  OpenFile {
+    /// The `.c2d` to load.
+    path: PathBuf,
+  },
+  /// Ask the host for a document to open; the host shows its file dialog and applies [`UiAction::OpenFile`].
+  ///
+  /// An intent and nothing more: the shell does not open a dialog, read a path or touch the document when
+  /// it receives this, which is what keeps `cam-ui` free of a dialog crate and testable without a display.
+  RequestOpenFile,
 }
 
 impl UiAction {
@@ -518,6 +536,7 @@ impl UiAction {
       Self::SetSelection(_) => "select",
       Self::ToggleLayerVisible { .. } => "layer visibility",
       Self::ImportFile { .. } => "import file",
+      Self::OpenFile { .. } | Self::RequestOpenFile => "open file",
     }
   }
 }
@@ -598,11 +617,17 @@ pub struct DrawnState {
   /// press only one of them could not prove they agree. Only those seven are listed — the tab's other
   /// buttons are not built from [`crate::params`], so nothing needs their points.
   pub authoring_hits: Vec<(String, (f32, f32))>,
-  /// The words the app bar's three command buttons answer to, in the order it drew them.
+  /// The words the app bar's four command buttons answer to, in the order it drew them.
   ///
-  /// Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test can
-  /// read is the one the command table gives them: this is the app bar's own report of it.
+  /// Open, Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a headless test
+  /// can read is the one the command table gives them: this is the app bar's own report of it.
   pub app_bar: Vec<String>,
+  /// Where the app bar drew each command button: its word and the point in the window that presses it.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason: egui offers no
+  /// widget-by-text lookup from outside a frame, so a test that has to press one of the bar's glyphs is
+  /// given the point the button was drawn at instead of guessing at the bar's margins.
+  pub app_bar_hits: Vec<(String, (f32, f32))>,
   /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
   /// command rows, and finally the focused command's `what` and `how`.
   ///
@@ -775,6 +800,12 @@ pub struct Shell {
   /// until a host hands one in, and empty is a real answer — the card then says the number it was asked
   /// for is not in the library it was given.
   tools: Vec<StoredTool>,
+  /// The file the drawing was opened from, once a host has opened one.
+  ///
+  /// `None` until [`UiAction::OpenFile`] succeeds, which is when the app bar stops saying `untitled.c2d`
+  /// and starts naming the file. The shell keeps the path only so the bar can name it: it opens no dialog
+  /// and saves nothing, so this is a record of what was read and not a file handle.
+  document_path: Option<PathBuf>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -853,6 +884,15 @@ pub struct Shell {
   menu_scope: crate::help::MenuScope,
 }
 
+/// The three numbers the material dialog starts with: the default sheet, in millimetres.
+///
+/// One function and two callers — the shell's own default and an open that has to drop drafts seeded
+/// from a document nobody is looking at any more — so the seeds cannot drift apart.
+fn default_material_size() -> (f64, f64, f64) {
+  let sheet = Job::default_sheet();
+  (sheet.width.mm(), sheet.height.mm(), sheet.thickness.mm())
+}
+
 impl Default for Shell {
   fn default() -> Self {
     Self {
@@ -876,6 +916,7 @@ impl Default for Shell {
       show_3d: false,
       preview: None,
       tools: Vec::new(),
+      document_path: None,
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -904,11 +945,7 @@ impl Default for Shell {
       // click on the canvas, which is what `cam-ui --test input` caught on eighteen tests. The Job tab
       // is how it opens (L108's lesson: a temporary default nobody meant to ship).
       show_material: false,
-      material_size: (
-        Job::default_sheet().width.mm(),
-        Job::default_sheet().height.mm(),
-        Job::default_sheet().thickness.mm(),
-      ),
+      material_size: default_material_size(),
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }
@@ -966,10 +1003,48 @@ impl Shell {
   /// reports (entity count, ellipse radial error, arcs lost to tessellation) and any refusal, with the
   /// kernel's own message, into the sentence the user reads.
   pub fn apply_action(&mut self, app: &mut AppState, action: &UiAction) {
-    self.status = match handle_action(app, action) {
+    let applied = handle_action(app, action);
+    // An open replaces the document, so everything the shell derived from the previous one goes with it.
+    // None of these three is in the undo history — the preview is a picture of a program, the tool
+    // snapshot is what this window was handed, and the drafts are numbers the dialog has not written
+    // yet — so a bare swap would leave the 3D panel playing the old drawing's program and the dialog
+    // holding the old stock. The view is handed back to the shell for the same reason: the new drawing
+    // is framed, because the old drawing's zoom was never a choice about this one.
+    if applied.is_ok() {
+      if let UiAction::OpenFile { path } = action {
+        self.document_path = Some(path.clone());
+        self.clear_preview();
+        self.set_tools(Vec::new());
+        self.material_size = default_material_size();
+        self.auto_frame = true;
+      }
+    }
+    self.status = match applied {
       Ok(report) => report.message(),
       Err(message) => format!("refused: {message}"),
     };
+  }
+
+  /// The file the drawing was opened from, once a host has opened one.
+  ///
+  /// `None` while the frame holds a document nobody opened from disk, which is the state the app bar
+  /// still calls `untitled.c2d`.
+  pub fn document_path(&self) -> Option<&Path> {
+    self.document_path.as_deref()
+  }
+
+  /// The name the app bar shows for the drawing.
+  ///
+  /// The opened file's own name once there is one, and `untitled.c2d` before that: the shell had no
+  /// document path of its own until a host could hand it one, which is why the bar named the frame
+  /// rather than a file (M0).
+  pub fn document_name(&self) -> String {
+    self
+      .document_path
+      .as_ref()
+      .and_then(|path| path.file_name())
+      .map(|name| name.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "untitled.c2d".to_owned())
   }
 
   /// Hand the 3D panel a program to preview: the stock it cuts, the program itself, and the stock box.
@@ -2242,6 +2317,29 @@ pub fn handle_action(app: &mut AppState, action: &UiAction) -> Result<ActionRepo
         ..ActionReport::default()
       })
     }
+    UiAction::OpenFile { path } => {
+      // The loader `cam-cli open` uses, so the archive scan, the migration and the validation are one
+      // rule (S2) — and `DocumentFile` rather than `load_document`, because the entries this build does
+      // not interpret are part of the document rather than something to drop on the floor.
+      let opened =
+        cam_store::document::DocumentFile::load(path).map_err(|error| error.to_string())?;
+      let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string());
+      app.replace_document_undoable(opened.document);
+      Ok(ActionReport {
+        label: action.label(),
+        note: Some(format!("opened {file_name}")),
+        ..ActionReport::default()
+      })
+    }
+    // An intent the host answers: nothing to apply, and nothing to refuse either, because the shell has
+    // already said everything it has to say about it by asking.
+    UiAction::RequestOpenFile => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
     UiAction::SetJob {
       width,
       height,

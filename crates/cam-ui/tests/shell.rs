@@ -6,12 +6,17 @@
 
 use cam_app::{AlignMode, AppState, Transform, VertexEdit};
 use cam_geom::{Contour, Point2, Vec2};
-use cam_model::{Document, Job, Layer};
+use cam_model::{Document, Job, Layer, Operation, ProfileParams, Toolpath};
+use cam_move::MoveStream;
+use cam_sim::Heightfield;
+use cam_store::document::{save_document, DocumentFile};
+use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
   handle_action, DrawShape, Readiness, Shell, ShellOutput, Stage, Tab, Tool, UiAction,
   DEFAULT_TOLERANCE_MM,
 };
+use cam_units::{Length, UnitSystem};
 
 fn document_with_rectangle() -> Document {
   let mut document = Document::new(Job::default_sheet());
@@ -583,6 +588,16 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   for label in ["campilot", "untitled.c2d", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
+  // The bar's one file command lives here, and a bar that could not ask for a document would leave the
+  // operator with a name and no way to change it.
+  assert!(
+    output
+      .drawn
+      .app_bar
+      .contains(&HelpCommand::Open.label().to_owned()),
+    "the bar must offer Open: {:?}",
+    output.drawn.app_bar
+  );
   // The rail is where the gestures live now, and it says so in its own report rather than in pixels.
   for tool in Tool::ALL {
     assert!(
@@ -1645,6 +1660,397 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+// ---- Opening a document chosen at runtime ------------------------------------------------------
+
+/// Click one of the app bar's icon buttons by the word the command table gives it.
+///
+/// The bar reports the point it drew each button at ([`cam_ui::DrawnState::app_bar_hits`]) for the same
+/// reason the palette does: every one of them is a glyph with no text beside it, so egui cannot be asked
+/// for it by name from outside a frame.
+fn click_app_bar(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  label: &str,
+) -> ShellOutput {
+  let (output, _) = frame_with(ctx, shell, app);
+  let at = output
+    .drawn
+    .app_bar_hits
+    .iter()
+    .find(|(word, _)| word == label)
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .unwrap_or_else(|| {
+      panic!(
+        "no {label:?} button in the app bar: {:?}",
+        output.drawn.app_bar
+      )
+    });
+  click_at(ctx, shell, app, at).0
+}
+
+/// Write a real `.c2d` with the store's own writer, so the shell test opens a file and not a stub.
+fn write_c2d(directory: &std::path::Path, name: &str, document: &Document) -> std::path::PathBuf {
+  let path = directory.join(name);
+  save_document(&path, document).expect("document written");
+  path
+}
+
+/// A document holding `count` closed 120 x 90 mm squares in a row, so a test can tell one file's drawing
+/// from another's by how much of the sheet it covers.
+fn document_with_squares(count: usize) -> Document {
+  let entities = (0..count)
+    .map(|index| {
+      let x = index as f64 * 150.0;
+      cam_model::Entity {
+        id: format!("S{index}"),
+        kind: cam_model::EntityKind::Contour {
+          contour: Contour::from_points(
+            &[
+              Point2::new(x, 0.0),
+              Point2::new(x + 120.0, 0.0),
+              Point2::new(x + 120.0, 90.0),
+              Point2::new(x, 90.0),
+            ],
+            true,
+          )
+          .expect("square"),
+        },
+      }
+    })
+    .collect();
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Part".to_owned(),
+    visible: true,
+    entities,
+  });
+  document
+}
+
+/// The same drawing plus one profile toolpath cutting with `tool_number`.
+///
+/// The toolpath is what makes the current-tool card report something, which is how a test reads the tool
+/// snapshot the shell was handed without reaching into the shell's own fields.
+fn document_with_toolpath(count: usize, tool_number: u32) -> Document {
+  let mut document = document_with_squares(count);
+  document.toolpaths.push(Toolpath {
+    id: "P1".to_owned(),
+    name: "Profile 01".to_owned(),
+    entity_ids: vec!["S0".to_owned()],
+    island_ids: Vec::new(),
+    tool_number,
+    operation: Operation::Profile(ProfileParams::default()),
+  });
+  document
+}
+
+/// One tool as a library snapshot holds it, so the card can resolve `tool_number` with it.
+fn stored_tool(tool_number: u32) -> StoredTool {
+  StoredTool {
+    geometry: ToolGeometry {
+      id: format!("G{tool_number}"),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(6.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    },
+    cutting: CuttingData {
+      id: format!("G{tool_number}-cut"),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: None,
+      stepover: None,
+      clear_stepover: None,
+      tool_number: Some(tool_number),
+      notes: None,
+    },
+  }
+}
+
+#[test]
+fn opening_a_file_shows_its_document_and_its_name_in_the_app_bar() {
+  let directory = scratch("open");
+  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  assert_eq!(shell.document_name(), "untitled.c2d");
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "the opened drawing is the one showing"
+  );
+  assert_eq!(shell.status, "open file — opened bracket.c2d");
+  assert_eq!(shell.document_path(), Some(path.as_path()));
+  assert_eq!(shell.document_name(), "bracket.c2d");
+
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("bracket.c2d"),
+    "the bar must name the opened file: {all}"
+  );
+  assert!(
+    !all.contains("untitled.c2d"),
+    "the bar must stop saying untitled: {all}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_refused_open_changes_nothing_and_says_why() {
+  let directory = scratch("open-refused");
+  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
+  let missing = directory.join("gone.c2d");
+  let not_an_archive = directory.join("notes.c2d");
+  std::fs::write(&not_an_archive, b"not a zip archive, just text").expect("text written");
+  let invalid = directory.join("broken.c2d");
+  let mut broken = document_with_squares(1);
+  let repeated = broken.layers[0].clone();
+  // Two layers with one id: a document the model refuses, so the file loads and the validation fails.
+  broken.layers.push(repeated);
+  std::fs::write(
+    &invalid,
+    DocumentFile {
+      document: broken,
+      extras: Default::default(),
+    }
+    .to_bytes()
+    .expect("archive bytes"),
+  )
+  .expect("archive written");
+
+  for (case, path) in [
+    ("missing", missing),
+    ("not an archive", not_an_archive),
+    ("invalid document", invalid),
+  ] {
+    let mut app = AppState::new(document_with_rectangle());
+    let mut shell = Shell::new();
+    // One good open first, so "the name did not change" is a claim about a name that exists, and so the
+    // history holds a step a refused open must not add to.
+    shell.apply_action(
+      &mut app,
+      &UiAction::OpenFile {
+        path: opened.clone(),
+      },
+    );
+    let before = app.document_json();
+    let history = app.history_depth();
+    let dirty = app.is_dirty();
+
+    shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+    assert!(
+      shell.status.starts_with("refused: "),
+      "{case}: the status must refuse, got {:?}",
+      shell.status
+    );
+    assert!(
+      shell.status.contains(&path.display().to_string()),
+      "{case}: the refusal must name the file, got {:?}",
+      shell.status
+    );
+    assert_eq!(
+      app.document_json(),
+      before,
+      "{case}: a refused open must leave the drawing alone"
+    );
+    assert_eq!(
+      app.history_depth(),
+      history,
+      "{case}: a refused open must not record a step"
+    );
+    assert_eq!(
+      app.is_dirty(),
+      dirty,
+      "{case}: a refused open must not change the dirty flag"
+    );
+    assert_eq!(
+      shell.document_name(),
+      "bracket.c2d",
+      "{case}: a refused open must not change the name in the bar"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn opening_a_file_clears_the_preview_the_tool_snapshot_and_the_material_drafts() {
+  let directory = scratch("open-stale");
+  let path = write_c2d(&directory, "cut.c2d", &document_with_toolpath(2, 4));
+  let mut app = AppState::new(document_with_toolpath(1, 4));
+  let mut shell = Shell::new();
+  shell.set_stage(Stage::Toolpaths);
+  shell.set_tools(vec![stored_tool(4)]);
+  let job = Job::default_sheet();
+  shell.set_preview(
+    Heightfield::new(&job, Length::from_mm(20.0)).expect("a field for the default sheet"),
+    MoveStream::new(Length::from_mm(6.0), Point2::new(0.0, 0.0)),
+    &job,
+  );
+  shell.material_size = (300.0, 200.0, 25.0);
+  // The card resolves T4 while the snapshot is the one this window was given.
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output
+      .drawn
+      .tool_card
+      .iter()
+      .any(|line| line.starts_with("T4 - ")),
+    "the fixture must start with a resolvable tool: {:?}",
+    output.drawn.tool_card
+  );
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(app.document().entities().count(), 2);
+  assert!(
+    shell.preview().is_none(),
+    "the 3D panel must not keep playing the previous drawing's program"
+  );
+  assert_eq!(
+    shell.material_size,
+    (
+      Job::default_sheet().width.mm(),
+      Job::default_sheet().height.mm(),
+      Job::default_sheet().thickness.mm(),
+    ),
+    "the drafts were seeded for a document nobody is looking at any more"
+  );
+  let (output, _) = frame(&mut shell, &mut app);
+  assert!(
+    output
+      .drawn
+      .tool_card
+      .iter()
+      .any(|line| line.contains("T4 is not in the tool library")),
+    "the tool snapshot belonged to the previous window: {:?}",
+    output.drawn.tool_card
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn one_undo_after_an_open_brings_the_previous_document_back() {
+  let directory = scratch("open-undo");
+  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(3));
+  let mut app = AppState::new(document_with_rectangle());
+  let original = app.document_json();
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+  assert_eq!(app.document().entities().count(), 3);
+
+  shell.apply_action(&mut app, &UiAction::Undo);
+
+  assert_eq!(
+    app.document_json(),
+    original,
+    "the shell has no Save, so an open has to be one undo away from the drawing it replaced"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_open_frames_the_new_drawing_even_when_the_view_was_the_users() {
+  let directory = scratch("open-frame");
+  let path = write_c2d(&directory, "wide.c2d", &document_with_squares(2));
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame(&mut shell, &mut app);
+  // The user takes the view: panning and zooming stops the shell framing the drawing.
+  shell.release_view();
+  app
+    .camera_mut()
+    .zoom_at(cam_app::ScreenPoint::new(10.0, 10.0), 4.0);
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+  let _ = frame(&mut shell, &mut app);
+
+  let centre = app.camera().center();
+  assert!(
+    centre.is_near(Point2::new(135.0, 45.0), 5.0),
+    "the opened drawing must be framed, not left at the old drawing's zoom: {centre:?}"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_app_bars_open_button_asks_the_host_for_a_file() {
+  let mut app = AppState::new(document_with_rectangle());
+  let before = app.document_json();
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Open.label());
+
+  assert_eq!(
+    output.actions,
+    vec![UiAction::RequestOpenFile],
+    "the bar must ask the host, not open a file of its own"
+  );
+  assert_eq!(app.document_json(), before, "an intent touches no document");
+  assert_eq!(
+    shell.document_name(),
+    "untitled.c2d",
+    "an intent names no file"
+  );
+}
+
+#[test]
+fn the_app_bars_other_buttons_still_emit_their_commands() {
+  // PRESERVE: Open joined a run of glyph buttons that now report where they were drawn. Undo, Redo and
+  // Fit the job have to emit exactly the action they emitted before they reported anything.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+
+  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::FitJob.label());
+  assert_eq!(
+    output.actions,
+    vec![UiAction::ZoomToFit],
+    "Fit the job still frames the drawing"
+  );
+
+  handle_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("the rectangle is added");
+  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Undo.label());
+  assert_eq!(
+    output.actions,
+    vec![UiAction::Undo],
+    "Undo still steps back"
+  );
+  shell.apply_action(&mut app, &UiAction::Undo);
+
+  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Redo.label());
+  assert_eq!(
+    output.actions,
+    vec![UiAction::Redo],
+    "Redo still steps forward"
+  );
+}
+
 // ---- T8.1: the command table and the F1 help panel --------------------------------------------
 
 #[test]
@@ -1975,14 +2381,19 @@ fn the_shortcuts_chip_still_opens_the_shortcuts_sheet() {
 
 #[test]
 fn the_app_bar_labels_match_the_table() {
-  // Three icon-only buttons whose words live in the table now, in the order the bar draws them.
+  // Four icon-only buttons whose words live in the table now, in the order the bar draws them.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
-  let expected: Vec<String> = [HelpCommand::Undo, HelpCommand::Redo, HelpCommand::FitJob]
-    .iter()
-    .map(|command| command.label().to_owned())
-    .collect();
+  let expected: Vec<String> = [
+    HelpCommand::Undo,
+    HelpCommand::Redo,
+    HelpCommand::Open,
+    HelpCommand::FitJob,
+  ]
+  .iter()
+  .map(|command| command.label().to_owned())
+  .collect();
   assert_eq!(
     output.drawn.app_bar, expected,
     "the app bar must answer to the table's own words"
