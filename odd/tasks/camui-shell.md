@@ -551,3 +551,41 @@ design argues for:
   pure fold and its risk is a silent behaviour change, not a design question.
   Route: four writers **sequentially**, not in parallel, because all four surfaces include
   `crates/cam-ui/src/lib.rs` and parallel writers on one file are a collision, not a speed-up.
+
+- **L41 (three of the four screenshot slices delivered, each gate re-run by the parent).** `bea3da7` (T10),
+  `25b14d3` (T11), `661ce1b` (T13). The counts below are the parent's own runs of
+  `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config ./scripts/check.sh`, not the writers' claims: 1 109 → 1 116 → 1 123
+  tests across 92 suites, exit 0 each time.
+  **T10** moved the seven parameterised commands into `params.rs` with the canonical `array_grid_range()` read by both
+  the builder and the widget. Its RED is worth keeping: *"the Array chip must run a grid inside the form's range:
+  1..=64 / left: (0, 99) / right: (1, 64)"* — and the test keeps the inspector on **Selection** because a visible
+  `DragValue` clamps its own field as it is drawn. The runtime exposure was therefore narrower than the brief assumed:
+  the disagreement only existed while the form was off screen. The differential still found it, 3 differing lines out
+  of 77, all of them the declared clamp. The pinning test has no RED by construction — both routes already agreed on
+  the payload; the differential measured that rather than a test asserting it.
+  **T11** replaced the text percentage with a real `ProgressBar` fed by the clock `view3d` already owned, with `m:ss of
+  m:ss` from two pure functions. `bar_fill` paints empty unless the total is a positive finite number, because
+  `progress()` answers 1.0 for a zero-duration program once played out — true about the program, a lie about the time.
+  Fill is `Role::Cut`, the same amber the panel paints cutting moves with; corners are square because egui paints the
+  fill at least as wide as the radius and a rounded bar would show a bead of progress at 0.0. One of its three
+  integration tests finds the bar's two rectangles **by role colour**, so a fill painted with a literal fails the test
+  instead of passing a string assertion. Verified on screen at 1:37, 3:57 and 6:31 of 6:31 — and the environment note
+  is corrected: `grim` is Wayland-only and needs `XDG_RUNTIME_DIR`/`WAYLAND_DISPLAY`, so `DISPLAY=:0` alone cannot
+  capture here (L35 and L33 both said it could; on this session it could not).
+  **T13** gave the bar a three-way `Readiness` (`Ready(n)` / `NotReady(sentence)` / `Unmeasured`) and rendered
+  `Stage::count` **from** it, so the number and the state cannot diverge. It also fixed the Job section printing
+  `Stage::Toolpaths.note()` on all five stages.
+  **Three debts, recorded rather than smoothed over.** *(1)* In the light theme the progress bar's **trough** is
+  `Role::Canvas` on `Role::Panel` at 1.06:1, so the unfilled half is invisible on paper: the fill and the sentence
+  still carry the meaning, but "where does full end" is lost. No role in the set is a field/track surface, and adding
+  one is an artboard decision like L35's ramp — not a side effect of a widget. *(2)* T9's `colours_in_the_3d_panel`
+  audit matches the surface viewport clip, which excludes the playback control row, so that audit never looked at the
+  new bar (its own test does, by role). *(3)* The stage gates in `02-stages.html` are stricter than any fact `AppState`
+  holds — "every vector either closed or knowingly open", "every active path has a tool, a depth inside the stock" — so
+  `Stage::readiness` implements the artboard's *conclusion* on the one fact the document carries and the module doc
+  says plainly that the count is a **lower bound on the gate, not a certificate**. The artboard also labels Relief
+  "optional" while its own bar draws a dash; the bar won, because "counts, never adjectives" is its own rule.
+  **Method**: four writers, **sequential** by necessity — every one of the four surfaces included
+  `crates/cam-ui/src/lib.rs`, and parallel writers on one file are a collision, not a speed-up. The writers found three
+  things this record's briefs had wrong (the DragValue clamp, `Preview3d::progress` answering 1.0 at zero time, and the
+  artboard gates being unreachable), which is the argument for stating measured facts in a brief instead of conclusions.
