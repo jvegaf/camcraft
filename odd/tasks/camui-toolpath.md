@@ -241,3 +241,40 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `master`, not one slice. T2.1 is `d617648`, 323 insertions.
   **Next is T3**, now unblocked: T1 gave the shell a tool list to pick a number from, and the vocabulary in `cam-app`
   is the last piece. It is item 3 for the same reason T4 was, so it gets its own commit and its own candidate.
+
+- **L11 (T2.1 reviewed, and where the three lenses agreed).** Lineage `review-4bc03c52d5e44810`, candidate
+  `1c99a3b..599d897` — 9 paths / 416 lines, **approved**, authority burned, **no correction and no blocker**. Seven
+  advisories came back, all `informational`:
+
+  | ID | Lens | Location | Severity |
+  | --- | --- | --- | --- |
+  | R2-001 | readability | `crates/cam-ui/src/chrome.rs:804-807` | WARNING |
+  | R2-002 | readability | `crates/cam-program/src/lib.rs:77-83` | SUGGESTION |
+  | R2-003 | readability | `crates/cam-ui/tests/tool_card.rs:243-261` | SUGGESTION |
+  | R2-004 | readability | `crates/cam-ui/src/view3d.rs:708-709` | SUGGESTION |
+  | R3-001 | reliability | `crates/cam-ui/src/chrome.rs:804` | WARNING |
+  | R3-002 | reliability | `crates/cam-ui/tests/tool_card.rs:255-259` | SUGGESTION |
+  | R4-001 | resilience | `crates/cam-ui/src/chrome.rs:804` | WARNING |
+
+  **The one thing worth reading twice, and it is a location and not a verdict.** Three independent lenses —
+  readability, reliability and resilience — landed on the **same single line**, `chrome.rs:804`, which is the line
+  T2.1 added to draw the estimate. The review admitted it as non-blocking, and this document does not contradict the
+  review: but a place three lenses agree on is the strongest signal this feature produced, and it is the first thing
+  a later slice should read before touching that line. Their texts live in the native receipt, not here — quoting them
+  from memory would be inventing them, which is exactly the failure this rule exists to prevent.
+  **Where the feature stands.** The two reference-screenshot patterns that opened this document are both covered: the
+  current-tool card (T1, `ad2676a`) and the estimated cutting time (T2.1, `d617648`, now measured over the document's
+  own toolpaths rather than a demonstrator's sample). T4 and T2.0 and T2.1 each hold an approved native receipt.
+  **T3 is what remains**, and it is the only task in the table that opens new surface: the toolpath vocabulary in
+  `cam-app`. Every other task either reused a rule that existed or moved one that did.
+
+- **L12 (state of this document, for whoever opens it next).** Written to be read in ten seconds instead of twenty
+  entries. **Branch** `feat/camui-toolpath-t4`, from `master` @ `5cb0652`, **unpushed** — push, PR and merge are the
+  owner's decisions and none has been taken. **Gate at the last measured run:** exit 0, 96 suites, **1 153 tests**,
+  0 failed; `crates/cam-cli/tests/cli.rs` unedited at 121/0 throughout. **Three receipts burned**, one per work unit:
+  T4 `review-2630423c51d0b9e1`, T2.0 `review-526430ccfe87cf3e`, T2.1 `review-4bc03c52d5e44810`. **Ten advisories**
+  carried forward across the three (3 + 2 + 7 counted with repeats), none blocking, listed by id and location only in
+  L7, L10 and L11. **Two debts that are not this feature's:** the `cam-geom` proptest flake (L10) and `camui-shell`'s
+  unreviewed T8/T9 (L7 of that document). **One reminder loop:** the harness offers a review of the accumulated
+  branch against `origin/master` on every mutation generation — five offers so far, all declined, none burned,
+  because it is not a work unit. If a future session sees that offer, the answer is in this paragraph.
