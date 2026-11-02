@@ -95,15 +95,15 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
   symlink alone is not enough, which is worth knowing before trusting a green `check.sh` in this harness. The first
   gate run also appeared to pass while failing, because `check.sh | tail` swallows the exit status — the gate must
   be run without swallowing it.
-## Next phase (delivered, except T7 which is planned and not authorised)
+## Next phase (delivered in full — see L43)
 
-The foundations are delivered, and so is every slice below except T7. What remains of the concept, in the order the
-design argues for:
+The foundations are delivered, and so is every slice below. L43 records the two rows this table left stale. What
+remains of the concept, in the order the design argues for:
 
 | ID | Task | Specs |
 | --- | --- | --- |
 | T6 | ✅ delivered `7e09653` — the shell frame: app bar, stage bar, the stage-scoped rail (52 px then, the 200 px labelled palette since `28de0db`), the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented. This row used to name `4318205`, a pre-rewrite commit no branch contains | S1 S2 S3 S7 |
-| T7 | The stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step | S2 S4 |
+| T7 | ✅ delivered `661ce1b` (T13) — the stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step. L42 closes this row onto T13; the substance is `Readiness` in `chrome.rs:184`, not a separate module | S2 S4 |
 | T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
 | T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
 | T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
@@ -526,8 +526,8 @@ design argues for:
 | T10 | Fold the seven parameterised command constructions into one module (`params.rs`): one `&Shell` + view centre → `UiAction` builder per command, with the clamp/range each number needs travelling with the builder, so `chrome::command_action` and `lib::authoring` cannot disagree | S5 S7 | worker |
 | T11 | The simulation progress bar: a real `egui::ProgressBar` with elapsed and total, read from the clock `view3d` already owns (`progress()`, `elapsed()`, `duration()`), replacing the text percentage | S2 S4 S8 | worker |
 | T12 | The material dialog: two choice cards (flat sheet / rotary) over a live annotated key plan, writing through a new `UiAction::SetJob` and its handler, and the positivity check `SetJob` does not have today while `Job::outline` panics without one | S2 S7 S8 | worker |
-| T13 | Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
-| T14 | ⛔ not authorised — the current-tool card and the estimated time. **Data missing**: `cam-ui` does not depend on `cam-store`/`cam-toolpath`, there is no tool library handle on `Shell`, and the shell cannot author a toolpath at all. This is a product decision, not a slice | S2 S8 | — |
+| T13 | ✅ delivered `661ce1b` — Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
+| T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/camui-toolpath.md` and landed there: the card `ad2676a`, the estimate `d617648`, both merged in `master` (`d806f8d`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
 
 - **S8 — the screenshots are the pattern authority.** Eight frames of the reference live in
   `design/Screenshots-reference/`, and `README.md` annotates each one with the pattern it settles. Where a screenshot
@@ -622,3 +622,15 @@ design argues for:
   certificate for them; a colour audit whose clip excludes the playback row it now misses; and three review lineages
   stalled and unburned (`review-3ebc68eeba5006f5`, `review-89edc321cc30ebdb`, `review-3592c554bf15c02f`) waiting for
   a session that starts after the routing file exists.
+
+- **L43 (owner, verbatim: `ya he mergeado yo todo e hice limpia, por donde seguimos`. Two rows corrected; the feature is
+  closed and this entry is the only thing that was open).** Nothing was rebuilt here and no code changed: the tables
+  above disagreed with L42, and a stale row is what sends the next session to re-deliver something that already
+  exists. **T7 → `661ce1b`**, verified in the tree rather than in the log: `crates/cam-ui/src/chrome.rs:184` is
+  `pub fn readiness(self, app: &AppState) -> Readiness`, the five-stage gate rule and the naming strings L41/L42
+  describe; the heading that called it *planned and not authorised* now says delivered. **T14 → left the feature**,
+  delivered as `camui-toolpath`'s T1 `ad2676a` and T2.1 `d617648`, merged into `master` at `d806f8d`. **What actually
+  remains, unchanged by this entry**: the four debts L42 lists (contrast, lower-bound readiness, colour-audit clip,
+  three stalled lineages) and `camui-toolpath`'s own hand-off — the shell still cannot open a `.c2d`, so
+  `Document.tools_ref` remains a filename only `cam-cli` resolves. `master` is 33 commits ahead of `origin/master` and
+  still unpushed; the owner merged and cleaned the branches, not the remote.
