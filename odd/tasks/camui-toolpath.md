@@ -152,3 +152,24 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `review-552701826bd439cd`). That start was **not** taken: it is the accumulated feature branch rather than a work
   unit, and it would have opened a second live lineage over the same trees as this one. It remains unstarted, not
   burned.
+
+- **L8 (owner, verbatim: `b`. T2 splits in two, and a crate is born).** T2 as written could not land, and the
+  reason is a hole in this document rather than in the code. Measured dependency graph: `cam-store` depends on
+  `cam-units`/`cam-geom`/`cam-model` and S6 forbids it `cam-toolpath`; `cam-toolpath` depends on
+  `cam-units`/`cam-geom`/`cam-move`/`cam-model` and S6 forbids it `cam-store`; `cam-app` sees neither `cam-store`
+  nor `cam-toolpath`; **`cam-cli` is the only crate that sees both**, which is why T4's `program_tools` — the
+  `StoredTool -> ProgramTool` mapping — ended up private inside that binary. `cam-ui` holds `cam-store` but not
+  `cam-toolpath`, so it cannot reach `program_for` at all, and the estimate can only be *about the document* if it
+  does. Three ways out were put to the owner — duplicate the mapping, move it to a crate that sees both, or widen
+  S6 and duplicate it under a shared test. The owner answered **`b`**.
+  **So T2 becomes two work units.** **T2.0** is the extraction: a new workspace crate `cam-program` depending on
+  `cam-model`, `cam-store`, `cam-toolpath` and `cam-units`, holding the mapping as one public function with a typed
+  error instead of `cam-cli`'s binary-local `Failure`; `cam-cli` keeps its `Failure` mapping and must stay
+  **byte-identical** — the 121 unchanged integration cases in `crates/cam-cli/tests/cli.rs` are the differential, and
+  it is a refactor with no behaviour change to declare. **T2.1** is the task the table already describes: publish
+  `seconds_for` and draw the estimate beside the card. Splitting them keeps the extraction reviewable on its own and
+  keeps `seconds_for`'s RED honest.
+  **The S6 consequence, stated so it is not re-litigated.** The new crate gains edges this document did not
+  anticipate; what it does **not** do is create a cycle — `cam-store` still refuses `cam-toolpath` and `cam-toolpath`
+  still refuses `cam-store`, because the join lives one level above both. A third copy of the mapping is what the
+  owner refused.
