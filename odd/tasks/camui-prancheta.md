@@ -2,8 +2,8 @@
 
 Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. T0-T4 landed on
 `feat/camui-prancheta` from `master` @ `a7a701e`, merged into `master` when T4 closed; **from T5 on, each task
-gets its own branch from `master`** (L18). No subagents are configured in this repository, so every task routes
-inline.
+gets its own branch from `master`** (L18). T0-T4 routed inline because no subagents were configured here; that
+premise expired (L19), so T5 on routes to a configured worker.
 
 ## Specs
 
@@ -352,3 +352,8 @@ words: *"design/prancheta-reference/ + README"*.
   of its own branch — the T4 candidate was 341 lines and cost ~67 kB of reviewer prompt, an order of magnitude
   under the whole-branch pass that L17 found unreviewable. The narrowing argument T4 needed (`baseRef` to a
   commit three slices back) stops being necessary.
+- **L19 (L4's premise expired: subagents are configured now).** `subagent_list_agents` returns ten targets
+  today, including `gentle-ai-explore`, `gentle-ai-verify` and `gentle-ai-worker`; when L4 was written it
+  returned an empty list. The record is corrected rather than quietly rewritten: **T0-T4 did route inline and
+  that was true when it was written**, and **T5 on routes to the configured worker**, with the parent keeping
+  the feature document, the commits and the review candidates.
