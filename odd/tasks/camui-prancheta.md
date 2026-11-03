@@ -20,7 +20,9 @@ what we take is structure, behaviour and layout, never its strings. `Usinagem` �
 
 **S4 — Left rail: five labelled collapsible groups.** `FILE` (two rows: new/open/save/save-as/export/settings,
 then fit/import/import-height/export-height/undo/redo), `DRAW`, `EDIT`, `ORGANISE`, `SHOW AND SELECT`, each glyph
-carrying its single-key shortcut letter. Below the groups, the brand block and an `Updated on …` line.
+carrying its single-key shortcut letter where one exists. Below the groups, the brand block: the product name, the
+crate version, and **the document's own last-write stamp, labelled `Saved …`, or `Unsaved changes` while the
+document is dirty**. It is not a build stamp (L7).
 
 **S5 — Two rulers in mm**, labelled along the top and left edges, the top one naming the current unit, with an
 amber marker on both edges tracking the cursor. The empty document centres the origin in the stock
@@ -60,8 +62,9 @@ words: *"design/prancheta-reference/ + README"*.
 | --- | --- | --- | --- | --- |
 | T0 | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame | S11 | inline | `a265633` |
 | T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `c9f3c59` |
-| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | — |
-| T2b | Left rail, second half: move `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` into the FILE group and out of the app bar so the two surfaces never duplicate a command; collapsible groups; the brand block | S4 | inline | — |
+| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `fa179ab` |
+| T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `c22f57a` |
+| T2b-ii | The brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7) | S4 | inline | — |
 | T3 | Right panel: the ribbon of three categories, the task-editor container with `✓`/`✕`, and `Layers` as its own collapsible block | S6 | inline | — |
 | T4 | Status bar in three zones, with the contextual message | S7 | inline | — |
 | T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
@@ -130,3 +133,41 @@ words: *"design/prancheta-reference/ + README"*.
      carries the name and the crate version only.
   The group words reached the F1 help panel for free: it already walks `Group::ALL`, so FILE now heads its
   commands there without a second list.
+- **L7 (the `Updated on …` line stamps the document, not the build).** The owner's decision, verbatim:
+  *"documento"*. The reference's line is ambiguous — on a fresh untitled document, beside an info icon, it could
+  be the build, the document or the tool library — and copying an ambiguity is not fidelity. A build stamp would
+  need a `build.rs` and a timestamp in the binary (delivery risk item 5, and it breaks reproducible builds), and
+  it would be strictly worse than the version string already in the block, which is comparable where a timestamp
+  is not. So the line says `Saved <date> <time>` and `Unsaved changes` while the document is dirty, and **the
+  label changes from the reference's `Updated on` to `Saved` so it says what it stamps**.
+  **Cost, named before it is paid:** formatting `SystemTime` as `2026-11-03 19:30` without `chrono` or `time`
+  means civil-from-days by hand — roughly thirty lines, testable, no new dependency. If that turns out to be a
+  bad trade during T2b, the fallback is the brand block with the name and the version only, and no line.
+- **L8 (T2b split in two, and the half that landed: FILE in the rail, and foldable groups).** `Command::ALL`
+  now keeps every group contiguous and arrives in `Group::ALL`'s order, so the rail's sections are `FILE`,
+  `DRAW`, `EDIT`, `ORGANISE`, `SHOW AND SELECT` — before this they came out as DRAW, ORGANISE, EDIT, VIEW,
+  because the table's File commands sat in the middle and `in_palette` filtered them all out. `in_palette`
+  lets the whole FILE group in, and the app bar **lost every command of its own**: the undo/redo pair, the
+  Open/Save/Save As run and Fit the job are gone from the bar, which now holds the document's name, the
+  units, the theme, the help panel and the `2D | 3D` switch. `DrawnState::app_bar` is still there and is
+  asserted **empty**, so a duplicate button cannot come back without failing a test.
+  **A heading folds its group.** `Shell::group_open` / `Shell::toggle_group` hold the fold; `DrawnState::
+  palette_headings` reports where each heading was drawn, because the heading is a control and a test should
+  click `FILE`, not set a field the operator would have set by clicking. The caret is painted as a triangle
+  rather than written as `▾`: a group whose affordance renders as a tofu box is worse than no affordance.
+  **Tests:** the palette golden is re-measured with FILE first; `the_rail_headings_are_the_references_five_in_its_order`,
+  `the_app_bar_offers_no_command_of_its_own` and `folding_a_group_hides_its_chips_and_keeps_the_rest` are
+  new; the four app-bar click tests became rail click tests (`the_rails_open_chip_asks_the_host_for_a_file`,
+  `the_rails_file_chips_still_emit_their_commands`, `the_rails_save_chips_emit_their_actions`), and
+  `the_palette_shows_no_history_run` became `the_palette_shows_all_five_runs` because the run it forbade is
+  now the point. 184 cam-ui tests pass.
+  **Why the brand block is not in this commit.** L7's stamp needs a fact the shell does not hold yet — when
+  the document was last written — and a civil date formatter without `chrono`. Both belong to the rail's
+  foot and neither is needed by the move, so they are T2b-ii and this commit is the surface change alone.
+- **L9 (an environment incident, so the next session does not read it as a regression).** Linking any test
+  binary in this session failed with `ld terminated with signal 6` and `LLVM ... Resource temporarily
+  unavailable`, from `lld`'s thread pool, across `-j` 1 and 2 alike while `nproc` reports 1. Every test run
+  here was therefore made with `RUSTFLAGS="-C link-arg=-Wl,--threads=1"`, which links and runs normally. It is
+  a host/toolchain condition and not a property of this branch: `cargo check --all-targets` never failed.
+  The workaround is **not** committed to any config file, because a one-thread linker is not something this
+  repository should inherit.
