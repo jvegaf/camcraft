@@ -126,8 +126,32 @@ impl Shell {
     self.inspector_open = open;
   }
 
-  /// The app bar: what this document is, what can be undone, and the one action that costs material.
-  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+  /// Whether the rail draws one group's chips.
+  ///
+  /// The heading is drawn either way. Collapsing a group hides its chips and nothing else: the word stays,
+  /// so the rail is a table the operator folds, not a memory test (camui-prancheta S4).
+  pub fn group_open(&self, group: Group) -> bool {
+    !self.collapsed_groups.contains(&group)
+  }
+
+  /// Collapse or expand one rail group.
+  pub fn toggle_group(&mut self, group: Group) {
+    match self.collapsed_groups.iter().position(|held| *held == group) {
+      Some(index) => {
+        self.collapsed_groups.remove(index);
+      }
+      None => self.collapsed_groups.push(group),
+    }
+  }
+
+  /// The app bar: what this document is and the three switches the frame keeps up here.
+  ///
+  /// **The bar holds no file command any more.** `Open`, `Save`, `Save as`, `Fit the job`, `Undo` and `Redo`
+  /// moved to the rail's FILE group in camui-prancheta T2b (S4): the reference gives the command table to the
+  /// rail, and a bar and a rail offering the same seven commands is two vocabularies for one act. What is
+  /// left is what belongs to the frame rather than to the document — its name, the units, the theme, the help
+  /// panel and the 2D/3D switch — plus the one action that costs material.
+  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, _output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
     egui::Panel::top("app_bar")
@@ -137,67 +161,6 @@ impl Shell {
           paint_mark(ui, &palette, metrics.icon_size);
           ui.label(RichText::new("campilot").size(theme::TITLE));
           ui.separator();
-
-          // Undo and Redo are the table's HISTORY run: their words, glyphs and actions come from the
-          // command that owns them, so the app bar cannot answer to a different name than the help
-          // panel teaches. Only the chord is the bar's own, because the keys window lists it too.
-          for (command, enabled, keys) in [
-            (Command::Undo, app.can_undo(), "Ctrl+Z"),
-            (Command::Redo, app.can_redo(), "Ctrl+Y"),
-          ] {
-            let tooltip = format!("{} — {keys}", command.label());
-            let response = icon_button(
-              ui,
-              &palette,
-              command_icon(command),
-              &tooltip,
-              false,
-              enabled,
-              18.0,
-            );
-            if response.clicked() {
-              output.actions.extend(command.action());
-            }
-            report_app_bar(output, command, response.rect);
-          }
-          ui.separator();
-
-          // Open asks the host for a path and does nothing else with it: the file dialog belongs to the
-          // host crate, so this button means "ask", never "open" (S2, S5).
-          let open = icon_button(
-            ui,
-            &palette,
-            command_icon(Command::Open),
-            Command::Open.label(),
-            false,
-            true,
-            18.0,
-          );
-          if open.clicked() {
-            output.actions.extend(Command::Open.action());
-          }
-          report_app_bar(output, Command::Open, open.rect);
-
-          // Save writes the file the bar names and Save As asks for a new one. Both are glyphs beside Open
-          // because they are the same sentence about the same file, and Save stays enabled with no file yet:
-          // a disabled button could not say why, and its refusal is the one place the difference between the
-          // two commands is explained. Save As asks the host exactly as Open does — an intent out of the
-          // shell, the platform's dialog in the host, a path back in as an action (S2).
-          for command in [Command::Save, Command::SaveAs] {
-            let response = icon_button(
-              ui,
-              &palette,
-              command_icon(command),
-              command.label(),
-              false,
-              true,
-              18.0,
-            );
-            if response.clicked() {
-              output.actions.extend(command.action());
-            }
-            report_app_bar(output, command, response.rect);
-          }
 
           // The bar names the file the drawing came from, and says whether it is modified. Until a host
           // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
@@ -252,26 +215,12 @@ impl Shell {
                 .color(palette.get(Role::TextDim)),
             )
             .on_hover_text("Working units. Every length in the shell is millimetres.");
-            ui.separator();
-            let fit = icon_button(
-              ui,
-              &palette,
-              command_icon(Command::FitJob),
-              &format!("{} — F", Command::FitJob.label()),
-              false,
-              true,
-              18.0,
-            );
-            if fit.clicked() {
-              output.actions.extend(Command::FitJob.action());
-            }
-            report_app_bar(output, Command::FitJob, fit.rect);
           });
         });
       });
   }
 
-  /// The left palette: the commands, grouped and labelled.
+  /// The left palette: the commands, grouped, labelled, and foldable.
   ///
   /// The reference app settles a question this shell got wrong first. A rail of unlabelled glyphs stops
   /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
@@ -280,6 +229,10 @@ impl Shell {
   ///
   /// Every word, run, glyph and command here comes from [`crate::help`]: the palette holds no list of
   /// its own, which is what closed the two-lists-one-command debt T8 inherited (L14).
+  ///
+  /// **A heading folds its group** (camui-prancheta S4). Clicking `FILE` hides FILE's chips and leaves the
+  /// word; clicking it again brings them back. The heading is a control and not a decoration, which is why it
+  /// reports where it was drawn the way the chips do: a test clicks the word, not a coordinate it guessed.
   pub(crate) fn palette_panel(
     &mut self,
     app: &AppState,
@@ -296,13 +249,23 @@ impl Shell {
           .show(ui, |ui| {
             let mut offered: Vec<String> = Vec::new();
             let mut hits: Vec<(String, (f32, f32))> = Vec::new();
+            let mut headings: Vec<(String, (f32, f32))> = Vec::new();
 
-            // The runs arrive in the table's own order: DRAW, TRANSFORM, VECTOR EDIT and VIEW.
+            // The runs arrive in the table's own order: FILE, DRAW, EDIT, ORGANISE and SHOW AND SELECT.
             for (group, chips) in self.palette_runs() {
               if group == Group::ShowAndSelect {
                 ui.add_space(metrics.space(3));
               }
-              section(ui, &palette, group.label());
+              let open = self.group_open(group);
+              let heading = section_toggle(ui, &palette, group.label(), open);
+              let centre = heading.rect.center();
+              headings.push((group.label().to_owned(), (centre.x, centre.y)));
+              if heading.clicked() {
+                self.toggle_group(group);
+              }
+              if !open {
+                continue;
+              }
               ui.horizontal_wrapped(|ui| {
                 for (icon, command) in chips {
                   let response = icon_button(
@@ -328,6 +291,7 @@ impl Shell {
             // palette is the part of the frame that carries no text of its own.
             output.drawn.palette = offered;
             output.drawn.palette_hits = hits;
+            output.drawn.palette_headings = headings;
           });
       });
   }
@@ -336,10 +300,11 @@ impl Shell {
   ///
   /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]), the
   /// glyphs and the commands themselves. The table's order is the order the runs and the chips are drawn in,
-  /// so a command that moves in the table moves in the palette.
+  /// so a command that moves in the table moves in the palette — which is why `Command::ALL` keeps each group
+  /// contiguous, in [`Group::ALL`]'s order.
   ///
-  /// HISTORY cannot reach the palette even by accident: [`Command::in_palette`] leaves its two commands to the
-  /// app bar.
+  /// [`Command::in_palette`] is the only filter: it leaves the Tools tab's own commands and the `F2` sheet
+  /// out, and it lets the whole FILE group in (camui-prancheta T2b).
   fn palette_runs(&self) -> Vec<PaletteRun> {
     let mut runs: Vec<PaletteRun> = Vec::new();
     for command in Command::ALL
@@ -1197,9 +1162,10 @@ fn command_icon(command: Command) -> Icon {
 
 /// Record one app-bar button: the word the command table gives it, and the point that presses it.
 ///
-/// The point is reported for the reason the palette reports its own ([`crate::DrawnState::palette_hits`]): every
-/// button in this bar is a glyph with no text beside it, so a headless test can neither find one by its
-/// label nor guess where the bar put it.
+/// Kept for the buttons the bar still owns. Since camui-prancheta T2b no bar button runs a table command —
+/// FILE moved to the rail — so [`crate::DrawnState::app_bar`] stays empty and a test asserts it, which is how a
+/// duplicate button cannot come back unnoticed.
+#[allow(dead_code)]
 fn report_app_bar(output: &mut ShellOutput, command: Command, rect: egui::Rect) {
   let centre = rect.center();
   output.drawn.app_bar.push(command.label().to_owned());
@@ -1514,6 +1480,56 @@ fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
   let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
   ui.painter()
     .rect_filled(rect, 0.0, palette.get(Role::Hairline));
+}
+
+/// A palette heading that folds its group.
+///
+/// The same word, weight, colour and hairline as [`section`], plus a caret and a click target: this is the
+/// reference's collapsible group, and the whole row is the control rather than a triangle the operator has to
+/// hit. The caret is painted as a triangle instead of written as a glyph because `▾` is a font bet — the
+/// bundled faces may or may not carry it — and a group whose affordance renders as a box is worse than no
+/// affordance at all.
+fn section_toggle(
+  ui: &mut egui::Ui,
+  palette: &Palette,
+  label: &str,
+  open: bool,
+) -> egui::Response {
+  ui.add_space(4.0);
+  // The row is allocated as a widget before anything is painted into it, because that is what makes it
+  // clickable: a response reused from a child layout answers no click, and this heading is the one control
+  // in the rail that is drawn without a widget of its own.
+  let width = ui.available_width();
+  let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 14.0), Sense::click());
+  let colour = palette.get(Role::TextDim);
+  let (cx, cy) = (rect.left() + 5.0, rect.center().y);
+  let points = if open {
+    vec![
+      egui::pos2(cx - 3.0, cy - 2.0),
+      egui::pos2(cx + 3.0, cy - 2.0),
+      egui::pos2(cx, cy + 3.0),
+    ]
+  } else {
+    vec![
+      egui::pos2(cx - 2.0, cy - 3.0),
+      egui::pos2(cx - 2.0, cy + 3.0),
+      egui::pos2(cx + 3.0, cy),
+    ]
+  };
+  ui.painter()
+    .add(egui::Shape::convex_polygon(points, colour, egui::Stroke::NONE));
+  ui.painter().text(
+    egui::pos2(cx + 8.0, cy),
+    egui::Align2::LEFT_CENTER,
+    label,
+    egui::FontId::proportional(theme::CAPTION),
+    colour,
+  );
+  let width = ui.available_width();
+  let (hairline, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
+  ui.painter()
+    .rect_filled(hairline, 0.0, palette.get(Role::Hairline));
+  response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A sentence in the shell's teaching voice, used where a stage has nothing to show yet.

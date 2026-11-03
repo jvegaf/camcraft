@@ -639,6 +639,12 @@ pub struct DrawnState {
   /// egui cannot be asked for a widget by its text from outside a frame, so the palette reports the
   /// point it drew each chip at and a click test presses that point instead of guessing at the layout.
   pub palette_hits: Vec<(String, (f32, f32))>,
+  /// Where the palette drew each group's heading: its word and the point in the window that folds it.
+  ///
+  /// A heading is a control now (camui-prancheta S4), so it reports itself the way the chips do: a test
+  /// clicks `FILE` and asserts FILE's chips are gone, instead of reaching into the shell's own field to set
+  /// a fold the operator would have set by clicking.
+  pub palette_headings: Vec<(String, (f32, f32))>,
   /// Where the Tools tab drew each parameterised command's button: its word and the point in the window
   /// that presses it.
   ///
@@ -649,8 +655,9 @@ pub struct DrawnState {
   pub authoring_hits: Vec<(String, (f32, f32))>,
   /// The words the app bar's command buttons answer to, in the order it drew them.
   ///
-  /// Open, Save, Save As, Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a
-  /// headless test can read is the one the command table gives them: this is the app bar's own report of it.
+  /// Empty since camui-prancheta T2b, and kept as an empty report on purpose: the bar's file commands moved to
+  /// the rail, and a test asserts this list is empty so a button cannot quietly come back. [`Self::app_bar_hits`]
+  /// is the same surface for the buttons that remain, which answer to their own labels.
   pub app_bar: Vec<String>,
   /// Where the app bar drew each command button: its word and the point in the window that presses it.
   ///
@@ -892,6 +899,13 @@ pub struct Shell {
   inspector_tab: Tab,
   /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
   inspector_open: bool,
+  /// The rail groups the operator has collapsed.
+  ///
+  /// View state, not document state: collapsing a group changes what the frame shows and nothing else, so
+  /// it is neither an undoable edit nor a reason for the document to read as modified. Every group starts
+  /// expanded, because a rail that hid its own commands on the first frame would teach nothing — and the
+  /// reference opens expanded.
+  collapsed_groups: Vec<crate::help::Group>,
   /// Whether the shortcuts window is open.
   show_shortcuts: bool,
   /// Whether the `F1` help panel is open.
@@ -978,6 +992,7 @@ impl Default for Shell {
       show_icons: false,
       inspector_tab: Tab::default(),
       inspector_open: true,
+      collapsed_groups: Vec::new(),
       show_shortcuts: false,
       show_help: false,
       // Closed at birth, like every other panel here: a dialog that opens by itself swallows the first

@@ -248,7 +248,20 @@ impl Command {
   ///
   /// The order is load-bearing: both draw their rows by walking this list and starting a new run when
   /// [`Command::group`] changes, so a command that moves here moves in the panel and the palette too.
+  ///
+  /// Every group is contiguous and the groups arrive in [`Group::ALL`]'s order (camui-prancheta S4): FILE
+  /// first, because a job starts by opening something. A command placed in the wrong block would draw its
+  /// group's heading twice, which is why the blocks are commented.
   pub const ALL: &'static [Command] = &[
+    // FILE
+    Command::Open,
+    Command::Save,
+    Command::SaveAs,
+    Command::Import,
+    Command::FitJob,
+    Command::Undo,
+    Command::Redo,
+    // DRAW
     Command::Select,
     Command::Line,
     Command::Rectangle,
@@ -260,23 +273,20 @@ impl Command {
     Command::Star,
     Command::AddText,
     Command::AddRectangle,
-    Command::Import,
-    Command::Open,
-    Command::Save,
-    Command::SaveAs,
+    // EDIT
+    Command::Offset,
+    Command::Join,
+    Command::Trim,
+    Command::NodeEdit,
+    Command::DeleteSelection,
+    // ORGANISE
     Command::Move,
     Command::Rotate,
     Command::Scale,
     Command::Mirror,
     Command::Array,
     Command::Align,
-    Command::Offset,
-    Command::Join,
-    Command::Trim,
-    Command::NodeEdit,
-    Command::DeleteSelection,
-    Command::Undo,
-    Command::Redo,
+    // SHOW AND SELECT
     Command::View3d,
     Command::Grid,
     Command::Layers,
@@ -284,7 +294,6 @@ impl Command {
     Command::Theme,
     Command::IconSet,
     Command::Shortcuts,
-    Command::FitJob,
   ];
 
   /// The word the frame already shows for this command.
@@ -384,22 +393,29 @@ impl Command {
     }
   }
 
-  /// Whether the left palette draws a chip for this command.
+  /// Whether the left rail draws a chip for this command.
   ///
-  /// The palette is a subset of the table, and this is the only list that says which subset: the nine
-  /// gestures plus text, the five transforms the Tools tab also runs, offset and join, and the four view
-  /// chips. Everything else is reached from somewhere the palette is not — `Add rectangle`, `Align`,
-  /// `Trim` and the node edits from the Tools tab, `Undo`, `Redo`, `3D`, `Theme` and `Fit the job` from
-  /// the app bar, `Icon set` from `F2`, `Open`, `Save` and `Save as` from the app bar, and `Import` from a
-  /// host, which is why it has no button at all.
+  /// The rail is a subset of the table, and this is the only list that says which subset: the seven FILE
+  /// commands, the nine gestures plus text, the five transforms the Tools tab also runs, offset and join,
+  /// and the four view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
+  /// `Align`, `Trim` and the node edits from the Tools tab, and `Icon set` from `F2`.
   ///
-  /// [`Group::History`] is never here: Undo and Redo are the app bar's run, so the palette has no
-  /// HISTORY section and the help panel is the only place that groups them.
+  /// **FILE moved here in camui-prancheta T2b, and that is the whole point of the move:** `Open`, `Save`,
+  /// `Save as`, `Import`, `Fit the job`, `Undo` and `Redo` used to be the app bar's own buttons, so the bar
+  /// and the rail would have offered the same seven commands twice (S4). One surface offers a command, and
+  /// the rail is the one the reference gives the command table to.
   pub fn in_palette(self) -> bool {
     self.tool().is_some()
       || matches!(
         self,
-        Self::AddText
+        Self::Open
+          | Self::Save
+          | Self::SaveAs
+          | Self::Import
+          | Self::FitJob
+          | Self::Undo
+          | Self::Redo
+          | Self::AddText
           | Self::Move
           | Self::Rotate
           | Self::Scale

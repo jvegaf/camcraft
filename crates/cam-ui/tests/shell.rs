@@ -562,15 +562,15 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   for label in ["campilot", "untitled.c2d", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
-  // The bar's one file command lives here, and a bar that could not ask for a document would leave the
-  // operator with a name and no way to change it.
+  // The bar's file command moved to the rail (camui-prancheta T2b, S4), and a bar that could not ask for a
+  // document would leave the operator with a name and no way to change it — so the rail must offer it.
   assert!(
     output
       .drawn
-      .app_bar
+      .palette
       .contains(&HelpCommand::Open.label().to_owned()),
-    "the bar must offer Open: {:?}",
-    output.drawn.app_bar
+    "the rail must offer Open: {:?}",
+    output.drawn.palette
   );
   // The rail is where the gestures live now, and it says so in its own report rather than in pixels.
   for tool in Tool::ALL {
@@ -2607,19 +2607,19 @@ fn an_open_frames_the_new_drawing_even_when_the_view_was_the_users() {
 }
 
 #[test]
-fn the_app_bars_open_button_asks_the_host_for_a_file() {
+fn the_rails_open_chip_asks_the_host_for_a_file() {
   let mut app = AppState::new(document_with_rectangle());
   let before = app.document_json();
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Open.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Open.label());
 
   assert_eq!(
     output.actions,
     vec![UiAction::RequestOpenFile],
-    "the bar must ask the host, not open a file of its own"
+    "the chip must ask the host, not open a file of its own"
   );
   assert_eq!(app.document_json(), before, "an intent touches no document");
   assert_eq!(
@@ -2630,15 +2630,16 @@ fn the_app_bars_open_button_asks_the_host_for_a_file() {
 }
 
 #[test]
-fn the_app_bars_other_buttons_still_emit_their_commands() {
-  // PRESERVE: Open joined a run of glyph buttons that now report where they were drawn. Undo, Redo and
-  // Fit the job have to emit exactly the action they emitted before they reported anything.
+fn the_rails_file_chips_still_emit_their_commands() {
+  // PRESERVE (camui-prancheta T2b): these seven buttons lived in the app bar and emitted exactly these
+  // actions. They emit the same actions from the rail, which is the move's whole claim — one surface, and
+  // the command it runs unchanged.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::FitJob.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::FitJob.label());
   assert_eq!(
     output.actions,
     vec![UiAction::ZoomToFit],
@@ -2653,7 +2654,7 @@ fn the_app_bars_other_buttons_still_emit_their_commands() {
     },
   )
   .expect("the rectangle is added");
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Undo.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Undo.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Undo],
@@ -2661,7 +2662,7 @@ fn the_app_bars_other_buttons_still_emit_their_commands() {
   );
   shell.apply_action(&mut app, &UiAction::Undo);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Redo.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Redo.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Redo],
@@ -3197,21 +3198,21 @@ fn opening_a_dirty_document_is_refused_and_a_clean_one_still_opens() {
 }
 
 #[test]
-fn the_app_bars_save_buttons_emit_their_actions() {
+fn the_rails_save_chips_emit_their_actions() {
   let mut app = AppState::new(document_with_rectangle());
   let before = app.document_json();
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Save.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Save.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Save],
-    "the Save button writes the file the shell already has"
+    "the Save chip writes the file the shell already has"
   );
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::SaveAs.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::SaveAs.label());
   assert_eq!(
     output.actions,
     vec![UiAction::RequestSaveAs],
@@ -3483,9 +3484,10 @@ fn escape_closes_the_help_panel() {
 /// run the rail draws with no chips in it would be a heading over nothing (camui-prancheta T2a).
 fn palette_groups() -> Vec<Group> {
   vec![
+    Group::File,
     Group::Draw,
-    Group::Organise,
     Group::Edit,
+    Group::Organise,
     Group::ShowAndSelect,
   ]
 }
@@ -3527,14 +3529,14 @@ fn every_palette_entry_comes_from_the_table() {
 }
 
 #[test]
-fn the_palette_shows_no_history_run() {
-  // HISTORY is the app bar's run: Undo and Redo are buttons up there, and filing them under VIEW in
-  // the palette would be a lie in the one place the shell is supposed to be exact (L29).
+fn the_palette_shows_all_five_runs() {
+  // The rail is the whole command table now, FILE included: `Open`, `Save`, `Save as`, `Import`, `Fit the
+  // job`, `Undo` and `Redo` moved out of the app bar in camui-prancheta T2b (S4).
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
 
-  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
   let all = joined(&texts);
   for group in palette_groups() {
     assert!(
@@ -3542,11 +3544,17 @@ fn the_palette_shows_no_history_run() {
       "the palette must label the {} run: {all}",
       group.label()
     );
+    assert!(
+      output
+        .drawn
+        .palette_headings
+        .iter()
+        .any(|(label, _)| label == group.label()),
+      "the {} heading must be drawn as a control: {:?}",
+      group.label(),
+      output.drawn.palette_headings
+    );
   }
-  assert!(
-    !all.contains(Group::File.label()),
-    "the rail must not head a group it draws no chip under: {all}"
-  );
 }
 
 #[test]
@@ -3609,26 +3617,15 @@ fn the_shortcuts_chip_still_opens_the_shortcuts_sheet() {
 
 #[test]
 fn the_app_bar_labels_match_the_table() {
-  // Six icon-only buttons whose words live in the table now, in the order the bar draws them. Save and Save
-  // As joined the run beside Open — the three of them are the same sentence about the same file — and
-  // nothing else moved.
+  // The bar holds no table command since camui-prancheta T2b: FILE moved to the rail. The report is empty,
+  // and a button that came back — under any label — would have to come back here.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
-  let expected: Vec<String> = [
-    HelpCommand::Undo,
-    HelpCommand::Redo,
-    HelpCommand::Open,
-    HelpCommand::Save,
-    HelpCommand::SaveAs,
-    HelpCommand::FitJob,
-  ]
-  .iter()
-  .map(|command| command.label().to_owned())
-  .collect();
-  assert_eq!(
-    output.drawn.app_bar, expected,
-    "the app bar must answer to the table's own words"
+  assert!(
+    output.drawn.app_bar.is_empty(),
+    "the app bar must draw no command button: {:?}",
+    output.drawn.app_bar
   );
 }
 
