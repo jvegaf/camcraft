@@ -1,8 +1,9 @@
 # camui-prancheta — the shell redrawn from full-resolution reference frames
 
-Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. Branch
-`feat/camui-prancheta` from `master` @ `a7a701e`. No subagents are configured in this repository, so every task
-routes inline.
+Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. T0-T4 landed on
+`feat/camui-prancheta` from `master` @ `a7a701e`, merged into `master` when T4 closed; **from T5 on, each task
+gets its own branch from `master`** (L18). No subagents are configured in this repository, so every task routes
+inline.
 
 ## Specs
 
@@ -342,3 +343,12 @@ words: *"design/prancheta-reference/ + README"*.
   undocumented and the grid chip wearing both contracts. `9d7bc11` moves the doc block back. A function whose
   documentation describes another function is worse than an unreviewed follow-up — but **`9d7bc11` is not
   covered by this receipt**, and it is written down here so the next candidate knows it.
+- **L18 (the owner's delivery decision: one branch per task).** The owner's exact words: *"mergea, limpia y
+  arrancamos una rama por task"*. That settles the question L11, L16 and L17 kept handing back: the merged unit
+  is T0-T4 (18 commits, `a7a701e..c7b30d3`) into `master`, **locally — `origin/master` is untouched, and a push
+  stays the owner's decision**; the feature branch is deleted with the merge, because a merged branch is not a
+  place to keep working; and from T5 on every task gets its own branch cut from `master`.
+  **What this buys, measured rather than hoped:** each task's review candidate becomes `master..HEAD` at the end
+  of its own branch — the T4 candidate was 341 lines and cost ~67 kB of reviewer prompt, an order of magnitude
+  under the whole-branch pass that L17 found unreviewable. The narrowing argument T4 needed (`baseRef` to a
+  commit three slices back) stops being necessary.
