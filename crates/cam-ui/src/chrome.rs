@@ -1,14 +1,13 @@
-//! The shell's frame: the app bar, the stage bar, the rail and the inspector.
+//! The shell's frame: the app bar, the rail, the canvas and the inspector.
 //!
-//! `design/camui-shell/01-shell-2d.html` is the visual spec. What this module implements is the
-//! *structure* that artboard argues for, mapped onto the widgets the crate already has rather than
+//! `design/prancheta-reference/` is the visual spec: fifteen full-resolution frames of the reference app,
+//! each annotated in that directory's `README.md` with the pattern it settles. What this module implements
+//! is the *structure* those frames argue for, mapped onto the widgets the crate already has rather than
 //! copied pixel for pixel:
 //!
 //! ```text
 //! ┌───────────────────────────────────────────────────────────┐  app bar    40 px
 //! │ mark  campilot   ↶ ↷   untitled      mm ☾ ? fit [G-code]  │
-//! ├───────────────────────────────────────────────────────────┤  stage bar  32 px
-//! │ 1 Design 4 › 2 Edit › 3 Relief › 4 Toolpaths 3 › 5 Prove │
 //! ├────┬───────────────────────────────────────┬──────────────┤
 //! │ 52 │                                       │ inspector    │
 //! │ px │              canvas                   │ 288 px       │
@@ -16,32 +15,20 @@
 //! ├────┴───────────────────────────────────────┴──────────────┤  status bar 26 px
 //! ```
 //!
-//! Three decisions are worth stating, because each is a place a shell usually lies.
+//! **There is no stage bar, and removing it was a correction, not a preference.** An earlier version of this
+//! frame carried a `Design › Edit › Relief › Toolpaths › Prove` strip, drawn from eight frames of the
+//! reference app that had been photographed off two videos. The fifteen full-resolution frames show no such
+//! strip in any state: the reference carries its workflow in the rail and in whatever task the right panel has
+//! open. The strip is gone, and with it the stage enum that fed it (camui-prancheta S2).
 //!
-//! **The stage is view state, not a command.** Switching stage changes what the rail offers and which
-//! inspector tab opens first; it pushes no [`UiAction`] and never touches the document. That is what
-//! lets the stage bar be clickable before any geometry exists.
+//! **The rail is not stage-scoped.** Sixty-odd commands do not fit on one screen and never did, but the
+//! reference's answer is not to hide them behind a mode: it labels them, groups them, and lets the operator
+//! collapse a group. What a command can do right now is decided by the document — the rule [`Command`] already
+//! applies when it greys a chip — and never by a mode the operator has to remember they are in.
 //!
-//! **Counts are counted, never invented.** A stage shows a number only when the document can prove it:
-//! vectors for Design, toolpaths for Toolpaths. The rest show a dash and the inspector says in words
-//! where those commands live today (`cam-cli`). A stage bar claiming `0 problems` for a validation
-//! nobody runs is worse than one that shows nothing.
-//!
-//! **A stage is done when a fact says so, not when the operator feels done.** Design is ready at one
-//! vector and Toolpaths at one toolpath, and both readings come from [`Stage::readiness`] — the same
-//! answer the bar's number is rendered from, so the bar cannot print `3` beside "nothing drawn yet". A
-//! countable stage that holds none of its fact names the step that changes that, in the voice
-//! `02-stages.html` §04 states; the three stages nothing measures answer [`Readiness::Unmeasured`] and
-//! say nothing at all. What the count cannot prove the stage does not claim: the artboard gates Design
-//! on "every vector either closed or knowingly open; nothing off the sheet" and Toolpaths on every path
-//! having "a tool, a depth inside the stock, and no unreachable corner left unannounced" — none of
-//! which `AppState` measures — so the shell counts the one fact it has instead of certifying a gate it
-//! cannot see.
-//!
-//! **The rail is stage-scoped, and that is the point of it.** Sixty-odd commands do not fit on one
-//! screen and never did; the rail shows the current stage's tools, so "what can I do right now" is one
-//! glance instead of one search. The cost — an expert pays a stage switch — is the trade the artboard
-//! names.
+//! **Counts are counted, never invented.** The frame states a number only when the document can prove it:
+//! vectors on the sheet, toolpaths in the document. A section that would otherwise invent a count shows the
+//! sentence naming the step that produces it instead — never `0 problems` for a validation nobody runs.
 
 use cam_app::{AppState, VertexEdit};
 use cam_geom::Point2;
@@ -62,51 +49,6 @@ type PaletteChip = (Icon, Command);
 /// A labelled run of palette chips: the group's name and the chips under it.
 type PaletteRun = (Group, Vec<PaletteChip>);
 
-/// What the document proves about a stage: a count, a missing step, or nothing measurable at all.
-///
-/// Three answers, and deliberately not a boolean. `false` cannot tell "the sheet is still empty" from
-/// "nobody measures this stage", and the second of those is the state this shell has to be able to say
-/// out loud: Edit, Relief and Prove have no fact in `AppState` behind them — no self-intersection report,
-/// no relief, no simulation result — so a stage that answered "not ready" for them would be reporting a
-/// check nobody ran (S9).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Readiness {
-  /// The document holds this stage's fact, and this is how many of it there are.
-  Ready(usize),
-  /// The stage can be counted and the count is zero. The sentence names the step that changes that.
-  NotReady(&'static str),
-  /// Nothing in the document measures this stage, so it is neither ready nor not ready.
-  Unmeasured,
-}
-
-/// A count turned into an answer: the number it proved, or the sentence naming the step it is missing.
-fn counted(count: usize, next_step: &'static str) -> Readiness {
-  if count > 0 {
-    Readiness::Ready(count)
-  } else {
-    Readiness::NotReady(next_step)
-  }
-}
-
-/// The stages a job walks through, in the order the artboard draws them.
-///
-/// [`Stage::Design`] comes first because it is the only stage the shell can complete end to end today;
-/// the rest name work that lives in `cam-cli` (M4–M7) until the shell grows the panels for it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Stage {
-  /// Vectors: draw, import, trace.
-  #[default]
-  Design,
-  /// Vector surgery: nodes, trim, fillet, offsets, transforms.
-  Edit,
-  /// Relief and 3D work.
-  Relief,
-  /// Strategies: profile, pocket, drill, V-carve.
-  Toolpaths,
-  /// Simulate, verify, emit.
-  Prove,
-}
-
 /// Which inspector tab is showing.
 ///
 /// Three tabs, and not the artboard's three: our document has no toolpath *parameters* to show yet (a
@@ -123,126 +65,6 @@ pub enum Tab {
   Job,
 }
 
-impl Stage {
-  /// Every stage, in the order the bar draws them.
-  pub const ALL: [Stage; 5] = [
-    Stage::Design,
-    Stage::Edit,
-    Stage::Relief,
-    Stage::Toolpaths,
-    Stage::Prove,
-  ];
-
-  /// The word on the stage chip.
-  pub fn label(self) -> &'static str {
-    match self {
-      Self::Design => "Design",
-      Self::Edit => "Edit",
-      Self::Relief => "Relief",
-      Self::Toolpaths => "Toolpaths",
-      Self::Prove => "Prove",
-    }
-  }
-
-  /// What this stage asks of the operator, in the shell's own voice.
-  ///
-  /// The inspector shows this when a stage offers no tools of its own, so an empty rail is an
-  /// explanation rather than a dead end.
-  pub fn note(self) -> &'static str {
-    match self {
-      Self::Design => {
-        "Draw or import vectors. Arm a tool and drag on the canvas; Select picks and marquees."
-      }
-      Self::Edit => {
-        "Work the vectors: nodes, offsets, transforms. The numbers live in Tools; the rail runs them."
-      }
-      Self::Relief => {
-        "Reliefs are authored with `cam-cli` today: build one from a model or a vector profile there, \
-         then simulate it."
-      }
-      Self::Toolpaths => {
-        "Toolpaths are authored with `cam-cli toolpath` today. They arrive in the document finished, \
-         and are counted above."
-      }
-      Self::Prove => {
-        "Simulation and G-code live in `cam-cli simulate` and `cam-cli emit` until the shell grows the \
-         panels for them."
-      }
-    }
-  }
-
-  /// Whether this stage's work is in the document, out of it, or impossible to see from here.
-  ///
-  /// One rule per countable stage, and one fact behind each: **Design is done when the drawing holds at
-  /// least one entity** — a vector on the sheet, on any layer, visible or not, because the count is about
-  /// the drawing and not about the view — and **Toolpaths is done when the document holds at least one
-  /// toolpath**. Both are read from the document and nothing else, so a stage can never be ready on the
-  /// strength of what the frame happens to be showing.
-  ///
-  /// Only two of the five stages answer at all. Edit, Relief and Prove have no fact behind them in
-  /// `AppState`, and [`Readiness::Unmeasured`] is how a stage declines to invent one.
-  pub fn readiness(self, app: &AppState) -> Readiness {
-    match self {
-      Self::Design => counted(
-        app
-          .document()
-          .layers
-          .iter()
-          .map(|layer| layer.entities.len())
-          .sum(),
-        "Nothing drawn yet — 0 vectors on the sheet. Draw or import the shape you want to cut.",
-      ),
-      Self::Toolpaths => counted(
-        app.document().toolpaths.len(),
-        "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` \
-         and lands here finished.",
-      ),
-      Self::Edit | Self::Relief | Self::Prove => Readiness::Unmeasured,
-    }
-  }
-
-  /// The number this stage can prove from the document, if any.
-  ///
-  /// Rendered from [`Stage::readiness`] rather than counted again: the bar's number and the bar's state are
-  /// one answer read twice, which is what stops it printing `3` beside "nothing drawn yet".
-  ///
-  /// A dash means "nothing to count yet", never "zero". The distinction matters: an empty sheet really
-  /// does hold zero vectors, while a count of zero problems would be a claim about a check nobody ran.
-  fn count(self, app: &AppState) -> String {
-    match self.readiness(app) {
-      Readiness::Ready(count) => count.to_string(),
-      // A countable stage that is not ready holds zero of its fact, and a measured zero is a fact too.
-      Readiness::NotReady(_) => "0".to_owned(),
-      Readiness::Unmeasured => "—".to_owned(),
-    }
-  }
-
-  /// What the stage chip says on hover: what the stage asks, preceded by what it is missing.
-  ///
-  /// Consequence before mechanics is the artboard's first rule for every string (§04), so a stage that is
-  /// not ready leads with the missing step and then says how the work is done. Every other stage shows its
-  /// [`Stage::note`] unchanged.
-  pub fn hover(self, app: &AppState) -> String {
-    match self.readiness(app) {
-      Readiness::NotReady(step) => format!("{step}\n{}", self.note()),
-      Readiness::Ready(_) | Readiness::Unmeasured => self.note().to_owned(),
-    }
-  }
-
-  /// The palette runs this stage adds, in the order the table lists them.
-  ///
-  /// Only Design has armed canvas gestures today; Edit offers the commands that work on what already
-  /// exists, and the other stages offer nothing but VIEW, which every stage shows. The difference is
-  /// visible in the palette rather than papered over.
-  fn runs(self) -> &'static [Group] {
-    match self {
-      Self::Design => &[Group::Draw],
-      Self::Edit => &[Group::Transform, Group::VectorEdit],
-      Self::Relief | Self::Toolpaths | Self::Prove => &[],
-    }
-  }
-}
-
 impl Tab {
   /// Every tab, left to right.
   pub const ALL: [Tab; 3] = [Tab::Tools, Tab::Selection, Tab::Job];
@@ -257,23 +79,32 @@ impl Tab {
   }
 }
 
+/// The step the document is missing, in the shell's own voice, or nothing when it is missing none.
+///
+/// Two facts, and only facts: a drawing with no entities, and a document with no toolpaths. Everything else the
+/// shell cannot see, and it says nothing rather than certifying a gate it cannot check.
+fn next_step(app: &AppState) -> Option<&'static str> {
+  let vectors: usize = app
+    .document()
+    .layers
+    .iter()
+    .map(|layer| layer.entities.len())
+    .sum();
+  if vectors == 0 {
+    return Some(
+      "Nothing drawn yet — 0 vectors on the sheet. Draw or import the shape you want to cut.",
+    );
+  }
+  if app.document().toolpaths.is_empty() {
+    return Some(
+      "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` and \
+       lands here finished.",
+    );
+  }
+  None
+}
+
 impl Shell {
-  /// The stage the shell is working in.
-  pub fn stage(&self) -> Stage {
-    self.stage
-  }
-
-  /// Switch stage. View state: no command is pushed and the document is not touched.
-  pub fn set_stage(&mut self, stage: Stage) {
-    self.stage = stage;
-    // A stage brings its own tools, so the tab that holds them is the useful one to reveal. The
-    // operator can still pick another tab; this only decides what the switch shows.
-    self.inspector_tab = match stage {
-      Stage::Design | Stage::Edit => Tab::Tools,
-      Stage::Relief | Stage::Toolpaths | Stage::Prove => Tab::Job,
-    };
-  }
-
   /// Which inspector tab is showing.
   pub fn tab(&self) -> Tab {
     self.inspector_tab
@@ -440,48 +271,7 @@ impl Shell {
       });
   }
 
-  /// The stage bar: where the job stands, and what each stage can prove.
-  pub(crate) fn stage_bar(&mut self, app: &AppState, ui: &mut egui::Ui) {
-    let palette = self.palette();
-    egui::Panel::top("stage_bar").show(ui, |ui| {
-      ui.horizontal(|ui| {
-        for (index, stage) in Stage::ALL.iter().enumerate() {
-          if index > 0 {
-            ui.label(
-              RichText::new("›")
-                .size(theme::CAPTION)
-                .color(palette.get(Role::TextOff)),
-            );
-          }
-          let text =
-            RichText::new(format!("{}  {}", stage.label(), stage.count(app))).size(theme::CAPTION);
-          if ui
-            .selectable_label(*stage == self.stage, text)
-            .on_hover_text(stage.hover(app))
-            .clicked()
-          {
-            self.set_stage(*stage);
-          }
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-          let job = &app.document().job;
-          ui.label(
-            RichText::new(format!(
-              "{:.0} × {:.0} × {:.0} mm",
-              job.width.mm(),
-              job.height.mm(),
-              job.thickness.mm()
-            ))
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-          )
-          .on_hover_text("Stock: the sheet this job cuts out of.");
-        });
-      });
-    });
-  }
-
-  /// The left palette: the current stage's commands, grouped and labelled.
+  /// The left palette: the commands, grouped and labelled.
   ///
   /// The reference app settles a question this shell got wrong first. A rail of unlabelled glyphs stops
   /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
@@ -506,14 +296,6 @@ impl Shell {
           .show(ui, |ui| {
             let mut offered: Vec<String> = Vec::new();
             let mut hits: Vec<(String, (f32, f32))> = Vec::new();
-
-            // A stage that brings no run of its own explains itself, so an empty rail is an answer and
-            // not a dead end.
-            if self.stage.runs().is_empty() {
-              let title = self.stage.label().to_uppercase();
-              section(ui, &palette, &title);
-              note(ui, &palette, self.stage.note());
-            }
 
             // The runs arrive in the table's own order: DRAW, TRANSFORM, VECTOR EDIT and VIEW.
             for (group, chips) in self.palette_runs() {
@@ -544,22 +326,20 @@ impl Shell {
 
             // What the palette offered: `DrawnState` is the shell's report of what it drew, and the
             // palette is the part of the frame that carries no text of its own.
-            output.drawn.stage = self.stage;
             output.drawn.palette = offered;
             output.drawn.palette_hits = hits;
           });
       });
   }
 
-  /// The palette's runs for the current stage, derived from the command table.
+  /// The palette's runs, derived from the command table.
   ///
-  /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]),
-  /// the glyphs and the commands themselves; the stage decides which runs it shows, and VIEW is every
-  /// stage's. The table's order is the order the runs and the chips are drawn in, so a command that moves
-  /// in the table moves in the palette.
+  /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]), the
+  /// glyphs and the commands themselves. The table's order is the order the runs and the chips are drawn in,
+  /// so a command that moves in the table moves in the palette.
   ///
-  /// HISTORY cannot reach the palette even by accident: [`Command::in_palette`] leaves its two commands
-  /// to the app bar, and no stage claims that run.
+  /// HISTORY cannot reach the palette even by accident: [`Command::in_palette`] leaves its two commands to the
+  /// app bar.
   fn palette_runs(&self) -> Vec<PaletteRun> {
     let mut runs: Vec<PaletteRun> = Vec::new();
     for command in Command::ALL
@@ -568,9 +348,6 @@ impl Shell {
       .filter(|command| command.in_palette())
     {
       let group = command.group();
-      if group != Group::View && !self.stage.runs().contains(&group) {
-        continue;
-      }
       let chip = (command_icon(command), command);
       match runs.last_mut() {
         Some((name, chips)) if *name == group => chips.push(chip),
@@ -736,20 +513,13 @@ impl Shell {
           .max_height(body)
           .show(ui, |ui| {
             ui.add_space(metrics.space(2));
-            // The card belongs to a toolpath, so it is drawn on the stage whose subject is toolpaths —
-            // and only while the document holds one, because a card for a toolpath that does not exist
-            // would be describing nothing.
-            if self.stage == Stage::Toolpaths {
+            // The card belongs to a toolpath, so it is drawn only while the document holds one: a card for a
+            // toolpath that does not exist would be describing nothing.
+            if !app.document().toolpaths.is_empty() {
               self.tool_card(app, ui, &palette, output);
             }
             match self.inspector_tab {
-              Tab::Tools => {
-                if self.stage.runs().is_empty() {
-                  note(ui, &palette, self.stage.note());
-                } else {
-                  self.authoring(app, ui, output);
-                }
-              }
+              Tab::Tools => self.authoring(app, ui, output),
               Tab::Selection => self.properties(app, ui, output),
               Tab::Job => self.job_section(app, ui, &palette, output),
             }
@@ -970,10 +740,10 @@ impl Shell {
         );
         ui.end_row();
       });
-    // The section reports the document, so the one sentence it can add is what the stage in view still
-    // needs. A stage that is ready or unmeasured owes nothing here: printing another stage's sentence —
-    // which is what `Stage::Toolpaths.note()` did, on all five stages — was the one lie in this section.
-    if let Readiness::NotReady(step) = self.stage.readiness(app) {
+    // The section reports the document, so the one sentence it can add is the step the document is missing.
+    // A document that has everything the shell can see owes nothing here, and printing another section's
+    // sentence would be the one lie this section could tell.
+    if let Some(step) = next_step(app) {
       ui.add_space(6.0);
       note(ui, palette, step);
     }

@@ -65,7 +65,7 @@ pub mod icons;
 pub mod params;
 pub mod theme;
 
-pub use chrome::{Readiness, Stage, Tab};
+pub use chrome::Tab;
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -627,9 +627,6 @@ pub struct DrawnState {
   pub painted_triangles: usize,
   /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
   pub painted_3d_lines: usize,
-  /// The stage the frame drew, and the rail entries it offered in order.
-  ///
-  pub stage: Stage,
   /// The sentence the status bar showed at its right end.
   pub hint: String,
   /// What the left palette offered, in the order it drew them.
@@ -891,8 +888,6 @@ pub struct Shell {
   /// Whether the icon sheet is open. Until the shell has a rail to hang glyphs on, this is the only
   /// way to look at the whole set beside the rest of it.
   show_icons: bool,
-  /// Which stage of the job the frame is showing. View state: switching it pushes no command.
-  stage: Stage,
   /// Which inspector tab is showing.
   inspector_tab: Tab,
   /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
@@ -981,7 +976,6 @@ impl Default for Shell {
       last_canvas: CanvasRect::default(),
       applied_theme: None,
       show_icons: false,
-      stage: Stage::default(),
       inspector_tab: Tab::default(),
       inspector_open: true,
       show_shortcuts: false,
@@ -1338,7 +1332,6 @@ impl Shell {
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
     // and a central panel must come last or it would claim the space the sides need.
     self.app_bar(app, ui, &mut output);
-    self.stage_bar(app, ui);
     self.status_bar(app, ui, &mut output);
     self.palette_panel(app, ui, &mut output);
     self.inspector(app, ui, &mut output);

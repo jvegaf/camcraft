@@ -1,15 +1,17 @@
-//! The palette every stage draws, measured once and then pinned.
+//! The palette the shell draws, measured once and then pinned.
 //!
 //! T8.2 made the palette derive from [`cam_ui::help::Command`], which is right — one source for labels, groups and
 //! order — but a test that derives its expectation from the same table cannot notice the table changing. These
-//! goldens were measured from the shell before the rewrite and after it, stage by stage, and are written down here so
-//! that a future edit to `Command::ALL`, to `in_palette()` or to `Stage::runs()` has to come with a deliberate
-//! change to this file.
+//! goldens were measured from the shell before the rewrite and after it, and are written down here so that a future
+//! edit to `Command::ALL` or to `in_palette()` has to come with a deliberate change to this file.
+//!
+//! One palette, not five. Until camui-prancheta T1 the shell drew a different rail per stage and this file pinned
+//! each one; the reference app has no stage bar, so the rail is the whole table and there is one golden to pin.
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer};
-use cam_ui::{Shell, ShellOutput, Stage};
+use cam_ui::{Shell, ShellOutput};
 
 /// A document with one closed rectangle, enough for the shell to draw a palette over something.
 fn document_with_rectangle() -> Document {
@@ -37,12 +39,11 @@ fn document_with_rectangle() -> Document {
   document
 }
 
-/// The chips the palette reported on one stage.
-fn palette_of(stage: Stage) -> Vec<String> {
+/// The chips the palette reported.
+fn palette() -> Vec<String> {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  shell.set_stage(stage);
   let mut captured: Option<ShellOutput> = None;
   let mut input = egui::RawInput {
     screen_rect: Some(egui::Rect::from_min_size(
@@ -51,7 +52,8 @@ fn palette_of(stage: Stage) -> Vec<String> {
     )),
     ..Default::default()
   };
-  // A stage switch only reaches the widgets on the frame after it, so the shell runs twice.
+  // egui lays a panel out from the space the previous pass ended with, so the shell runs twice and the
+  // second pass is the one worth reading.
   for _ in 0..2 {
     captured = None;
     let full = ctx.run_pass(input.clone(), |ctx| {
@@ -68,74 +70,41 @@ fn words(words: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn every_stage_draws_its_goldens_in_order() {
-  let expected = [
-    (
-      Stage::Design,
-      words(&[
-        "Select",
-        "Line",
-        "Rectangle",
-        "Polyline",
-        "Arc",
-        "Circle",
-        "Ellipse",
-        "Polygon",
-        "Star",
-        "Add text",
-        "Grid",
-        "Layers",
-        "Help",
-        "Shortcuts",
-      ]),
-    ),
-    (
-      Stage::Edit,
-      words(&[
-        "Move",
-        "Rotate",
-        "Scale",
-        "Mirror",
-        "Array",
-        "Offset",
-        "Join",
-        "Grid",
-        "Layers",
-        "Help",
-        "Shortcuts",
-      ]),
-    ),
-    (
-      Stage::Relief,
-      words(&["Grid", "Layers", "Help", "Shortcuts"]),
-    ),
-    (
-      Stage::Toolpaths,
-      words(&["Grid", "Layers", "Help", "Shortcuts"]),
-    ),
-    (
-      Stage::Prove,
-      words(&["Grid", "Layers", "Help", "Shortcuts"]),
-    ),
-  ];
-  for (stage, chips) in expected {
-    assert_eq!(palette_of(stage), chips, "the {stage:?} palette");
-  }
+fn the_palette_draws_its_golden_in_order() {
+  assert_eq!(
+    palette(),
+    words(&[
+      "Select",
+      "Line",
+      "Rectangle",
+      "Polyline",
+      "Arc",
+      "Circle",
+      "Ellipse",
+      "Polygon",
+      "Star",
+      "Add text",
+      "Move",
+      "Rotate",
+      "Scale",
+      "Mirror",
+      "Array",
+      "Offset",
+      "Join",
+      "Grid",
+      "Layers",
+      "Help",
+      "Shortcuts",
+    ]),
+    "the palette must be the table's own run, in its order"
+  );
 }
 
 #[test]
-fn no_stage_offers_a_history_chip() {
-  for stage in [
-    Stage::Design,
-    Stage::Edit,
-    Stage::Relief,
-    Stage::Toolpaths,
-    Stage::Prove,
-  ] {
-    let palette = palette_of(stage);
-    assert!(
-      !palette.iter().any(|chip| chip == "Undo" || chip == "Redo"),
-      "history belongs to the app bar, not to the palette: {stage:?} drew {palette:?}"
-    );
-  }
+fn the_palette_offers_no_history_chip() {
+  let palette = palette();
+  assert!(
+    !palette.iter().any(|chip| chip == "Undo" || chip == "Redo"),
+    "history belongs to the app bar, not to the palette: the palette drew {palette:?}"
+  );
 }
