@@ -1382,7 +1382,11 @@ impl Shell {
       }
     }
     paint_home(&painter, home, &palette);
-    self.paint_playback(&painter, &layout, &palette, output, &bar);
+    // The bar sits *below* the picture, so it needs a painter that is allowed to be there: a painter clipped to
+    // `layout.picture` erased every rectangle of the bar while its hit areas stayed live — an invisible control
+    // that still takes clicks (R2-001, R3-001 in the T6 review). Its own strip is the honest clip.
+    let bar_painter = ui.painter().with_clip_rect(layout.bar);
+    self.paint_playback(&bar_painter, &layout, &palette, output, &bar);
   }
 
   /// The overlay row: the four layer checkboxes, `Centre` and `?` (camui-prancheta S8).

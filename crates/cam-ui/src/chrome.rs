@@ -357,7 +357,7 @@ impl Shell {
     area: egui::Rect,
     metrics: &Metrics,
     output: &mut ShellOutput,
-  ) {
+  ) -> Option<Segmented> {
     let palette = self.palette();
     let strip = egui::Rect::from_min_max(
       area.min,
@@ -367,22 +367,19 @@ impl Shell {
     ui.scope_builder(egui::UiBuilder::new().max_rect(strip), |ui| {
       ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         ui.add_space(metrics.space(3));
-        control = Some(segmented(
-          ui,
-          &palette,
-          &["2D", "3D"],
-          usize::from(self.show_3d),
-        ));
+        control = Some(segmented_cells(ui, &palette, &["2D", "3D"]));
       });
     });
-    let Some(control) = control else {
-      return;
-    };
+    let control = control?;
     if let Some(pick) = control.picked {
       self.show_3d = pick == 1;
     }
-    output.drawn.view_toggle = control.cells;
+    output.drawn.view_toggle = control.cells.clone();
     output.drawn.view_toggle_rect = Some(rect_report(control.rect));
+    // Returned rather than only painted: the caller paints it again after the ruler band, which is drawn later
+    // in the frame and would otherwise cover it (R2-002). The press above is already applied, so the frame that
+    // presses `3D` is still the frame that splits (L13).
+    Some(control)
   }
 
   /// The left palette: the commands, grouped, labelled, and foldable.
@@ -1703,6 +1700,11 @@ pub(crate) struct Segmented {
   pub cells: Vec<(String, (f32, f32))>,
   /// The strip the whole control occupied.
   pub rect: egui::Rect,
+  /// Each cell's rectangle, in the order drawn.
+  ///
+  /// Kept so the control can be painted a second time later in the same frame: the canvas' `2D | 3D` sits on
+  /// the ruler band and has to be painted over it (camui-prancheta S8, R2-002).
+  pub cell_rects: Vec<egui::Rect>,
 }
 
 /// A segmented control: mutually exclusive choices in one joined strip.
@@ -1716,6 +1718,24 @@ pub(crate) fn segmented(
   labels: &[&str],
   active: usize,
 ) -> Segmented {
+  let control = segmented_cells(ui, palette, labels);
+  paint_segmented(
+    ui.painter(),
+    control.rect,
+    &control.cell_rects,
+    labels,
+    active,
+    palette,
+  );
+  control
+}
+
+/// Lay a segmented control out and report it, without painting it.
+///
+/// The canvas' `2D | 3D` needs this: it is laid out before the frame knows whether it splits (L13's rule) but it
+/// has to be *painted* after the ruler band it sits on (R2-002), so the two halves of the widget are separate
+/// calls and [`paint_segmented`] is the only painter for both.
+fn segmented_cells(ui: &mut egui::Ui, palette: &Palette, labels: &[&str]) -> Segmented {
   let font = egui::FontId::proportional(theme::CAPTION);
   let mut widths = Vec::with_capacity(labels.len());
   for label in labels {
@@ -1726,28 +1746,69 @@ pub(crate) fn segmented(
   }
   let total: f32 = widths.iter().sum();
   let (rect, response) = ui.allocate_exact_size(egui::vec2(total, 22.0), Sense::click());
+  let mut left = rect.left();
+  let mut cell_rects = Vec::with_capacity(labels.len());
+  for width in &widths {
+    cell_rects.push(egui::Rect::from_min_size(
+      egui::Pos2::new(left, rect.top()),
+      egui::vec2(*width, rect.height()),
+    ));
+    left += *width;
+  }
+  let mut clicked = None;
+  let mut cells = Vec::with_capacity(labels.len());
+  for (index, label) in labels.iter().enumerate() {
+    let cell = cell_rects[index];
+    if response.clicked()
+      && ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| cell.contains(p))
+    {
+      clicked = Some(index);
+    }
+    let centre = cell.center();
+    cells.push(((*label).to_owned(), (centre.x, centre.y)));
+  }
+  Segmented {
+    picked: clicked,
+    cells,
+    rect,
+    cell_rects,
+  }
+}
+
+/// Paint a segmented control: the strip, the chosen cell and every word.
+///
+/// Separate from [`segmented`] so it can be called a **second** time, later in the frame. The canvas'
+/// `2D | 3D` sits on the ruler band; the band is painted after the widget is laid out, and a later painter
+/// wins — which is how the control ended up under the band's own fill and numbers, invisible in 2D mode
+/// (R2-002 in the T6 review). One function for both paints, so the two cannot drift apart.
+pub(crate) fn paint_segmented(
+  painter: &egui::Painter,
+  rect: egui::Rect,
+  cell_rects: &[egui::Rect],
+  labels: &[&str],
+  active: usize,
+  palette: &Palette,
+) {
   let radius = egui::CornerRadius::same(11);
-  ui.painter()
-    .rect_filled(rect, radius, palette.get(Role::Raised));
-  ui.painter().rect_stroke(
+  painter.rect_filled(rect, radius, palette.get(Role::Raised));
+  painter.rect_stroke(
     rect,
     radius,
     egui::Stroke::new(1.0, palette.get(Role::Border)),
     egui::StrokeKind::Inside,
   );
-  let mut left = rect.left();
-  let mut clicked = None;
-  let mut cells = Vec::with_capacity(labels.len());
+  let font = egui::FontId::proportional(theme::CAPTION);
   for (index, label) in labels.iter().enumerate() {
-    let cell = egui::Rect::from_min_size(
-      egui::Pos2::new(left, rect.top()),
-      egui::vec2(widths[index], rect.height()),
-    );
+    let Some(cell) = cell_rects.get(index).copied() else {
+      continue;
+    };
     let on = index == active;
     if on {
-      ui.painter()
-        .rect_filled(cell, radius, palette.get(Role::SelSoft));
-      ui.painter().rect_stroke(
+      painter.rect_filled(cell, radius, palette.get(Role::SelSoft));
+      painter.rect_stroke(
         cell,
         radius,
         egui::Stroke::new(1.0, palette.get(Role::Sel)),
@@ -1759,29 +1820,13 @@ pub(crate) fn segmented(
     } else {
       palette.get(Role::TextDim)
     };
-    ui.painter().text(
+    painter.text(
       cell.center(),
       egui::Align2::CENTER_CENTER,
       *label,
       font.clone(),
       ink,
     );
-    if response.clicked()
-      && ui
-        .ctx()
-        .pointer_hover_pos()
-        .is_some_and(|p| cell.contains(p))
-    {
-      clicked = Some(index);
-    }
-    let centre = cell.center();
-    cells.push(((*label).to_owned(), (centre.x, centre.y)));
-    left += widths[index];
-  }
-  Segmented {
-    picked: clicked,
-    cells,
-    rect,
   }
 }
 

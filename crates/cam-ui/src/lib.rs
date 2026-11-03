@@ -1957,7 +1957,7 @@ impl Shell {
           ),
           area.max,
         );
-        self.view_toggle(ui, area, &metrics, output);
+        let toggle_paint = self.view_toggle(ui, area, &metrics, output);
         let (area_2d, drawing_2d, drawing_3d) = if self.show_3d {
           // Two columns of the drawing area. The left one's own band area is the left half of the central
           // area, whose inset is exactly the drawing half — which is what keeps the rulers and the camera
@@ -2003,6 +2003,20 @@ impl Shell {
           &metrics,
           self.cursor_world,
         );
+        // The band painted after the widget was laid out, and a later painter wins: the toggle is painted a
+        // second time here, so the control that enters 3D is never under a ruler number (R2-002 in the T6
+        // review). Same function as its first paint, and `show_3d` is already the pressed value, so this frame
+        // shows the view the press chose.
+        if let Some(control) = toggle_paint.as_ref() {
+          chrome::paint_segmented(
+            ui.painter(),
+            control.rect,
+            &control.cell_rects,
+            &["2D", "3D"],
+            usize::from(self.show_3d),
+            &palette,
+          );
+        }
 
         let response = ui.allocate_rect(drawing_2d, Sense::click_and_drag());
         // Everything the drawing paints is clipped to its own half: the grid and the geometry must not spill

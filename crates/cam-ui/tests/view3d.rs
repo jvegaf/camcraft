@@ -1199,13 +1199,16 @@ fn bar_rects(harness: &Harness) -> (egui::Rect, egui::Rect) {
     })
     .map(|clipped| clipped.clip_rect)
     .expect("the surface reached the painter as a mesh");
+  // The bar has a clip of its own since the T6 correction (it sits below the picture, and a painter clipped to
+  // the picture erased it: R2-001/R3-001), so it is found by where it is — under the surface's viewport — rather
+  // than by sharing the surface's own clip. The surface's viewport still proves the 3D half is the one asked.
   let rects_in_panel = || {
     harness
       .shapes
       .iter()
-      .filter(move |clipped| clipped.clip_rect.contains_rect(viewport))
+      .filter(|clipped| clipped.shape.visual_bounding_rect().max.y >= viewport.min.y)
       .filter_map(|clipped| match &clipped.shape {
-        egui::Shape::Rect(rect) => Some((rect.fill, rect.rect)),
+        egui::Shape::Rect(rect) if rect.rect.max.y >= viewport.max.y => Some((rect.fill, rect.rect)),
         _ => None,
       })
   };
