@@ -64,7 +64,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `c9f3c59` |
 | T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `fa179ab` |
 | T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `c22f57a` |
-| T2b-ii | The brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7) | S4 | inline | — |
+| T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `8a386f2` |
 | T3 | Right panel: the ribbon of three categories, the task-editor container with `✓`/`✕`, and `Layers` as its own collapsible block | S6 | inline | — |
 | T4 | Status bar in three zones, with the contextual message | S7 | inline | — |
 | T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
@@ -171,3 +171,32 @@ words: *"design/prancheta-reference/ + README"*.
   a host/toolchain condition and not a property of this branch: `cargo check --all-targets` never failed.
   The workaround is **not** committed to any config file, because a one-thread linker is not something this
   repository should inherit.
+- **L10 (T2b-ii: the brand block, and two things it settled that L7 left open).** The rail's foot now carries
+  `campilot`, `v<crate version>` and the document's own stamp: `Saved 2026-11-03 19:30 UTC` while the drawing
+  matches its file, `Unsaved changes` while it does not. **The stamp is the file's mtime**, read once per
+  action that opens or writes a document — never per frame, and never `SystemTime::now()`, which would say
+  "saved" about a file nobody wrote. `Shell::saved_stamp` is the one sentence the panel paints and a test
+  reads, so the two cannot drift.
+  **The clock is UTC and the line says `UTC`.** L7 asked for a formatter without `chrono` or `time`, and
+  local time needs a timezone database or `libc`'s `localtime_r` — a new dependency, which is delivery risk
+  item 5. Printing UTC without saying so would be wrong by hours in exactly the case the line exists for, so
+  the suffix is part of the string. `crates/cam-ui/src/stamp.rs` is Hinnant's civil-from-days, ~60 lines with
+  four tests: the epoch, the 2000 leap day and the day after it, the 2026 example L7 wrote down, and one
+  second before the epoch — the case truncating division would print as `1970-01-01 -00:01`.
+  **The layout lesson, paid for twice in this session.** The block was first drawn by wrapping the rail in
+  `Layout::bottom_up`, which put the brand at the foot and silently broke every click on the rail: inside a
+  bottom-up layout the scroll area's content is laid out from the bottom, so the point a frame reported was
+  not the point the next frame drew the chip at — three rail click tests and the seven-commands test failed
+  with actions arriving from the *neighbouring* chip. It is a bottom `Panel` now, which reserves its height
+  before the chips are laid out, and the coordinates hold still. Nothing about this is visible in a
+  screenshot, which is why it is written down here rather than in a comment that would be deleted by the next
+  refactor.
+  **Tests:** 190 in cam-ui. New: `the_rail_foot_names_the_product_and_says_the_work_is_unsaved` and
+  `opening_and_saving_stamp_the_brand_block_with_the_files_own_write` (open a real `.c2d`, check the stamp is
+  the file's mtime, edit, check `Unsaved changes`, save, check the stamp followed the write).
+- **L11 (the slice boundaries, and what delivery is not).** The branch now holds four slices, each one a commit
+  boundary and a review unit: `a7a701e..30e130d` (T0+T1, already reviewed and approved — L5, lineage
+  `review-d5ba49d2146ee31a`), `fa179ab` (T2a), `c22f57a` (T2b-i) and `8a386f2` (T2b-ii). 2 125 authored lines
+  over `origin/master` in eight commits, against the ~400-line guidance per slice: the boundaries above are the
+  answer to that, not one diff to review in a sitting, and the delivery shape (chained PRs, one per slice) is
+  the owner's decision. Nothing is pushed and nothing is merged from here.
