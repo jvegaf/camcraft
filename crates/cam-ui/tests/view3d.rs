@@ -1208,7 +1208,9 @@ fn bar_rects(harness: &Harness) -> (egui::Rect, egui::Rect) {
       .iter()
       .filter(|clipped| clipped.shape.visual_bounding_rect().max.y >= viewport.min.y)
       .filter_map(|clipped| match &clipped.shape {
-        egui::Shape::Rect(rect) if rect.rect.max.y >= viewport.max.y => Some((rect.fill, rect.rect)),
+        egui::Shape::Rect(rect) if rect.rect.max.y >= viewport.max.y => {
+          Some((rect.fill, rect.rect))
+        }
         _ => None,
       })
   };
@@ -1448,10 +1450,7 @@ impl Harness {
 
 /// A window rectangle from the four numbers a report uses.
 fn rect_of(rect: (f32, f32, f32, f32)) -> egui::Rect {
-  egui::Rect::from_min_size(
-    egui::pos2(rect.0, rect.1),
-    egui::vec2(rect.2, rect.3),
-  )
+  egui::Rect::from_min_size(egui::pos2(rect.0, rect.1), egui::vec2(rect.2, rect.3))
 }
 
 /// The point a report gave for `word`, in the list it gave it in.
@@ -1516,8 +1515,18 @@ fn the_view_toggle_is_drawn_once_at_the_canvases_top_right() {
   // One toggle and no second copy: the bar used to carry this control, and two of one control is the
   // defect this rule exists to prevent.
   let painted = |word: &str| harness.texts.iter().filter(|text| *text == word).count();
-  assert_eq!(painted("2D"), 1, "exactly one `2D`, painted: {:?}", harness.texts);
-  assert_eq!(painted("3D"), 1, "exactly one `3D`, painted: {:?}", harness.texts);
+  assert_eq!(
+    painted("2D"),
+    1,
+    "exactly one `2D`, painted: {:?}",
+    harness.texts
+  );
+  assert_eq!(
+    painted("3D"),
+    1,
+    "exactly one `3D`, painted: {:?}",
+    harness.texts
+  );
 }
 
 #[test]
@@ -1574,7 +1583,8 @@ fn the_split_puts_the_drawing_on_the_left_and_the_three_d_view_on_the_right() {
     three_d.min.x
   );
   assert!(
-    (three_d.width() - two_d.width()).abs() <= 1.0 && (three_d.height() - two_d.height()).abs() <= 1.0,
+    (three_d.width() - two_d.width()).abs() <= 1.0
+      && (three_d.height() - two_d.height()).abs() <= 1.0,
     "the two halves are the same size: {two_d:?} and {three_d:?}"
   );
   // The 3D half inherits the ruler's inset (L20), so both halves' content starts on one line rather than
@@ -1614,7 +1624,10 @@ fn the_drawing_half_keeps_its_pick_and_its_picture_while_the_split_is_open() {
     .map(|layer| layer.entities.len())
     .sum();
   harness.shell.active_tool = cam_ui::Tool::Line;
-  harness.drag(window_point(&harness, 20.0, 20.0), window_point(&harness, 60.0, 60.0));
+  harness.drag(
+    window_point(&harness, 20.0, 20.0),
+    window_point(&harness, 60.0, 60.0),
+  );
   let after: usize = harness
     .app
     .document()
@@ -1642,7 +1655,8 @@ fn each_half_keeps_its_own_gesture_while_the_split_is_open() {
   harness.drag(from, egui::pos2(from.x + 60.0, from.y + 40.0));
   let after_two_d = *harness.preview().camera();
   assert!(
-    (after_two_d.yaw - before.yaw).abs() < 1.0e-9 && (after_two_d.pitch - before.pitch).abs() < 1.0e-9,
+    (after_two_d.yaw - before.yaw).abs() < 1.0e-9
+      && (after_two_d.pitch - before.pitch).abs() < 1.0e-9,
     "the drawing half's drag must not orbit the 3D view: {} -> {}",
     before.yaw,
     after_two_d.yaw
@@ -1747,10 +1761,7 @@ fn the_overlay_row_names_the_four_layers_and_every_chip_hides_exactly_its_own() 
       if index == hidden {
         assert_eq!(drawn, 0, "`{word}` must hide its own layer");
       } else {
-        assert_eq!(
-          drawn, *expected,
-          "`{word}` must leave layer {index} alone"
-        );
+        assert_eq!(drawn, *expected, "`{word}` must leave layer {index} alone");
       }
     }
     assert!(
@@ -1908,9 +1919,17 @@ fn the_playback_bar_plays_pauses_and_names_the_move_the_playhead_is_on() {
   // `Step` and `Reset` are the two controls S8's list does not name and this shell keeps (M5 A10): the buttons
   // are wired to the playhead they describe, which is a claim about the bar rather than about the preview.
   harness.click(hit(&harness.output.drawn.playback_hits, "Reset"));
-  assert_eq!(harness.preview().cursor(), 0, "`Reset` rewinds to the first move");
+  assert_eq!(
+    harness.preview().cursor(),
+    0,
+    "`Reset` rewinds to the first move"
+  );
   harness.click(hit(&harness.output.drawn.playback_hits, "Step"));
-  assert_eq!(harness.preview().cursor(), 1, "`Step` advances exactly one move");
+  assert_eq!(
+    harness.preview().cursor(),
+    1,
+    "`Step` advances exactly one move"
+  );
   assert!(
     !harness.preview().playing(),
     "and leaves playback paused, so the next frame cannot undo the step"
@@ -1942,8 +1961,7 @@ fn to_the_end_cuts_the_whole_program_and_reads_as_the_references_own_line() {
   drilling.frame(Vec::new());
   drilling.click(hit(&drilling.output.drawn.playback_hits, "To the end"));
   assert_eq!(
-    drilling.output.drawn.playback_readout,
-    "0:05 / 0:05  T22 · Drilling 1 · Z 5.000",
+    drilling.output.drawn.playback_readout, "0:05 / 0:05  T22 · Drilling 1 · Z 5.000",
     "S8's readout, in its own words"
   );
 }
@@ -1965,7 +1983,11 @@ fn the_scrubber_seeks_the_playhead_to_the_point_it_was_pressed() {
   // Back to the start: seeking is a re-cut, so nothing is removed at zero. The press is on the track's own left
   // end, because a pixel into a 129 px track is already a tenth of a second of program.
   harness.click((left, y));
-  assert_eq!(harness.preview().cursor(), 0, "the playhead is back at the first move");
+  assert_eq!(
+    harness.preview().cursor(),
+    0,
+    "the playhead is back at the first move"
+  );
   assert!(
     harness.preview().elapsed().abs() < 1.0e-9,
     "and its clock reads nothing spent: {}",
@@ -2004,7 +2026,11 @@ fn the_speed_control_names_the_speed_it_sets() {
   assert_eq!(harness.preview().speed(), 60.0);
 
   harness.click(speed.1);
-  assert_eq!(harness.preview().speed(), 200.0, "the chip steps to the next speed");
+  assert_eq!(
+    harness.preview().speed(),
+    200.0,
+    "the chip steps to the next speed"
+  );
   assert!(
     harness
       .output
@@ -2045,7 +2071,8 @@ fn a_split_with_no_program_draws_no_overlay_row_and_says_why() {
     "no overlay row: a checkbox over nothing is a control that lies"
   );
   assert!(
-    harness.output.drawn.playback_hits.is_empty() && harness.output.drawn.playback_readout.is_empty(),
+    harness.output.drawn.playback_hits.is_empty()
+      && harness.output.drawn.playback_readout.is_empty(),
     "and no playback bar, for the same reason"
   );
   assert!(

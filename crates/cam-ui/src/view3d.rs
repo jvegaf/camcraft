@@ -55,7 +55,10 @@ use cam_model::Job;
 use cam_move::{Move, MoveStream, Point3, ToolShape};
 use cam_sim::{sweep, Heightfield};
 use cam_units::Length;
-use cam_view::{build_scene, build_stock_box, build_surface, Camera3d, Line3, SceneItem, FIELD_OF_VIEW, MIN_DISTANCE};
+use cam_view::{
+  build_scene, build_stock_box, build_surface, Camera3d, Line3, SceneItem, FIELD_OF_VIEW,
+  MIN_DISTANCE,
+};
 use egui::{Pos2, Stroke};
 
 use crate::theme::{self, Palette, Role};
@@ -180,7 +183,12 @@ pub enum Layer {
 
 impl Layer {
   /// Every layer, in the overlay row's own order.
-  pub const ALL: [Layer; 4] = [Layer::Material, Layer::Vectors, Layer::Toolpaths, Layer::Tool];
+  pub const ALL: [Layer; 4] = [
+    Layer::Material,
+    Layer::Vectors,
+    Layer::Toolpaths,
+    Layer::Tool,
+  ];
 
   /// The word the overlay row writes on this layer's chip.
   pub fn label(self) -> &'static str {
@@ -790,8 +798,14 @@ impl Preview3d {
       drawn.painted_tool_lines += 1;
     }
     let across = [
-      self.screen(rect, Point3::new(tip.x.mm() - radius, tip.y.mm(), tip.z.mm())),
-      self.screen(rect, Point3::new(tip.x.mm() + radius, tip.y.mm(), tip.z.mm())),
+      self.screen(
+        rect,
+        Point3::new(tip.x.mm() - radius, tip.y.mm(), tip.z.mm()),
+      ),
+      self.screen(
+        rect,
+        Point3::new(tip.x.mm() + radius, tip.y.mm(), tip.z.mm()),
+      ),
     ];
     if let [Some(start), Some(end)] = across {
       painter.line_segment([start, end], stroke);
@@ -1105,7 +1119,13 @@ fn half_layout(rect: egui::Rect, metrics: &theme::Metrics) -> Half {
 }
 
 /// The pill a chip is drawn in: the selected surface when it is on, the raised one while it is hovered.
-fn paint_pill(painter: &egui::Painter, rect: egui::Rect, palette: &Palette, on: bool, hovered: bool) {
+fn paint_pill(
+  painter: &egui::Painter,
+  rect: egui::Rect,
+  palette: &Palette,
+  on: bool,
+  hovered: bool,
+) {
   let radius = egui::CornerRadius::same(9);
   if on {
     painter.rect_filled(rect, radius, palette.get(Role::SelSoft));
@@ -1161,9 +1181,24 @@ fn paint_home(painter: &egui::Painter, rect: egui::Rect, palette: &Palette) {
   let apex = egui::pos2((left + right) * 0.5, top);
   painter.line_segment([egui::pos2(left, eave), apex], stroke);
   painter.line_segment([apex, egui::pos2(right, eave)], stroke);
-  painter.line_segment([egui::pos2(left + 1.0, eave), egui::pos2(left + 1.0, bottom)], stroke);
-  painter.line_segment([egui::pos2(right - 1.0, eave), egui::pos2(right - 1.0, bottom)], stroke);
-  painter.line_segment([egui::pos2(left + 1.0, bottom), egui::pos2(right - 1.0, bottom)], stroke);
+  painter.line_segment(
+    [egui::pos2(left + 1.0, eave), egui::pos2(left + 1.0, bottom)],
+    stroke,
+  );
+  painter.line_segment(
+    [
+      egui::pos2(right - 1.0, eave),
+      egui::pos2(right - 1.0, bottom),
+    ],
+    stroke,
+  );
+  painter.line_segment(
+    [
+      egui::pos2(left + 1.0, bottom),
+      egui::pos2(right - 1.0, bottom),
+    ],
+    stroke,
+  );
 }
 
 /// The playback bar's track and its fill.
@@ -1229,7 +1264,12 @@ impl Default for BarPaint {
 /// A checkbox carries its own box; a plain chip is a word in a pill. Measuring first is what lets the row be
 /// allocated in one pass and painted in another, which is the only way a press in the row can hide a layer in
 /// the same frame's picture (L13).
-fn chip_size(painter: &egui::Painter, palette: &Palette, label: &str, checkbox: bool) -> egui::Vec2 {
+fn chip_size(
+  painter: &egui::Painter,
+  palette: &Palette,
+  label: &str,
+  checkbox: bool,
+) -> egui::Vec2 {
   let galley = painter.layout_no_wrap(
     label.to_owned(),
     egui::FontId::proportional(theme::CAPTION),
@@ -1247,7 +1287,13 @@ fn chip_size(painter: &egui::Painter, palette: &Palette, label: &str, checkbox: 
 /// The tick is **painted**, not typeset, for the reason the rail's caret and the task editor's `✓` are (L8,
 /// L13): a glyph that renders as a tofu box would be worse than no affordance, and the box has to say which of
 /// its two states it is in at a glance.
-fn paint_layer_chip(painter: &egui::Painter, rect: egui::Rect, palette: &Palette, label: &str, on: bool) {
+fn paint_layer_chip(
+  painter: &egui::Painter,
+  rect: egui::Rect,
+  palette: &Palette,
+  label: &str,
+  on: bool,
+) {
   let font = egui::FontId::proportional(theme::CAPTION);
   paint_pill(painter, rect, palette, on, false);
   let box_size = 11.0;
@@ -1270,7 +1316,10 @@ fn paint_layer_chip(painter: &egui::Painter, rect: egui::Rect, palette: &Palette
     let tick = egui::Stroke::new(1.6, ink);
     let elbow = egui::pos2(mark.center().x - 0.5, mark.max.y - 3.0);
     painter.line_segment([egui::pos2(mark.min.x + 2.5, mark.center().y), elbow], tick);
-    painter.line_segment([elbow, egui::pos2(mark.max.x - 2.5, mark.min.y + 2.5)], tick);
+    painter.line_segment(
+      [elbow, egui::pos2(mark.max.x - 2.5, mark.min.y + 2.5)],
+      tick,
+    );
   }
   painter.text(
     egui::pos2(mark.max.x + 6.0, rect.center().y),
@@ -1371,7 +1420,14 @@ impl Shell {
     };
     let painter = ui.painter().with_clip_rect(layout.picture);
     if let Some(preview) = self.preview.as_ref() {
-      preview.paint_scene(&painter, layout.picture, &mut output.drawn, &palette, &vectors, layers);
+      preview.paint_scene(
+        &painter,
+        layout.picture,
+        &mut output.drawn,
+        &palette,
+        &vectors,
+        layers,
+      );
       output.drawn.triad = preview.triad(&painter, layout.corner, &palette);
     }
     for (word, rect, on) in &row {
@@ -1518,10 +1574,8 @@ impl Shell {
     let middle = row.center().y;
 
     // The transport: one button whose mark and word say what pressing it does now.
-    paint.transport = egui::Rect::from_min_size(
-      egui::pos2(left, middle - 9.0),
-      egui::vec2(26.0, 18.0),
-    );
+    paint.transport =
+      egui::Rect::from_min_size(egui::pos2(left, middle - 9.0), egui::vec2(26.0, 18.0));
     left += 26.0 + metrics.space(1);
     let response = ui.allocate_rect(paint.transport, egui::Sense::click());
     if response.clicked() {
@@ -1536,7 +1590,12 @@ impl Shell {
 
     // The speed: a pill naming the stop it is set to, stepping to the next one on a press. Its width is the
     // widest word the ladder can produce, so pressing it never shifts the scrubber beside it.
-    let size = chip_size(&painter, palette, &speed_text(SPEEDS[SPEEDS.len() - 1]), false);
+    let size = chip_size(
+      &painter,
+      palette,
+      &speed_text(SPEEDS[SPEEDS.len() - 1]),
+      false,
+    );
     let speed = egui::Rect::from_min_size(egui::pos2(left, middle - 9.0), size);
     left += size.x + metrics.space(1);
     let response = ui.allocate_rect(speed, egui::Sense::click());
@@ -1545,7 +1604,9 @@ impl Shell {
     }
     paint.speed = (speed, speed_text(preview.speed()));
     let centre = speed.center();
-    paint.hits.push((speed_text(preview.speed()), (centre.x, centre.y)));
+    paint
+      .hits
+      .push((speed_text(preview.speed()), (centre.x, centre.y)));
 
     // `To the end` shares the control line with the transport and the speed; `Step` and `Reset` live on the
     // readout's line, at its right end, where a second pair of pacing controls does not crowd the scrubber.
@@ -1565,10 +1626,7 @@ impl Shell {
     for word in ["Reset", "Step"] {
       let size = chip_size(&painter, palette, word, false);
       right -= size.x;
-      let rect = egui::Rect::from_min_size(
-        egui::pos2(right, bar.max.y - 6.0 - size.y),
-        size,
-      );
+      let rect = egui::Rect::from_min_size(egui::pos2(right, bar.max.y - 6.0 - size.y), size);
       right -= metrics.space(1);
       let response = ui.allocate_rect(rect, egui::Sense::click());
       if response.clicked() {
