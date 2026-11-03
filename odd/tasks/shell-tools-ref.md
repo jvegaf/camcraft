@@ -61,6 +61,9 @@ CLI does not have.
   verification: L5. Native review: **closed, not pending** — see the last paragraph of L5.
 - T4 — F1 closed the way S8 decided it: the header refusal in `cam-store`, the test that pins it, and the two
   tests the verifier handed over (S2, S3). Route: parent inline. Commit: the commit that carries this line.
+- T5 — the residual the verifier found and the review rated advisory (S3, S8): the `-wal` companion refusal
+  and its canonicalised form, the four tests behind them, and L7/L8. Route: delegated worker for the code,
+  parent for the record. Commit: the commit that carries this line.
 
 ## Log
 
@@ -198,3 +201,76 @@ CLI does not have.
   all. That is a total and honest refusal instead of a silent creation, and no library campilot writes is in
   WAL mode, so this costs nothing on our own files — but a shop library another tool left in WAL mode is
   refused by the window with a reason, while `cam-cli` keeps reading it through `open`.
+- **L7 (the native review, the blocker it rated advisory, and the fix).** **The review:** the candidate
+  `75e5174a..7578e6d` (4 paths, 274 lines) with lenses `risk` and `reliability` came back **approved**,
+  lineage `review-f31fc8273fb84d31`, and its authority is **burned** (`gentle-ai.review-acknowledged/v1`).
+  One advisory: **`R1-001`**, `crates/cam-store/src/tools.rs:300`, WARNING, informational — the risk lens
+  pointing at the very line an independent verifier had already found a hole in. Two model runs, 32 956 and
+  32 981 prompt bytes, transported by the Pi host.
+  **The tier contrast, kept because it decides when a review runs at all:** `assess` over the guard alone
+  (`5d77d77..HEAD`, 1 path, 12 lines) says `nativeRisk: high`; over the same guard carrying its tests and this
+  record (`6b70d8c..HEAD`, 4 paths, 221 lines) it says **`medium` / `under_budget`, `reviewDue: false`**. A
+  security change can fall under the budget by carrying its own tests. The provider still offered this
+  candidate on the mutation reminder, and the review ran — so the two mechanisms disagreed and the offer won.
+  **The blocker the review called advisory.** An independent verifier reproduced what a header refusal cannot
+  cover: bytes 18/19 set to `1` (rollback journal mode) beside a **non-empty** `-wal` — 4 096 bytes of
+  anything, the content is never read — makes SQLite 3.46 build and keep its `-shm`, **32 768 bytes**, as soon
+  as `stored_version` runs. Through a directory symlink beside a `.c2d`, that creation lands **outside the
+  document's directory**, which is precisely what S3 forbids. A 0-byte `-wal` does not trigger it. Reproduced
+  at the store and at the window, with the listing before and after. **Two views disagreed on severity and the
+  reproducing one wins:** a WARNING from a lens does not cancel a blocker somebody can show with a byte count.
+  **The fix is the second entry, not a better header check.** `has_wal_log` refuses a library that carries a
+  non-empty `-wal` beside it, before any connection exists; `declares_wal` is untouched. Together they answer
+  "would reading this create something?" from both directions — what the file declares about itself, and what
+  sits next to it. An absent, unreadable or empty log answers "no companion needed", and a `-wal` that cannot
+  be stat'd keeps its own refusal further down instead of inventing a second one.
+  **RED then GREEN at both levels**, in exactly the shapes above; `cam-store`'s `tools` went 11 → 12 and
+  `shell.rs` 110 → 111, with the 11 + 110 that came before passing unchanged and `ToolLibrary::open` still
+  reading WAL libraries and still migrating. **Gate:** `./scripts/check.sh` exit 0 — 96 suites, **1 216
+  tests**, 0 failed, one cargo process at a time.
+  **A gap named rather than hidden:** the 0-byte `-wal` case has no test of its own. The brief fixed the
+  expected counts and supplied both tests verbatim, so adding a third would have broken them; that behaviour
+  rests on reading `has_wal_log` (`metadata.len() > 0`), not on a test that runs it.
+- **L8 (the second hole: the guard asked about a name SQLite does not read).** The next verifier pass closed
+  the shape L7's fix missed. Put a **file** symlink beside the document — `drawings/link.sqlite` pointing at
+  `outside/real.sqlite`, where the target carries header bytes `1/1` and a 4 096-byte `real.sqlite-wal`.
+  `has_wal_log` built the name `link.sqlite-wal`, which does not exist, so it answered "no companion needed";
+  SQLite followed the symlink, used the **target's** log, and created `outside/real.sqlite-shm` — 32 768 bytes
+  outside the document's directory — with a clean status and no note. **The guard was asking about a name
+  nobody reads**, which is the same class as L4 and L7 and a different entrance from both.
+  **The fix is the same question asked properly.** `wal_log_path` canonicalises the library path and derives
+  `-wal` from the resolved target, falling back to the path as written when canonicalisation fails (missing or
+  unreadable), which is exactly the previous behaviour. Symlinked libraries are **not** refused — L3's trade
+  stands — only a non-empty log at the target refuses.
+  **RED then GREEN:** the file-symlink test failed first with
+  `left: ["real.sqlite", "real.sqlite-shm", "real.sqlite-wal"]` against
+  `right: ["real.sqlite", "real.sqlite-wal"]`, and passes after; `cam-store`'s `tools` went 12 → 13 and
+  `shell.rs` 111 → 112, with the 12 + 111 that came before unchanged.
+  **L7's named gap is now closed by a pin, and the report said so honestly:** the 0-byte `-wal` test passed on
+  the unfixed code. That is correct — it pins an acceptance that was already right — and dressing it as red
+  would have been a lie about what the test proved.
+  **Gate:** `./scripts/check.sh` exit 0 — 96 suites, **1 218 tests**, 0 failed, one cargo process at a time.
+  **A coverage gap named rather than filled:** nothing tests the positive half of L3's trade — a *file* symlink
+  to a clean library being read and reporting `opened`. The directory-symlink and empty-file tests cover
+  adjacent ground, not that sentence.
+- **L9 (the closing pass: the guard holds, and what it still does not pin).** The final read-only verifier
+  built its own copy of the tree and probed every entrance. **Met:** a file symlink whose *target* carries a
+  non-empty log is refused with the honest note and the outside listing identical; a file symlink to a **clean**
+  library is *read* — `T4 - Tool (6mm)` on the card, nothing created on either side — which is the half L8 named
+  as unpinned and the one thing this pass proved rather than assumed; a directory symlink behaves the same.
+  **Attempts to break it, all benign:** a symlinked parent with a lexical `-wal` → refused; a symlink chain
+  (`link` → `chain2` → real) → refused; a `-wal` existing **only** at the lexical name → accepted and creates
+  nothing, because SQLite names companions from the *resolved* target, so a log nobody would use is inert; a
+  hardlink whose twin carries a log → accepted, creates nothing (that log is inert too, and the read sees the
+  hardlink's own state — stale by inode semantics, never written). **Unchanged:** header WAL refused, non-empty
+  log refused, 0-byte log opens and resolves its tool, below-head refused naming both versions without migrating,
+  and `ToolLibrary::open` still reads a v1 WAL library and migrates it. `cam-cli` and `chrome.rs` untouched;
+  `git status` exactly the four files.
+  **A note on the counts, so nobody reads them as drift:** L7 says `tools` 11 → 12 and `shell` 110 → 111 because
+  that is what its own step produced; L8's canonicalisation took them to 13 and 112. Three entrances, three
+  increments, one task.
+  **Recorded and deliberately not taken,** because this feature's budget is spent and these are separate work:
+  the closing pass handed over three tests that close coverage rather than behaviour — a file symlink to a clean
+  library being read (the positive half of L3's trade), the soft refusal sentence when the log sits at the
+  target, and the same clean-symlink read at store level with `open_read_only`. They are named here instead of
+  being quietly assumed to exist.

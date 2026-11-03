@@ -386,3 +386,54 @@ fn a_read_only_open_refuses_a_wal_library_and_creates_no_sidecar_files() {
   );
   std::fs::remove_dir_all(&directory).ok();
 }
+
+// Covers shell-tools-ref S3/S8: reading a library creates nothing anywhere, whatever its header
+// declares. A non-empty -wal beside a header that says rollback journal mode (1/1 — a crash between
+// the header rewrite and the log's deletion, or a hand-crafted file) still makes SQLite build its
+// shared-memory index.
+#[test]
+fn a_read_only_open_creates_no_companion_for_a_wal_file_beside_a_non_wal_header() {
+  let directory = scratch("read-only-wal-sidecar");
+  let path = directory.join("sidecar.sqlite");
+  drop(ToolLibrary::open(&path).expect("head library"));
+  {
+    let mut bytes = std::fs::read(&path).expect("read");
+    bytes[18] = 1;
+    bytes[19] = 1;
+    std::fs::write(&path, &bytes).expect("header rewritten");
+  }
+  std::fs::write(directory.join("sidecar.sqlite-wal"), [0xABu8; 4096]).expect("log");
+  let before = listing(&directory);
+
+  let _ = ToolLibrary::open_read_only(&path); // accepted or refused: either way it must not create
+
+  assert_eq!(
+    listing(&directory),
+    before,
+    "a read-only open creates nothing beside the library, whatever its header declares"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// Covers shell-tools-ref S3/S8 through L7's untested gap: an *empty* -wal beside a non-WAL header is
+// a post-crash leftover that creates no companion, so a read-only open accepts it and writes nothing.
+#[test]
+fn a_read_only_open_accepts_an_empty_wal_beside_a_non_wal_header_and_creates_nothing() {
+  let directory = scratch("read-only-empty-wal");
+  let path = directory.join("empty.sqlite");
+  drop(ToolLibrary::open(&path).expect("head library"));
+  {
+    let mut bytes = std::fs::read(&path).expect("read");
+    bytes[18] = 1;
+    bytes[19] = 1;
+    std::fs::write(&path, &bytes).expect("header rewritten");
+  }
+  std::fs::write(directory.join("empty.sqlite-wal"), []).expect("empty log");
+  let before = listing(&directory);
+
+  let library = ToolLibrary::open_read_only(&path).expect("an empty log creates no companion");
+
+  assert_eq!(library.tools().expect("tools").len(), 0);
+  assert_eq!(listing(&directory), before);
+  std::fs::remove_dir_all(&directory).ok();
+}

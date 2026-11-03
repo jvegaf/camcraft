@@ -4473,3 +4473,76 @@ fn a_set_job_action_with_a_zero_is_refused_by_the_shell_path_too() {
   assert!(error.contains('0'), "the refusal names no number: {error}");
   assert_eq!(app.document().job, before);
 }
+
+// Covers shell-tools-ref S3: the window creates nothing outside the document's directory, even for a
+// library whose header does not declare WAL but which carries a -wal beside it.
+#[test]
+fn a_header_that_does_not_declare_wal_still_creates_nothing_through_a_directory_symlink() {
+  let base = scratch("open-tools-header-bypass");
+  let outside = base.join("outside");
+  std::fs::create_dir_all(&outside).expect("outside directory");
+  let library = outside.join("crafted.sqlite");
+  write_library(&library, 4);
+  {
+    let mut bytes = std::fs::read(&library).expect("read");
+    bytes[18] = 1;
+    bytes[19] = 1;
+    std::fs::write(&library, &bytes).expect("header rewritten");
+  }
+  std::fs::write(outside.join("crafted.sqlite-wal"), [0xABu8; 4096]).expect("log");
+  let before = listing(&outside);
+  let directory = base.join("drawings");
+  std::fs::create_dir_all(&directory).expect("drawings");
+  std::os::unix::fs::symlink(&outside, directory.join("sub")).expect("directory symlink");
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("sub/crafted.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(
+    listing(&outside),
+    before,
+    "a header the guard does not flag must not make the window create anything outside"
+  );
+  std::fs::remove_dir_all(&base).ok();
+}
+
+// Covers shell-tools-ref S3: the guard asks about the file SQLite will open, not the name the
+// document wrote. A file symlink beside the document is followed by SQLite, so a non-empty -wal
+// beside the *target* is what decides whether reading would create a companion — and it must not.
+#[test]
+fn a_file_symlink_beside_the_document_still_creates_nothing_outside() {
+  let base = scratch("open-tools-file-symlink");
+  let outside = base.join("outside");
+  std::fs::create_dir_all(&outside).expect("outside directory");
+  let real = outside.join("real.sqlite");
+  write_library(&real, 4);
+  {
+    let mut bytes = std::fs::read(&real).expect("read");
+    bytes[18] = 1;
+    bytes[19] = 1;
+    std::fs::write(&real, &bytes).expect("header rewritten");
+  }
+  std::fs::write(outside.join("real.sqlite-wal"), [0xABu8; 4096]).expect("log");
+  let before = listing(&outside);
+  let directory = base.join("drawings");
+  std::fs::create_dir_all(&directory).expect("drawings");
+  std::os::unix::fs::symlink(&real, directory.join("link.sqlite")).expect("file symlink");
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("link.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(
+    listing(&outside),
+    before,
+    "nothing is created outside the document's directory"
+  );
+  std::fs::remove_dir_all(&base).ok();
+}

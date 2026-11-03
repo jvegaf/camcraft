@@ -12,8 +12,9 @@
 //! **not** established from the artifact, so no enum pretends to know it; each toolpath strategy
 //! instead validates the geometric parameters it actually needs.
 
+use std::ffi::OsString;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use cam_units::{Angle, Format, Length, UnitSystem};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
@@ -225,6 +226,9 @@ const FORMAT_VERSION_OFFSET: usize = 18;
 /// The journal mode value that means "WAL".
 const WAL_JOURNAL_MODE: u8 = 2;
 
+/// The suffix SQLite appends to a database's own name for its write-ahead log.
+const WAL_LOG_SUFFIX: &str = "-wal";
+
 /// Whether a library file declares WAL journal mode, read out of its own header.
 ///
 /// The header is read rather than the mode being asked of SQLite, because asking means opening the
@@ -246,6 +250,44 @@ fn declares_wal(path: &Path) -> bool {
   }
   header[FORMAT_VERSION_OFFSET] == WAL_JOURNAL_MODE
     || header[FORMAT_VERSION_OFFSET + 1] == WAL_JOURNAL_MODE
+}
+
+/// The path of the write-ahead log SQLite keeps beside `path`, or `None` when `path` has no file name
+/// to hang one on.
+///
+/// The log is built from `path`'s **canonical** target, not from the path as written. The two name the
+/// same file only when no symlink is involved: a `link.sqlite` beside a document may point at
+/// `outside/real.sqlite`, and SQLite opens what the path resolves to, so it reads and writes
+/// `outside/real.sqlite-wal`. Asking about `link.sqlite-wal` — a name nobody reads — would answer "no
+/// log" while SQLite built `outside/real.sqlite-shm` from the target's log. The guard and SQLite have
+/// to be looking at the same file, otherwise the guard is answering about a name.
+///
+/// Canonicalising is not a refusal of symlinked libraries: following one for reading stays allowed, and
+/// only a non-empty log at the target refuses. A path that cannot be canonicalised — absent, or under a
+/// parent that cannot be read — falls back to the path as written, since there is no target to ask
+/// about and its own refusal is further down.
+fn wal_log_path(path: &Path) -> Option<PathBuf> {
+  let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+  let mut log = OsString::from(resolved.file_name()?);
+  log.push(WAL_LOG_SUFFIX);
+  Some(resolved.with_file_name(log))
+}
+
+/// Whether a non-empty write-ahead log sits beside `path`.
+///
+/// The header is not the whole answer: a crash between the header's rewrite and the log's deletion, or
+/// a hand-crafted file, leaves a header that says rollback journal mode beside a live log, and SQLite
+/// builds the shared-memory index for that log anyway. The log itself therefore has to be asked
+/// about, before there is a connection that would answer by creating what is asked about.
+///
+/// An absent log, one that cannot be asked about, and an empty one all answer `false`: an empty log is
+/// a post-crash leftover that creates no companion, and a log that cannot be read already has its own
+/// refusal further down, so inventing a second one here would make a single failure say two things.
+fn has_wal_log(path: &Path) -> bool {
+  match wal_log_path(path).and_then(|log| std::fs::metadata(log).ok()) {
+    Some(metadata) => metadata.len() > 0,
+    None => false,
+  }
 }
 
 impl ToolLibrary {
@@ -286,23 +328,33 @@ impl ToolLibrary {
   ///
   /// The price is that a library this build cannot read without writing is **refused** rather than
   /// repaired: a file that has never been initialised has no schema to read, a library left at an older
-  /// [`MIGRATIONS`] rung needs a migration this constructor will not perform, and a library in **WAL**
-  /// journal mode is refused because reading one makes SQLite create its `-shm` and `-wal` companions
-  /// beside it. All are [`StoreError::ToolLibrary`] errors naming the file and the reason. An owner that
-  /// means to create or migrate its own library still calls [`Self::open`], which keeps doing exactly
-  /// that.
+  /// [`MIGRATIONS`] rung needs a migration this constructor will not perform, and a library is refused
+  /// whenever reading it would make SQLite create a companion beside it — one whose header declares
+  /// **WAL** journal mode, and one that carries a non-empty `-wal` log beside a header that does not,
+  /// since SQLite builds its `-shm` index for either. All are [`StoreError::ToolLibrary`] errors naming
+  /// the file and the reason. An owner that means to create or migrate its own library still calls
+  /// [`Self::open`], which keeps doing exactly that.
   pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, StoreError> {
     let path = path.as_ref();
     let display = path.display().to_string();
-    // Asked before there is a connection to ask with: see `declares_wal` for why the file's own
-    // header is the only place this question can be answered without producing the very files it is
-    // about.
+    // Both companion questions are asked before there is a connection to ask with: see `declares_wal`
+    // and `has_wal_log` for why the file and its siblings are the only places they can be answered
+    // without producing the very files they are about.
     if declares_wal(path) {
       return Err(StoreError::ToolLibrary {
         path: display,
         reason:
           "it is in WAL journal mode, and reading one makes SQLite create -shm and -wal files \
                  beside it; a library is never written by reading it, so this one is refused"
+            .to_owned(),
+      });
+    }
+    if has_wal_log(path) {
+      return Err(StoreError::ToolLibrary {
+        path: display,
+        reason:
+          "it has a -wal log beside it, and reading one makes SQLite create its -shm index beside \
+                 the library; a library is never written by reading it, so this one is refused"
             .to_owned(),
       });
     }
