@@ -264,3 +264,18 @@ words: *"design/prancheta-reference/ + README"*.
   `in_palette`'s own doc comment so the next person does not re-add it from the frame. **The lesson is L6's,
   learned twice:** an entry copied from the reference's list is a claim that the command works, and a command
   with no action is the same lie as a count nobody measured.
+- **L15 (the T3 review: one correction, then approved and burned).** Candidate `ad387109…` on lineage
+  `review-5b477569a0cfb177`, tier **high**, three lenses, three reviewer runs (204 kB of prompt each). The
+  refuter was **not** a formality: it accepted `R3-001` as candidate-caused and **CRITICAL**, which put the
+  review in `correction_required` and spent part of the bounded correction budget (22 of 200 diff lines, the
+  one correction this authority allows — L14). After the correction a targeted validator ran, and the review
+  came back **approved** (revision `sha256:944295df…`), authority **burned**
+  (`gentle-ai.review-acknowledged/v1`), candidate `61ba0757…`.
+  **Nine more advisories, all `informational`, none blocking** — the receipt stands and none of them is a reason
+  to re-review this candidate: `R2-001` (`chrome.rs:1823`), `R2-002` (`chrome.rs:1836`), `R2-003`
+  (`tests/shell.rs:3551`), `R2-004` (`tests/shell.rs:4343`), `R2-005`
+  (`design/prancheta-reference/README.md:110`), `R2-006` (`chrome.rs:1490`), `R2-007` (`lib.rs:1183`), `R3-002`
+  (`chrome.rs:692`) and `R3-003` (`chrome.rs:190`). They join the eleven this feature already owes.
+  **One process note for the next session:** the whole-branch projection means every review re-reads T0
+  onwards, and a 3-lens pass over 2 839 lines costs roughly 600 kB of prompt. The slices in L11 are the answer;
+  until delivery splits them, each new work unit pays that bill.
