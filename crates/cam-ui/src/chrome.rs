@@ -1,14 +1,13 @@
-//! The shell's frame: the app bar, the stage bar, the rail and the inspector.
+//! The shell's frame: the app bar, the rail, the canvas and the inspector.
 //!
-//! `design/camui-shell/01-shell-2d.html` is the visual spec. What this module implements is the
-//! *structure* that artboard argues for, mapped onto the widgets the crate already has rather than
+//! `design/prancheta-reference/` is the visual spec: fifteen full-resolution frames of the reference app,
+//! each annotated in that directory's `README.md` with the pattern it settles. What this module implements
+//! is the *structure* those frames argue for, mapped onto the widgets the crate already has rather than
 //! copied pixel for pixel:
 //!
 //! ```text
 //! ┌───────────────────────────────────────────────────────────┐  app bar    40 px
 //! │ mark  campilot   ↶ ↷   untitled      mm ☾ ? fit [G-code]  │
-//! ├───────────────────────────────────────────────────────────┤  stage bar  32 px
-//! │ 1 Design 4 › 2 Edit › 3 Relief › 4 Toolpaths 3 › 5 Prove │
 //! ├────┬───────────────────────────────────────┬──────────────┤
 //! │ 52 │                                       │ inspector    │
 //! │ px │              canvas                   │ 288 px       │
@@ -16,32 +15,20 @@
 //! ├────┴───────────────────────────────────────┴──────────────┤  status bar 26 px
 //! ```
 //!
-//! Three decisions are worth stating, because each is a place a shell usually lies.
+//! **There is no stage bar, and removing it was a correction, not a preference.** An earlier version of this
+//! frame carried a `Design › Edit › Relief › Toolpaths › Prove` strip, drawn from eight frames of the
+//! reference app that had been photographed off two videos. The fifteen full-resolution frames show no such
+//! strip in any state: the reference carries its workflow in the rail and in whatever task the right panel has
+//! open. The strip is gone, and with it the stage enum that fed it (camui-prancheta S2).
 //!
-//! **The stage is view state, not a command.** Switching stage changes what the rail offers and which
-//! inspector tab opens first; it pushes no [`UiAction`] and never touches the document. That is what
-//! lets the stage bar be clickable before any geometry exists.
+//! **The rail is not stage-scoped.** Sixty-odd commands do not fit on one screen and never did, but the
+//! reference's answer is not to hide them behind a mode: it labels them, groups them, and lets the operator
+//! collapse a group. What a command can do right now is decided by the document — the rule [`Command`] already
+//! applies when it greys a chip — and never by a mode the operator has to remember they are in.
 //!
-//! **Counts are counted, never invented.** A stage shows a number only when the document can prove it:
-//! vectors for Design, toolpaths for Toolpaths. The rest show a dash and the inspector says in words
-//! where those commands live today (`cam-cli`). A stage bar claiming `0 problems` for a validation
-//! nobody runs is worse than one that shows nothing.
-//!
-//! **A stage is done when a fact says so, not when the operator feels done.** Design is ready at one
-//! vector and Toolpaths at one toolpath, and both readings come from [`Stage::readiness`] — the same
-//! answer the bar's number is rendered from, so the bar cannot print `3` beside "nothing drawn yet". A
-//! countable stage that holds none of its fact names the step that changes that, in the voice
-//! `02-stages.html` §04 states; the three stages nothing measures answer [`Readiness::Unmeasured`] and
-//! say nothing at all. What the count cannot prove the stage does not claim: the artboard gates Design
-//! on "every vector either closed or knowingly open; nothing off the sheet" and Toolpaths on every path
-//! having "a tool, a depth inside the stock, and no unreachable corner left unannounced" — none of
-//! which `AppState` measures — so the shell counts the one fact it has instead of certifying a gate it
-//! cannot see.
-//!
-//! **The rail is stage-scoped, and that is the point of it.** Sixty-odd commands do not fit on one
-//! screen and never did; the rail shows the current stage's tools, so "what can I do right now" is one
-//! glance instead of one search. The cost — an expert pays a stage switch — is the trade the artboard
-//! names.
+//! **Counts are counted, never invented.** The frame states a number only when the document can prove it:
+//! vectors on the sheet, toolpaths in the document. A section that would otherwise invent a count shows the
+//! sentence naming the step that produces it instead — never `0 problems` for a validation nobody runs.
 
 use cam_app::{AppState, VertexEdit};
 use cam_geom::Point2;
@@ -59,53 +46,15 @@ use crate::{Shell, ShellOutput, Tool, UiAction};
 /// One palette chip: the glyph and the command it runs.
 type PaletteChip = (Icon, Command);
 
+/// The height the rail reserves for its foot: three lines of text and a hairline.
+///
+/// A number and not a measurement, because the block is a bottom panel and egui needs its size before the
+/// content exists. It is generous by a few pixels on purpose: a block clipped by its own reserve would cut the
+/// stamp in half, which is the one line in the frame that has to be readable at a glance.
+const BRAND_BLOCK_HEIGHT: f32 = 62.0;
+
 /// A labelled run of palette chips: the group's name and the chips under it.
 type PaletteRun = (Group, Vec<PaletteChip>);
-
-/// What the document proves about a stage: a count, a missing step, or nothing measurable at all.
-///
-/// Three answers, and deliberately not a boolean. `false` cannot tell "the sheet is still empty" from
-/// "nobody measures this stage", and the second of those is the state this shell has to be able to say
-/// out loud: Edit, Relief and Prove have no fact in `AppState` behind them — no self-intersection report,
-/// no relief, no simulation result — so a stage that answered "not ready" for them would be reporting a
-/// check nobody ran (S9).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Readiness {
-  /// The document holds this stage's fact, and this is how many of it there are.
-  Ready(usize),
-  /// The stage can be counted and the count is zero. The sentence names the step that changes that.
-  NotReady(&'static str),
-  /// Nothing in the document measures this stage, so it is neither ready nor not ready.
-  Unmeasured,
-}
-
-/// A count turned into an answer: the number it proved, or the sentence naming the step it is missing.
-fn counted(count: usize, next_step: &'static str) -> Readiness {
-  if count > 0 {
-    Readiness::Ready(count)
-  } else {
-    Readiness::NotReady(next_step)
-  }
-}
-
-/// The stages a job walks through, in the order the artboard draws them.
-///
-/// [`Stage::Design`] comes first because it is the only stage the shell can complete end to end today;
-/// the rest name work that lives in `cam-cli` (M4–M7) until the shell grows the panels for it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Stage {
-  /// Vectors: draw, import, trace.
-  #[default]
-  Design,
-  /// Vector surgery: nodes, trim, fillet, offsets, transforms.
-  Edit,
-  /// Relief and 3D work.
-  Relief,
-  /// Strategies: profile, pocket, drill, V-carve.
-  Toolpaths,
-  /// Simulate, verify, emit.
-  Prove,
-}
 
 /// Which inspector tab is showing.
 ///
@@ -123,126 +72,6 @@ pub enum Tab {
   Job,
 }
 
-impl Stage {
-  /// Every stage, in the order the bar draws them.
-  pub const ALL: [Stage; 5] = [
-    Stage::Design,
-    Stage::Edit,
-    Stage::Relief,
-    Stage::Toolpaths,
-    Stage::Prove,
-  ];
-
-  /// The word on the stage chip.
-  pub fn label(self) -> &'static str {
-    match self {
-      Self::Design => "Design",
-      Self::Edit => "Edit",
-      Self::Relief => "Relief",
-      Self::Toolpaths => "Toolpaths",
-      Self::Prove => "Prove",
-    }
-  }
-
-  /// What this stage asks of the operator, in the shell's own voice.
-  ///
-  /// The inspector shows this when a stage offers no tools of its own, so an empty rail is an
-  /// explanation rather than a dead end.
-  pub fn note(self) -> &'static str {
-    match self {
-      Self::Design => {
-        "Draw or import vectors. Arm a tool and drag on the canvas; Select picks and marquees."
-      }
-      Self::Edit => {
-        "Work the vectors: nodes, offsets, transforms. The numbers live in Tools; the rail runs them."
-      }
-      Self::Relief => {
-        "Reliefs are authored with `cam-cli` today: build one from a model or a vector profile there, \
-         then simulate it."
-      }
-      Self::Toolpaths => {
-        "Toolpaths are authored with `cam-cli toolpath` today. They arrive in the document finished, \
-         and are counted above."
-      }
-      Self::Prove => {
-        "Simulation and G-code live in `cam-cli simulate` and `cam-cli emit` until the shell grows the \
-         panels for them."
-      }
-    }
-  }
-
-  /// Whether this stage's work is in the document, out of it, or impossible to see from here.
-  ///
-  /// One rule per countable stage, and one fact behind each: **Design is done when the drawing holds at
-  /// least one entity** — a vector on the sheet, on any layer, visible or not, because the count is about
-  /// the drawing and not about the view — and **Toolpaths is done when the document holds at least one
-  /// toolpath**. Both are read from the document and nothing else, so a stage can never be ready on the
-  /// strength of what the frame happens to be showing.
-  ///
-  /// Only two of the five stages answer at all. Edit, Relief and Prove have no fact behind them in
-  /// `AppState`, and [`Readiness::Unmeasured`] is how a stage declines to invent one.
-  pub fn readiness(self, app: &AppState) -> Readiness {
-    match self {
-      Self::Design => counted(
-        app
-          .document()
-          .layers
-          .iter()
-          .map(|layer| layer.entities.len())
-          .sum(),
-        "Nothing drawn yet — 0 vectors on the sheet. Draw or import the shape you want to cut.",
-      ),
-      Self::Toolpaths => counted(
-        app.document().toolpaths.len(),
-        "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` \
-         and lands here finished.",
-      ),
-      Self::Edit | Self::Relief | Self::Prove => Readiness::Unmeasured,
-    }
-  }
-
-  /// The number this stage can prove from the document, if any.
-  ///
-  /// Rendered from [`Stage::readiness`] rather than counted again: the bar's number and the bar's state are
-  /// one answer read twice, which is what stops it printing `3` beside "nothing drawn yet".
-  ///
-  /// A dash means "nothing to count yet", never "zero". The distinction matters: an empty sheet really
-  /// does hold zero vectors, while a count of zero problems would be a claim about a check nobody ran.
-  fn count(self, app: &AppState) -> String {
-    match self.readiness(app) {
-      Readiness::Ready(count) => count.to_string(),
-      // A countable stage that is not ready holds zero of its fact, and a measured zero is a fact too.
-      Readiness::NotReady(_) => "0".to_owned(),
-      Readiness::Unmeasured => "—".to_owned(),
-    }
-  }
-
-  /// What the stage chip says on hover: what the stage asks, preceded by what it is missing.
-  ///
-  /// Consequence before mechanics is the artboard's first rule for every string (§04), so a stage that is
-  /// not ready leads with the missing step and then says how the work is done. Every other stage shows its
-  /// [`Stage::note`] unchanged.
-  pub fn hover(self, app: &AppState) -> String {
-    match self.readiness(app) {
-      Readiness::NotReady(step) => format!("{step}\n{}", self.note()),
-      Readiness::Ready(_) | Readiness::Unmeasured => self.note().to_owned(),
-    }
-  }
-
-  /// The palette runs this stage adds, in the order the table lists them.
-  ///
-  /// Only Design has armed canvas gestures today; Edit offers the commands that work on what already
-  /// exists, and the other stages offer nothing but VIEW, which every stage shows. The difference is
-  /// visible in the palette rather than papered over.
-  fn runs(self) -> &'static [Group] {
-    match self {
-      Self::Design => &[Group::Draw],
-      Self::Edit => &[Group::Transform, Group::VectorEdit],
-      Self::Relief | Self::Toolpaths | Self::Prove => &[],
-    }
-  }
-}
-
 impl Tab {
   /// Every tab, left to right.
   pub const ALL: [Tab; 3] = [Tab::Tools, Tab::Selection, Tab::Job];
@@ -255,33 +84,158 @@ impl Tab {
       Self::Job => "Job",
     }
   }
+
+  /// The ribbon category that opens this tab's content, if any.
+  ///
+  /// The right panel is not a tabbed inspector any more (camui-prancheta S6): it is a ribbon of three
+  /// semantic categories, and opening one puts its task editor over the panel. `Selection` is the odd one
+  /// out on purpose — the reference draws no selection category, because the selection's numbers are the
+  /// panel's *idle* state rather than a task anybody opens — so it maps to **no** category and is drawn when
+  /// no task is open.
+  pub fn category(self) -> Option<Category> {
+    match self {
+      Self::Tools => Some(Category::Toolpaths),
+      Self::Selection => None,
+      Self::Job => Some(Category::MachineOutput),
+    }
+  }
+}
+
+/// A category of the right panel's ribbon: the three the reference draws, in its order (camui-prancheta S6).
+///
+/// Glyph only, one row per category. Opening one puts that category's **task editor** over the panel's body,
+/// which is what replaced the three named tabs: the words moved into the task editor's header, where they name
+/// the task instead of a tab nobody could tell apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Category {
+  /// What makes and describes toolpaths: the authoring commands, the tool card, the estimate.
+  Toolpaths,
+  /// The 3D half of the surface: whether it is split, and what it is playing.
+  Relief3d,
+  /// Stock, material, zero, and the program that leaves the machine.
+  MachineOutput,
+}
+
+impl Category {
+  /// Every category, top to bottom — the reference's order.
+  pub const ALL: [Category; 3] = [
+    Category::Toolpaths,
+    Category::Relief3d,
+    Category::MachineOutput,
+  ];
+
+  /// The words the task editor's header carries while this category is open.
+  ///
+  /// English, like every other word in the shell (S3): the reference is pt-BR and what we take from it is
+  /// structure, never its strings.
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Toolpaths => "TOOLPATHS",
+      Self::Relief3d => "RELIEF AND 3D PART",
+      Self::MachineOutput => "MACHINE AND OUTPUT",
+    }
+  }
+
+  /// The glyph the ribbon draws for this category.
+  ///
+  /// Three glyphs the set already had: the profile toolpath, the relief, and the post-processor. No new
+  /// symbol was drawn for this, because a glyph nobody has seen before is a legend, not an icon.
+  pub fn icon(self) -> Icon {
+    match self {
+      Self::Toolpaths => Icon::ToolpathProfile,
+      Self::Relief3d => Icon::Relief,
+      Self::MachineOutput => Icon::PostProcessor,
+    }
+  }
+}
+
+/// The step the document is missing, in the shell's own voice, or nothing when it is missing none.
+///
+/// Two facts, and only facts: a drawing with no entities, and a document with no toolpaths. Everything else the
+/// shell cannot see, and it says nothing rather than certifying a gate it cannot check.
+fn next_step(app: &AppState) -> Option<&'static str> {
+  let vectors: usize = app
+    .document()
+    .layers
+    .iter()
+    .map(|layer| layer.entities.len())
+    .sum();
+  if vectors == 0 {
+    return Some(
+      "Nothing drawn yet — 0 vectors on the sheet. Draw or import the shape you want to cut.",
+    );
+  }
+  if app.document().toolpaths.is_empty() {
+    return Some(
+      "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` and \
+       lands here finished.",
+    );
+  }
+  None
 }
 
 impl Shell {
-  /// The stage the shell is working in.
-  pub fn stage(&self) -> Stage {
-    self.stage
-  }
-
-  /// Switch stage. View state: no command is pushed and the document is not touched.
-  pub fn set_stage(&mut self, stage: Stage) {
-    self.stage = stage;
-    // A stage brings its own tools, so the tab that holds them is the useful one to reveal. The
-    // operator can still pick another tab; this only decides what the switch shows.
-    self.inspector_tab = match stage {
-      Stage::Design | Stage::Edit => Tab::Tools,
-      Stage::Relief | Stage::Toolpaths | Stage::Prove => Tab::Job,
-    };
-  }
-
-  /// Which inspector tab is showing.
+  /// Which body the inspector is showing.
   pub fn tab(&self) -> Tab {
     self.inspector_tab
   }
 
   /// Show a tab.
+  ///
+  /// A tab is now *derived* from what the panel is showing: the ribbon opens a task, and the tab names the
+  /// body under it. `Selection` has no category, so setting it closes the task editor and lets the panel fall
+  /// back to the selection's numbers — the same state as pressing `✕`.
   pub fn set_tab(&mut self, tab: Tab) {
     self.inspector_tab = tab;
+    self.task = tab.category();
+  }
+
+  /// The ribbon category whose task editor is open, or `None` for the panel's idle state.
+  pub fn task(&self) -> Option<Category> {
+    self.task
+  }
+
+  /// Open one category's task editor.
+  pub fn open_task(&mut self, category: Category) {
+    self.task = Some(category);
+    self.inspector_tab = match category {
+      // `RELIEF AND 3D PART` opens the 3D half of the frame, and the authoring body is what the panel shows
+      // behind it: this shell authors no relief, so the task says what it does instead of pretending to a
+      // form it does not have (L13).
+      Category::Toolpaths | Category::Relief3d => Tab::Tools,
+      Category::MachineOutput => Tab::Job,
+    };
+  }
+
+  /// Close the task editor, and say whether its draft numbers went with it.
+  ///
+  /// `discard` is the only real difference between the header's `✕` and its `✓`: **every number in this
+  /// panel's authoring body applies as it is typed**, so `✓` has nothing to commit and `✕` has nothing to undo
+  /// — except the material's drafts, which sit in [`Shell::material_size`] until the dialog's own apply is
+  /// pressed. `✕` puts them back to the document's stock, which is what "cancel this task" means when the
+  /// task holds an unapplied edit.
+  pub fn close_task(&mut self, discard: bool) {
+    if discard {
+      self.material_size = crate::default_material_size();
+      self.show_material = false;
+    }
+    self.task = None;
+    self.inspector_tab = Tab::Selection;
+  }
+
+  /// Whether the layers block is expanded.
+  pub fn layers_open(&self) -> bool {
+    self.layers_open
+  }
+
+  /// Expand or collapse the layers block.
+  pub fn set_layers_open(&mut self, open: bool) {
+    self.layers_open = open;
+  }
+
+  /// Collapse or expand the layers block, from its own heading.
+  pub fn toggle_layers(&mut self) {
+    self.layers_open = !self.layers_open;
   }
 
   /// Whether the inspector is expanded.
@@ -295,8 +249,32 @@ impl Shell {
     self.inspector_open = open;
   }
 
-  /// The app bar: what this document is, what can be undone, and the one action that costs material.
-  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+  /// Whether the rail draws one group's chips.
+  ///
+  /// The heading is drawn either way. Collapsing a group hides its chips and nothing else: the word stays,
+  /// so the rail is a table the operator folds, not a memory test (camui-prancheta S4).
+  pub fn group_open(&self, group: Group) -> bool {
+    !self.collapsed_groups.contains(&group)
+  }
+
+  /// Collapse or expand one rail group.
+  pub fn toggle_group(&mut self, group: Group) {
+    match self.collapsed_groups.iter().position(|held| *held == group) {
+      Some(index) => {
+        self.collapsed_groups.remove(index);
+      }
+      None => self.collapsed_groups.push(group),
+    }
+  }
+
+  /// The app bar: what this document is and the three switches the frame keeps up here.
+  ///
+  /// **The bar holds no file command any more.** `Open`, `Save`, `Save as`, `Fit the job`, `Undo` and `Redo`
+  /// moved to the rail's FILE group in camui-prancheta T2b (S4): the reference gives the command table to the
+  /// rail, and a bar and a rail offering the same seven commands is two vocabularies for one act. What is
+  /// left is what belongs to the frame rather than to the document — its name, the units, the theme, the help
+  /// panel and the 2D/3D switch — plus the one action that costs material.
+  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, _output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
     egui::Panel::top("app_bar")
@@ -306,67 +284,6 @@ impl Shell {
           paint_mark(ui, &palette, metrics.icon_size);
           ui.label(RichText::new("campilot").size(theme::TITLE));
           ui.separator();
-
-          // Undo and Redo are the table's HISTORY run: their words, glyphs and actions come from the
-          // command that owns them, so the app bar cannot answer to a different name than the help
-          // panel teaches. Only the chord is the bar's own, because the keys window lists it too.
-          for (command, enabled, keys) in [
-            (Command::Undo, app.can_undo(), "Ctrl+Z"),
-            (Command::Redo, app.can_redo(), "Ctrl+Y"),
-          ] {
-            let tooltip = format!("{} — {keys}", command.label());
-            let response = icon_button(
-              ui,
-              &palette,
-              command_icon(command),
-              &tooltip,
-              false,
-              enabled,
-              18.0,
-            );
-            if response.clicked() {
-              output.actions.extend(command.action());
-            }
-            report_app_bar(output, command, response.rect);
-          }
-          ui.separator();
-
-          // Open asks the host for a path and does nothing else with it: the file dialog belongs to the
-          // host crate, so this button means "ask", never "open" (S2, S5).
-          let open = icon_button(
-            ui,
-            &palette,
-            command_icon(Command::Open),
-            Command::Open.label(),
-            false,
-            true,
-            18.0,
-          );
-          if open.clicked() {
-            output.actions.extend(Command::Open.action());
-          }
-          report_app_bar(output, Command::Open, open.rect);
-
-          // Save writes the file the bar names and Save As asks for a new one. Both are glyphs beside Open
-          // because they are the same sentence about the same file, and Save stays enabled with no file yet:
-          // a disabled button could not say why, and its refusal is the one place the difference between the
-          // two commands is explained. Save As asks the host exactly as Open does — an intent out of the
-          // shell, the platform's dialog in the host, a path back in as an action (S2).
-          for command in [Command::Save, Command::SaveAs] {
-            let response = icon_button(
-              ui,
-              &palette,
-              command_icon(command),
-              command.label(),
-              false,
-              true,
-              18.0,
-            );
-            if response.clicked() {
-              output.actions.extend(command.action());
-            }
-            report_app_bar(output, command, response.rect);
-          }
 
           // The bar names the file the drawing came from, and says whether it is modified. Until a host
           // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
@@ -421,67 +338,12 @@ impl Shell {
                 .color(palette.get(Role::TextDim)),
             )
             .on_hover_text("Working units. Every length in the shell is millimetres.");
-            ui.separator();
-            let fit = icon_button(
-              ui,
-              &palette,
-              command_icon(Command::FitJob),
-              &format!("{} — F", Command::FitJob.label()),
-              false,
-              true,
-              18.0,
-            );
-            if fit.clicked() {
-              output.actions.extend(Command::FitJob.action());
-            }
-            report_app_bar(output, Command::FitJob, fit.rect);
           });
         });
       });
   }
 
-  /// The stage bar: where the job stands, and what each stage can prove.
-  pub(crate) fn stage_bar(&mut self, app: &AppState, ui: &mut egui::Ui) {
-    let palette = self.palette();
-    egui::Panel::top("stage_bar").show(ui, |ui| {
-      ui.horizontal(|ui| {
-        for (index, stage) in Stage::ALL.iter().enumerate() {
-          if index > 0 {
-            ui.label(
-              RichText::new("›")
-                .size(theme::CAPTION)
-                .color(palette.get(Role::TextOff)),
-            );
-          }
-          let text =
-            RichText::new(format!("{}  {}", stage.label(), stage.count(app))).size(theme::CAPTION);
-          if ui
-            .selectable_label(*stage == self.stage, text)
-            .on_hover_text(stage.hover(app))
-            .clicked()
-          {
-            self.set_stage(*stage);
-          }
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-          let job = &app.document().job;
-          ui.label(
-            RichText::new(format!(
-              "{:.0} × {:.0} × {:.0} mm",
-              job.width.mm(),
-              job.height.mm(),
-              job.thickness.mm()
-            ))
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-          )
-          .on_hover_text("Stock: the sheet this job cuts out of.");
-        });
-      });
-    });
-  }
-
-  /// The left palette: the current stage's commands, grouped and labelled.
+  /// The left palette: the commands, grouped, labelled, and foldable.
   ///
   /// The reference app settles a question this shell got wrong first. A rail of unlabelled glyphs stops
   /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
@@ -490,6 +352,10 @@ impl Shell {
   ///
   /// Every word, run, glyph and command here comes from [`crate::help`]: the palette holds no list of
   /// its own, which is what closed the two-lists-one-command debt T8 inherited (L14).
+  ///
+  /// **A heading folds its group** (camui-prancheta S4). Clicking `FILE` hides FILE's chips and leaves the
+  /// word; clicking it again brings them back. The heading is a control and not a decoration, which is why it
+  /// reports where it was drawn the way the chips do: a test clicks the word, not a coordinate it guessed.
   pub(crate) fn palette_panel(
     &mut self,
     app: &AppState,
@@ -498,29 +364,45 @@ impl Shell {
   ) {
     let palette = self.palette();
     let metrics = self.metrics();
+    // Computed before the panel borrows the shell: the brand block is read-only, and the rail's chips are
+    // not — a `&mut self` closure that had to read `self` inside would not compile, which is the borrow
+    // checker saying the same thing the split of concerns says.
+    let brand = self.brand_lines(app);
     egui::Panel::left("palette")
       .exact_size(metrics.palette_width)
       .show(ui, |ui| {
+        // The brand block is a bottom panel of the rail and not a row inside the scrolling one: a stamp that
+        // scrolled away with the chips would be a footnote, and the rail is the part of the frame the operator
+        // glances at to know what they are looking at. Reserving its height first is also what keeps the
+        // chips' coordinates stable between frames — a layout that grew or shrank as the block measured
+        // itself would report a point the next frame had already moved.
+        egui::Panel::bottom("brand_block")
+          .exact_size(BRAND_BLOCK_HEIGHT)
+          .show(ui, |ui| {
+            brand_block(ui, &palette, &brand);
+          });
         egui::ScrollArea::vertical()
           .id_salt("palette")
           .show(ui, |ui| {
             let mut offered: Vec<String> = Vec::new();
             let mut hits: Vec<(String, (f32, f32))> = Vec::new();
+            let mut headings: Vec<(String, (f32, f32))> = Vec::new();
 
-            // A stage that brings no run of its own explains itself, so an empty rail is an answer and
-            // not a dead end.
-            if self.stage.runs().is_empty() {
-              let title = self.stage.label().to_uppercase();
-              section(ui, &palette, &title);
-              note(ui, &palette, self.stage.note());
-            }
-
-            // The runs arrive in the table's own order: DRAW, TRANSFORM, VECTOR EDIT and VIEW.
+            // The runs arrive in the table's own order: FILE, DRAW, EDIT, ORGANISE and SHOW AND SELECT.
             for (group, chips) in self.palette_runs() {
-              if group == Group::View {
+              if group == Group::ShowAndSelect {
                 ui.add_space(metrics.space(3));
               }
-              section(ui, &palette, group.label());
+              let open = self.group_open(group);
+              let heading = section_toggle(ui, &palette, group.label(), open);
+              let centre = heading.rect.center();
+              headings.push((group.label().to_owned(), (centre.x, centre.y)));
+              if heading.clicked() {
+                self.toggle_group(group);
+              }
+              if !open {
+                continue;
+              }
               ui.horizontal_wrapped(|ui| {
                 for (icon, command) in chips {
                   let response = icon_button(
@@ -544,22 +426,40 @@ impl Shell {
 
             // What the palette offered: `DrawnState` is the shell's report of what it drew, and the
             // palette is the part of the frame that carries no text of its own.
-            output.drawn.stage = self.stage;
             output.drawn.palette = offered;
             output.drawn.palette_hits = hits;
+            output.drawn.palette_headings = headings;
           });
       });
   }
 
-  /// The palette's runs for the current stage, derived from the command table.
+  /// The three lines the rail's foot carries: the product, the crate version, and the document's own stamp.
   ///
-  /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]),
-  /// the glyphs and the commands themselves; the stage decides which runs it shows, and VIEW is every
-  /// stage's. The table's order is the order the runs and the chips are drawn in, so a command that moves
-  /// in the table moves in the palette.
+  /// The stamp is L7's answer and not a build stamp: a `build.rs` timestamp in the binary would break
+  /// reproducible builds and would be worse than the version string above it, which is comparable where a
+  /// timestamp is not. `Unsaved changes` is the document's fact (it has edits nobody wrote) and the stamp is
+  /// the file's (when the last write happened), so the two are asked in that order.
+  fn brand_lines(&self, app: &AppState) -> Vec<String> {
+    vec![
+      "campilot".to_owned(),
+      format!("v{}", env!("CARGO_PKG_VERSION")),
+      if app.is_dirty() {
+        "Unsaved changes".to_owned()
+      } else {
+        self.saved_stamp()
+      },
+    ]
+  }
+
+  /// The palette's runs, derived from the command table.
   ///
-  /// HISTORY cannot reach the palette even by accident: [`Command::in_palette`] leaves its two commands
-  /// to the app bar, and no stage claims that run.
+  /// One source: [`Command::ALL`] decides the words ([`Command::label`]), the runs ([`Command::group`]), the
+  /// glyphs and the commands themselves. The table's order is the order the runs and the chips are drawn in,
+  /// so a command that moves in the table moves in the palette — which is why `Command::ALL` keeps each group
+  /// contiguous, in [`Group::ALL`]'s order.
+  ///
+  /// [`Command::in_palette`] is the only filter: it leaves the Tools tab's own commands and the `F2` sheet
+  /// out, and it lets the whole FILE group in (camui-prancheta T2b).
   fn palette_runs(&self) -> Vec<PaletteRun> {
     let mut runs: Vec<PaletteRun> = Vec::new();
     for command in Command::ALL
@@ -568,9 +468,6 @@ impl Shell {
       .filter(|command| command.in_palette())
     {
       let group = command.group();
-      if group != Group::View && !self.stage.runs().contains(&group) {
-        continue;
-      }
       let chip = (command_icon(command), command);
       match runs.last_mut() {
         Some((name, chips)) if *name == group => chips.push(chip),
@@ -694,8 +591,18 @@ impl Shell {
     });
   }
 
-  /// The right inspector: the stage's commands, the selection's numbers, the job — and the layers,
-  /// which stay put because they are a document fact rather than a stage's opinion.
+  /// The right panel: a ribbon of three categories, the task editor they open, and the layers block under it.
+  ///
+  /// **This is not a tabbed inspector any more** (camui-prancheta S6). The reference draws `PERCURSOS`,
+  /// `RELEVO E PEÇA 3D` and `MÁQUINA E SAÍDA` as glyph rows, and opening one puts a *task editor* over the
+  /// panel's body: a header carrying the task's name with `✓` and `✕`, and under it the task's own content.
+  /// Which task is open is [`Shell::task`]; the words left the old tab row and became the task's name, which
+  /// is the difference between a tab and a task — a tab names a shelf, a task names what you are doing.
+  ///
+  /// **The idle state is the selection's numbers.** The reference has no selection category, because there is
+  /// no selection *task*: it is what the panel says while nothing is open. So `None` is a state and not an
+  /// absence, and every surface the three tabs used to reach is still one click from here — `TOOLPATHS` for the
+  /// authoring body, `MACHINE AND OUTPUT` for the job's, and the selection's readout for the idle one.
   pub(crate) fn inspector(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     if !self.inspector_open {
       self.inspector_strip(ui);
@@ -716,51 +623,204 @@ impl Shell {
         });
         ui.separator();
 
-        ui.horizontal(|ui| {
-          for tab in Tab::ALL {
-            if ui
-              .selectable_label(
-                self.inspector_tab == tab,
-                RichText::new(tab.label()).size(theme::CAPTION),
-              )
-              .clicked()
-            {
-              self.inspector_tab = tab;
+        // The ribbon: one row per category, glyph only, in the reference's order. The row is what replaces the
+        // three named tabs, and the active one says so the way a rail chip does.
+        for category in Category::ALL {
+          let response = icon_button(
+            ui,
+            &palette,
+            category.icon(),
+            &ribbon_tooltip(category),
+            self.task == Some(category),
+            true,
+            20.0,
+          );
+          let centre = response.rect.center();
+          output.drawn.categories.push(category.label().to_owned());
+          output
+            .drawn
+            .category_hits
+            .push((category.label().to_owned(), (centre.x, centre.y)));
+          if response.clicked() {
+            // A second press closes it: the same gesture that opened the task is the one that leaves it, which
+            // is what a ribbon of exclusive categories means.
+            match self.task {
+              Some(open) if open == category => self.close_task(false),
+              _ => self.open_task(category),
             }
           }
-        });
+        }
+        ui.separator();
 
         let body = (ui.available_height() * 0.55).max(120.0);
-        egui::ScrollArea::vertical()
-          .id_salt("inspector_body")
-          .max_height(body)
-          .show(ui, |ui| {
-            ui.add_space(metrics.space(2));
-            // The card belongs to a toolpath, so it is drawn on the stage whose subject is toolpaths —
-            // and only while the document holds one, because a card for a toolpath that does not exist
-            // would be describing nothing.
-            if self.stage == Stage::Toolpaths {
-              self.tool_card(app, ui, &palette, output);
-            }
-            match self.inspector_tab {
-              Tab::Tools => {
-                if self.stage.runs().is_empty() {
-                  note(ui, &palette, self.stage.note());
-                } else {
+        // The header is drawn first and the body is chosen **after** it, because the header's `✓` and `✕` can
+        // close the task: a frame that drew the header and then the body from the same answer would report a
+        // task it had just closed, and the report is what a test and the operator both read.
+        if let Some(category) = self.task {
+          self.task_header(ui, &palette, category, output);
+          ui.add_space(metrics.space(2));
+        }
+        match self.task {
+          Some(category) => {
+            egui::ScrollArea::vertical()
+              .id_salt("inspector_body")
+              .max_height(body)
+              .show(ui, |ui| match category {
+                Category::Toolpaths => {
+                  // The card belongs to a toolpath, so it is drawn only while the document holds one: a card
+                  // for a toolpath that does not exist would be describing nothing.
+                  if !app.document().toolpaths.is_empty() {
+                    self.tool_card(app, ui, &palette, output);
+                  }
                   self.authoring(app, ui, output);
                 }
-              }
-              Tab::Selection => self.properties(app, ui, output),
-              Tab::Job => self.job_section(app, ui, &palette, output),
-            }
-          });
+                Category::Relief3d => self.relief_task(app, ui, &palette, output),
+                Category::MachineOutput => self.job_section(app, ui, &palette, output),
+              });
+          }
+          // Idle: what the panel says while no task is open — the selection's numbers. This is also the frame
+          // in which a `✓` or `✕` just closed a task, which is why the answer is read from `self.task` again
+          // instead of from the `category` above.
+          None => {
+            output.drawn.task_editor.clear();
+            egui::ScrollArea::vertical()
+              .id_salt("inspector_body")
+              .max_height(body)
+              .show(ui, |ui| {
+                ui.add_space(metrics.space(2));
+                if !app.document().toolpaths.is_empty() {
+                  self.tool_card(app, ui, &palette, output);
+                }
+                self.properties(app, ui, output);
+              });
+          }
+        }
 
         ui.separator();
-        ui.label(RichText::new("Layers").size(theme::TITLE));
-        egui::ScrollArea::vertical()
-          .id_salt("inspector_layers")
-          .show(ui, |ui| self.layer_dock(app, ui, output));
+        // `Layers` is its own block below the task editor and folds on its own (S6): a document fact, not a
+        // task's opinion, so it stays put while tasks open and close above it.
+        let heading = section_toggle(ui, &palette, "LAYERS", self.layers_open);
+        let centre = heading.rect.center();
+        output.drawn.layers_heading = Some((centre.x, centre.y));
+        if heading.clicked() {
+          self.toggle_layers();
+        }
+        // Read after the click: the folded block draws no row in the frame that folds it, not one frame later.
+        output.drawn.layers_open = self.layers_open;
+        if self.layers_open {
+          egui::ScrollArea::vertical()
+            .id_salt("inspector_layers")
+            .show(ui, |ui| self.layer_dock(app, ui, output));
+        }
       });
+  }
+
+  /// The task editor's header: the task's name, and the two glyphs that leave it.
+  ///
+  /// `✓` keeps what is typed and `✕` throws away the one draft the panel holds (see [`Shell::close_task`]);
+  /// both are painted rather than written as `✓` and `✕`, for the same reason the rail's caret is painted: a
+  /// glyph the bundled faces do not carry renders as a box, and a box is not an affordance.
+  fn task_header(
+    &mut self,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    category: Category,
+    output: &mut ShellOutput,
+  ) {
+    ui.horizontal(|ui| {
+      ui.label(
+        RichText::new(category.label())
+          .size(theme::CAPTION)
+          .color(palette.get(Role::TextHi)),
+      );
+      output.drawn.task_editor = category.label().to_owned();
+      ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        let cancel = glyph_button(
+          ui,
+          palette,
+          Glyph::Cross,
+          "Cancel — close this task and discard the numbers you have not applied",
+        );
+        let done = glyph_button(
+          ui,
+          palette,
+          Glyph::Check,
+          "Done — every number here applies as you type, so closing keeps them",
+        );
+        for (response, word) in [(&done, "Done"), (&cancel, "Cancel")] {
+          let centre = response.rect.center();
+          output
+            .drawn
+            .task_editor_hits
+            .push((word.to_owned(), (centre.x, centre.y)));
+        }
+        if cancel.clicked() {
+          self.close_task(true);
+        } else if done.clicked() {
+          self.close_task(false);
+        }
+      });
+    });
+  }
+
+  /// `RELIEF AND 3D PART`, which in this shell is a *state* and not a form.
+  ///
+  /// The reference opens a 3D machining strategy here. This shell authors no relief — its 3D half plays a
+  /// program `cam-cli` produced — so the task says exactly that, opens or closes the split, and names whether
+  /// a program is loaded. It is the same refusal the rest of the shell makes: no form for a capability that
+  /// does not exist (L13).
+  fn relief_task(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    output: &mut ShellOutput,
+  ) {
+    let _ = app;
+    ui.label(
+      RichText::new("This shell authors no relief and no 3D strategy.")
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    ui.label(
+      RichText::new(
+        "3D plays a program that `cam-cli` produced and a host handed in; the split and its overlay row 
+         belong to S8 (T6).",
+      )
+      .size(theme::CAPTION)
+      .color(palette.get(Role::TextDim)),
+    );
+    ui.add_space(4.0);
+    let state = if self.show_3d {
+      "The 3D split is open."
+    } else {
+      "The 3D split is closed."
+    };
+    ui.label(
+      RichText::new(state)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextHi)),
+    );
+    let loaded = if self.preview.is_some() {
+      "A program is loaded for playback."
+    } else {
+      "No program loaded — simulate one with `cam-cli simulate` and hand it in."
+    };
+    ui.label(
+      RichText::new(loaded)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    ui.add_space(4.0);
+    let label = if self.show_3d {
+      "Close the 3D split"
+    } else {
+      "Open the 3D split"
+    };
+    if ui.button(label).clicked() {
+      self.show_3d = !self.show_3d;
+    }
+    output.drawn.task_editor = Category::Relief3d.label().to_owned();
   }
 
   /// The current-tool card: the tool a toolpath cuts with, in the two lines the reference frame uses.
@@ -970,10 +1030,10 @@ impl Shell {
         );
         ui.end_row();
       });
-    // The section reports the document, so the one sentence it can add is what the stage in view still
-    // needs. A stage that is ready or unmeasured owes nothing here: printing another stage's sentence —
-    // which is what `Stage::Toolpaths.note()` did, on all five stages — was the one lie in this section.
-    if let Readiness::NotReady(step) = self.stage.readiness(app) {
+    // The section reports the document, so the one sentence it can add is the step the document is missing.
+    // A document that has everything the shell can see owes nothing here, and printing another section's
+    // sentence would be the one lie this section could tell.
+    if let Some(step) = next_step(app) {
       ui.add_space(6.0);
       note(ui, palette, step);
     }
@@ -1427,9 +1487,10 @@ fn command_icon(command: Command) -> Icon {
 
 /// Record one app-bar button: the word the command table gives it, and the point that presses it.
 ///
-/// The point is reported for the reason the palette reports its own ([`crate::DrawnState::palette_hits`]): every
-/// button in this bar is a glyph with no text beside it, so a headless test can neither find one by its
-/// label nor guess where the bar put it.
+/// Kept for the buttons the bar still owns. Since camui-prancheta T2b no bar button runs a table command —
+/// FILE moved to the rail — so [`crate::DrawnState::app_bar`] stays empty and a test asserts it, which is how a
+/// duplicate button cannot come back unnoticed.
+#[allow(dead_code)]
 fn report_app_bar(output: &mut ShellOutput, command: Command, rect: egui::Rect) {
   let centre = rect.center();
   output.drawn.app_bar.push(command.label().to_owned());
@@ -1744,6 +1805,160 @@ fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
   let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
   ui.painter()
     .rect_filled(rect, 0.0, palette.get(Role::Hairline));
+}
+
+/// The rail's foot: the product, the crate version, and the document's own stamp.
+///
+/// The block is drawn in a bottom-up layout, so the lines are painted from the bottom of the rail upwards:
+/// the stamp sits lowest, the version above it, and the product name on top of the three. It is the only part
+/// of the rail that is not a command, which is why it is separated by a hairline rather than by a heading — a
+/// heading promises chips under it.
+fn brand_block(ui: &mut egui::Ui, palette: &Palette, lines: &[String]) {
+  ui.add_space(4.0);
+  let width = ui.available_width();
+  let (hairline, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
+  ui.painter()
+    .rect_filled(hairline, 0.0, palette.get(Role::Hairline));
+  ui.add_space(2.0);
+  // The last line goes to the bottom of the block, so the list is walked backwards. The first entry is the
+  // product name and gets the size a title gets; the two below it are the version and the stamp, which are
+  // secondary information and say so in colour.
+  for (index, line) in lines.iter().enumerate().rev() {
+    let (size, role) = if index == 0 {
+      (theme::TITLE, Role::TextHi)
+    } else {
+      (theme::CAPTION, Role::TextDim)
+    };
+    ui.label(RichText::new(line).size(size).color(palette.get(role)));
+  }
+}
+
+/// A palette heading that folds its group.
+///
+/// The same word, weight, colour and hairline as [`section`], plus a caret and a click target: this is the
+/// reference's collapsible group, and the whole row is the control rather than a triangle the operator has to
+/// hit. The caret is painted as a triangle instead of written as a glyph because `▾` is a font bet — the
+/// bundled faces may or may not carry it — and a group whose affordance renders as a box is worse than no
+/// affordance at all.
+/// The two glyphs the task editor's header paints: a check and a cross.
+///
+/// Painted and not written for the same reason the rail's caret is painted: `✓` and `✕` are a font bet, and an
+/// affordance that renders as a box is worse than a drawn mark nobody has to trust the font for.
+#[derive(Clone, Copy)]
+enum Glyph {
+  /// `Done`.
+  Check,
+  /// `Cancel`.
+  Cross,
+}
+
+/// A small square button holding a painted glyph, with its teaching on hover.
+fn glyph_button(
+  ui: &mut egui::Ui,
+  palette: &Palette,
+  glyph: Glyph,
+  tooltip: &str,
+) -> egui::Response {
+  let size = egui::vec2(20.0, 18.0);
+  let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+  let centre = rect.center();
+  let colour = if response.hovered() {
+    palette.get(Role::TextHi)
+  } else {
+    palette.get(Role::TextDim)
+  };
+  let stroke = egui::Stroke::new(1.5, colour);
+  match glyph {
+    Glyph::Check => {
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 4.0, centre.y),
+          egui::pos2(centre.x - 1.0, centre.y + 3.5),
+        ],
+        stroke,
+      );
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 1.0, centre.y + 3.5),
+          egui::pos2(centre.x + 4.5, centre.y - 3.5),
+        ],
+        stroke,
+      );
+    }
+    Glyph::Cross => {
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 3.5, centre.y - 3.5),
+          egui::pos2(centre.x + 3.5, centre.y + 3.5),
+        ],
+        stroke,
+      );
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x + 3.5, centre.y - 3.5),
+          egui::pos2(centre.x - 3.5, centre.y + 3.5),
+        ],
+        stroke,
+      );
+    }
+  }
+  response.on_hover_text(tooltip)
+}
+
+/// What a ribbon icon says on hover: the category's name first, then what opening it does.
+fn ribbon_tooltip(category: Category) -> String {
+  match category {
+    Category::Toolpaths => {
+      "TOOLPATHS — open the toolpath task: authoring, the tool card, the estimated time".to_owned()
+    }
+    Category::Relief3d => {
+      "RELIEF AND 3D PART — open the 3D task: the split, and what it is playing".to_owned()
+    }
+    Category::MachineOutput => {
+      "MACHINE AND OUTPUT — open the machine task: stock, material, zero".to_owned()
+    }
+  }
+}
+
+fn section_toggle(ui: &mut egui::Ui, palette: &Palette, label: &str, open: bool) -> egui::Response {
+  ui.add_space(4.0);
+  // The row is allocated as a widget before anything is painted into it, because that is what makes it
+  // clickable: a response reused from a child layout answers no click, and this heading is the one control
+  // in the rail that is drawn without a widget of its own.
+  let width = ui.available_width();
+  let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 14.0), Sense::click());
+  let colour = palette.get(Role::TextDim);
+  let (cx, cy) = (rect.left() + 5.0, rect.center().y);
+  let points = if open {
+    vec![
+      egui::pos2(cx - 3.0, cy - 2.0),
+      egui::pos2(cx + 3.0, cy - 2.0),
+      egui::pos2(cx, cy + 3.0),
+    ]
+  } else {
+    vec![
+      egui::pos2(cx - 2.0, cy - 3.0),
+      egui::pos2(cx - 2.0, cy + 3.0),
+      egui::pos2(cx + 3.0, cy),
+    ]
+  };
+  ui.painter().add(egui::Shape::convex_polygon(
+    points,
+    colour,
+    egui::Stroke::NONE,
+  ));
+  ui.painter().text(
+    egui::pos2(cx + 8.0, cy),
+    egui::Align2::LEFT_CENTER,
+    label,
+    egui::FontId::proportional(theme::CAPTION),
+    colour,
+  );
+  let width = ui.available_width();
+  let (hairline, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
+  ui.painter()
+    .rect_filled(hairline, 0.0, palette.get(Role::Hairline));
+  response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A sentence in the shell's teaching voice, used where a stage has nothing to show yet.

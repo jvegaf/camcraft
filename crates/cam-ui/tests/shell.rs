@@ -13,8 +13,7 @@ use cam_store::document::{save_document, DocumentFile};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry, ToolLibrary};
 use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
-  handle_action, DrawShape, Readiness, Shell, ShellOutput, Stage, Tab, Tool, UiAction,
-  DEFAULT_TOLERANCE_MM,
+  handle_action, DrawShape, Shell, ShellOutput, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
 };
 use cam_units::{Length, UnitSystem};
 
@@ -140,6 +139,30 @@ fn click_at(
     last = Some((captured.expect("the shell ran"), texts));
   }
   last.expect("a click is two frames")
+}
+
+/// Click one status-bar chip by the beginning of its word.
+///
+/// The bar reports the point it drew each chip at ([`cam_ui::DrawnState::status_chips`]) for the same reason
+/// the palette does: egui cannot be asked for a widget by its text from outside a frame. A prefix instead of
+/// the whole word because the grid chip names the step it snaps to as well (`Grid 10`), which is the change
+/// under test here.
+fn click_status_chip(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  prefix: &str,
+) -> String {
+  let (output, _) = frame_with(ctx, shell, app);
+  let (label, point) = output
+    .drawn
+    .status_chips
+    .iter()
+    .find(|(label, _)| label.starts_with(prefix))
+    .map(|(label, point)| (label.clone(), egui::pos2(point.0, point.1)))
+    .unwrap_or_else(|| panic!("no {prefix:?} chip: {:?}", output.drawn.status_chips));
+  click_at(ctx, shell, app, point);
+  label
 }
 
 /// Click one palette chip by the word on it.
@@ -332,7 +355,12 @@ fn the_layer_dock_reports_every_layer_and_paints_its_name() {
     "the layer row must be painted: {}",
     joined(&texts)
   );
-  assert!(joined(&texts).contains("Layers"));
+  // `LAYERS` is its own block since camui-prancheta S6, and every section heading in this frame is uppercase.
+  assert!(
+    joined(&texts).contains("LAYERS"),
+    "the layers block must head itself: {}",
+    joined(&texts)
+  );
 }
 
 #[test]
@@ -351,69 +379,142 @@ fn the_selection_tab_shows_the_job_and_the_selection() {
 }
 
 #[test]
-fn the_stage_bar_reports_what_each_stage_can_prove() {
+fn the_frame_draws_no_stage_bar_and_the_rail_offers_every_group_at_once() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  assert_eq!(output.drawn.stage, Stage::Design);
-  // One vector for Design, and the count the document can actually prove for toolpaths.
-  assert!(
-    all.contains("Design  1"),
-    "the vector count must be real: {all}"
-  );
-  assert!(
-    all.contains("Toolpaths  0"),
-    "the document holds no toolpaths and the bar must say so: {all}"
-  );
-  // The stages the shell cannot finish yet show a dash, never a zero it did not measure.
-  assert!(all.contains("Edit  —"), "{all}");
-}
-
-#[test]
-fn switching_stage_changes_what_the_palette_offers() {
-  let mut app = AppState::new(document_with_rectangle());
-  let mut shell = Shell::new();
-  let (design, _) = frame(&mut shell, &mut app);
-  assert!(
-    design.drawn.palette.iter().any(|entry| entry == "Line"),
-    "the drawing tools belong on the Design palette: {:?}",
-    design.drawn.palette
-  );
-  assert!(
-    !design.drawn.palette.iter().any(|entry| entry == "Offset"),
-    "an edit command must not be on the Design palette: {:?}",
-    design.drawn.palette
-  );
-
-  shell.set_stage(Stage::Edit);
-  let (edit, _) = frame(&mut shell, &mut app);
-  assert_eq!(edit.drawn.stage, Stage::Edit);
-  for expected in [
-    "Move", "Rotate", "Scale", "Mirror", "Array", "Offset", "Join",
-  ] {
+  // The three words only the strip ever drew. camui-prancheta S2: the reference has no stage bar, so
+  // neither does this frame.
+  for gone in ["Design", "Relief", "Prove"] {
     assert!(
-      edit.drawn.palette.iter().any(|entry| entry == expected),
-      "missing {expected:?} in {:?}",
-      edit.drawn.palette
+      !all.contains(gone),
+      "the stage bar is gone, so {gone:?} must not be drawn: {all}"
     );
   }
+  // And the rail is the whole table: a drawing command and an edit command in the same frame, with no
+  // switch in between.
+  for expected in ["Line", "Offset", "Grid"] {
+    assert!(
+      output.drawn.palette.iter().any(|entry| entry == expected),
+      "the rail must offer {expected:?} without a stage switch: {:?}",
+      output.drawn.palette
+    );
+  }
+}
+
+#[test]
+fn the_status_bar_chips_are_the_references_five_and_the_grid_names_its_step() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  // Two frames: the canvas measures the camera after the panels, so the first frame's bar cannot know the
+  // grid step yet, exactly like the zoom it reports beside it.
+  let _ = frame(&mut shell, &mut app);
+  let (output, texts) = frame(&mut shell, &mut app);
+  let labels: Vec<String> = output
+    .drawn
+    .status_chips
+    .iter()
+    .map(|(label, _)| label.clone())
+    .collect();
+  assert_eq!(
+    labels.len(),
+    5,
+    "the reference draws five chips, this bar drew {labels:?}"
+  );
+  assert_eq!(&labels[..4], ["Snaps", "Point", "Mid", "Centre"], "{labels:?}");
+  let step = labels[4]
+    .strip_prefix("Grid ")
+    .and_then(|value| value.parse::<f64>().ok())
+    .unwrap_or_else(|| panic!("the grid chip must name its step in millimetres: {:?}", labels[4]));
+  assert_eq!(
+    step, shell.grid_spacing,
+    "the chip and the shell must name the same step"
+  );
+  let all = joined(&texts);
+  for label in &labels {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+}
+
+#[test]
+fn the_snaps_chip_arms_and_disarms_the_magnet() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snapping, "the shell snaps until told otherwise");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Snaps");
+  assert!(!shell.snapping, "the Snaps chip turns the whole magnet off");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Snaps");
+  assert!(shell.snapping, "and turns it back on");
+}
+
+#[test]
+fn the_point_chip_arms_and_disarms_its_own_snap_kind() {
+  use cam_view::SnapKind;
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snap_armed(SnapKind::Endpoint), "endpoints start armed");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Point");
   assert!(
-    !edit.drawn.palette.iter().any(|entry| entry == "Line"),
-    "a drawing tool must not be on the Edit palette: {:?}",
-    edit.drawn.palette
+    !shell.snap_armed(SnapKind::Endpoint),
+    "the Point chip is the endpoint snap, not a neighbour"
+  );
+  assert!(
+    shell.snap_armed(SnapKind::Midpoint),
+    "and it leaves the other kinds alone"
   );
 }
 
 #[test]
-fn the_status_bar_offers_a_chip_per_snap_kind() {
+fn the_grid_chip_arms_the_grid_snap_its_own_word_names() {
+  use cam_view::SnapKind;
+  let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  let (_, texts) = frame(&mut shell, &mut app);
-  let all = joined(&texts);
-  for label in ["Endpoint", "Midpoint", "Centre", "Grid", "magnet"] {
-    assert!(all.contains(label), "missing {label:?} in {all}");
-  }
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snap_armed(SnapKind::Grid), "the grid starts armed");
+
+  let label = click_status_chip(&ctx, &mut shell, &mut app, "Grid");
+  assert!(label.starts_with("Grid "), "{label}");
+  assert!(!shell.snap_armed(SnapKind::Grid), "the grid chip disarms the grid");
+}
+
+#[test]
+fn the_status_bar_says_what_just_happened_at_its_right_end() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::Draw(DrawShape::Circle {
+      at: Point2::ORIGIN,
+      radius: 10.0,
+    }),
+  );
+  shell.apply_action(&mut app, &UiAction::Offset { distance: -12.0 });
+  let happened = shell.status.clone();
+  assert!(
+    happened.contains("refused"),
+    "the setup must produce a sentence to show: {happened}"
+  );
+
+  let (output, texts) = frame(&mut shell, &mut app);
+  assert_eq!(
+    output.drawn.message, happened,
+    "the right end reports the sentence the last action produced"
+  );
+  let head: String = happened.chars().take(24).collect();
+  assert!(
+    joined(&texts).contains(&head),
+    "and paints it, beginning {head:?} in {:?}",
+    joined(&texts)
+  );
 }
 
 #[test]
@@ -477,25 +578,18 @@ fn the_hint_names_the_current_gesture() {
 #[test]
 fn the_palette_labels_its_groups() {
   // The reference app's lesson: a labelled group is what keeps twenty commands findable, and an
-  // unlabelled rail is what made the seven Edit commands nameless.
+  // unlabelled rail is what made the seven Edit commands nameless. The five words are the reference's own
+  // (camui-prancheta S4).
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  assert!(
-    all.contains("DRAW"),
-    "Design must label its drawing group: {all}"
-  );
-  assert!(
-    all.contains("VIEW"),
-    "the invariants get their own group: {all}"
-  );
-
-  shell.set_stage(Stage::Edit);
-  let (_, texts) = frame(&mut shell, &mut app);
-  let all = joined(&texts);
-  assert!(all.contains("TRANSFORM"), "{all}");
-  assert!(all.contains("VECTOR EDIT"), "{all}");
+  for label in ["DRAW", "EDIT", "ORGANISE", "SHOW AND SELECT"] {
+    assert!(
+      all.contains(label),
+      "the rail must label the {label} run: {all}"
+    );
+  }
 }
 
 #[test]
@@ -511,16 +605,27 @@ fn the_job_tab_shows_labelled_measurements_in_two_columns() {
 }
 
 #[test]
-fn a_stage_with_no_tools_of_its_own_says_where_its_work_lives() {
-  let mut app = AppState::new(document_with_rectangle());
+fn the_job_tab_names_the_step_the_document_is_missing() {
+  // An empty sheet: the drawing is what is missing, and the sentence names it.
+  let mut app = AppState::new(Document::new(Job::default_sheet()));
   let mut shell = Shell::new();
-  shell.set_stage(Stage::Toolpaths);
+  shell.set_tab(Tab::Job);
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
   assert!(
-    all.contains("cam-cli toolpath"),
-    "an empty stage must explain itself: {all}"
+    all.contains("Nothing drawn yet"),
+    "an empty sheet must say so: {all}"
   );
+
+  // One vector and no toolpath: the missing step is the toolpath now, and the drawing is no longer
+  // what is missing.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
+  let (_, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(all.contains("cam-cli toolpath"), "{all}");
+  assert!(!all.contains("Nothing drawn yet"), "{all}");
 }
 
 #[test]
@@ -588,15 +693,15 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   for label in ["campilot", "untitled.c2d", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
-  // The bar's one file command lives here, and a bar that could not ask for a document would leave the
-  // operator with a name and no way to change it.
+  // The bar's file command moved to the rail (camui-prancheta T2b, S4), and a bar that could not ask for a
+  // document would leave the operator with a name and no way to change it — so the rail must offer it.
   assert!(
     output
       .drawn
-      .app_bar
+      .palette
       .contains(&HelpCommand::Open.label().to_owned()),
-    "the bar must offer Open: {:?}",
-    output.drawn.app_bar
+    "the rail must offer Open: {:?}",
+    output.drawn.palette
   );
   // The rail is where the gestures live now, and it says so in its own report rather than in pixels.
   for tool in Tool::ALL {
@@ -614,13 +719,101 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
 }
 
 #[test]
-fn the_status_bar_reports_zoom_saved_state_and_history() {
+fn the_rail_foot_names_the_product_and_says_the_work_is_unsaved() {
+  // S4's brand block, on the state every shell starts in: a document with no file has nothing saved that a
+  // stamp could name, and saying so is the honest answer rather than a blank line.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["campilot", "Unsaved changes"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+  assert_eq!(
+    shell.saved_stamp(),
+    "Unsaved changes",
+    "a document with no file has no last write to name"
+  );
+  assert!(
+    all.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))),
+    "the block carries the crate version: {all}"
+  );
+  // The block is at the foot of the rail and the rail is a panel, not a canvas overlay: what it must never be
+  // is a command, so none of the three lines is a chip the palette reports.
+  for line in ["campilot", "Unsaved changes"] {
+    assert!(
+      !output.drawn.palette.iter().any(|chip| chip == line),
+      "{line:?} must not be a rail command: {:?}",
+      output.drawn.palette
+    );
+  }
+}
+
+#[test]
+fn opening_and_saving_stamp_the_brand_block_with_the_files_own_write() {
+  // L7's rule: the line stamps the document. The stamp therefore comes from the file the action read, which
+  // is the file's mtime — not from `now`, and not from the binary.
+  let directory = std::env::temp_dir().join(format!("campilot-stamp-{}", std::process::id()));
+  std::fs::remove_dir_all(&directory).ok();
+  std::fs::create_dir_all(&directory).expect("scratch directory");
+  let path = write_c2d(&directory, "stamped.c2d", &document_with_rectangle());
+  let opened_at = std::fs::metadata(&path)
+    .and_then(|metadata| metadata.modified())
+    .expect("the file has a modification time");
+
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+  let stamp = cam_ui::stamp::format_stamp(opened_at);
+  assert_eq!(shell.saved_stamp(), format!("Saved {stamp}"));
+  let (_, texts) = frame(&mut shell, &mut app);
+  assert!(
+    joined(&texts).contains(&format!("Saved {stamp}")),
+    "the rail must paint the file's own stamp: {}",
+    joined(&texts)
+  );
+
+  // An edit makes the document unsaved without changing what the file last was: the block says the first,
+  // because that is the question an operator asks before closing.
+  shell.apply_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  );
+  assert!(app.is_dirty(), "the rectangle is an unsaved edit");
+  let (_, texts) = frame(&mut shell, &mut app);
+  assert!(
+    joined(&texts).contains("Unsaved changes"),
+    "an edited drawing reads unsaved: {}",
+    joined(&texts)
+  );
+
+  // Saving it stamps it again, from the write that just happened.
+  shell.apply_action(&mut app, &UiAction::Save);
+  assert!(!app.is_dirty(), "a save writes the drawing");
+  let written_at = std::fs::metadata(&path)
+    .and_then(|metadata| metadata.modified())
+    .expect("the file has a modification time");
+  assert_eq!(
+    shell.saved_stamp(),
+    format!("Saved {}", cam_ui::stamp::format_stamp(written_at)),
+    "the stamp follows the write"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_status_bar_reports_zoom_and_history() {
+  // The save state is the rail's brand block (camui-prancheta S4, T2b-ii), which names the moment the file
+  // was written; the bar keeps the two facts nothing else on the frame reports.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
   let line = &output.drawn.status_line;
   assert!(line.contains("px/mm"), "{line}");
-  assert!(line.contains("saved"), "{line}");
   assert!(line.contains("undo 0"), "{line}");
 }
 
@@ -1504,12 +1697,18 @@ fn a_refused_command_puts_the_kernel_reason_in_the_status_bar_and_changes_nothin
 #[test]
 fn the_tools_tab_offers_every_authoring_command() {
   let mut app = AppState::new(document_with_rectangle());
+  // The authoring body lives behind `TOOLPATHS` since camui-prancheta S6 replaced the tab row with the
+  // ribbon: the panel's idle state is the selection, so a test that wants the command list opens the task
+  // the way an operator does.
   let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::Toolpaths);
   let ctx = egui::Context::default();
   let (output, first) = frame_with(&ctx, &mut shell, &mut app);
+  // Below the ribbon and the task header: the pointer has to be over the scrolling body for the wheel to
+  // reach it, and since S6 the panel carries three category rows above that body.
   let inspector = egui::pos2(
     (output.canvas.x + output.canvas.width) as f32 + 100.0,
-    (output.canvas.y + 120.0) as f32,
+    (output.canvas.y + 260.0) as f32,
   );
   let mut texts = first;
   texts.extend(texts_scrolled_to_the_end(
@@ -1661,33 +1860,6 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
 }
 
 // ---- Opening a document chosen at runtime ------------------------------------------------------
-
-/// Click one of the app bar's icon buttons by the word the command table gives it.
-///
-/// The bar reports the point it drew each button at ([`cam_ui::DrawnState::app_bar_hits`]) for the same
-/// reason the palette does: every one of them is a glyph with no text beside it, so egui cannot be asked
-/// for it by name from outside a frame.
-fn click_app_bar(
-  ctx: &egui::Context,
-  shell: &mut Shell,
-  app: &mut AppState,
-  label: &str,
-) -> ShellOutput {
-  let (output, _) = frame_with(ctx, shell, app);
-  let at = output
-    .drawn
-    .app_bar_hits
-    .iter()
-    .find(|(word, _)| word == label)
-    .map(|(_, point)| egui::pos2(point.0, point.1))
-    .unwrap_or_else(|| {
-      panic!(
-        "no {label:?} button in the app bar: {:?}",
-        output.drawn.app_bar
-      )
-    });
-  click_at(ctx, shell, app, at).0
-}
 
 /// Write a real `.c2d` with the store's own writer, so the shell test opens a file and not a stub.
 fn write_c2d(directory: &std::path::Path, name: &str, document: &Document) -> std::path::PathBuf {
@@ -1893,7 +2065,6 @@ fn opening_a_file_clears_the_preview_the_tool_snapshot_and_the_material_drafts()
   let path = write_c2d(&directory, "cut.c2d", &document_with_toolpath(2, 4));
   let mut app = AppState::new(document_with_toolpath(1, 4));
   let mut shell = Shell::new();
-  shell.set_stage(Stage::Toolpaths);
   shell.set_tools(vec![stored_tool(4)]);
   let job = Job::default_sheet();
   shell.set_preview(
@@ -1960,10 +2131,9 @@ fn write_library(path: &std::path::Path, tool_number: u32) {
     .expect("link");
 }
 
-/// One frame of the Toolpaths stage, which is the stage that draws the current-tool card and the
-/// cutting-time line beneath it.
+/// One frame of the shell, which is the frame that draws the current-tool card and the cutting-time line
+/// beneath it.
 fn toolpaths_frame(shell: &mut Shell, app: &mut AppState) -> (ShellOutput, Vec<String>) {
-  shell.set_stage(Stage::Toolpaths);
   frame(shell, app)
 }
 
@@ -2635,19 +2805,19 @@ fn an_open_frames_the_new_drawing_even_when_the_view_was_the_users() {
 }
 
 #[test]
-fn the_app_bars_open_button_asks_the_host_for_a_file() {
+fn the_rails_open_chip_asks_the_host_for_a_file() {
   let mut app = AppState::new(document_with_rectangle());
   let before = app.document_json();
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Open.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Open.label());
 
   assert_eq!(
     output.actions,
     vec![UiAction::RequestOpenFile],
-    "the bar must ask the host, not open a file of its own"
+    "the chip must ask the host, not open a file of its own"
   );
   assert_eq!(app.document_json(), before, "an intent touches no document");
   assert_eq!(
@@ -2658,15 +2828,16 @@ fn the_app_bars_open_button_asks_the_host_for_a_file() {
 }
 
 #[test]
-fn the_app_bars_other_buttons_still_emit_their_commands() {
-  // PRESERVE: Open joined a run of glyph buttons that now report where they were drawn. Undo, Redo and
-  // Fit the job have to emit exactly the action they emitted before they reported anything.
+fn the_rails_file_chips_still_emit_their_commands() {
+  // PRESERVE (camui-prancheta T2b): these seven buttons lived in the app bar and emitted exactly these
+  // actions. They emit the same actions from the rail, which is the move's whole claim — one surface, and
+  // the command it runs unchanged.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::FitJob.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::FitJob.label());
   assert_eq!(
     output.actions,
     vec![UiAction::ZoomToFit],
@@ -2681,7 +2852,7 @@ fn the_app_bars_other_buttons_still_emit_their_commands() {
     },
   )
   .expect("the rectangle is added");
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Undo.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Undo.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Undo],
@@ -2689,7 +2860,7 @@ fn the_app_bars_other_buttons_still_emit_their_commands() {
   );
   shell.apply_action(&mut app, &UiAction::Undo);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Redo.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Redo.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Redo],
@@ -3225,21 +3396,21 @@ fn opening_a_dirty_document_is_refused_and_a_clean_one_still_opens() {
 }
 
 #[test]
-fn the_app_bars_save_buttons_emit_their_actions() {
+fn the_rails_save_chips_emit_their_actions() {
   let mut app = AppState::new(document_with_rectangle());
   let before = app.document_json();
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   let _ = frame_with(&ctx, &mut shell, &mut app);
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::Save.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Save.label());
   assert_eq!(
     output.actions,
     vec![UiAction::Save],
-    "the Save button writes the file the shell already has"
+    "the Save chip writes the file the shell already has"
   );
 
-  let output = click_app_bar(&ctx, &mut shell, &mut app, HelpCommand::SaveAs.label());
+  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::SaveAs.label());
   assert_eq!(
     output.actions,
     vec![UiAction::RequestSaveAs],
@@ -3383,7 +3554,6 @@ fn the_palette_and_the_table_agree_on_labels() {
   // become a second vocabulary for the same command.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  shell.set_stage(Stage::Edit);
   let (output, _) = frame(&mut shell, &mut app);
   let offered = output.drawn.palette;
   for command in [
@@ -3506,23 +3676,26 @@ fn escape_closes_the_help_panel() {
 
 // ---- T8.2: the palette and the app bar read the command table --------------------------------
 
-/// The groups one stage shows, VIEW last: the palette's four runs, and never HISTORY.
-fn palette_groups(stage: Stage) -> Vec<Group> {
-  let mut groups = match stage {
-    Stage::Design => vec![Group::Draw],
-    Stage::Edit => vec![Group::Transform, Group::VectorEdit],
-    Stage::Relief | Stage::Toolpaths | Stage::Prove => Vec::new(),
-  };
-  groups.push(Group::View);
-  groups
+/// The groups the palette shows, SHOW AND SELECT last: the four runs that hold palette commands.
+///
+/// FILE is absent on purpose and not by accident: every file command still lives in the app bar, and a
+/// run the rail draws with no chips in it would be a heading over nothing (camui-prancheta T2a).
+fn palette_groups() -> Vec<Group> {
+  vec![
+    Group::File,
+    Group::Draw,
+    Group::Edit,
+    Group::Organise,
+    Group::ShowAndSelect,
+  ]
 }
 
-/// The words the palette must offer for one stage, in the table's own order.
+/// The words the palette must offer, in the table's own order.
 ///
 /// Derived from [`HelpCommand::ALL`] and not from a list of expectations: the point of the slice is
 /// that the table is the only list, so a test that wrote its own second list would not test that.
-fn palette_words(stage: Stage) -> Vec<String> {
-  let groups = palette_groups(stage);
+fn palette_words() -> Vec<String> {
+  let groups = palette_groups();
   HelpCommand::ALL
     .iter()
     .filter(|command| groups.contains(&command.group()) && command.in_palette())
@@ -3536,60 +3709,50 @@ fn every_palette_entry_comes_from_the_table() {
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
 
-  for stage in [Stage::Design, Stage::Edit, Stage::Toolpaths] {
-    shell.set_stage(stage);
-    let (output, _) = frame_with(&ctx, &mut shell, &mut app);
-    let offered = output.drawn.palette.clone();
-    assert_eq!(
-      offered,
-      palette_words(stage),
-      "the {stage:?} palette must be the table's own run, in its order"
+  let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+  let offered = output.drawn.palette.clone();
+  assert_eq!(
+    offered,
+    palette_words(),
+    "the palette must be the table's own run, in its order"
+  );
+  for word in &offered {
+    assert!(
+      HelpCommand::ALL
+        .iter()
+        .any(|command| command.label() == word),
+      "{word:?} is on the palette but no command in the table answers to it: {offered:?}"
     );
-    for word in &offered {
-      assert!(
-        HelpCommand::ALL
-          .iter()
-          .any(|command| command.label() == word),
-        "{word:?} is on the palette but no command in the table answers to it: {offered:?}"
-      );
-    }
   }
 }
 
 #[test]
-fn the_palette_shows_no_history_run() {
-  // HISTORY is the app bar's run: Undo and Redo are buttons up there, and filing them under VIEW in
-  // the palette would be a lie in the one place the shell is supposed to be exact (L29).
+fn the_palette_shows_all_five_runs() {
+  // The rail is the whole command table now, FILE included: `Open`, `Save`, `Save as`, `Import`, `Fit the
+  // job`, `Undo` and `Redo` moved out of the app bar in camui-prancheta T2b (S4).
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
 
-  shell.set_stage(Stage::Design);
-  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
-  let design = joined(&texts);
-  assert!(
-    design.contains(Group::Draw.label()) && design.contains(Group::View.label()),
-    "Design must label DRAW and VIEW: {design}"
-  );
-  assert!(
-    !design.contains(Group::History.label()),
-    "the palette must never draw a HISTORY run: {design}"
-  );
-
-  shell.set_stage(Stage::Edit);
-  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
-  let edit = joined(&texts);
-  for group in [Group::Transform, Group::VectorEdit, Group::View] {
+  let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  for group in palette_groups() {
     assert!(
-      edit.contains(group.label()),
-      "Edit must label the {} run: {edit}",
+      all.contains(group.label()),
+      "the palette must label the {} run: {all}",
       group.label()
     );
+    assert!(
+      output
+        .drawn
+        .palette_headings
+        .iter()
+        .any(|(label, _)| label == group.label()),
+      "the {} heading must be drawn as a control: {:?}",
+      group.label(),
+      output.drawn.palette_headings
+    );
   }
-  assert!(
-    !edit.contains(Group::History.label()),
-    "the palette must never draw a HISTORY run: {edit}"
-  );
 }
 
 #[test]
@@ -3652,26 +3815,15 @@ fn the_shortcuts_chip_still_opens_the_shortcuts_sheet() {
 
 #[test]
 fn the_app_bar_labels_match_the_table() {
-  // Six icon-only buttons whose words live in the table now, in the order the bar draws them. Save and Save
-  // As joined the run beside Open — the three of them are the same sentence about the same file — and
-  // nothing else moved.
+  // The bar holds no table command since camui-prancheta T2b: FILE moved to the rail. The report is empty,
+  // and a button that came back — under any label — would have to come back here.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
-  let expected: Vec<String> = [
-    HelpCommand::Undo,
-    HelpCommand::Redo,
-    HelpCommand::Open,
-    HelpCommand::Save,
-    HelpCommand::SaveAs,
-    HelpCommand::FitJob,
-  ]
-  .iter()
-  .map(|command| command.label().to_owned())
-  .collect();
-  assert_eq!(
-    output.drawn.app_bar, expected,
-    "the app bar must answer to the table's own words"
+  assert!(
+    output.drawn.app_bar.is_empty(),
+    "the app bar must draw no command button: {:?}",
+    output.drawn.app_bar
   );
 }
 
@@ -3714,7 +3866,6 @@ fn the_palette_chips_still_arm_toggle_and_run() {
     other => panic!("the Add text chip must push one AddText action, got {other:?}"),
   }
 
-  shell.set_stage(Stage::Edit);
   let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Move.label());
   match output.actions.as_slice() {
     [UiAction::Transform(Transform::Translate { delta })] => assert_eq!(
@@ -3739,7 +3890,6 @@ fn the_palette_runs_the_array_grid_its_own_form_can_type() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
-  shell.set_stage(Stage::Edit);
   shell.set_tab(Tab::Selection);
   shell.array_grid = (0, 99);
   let _ = frame_with(&ctx, &mut shell, &mut app);
@@ -3775,6 +3925,7 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   // wrong field visible, so the numbers below are deliberately not the defaults.
   let mut app = AppState::new(document_with_rectangle());
   let mut framing = Shell::new();
+  framing.open_task(cam_ui::Category::Toolpaths);
   let _ = frame_with(&egui::Context::default(), &mut framing, &mut app);
   // Every `about` and `origin` names the view centre, and the shell frames the drawing on its first frame:
   // the point a payload carries is a measurement of the camera, not the origin a default happens to hold.
@@ -3785,6 +3936,9 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   );
 
   let mut numbers = Shell::new();
+  // The authoring buttons live in the `TOOLPATHS` task since camui-prancheta S6, so both routes are measured
+  // with that task open — the palette chip and the task's button are the same command either way.
+  numbers.open_task(cam_ui::Category::Toolpaths);
   numbers.text = "Hi".to_owned();
   numbers.text_height = 7.5;
   numbers.move_delta = (3.5, -2.0);
@@ -3797,7 +3951,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   let cases = [
     (
       HelpCommand::AddText,
-      Stage::Design,
       UiAction::AddText {
         text: "Hi".to_owned(),
         height: 7.5,
@@ -3806,14 +3959,12 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
     ),
     (
       HelpCommand::Move,
-      Stage::Edit,
       UiAction::Transform(Transform::Translate {
         delta: Vec2::new(3.5, -2.0),
       }),
     ),
     (
       HelpCommand::Rotate,
-      Stage::Edit,
       UiAction::Transform(Transform::Rotate {
         radians: 42.0_f64.to_radians(),
         about: centre,
@@ -3821,7 +3972,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
     ),
     (
       HelpCommand::Scale,
-      Stage::Edit,
       UiAction::Transform(Transform::Scale {
         sx: 1.5,
         sy: 0.5,
@@ -3831,7 +3981,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
     ),
     (
       HelpCommand::Mirror,
-      Stage::Edit,
       UiAction::Transform(Transform::Mirror {
         point: centre,
         direction: Vec2::Y_AXIS,
@@ -3839,7 +3988,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
     ),
     (
       HelpCommand::Array,
-      Stage::Edit,
       UiAction::Array {
         rows: 3,
         columns: 4,
@@ -3847,16 +3995,11 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
         dy: 6.0,
       },
     ),
-    (
-      HelpCommand::Offset,
-      Stage::Edit,
-      UiAction::Offset { distance: 4.25 },
-    ),
+    (HelpCommand::Offset, UiAction::Offset { distance: 4.25 }),
   ];
 
-  for (command, stage, expected) in cases {
+  for (command, expected) in cases {
     let mut palette_shell = numbers.clone();
-    palette_shell.set_stage(stage);
     let palette_ctx = egui::Context::default();
     let _ = frame_with(&palette_ctx, &mut palette_shell, &mut app);
     let (from_palette, _) =
@@ -3869,7 +4012,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
     );
 
     let mut tab_shell = numbers.clone();
-    tab_shell.set_stage(stage);
     let tab_ctx = egui::Context::default();
     let from_tab = click_authoring_button(&tab_ctx, &mut tab_shell, &mut app, command.label());
     assert_eq!(
@@ -3891,242 +4033,19 @@ fn every_palette_chip_is_named_by_its_tooltip() {
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
 
-  for stage in Stage::ALL {
-    shell.set_stage(stage);
-    let (output, _) = frame_with(&ctx, &mut shell, &mut app);
-    for word in &output.drawn.palette {
-      let command = HelpCommand::ALL
-        .iter()
-        .copied()
-        .find(|command| command.label() == word)
-        .unwrap_or_else(|| panic!("{word:?} is drawn on the palette but no command answers to it"));
-      let tooltip = cam_ui::chrome::palette_tooltip(command);
-      assert!(
-        tooltip.contains(word),
-        "the {word:?} chip's tooltip is {tooltip:?}, which never names the chip"
-      );
-    }
+  let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+  for word in &output.drawn.palette {
+    let command = HelpCommand::ALL
+      .iter()
+      .copied()
+      .find(|command| command.label() == word)
+      .unwrap_or_else(|| panic!("{word:?} is drawn on the palette but no command answers to it"));
+    let tooltip = cam_ui::chrome::palette_tooltip(command);
+    assert!(
+      tooltip.contains(word),
+      "the {word:?} chip's tooltip is {tooltip:?}, which never names the chip"
+    );
   }
-}
-
-/// A document with one closed rectangle on one layer: Design's fact, and no toolpath yet.
-fn document_with_one_vector() -> Document {
-  document_with_rectangle()
-}
-
-/// The sentence a not-ready stage owes, as it is written down: the bar, the hover and the Job tab all
-/// read it from one place, so the tests name it once.
-const NOTHING_DRAWN: &str = "Nothing drawn yet";
-const NOTHING_TO_CUT: &str = "Nothing to cut yet";
-
-#[test]
-fn the_job_tab_names_the_stage_in_view_and_never_another_one() {
-  // The defect T13 fixes: the Job section printed `Stage::Toolpaths.note()` whatever stage was showing,
-  // so on the four other stages the section talked about work the operator was not doing. The section
-  // may only say what is true for the stage in view, and nothing at all when that stage owes nothing.
-  let mut app = AppState::new(document_with_one_vector());
-  let mut shell = Shell::new();
-  shell.set_tab(Tab::Job);
-  let (_, texts) = frame(&mut shell, &mut app);
-  let all = joined(&texts);
-  assert!(
-    !all.contains("cam-cli toolpath"),
-    "the Job tab names Toolpaths while Design is showing: {all}"
-  );
-  assert!(
-    !all.contains(NOTHING_TO_CUT),
-    "Design is ready with one vector, so the section owes no sentence: {all}"
-  );
-
-  // Toolpaths is showing and the document holds none, so the section names the missing step.
-  shell.set_stage(Stage::Toolpaths);
-  let (_, texts) = frame(&mut shell, &mut app);
-  let all = joined(&texts);
-  assert!(
-    all.contains(NOTHING_TO_CUT),
-    "the Job tab must say what Toolpaths is missing: {all}"
-  );
-
-  // An empty sheet on Design: the same rule, the other countable stage.
-  let mut empty = AppState::new(Document::new(Job::default_sheet()));
-  let mut shell = Shell::new();
-  shell.set_tab(Tab::Job);
-  let (_, texts) = frame(&mut shell, &mut empty);
-  let all = joined(&texts);
-  assert!(
-    all.contains(NOTHING_DRAWN),
-    "the Job tab must say what Design is missing: {all}"
-  );
-
-  // A stage nothing measures claims nothing: no sentence is true here, so none is printed.
-  let mut unmeasured = AppState::new(Document::new(Job::default_sheet()));
-  let mut shell = Shell::new();
-  shell.set_stage(Stage::Edit);
-  shell.set_tab(Tab::Job);
-  let (_, texts) = frame(&mut shell, &mut unmeasured);
-  let all = joined(&texts);
-  assert!(
-    !all.contains(NOTHING_DRAWN) && !all.contains(NOTHING_TO_CUT),
-    "an unmeasured stage must not name a missing step: {all}"
-  );
-}
-
-/// A document holding `count` toolpaths over the same one vector.
-fn document_with_toolpaths(count: usize) -> Document {
-  let mut document = document_with_one_vector();
-  for index in 0..count {
-    document.toolpaths.push(cam_model::Toolpath {
-      id: format!("TP{}", index + 1),
-      name: format!("Profile {}", index + 1),
-      entity_ids: vec!["E1".to_owned()],
-      island_ids: Vec::new(),
-      tool_number: 1,
-      operation: cam_model::Operation::Profile(cam_model::ProfileParams::default()),
-    });
-  }
-  document
-}
-
-#[test]
-fn design_is_ready_at_one_vector_and_not_before() {
-  let empty = AppState::new(Document::new(Job::default_sheet()));
-  assert!(
-    matches!(
-      Stage::Design.readiness(&empty),
-      Readiness::NotReady(step) if step.starts_with(NOTHING_DRAWN)
-    ),
-    "an empty sheet is not a design, and the answer must name the step: {:?}",
-    Stage::Design.readiness(&empty)
-  );
-
-  let drawn = AppState::new(document_with_one_vector());
-  assert_eq!(
-    Stage::Design.readiness(&drawn),
-    Readiness::Ready(1),
-    "one vector on the sheet is the whole rule for Design"
-  );
-}
-
-#[test]
-fn toolpaths_is_ready_at_one_toolpath_and_not_before() {
-  let none = AppState::new(document_with_one_vector());
-  assert!(
-    matches!(
-      Stage::Toolpaths.readiness(&none),
-      Readiness::NotReady(step) if step.starts_with(NOTHING_TO_CUT)
-    ),
-    "a document with no toolpath cannot be a finished Toolpaths stage: {:?}",
-    Stage::Toolpaths.readiness(&none)
-  );
-
-  let one = AppState::new(document_with_toolpaths(1));
-  assert_eq!(
-    Stage::Toolpaths.readiness(&one),
-    Readiness::Ready(1),
-    "one toolpath in the document is the whole rule for Toolpaths"
-  );
-}
-
-#[test]
-fn the_three_unmeasured_stages_claim_neither_state() {
-  // Nothing in `AppState` measures Edit, Relief or Prove: no self-intersection report, no relief and no
-  // simulation result reaches it. So they must answer `Unmeasured` for every document, never "ready" and
-  // never "not ready" — a false `false` is exactly what the three-way answer exists to prevent (S9).
-  let documents = [
-    Document::new(Job::default_sheet()),
-    document_with_one_vector(),
-    document_with_toolpaths(1),
-  ];
-  for document in documents {
-    let app = AppState::new(document);
-    for stage in [Stage::Edit, Stage::Relief, Stage::Prove] {
-      assert_eq!(
-        stage.readiness(&app),
-        Readiness::Unmeasured,
-        "{stage:?} claims a state nothing measures"
-      );
-    }
-  }
-}
-
-#[test]
-fn every_refusal_names_the_number_it_counts() {
-  // S4's third rule, and the one a test can hold: a refusal names a number. Both sentences say `0`, which
-  // is the count the bar shows beside them — one answer, read twice.
-  for (stage, fact) in [
-    (Stage::Design, NOTHING_DRAWN),
-    (Stage::Toolpaths, NOTHING_TO_CUT),
-  ] {
-    let app = AppState::new(Document::new(Job::default_sheet()));
-    match stage.readiness(&app) {
-      Readiness::NotReady(step) => {
-        assert!(step.starts_with(fact), "{stage:?} says {step:?}");
-        assert!(
-          step.contains('0'),
-          "{stage:?} refuses without naming the number it counted: {step:?}"
-        );
-      }
-      other => panic!("{stage:?} on an empty document answered {other:?}"),
-    }
-  }
-}
-
-#[test]
-fn the_number_on_the_bar_and_the_readiness_are_one_answer() {
-  // The rule that makes this true is structural — `Stage::count` renders `Stage::readiness` — so the test
-  // reads both through the frame: the painted chip must be the number the readiness carries, and a stage
-  // that is not ready must show `0`, never a number that contradicts the sentence.
-  for (name, document) in [
-    ("empty", Document::new(Job::default_sheet())),
-    ("one", document_with_one_vector()),
-    ("three", document_with_toolpaths(3)),
-  ] {
-    let mut app = AppState::new(document);
-    let mut shell = Shell::new();
-    let (_, texts) = frame(&mut shell, &mut app);
-    let all = joined(&texts);
-    for stage in Stage::ALL {
-      let chip = match stage.readiness(&app) {
-        Readiness::Ready(count) => format!("{}  {count}", stage.label()),
-        Readiness::NotReady(_) => format!("{}  0", stage.label()),
-        Readiness::Unmeasured => format!("{}  —", stage.label()),
-      };
-      assert!(
-        all.contains(&chip),
-        "on the {name} document the bar must print {chip:?}: {all}"
-      );
-    }
-  }
-}
-
-#[test]
-fn a_stage_keeps_its_own_sentence_and_leads_with_the_missing_step() {
-  // The chip's hover text is existing behaviour: each stage explains what it asks of the operator. T13
-  // touches that string, so the previous reading is pinned — a ready stage and an unmeasured one still
-  // show exactly their note — and the new one is pinned beside it: a not-ready stage says what is
-  // missing first and how the work is done second (consequence before mechanics, S4).
-  let drawn = AppState::new(document_with_one_vector());
-  assert_eq!(
-    Stage::Design.hover(&drawn),
-    Stage::Design.note(),
-    "a ready stage has nothing missing to announce"
-  );
-  assert_eq!(
-    Stage::Edit.hover(&drawn),
-    Stage::Edit.note(),
-    "an unmeasured stage must not announce a missing step either"
-  );
-
-  let empty = AppState::new(Document::new(Job::default_sheet()));
-  let hover = Stage::Design.hover(&empty);
-  assert!(
-    hover.starts_with(NOTHING_DRAWN),
-    "the missing step leads the hover: {hover:?}"
-  );
-  assert!(
-    hover.ends_with(Stage::Design.note()),
-    "and the stage's own sentence is still there: {hover:?}"
-  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -4545,4 +4464,179 @@ fn a_file_symlink_beside_the_document_still_creates_nothing_outside() {
     "nothing is created outside the document's directory"
   );
   std::fs::remove_dir_all(&base).ok();
+}
+
+// ---- The right panel as a ribbon and a task editor (camui-prancheta S6, T3) ---------------------
+
+/// The stock `Job::default_sheet()` gives a fresh document, in millimetres: what `Cancel` must restore.
+fn material_size_of(_app: &AppState) -> (f64, f64, f64) {
+  (1219.0, 2438.0, 18.0)
+}
+
+/// Click a reported point, one press and one release, as a person does.
+fn click_point(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  at: egui::Pos2,
+) -> ShellOutput {
+  click_at(ctx, shell, app, at).0
+}
+
+#[test]
+fn the_right_panel_is_a_ribbon_of_three_categories_in_the_references_order() {
+  // S6: `TOOLPATHS`, `RELIEF AND 3D PART`, `MACHINE AND OUTPUT`, glyph only, one row per category. The words
+  // are asserted from the panel's own report rather than from painted text: they are the task editor's future
+  // header, and a glyph-only ribbon paints none of them.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, _) = frame(&mut shell, &mut app);
+  assert_eq!(
+    output.drawn.categories,
+    vec![
+      "TOOLPATHS".to_owned(),
+      "RELIEF AND 3D PART".to_owned(),
+      "MACHINE AND OUTPUT".to_owned()
+    ],
+    "the ribbon is the reference's three categories, in its order"
+  );
+  // The old tab row is gone: a tab names a shelf and a category opens a task. `Tools` and `Job` were the tab
+  // labels, and neither is painted anywhere now.
+  assert!(
+    !output.drawn.categories.iter().any(|word| word == "Tools"),
+    "the panel must not offer the old tab labels: {:?}",
+    output.drawn.categories
+  );
+  assert!(
+    output.drawn.task_editor.is_empty(),
+    "no task is open on a fresh shell: {:?}",
+    output.drawn.task_editor
+  );
+}
+
+#[test]
+fn opening_a_category_puts_its_task_editor_over_the_panel() {
+  // The idle panel says what is selected; opening `TOOLPATHS` replaces that with the authoring body, which is
+  // what "the task editor replaces the panel's content" means (S6).
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let (first, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("Properties"),
+    "the idle panel shows the selection's numbers: {all}"
+  );
+  let at = first
+    .drawn
+    .category_hits
+    .iter()
+    .find(|(word, _)| word == "TOOLPATHS")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("TOOLPATHS is on the ribbon");
+
+  let output = click_point(&ctx, &mut shell, &mut app, at);
+  assert_eq!(shell.task(), Some(cam_ui::Category::Toolpaths));
+  assert_eq!(output.drawn.task_editor, "TOOLPATHS");
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("Add text") && all.contains("Authoring"),
+    "the toolpath task carries the authoring body: {all}"
+  );
+  assert!(
+    !all.contains("Properties"),
+    "the task editor replaces the panel's content, it does not stack on it: {all}"
+  );
+}
+
+#[test]
+fn the_task_header_keeps_the_typed_numbers_on_done_and_discards_them_on_cancel() {
+  // The only real difference between `✓` and `✕` in this panel: every number applies as it is typed except the
+  // material's drafts, so `Done` has nothing to undo and `Cancel` is the one gesture that throws the draft away.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::MachineOutput);
+  shell.material_size = (100.0, 50.0, 3.0);
+  let ctx = egui::Context::default();
+
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  let done = first
+    .drawn
+    .task_editor_hits
+    .iter()
+    .find(|(word, _)| word == "Done")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("the header carries Done");
+  let output = click_point(&ctx, &mut shell, &mut app, done);
+  assert_eq!(
+    output.drawn.task_editor, "",
+    "Done closes the task editor, and the panel falls back to the selection"
+  );
+  assert_eq!(
+    shell.material_size,
+    (100.0, 50.0, 3.0),
+    "Done keeps the numbers that were typed"
+  );
+
+  shell.open_task(cam_ui::Category::MachineOutput);
+  shell.material_size = (100.0, 50.0, 3.0);
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  let cancel = first
+    .drawn
+    .task_editor_hits
+    .iter()
+    .find(|(word, _)| word == "Cancel")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("the header carries Cancel");
+  let output = click_point(&ctx, &mut shell, &mut app, cancel);
+  assert_eq!(
+    output.drawn.task_editor, "",
+    "Cancel closes the task editor"
+  );
+  assert_eq!(
+    shell.material_size,
+    material_size_of(&app),
+    "Cancel puts the material's draft back to the document's own stock"
+  );
+}
+
+#[test]
+fn the_layers_block_folds_on_its_own_and_leaves_the_task_where_it_was() {
+  // S6: `Camadas` is its own collapsible block below the task editor. It folds without closing the task, and
+  // the task does not come back when the block does.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::Toolpaths);
+  let ctx = egui::Context::default();
+
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(first.drawn.layers_open, "the block starts expanded");
+  assert_eq!(
+    first.drawn.layer_rows,
+    vec![("L1".to_owned(), 1, true)],
+    "an expanded block draws its rows"
+  );
+  let at = first
+    .drawn
+    .layers_heading
+    .map(|(x, y)| egui::pos2(x, y))
+    .expect("the block reports its heading");
+
+  let output = click_point(&ctx, &mut shell, &mut app, at);
+  assert!(!output.drawn.layers_open, "the heading folds the block");
+  assert!(
+    output.drawn.layer_rows.is_empty(),
+    "a folded block draws no row: {:?}",
+    output.drawn.layer_rows
+  );
+  assert_eq!(
+    shell.task(),
+    Some(cam_ui::Category::Toolpaths),
+    "folding the layers block must not close the task"
+  );
+  assert_eq!(
+    output.drawn.task_editor, "TOOLPATHS",
+    "the task editor stays where it was"
+  );
 }

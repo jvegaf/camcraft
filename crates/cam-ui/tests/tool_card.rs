@@ -10,7 +10,7 @@ use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, ProfileParams, Toolpath};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::view3d::{clock_text, seconds_for};
-use cam_ui::{Shell, ShellOutput, Stage};
+use cam_ui::{Shell, ShellOutput, Tab};
 use cam_units::{Angle, Length, UnitSystem};
 
 /// A document with one rectangle and one profile toolpath that cuts with `tool_number`.
@@ -90,10 +90,9 @@ fn stored_tool(
   }
 }
 
-/// Run one frame of the Toolpaths stage and report what the shell displayed and painted.
+/// Run one frame and report what the shell displayed and painted.
 fn toolpaths_frame(shell: &mut Shell, app: &mut AppState) -> (ShellOutput, Vec<String>) {
   let ctx = egui::Context::default();
-  shell.set_stage(Stage::Toolpaths);
   // Two passes: egui lays a panel out from the space it ended the previous pass with, so the first frame
   // is the one that measures and the second is the one worth reading.
   let mut last = None;
@@ -262,10 +261,12 @@ fn the_estimate_moves_when_the_document_does() {
 
 #[test]
 fn the_job_tab_still_reports_the_job_it_reported_before_the_card() {
-  // The card shares the inspector with the Job tab, which the Toolpaths stage opens on. Adding it must
-  // not take the numbers that tab already showed away from the operator.
+  // The card shares the inspector with the Job tab. Adding it must not take the numbers that tab already
+  // showed away from the operator, and since camui-prancheta T1 the tab is asked for rather than implied
+  // by a stage.
   let mut app = AppState::new(document_with_toolpath(4));
   let mut shell = Shell::new();
+  shell.set_tab(Tab::Job);
 
   let (_, painted) = toolpaths_frame(&mut shell, &mut app);
 

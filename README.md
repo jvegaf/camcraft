@@ -80,27 +80,39 @@ cargo run -p cam-desktop          # sample document at launch; Open loads a .c2d
 ```
 
 ```
-┌──────────────────────────── commands: undo · redo · zoom to fit · add rectangle ──────────┐
-│ layers              │                  canvas                  │        properties        │
-│ L1 — Sample         │  grid · stock outline · geometry         │  job, units, selection   │
-│ 2 entity(ies)       │  snap markers · selection highlight      │  history depth           │
-└─────────────────────┴───────────────────────────────────────┴────────────────────────────┘
-   status: cursor X/Y · zoom px/mm · saved/modified · undo depth
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│ campilot   untitled.c2d · modified                     mm · 2D | 3D · ? · Generate G-code │
+├───────────┬──────────────────────────────────────────────┬────────────────────────────────┤
+│  FILE     │  canvas: grid · stock outline · geometry     │  job, units, selection         │
+│  DRAW     │  snap markers · selection highlight          │  history depth                 │
+│  EDIT     │                                              │                                │
+│  …        │  rail: five collapsible groups,              │                                │
+│  campilot │  each heading folds its group                │                                │
+│  v0.0.1   │                                              │  inspector: Tools|Selection|Job│
+│  Saved …  │                                              │                                │
+└───────────┴──────────────────────────────────────────────┴────────────────────────────────┘
+   status: cursor X/Y · zoom px/mm · snaps · last message
 ```
+
+The title bar carries the document's name and nothing it can also be reached from; every command lives in
+the rail, grouped under the reference app's five words, and each heading folds its group. The rail's foot is
+the brand block: the product, the crate version, and the document's own last write (`Saved 2026-11-03 19:30
+UTC`) or `Unsaved changes` while the drawing has edits nobody wrote — the file's stamp, never a build stamp.
 
 What works: pan, zoom about the cursor, zoom-to-fit, grid with a 1/2/5 spacing, picking by screen
 distance, marquee selection, snapping to endpoints/midpoints/arc centres/grid, undo/redo with a bounded
 history, layer visibility, and the authoring half of the product — line, polyline, arc, circle, ellipse,
 rectangle, polygon and star by dragging, single-stroke text, node editing, join, trim, offset,
 mirror/rotate/scale, array copy and align, plus importing a file by path and opening a `.c2d` you picked
-in the system's file dialog, each as one undoable step. Open is a button in the app bar: the shell only asks
-the window, which owns the dialog (`rfd`, in `cam-desktop` and not in `cam-ui`), and the file it answers with
-is loaded through `cam_store::document::DocumentFile::load` — the archive scan, migration and `validate()`
-`cam-cli`'s own loader performs for every command that reads a document — so the bar names that file where it
-said `untitled.c2d`, a refused one changes nothing and says `refused: …`, and a good one is one undo away.
+in the system's file dialog, each as one undoable step. Open is a chip in the left rail's `FILE` group: the
+shell only asks the window, which owns the dialog (`rfd`, in `cam-desktop` and not in `cam-ui`), and the file
+it answers with is loaded through `cam_store::document::DocumentFile::load` — the archive scan, migration and
+`validate()` `cam-cli`'s own loader performs for every command that reads a document — so the title bar names
+that file where it said `untitled.c2d`, a refused one changes nothing and says `refused: …`, and a good one is
+one undo away.
 
-Save and **Save as** sit beside Open, and they are the other half of that sentence. `Save` writes the file the
-bar names, and with no file yet it is refused — the status line reads `refused: this drawing has no file yet —
+Save and **Save as** sit beside Open in that group, and they are the other half of that sentence. `Save` writes
+the file the title bar names, and with no file yet it is refused — the status line reads `refused: this drawing has no file yet —
 use Save As to name one, and Save writes to it from then on` — instead of inventing a path; `Save as` asks the
 host for one through the route Open takes (an intent out of the shell, `rfd`'s save dialog in `cam-desktop`, a
 path back in as `UiAction::SaveFile`) and becomes the current file, so the bar names what was just written. Both

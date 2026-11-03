@@ -38,36 +38,41 @@ use crate::{Tool, UiAction};
 /// than read about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
+  /// The document itself: opening, saving, importing, fitting it to the frame, and the two steps
+  /// through the edits already made.
+  File,
   /// Making geometry: the nine canvas gestures, text, and the typed rectangle.
   Draw,
-  /// Moving, turning and repeating what exists.
-  Transform,
   /// Surgery on the vectors themselves.
-  VectorEdit,
-  /// Stepping through the edits already made.
-  History,
-  /// What the frame shows, never what the document holds.
-  View,
+  Edit,
+  /// Moving, turning and repeating what exists.
+  Organise,
+  /// What the frame shows and what selects it, never what the document holds.
+  ShowAndSelect,
 }
 
 impl Group {
   /// Every group, in the order the panel draws them.
+  ///
+  /// The order and the words are the reference app's own (camui-prancheta S4): FILE first because a job
+  /// starts by opening something, then the three that change the drawing, then the one that only changes
+  /// the view.
   pub const ALL: [Group; 5] = [
+    Group::File,
     Group::Draw,
-    Group::Transform,
-    Group::VectorEdit,
-    Group::History,
-    Group::View,
+    Group::Edit,
+    Group::Organise,
+    Group::ShowAndSelect,
   ];
 
   /// The section word above the group's commands.
   pub fn label(self) -> &'static str {
     match self {
+      Self::File => "FILE",
       Self::Draw => "DRAW",
-      Self::Transform => "TRANSFORM",
-      Self::VectorEdit => "VECTOR EDIT",
-      Self::History => "HISTORY",
-      Self::View => "VIEW",
+      Self::Edit => "EDIT",
+      Self::Organise => "ORGANISE",
+      Self::ShowAndSelect => "SHOW AND SELECT",
     }
   }
 }
@@ -243,7 +248,20 @@ impl Command {
   ///
   /// The order is load-bearing: both draw their rows by walking this list and starting a new run when
   /// [`Command::group`] changes, so a command that moves here moves in the panel and the palette too.
+  ///
+  /// Every group is contiguous and the groups arrive in [`Group::ALL`]'s order (camui-prancheta S4): FILE
+  /// first, because a job starts by opening something. A command placed in the wrong block would draw its
+  /// group's heading twice, which is why the blocks are commented.
   pub const ALL: &'static [Command] = &[
+    // FILE
+    Command::Open,
+    Command::Save,
+    Command::SaveAs,
+    Command::Import,
+    Command::FitJob,
+    Command::Undo,
+    Command::Redo,
+    // DRAW
     Command::Select,
     Command::Line,
     Command::Rectangle,
@@ -255,23 +273,20 @@ impl Command {
     Command::Star,
     Command::AddText,
     Command::AddRectangle,
-    Command::Import,
-    Command::Open,
-    Command::Save,
-    Command::SaveAs,
+    // EDIT
+    Command::Offset,
+    Command::Join,
+    Command::Trim,
+    Command::NodeEdit,
+    Command::DeleteSelection,
+    // ORGANISE
     Command::Move,
     Command::Rotate,
     Command::Scale,
     Command::Mirror,
     Command::Array,
     Command::Align,
-    Command::Offset,
-    Command::Join,
-    Command::Trim,
-    Command::NodeEdit,
-    Command::DeleteSelection,
-    Command::Undo,
-    Command::Redo,
+    // SHOW AND SELECT
     Command::View3d,
     Command::Grid,
     Command::Layers,
@@ -279,7 +294,6 @@ impl Command {
     Command::Theme,
     Command::IconSet,
     Command::Shortcuts,
-    Command::FitJob,
   ];
 
   /// The word the frame already shows for this command.
@@ -331,6 +345,13 @@ impl Command {
   /// The palette run, or app-bar run, this command belongs to.
   pub fn group(self) -> Group {
     match self {
+      Self::Open
+      | Self::Save
+      | Self::SaveAs
+      | Self::Import
+      | Self::FitJob
+      | Self::Undo
+      | Self::Redo => Group::File,
       Self::Select
       | Self::Line
       | Self::Rectangle
@@ -341,26 +362,20 @@ impl Command {
       | Self::Polygon
       | Self::Star
       | Self::AddText
-      | Self::AddRectangle
-      | Self::Import
-      | Self::Open
-      | Self::Save
-      | Self::SaveAs => Group::Draw,
-      Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
-        Group::Transform
-      }
+      | Self::AddRectangle => Group::Draw,
       Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => {
-        Group::VectorEdit
+        Group::Edit
       }
-      Self::Undo | Self::Redo => Group::History,
+      Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
+        Group::Organise
+      }
       Self::View3d
       | Self::Grid
       | Self::Layers
       | Self::Help
       | Self::Theme
       | Self::IconSet
-      | Self::Shortcuts
-      | Self::FitJob => Group::View,
+      | Self::Shortcuts => Group::ShowAndSelect,
     }
   }
 
@@ -384,22 +399,33 @@ impl Command {
     }
   }
 
-  /// Whether the left palette draws a chip for this command.
+  /// Whether the left rail draws a chip for this command.
   ///
-  /// The palette is a subset of the table, and this is the only list that says which subset: the nine
-  /// gestures plus text, the five transforms the Tools tab also runs, offset and join, and the four view
-  /// chips. Everything else is reached from somewhere the palette is not — `Add rectangle`, `Align`,
-  /// `Trim` and the node edits from the Tools tab, `Undo`, `Redo`, `3D`, `Theme` and `Fit the job` from
-  /// the app bar, `Icon set` from `F2`, `Open`, `Save` and `Save as` from the app bar, and `Import` from a
-  /// host, which is why it has no button at all.
+  /// The rail is a subset of the table, and this is the only list that says which subset: the seven FILE
+  /// commands, the nine gestures plus text, the five transforms the Tools tab also runs, offset and join,
+  /// and the four view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
+  /// `Align`, `Trim` and the node edits from the Tools tab, and `Icon set` from `F2`.
   ///
-  /// [`Group::History`] is never here: Undo and Redo are the app bar's run, so the palette has no
-  /// HISTORY section and the help panel is the only place that groups them.
+  /// **FILE moved here in camui-prancheta T2b, and that is the whole point of the move:** `Open`, `Save`,
+  /// `Save as`, `Fit the job`, `Undo` and `Redo` used to be the app bar's own buttons, so the bar and the
+  /// rail would have offered the same seven commands twice (S4). One surface offers a command, and the rail is
+  /// the one the reference gives the command table to.
+  ///
+  /// **`Import` is deliberately not here, and the review is why.** S4 lists it in FILE, and T2b first let it in
+  /// with the rest of the group — but this shell has no import *route*: `ImportFile` is what a host applies
+  /// after its own dialog, and [`Command::action`] returns `None` for `Import`, so a chip for it would be the
+  /// reachable command that silently emits nothing. A rail must not offer what it cannot run (L6).
   pub fn in_palette(self) -> bool {
     self.tool().is_some()
       || matches!(
         self,
-        Self::AddText
+        Self::Open
+          | Self::Save
+          | Self::SaveAs
+          | Self::FitJob
+          | Self::Undo
+          | Self::Redo
+          | Self::AddText
           | Self::Move
           | Self::Rotate
           | Self::Scale

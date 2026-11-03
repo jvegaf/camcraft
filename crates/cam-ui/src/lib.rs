@@ -40,6 +40,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
@@ -63,9 +64,11 @@ pub mod icons;
 /// The seven commands whose numbers travel with their builders: `Add text`, `Move`, `Rotate`, `Scale`,
 /// `Mirror`, `Array` and `Offset`.
 pub mod params;
+/// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
+pub mod stamp;
 pub mod theme;
 
-pub use chrome::{Readiness, Stage, Tab};
+pub use chrome::{Category, Tab};
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -612,6 +615,27 @@ impl CanvasRect {
 pub struct DrawnState {
   /// Layer id, entity count and visibility, in the order the dock showed them.
   pub layer_rows: Vec<(String, usize, bool)>,
+  /// Whether the layers block was expanded this frame.
+  ///
+  /// Reported because a folded block draws no row: without this a test could not tell "no layers" from "the
+  /// operator folded the block", which are different answers (camui-prancheta S6).
+  pub layers_open: bool,
+  /// Where the layers block drew its heading: the point that folds it.
+  ///
+  /// A heading is a control and reports itself the way the rail's headings do (camui-prancheta S4).
+  pub layers_heading: Option<(f32, f32)>,
+  /// The ribbon's categories, in the order it drew them: glyph-only rows, so these are the words the task
+  /// editor will carry once one is opened.
+  pub categories: Vec<String>,
+  /// Where the ribbon drew each category: its word and the point in the window that presses it.
+  pub category_hits: Vec<(String, (f32, f32))>,
+  /// The task editor's header while one is open, or empty while the panel is idle.
+  pub task_editor: String,
+  /// Where the task editor drew `✓` and `✕`: the words `Done` and `Cancel`, and the point that presses them.
+  ///
+  /// The two are painted glyphs, so the only word a headless test can read is the one this report gives them —
+  /// the same reason the app bar used to report its own.
+  pub task_editor_hits: Vec<(String, (f32, f32))>,
   /// Lines the property panel displayed.
   pub property_lines: Vec<String>,
   /// The status bar text.
@@ -627,10 +651,18 @@ pub struct DrawnState {
   pub painted_triangles: usize,
   /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
   pub painted_3d_lines: usize,
-  /// The stage the frame drew, and the rail entries it offered in order.
+  /// The sentence the status bar paints at its right end: what the last action produced.
   ///
-  pub stage: Stage,
-  /// The sentence the status bar showed at its right end.
+  /// Reported apart from [`Self::status_line`] because the right end is a zone of its own (camui-prancheta
+  /// S7): a test that read the whole line could not tell the outcome from the coordinates beside it.
+  pub message: String,
+  /// Where the status bar drew each snap chip: its word and the point in the window that presses it.
+  ///
+  /// A chip both arms its kind and, for the grid, names the step it snaps to (camui-prancheta S7), so a test
+  /// must press the chip the bar actually drew instead of guessing at the layout — the same reason the
+  /// palette reports its own hits.
+  pub status_chips: Vec<(String, (f32, f32))>,
+  /// The sentence the status bar showed in front of the message: what the current gesture will do.
   pub hint: String,
   /// What the left palette offered, in the order it drew them.
   ///
@@ -642,6 +674,12 @@ pub struct DrawnState {
   /// egui cannot be asked for a widget by its text from outside a frame, so the palette reports the
   /// point it drew each chip at and a click test presses that point instead of guessing at the layout.
   pub palette_hits: Vec<(String, (f32, f32))>,
+  /// Where the palette drew each group's heading: its word and the point in the window that folds it.
+  ///
+  /// A heading is a control now (camui-prancheta S4), so it reports itself the way the chips do: a test
+  /// clicks `FILE` and asserts FILE's chips are gone, instead of reaching into the shell's own field to set
+  /// a fold the operator would have set by clicking.
+  pub palette_headings: Vec<(String, (f32, f32))>,
   /// Where the Tools tab drew each parameterised command's button: its word and the point in the window
   /// that presses it.
   ///
@@ -652,8 +690,9 @@ pub struct DrawnState {
   pub authoring_hits: Vec<(String, (f32, f32))>,
   /// The words the app bar's command buttons answer to, in the order it drew them.
   ///
-  /// Open, Save, Save As, Undo, Redo and Fit the job are glyphs with no text beside them, so the only word a
-  /// headless test can read is the one the command table gives them: this is the app bar's own report of it.
+  /// Empty since camui-prancheta T2b, and kept as an empty report on purpose: the bar's file commands moved to
+  /// the rail, and a test asserts this list is empty so a button cannot quietly come back. [`Self::app_bar_hits`]
+  /// is the same surface for the buttons that remain, which answer to their own labels.
   pub app_bar: Vec<String>,
   /// Where the app bar drew each command button: its word and the point in the window that presses it.
   ///
@@ -850,6 +889,13 @@ pub struct Shell {
   /// **file-level, not document-level** — the undo history snapshots bare [`cam_model::Document`]s, so an
   /// undo cannot restore or lose them, and a drawing that was never opened has no entries to carry.
   document_extras: BTreeMap<String, Vec<u8>>,
+  /// When the file behind the drawing was last written, as the filesystem reports it.
+  ///
+  /// Read once per action that opens or writes a document, never per frame: the brand block's `Saved …` line
+  /// (camui-prancheta S4, L7) is a fact about the **file**, so it comes from the file's own mtime rather than
+  /// from the moment this process happened to notice the write. `None` covers both "no file yet" and "the
+  /// filesystem answered nothing about this one".
+  saved_at: Option<SystemTime>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -891,12 +937,28 @@ pub struct Shell {
   /// Whether the icon sheet is open. Until the shell has a rail to hang glyphs on, this is the only
   /// way to look at the whole set beside the rest of it.
   show_icons: bool,
-  /// Which stage of the job the frame is showing. View state: switching it pushes no command.
-  stage: Stage,
   /// Which inspector tab is showing.
   inspector_tab: Tab,
+  /// The ribbon category whose task editor is open, if any.
+  ///
+  /// `None` is not "nothing to show": it is the panel's idle state, which is the selection's numbers. The
+  /// reference draws no selection category — selection is what the panel says while no task is open — which
+  /// is why this is an `Option` rather than a fourth member of [`Category`].
+  task: Option<Category>,
+  /// Whether the layers block is expanded.
+  ///
+  /// View state of its own, and S6 asks for exactly that: `Camadas` collapses on its own, below the task
+  /// editor, independently of which task is open.
+  layers_open: bool,
   /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
   inspector_open: bool,
+  /// The rail groups the operator has collapsed.
+  ///
+  /// View state, not document state: collapsing a group changes what the frame shows and nothing else, so
+  /// it is neither an undoable edit nor a reason for the document to read as modified. Every group starts
+  /// expanded, because a rail that hid its own commands on the first frame would teach nothing — and the
+  /// reference opens expanded.
+  collapsed_groups: Vec<crate::help::Group>,
   /// Whether the shortcuts window is open.
   show_shortcuts: bool,
   /// Whether the `F1` help panel is open.
@@ -962,6 +1024,7 @@ impl Default for Shell {
       tools: Vec::new(),
       document_path: None,
       document_extras: BTreeMap::new(),
+      saved_at: None,
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -981,9 +1044,11 @@ impl Default for Shell {
       last_canvas: CanvasRect::default(),
       applied_theme: None,
       show_icons: false,
-      stage: Stage::default(),
       inspector_tab: Tab::default(),
+      task: None,
+      layers_open: true,
       inspector_open: true,
+      collapsed_groups: Vec::new(),
       show_shortcuts: false,
       show_help: false,
       // Closed at birth, like every other panel here: a dialog that opens by itself swallows the first
@@ -1060,6 +1125,22 @@ impl Shell {
         extras: &mut self.document_extras,
       }),
     );
+    // The brand block's stamp is read from the file the action just read or wrote, and only when the action
+    // was one of those: a `stat` per frame would be a syscall in the paint loop, and a stamp cached from an
+    // earlier action would describe a file that has since changed. `modified` answers `Err` on a filesystem
+    // that does not keep mtimes, which is an honest `None` — the block then says the work is unsaved.
+    if applied.is_ok()
+      && matches!(
+        action,
+        UiAction::OpenFile { .. } | UiAction::SaveFile { .. } | UiAction::Save
+      )
+    {
+      self.saved_at = self
+        .document_path
+        .as_deref()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .and_then(|metadata| metadata.modified().ok());
+    }
     // An open replaces the document, so everything the shell derived from the previous one goes with it.
     // None of these three is in the undo history — the preview is a picture of a program, the tool
     // snapshot belongs to the drawing that was showing, and the drafts are numbers the dialog has not
@@ -1108,6 +1189,22 @@ impl Shell {
   /// calls `untitled.c2d` and the state in which [`UiAction::Save`] is refused.
   pub fn document_path(&self) -> Option<&Path> {
     self.document_path.as_deref()
+  }
+
+  /// The words the brand block shows at the foot of the rail: `Saved 2026-11-03 19:30 UTC`, or
+  /// `Unsaved changes`.
+  ///
+  /// One source for the line the frame paints and the line a test reads, which is the only way the two can be
+  /// the same sentence. The rule is L7's: the line stamps the **document**, so it is the file's own last write
+  /// ([`Self::saved_at`]) and never a build stamp; a document with no file, or a filesystem that reported no
+  /// mtime, has nothing saved to name. A document with unsaved edits reads `Unsaved changes` too — the panel
+  /// asks [`AppState::is_dirty`] and draws that word itself, because dirty is the document's fact and the
+  /// stamp is the file's.
+  pub fn saved_stamp(&self) -> String {
+    match self.saved_at {
+      Some(at) => format!("Saved {}", crate::stamp::format_stamp(at)),
+      None => "Unsaved changes".to_owned(),
+    }
   }
 
   /// The archive entries this build does not interpret, carried from the last load.
@@ -1338,7 +1435,6 @@ impl Shell {
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
     // and a central panel must come last or it would claim the space the sides need.
     self.app_bar(app, ui, &mut output);
-    self.stage_bar(app, ui);
     self.status_bar(app, ui, &mut output);
     self.palette_panel(app, ui, &mut output);
     self.inspector(app, ui, &mut output);
@@ -1676,80 +1772,120 @@ impl Shell {
     }
   }
 
+  /// The status bar: the reference's three zones (camui-prancheta S7).
+  ///
+  /// Left: where the pointer is, with the two facts nothing else on the frame reports — the zoom this drawing
+  /// is shown at and the steps available in each direction. Middle: the snaps, where a chip arms its kind and
+  /// the grid chip names the step it snaps to. Right: what the last action produced, with the gesture's own
+  /// sentence in front of it, where the reference keeps it beside the chips.
+  ///
+  /// The save state is **not** here: the rail's brand block names the moment the document was written
+  /// (`Saved 2026-11-03 19:30 UTC` or `Unsaved changes`), and a bar saying `saved` beside a block saying when
+  /// would be the same fact twice, the second time without the moment (T2b-ii, L16).
   fn status_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
-    let snapping = self.snapping;
-    let mut toggled: Vec<SnapKind> = Vec::new();
-    let mut magnet = false;
-    let mut hint = String::new();
+    let cursor = match self.cursor_world {
+      Some(point) => format!("X {:.2}   Y {:.2}", point.x, point.y),
+      None => "X —   Y —".to_owned(),
+    };
+    // "undo / redo" are the steps available in each direction; dropped steps are reported separately
+    // because they are a warning, not a redo count.
+    let dropped = app.history_dropped();
+    let dropped = if dropped > 0 {
+      format!("   {dropped} step(s) dropped")
+    } else {
+      String::new()
+    };
+    let facts = format!(
+      "zoom {:.2} px/mm   undo {} / redo {}{dropped}",
+      app.camera().pixels_per_mm(),
+      app.history_depth(),
+      app.redo_depth()
+    );
+    let grid = grid_chip(self.grid_spacing);
+    let message = self.status.clone();
+    let hint = self.hint();
+    let mut chips: Vec<(String, (f32, f32))> = Vec::new();
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
+        ui.label(
+          RichText::new(&cursor)
+            .monospace()
+            .size(theme::CAPTION)
+            .color(palette.get(Role::Text)),
+        );
         ui.label(
           RichText::new("mm")
             .size(theme::CAPTION)
             .color(palette.get(Role::TextDim)),
         );
         ui.separator();
-        // One chip per snap kind, the reference's `Ponta | Meio | Centro` strip: what the pointer will
-        // stick to is a thing an operator arms and disarms while working, not a setting in a dialog.
+        ui.label(
+          RichText::new(&facts)
+            .monospace()
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.separator();
+        // The reference's `Encaixes | Ponto | Meio | Centro | Grid 10` strip: what the pointer will stick to is
+        // a thing an operator arms and disarms while working, not a setting in a dialog. Each click is applied
+        // in the frame it happens, so the frame that arms a chip is the frame that says it is armed (L13).
+        let response = chrome::chip(ui, &palette, "Snaps", self.snapping);
+        chips.push((
+          "Snaps".to_owned(),
+          (response.rect.center().x, response.rect.center().y),
+        ));
+        if response.clicked() {
+          self.snapping = !self.snapping;
+        }
         for (kind, label) in [
-          (SnapKind::Endpoint, "Endpoint"),
-          (SnapKind::Midpoint, "Midpoint"),
+          (SnapKind::Endpoint, "Point"),
+          (SnapKind::Midpoint, "Mid"),
           (SnapKind::Center, "Centre"),
-          (SnapKind::Grid, "Grid"),
         ] {
-          let on = self.snap_kinds.contains(&kind);
-          if chrome::chip(ui, &palette, label, on).clicked() {
-            toggled.push(kind);
+          let response = chrome::chip(ui, &palette, label, self.snap_armed(kind));
+          chips.push((
+            label.to_owned(),
+            (response.rect.center().x, response.rect.center().y),
+          ));
+          if response.clicked() {
+            self.toggle_snap(kind);
           }
         }
-        if chrome::chip(ui, &palette, "magnet", snapping).clicked() {
-          magnet = true;
+        let response = chrome::chip(ui, &palette, &grid, self.snap_armed(SnapKind::Grid));
+        chips.push((
+          grid.clone(),
+          (response.rect.center().x, response.rect.center().y),
+        ));
+        if response.clicked() {
+          self.toggle_snap(SnapKind::Grid);
         }
-        ui.separator();
-        let cursor = match self.cursor_world {
-          Some(point) => format!("X {:.2}  Y {:.2} mm", point.x, point.y),
-          None => "—".to_owned(),
-        };
-        let dirty = if app.is_dirty() { "modified" } else { "saved" };
-        // "undo / redo" are the steps available in each direction; dropped steps are reported
-        // separately because they are a warning, not a redo count.
-        let dropped = app.history_dropped();
-        let dropped = if dropped > 0 {
-          format!("   {dropped} step(s) dropped")
-        } else {
-          String::new()
-        };
-        let line = format!(
-          "{cursor}   zoom {:.2} px/mm   {dirty}   undo {} / redo {}{dropped}   {}",
-          app.camera().pixels_per_mm(),
-          app.history_depth(),
-          app.redo_depth(),
-          self.status
-        );
-        ui.monospace(&line);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-          // The right end belongs to one sentence: what the current gesture will do. It is the cheapest
-          // teaching in the interface and it changes with the tool instead of lying about it.
+          // The right end belongs to one sentence: what the action just produced. The gesture's own sentence
+          // sits in front of it — the reference keeps it beside the chips — and yields the width, because
+          // "what just happened" is the answer an operator looks for when a command answers back.
           ui.add(
             egui::Label::new(
-              RichText::new(self.hint())
+              RichText::new(&message)
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            )
+            .truncate(),
+          );
+          ui.add(
+            egui::Label::new(
+              RichText::new(&hint)
                 .size(theme::CAPTION)
                 .color(palette.get(Role::TextDim)),
             )
             .truncate(),
           );
         });
-        hint = self.hint();
-        output.drawn.status_line = line;
       });
     });
-    for kind in toggled {
-      self.toggle_snap(kind);
-    }
-    if magnet {
-      self.snapping = !self.snapping;
-    }
+    output.drawn.status_line = format!("{cursor} mm   {facts}   {message}");
+    output.drawn.message = message;
+    output.drawn.status_chips = chips;
     output.drawn.hint = hint;
   }
 
@@ -2837,6 +2973,27 @@ fn single_selection(app: &AppState) -> Result<String, String> {
     .into_iter()
     .next()
     .ok_or_else(|| "nothing is selected".to_owned())
+}
+
+/// The grid chip's own words: the step it snaps to, in millimetres (`Grid 10`, `Grid 2.5`).
+///
+/// The reference writes `Grid 10`, and a chip that said only `Grid` would hide the one number an operator
+/// needs to know what the snap will do. No step yet — the first frame, before the canvas has measured the
+/// camera — is `Grid —`: zero is not a step, and `Grid 0` would name a snap that can never fire, because the
+/// kernel arms no grid candidate at zero (`cam_view::pick`).
+fn grid_chip(spacing: f64) -> String {
+  if !spacing.is_finite() || spacing <= 0.0 {
+    return "Grid —".to_owned();
+  }
+  let step = if spacing.fract().abs() < 1e-9 {
+    format!("{spacing:.0}")
+  } else {
+    format!("{spacing:.2}")
+      .trim_end_matches('0')
+      .trim_end_matches('.')
+      .to_owned()
+  };
+  format!("Grid {step}")
 }
 
 /// Apply one command and describe what it produced.
