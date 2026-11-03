@@ -200,3 +200,25 @@ words: *"design/prancheta-reference/ + README"*.
   over `origin/master` in eight commits, against the ~400-line guidance per slice: the boundaries above are the
   answer to that, not one diff to review in a sitting, and the delivery shape (chained PRs, one per slice) is
   the owner's decision. Nothing is pushed and nothing is merged from here.
+- **L12 (the second review: approved, authority burned, and the sandbox that nearly stopped it).** Candidate
+  `a7a701e..e305ce5d` (25 paths, 2 154 lines, T0 through T2b-ii), lineage `review-c38fa3367409c3bb`, tier
+  **high** for `process_boundary` (`crates/cam-ui/src/lib.rs` starts subprocesses), three lenses (`risk`,
+  `readability`, `reliability`), correction budget 200 — **unused, no correction was required**. Three reviewer
+  runs over the pi host relay (169.7 kB of prompt each), **approved on the last admitted event**, authority
+  **burned** (`gentle-ai.review-acknowledged/v1`, revision `sha256:27875908…`). Delivery stays ordinary
+  repository policy: nothing pushed, nothing merged.
+  **Eight advisory findings, all `informational`, none blocking**, so this receipt stands and none of them is a
+  reason to re-review: `R2-001` (`chrome.rs:1537-1540`), `R2-002` (`tests/shell.rs:3542`), `R2-003`
+  (`design/prancheta-reference/README.md:111`), `R2-004` (`stamp.rs:72-77`), `R3-001` (`help.rs:419-420`),
+  `R3-002` (`chrome.rs:1540-1547`), `R3-003` (`help.rs:417`) and `R3-004` (`lib.rs:1161`). They are the
+  follow-up this feature leaves behind, together with L5's three.
+  **Two START attempts failed first, and the cause was the harness, not the candidate.** Both died in the
+  pre-native phase (`git_command_failed`) with `fatal: grep: failed to create thread: Resource temporarily
+  unavailable`; `mutation_performed: false` both times and `repair.counts.lineages = 0`, so no authority was
+  created and nothing was burned. The root cause of L9 is now known and was the same thing: the gentle-shell
+  service cgroup ran with **`pids.max = 64`** and 47 PIDs in use (Firefox 129 threads, Hyprland 70, Android
+  Studio 110, Ghidra 54, opencode 54), so any child that wanted a thread pool — `lld` linking a test binary,
+  the native `git grep` — died on `pthread_create`. With the owner's explicit authorisation the limit was raised
+  to 512 for that one cgroup, and the same START then succeeded on the first attempt. **The linker workaround in
+  L9 is therefore a symptom of the same limit, not a property of the toolchain**, and a session that starts with
+  `pids.max` back at 64 will see both failures again.
