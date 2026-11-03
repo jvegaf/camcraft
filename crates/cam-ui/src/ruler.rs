@@ -234,7 +234,10 @@ pub fn paint(
       continue;
     }
     top_painter.line_segment(
-      [egui::pos2(x, top.max.y), egui::pos2(x, top.max.y - tick_length)],
+      [
+        egui::pos2(x, top.max.y),
+        egui::pos2(x, top.max.y - tick_length),
+      ],
       ink_stroke,
     );
     let label = egui::pos2(x - galley.size().x / 2.0, top.min.y + padding);
@@ -253,7 +256,10 @@ pub fn paint(
       continue;
     }
     left_painter.line_segment(
-      [egui::pos2(left.max.x, y), egui::pos2(left.max.x - tick_length, y)],
+      [
+        egui::pos2(left.max.x, y),
+        egui::pos2(left.max.x - tick_length, y),
+      ],
       ink_stroke,
     );
     let text = tick_text(value, rulers.spacing);
@@ -278,7 +284,10 @@ pub fn paint(
     let y = (canvas.y + screen.y) as f32;
     let stroke = Stroke::new(1.0, marker_colour);
     top_painter.line_segment([egui::pos2(x, top.min.y), egui::pos2(x, top.max.y)], stroke);
-    left_painter.line_segment([egui::pos2(left.min.x, y), egui::pos2(left.max.x, y)], stroke);
+    left_painter.line_segment(
+      [egui::pos2(left.min.x, y), egui::pos2(left.max.x, y)],
+      stroke,
+    );
     rulers.marker = Some(RulerMarker {
       world: (world.x, world.y),
       colour: marker_colour,
@@ -299,8 +308,14 @@ mod tests {
     // ruler that says -19.999999 would be wrong about the one thing it is for.
     assert_eq!(ticks(-29.0, 29.0, 20.0), vec![-20.0, 0.0, 20.0]);
     assert_eq!(ticks(0.3, 0.9, 0.5), vec![0.5]);
-    assert!(ticks(0.3, 0.4, 0.5).is_empty(), "no multiple of the step is inside");
-    assert!(ticks(0.0, 1.0, 0.0).is_empty(), "a step of zero is not a step");
+    assert!(
+      ticks(0.3, 0.4, 0.5).is_empty(),
+      "no multiple of the step is inside"
+    );
+    assert!(
+      ticks(0.0, 1.0, 0.0).is_empty(),
+      "a step of zero is not a step"
+    );
     assert!(ticks(0.0, 1.0, f64::NAN).is_empty());
   }
 

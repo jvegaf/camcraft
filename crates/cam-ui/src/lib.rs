@@ -72,9 +72,12 @@ pub mod ruler;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
 pub mod theme;
+/// The tool library as a master-detail modal (camui-prancheta S9).
+pub mod tool_library;
 
 pub use chrome::{Category, Tab};
 pub use ruler::{RulerMarker, RulerTick, Rulers};
+pub use tool_library::{ToolFamily, ToolFormGroup};
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -543,6 +546,19 @@ pub enum UiAction {
   /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: the shell shows no
   /// dialog, writes no file and touches no document when it receives this.
   RequestSaveAs,
+  /// Give an existing toolpath a different tool number, leaving its geometry and operation alone.
+  ///
+  /// The tool library's `Use this tool` is what pushes this (camui-prancheta S9): the modal chooses a tool
+  /// from the library snapshot, and the one thing the choice can change about the document is the number the
+  /// toolpath cuts with. [`cam_app::Command::SetToolpathToolNumber`] is the rule, and it takes the number as
+  /// it stands — a number the library does not hold is refused at emission time, where the library is
+  /// actually read, not here.
+  SetToolpathToolNumber {
+    /// Identifier of the toolpath to retool.
+    toolpath_id: String,
+    /// The new tool number.
+    tool_number: u32,
+  },
 }
 
 impl UiAction {
@@ -579,6 +595,7 @@ impl UiAction {
       Self::OpenFile { .. } | Self::RequestOpenFile => "open file",
       Self::Save => "save document",
       Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
+      Self::SetToolpathToolNumber { .. } => "set toolpath tool",
     }
   }
 }
@@ -861,6 +878,69 @@ pub struct DrawnState {
   pub painted_program_lines: usize,
   /// The tool marker's edges, `0` when `Tool` is hidden, the split is closed, or no program is loaded.
   pub painted_tool_lines: usize,
+  /// The words the tool-library modal drew, in the order it drew them (camui-prancheta S9).
+  ///
+  /// Empty while the modal is closed, because a modal nobody opened drew nothing. The modal is the one
+  /// surface in the shell whose content is a tree of the library and a form that changes with the selected
+  /// tool, so this is how a headless test reads it: egui offers no widget-by-text lookup from outside a
+  /// frame, and the tree's rows carry a painted name and a painted cut line rather than a label a test can
+  /// ask for.
+  pub tool_library: Vec<String>,
+  /// Where the tool-library modal drew each pressable thing: its word and the point in the window that
+  /// presses it (camui-prancheta S9).
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason. Only points the
+  /// operator could actually press are reported: a row scrolled out of the master list is drawn by egui and
+  /// clipped away, and reporting its centre would be a promise about a control nobody can see (the defect
+  /// the T6 review found in the playback bar, L23).
+  pub tool_library_hits: Vec<(String, (f32, f32))>,
+  /// The family tree the modal drew: each family's own name and the number of rows drawn under it.
+  ///
+  /// The count is the number of rows that follow the heading in the tree, not the number of tools the
+  /// library holds in that family: a count beside a filtered tree that named tools the operator cannot see
+  /// would be a number nobody can check against what is on screen.
+  pub tool_families: Vec<(String, usize)>,
+  /// One entry per tool row, in the order drawn: the family's name, the tool's title, and its
+  /// `Ø6 · 2 cut(s)` line.
+  ///
+  /// The family is part of the row rather than implied by [`Self::tool_families`] because a tree is a
+  /// claim about *which* rows sit together, and a list of counts cannot make it.
+  pub tool_rows: Vec<(String, String, String)>,
+  /// The tool the modal's detail side is showing, by the library's own geometry id.
+  ///
+  /// `None` while the modal is closed and while the tree holds no selection. An id and not a row title,
+  /// because two tools may carry the same name and the same number, and the operator's choice is a tool.
+  pub tool_selected: Option<String>,
+  /// The detail form's groups, in the order drawn, each with the fields and values under it
+  /// (camui-prancheta S9).
+  ///
+  /// Empty while the modal is closed. This is the report that makes "the form changes with the family"
+  /// answerable: the group's word and its fields are exactly what the form drew, so a field a family does
+  /// not have cannot be claimed by a test that only read the painted text.
+  pub tool_groups: Vec<(String, Vec<(String, String)>)>,
+  /// The dimension callouts painted on the scaled tool drawing, in the order drawn.
+  ///
+  /// The drawing is painted, so these are the only part of it a test can quote back — the same reason the
+  /// material plan reports its three measurements.
+  pub tool_callouts: Vec<String>,
+  /// Where the scaled tool drawing went, as `(x, y, width, height)` in window pixels.
+  ///
+  /// `None` while the modal is closed, while nothing is selected, and when the selected tool carries no
+  /// diameter: a tool with no width has no width to draw, and the form says so instead of drawing a shape
+  /// of its own invention.
+  pub tool_drawing: Option<(f32, f32, f32, f32)>,
+  /// The width the tool's own diameter was drawn at, in pixels, `0.0` when nothing was drawn.
+  ///
+  /// Separate from [`Self::tool_drawing`] because "to scale" is a claim about the *number*: the same tool
+  /// drawn wider is not the same reading, and a rectangle tells a test nothing about how many millimetres
+  /// wide it is.
+  pub tool_width_px: f32,
+  /// Where the current-tool card drew `Choose another tool…`: its word and the point that presses it.
+  ///
+  /// Empty while no card is drawn. The card's own words stay in [`Self::tool_card`] and did not grow this
+  /// button, because the card is a reading of the tool a toolpath cuts with and the button is the way to
+  /// change it.
+  pub tool_card_hits: Vec<(String, (f32, f32))>,
 }
 
 /// What one frame produced.
@@ -1061,6 +1141,28 @@ pub struct Shell {
   /// nothing. Public and flat the way every other parameter of this shell is ([`Self::rectangle_size`]),
   /// because a dialog whose numbers could not be set is a dialog that cannot be tested.
   pub material_size: (f64, f64, f64),
+  /// Whether the tool-library modal is open (camui-prancheta S9).
+  ///
+  /// View state: opening the modal, searching it and cancelling out of it are not edits, and only
+  /// `Use this tool` writes. `Esc` closes it without writing, the rule the material dialog already follows.
+  pub show_tool_library: bool,
+  /// The text the tool-library modal's search field holds.
+  ///
+  /// A draft of the frame's own, like [`Self::material_size`]: it filters the tree and reaches nothing else,
+  /// so `Cancel` has nothing to undo about it. Public because a search field whose text could not be set
+  /// from outside a frame is a filter only a keyboard could test.
+  pub tool_search: String,
+  /// The toolpath `Use this tool` will retool, by id — this is what opened the modal.
+  ///
+  /// Captured when the modal opens and re-read from the document on every frame: a toolpath the operator
+  /// deleted (or an undo restored) between opening and committing is a state the modal has to answer for,
+  /// and it answers by not drawing `Use this tool` and saying why (camui-prancheta S9, L6).
+  tool_library_target: Option<String>,
+  /// The tool the modal's detail side is showing, by the library's own geometry id.
+  ///
+  /// A draft too: choosing a row changes what the form and the drawing describe, and nothing else. Only
+  /// `Use this tool` turns the choice into an action.
+  tool_library_selected: Option<String>,
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   help_focus: crate::help::Command,
   /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
@@ -1139,6 +1241,10 @@ impl Default for Shell {
       // is how it opens (L108's lesson: a temporary default nobody meant to ship).
       show_material: false,
       material_size: default_material_size(),
+      show_tool_library: false,
+      tool_search: String::new(),
+      tool_library_target: None,
+      tool_library_selected: None,
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }
@@ -1505,6 +1611,14 @@ impl Shell {
     if self.show_material {
       self.material_dialog(&ctx, app, &mut output);
     }
+    // The tool library is the shell's second modal (camui-prancheta S9), and `Esc` leaves it without writing
+    // for the reason the material dialog's does: the choice is a draft until `Use this tool` says otherwise.
+    if self.show_tool_library && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.close_tool_library();
+    }
+    if self.show_tool_library {
+      self.tool_library_dialog(&ctx, app, &mut output);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -1512,7 +1626,7 @@ impl Shell {
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
     // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
-    if !self.show_material {
+    if !self.show_material && !self.show_tool_library {
       self.track_pointer(app, &ctx);
     }
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
@@ -2945,6 +3059,16 @@ fn handle_action_with_file(
         ..ActionReport::default()
       })
     }
+    UiAction::SetToolpathToolNumber {
+      toolpath_id,
+      tool_number,
+    } => apply_command(
+      app,
+      Command::SetToolpathToolNumber {
+        toolpath_id: toolpath_id.clone(),
+        tool_number: *tool_number,
+      },
+    ),
     UiAction::SetSelection(ids) => {
       app.select(ids.clone());
       Ok(ActionReport {

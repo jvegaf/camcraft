@@ -482,3 +482,70 @@ words: *"design/prancheta-reference/ + README"*.
   the correction.
   **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
   `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
+- **L24 (T7: the tool library, and the formatting debt paid before it).** Two commits, in this order and on
+  purpose: `aa6393a` formats the crate, `7df91c9` is T7. **L22 assumed the formatting debt was one file; it was
+  four** — `ruler.rs`, `view3d.rs`, `tests/shell.rs` and `tests/view3d.rs` were all dirty against the
+  repository's own `rustfmt.toml` (`tab_spaces = 2`), verified by reformatting each `master` version and
+  comparing byte for byte. The sweep is exactly that reformatting, nothing else, and `cargo fmt --check` now
+  exits 0. It is its own commit so that the T7 candidate is T7 and not 279 lines of somebody else's whitespace.
+  **The modal** is `crates/cam-ui/src/tool_library.rs` (1 181 lines): a search field, a scrollable tree grouped
+  by family with a count (`Flat end mill (2)`) and one row per tool (`Icon::ToolLibrary` mini glyph, name, dim
+  `Ø6 · 2 cut(s)`), a detail column whose groups change with the family, the tool drawn on one shared scale with
+  its callouts, and a footer above `Cancel` / `Use this tool`. Seventeen tests, none of the 228 existing ones
+  touched: the card's new opener reports in `tool_card_hits`, so `the_card_names_the_tool_the_toolpath_cuts_with`
+  still reads its three lines.
+  **Three decisions the spec did not make, each following a rule this feature already learned:**
+  1. **The family is derived from the geometry the record proves**, never from `tool_type`: an included angle
+     makes it a V-bit, `tip_radius == Ø/2` a ball nose, any other tip radius a corner-radius cutter, and no tip
+     radius at all a flat end mill. The raw type code is documented in the library's own header as unmapped, so
+     a heading over it would be a number nobody can read (L6's rule again).
+  2. **`PASSES` and `SPEEDS` are drawn only when the cutting data holds one of their numbers**; `GEOMETRY` and
+     `MACHINE` always, because every record carries the units its rates were written in. A group heading over
+     no fields is a wall with nothing behind it.
+  3. **The footer offers no `New` / `Duplicate` / `Delete` / `Import…` / `Export…`.** This shell holds a
+     read-only snapshot (`set_tools`), `cam-store` owns the only writer, and `cam-cli tools add` is the route
+     that exists: five buttons that emitted nothing would be exactly the CRITICAL finding L14 paid for. The
+     footer instead names the five actions and the reason, and a test pins **both** halves — the sentence and
+     the absence of the buttons.
+  **What it refused, and the rule it followed:** no invented tool length (the drawing's vertical extent is the
+  frame's edge, with no callout, exactly as `view3d::paint_tool` refuses to draw a spindle to a guessed length);
+  the flute length is drawn only when the record holds one; no new glyph; and no `Use this tool` when the target
+  cannot be honoured — `a_tool_with_no_number_…`, `an_empty_library_…` and `a_library_opened_without_a_toolpath_…`
+  each pin a different refusal.
+  **L23's lesson applied before a reviewer had to find it:** the modal reports only points the frame actually
+  showed (`Spot` + `pressable` filtered by clip), so a row the scroll area hides is not reported as pressable —
+  the mirror image of the playback bar that was clickable while invisible.
+  **Honest note on the RED:** the worker implemented first and produced each rule's RED by reverting it and
+  capturing the failure — not the test-first order this document prefers. Two of those mutations found real
+  bugs in its first cut (the modal reported the *previous* selection for one frame, which is L13's defect one
+  layer down), which is why the tree is drawn first and the detail resolved between the columns.
+  **Workspace: 1 273 tests, exit 0** (baseline 1 256; cam-ui 228 → 245). **One loose end, not T7's:** `segmented`
+  is now dead code — `ad0eaaa` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
+  without a caller, so the crate carries a `never used` warning that pre-dates this task. It gets its own commit,
+  outside any review candidate, rather than riding in T7's diff.
+- **L25 (the T7 review: one finding, and it was about units).** Lineage `review-e4268ddae85fe9c0`, tier
+  **high**, **three lenses**, 5 paths, 2 509 changed lines, correction budget 200 of which **47 were spent**.
+  Three reviewer runs (≈120 kB of prompt each) produced a `provider_refuter` request; the refuter accepted
+  **`R3-001` (CRITICAL)** and the correction route opened. The targeted validator then approved the corrected
+  tree (`sha256:565ce156…`), and authority was **burned** (`gentle-ai.review-acknowledged/v1`). **Workspace:
+  1 274 tests, exit 0.**
+  **The finding:** `form_fields` wrote every feed and plunge rate as `mm/s` whatever `cutting.rate_units` said,
+  so an inch-library tool read `Feed 100.00 mm/s` in `SPEEDS` while `MACHINE` read `Rates in/s` — one number
+  carrying two units, which is the one thing a rate cannot do.
+  **It was not a label bug, and treating it as one would have been worse.** `cam-store` documents the field as
+  *"Units the rates were authored in. Stored rates are millimetres per second."* Renaming the suffix would have
+  left a millimetre-per-second number wearing an inch label. `620330c` therefore **converts** the stored value
+  into the authored unit (`/ MM_PER_INCH`) and labels it with that unit, so the two rows agree and the number is
+  the one the operator typed. `a_rate_is_shown_in_the_units_the_library_authored_it_in` pins the inch path
+  (`3.94 in/s`, `Rates in/s`) **and** the millimetre path (`100.00 mm/s`) so the fix cannot move a number a
+  metric library reads.
+  **What the correction deliberately did not fix:** `PASSES` prints every `Length` in `mm` whatever the authored
+  units are — the same root cause, one expression away, and **not corroborated by the refuter**. A bounded
+  correction fixes what was corroborated; the lengths join the advisory backlog instead of riding along
+  unannounced.
+  **Seven advisories, all `informational`:** `R2-001` (`tool_library.rs:310`), `R2-002` (`:38-40`), `R2-003`
+  (`:129`), `R2-004` (`tests/tool_library.rs:884-889`), `R3-002` (`:216`), `R3-003` (`:1046`) and `R3-004`
+  (`:1067-1073`). They join the twenty-nine this feature already owes.
+  **One process note, applied rather than re-learned:** the candidate was `aa6393a..HEAD`, so the formatting
+  sweep stayed out of the reviewers' diff, and the targeted-validator binding went in **whole** — with its
+  `validationRequest` — on the first attempt, which is L23's lesson used instead of paid for again.

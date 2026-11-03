@@ -423,11 +423,20 @@ fn the_status_bar_chips_are_the_references_five_and_the_grid_names_its_step() {
     5,
     "the reference draws five chips, this bar drew {labels:?}"
   );
-  assert_eq!(&labels[..4], ["Snaps", "Point", "Mid", "Centre"], "{labels:?}");
+  assert_eq!(
+    &labels[..4],
+    ["Snaps", "Point", "Mid", "Centre"],
+    "{labels:?}"
+  );
   let step = labels[4]
     .strip_prefix("Grid ")
     .and_then(|value| value.parse::<f64>().ok())
-    .unwrap_or_else(|| panic!("the grid chip must name its step in millimetres: {:?}", labels[4]));
+    .unwrap_or_else(|| {
+      panic!(
+        "the grid chip must name its step in millimetres: {:?}",
+        labels[4]
+      )
+    });
   assert_eq!(
     step, shell.grid_spacing,
     "the chip and the shell must name the same step"
@@ -460,7 +469,10 @@ fn the_point_chip_arms_and_disarms_its_own_snap_kind() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let _ = frame_with(&ctx, &mut shell, &mut app);
-  assert!(shell.snap_armed(SnapKind::Endpoint), "endpoints start armed");
+  assert!(
+    shell.snap_armed(SnapKind::Endpoint),
+    "endpoints start armed"
+  );
 
   click_status_chip(&ctx, &mut shell, &mut app, "Point");
   assert!(
@@ -484,7 +496,10 @@ fn the_grid_chip_arms_the_grid_snap_its_own_word_names() {
 
   let label = click_status_chip(&ctx, &mut shell, &mut app, "Grid");
   assert!(label.starts_with("Grid "), "{label}");
-  assert!(!shell.snap_armed(SnapKind::Grid), "the grid chip disarms the grid");
+  assert!(
+    !shell.snap_armed(SnapKind::Grid),
+    "the grid chip disarms the grid"
+  );
 }
 
 #[test]
@@ -4663,13 +4678,7 @@ fn move_to(
 ) -> ShellOutput {
   let mut last = None;
   for _ in 0..2 {
-    last = Some(frame_with_events(
-      ctx,
-      shell,
-      app,
-      vec![egui::Event::PointerMoved(at)],
-    )
-    .0);
+    last = Some(frame_with_events(ctx, shell, app, vec![egui::Event::PointerMoved(at)]).0);
   }
   last.expect("two passes ran")
 }
@@ -4865,7 +4874,12 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
       tick.text,
       under.x
     );
-    assert_eq!(tick_number(tick), tick.value, "{} is not its value", tick.text);
+    assert_eq!(
+      tick_number(tick),
+      tick.value,
+      "{} is not its value",
+      tick.text
+    );
   }
   for tick in &rulers.left {
     let under = camera.screen_to_world(canvas.to_screen(egui::pos2(canvas.x as f32, tick.at.1)));
@@ -4875,18 +4889,20 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
       tick.text,
       under.y
     );
-    assert_eq!(tick_number(tick), tick.value, "{} is not its value", tick.text);
+    assert_eq!(
+      tick_number(tick),
+      tick.value,
+      "{} is not its value",
+      tick.text
+    );
   }
 
   // Left of the origin the top ruler already reads negative here, because the stock is narrower than the
   // frame: the sheet's left half is world x < 0.
   let origin = camera.world_to_screen(Point2::new(0.0, 0.0));
   let origin_x = (canvas.x + origin.x) as f32;
-  let negative: Vec<&cam_ui::RulerTick> = rulers
-    .top
-    .iter()
-    .filter(|tick| tick.value < 0.0)
-    .collect();
+  let negative: Vec<&cam_ui::RulerTick> =
+    rulers.top.iter().filter(|tick| tick.value < 0.0).collect();
   assert!(
     !negative.is_empty(),
     "the frame shows world x < 0 to the left of the origin, so the ruler must say so: {:?}",
@@ -5057,7 +5073,10 @@ fn the_rulers_mark_the_cursor_on_both_edges() {
     "the top leg has to be inside the top band: {:?}",
     marker.top
   );
-  assert!((ax - bx).abs() < 0.01, "the top leg is vertical: {ax} vs {bx}");
+  assert!(
+    (ax - bx).abs() < 0.01,
+    "the top leg is vertical: {ax} vs {bx}"
+  );
   let ((cx, cy), (dx, dy)) = marker.left;
   assert!(
     cx >= left_x && cx <= left_x + left_width && dx >= left_x && dx <= left_x + left_width,
@@ -5234,7 +5253,11 @@ fn a_gesture_on_a_ruler_is_not_a_gesture_on_the_sheet() {
     on_left_band.actions
   );
   assert!(
-    app.document().layers.iter().all(|layer| layer.entities.is_empty()),
+    app
+      .document()
+      .layers
+      .iter()
+      .all(|layer| layer.entities.is_empty()),
     "nothing may have reached the document"
   );
 
@@ -5277,10 +5300,22 @@ fn the_drawing_is_framed_inside_the_inset_area_the_bands_leave() {
     .iter()
     .map(|(x, y)| canvas.to_window(camera.world_to_screen(Point2::new(*x, *y))))
     .collect();
-  let min_x = corners.iter().map(|corner| corner.x).fold(f32::MAX, f32::min);
-  let max_x = corners.iter().map(|corner| corner.x).fold(f32::MIN, f32::max);
-  let min_y = corners.iter().map(|corner| corner.y).fold(f32::MAX, f32::min);
-  let max_y = corners.iter().map(|corner| corner.y).fold(f32::MIN, f32::max);
+  let min_x = corners
+    .iter()
+    .map(|corner| corner.x)
+    .fold(f32::MAX, f32::min);
+  let max_x = corners
+    .iter()
+    .map(|corner| corner.x)
+    .fold(f32::MIN, f32::max);
+  let min_y = corners
+    .iter()
+    .map(|corner| corner.y)
+    .fold(f32::MAX, f32::min);
+  let max_y = corners
+    .iter()
+    .map(|corner| corner.y)
+    .fold(f32::MIN, f32::max);
   let right = (canvas.x + canvas.width) as f32;
   let bottom = (canvas.y + canvas.height) as f32;
   for (edge, gap) in [
