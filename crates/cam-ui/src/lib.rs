@@ -68,7 +68,7 @@ pub mod params;
 pub mod stamp;
 pub mod theme;
 
-pub use chrome::Tab;
+pub use chrome::{Category, Tab};
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -615,6 +615,27 @@ impl CanvasRect {
 pub struct DrawnState {
   /// Layer id, entity count and visibility, in the order the dock showed them.
   pub layer_rows: Vec<(String, usize, bool)>,
+  /// Whether the layers block was expanded this frame.
+  ///
+  /// Reported because a folded block draws no row: without this a test could not tell "no layers" from "the
+  /// operator folded the block", which are different answers (camui-prancheta S6).
+  pub layers_open: bool,
+  /// Where the layers block drew its heading: the point that folds it.
+  ///
+  /// A heading is a control and reports itself the way the rail's headings do (camui-prancheta S4).
+  pub layers_heading: Option<(f32, f32)>,
+  /// The ribbon's categories, in the order it drew them: glyph-only rows, so these are the words the task
+  /// editor will carry once one is opened.
+  pub categories: Vec<String>,
+  /// Where the ribbon drew each category: its word and the point in the window that presses it.
+  pub category_hits: Vec<(String, (f32, f32))>,
+  /// The task editor's header while one is open, or empty while the panel is idle.
+  pub task_editor: String,
+  /// Where the task editor drew `✓` and `✕`: the words `Done` and `Cancel`, and the point that presses them.
+  ///
+  /// The two are painted glyphs, so the only word a headless test can read is the one this report gives them —
+  /// the same reason the app bar used to report its own.
+  pub task_editor_hits: Vec<(String, (f32, f32))>,
   /// Lines the property panel displayed.
   pub property_lines: Vec<String>,
   /// The status bar text.
@@ -907,6 +928,17 @@ pub struct Shell {
   show_icons: bool,
   /// Which inspector tab is showing.
   inspector_tab: Tab,
+  /// The ribbon category whose task editor is open, if any.
+  ///
+  /// `None` is not "nothing to show": it is the panel's idle state, which is the selection's numbers. The
+  /// reference draws no selection category — selection is what the panel says while no task is open — which
+  /// is why this is an `Option` rather than a fourth member of [`Category`].
+  task: Option<Category>,
+  /// Whether the layers block is expanded.
+  ///
+  /// View state of its own, and S6 asks for exactly that: `Camadas` collapses on its own, below the task
+  /// editor, independently of which task is open.
+  layers_open: bool,
   /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
   inspector_open: bool,
   /// The rail groups the operator has collapsed.
@@ -1002,6 +1034,8 @@ impl Default for Shell {
       applied_theme: None,
       show_icons: false,
       inspector_tab: Tab::default(),
+      task: None,
+      layers_open: true,
       inspector_open: true,
       collapsed_groups: Vec::new(),
       show_shortcuts: false,

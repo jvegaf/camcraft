@@ -331,7 +331,12 @@ fn the_layer_dock_reports_every_layer_and_paints_its_name() {
     "the layer row must be painted: {}",
     joined(&texts)
   );
-  assert!(joined(&texts).contains("Layers"));
+  // `LAYERS` is its own block since camui-prancheta S6, and every section heading in this frame is uppercase.
+  assert!(
+    joined(&texts).contains("LAYERS"),
+    "the layers block must head itself: {}",
+    joined(&texts)
+  );
 }
 
 #[test]
@@ -1564,12 +1569,18 @@ fn a_refused_command_puts_the_kernel_reason_in_the_status_bar_and_changes_nothin
 #[test]
 fn the_tools_tab_offers_every_authoring_command() {
   let mut app = AppState::new(document_with_rectangle());
+  // The authoring body lives behind `TOOLPATHS` since camui-prancheta S6 replaced the tab row with the
+  // ribbon: the panel's idle state is the selection, so a test that wants the command list opens the task
+  // the way an operator does.
   let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::Toolpaths);
   let ctx = egui::Context::default();
   let (output, first) = frame_with(&ctx, &mut shell, &mut app);
+  // Below the ribbon and the task header: the pointer has to be over the scrolling body for the wheel to
+  // reach it, and since S6 the panel carries three category rows above that body.
   let inspector = egui::pos2(
     (output.canvas.x + output.canvas.width) as f32 + 100.0,
-    (output.canvas.y + 120.0) as f32,
+    (output.canvas.y + 260.0) as f32,
   );
   let mut texts = first;
   texts.extend(texts_scrolled_to_the_end(
@@ -3786,6 +3797,7 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   // wrong field visible, so the numbers below are deliberately not the defaults.
   let mut app = AppState::new(document_with_rectangle());
   let mut framing = Shell::new();
+  framing.open_task(cam_ui::Category::Toolpaths);
   let _ = frame_with(&egui::Context::default(), &mut framing, &mut app);
   // Every `about` and `origin` names the view centre, and the shell frames the drawing on its first frame:
   // the point a payload carries is a measurement of the camera, not the origin a default happens to hold.
@@ -3796,6 +3808,9 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   );
 
   let mut numbers = Shell::new();
+  // The authoring buttons live in the `TOOLPATHS` task since camui-prancheta S6, so both routes are measured
+  // with that task open — the palette chip and the task's button are the same command either way.
+  numbers.open_task(cam_ui::Category::Toolpaths);
   numbers.text = "Hi".to_owned();
   numbers.text_height = 7.5;
   numbers.move_delta = (3.5, -2.0);
@@ -4321,4 +4336,179 @@ fn a_file_symlink_beside_the_document_still_creates_nothing_outside() {
     "nothing is created outside the document's directory"
   );
   std::fs::remove_dir_all(&base).ok();
+}
+
+// ---- The right panel as a ribbon and a task editor (camui-prancheta S6, T3) ---------------------
+
+/// The stock `Job::default_sheet()` gives a fresh document, in millimetres: what `Cancel` must restore.
+fn material_size_of(_app: &AppState) -> (f64, f64, f64) {
+  (1219.0, 2438.0, 18.0)
+}
+
+/// Click a reported point, one press and one release, as a person does.
+fn click_point(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  at: egui::Pos2,
+) -> ShellOutput {
+  click_at(ctx, shell, app, at).0
+}
+
+#[test]
+fn the_right_panel_is_a_ribbon_of_three_categories_in_the_references_order() {
+  // S6: `TOOLPATHS`, `RELIEF AND 3D PART`, `MACHINE AND OUTPUT`, glyph only, one row per category. The words
+  // are asserted from the panel's own report rather than from painted text: they are the task editor's future
+  // header, and a glyph-only ribbon paints none of them.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, _) = frame(&mut shell, &mut app);
+  assert_eq!(
+    output.drawn.categories,
+    vec![
+      "TOOLPATHS".to_owned(),
+      "RELIEF AND 3D PART".to_owned(),
+      "MACHINE AND OUTPUT".to_owned()
+    ],
+    "the ribbon is the reference's three categories, in its order"
+  );
+  // The old tab row is gone: a tab names a shelf and a category opens a task. `Tools` and `Job` were the tab
+  // labels, and neither is painted anywhere now.
+  assert!(
+    !output.drawn.categories.iter().any(|word| word == "Tools"),
+    "the panel must not offer the old tab labels: {:?}",
+    output.drawn.categories
+  );
+  assert!(
+    output.drawn.task_editor.is_empty(),
+    "no task is open on a fresh shell: {:?}",
+    output.drawn.task_editor
+  );
+}
+
+#[test]
+fn opening_a_category_puts_its_task_editor_over_the_panel() {
+  // The idle panel says what is selected; opening `TOOLPATHS` replaces that with the authoring body, which is
+  // what "the task editor replaces the panel's content" means (S6).
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let (first, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("Properties"),
+    "the idle panel shows the selection's numbers: {all}"
+  );
+  let at = first
+    .drawn
+    .category_hits
+    .iter()
+    .find(|(word, _)| word == "TOOLPATHS")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("TOOLPATHS is on the ribbon");
+
+  let output = click_point(&ctx, &mut shell, &mut app, at);
+  assert_eq!(shell.task(), Some(cam_ui::Category::Toolpaths));
+  assert_eq!(output.drawn.task_editor, "TOOLPATHS");
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("Add text") && all.contains("Authoring"),
+    "the toolpath task carries the authoring body: {all}"
+  );
+  assert!(
+    !all.contains("Properties"),
+    "the task editor replaces the panel's content, it does not stack on it: {all}"
+  );
+}
+
+#[test]
+fn the_task_header_keeps_the_typed_numbers_on_done_and_discards_them_on_cancel() {
+  // The only real difference between `✓` and `✕` in this panel: every number applies as it is typed except the
+  // material's drafts, so `Done` has nothing to undo and `Cancel` is the one gesture that throws the draft away.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::MachineOutput);
+  shell.material_size = (100.0, 50.0, 3.0);
+  let ctx = egui::Context::default();
+
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  let done = first
+    .drawn
+    .task_editor_hits
+    .iter()
+    .find(|(word, _)| word == "Done")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("the header carries Done");
+  let output = click_point(&ctx, &mut shell, &mut app, done);
+  assert_eq!(
+    output.drawn.task_editor, "",
+    "Done closes the task editor, and the panel falls back to the selection"
+  );
+  assert_eq!(
+    shell.material_size,
+    (100.0, 50.0, 3.0),
+    "Done keeps the numbers that were typed"
+  );
+
+  shell.open_task(cam_ui::Category::MachineOutput);
+  shell.material_size = (100.0, 50.0, 3.0);
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  let cancel = first
+    .drawn
+    .task_editor_hits
+    .iter()
+    .find(|(word, _)| word == "Cancel")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("the header carries Cancel");
+  let output = click_point(&ctx, &mut shell, &mut app, cancel);
+  assert_eq!(
+    output.drawn.task_editor, "",
+    "Cancel closes the task editor"
+  );
+  assert_eq!(
+    shell.material_size,
+    material_size_of(&app),
+    "Cancel puts the material's draft back to the document's own stock"
+  );
+}
+
+#[test]
+fn the_layers_block_folds_on_its_own_and_leaves_the_task_where_it_was() {
+  // S6: `Camadas` is its own collapsible block below the task editor. It folds without closing the task, and
+  // the task does not come back when the block does.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.open_task(cam_ui::Category::Toolpaths);
+  let ctx = egui::Context::default();
+
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(first.drawn.layers_open, "the block starts expanded");
+  assert_eq!(
+    first.drawn.layer_rows,
+    vec![("L1".to_owned(), 1, true)],
+    "an expanded block draws its rows"
+  );
+  let at = first
+    .drawn
+    .layers_heading
+    .map(|(x, y)| egui::pos2(x, y))
+    .expect("the block reports its heading");
+
+  let output = click_point(&ctx, &mut shell, &mut app, at);
+  assert!(!output.drawn.layers_open, "the heading folds the block");
+  assert!(
+    output.drawn.layer_rows.is_empty(),
+    "a folded block draws no row: {:?}",
+    output.drawn.layer_rows
+  );
+  assert_eq!(
+    shell.task(),
+    Some(cam_ui::Category::Toolpaths),
+    "folding the layers block must not close the task"
+  );
+  assert_eq!(
+    output.drawn.task_editor, "TOOLPATHS",
+    "the task editor stays where it was"
+  );
 }

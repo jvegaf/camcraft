@@ -84,6 +84,69 @@ impl Tab {
       Self::Job => "Job",
     }
   }
+
+  /// The ribbon category that opens this tab's content, if any.
+  ///
+  /// The right panel is not a tabbed inspector any more (camui-prancheta S6): it is a ribbon of three
+  /// semantic categories, and opening one puts its task editor over the panel. `Selection` is the odd one
+  /// out on purpose — the reference draws no selection category, because the selection's numbers are the
+  /// panel's *idle* state rather than a task anybody opens — so it maps to **no** category and is drawn when
+  /// no task is open.
+  pub fn category(self) -> Option<Category> {
+    match self {
+      Self::Tools => Some(Category::Toolpaths),
+      Self::Selection => None,
+      Self::Job => Some(Category::MachineOutput),
+    }
+  }
+}
+
+/// A category of the right panel's ribbon: the three the reference draws, in its order (camui-prancheta S6).
+///
+/// Glyph only, one row per category. Opening one puts that category's **task editor** over the panel's body,
+/// which is what replaced the three named tabs: the words moved into the task editor's header, where they name
+/// the task instead of a tab nobody could tell apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Category {
+  /// What makes and describes toolpaths: the authoring commands, the tool card, the estimate.
+  Toolpaths,
+  /// The 3D half of the surface: whether it is split, and what it is playing.
+  Relief3d,
+  /// Stock, material, zero, and the program that leaves the machine.
+  MachineOutput,
+}
+
+impl Category {
+  /// Every category, top to bottom — the reference's order.
+  pub const ALL: [Category; 3] = [
+    Category::Toolpaths,
+    Category::Relief3d,
+    Category::MachineOutput,
+  ];
+
+  /// The words the task editor's header carries while this category is open.
+  ///
+  /// English, like every other word in the shell (S3): the reference is pt-BR and what we take from it is
+  /// structure, never its strings.
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Toolpaths => "TOOLPATHS",
+      Self::Relief3d => "RELIEF AND 3D PART",
+      Self::MachineOutput => "MACHINE AND OUTPUT",
+    }
+  }
+
+  /// The glyph the ribbon draws for this category.
+  ///
+  /// Three glyphs the set already had: the profile toolpath, the relief, and the post-processor. No new
+  /// symbol was drawn for this, because a glyph nobody has seen before is a legend, not an icon.
+  pub fn icon(self) -> Icon {
+    match self {
+      Self::Toolpaths => Icon::ToolpathProfile,
+      Self::Relief3d => Icon::Relief,
+      Self::MachineOutput => Icon::PostProcessor,
+    }
+  }
 }
 
 /// The step the document is missing, in the shell's own voice, or nothing when it is missing none.
@@ -112,14 +175,67 @@ fn next_step(app: &AppState) -> Option<&'static str> {
 }
 
 impl Shell {
-  /// Which inspector tab is showing.
+  /// Which body the inspector is showing.
   pub fn tab(&self) -> Tab {
     self.inspector_tab
   }
 
   /// Show a tab.
+  ///
+  /// A tab is now *derived* from what the panel is showing: the ribbon opens a task, and the tab names the
+  /// body under it. `Selection` has no category, so setting it closes the task editor and lets the panel fall
+  /// back to the selection's numbers — the same state as pressing `✕`.
   pub fn set_tab(&mut self, tab: Tab) {
     self.inspector_tab = tab;
+    self.task = tab.category();
+  }
+
+  /// The ribbon category whose task editor is open, or `None` for the panel's idle state.
+  pub fn task(&self) -> Option<Category> {
+    self.task
+  }
+
+  /// Open one category's task editor.
+  pub fn open_task(&mut self, category: Category) {
+    self.task = Some(category);
+    self.inspector_tab = match category {
+      // `RELIEF AND 3D PART` opens the 3D half of the frame, and the authoring body is what the panel shows
+      // behind it: this shell authors no relief, so the task says what it does instead of pretending to a
+      // form it does not have (L13).
+      Category::Toolpaths | Category::Relief3d => Tab::Tools,
+      Category::MachineOutput => Tab::Job,
+    };
+  }
+
+  /// Close the task editor, and say whether its draft numbers went with it.
+  ///
+  /// `discard` is the only real difference between the header's `✕` and its `✓`: **every number in this
+  /// panel's authoring body applies as it is typed**, so `✓` has nothing to commit and `✕` has nothing to undo
+  /// — except the material's drafts, which sit in [`Shell::material_size`] until the dialog's own apply is
+  /// pressed. `✕` puts them back to the document's stock, which is what "cancel this task" means when the
+  /// task holds an unapplied edit.
+  pub fn close_task(&mut self, discard: bool) {
+    if discard {
+      self.material_size = crate::default_material_size();
+      self.show_material = false;
+    }
+    self.task = None;
+    self.inspector_tab = Tab::Selection;
+  }
+
+  /// Whether the layers block is expanded.
+  pub fn layers_open(&self) -> bool {
+    self.layers_open
+  }
+
+  /// Expand or collapse the layers block.
+  pub fn set_layers_open(&mut self, open: bool) {
+    self.layers_open = open;
+  }
+
+  /// Collapse or expand the layers block, from its own heading.
+  pub fn toggle_layers(&mut self) {
+    self.layers_open = !self.layers_open;
   }
 
   /// Whether the inspector is expanded.
@@ -475,8 +591,18 @@ impl Shell {
     });
   }
 
-  /// The right inspector: the stage's commands, the selection's numbers, the job — and the layers,
-  /// which stay put because they are a document fact rather than a stage's opinion.
+  /// The right panel: a ribbon of three categories, the task editor they open, and the layers block under it.
+  ///
+  /// **This is not a tabbed inspector any more** (camui-prancheta S6). The reference draws `PERCURSOS`,
+  /// `RELEVO E PEÇA 3D` and `MÁQUINA E SAÍDA` as glyph rows, and opening one puts a *task editor* over the
+  /// panel's body: a header carrying the task's name with `✓` and `✕`, and under it the task's own content.
+  /// Which task is open is [`Shell::task`]; the words left the old tab row and became the task's name, which
+  /// is the difference between a tab and a task — a tab names a shelf, a task names what you are doing.
+  ///
+  /// **The idle state is the selection's numbers.** The reference has no selection category, because there is
+  /// no selection *task*: it is what the panel says while nothing is open. So `None` is a state and not an
+  /// absence, and every surface the three tabs used to reach is still one click from here — `TOOLPATHS` for the
+  /// authoring body, `MACHINE AND OUTPUT` for the job's, and the selection's readout for the idle one.
   pub(crate) fn inspector(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     if !self.inspector_open {
       self.inspector_strip(ui);
@@ -497,44 +623,204 @@ impl Shell {
         });
         ui.separator();
 
-        ui.horizontal(|ui| {
-          for tab in Tab::ALL {
-            if ui
-              .selectable_label(
-                self.inspector_tab == tab,
-                RichText::new(tab.label()).size(theme::CAPTION),
-              )
-              .clicked()
-            {
-              self.inspector_tab = tab;
+        // The ribbon: one row per category, glyph only, in the reference's order. The row is what replaces the
+        // three named tabs, and the active one says so the way a rail chip does.
+        for category in Category::ALL {
+          let response = icon_button(
+            ui,
+            &palette,
+            category.icon(),
+            &ribbon_tooltip(category),
+            self.task == Some(category),
+            true,
+            20.0,
+          );
+          let centre = response.rect.center();
+          output.drawn.categories.push(category.label().to_owned());
+          output
+            .drawn
+            .category_hits
+            .push((category.label().to_owned(), (centre.x, centre.y)));
+          if response.clicked() {
+            // A second press closes it: the same gesture that opened the task is the one that leaves it, which
+            // is what a ribbon of exclusive categories means.
+            match self.task {
+              Some(open) if open == category => self.close_task(false),
+              _ => self.open_task(category),
             }
           }
-        });
+        }
+        ui.separator();
 
         let body = (ui.available_height() * 0.55).max(120.0);
-        egui::ScrollArea::vertical()
-          .id_salt("inspector_body")
-          .max_height(body)
-          .show(ui, |ui| {
-            ui.add_space(metrics.space(2));
-            // The card belongs to a toolpath, so it is drawn only while the document holds one: a card for a
-            // toolpath that does not exist would be describing nothing.
-            if !app.document().toolpaths.is_empty() {
-              self.tool_card(app, ui, &palette, output);
-            }
-            match self.inspector_tab {
-              Tab::Tools => self.authoring(app, ui, output),
-              Tab::Selection => self.properties(app, ui, output),
-              Tab::Job => self.job_section(app, ui, &palette, output),
-            }
-          });
+        // The header is drawn first and the body is chosen **after** it, because the header's `✓` and `✕` can
+        // close the task: a frame that drew the header and then the body from the same answer would report a
+        // task it had just closed, and the report is what a test and the operator both read.
+        if let Some(category) = self.task {
+          self.task_header(ui, &palette, category, output);
+          ui.add_space(metrics.space(2));
+        }
+        match self.task {
+          Some(category) => {
+            egui::ScrollArea::vertical()
+              .id_salt("inspector_body")
+              .max_height(body)
+              .show(ui, |ui| match category {
+                Category::Toolpaths => {
+                  // The card belongs to a toolpath, so it is drawn only while the document holds one: a card
+                  // for a toolpath that does not exist would be describing nothing.
+                  if !app.document().toolpaths.is_empty() {
+                    self.tool_card(app, ui, &palette, output);
+                  }
+                  self.authoring(app, ui, output);
+                }
+                Category::Relief3d => self.relief_task(app, ui, &palette, output),
+                Category::MachineOutput => self.job_section(app, ui, &palette, output),
+              });
+          }
+          // Idle: what the panel says while no task is open — the selection's numbers. This is also the frame
+          // in which a `✓` or `✕` just closed a task, which is why the answer is read from `self.task` again
+          // instead of from the `category` above.
+          None => {
+            output.drawn.task_editor.clear();
+            egui::ScrollArea::vertical()
+              .id_salt("inspector_body")
+              .max_height(body)
+              .show(ui, |ui| {
+                ui.add_space(metrics.space(2));
+                if !app.document().toolpaths.is_empty() {
+                  self.tool_card(app, ui, &palette, output);
+                }
+                self.properties(app, ui, output);
+              });
+          }
+        }
 
         ui.separator();
-        ui.label(RichText::new("Layers").size(theme::TITLE));
-        egui::ScrollArea::vertical()
-          .id_salt("inspector_layers")
-          .show(ui, |ui| self.layer_dock(app, ui, output));
+        // `Layers` is its own block below the task editor and folds on its own (S6): a document fact, not a
+        // task's opinion, so it stays put while tasks open and close above it.
+        let heading = section_toggle(ui, &palette, "LAYERS", self.layers_open);
+        let centre = heading.rect.center();
+        output.drawn.layers_heading = Some((centre.x, centre.y));
+        if heading.clicked() {
+          self.toggle_layers();
+        }
+        // Read after the click: the folded block draws no row in the frame that folds it, not one frame later.
+        output.drawn.layers_open = self.layers_open;
+        if self.layers_open {
+          egui::ScrollArea::vertical()
+            .id_salt("inspector_layers")
+            .show(ui, |ui| self.layer_dock(app, ui, output));
+        }
       });
+  }
+
+  /// The task editor's header: the task's name, and the two glyphs that leave it.
+  ///
+  /// `✓` keeps what is typed and `✕` throws away the one draft the panel holds (see [`Shell::close_task`]);
+  /// both are painted rather than written as `✓` and `✕`, for the same reason the rail's caret is painted: a
+  /// glyph the bundled faces do not carry renders as a box, and a box is not an affordance.
+  fn task_header(
+    &mut self,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    category: Category,
+    output: &mut ShellOutput,
+  ) {
+    ui.horizontal(|ui| {
+      ui.label(
+        RichText::new(category.label())
+          .size(theme::CAPTION)
+          .color(palette.get(Role::TextHi)),
+      );
+      output.drawn.task_editor = category.label().to_owned();
+      ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        let cancel = glyph_button(
+          ui,
+          palette,
+          Glyph::Cross,
+          "Cancel — close this task and discard the numbers you have not applied",
+        );
+        let done = glyph_button(
+          ui,
+          palette,
+          Glyph::Check,
+          "Done — every number here applies as you type, so closing keeps them",
+        );
+        for (response, word) in [(&done, "Done"), (&cancel, "Cancel")] {
+          let centre = response.rect.center();
+          output
+            .drawn
+            .task_editor_hits
+            .push((word.to_owned(), (centre.x, centre.y)));
+        }
+        if cancel.clicked() {
+          self.close_task(true);
+        } else if done.clicked() {
+          self.close_task(false);
+        }
+      });
+    });
+  }
+
+  /// `RELIEF AND 3D PART`, which in this shell is a *state* and not a form.
+  ///
+  /// The reference opens a 3D machining strategy here. This shell authors no relief — its 3D half plays a
+  /// program `cam-cli` produced — so the task says exactly that, opens or closes the split, and names whether
+  /// a program is loaded. It is the same refusal the rest of the shell makes: no form for a capability that
+  /// does not exist (L13).
+  fn relief_task(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    output: &mut ShellOutput,
+  ) {
+    let _ = app;
+    ui.label(
+      RichText::new("This shell authors no relief and no 3D strategy.")
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    ui.label(
+      RichText::new(
+        "3D plays a program that `cam-cli` produced and a host handed in; the split and its overlay row 
+         belong to S8 (T6).",
+      )
+      .size(theme::CAPTION)
+      .color(palette.get(Role::TextDim)),
+    );
+    ui.add_space(4.0);
+    let state = if self.show_3d {
+      "The 3D split is open."
+    } else {
+      "The 3D split is closed."
+    };
+    ui.label(
+      RichText::new(state)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextHi)),
+    );
+    let loaded = if self.preview.is_some() {
+      "A program is loaded for playback."
+    } else {
+      "No program loaded — simulate one with `cam-cli simulate` and hand it in."
+    };
+    ui.label(
+      RichText::new(loaded)
+        .size(theme::CAPTION)
+        .color(palette.get(Role::TextDim)),
+    );
+    ui.add_space(4.0);
+    let label = if self.show_3d {
+      "Close the 3D split"
+    } else {
+      "Open the 3D split"
+    };
+    if ui.button(label).clicked() {
+      self.show_3d = !self.show_3d;
+    }
+    output.drawn.task_editor = Category::Relief3d.label().to_owned();
   }
 
   /// The current-tool card: the tool a toolpath cuts with, in the two lines the reference frame uses.
@@ -1554,6 +1840,86 @@ fn brand_block(ui: &mut egui::Ui, palette: &Palette, lines: &[String]) {
 /// hit. The caret is painted as a triangle instead of written as a glyph because `▾` is a font bet — the
 /// bundled faces may or may not carry it — and a group whose affordance renders as a box is worse than no
 /// affordance at all.
+/// The two glyphs the task editor's header paints: a check and a cross.
+///
+/// Painted and not written for the same reason the rail's caret is painted: `✓` and `✕` are a font bet, and an
+/// affordance that renders as a box is worse than a drawn mark nobody has to trust the font for.
+#[derive(Clone, Copy)]
+enum Glyph {
+  /// `Done`.
+  Check,
+  /// `Cancel`.
+  Cross,
+}
+
+/// A small square button holding a painted glyph, with its teaching on hover.
+fn glyph_button(
+  ui: &mut egui::Ui,
+  palette: &Palette,
+  glyph: Glyph,
+  tooltip: &str,
+) -> egui::Response {
+  let size = egui::vec2(20.0, 18.0);
+  let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+  let centre = rect.center();
+  let colour = if response.hovered() {
+    palette.get(Role::TextHi)
+  } else {
+    palette.get(Role::TextDim)
+  };
+  let stroke = egui::Stroke::new(1.5, colour);
+  match glyph {
+    Glyph::Check => {
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 4.0, centre.y),
+          egui::pos2(centre.x - 1.0, centre.y + 3.5),
+        ],
+        stroke,
+      );
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 1.0, centre.y + 3.5),
+          egui::pos2(centre.x + 4.5, centre.y - 3.5),
+        ],
+        stroke,
+      );
+    }
+    Glyph::Cross => {
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x - 3.5, centre.y - 3.5),
+          egui::pos2(centre.x + 3.5, centre.y + 3.5),
+        ],
+        stroke,
+      );
+      ui.painter().line_segment(
+        [
+          egui::pos2(centre.x + 3.5, centre.y - 3.5),
+          egui::pos2(centre.x - 3.5, centre.y + 3.5),
+        ],
+        stroke,
+      );
+    }
+  }
+  response.on_hover_text(tooltip)
+}
+
+/// What a ribbon icon says on hover: the category's name first, then what opening it does.
+fn ribbon_tooltip(category: Category) -> String {
+  match category {
+    Category::Toolpaths => {
+      "TOOLPATHS — open the toolpath task: authoring, the tool card, the estimated time".to_owned()
+    }
+    Category::Relief3d => {
+      "RELIEF AND 3D PART — open the 3D task: the split, and what it is playing".to_owned()
+    }
+    Category::MachineOutput => {
+      "MACHINE AND OUTPUT — open the machine task: stock, material, zero".to_owned()
+    }
+  }
+}
+
 fn section_toggle(ui: &mut egui::Ui, palette: &Palette, label: &str, open: bool) -> egui::Response {
   ui.add_space(4.0);
   // The row is allocated as a widget before anything is painted into it, because that is what makes it
