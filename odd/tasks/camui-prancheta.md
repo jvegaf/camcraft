@@ -454,3 +454,31 @@ words: *"design/prancheta-reference/ + README"*.
   `crates/cam-ui/src/ruler.rs` is one of the files rustfmt wants to rewrite, verified against
   `master:crates/cam-ui/src/ruler.rs`. It is not fixed inside this candidate (a formatting sweep would put
   files outside T6's diff into T6's review); it gets its own commit once T6 lands.
+- **L23 (the T6 review: the refuter earned the whole review).** Lineage `review-243a60aa7122cd9b`, tier **high**,
+  **three lenses**, 5 paths, 2 469 changed lines, correction budget 200 of which **156 were spent**. Three
+  reviewer runs (137 kB of prompt each) produced a `provider_refuter` request, the refuter returned
+  **`correction_required`** with three candidate-caused findings, and after the correction a **targeted
+  validator** approved the corrected tree (`sha256:371dfd03…`); authority **burned**
+  (`gentle-ai.review-acknowledged/v1`). Delivery stays ordinary repository policy.
+  **What the refuter found, and why the tests did not:**
+  1. `R2-001` (CRITICAL) and `R3-001` (BLOCKER) are one defect: the playback bar was painted through
+     `ui.painter().with_clip_rect(layout.picture)` while `half_layout` puts the bar **below** the picture, so
+     every rectangle of the bar, its chips, the scrubber and the readout were clipped away — **invisible, with
+     live hit areas**. The fix gives the bar its own painter clipped to its own strip.
+  2. `R2-002` (CRITICAL): the canvas `2D | 3D` widget was laid out and painted *before* `ruler::paint`, and egui
+     paints in order, so the band and its numbers covered the control that enters 3D — in 2D mode, where it is
+     the only way in. The fix splits `chrome::segmented` into `segmented_cells` (allocate, click, report) and
+     `paint_segmented` (paint), so the toggle is laid out early — which keeps L13's rule that the press frame is
+     the split frame — and painted **once**, after the band.
+  **The lesson this review paid for:** a headless test reads *shapes*, and a clipped shape is still a shape. The
+  43 view3d tests were green while the bar was invisible, because `bar_rects` located the bar by sharing the
+  surface's clip rect — it had encoded the clipping bug as its own locator. The correction had to change that
+  helper too, and it is recorded here so the next person does not read the helper's clip filter as a rule.
+  **Process, three failures worth not repeating:** the START was first rejected `lenses-invalid` (same input,
+  fresh idempotency key, accepted); the targeted-validator binding was rejected twice — once because it was
+  reconstructed **without** `validationRequest`, and `gentle_review_capture` refuses to run from `codemode` —
+  and only the provider's **whole** object, passed as a direct call, was accepted. The candidate itself was
+  committed as `2630feb` + `86ebe33` and corrected by `ad0eaaa`; the workspace has **1 256 tests, exit 0** after
+  the correction.
+  **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
+  `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
