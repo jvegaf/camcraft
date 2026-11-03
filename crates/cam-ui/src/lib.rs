@@ -22,13 +22,16 @@
 //!
 //! Arcs are flattened **here**, at half a pixel, and nowhere earlier.
 //!
-//! # The 3D preview (M5 V2, V3)
+//! # The 3D half (M5 V2, V3; camui-prancheta S8)
 //!
-//! [`view3d`] adds the stock's 3D picture to the shell: a top panel that paints a simulated
-//! [`cam_sim::Heightfield`] through `egui::Mesh`, orbit and wheel-zoom on the same painter, and the
-//! program's moves as projected 3D lines. It is **additive**: [`Shell::show`] keeps its 2D path when
-//! the panel is closed (A12), and the panel never authors geometry or touches the document
-//! (D-M5-9) — the caller hands in the untouched stock and the program, and the panel plays it (A10).
+//! [`view3d`] adds the stock's 3D picture to the shell: it paints a simulated [`cam_sim::Heightfield`]
+//! through `egui::Mesh`, takes orbit and wheel-zoom on the same painter, and draws the program's moves as
+//! projected 3D lines. Since camui-prancheta T6 it is a **half** of the canvas rather than the whole of it:
+//! `3D` is a mode that splits the drawing area into the 2D half and the 3D half, and the 3D half carries the
+//! overlay row, the home button, the axis triad and the playback bar S8 asks for. It stays **additive**: the
+//! 2D half keeps painting, picking and drawing beside it (A12), and the half never authors geometry or touches
+//! the document (D-M5-9) — the caller hands in the untouched stock and the program, and the half plays it
+//! (A10).
 //!
 //! Playback is the one thing in this crate that needs a clock, and [`Shell::show_in`] is the only
 //! place that reads one: `ctx.input(|input| input.stable_dt)` becomes the delta
@@ -652,7 +655,12 @@ pub struct DrawnState {
   /// A triangle counts once it reached the `egui::Mesh`, so a triangle this backend refuses — one
   /// with a vertex behind the camera — is not counted (M5 A9, A11).
   pub painted_triangles: usize,
-  /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
+  /// Every 3D edge the half painted: the sum of the four layer counts beside this one.
+  ///
+  /// Kept as one number because most questions about the picture are about it as a whole, and the four per-layer
+  /// counts ([`Self::painted_material_lines`], [`Self::painted_vector_lines`], [`Self::painted_program_lines`],
+  /// [`Self::painted_tool_lines`]) exist because the overlay row hides them one at a time (camui-prancheta S8):
+  /// a single total could not say which layer went missing.
   pub painted_3d_lines: usize,
   /// The sentence the status bar paints at its right end: what the last action produced.
   ///
@@ -789,13 +797,70 @@ pub struct DrawnState {
   /// has played, so the readout never claims a completion the clock could not measure. Stays `0.0`
   /// when the panel is closed or holds no preview.
   pub preview_bar: f32,
-  /// The two clocks the progress bar's readout states, as one sentence: `0:42 of 3:07`.
+  /// The two clocks the progress bar's readout states, as one sentence: `0:42 / 3:07`.
   ///
   /// Painted beside the bar and mirrored here because a headless test can read a string where it
   /// cannot read a painted clock: the formatter is unit-tested, and this field is what proves the
   /// panel writes its output rather than something of its own. Empty when the panel is closed or
   /// holds no preview, because a bar nobody drew has no clock.
   pub preview_clock: String,
+  /// The words the `2D | 3D` toggle drew and the point in the window that presses each (camui-prancheta S8).
+  ///
+  /// Reported for the same reason the palette reports its chips: the toggle is painted, not a widget egui
+  /// can be asked for by text from outside a frame, so a test presses the cell the frame really drew. A
+  /// frame that drew no canvas reports nothing.
+  pub view_toggle: Vec<(String, (f32, f32))>,
+  /// The strip the `2D | 3D` toggle occupied, as `(x, y, width, height)` in window pixels.
+  ///
+  /// Separate from [`Self::view_toggle`] because S8 is a claim about *where* the toggle sits — the top right
+  /// of the canvas — and a list of pressable points cannot say where the control as a whole was drawn.
+  pub view_toggle_rect: Option<(f32, f32, f32, f32)>,
+  /// The canvas' two halves while the 3D split is open: the drawing half, then the 3D half, each as
+  /// `(x, y, width, height)` in window pixels (camui-prancheta S8).
+  ///
+  /// `None` while 3D is off, because a split that is not open has no halves. [`ShellOutput::canvas`] is the
+  /// first of the two when the split is open: the rectangle the 2D camera is told about.
+  pub split: Option<((f32, f32, f32, f32), (f32, f32, f32, f32))>,
+  /// The words the 3D half's overlay row drew — `Material`, `Vectors`, `Toolpaths`, `Tool`, `Centre`, `?` —
+  /// and the point that presses each (camui-prancheta S8).
+  ///
+  /// Empty while the split is closed, and empty while it is open with no program loaded: the row is drawn
+  /// only when it has something to govern, because a checkbox over nothing is a control that lies.
+  pub layer_chips: Vec<(String, (f32, f32))>,
+  /// Which of the four scene layers the overlay row is showing, in the row's own order (camui-prancheta S8).
+  ///
+  /// Reported beside the counts below so a test can tell "the layer is hidden" from "the layer had nothing
+  /// to paint", which are different answers.
+  pub scene_layers: Vec<(String, bool)>,
+  /// Where the 3D half drew its home button, in window pixels (camui-prancheta S8).
+  pub home_button: Option<(f32, f32)>,
+  /// The axis triad's three labels and where each was drawn (camui-prancheta S8): `TOP`, `FRONT`, `RIGHT`.
+  ///
+  /// The words in the order painted, with the point each label sits at — which is what lets a test prove the
+  /// triad is drawn from the camera and not pasted on: orbiting turns it.
+  pub triad: Vec<(String, (f32, f32))>,
+  /// The playback bar's controls and the point that presses each (camui-prancheta S8): `Play` or `Pause`, the
+  /// speed's own word (`60x`), `To the end`, `Step` and `Reset`.
+  pub playback_hits: Vec<(String, (f32, f32))>,
+  /// The playback bar's readout, exactly as painted: `0:05 / 0:05  T22 · Drilling 1 · Z 5.000`.
+  ///
+  /// The clocks come from [`view3d::progress_text`](crate::view3d::progress_text) and the move from
+  /// [`Preview3d::playhead_text`](crate::view3d::Preview3d::playhead_text), so this field is what proves the
+  /// bar writes those two rather than a third opinion of its own.
+  pub playback_readout: String,
+  /// Where the playback bar drew its scrubber, as `(left, right, y)` in window pixels (camui-prancheta S8).
+  ///
+  /// The two ends and the row's middle, not the filled part: a test seeks by pressing a fraction of the
+  /// way along the track the frame drew instead of guessing at the bar's margins.
+  pub scrubber: Option<(f32, f32, f32)>,
+  /// Stock-box edges the 3D half painted, `0` when `Material` is hidden or the split is closed.
+  pub painted_material_lines: usize,
+  /// The document's vectors, projected into the 3D half, `0` when `Vectors` is hidden or the split is closed.
+  pub painted_vector_lines: usize,
+  /// The program's moves, projected into the 3D half, `0` when `Toolpaths` is hidden or the split is closed.
+  pub painted_program_lines: usize,
+  /// The tool marker's edges, `0` when `Tool` is hidden, the split is closed, or no program is loaded.
+  pub painted_tool_lines: usize,
 }
 
 /// What one frame produced.
@@ -867,12 +932,19 @@ pub struct Shell {
   pub text: String,
   /// Cap height the text command uses, in millimetres. Default 10 mm.
   pub text_height: f64,
-  /// Whether the 3D preview panel is open.
+  /// Whether the canvas is showing the 3D split (camui-prancheta S8).
   ///
-  /// View state, not document state: like the camera, opening the panel is not an edit and is not
-  /// in the undo history (M5 A12). [`Shell::set_preview`] opens it, and the command bar's button
-  /// toggles it.
+  /// View state, not document state: like the camera, opening the split is not an edit and is not in the undo
+  /// history (M5 A12). [`Shell::set_preview`] opens it, the `2D | 3D` toggle at the canvas' top right sets it
+  /// ([`chrome`]'s `view_toggle`), the rail's `3D` command flips it, and [`Shell::set_view_3d`] is how a host
+  /// or a test says so directly.
   pub show_3d: bool,
+  /// Which of the 3D half's layers its overlay row is showing (camui-prancheta S8).
+  ///
+  /// View state: hiding the toolpaths from the picture is a decision about what the screen shows, not about
+  /// the program, so it is not an edit and not an undo step. Public and flat the way every other switch of
+  /// this shell is, because a checkbox only a click can reach is a checkbox no test can preset.
+  pub scene_layers: view3d::Layers,
   /// The program preview the 3D panel draws, once a caller has handed one in.
   preview: Option<Preview3d>,
   /// The tool library as a snapshot: every tool this window was given, in the library's own order.
@@ -1030,6 +1102,7 @@ impl Default for Shell {
       text: "CAM".to_owned(),
       text_height: 10.0,
       show_3d: false,
+      scene_layers: view3d::Layers::default(),
       preview: None,
       tools: Vec::new(),
       document_path: None,
@@ -1448,71 +1521,13 @@ impl Shell {
     self.status_bar(app, ui, &mut output);
     self.palette_panel(app, ui, &mut output);
     self.inspector(app, ui, &mut output);
-    // One view or the other, never both: the toggle is a mode, and the mode owns the central area.
-    if self.show_3d {
-      self.view3d(ui, &mut output, dt);
-    } else {
-      self.canvas(app, ui, &mut output);
-    }
+    // One central area, and the mode decides how it is divided: the drawing alone, or the drawing and the 3D
+    // half side by side (camui-prancheta S8).
+    self.canvas(app, ui, &mut output, dt);
     if self.show_shortcuts {
       self.shortcuts_window(&ctx);
     }
     output
-  }
-
-  /// The 3D view, drawn where the canvas would be.
-  ///
-  /// A mode, not a panel stacked over the drawing: the preview used to take a slice of the top and leave
-  /// the canvas the rest, which gave both views half a screen and neither a usable one. Two views that are
-  /// never on screen together also means the hidden one costs nothing — no playback clock, no mesh, no
-  /// region. The surface fills whatever the frame gives it.
-  fn view3d(&mut self, ui: &mut egui::Ui, output: &mut ShellOutput, dt: f64) {
-    let palette = self.palette();
-    egui::CentralPanel::default().show(ui, |ui| {
-      ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("3D").size(theme::TITLE));
-        ui.separator();
-        if let Some(preview) = self.preview.as_mut() {
-          // Playback advances only while this view is the one showing: a hidden view is not a clock, and
-          // the 2D path pays nothing for a preview nobody is looking at (A12).
-          preview.advance(dt);
-          if preview.playing() {
-            // Without this the window would repaint only on input, and a program that plays to its end
-            // would appear to play only when the mouse moves.
-            ui.ctx().request_repaint();
-          }
-          preview.controls(ui, &mut output.drawn, &palette);
-          ui.separator();
-          ui.label(
-            egui::RichText::new(format!(
-              "{} move(s), {} × {} cells, stride {}",
-              preview.program().move_count(),
-              preview.field().grid().columns,
-              preview.field().grid().rows,
-              preview.stride()
-            ))
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-          );
-        } else {
-          ui.label(
-            egui::RichText::new(
-              "No program to preview. Simulate one with `cam-cli simulate` and hand it in.",
-            )
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-          );
-        }
-      });
-      ui.separator();
-      if let Some(preview) = self.preview.as_mut() {
-        preview.show(ui, &mut output.drawn, &palette);
-      } else {
-        // An empty 3D view still holds its region: a collapsing view would hand the click to whatever is
-        // underneath and read as a bug.
-        ui.allocate_space(ui.available_size());
-      }
-    });
   }
 
   fn layer_dock(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
@@ -1899,17 +1914,41 @@ impl Shell {
     output.drawn.hint = hint;
   }
 
-  fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
+  /// The central panel: the drawing, the `2D | 3D` toggle, and — while 3D is the mode — the split
+  /// (camui-prancheta S8).
+  ///
+  /// # Why the split is two columns
+  ///
+  /// The reference frame (`design/prancheta-reference/Screenshot 2026-11-03 032943.png`) splits the canvas
+  /// left to right, and this shell's own sheet says why that is right: a part is wider than it is tall, so a
+  /// horizontal split would take the drawing's long side away from it and leave both halves worse than the
+  /// drawing was. Two columns keep each half's shape close to the one the drawing already had, which is also
+  /// why the 2D half stays on the left with the rulers S5 gave it.
+  ///
+  /// # What each half keeps
+  ///
+  /// The 2D half **is** the canvas: [`ShellOutput::canvas`] is its rectangle, the 2D camera is told about that
+  /// rectangle and nothing else, and picking, drawing, panning, zooming and the context menu all stay inside
+  /// it. The 3D half owns dragging and the wheel, and its own chrome
+  /// ([`view3d`](crate::view3d) — the overlay row, the home button, the triad and the playback bar). The 3D
+  /// half inherits the ruler's inset (L20), so both halves' content starts on the drawing's own top line.
+  ///
+  /// # Why the toggle is allocated first
+  ///
+  /// The toggle is drawn and pressed before the split is decided, so the frame that presses `3D` is the frame
+  /// that splits: `show_3d` is read by the layout below, after the click (L13's rule). It is drawn in the
+  /// canvas' top strip — the band the ruler occupies on the drawing half (S5) — and never over the sheet,
+  /// because a press on chrome that also dropped a selection on the drawing underneath would be a control that
+  /// lies.
+  fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput, dt: f64) {
     let palette = self.palette();
     let metrics = self.metrics();
     egui::CentralPanel::default()
       .frame(egui::Frame::NONE.fill(palette.get(Role::Canvas)))
       .show(ui, |ui| {
         let area = ui.available_rect_before_wrap();
-        // The drawing area starts after the two ruler bands (camui-prancheta S5): a press on a band is a press
-        // on chrome, not a press on the sheet, so the response covers exactly what the camera is told about.
-        // The clamp is for a frame whose central area has not been given its room yet — a band must not be
-        // allowed to make the canvas a negative rectangle.
+        // The whole drawing area: the central area inset by the two bands (S5, L20). The clamp is for a frame
+        // whose central area has not been given its room yet — a band must not make the canvas negative.
         let thickness = metrics.ruler_thickness;
         let drawing = egui::Rect::from_min_max(
           egui::pos2(
@@ -1918,12 +1957,30 @@ impl Shell {
           ),
           area.max,
         );
+        let toggle_paint = self.view_toggle(ui, area, &metrics, output);
+        let (area_2d, drawing_2d, drawing_3d) = if self.show_3d {
+          // Two columns of the drawing area. The left one's own band area is the left half of the central
+          // area, whose inset is exactly the drawing half — which is what keeps the rulers and the camera
+          // talking about the same rectangle.
+          let mid = drawing.min.x + drawing.width() * 0.5;
+          (
+            egui::Rect::from_min_max(area.min, egui::pos2(mid, area.max.y)),
+            egui::Rect::from_min_max(drawing.min, egui::pos2(mid, drawing.max.y)),
+            egui::Rect::from_min_max(egui::pos2(mid, drawing.min.y), drawing.max),
+          )
+        } else {
+          (area, drawing, egui::Rect::NOTHING)
+        };
+        // The bands frame the drawing half. With the split closed that is the whole central area; with it open
+        // the band numbers the drawing half only, because numbers over the 3D half would describe a camera that
+        // is not there. The toggle floats on the band's right end and its own fill covers what it crosses.
+        let band = if self.show_3d { area_2d } else { area };
 
         let canvas = CanvasRect {
-          x: f64::from(drawing.min.x),
-          y: f64::from(drawing.min.y),
-          width: f64::from(drawing.width()),
-          height: f64::from(drawing.height()),
+          x: f64::from(drawing_2d.min.x),
+          y: f64::from(drawing_2d.min.y),
+          width: f64::from(drawing_2d.width()),
+          height: f64::from(drawing_2d.height()),
         };
         output.canvas = canvas;
         self.last_canvas = canvas;
@@ -1939,24 +1996,46 @@ impl Shell {
         // drawn only while it is, and `cursor_world` is exactly that question already answered.
         output.drawn.rulers = ruler::paint(
           ui.painter(),
-          area,
+          band,
           &canvas,
           app.camera(),
           &palette,
           &metrics,
           self.cursor_world,
         );
+        // The band painted after the widget was laid out, and a later painter wins: the toggle is painted a
+        // second time here, so the control that enters 3D is never under a ruler number (R2-002 in the T6
+        // review). Same function as its first paint, and `show_3d` is already the pressed value, so this frame
+        // shows the view the press chose.
+        if let Some(control) = toggle_paint.as_ref() {
+          chrome::paint_segmented(
+            ui.painter(),
+            control.rect,
+            &control.cell_rects,
+            &["2D", "3D"],
+            usize::from(self.show_3d),
+            &palette,
+          );
+        }
 
-        let response = ui.allocate_rect(drawing, Sense::click_and_drag());
-        // Everything the drawing paints is clipped to the drawing area: the grid and the geometry must not
-        // spill onto a band and print a drawing over a number.
-        let painter = ui.painter().with_clip_rect(drawing);
+        let response = ui.allocate_rect(drawing_2d, Sense::click_and_drag());
+        // Everything the drawing paints is clipped to its own half: the grid and the geometry must not spill
+        // onto a band, print a drawing over a number, or paint over the 3D view beside it.
+        let painter = ui.painter().with_clip_rect(drawing_2d);
 
         self.handle_input(app, ui, &response, &canvas, output);
         // The context menu is drawn after the input that opens it, so a right-click and the rows it scopes
         // arrive in the same frame; the popup's own memory decides whether it is open at all.
         self.canvas_menu(app, &response, output);
         self.paint(painter, &canvas, app, output);
+
+        if self.show_3d {
+          output.drawn.split = Some((
+            chrome::rect_report(drawing_2d),
+            chrome::rect_report(drawing_3d),
+          ));
+          self.half_3d(app, ui, drawing_3d, output, dt);
+        }
       });
   }
 

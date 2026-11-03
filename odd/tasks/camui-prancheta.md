@@ -408,3 +408,77 @@ words: *"design/prancheta-reference/ + README"*.
   already owes. Note what the candidate *already* contained when the reviewers saw it: `b349d28`, the two test
   corrections and the wheel test that the independent read demanded. The review judged the corrected tree, not
   the first delivery.
+- **L22 (T6: the split, and six existing tests that had to change).** `2D | 3D` moved out of the app bar and
+  into the band strip above the drawing area, where a press cannot also pick or draw underneath it, and 3D
+  became **a mode that splits** the canvas into two columns: the reference frame splits left to right, and this
+  sheet is wider than it is tall, so a horizontal split would take the drawing's long side from it. The 2D half
+  *is* the canvas — `ShellOutput::canvas`, the camera viewport, fit, picking, drawing, marquee, pan, zoom, the
+  context menu and the rulers all live there — and the 3D half inherits the 22 px band inset from L20 and owns
+  the orbit plus S8's chrome: the overlay row (`Material` `Vectors` `Toolpaths` `Tool`, each checkbox hiding its
+  own layer, proven by per-layer painted counts including the surface), `Centre` re-framing at the current
+  angle, `?` opening the existing F1 panel, a home button whose house is painted from five segments because one
+  button does not earn a seventy-ninth glyph, a triad labelled `TOP`/`FRONT`/`RIGHT` drawn through the same
+  camera, and the playback bar: painted `▶`/`❚❚`, speed, `To the end` (the whole-program sweep), a scrubber
+  that re-cuts from the pristine stock so it can seek backwards, and the readout `0:05 / 0:05  T22 · Drilling 1
+  · Z 5.000` built from the one formatter set (`progress_text`, `clock_text`, `elapsed`/`duration`) — no second
+  time formula anywhere.
+  **One structure decision carries the frame ordering:** `Preview3d::show` was split into `take_gestures` and
+  `paint_scene`, and `Preview3d::controls` deleted, so the 3D half can register its chrome *before* the picture
+  (so a press on a chip is the chip's) and paint it *after* (so it sits on top). Every press is applied in the
+  frame it lands in, which is L13's rule applied to a second surface.
+  **Six existing tests changed, each for a reason the spec forced**, and the first one matters because S8
+  reverses a claim M5 shipped: `the_two_views_are_exclusive` asserted the 2D scene and grid are *not* painted in
+  3D mode, which a split makes false by design, so it became
+  `the_split_paints_both_halves_and_closing_it_paints_one` (M5's real claim — closing 3D restores the drawing
+  exactly — is kept and now checked against both halves). The others: triangle counts became per-layer
+  (12/4/4/2) because the overlay row hides them one at a time; `the_panel_offers_play_step_and_reset` reads
+  `▶` from the report because S8 paints a triangle, not the word; the app-bar toggle test became the canvas
+  toggle test; four assertions moved from `0:00 of 0:01` to the reference's `0:00 / 0:01` because there is one
+  pair formatter and S8 is what writes it; and `bar_rects` now picks the smallest `Role::Canvas` rect containing
+  the fill, because the split's panel paints its ground in the same role and "the first match" had become the
+  whole canvas. `input.rs`, `palette.rs`, `tool_card.rs` and the 124 shell tests are untouched.
+  **What it refused, and why (L6's rule, fifth time):** no `×` on the playback bar although the reference has
+  one — the toggle is already the way out, and a second close affordance is a second vocabulary for one act;
+  `Tool` is an axis plus a diameter at the playhead, **not a spindle**, because the program carries no tool
+  length and a spindle drawn to a guessed length would be a dimension the shell does not have (said in
+  `paint_tool`'s own doc); `Vectors` are the document's edges at `z = 0`, read from the same `build_scene` the
+  2D canvas paints, so a hidden layer is hidden in both pictures; and **with no program loaded the half draws
+  neither the overlay row nor the playback bar**, saying `No program to preview…` instead — two controls that
+  govern nothing would be the L6 lie, and `a_split_with_no_program_draws_no_overlay_row_and_says_why` pins it.
+  **Slice size, named before anyone has to ask:** 2 178 added and 245 removed across four files, 831 of them
+  tests — far past the ~400-line guidance, and one commit because the parts share the same state and the same
+  frame ordering. It is the largest candidate this feature has asked a reviewer to read (T5's was 1 080); if
+  the provider refuses it on the reviewer budget, the range splits by `baseRef` into the `view3d` model and the
+  shell composition, which is the remedy L17 established.
+  **A deviation shipped in T5, recorded rather than hidden:** `cargo fmt --check` is **not clean on `master`** —
+  `crates/cam-ui/src/ruler.rs` is one of the files rustfmt wants to rewrite, verified against
+  `master:crates/cam-ui/src/ruler.rs`. It is not fixed inside this candidate (a formatting sweep would put
+  files outside T6's diff into T6's review); it gets its own commit once T6 lands.
+- **L23 (the T6 review: the refuter earned the whole review).** Lineage `review-243a60aa7122cd9b`, tier **high**,
+  **three lenses**, 5 paths, 2 469 changed lines, correction budget 200 of which **156 were spent**. Three
+  reviewer runs (137 kB of prompt each) produced a `provider_refuter` request, the refuter returned
+  **`correction_required`** with three candidate-caused findings, and after the correction a **targeted
+  validator** approved the corrected tree (`sha256:371dfd03…`); authority **burned**
+  (`gentle-ai.review-acknowledged/v1`). Delivery stays ordinary repository policy.
+  **What the refuter found, and why the tests did not:**
+  1. `R2-001` (CRITICAL) and `R3-001` (BLOCKER) are one defect: the playback bar was painted through
+     `ui.painter().with_clip_rect(layout.picture)` while `half_layout` puts the bar **below** the picture, so
+     every rectangle of the bar, its chips, the scrubber and the readout were clipped away — **invisible, with
+     live hit areas**. The fix gives the bar its own painter clipped to its own strip.
+  2. `R2-002` (CRITICAL): the canvas `2D | 3D` widget was laid out and painted *before* `ruler::paint`, and egui
+     paints in order, so the band and its numbers covered the control that enters 3D — in 2D mode, where it is
+     the only way in. The fix splits `chrome::segmented` into `segmented_cells` (allocate, click, report) and
+     `paint_segmented` (paint), so the toggle is laid out early — which keeps L13's rule that the press frame is
+     the split frame — and painted **once**, after the band.
+  **The lesson this review paid for:** a headless test reads *shapes*, and a clipped shape is still a shape. The
+  43 view3d tests were green while the bar was invisible, because `bar_rects` located the bar by sharing the
+  surface's clip rect — it had encoded the clipping bug as its own locator. The correction had to change that
+  helper too, and it is recorded here so the next person does not read the helper's clip filter as a rule.
+  **Process, three failures worth not repeating:** the START was first rejected `lenses-invalid` (same input,
+  fresh idempotency key, accepted); the targeted-validator binding was rejected twice — once because it was
+  reconstructed **without** `validationRequest`, and `gentle_review_capture` refuses to run from `codemode` —
+  and only the provider's **whole** object, passed as a direct call, was accepted. The candidate itself was
+  committed as `2630feb` + `86ebe33` and corrected by `ad0eaaa`; the workspace has **1 256 tests, exit 0** after
+  the correction.
+  **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
+  `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
