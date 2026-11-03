@@ -523,3 +523,29 @@ words: *"design/prancheta-reference/ + README"*.
   is now dead code — `ad0eaaa` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
   without a caller, so the crate carries a `never used` warning that pre-dates this task. It gets its own commit,
   outside any review candidate, rather than riding in T7's diff.
+- **L25 (the T7 review: one finding, and it was about units).** Lineage `review-e4268ddae85fe9c0`, tier
+  **high**, **three lenses**, 5 paths, 2 509 changed lines, correction budget 200 of which **47 were spent**.
+  Three reviewer runs (≈120 kB of prompt each) produced a `provider_refuter` request; the refuter accepted
+  **`R3-001` (CRITICAL)** and the correction route opened. The targeted validator then approved the corrected
+  tree (`sha256:565ce156…`), and authority was **burned** (`gentle-ai.review-acknowledged/v1`). **Workspace:
+  1 274 tests, exit 0.**
+  **The finding:** `form_fields` wrote every feed and plunge rate as `mm/s` whatever `cutting.rate_units` said,
+  so an inch-library tool read `Feed 100.00 mm/s` in `SPEEDS` while `MACHINE` read `Rates in/s` — one number
+  carrying two units, which is the one thing a rate cannot do.
+  **It was not a label bug, and treating it as one would have been worse.** `cam-store` documents the field as
+  *"Units the rates were authored in. Stored rates are millimetres per second."* Renaming the suffix would have
+  left a millimetre-per-second number wearing an inch label. `620330c` therefore **converts** the stored value
+  into the authored unit (`/ MM_PER_INCH`) and labels it with that unit, so the two rows agree and the number is
+  the one the operator typed. `a_rate_is_shown_in_the_units_the_library_authored_it_in` pins the inch path
+  (`3.94 in/s`, `Rates in/s`) **and** the millimetre path (`100.00 mm/s`) so the fix cannot move a number a
+  metric library reads.
+  **What the correction deliberately did not fix:** `PASSES` prints every `Length` in `mm` whatever the authored
+  units are — the same root cause, one expression away, and **not corroborated by the refuter**. A bounded
+  correction fixes what was corroborated; the lengths join the advisory backlog instead of riding along
+  unannounced.
+  **Seven advisories, all `informational`:** `R2-001` (`tool_library.rs:310`), `R2-002` (`:38-40`), `R2-003`
+  (`:129`), `R2-004` (`tests/tool_library.rs:884-889`), `R3-002` (`:216`), `R3-003` (`:1046`) and `R3-004`
+  (`:1067-1073`). They join the twenty-nine this feature already owes.
+  **One process note, applied rather than re-learned:** the candidate was `aa6393a..HEAD`, so the formatting
+  sweep stayed out of the reviewers' diff, and the targeted-validator binding went in **whole** — with its
+  `validationRequest` — on the first attempt, which is L23's lesson used instead of paid for again.
