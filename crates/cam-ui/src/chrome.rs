@@ -39,7 +39,7 @@ use egui::{Align, Layout, RichText, Sense};
 
 use crate::help::{Command, Group, MenuScope};
 use crate::icons::Icon;
-use crate::theme::{self, Palette, Role, Theme};
+use crate::theme::{self, Metrics, Palette, Role, Theme};
 use crate::view3d::{clock_text, seconds_for};
 use crate::{Shell, ShellOutput, Tool, UiAction};
 
@@ -267,13 +267,17 @@ impl Shell {
     }
   }
 
-  /// The app bar: what this document is and the three switches the frame keeps up here.
+  /// The app bar: what this document is and the switches the frame keeps up here.
   ///
   /// **The bar holds no file command any more.** `Open`, `Save`, `Save as`, `Fit the job`, `Undo` and `Redo`
   /// moved to the rail's FILE group in camui-prancheta T2b (S4): the reference gives the command table to the
   /// rail, and a bar and a rail offering the same seven commands is two vocabularies for one act. What is
-  /// left is what belongs to the frame rather than to the document — its name, the units, the theme, the help
-  /// panel and the 2D/3D switch — plus the one action that costs material.
+  /// left is what belongs to the frame rather than to the document — its name, the units, the theme and the
+  /// help panel — plus the one action that costs material.
+  ///
+  /// **The `2D | 3D` switch is not here.** S8 puts it at the top right of the canvas, where the reference
+  /// floats it, and a segmented control in the bar and another over the drawing would be two of one control.
+  /// Its one home is [`crate::Shell::view_toggle`].
   pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, _output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
@@ -325,12 +329,6 @@ impl Shell {
             if icon_button(ui, &palette, icon, label, false, true, 18.0).clicked() {
               self.flip_theme();
             }
-            // The view toggle the artboard floats over the canvas. It lives in the app bar instead, and it
-            // is a segmented control because the choice is exclusive: two alternatives, visible at once, so
-            // choosing is a comparison and not a memory test.
-            if let Some(pick) = segmented(ui, &palette, &["2D", "3D"], usize::from(self.show_3d)) {
-              self.show_3d = pick == 1;
-            }
             ui.separator();
             ui.label(
               RichText::new("mm")
@@ -341,6 +339,50 @@ impl Shell {
           });
         });
       });
+  }
+
+  /// The `2D | 3D` toggle, at the top right of the canvas (camui-prancheta S8).
+  ///
+  /// A segmented control, because the choice is exclusive: two alternatives, visible at once, so choosing is a
+  /// comparison and not a memory test. It lives in the canvas' **top strip** — the band the ruler occupies on
+  /// the drawing half (S5) — and never over the sheet, because a press on chrome that also dropped a selection
+  /// on the drawing underneath would be a control that lies.
+  ///
+  /// It is pressed and applied here, before the caller decides whether the canvas splits, so the frame that
+  /// presses `3D` is the frame that shows two halves (L13's rule), and it is painted over the ruler's band rather
+  /// than beside it: the control's own fill covers what it crosses, so no number ends up printed under a control.
+  pub(crate) fn view_toggle(
+    &mut self,
+    ui: &mut egui::Ui,
+    area: egui::Rect,
+    metrics: &Metrics,
+    output: &mut ShellOutput,
+  ) {
+    let palette = self.palette();
+    let strip = egui::Rect::from_min_max(
+      area.min,
+      egui::pos2(area.max.x, area.min.y + metrics.ruler_thickness),
+    );
+    let mut control = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(strip), |ui| {
+      ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.add_space(metrics.space(3));
+        control = Some(segmented(
+          ui,
+          &palette,
+          &["2D", "3D"],
+          usize::from(self.show_3d),
+        ));
+      });
+    });
+    let Some(control) = control else {
+      return;
+    };
+    if let Some(pick) = control.picked {
+      self.show_3d = pick == 1;
+    }
+    output.drawn.view_toggle = control.cells;
+    output.drawn.view_toggle_rect = Some(rect_report(control.rect));
   }
 
   /// The left palette: the commands, grouped, labelled, and foldable.
@@ -784,8 +826,9 @@ impl Shell {
     );
     ui.label(
       RichText::new(
-        "3D plays a program that `cam-cli` produced and a host handed in; the split and its overlay row 
-         belong to S8 (T6).",
+        "3D plays a program that `cam-cli` produced and a host handed in. The split's overlay row, its 
+         axis triad and its playback bar are the 3D half's own chrome (S8); nothing here authors a 
+         toolpath.",
       )
       .size(theme::CAPTION)
       .color(palette.get(Role::TextDim)),
@@ -1280,7 +1323,9 @@ impl Shell {
   /// happens if I drag now" without a manual, and it changes with the tool instead of lying about it.
   pub fn hint(&self) -> String {
     if self.show_3d {
-      return "3D — drag to orbit, wheel to zoom; press 2D for the drawing".to_owned();
+      // Both halves are on screen at once (S8), so the sentence names both gestures: the drawing half
+      // still picks and draws, and the 3D half orbits.
+      return "3D half — drag to orbit, wheel to zoom; the drawing half still picks and draws".to_owned();
     }
     if self.active_tool.draws() {
       return format!(
@@ -1641,17 +1686,36 @@ pub(crate) fn chip(ui: &mut egui::Ui, palette: &Palette, label: &str, on: bool) 
   response
 }
 
+/// One window rectangle as the four numbers [`DrawnState`] reports its regions with.
+pub(crate) fn rect_report(rect: egui::Rect) -> (f32, f32, f32, f32) {
+  (rect.min.x, rect.min.y, rect.width(), rect.height())
+}
+
+/// What a segmented control drew: the cell that was pressed, where each cell was drawn, and the strip.
+///
+/// The cells are reported for the same reason the palette reports its chips: egui offers no
+/// widget-by-text lookup from outside a frame, so a test that has to press `3D` is given the point the
+/// cell was drawn at instead of guessing at the control's margins (camui-prancheta S8).
+pub(crate) struct Segmented {
+  /// The index the operator picked this frame, if any.
+  pub picked: Option<usize>,
+  /// Each cell's word and the point in the window that presses it, in the order drawn.
+  pub cells: Vec<(String, (f32, f32))>,
+  /// The strip the whole control occupied.
+  pub rect: egui::Rect,
+}
+
 /// A segmented control: mutually exclusive choices in one joined strip.
 ///
 /// The reference uses these for every small decision (`Material | Último vetor`, `Não | De 90° | Livre`,
 /// `2D | 3D`) and it is the right shape: the alternatives are visible, so choosing is a comparison instead
-/// of a search. Returns the index the operator picked, if any.
+/// of a search. Returns the index the operator picked and the geometry it drew at.
 pub(crate) fn segmented(
   ui: &mut egui::Ui,
   palette: &Palette,
   labels: &[&str],
   active: usize,
-) -> Option<usize> {
+) -> Segmented {
   let font = egui::FontId::proportional(theme::CAPTION);
   let mut widths = Vec::with_capacity(labels.len());
   for label in labels {
@@ -1673,6 +1737,7 @@ pub(crate) fn segmented(
   );
   let mut left = rect.left();
   let mut clicked = None;
+  let mut cells = Vec::with_capacity(labels.len());
   for (index, label) in labels.iter().enumerate() {
     let cell = egui::Rect::from_min_size(
       egui::Pos2::new(left, rect.top()),
@@ -1709,9 +1774,15 @@ pub(crate) fn segmented(
     {
       clicked = Some(index);
     }
+    let centre = cell.center();
+    cells.push(((*label).to_owned(), (centre.x, centre.y)));
     left += widths[index];
   }
-  clicked
+  Segmented {
+    picked: clicked,
+    cells,
+    rect,
+  }
 }
 
 /// One labelled value box: the label above, the number inside a bordered field.

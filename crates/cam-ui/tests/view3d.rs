@@ -293,12 +293,16 @@ fn an_open_panel_paints_triangles_and_the_stock_box() {
     harness.output.drawn.painted_triangles > 0,
     "the open panel must paint the simulated surface"
   );
-  // Twelve stock-box edges plus the program's four projected edges: the first move opens a
-  // polyline instead of being joined to a start position the stream does not carry.
-  assert_eq!(
-    harness.output.drawn.painted_3d_lines, 16,
-    "twelve box edges and the program's four edges"
-  );
+  // Twelve stock-box edges, the document's four vector edges, the program's four projected edges — the first
+  // move opens a polyline instead of being joined to a start position the stream does not carry — and the tool
+  // marker's axis and diameter. Each layer is counted on its own because the overlay row hides them one at a
+  // time (S8), and a single total could not say which one went missing.
+  let drawn = &harness.output.drawn;
+  assert_eq!(drawn.painted_material_lines, 12, "twelve box edges");
+  assert_eq!(drawn.painted_vector_lines, 4, "the fixture's rectangle");
+  assert_eq!(drawn.painted_program_lines, 4, "four projected edges");
+  assert_eq!(drawn.painted_tool_lines, 2, "the tool's axis and diameter");
+  assert_eq!(drawn.painted_3d_lines, 22, "and the total is their sum");
 }
 
 #[test]
@@ -449,39 +453,46 @@ fn a_camera_the_projection_rejects_paints_nothing() {
 }
 
 #[test]
-fn the_two_views_are_exclusive() {
+fn the_split_paints_both_halves_and_closing_it_paints_one() {
+  // T6 replaces the exclusive mode M5 shipped: S8's 3D is a *split*, so the drawing is painted beside the 3D
+  // half rather than instead of it. This test is the M5 test rewritten to the rule that replaced it.
   let mut harness = Harness::new();
   harness.frame(Vec::new());
 
-  // 3D is showing: it owns the central area, and the drawing is not painted at all. The old shell stacked
-  // the preview over the canvas, which gave both half a screen and neither a usable one.
   assert!(
     harness.output.drawn.painted_triangles > 0,
-    "the 3D view is the one showing"
+    "the 3D half paints the simulated surface"
   );
-  assert_eq!(
-    harness.output.drawn.painted_items, 0,
-    "the 2D scene must not be painted behind the 3D view"
+  assert!(
+    harness.output.drawn.painted_items > 0,
+    "and the drawing half paints the document beside it"
   );
-  assert_eq!(
-    harness.output.drawn.painted_grid_lines, 0,
-    "and neither must the 2D grid"
+  assert!(
+    harness.output.drawn.painted_grid_lines > 0,
+    "including its grid"
   );
 
-  // Back to the drawing: the triangle count drops to zero and the scene comes back, whole.
+  // Back to the drawing alone: the triangle count drops to zero and the scene keeps its own half's width.
+  let (two_d, _) = harness.halves();
   harness.shell.set_view_3d(false);
   harness.frame(Vec::new());
   assert_eq!(
     harness.output.drawn.painted_triangles, 0,
-    "a hidden view paints no mesh"
+    "a closed split paints no mesh"
   );
   assert_eq!(
     harness.output.drawn.painted_items, 4,
-    "the four rectangle edges are back (A12)"
+    "the four rectangle edges are still there (A12)"
   );
   assert!(
     harness.output.drawn.painted_grid_lines > 0,
     "and so is the grid"
+  );
+  assert!(
+    harness.output.canvas.width as f32 > two_d.width(),
+    "with the split closed the drawing gets the whole canvas back: {} against {}",
+    harness.output.canvas.width,
+    two_d.width()
   );
 }
 
@@ -510,14 +521,26 @@ fn a_closed_panel_leaves_the_2d_frame_exactly_as_it_was() {
 }
 
 #[test]
-fn the_panel_is_reachable_from_its_command_bar_button() {
+fn the_toggle_paints_the_view_it_offers_where_a_hand_can_reach_it() {
+  // The toggle reports its cells (a test presses them) *and* paints them: a control that only reported its
+  // words would be invisible to the operator. Its home moved to the canvas in camui-prancheta T6 (S8), so this
+  // no longer looks at the app bar.
   let mut harness = Harness::new();
   harness.frame(Vec::new());
 
   assert!(
     harness.texts.iter().any(|text| text == "3D"),
-    "the command bar offers the 3D toggle, painted texts: {:?}",
+    "the canvas offers the 3D toggle, painted texts: {:?}",
     harness.texts
+  );
+  assert!(
+    harness
+      .output
+      .drawn
+      .view_toggle
+      .iter()
+      .any(|(word, _)| word == "3D"),
+    "and reports where it drew it"
   );
 }
 
@@ -850,10 +873,26 @@ fn the_panel_offers_play_step_and_reset() {
   let mut harness = Harness::playing();
   harness.frame(Vec::new());
 
+  // The transport is S8's painted `▶` rather than the word `Play`, so the three controls are read from the
+  // report the bar publishes — the same surface a test presses them through (camui-prancheta S8).
+  let words: Vec<&str> = harness
+    .output
+    .drawn
+    .playback_hits
+    .iter()
+    .map(|(word, _)| word.as_str())
+    .collect();
   for text in ["Play", "Step", "Reset"] {
     assert!(
+      words.contains(&text),
+      "the panel must offer a {text} control, reported: {words:?}"
+    );
+  }
+  // `Step` and `Reset` are words on the readout's line, so they are painted as well as reported.
+  for text in ["Step", "Reset"] {
+    assert!(
       harness.texts.iter().any(|painted| painted == text),
-      "the panel must offer a {text} control, painted texts: {:?}",
+      "the panel must paint {text}, painted texts: {:?}",
       harness.texts
     );
   }
@@ -1174,9 +1213,17 @@ fn bar_rects(harness: &Harness) -> (egui::Rect, egui::Rect) {
     .find(|(colour, _)| *colour == palette.get(Role::Cut))
     .map(|(_, rect)| rect)
     .expect("the panel painted no progress bar fill in the cut signal");
+  // The smallest `Role::Canvas` rectangle that contains the fill: the central panel's own ground is painted in the
+  // same role now that the split shares one panel with the drawing (S8), so "the first one" would be the whole
+  // canvas rather than the bar's track.
   let trough = rects_in_panel()
-    .find(|(colour, rect)| *colour == palette.get(Role::Canvas) && rect.contains_rect(fill))
+    .filter(|(colour, rect)| *colour == palette.get(Role::Canvas) && rect.contains_rect(fill))
     .map(|(_, rect)| rect)
+    .min_by(|a, b| {
+      (a.width() * a.height())
+        .partial_cmp(&(b.width() * b.height()))
+        .unwrap_or(std::cmp::Ordering::Equal)
+    })
     .expect("the panel painted no progress bar trough under its fill");
   (trough, fill)
 }
@@ -1187,7 +1234,7 @@ fn the_panel_states_the_elapsed_time_and_the_total_as_clocks() {
   // The fixture lasts exactly one second: 0.2 s rapid, 0.2 s plunge, 0.5 s feed, 0.1 s retract.
   assert_eq!(harness.output.drawn.preview_progress, 0.0);
   assert_eq!(
-    harness.output.drawn.preview_clock, "0:00 of 0:01",
+    harness.output.drawn.preview_clock, "0:00 / 0:01",
     "a program that has not started reads as nothing spent of its total"
   );
 
@@ -1212,7 +1259,7 @@ fn the_panel_states_the_elapsed_time_and_the_total_as_clocks() {
     "the panel must play the program to its end"
   );
   assert_eq!(
-    harness.output.drawn.preview_clock, "0:01 of 0:01",
+    harness.output.drawn.preview_clock, "0:01 / 0:01",
     "a finished program reads as all of its time spent"
   );
   assert_eq!(harness.output.drawn.preview_bar, 1.0);
@@ -1269,7 +1316,7 @@ fn a_program_with_no_time_paints_an_empty_bar_and_says_so() {
     .set_preview(untouched(), timeless_program(), &job());
   harness.frame(Vec::new());
   assert_eq!(
-    harness.output.drawn.preview_clock, "0:00 of 0:00",
+    harness.output.drawn.preview_clock, "0:00 / 0:00",
     "a program with no time to spend states that on both sides"
   );
   assert_eq!(
@@ -1295,5 +1342,735 @@ fn a_program_with_no_time_paints_an_empty_bar_and_says_so() {
     harness.output.drawn.preview_bar, 0.0,
     "and the bar still claims no time, because there is no total to spend"
   );
-  assert_eq!(harness.output.drawn.preview_clock, "0:00 of 0:00");
+  assert_eq!(harness.output.drawn.preview_clock, "0:00 / 0:00");
+}
+
+// ---------------------------------------------------------------------------------------------
+// S8 — `2D | 3D` is a segmented toggle at the top right of the canvas, and 3D is a mode: the canvas
+// splits in two, and the 3D half carries its own chrome (camui-prancheta T6).
+// ---------------------------------------------------------------------------------------------
+
+/// A program that quotes the reference frame's own playback readout: `T22 · Drilling 1 · Z 5.000`.
+///
+/// One segment, one rapid: 500 mm at the segment's 100 mm/s feed is exactly five seconds, and the move
+/// arrives at `Z 5.000`, which is the line S8 writes down. Nothing is cut — the point of this fixture is the
+/// clock and the name of the move, not the surface.
+fn drilling_program() -> MoveStream {
+  let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(0.0, 0.0));
+  stream.segments.push(Segment {
+    name: "Drilling 1".to_owned(),
+    tool_number: 22,
+    tool: ToolShape::cylinder(Length::from_mm(5.0)),
+    feed_rate: 100.0,
+    plunge_rate: 50.0,
+    spindle_speed: 12_000,
+    moves: vec![Move::Rapid {
+      to: Point3::new(500.0, 0.0, 5.0),
+    }],
+  });
+  stream
+}
+
+impl Harness {
+  /// A harness holding the fixture whose readout is S8's own, past its framing frames.
+  fn drilling() -> Self {
+    let mut harness = Self::bare();
+    harness
+      .shell
+      .set_preview(untouched(), drilling_program(), &job());
+    harness.frame(Vec::new());
+    harness
+  }
+
+  /// The 2D half and the 3D half the last frame reported, as window rectangles.
+  fn halves(&self) -> (egui::Rect, egui::Rect) {
+    let (two_d, three_d) = self
+      .output
+      .drawn
+      .split
+      .expect("the frame reported no split, so the toggle did not open one");
+    (rect_of(two_d), rect_of(three_d))
+  }
+
+  /// Press and release the point a frame reported, in three passes like a real pointer.
+  fn click(&mut self, at: (f32, f32)) {
+    let pos = egui::pos2(at.0, at.1);
+    let modifiers = egui::Modifiers::default();
+    self.frame(vec![egui::Event::PointerMoved(pos)]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos,
+      button: egui::PointerButton::Primary,
+      pressed: true,
+      modifiers,
+    }]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos,
+      button: egui::PointerButton::Primary,
+      pressed: false,
+      modifiers,
+    }]);
+  }
+
+  /// Drag the primary button from one point to another, in four passes.
+  fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) {
+    let modifiers = egui::Modifiers::default();
+    self.frame(vec![egui::Event::PointerMoved(from)]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos: from,
+      button: egui::PointerButton::Primary,
+      pressed: true,
+      modifiers,
+    }]);
+    self.frame(vec![egui::Event::PointerMoved(to)]);
+    self.frame(vec![egui::Event::PointerButton {
+      pos: to,
+      button: egui::PointerButton::Primary,
+      pressed: false,
+      modifiers,
+    }]);
+  }
+
+  /// Scroll one notch at a point, in two passes so the pointer is known to be there first.
+  fn wheel(&mut self, at: egui::Pos2, delta: f32) {
+    self.frame(vec![egui::Event::PointerMoved(at)]);
+    self.frame(vec![egui::Event::MouseWheel {
+      unit: egui::MouseWheelUnit::Point,
+      delta: egui::vec2(0.0, delta),
+      phase: egui::TouchPhase::Move,
+      source: egui::MouseWheelSource::Wheel,
+      modifiers: egui::Modifiers::default(),
+    }]);
+  }
+}
+
+/// A window rectangle from the four numbers a report uses.
+fn rect_of(rect: (f32, f32, f32, f32)) -> egui::Rect {
+  egui::Rect::from_min_size(
+    egui::pos2(rect.0, rect.1),
+    egui::vec2(rect.2, rect.3),
+  )
+}
+
+/// The point a report gave for `word`, in the list it gave it in.
+fn hit(hits: &[(String, (f32, f32))], word: &str) -> (f32, f32) {
+  hits
+    .iter()
+    .find(|(label, _)| label == word)
+    .unwrap_or_else(|| panic!("no `{word}` was reported, painted: {hits:?}"))
+    .1
+}
+
+/// The window point a world coordinate was drawn at in the last frame.
+fn window_point(harness: &Harness, x: f64, y: f64) -> egui::Pos2 {
+  harness
+    .output
+    .canvas
+    .to_window(harness.app.camera().world_to_screen(Point2::new(x, y)))
+}
+
+#[test]
+fn the_view_toggle_is_drawn_once_at_the_canvases_top_right() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let words: Vec<&str> = harness
+    .output
+    .drawn
+    .view_toggle
+    .iter()
+    .map(|(word, _)| word.as_str())
+    .collect();
+  assert_eq!(words, ["2D", "3D"], "the toggle offers the two views");
+
+  let (x, y, width, height) = harness
+    .output
+    .drawn
+    .view_toggle_rect
+    .expect("the toggle reported where it was drawn");
+  // The canvas is the whole drawing area: the 2D half when the split is open (which is what `canvas` reports), and
+  // the 3D half beside it. The toggle sits at the right end of that area, which in this mode is the 3D half's.
+  let (two_d, three_d) = harness.halves();
+  let (left, top) = (two_d.min.x, two_d.min.y);
+  let right = three_d.max.x;
+  assert!(
+    x >= left + (right - left) / 2.0,
+    "the toggle sits in the canvas' right half: {x} in {left}..{right}"
+  );
+  assert!(
+    x + width <= right,
+    "and inside the canvas: {} against {right}",
+    x + width
+  );
+  // The top right of the canvas is the strip the ruler's band occupies (S5), which is the canvas' own top
+  // edge and not a corner of the drawing area.
+  let thickness = cam_ui::theme::Theme::Dark.metrics().ruler_thickness;
+  assert!(
+    y + height <= top + 1.0 && y >= top - thickness - 1.0,
+    "the toggle sits on the canvas' top edge, not down in the drawing: y {y}..{} against {top}",
+    y + height
+  );
+
+  // One toggle and no second copy: the bar used to carry this control, and two of one control is the
+  // defect this rule exists to prevent.
+  let painted = |word: &str| harness.texts.iter().filter(|text| *text == word).count();
+  assert_eq!(painted("2D"), 1, "exactly one `2D`, painted: {:?}", harness.texts);
+  assert_eq!(painted("3D"), 1, "exactly one `3D`, painted: {:?}", harness.texts);
+}
+
+#[test]
+fn pressing_3d_splits_the_canvas_and_pressing_2d_puts_it_back() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  assert!(
+    harness.output.drawn.split.is_some(),
+    "a shell holding a preview opens on the split"
+  );
+
+  let two_d = hit(&harness.output.drawn.view_toggle, "2D");
+  harness.click(two_d);
+  assert!(!harness.shell.view_3d(), "`2D` turns the mode off");
+  assert!(
+    harness.output.drawn.split.is_none(),
+    "with the mode off there is one canvas, not two halves"
+  );
+  assert_eq!(
+    harness.output.drawn.painted_triangles, 0,
+    "and no 3D surface is painted"
+  );
+
+  let three_d = hit(&harness.output.drawn.view_toggle, "3D");
+  harness.click(three_d);
+  assert!(harness.shell.view_3d(), "`3D` turns the mode back on");
+  assert!(
+    harness.output.drawn.split.is_some(),
+    "and the canvas splits again"
+  );
+}
+
+#[test]
+fn the_split_puts_the_drawing_on_the_left_and_the_three_d_view_on_the_right() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let (two_d, three_d) = harness.halves();
+  let canvas = harness.output.canvas;
+  assert_eq!(
+    rect_of((
+      canvas.x as f32,
+      canvas.y as f32,
+      canvas.width as f32,
+      canvas.height as f32
+    )),
+    two_d,
+    "the drawing area is the 2D half, which is the rectangle the 2D camera is told about"
+  );
+  assert!(
+    (three_d.min.x - two_d.max.x).abs() <= 1.0,
+    "the 3D half begins where the drawing half ends: {} then {}",
+    two_d.max.x,
+    three_d.min.x
+  );
+  assert!(
+    (three_d.width() - two_d.width()).abs() <= 1.0 && (three_d.height() - two_d.height()).abs() <= 1.0,
+    "the two halves are the same size: {two_d:?} and {three_d:?}"
+  );
+  // The 3D half inherits the ruler's inset (L20), so both halves' content starts on one line rather than
+  // the 3D view reaching up into the band the 2D half gave away.
+  assert!(
+    (three_d.min.y - two_d.min.y).abs() <= 1.0,
+    "the 3D half starts on the drawing's own top line: {} against {}",
+    three_d.min.y,
+    two_d.min.y
+  );
+}
+
+#[test]
+fn the_drawing_half_keeps_its_pick_and_its_picture_while_the_split_is_open() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  assert!(
+    harness.output.drawn.painted_items > 0,
+    "the drawing is painted in its own half, not hidden behind the 3D view"
+  );
+
+  // A point on the fixture rectangle's bottom edge, in the drawing half's own coordinates.
+  let edge = window_point(&harness, 50.0, 10.0);
+  harness.click((edge.x, edge.y));
+  assert!(
+    harness.app.selection().contains("E1"),
+    "a click in the drawing half still picks: {:?}",
+    harness.app.selection().ids().collect::<Vec<_>>()
+  );
+
+  // And a drawing tool still draws there: the split takes half the width, not the gesture.
+  let before: usize = harness
+    .app
+    .document()
+    .layers
+    .iter()
+    .map(|layer| layer.entities.len())
+    .sum();
+  harness.shell.active_tool = cam_ui::Tool::Line;
+  harness.drag(window_point(&harness, 20.0, 20.0), window_point(&harness, 60.0, 60.0));
+  let after: usize = harness
+    .app
+    .document()
+    .layers
+    .iter()
+    .map(|layer| layer.entities.len())
+    .sum();
+  assert_eq!(
+    after,
+    before + 1,
+    "a drag in the drawing half with a drawing tool armed is still one command"
+  );
+}
+
+#[test]
+fn each_half_keeps_its_own_gesture_while_the_split_is_open() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  let (two_d, three_d) = harness.halves();
+  let before = *harness.preview().camera();
+  let zoom = harness.app.camera().pixels_per_mm();
+
+  // A drag in the drawing half is a marquee: it moves neither the 3D eye nor the 2D zoom.
+  let from = two_d.center();
+  harness.drag(from, egui::pos2(from.x + 60.0, from.y + 40.0));
+  let after_two_d = *harness.preview().camera();
+  assert!(
+    (after_two_d.yaw - before.yaw).abs() < 1.0e-9 && (after_two_d.pitch - before.pitch).abs() < 1.0e-9,
+    "the drawing half's drag must not orbit the 3D view: {} -> {}",
+    before.yaw,
+    after_two_d.yaw
+  );
+
+  // A wheel over the drawing half zooms the drawing, exactly as it does without the split.
+  harness.wheel(two_d.center(), 120.0);
+  assert!(
+    harness.app.camera().pixels_per_mm() > zoom,
+    "the drawing half still zooms about the pointer"
+  );
+
+  // A drag in the 3D half orbits it, and a wheel there zooms the 3D eye instead of the drawing.
+  let from = three_d.center();
+  let drawing_zoom = harness.app.camera().pixels_per_mm();
+  let distance = harness.preview().camera().distance.mm();
+  harness.wheel(from, 120.0);
+  assert!(
+    (harness.app.camera().pixels_per_mm() - drawing_zoom).abs() < 1.0e-9,
+    "a wheel over the 3D half is not the drawing's zoom"
+  );
+  assert!(
+    harness.preview().camera().distance.mm() < distance,
+    "it is the 3D camera's own zoom: {distance} -> {}",
+    harness.preview().camera().distance.mm()
+  );
+  harness.drag(from, egui::pos2(from.x + 80.0, from.y + 40.0));
+  let after_three_d = *harness.preview().camera();
+  assert!(
+    (after_three_d.yaw - before.yaw).abs() > 1.0e-6,
+    "the 3D half's drag orbits the eye: {} -> {}",
+    before.yaw,
+    after_three_d.yaw
+  );
+}
+
+#[test]
+fn the_overlay_row_names_the_four_layers_and_every_chip_hides_exactly_its_own() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let words: Vec<&str> = harness
+    .output
+    .drawn
+    .layer_chips
+    .iter()
+    .map(|(word, _)| word.as_str())
+    .collect();
+  assert_eq!(
+    words,
+    ["Material", "Vectors", "Toolpaths", "Tool", "Centre", "?"],
+    "S8's overlay row, in its own order"
+  );
+  let showing: Vec<(String, bool)> = vec![
+    ("Material".to_owned(), true),
+    ("Vectors".to_owned(), true),
+    ("Toolpaths".to_owned(), true),
+    ("Tool".to_owned(), true),
+  ];
+  assert_eq!(
+    harness.output.drawn.scene_layers, showing,
+    "every layer starts visible"
+  );
+
+  // The fixture document holds one closed four-point rectangle and the preview one segment of four drawn
+  // edges, drawn with a tool marker of an axis and a diameter.
+  let counts = |harness: &Harness| {
+    let drawn = &harness.output.drawn;
+    (
+      drawn.painted_material_lines,
+      drawn.painted_vector_lines,
+      drawn.painted_program_lines,
+      drawn.painted_tool_lines,
+    )
+  };
+  let whole = [12, 4, 4, 2];
+  assert_eq!(
+    counts(&harness),
+    (whole[0], whole[1], whole[2], whole[3]),
+    "twelve stock edges, four vectors, four program edges and the tool's axis and diameter"
+  );
+
+  for (word, hidden) in [
+    ("Material", 0usize),
+    ("Vectors", 1),
+    ("Toolpaths", 2),
+    ("Tool", 3),
+  ] {
+    let at = hit(&harness.output.drawn.layer_chips, word);
+    harness.click(at);
+    let after = counts(&harness);
+    if word == "Material" {
+      // Hiding the material hides the surface as well as the box: the triangles are the material, and a checkbox
+      // that left them on would be half a control.
+      assert_eq!(
+        harness.output.drawn.painted_triangles, 0,
+        "`Material` must take the simulated surface with it"
+      );
+    }
+    for (index, expected) in whole.iter().enumerate() {
+      let drawn = [after.0, after.1, after.2, after.3][index];
+      if index == hidden {
+        assert_eq!(drawn, 0, "`{word}` must hide its own layer");
+      } else {
+        assert_eq!(
+          drawn, *expected,
+          "`{word}` must leave layer {index} alone"
+        );
+      }
+    }
+    assert!(
+      !harness.output.drawn.scene_layers[hidden].1,
+      "the row must say `{word}` is off in the frame it is pressed"
+    );
+    // Back on, so the next chip is measured against the whole picture.
+    harness.click(at);
+    assert_eq!(
+      counts(&harness),
+      (whole[0], whole[1], whole[2], whole[3]),
+      "`{word}` comes back"
+    );
+    assert!(
+      harness.output.drawn.painted_triangles > 0,
+      "and so does the surface, with the material"
+    );
+  }
+}
+
+#[test]
+fn the_centre_chip_reframes_the_stock_at_the_angle_the_eye_is_at() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  let framed = *harness.preview().home_camera();
+
+  let (_, three_d) = harness.halves();
+  harness.wheel(three_d.center(), 120.0);
+  let from = three_d.center();
+  harness.drag(from, egui::pos2(from.x + 80.0, from.y + 40.0));
+  let away = *harness.preview().camera();
+  assert!(
+    (away.distance.mm() - framed.distance.mm()).abs() > 1.0e-6
+      && (away.yaw - framed.yaw).abs() > 1.0e-6,
+    "the fixture must have moved the eye before `Centre` is asked to put it back"
+  );
+
+  harness.click(hit(&harness.output.drawn.layer_chips, "Centre"));
+  let back = *harness.preview().camera();
+  assert_eq!(
+    back.target, framed.target,
+    "`Centre` puts the target back on the stock's centre"
+  );
+  assert!(
+    (back.distance.mm() - framed.distance.mm()).abs() < 1.0e-9,
+    "and the distance back to the one that frames it: {} against {}",
+    back.distance.mm(),
+    framed.distance.mm()
+  );
+  assert!(
+    (back.yaw - away.yaw).abs() < 1.0e-9,
+    "`Centre` keeps the angle the eye is at — that is what makes it not the home button"
+  );
+}
+
+#[test]
+fn the_home_button_returns_the_picture_to_the_state_it_opened_in() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  let framed = *harness.preview().home_camera();
+
+  let (_, three_d) = harness.halves();
+  harness.wheel(three_d.center(), 120.0);
+  let from = three_d.center();
+  harness.drag(from, egui::pos2(from.x + 80.0, from.y + 40.0));
+  let away = *harness.preview().camera();
+  assert!(
+    (away.yaw - framed.yaw).abs() > 1.0e-6,
+    "the fixture must have turned the eye before the button is asked to undo it"
+  );
+
+  let button = harness
+    .output
+    .drawn
+    .home_button
+    .expect("the 3D half must report where its home button was drawn");
+  harness.click(button);
+  let back = *harness.preview().camera();
+  assert_eq!(back.yaw, framed.yaw, "the home button restores the angle");
+  assert_eq!(back.pitch, framed.pitch);
+  assert_eq!(back.target, framed.target);
+  assert_eq!(
+    back.distance, framed.distance,
+    "and the distance, which is the whole framed state"
+  );
+}
+
+#[test]
+fn the_axis_triad_labels_three_axes_and_turns_with_the_camera() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let words: Vec<&str> = harness
+    .output
+    .drawn
+    .triad
+    .iter()
+    .map(|(word, _)| word.as_str())
+    .collect();
+  assert_eq!(words, ["TOP", "FRONT", "RIGHT"], "S8's three labels");
+
+  let before = harness.output.drawn.triad.clone();
+  let (_, three_d) = harness.halves();
+  let from = three_d.center();
+  harness.drag(from, egui::pos2(from.x + 90.0, from.y + 30.0));
+  let after = harness.output.drawn.triad.clone();
+  assert_ne!(
+    before, after,
+    "the triad is drawn from the camera, so orbiting must turn it: {before:?} then {after:?}"
+  );
+}
+
+#[test]
+fn the_playback_bar_plays_pauses_and_names_the_move_the_playhead_is_on() {
+  let mut harness = Harness::drilling();
+  harness.frame(Vec::new());
+
+  let words: Vec<&str> = harness
+    .output
+    .drawn
+    .playback_hits
+    .iter()
+    .map(|(word, _)| word.as_str())
+    .collect();
+  for word in ["Play", "To the end", "Step", "Reset", "60x"] {
+    assert!(
+      words.contains(&word),
+      "the bar must offer `{word}`, painted: {words:?}"
+    );
+  }
+  assert_eq!(
+    harness.output.drawn.playback_readout, "0:00 / 0:05  T22 · Drilling 1 · Z 5.000",
+    "the readout states the two clocks and names the move under the playhead"
+  );
+
+  harness.click(hit(&harness.output.drawn.playback_hits, "Play"));
+  assert!(
+    harness.preview().playing(),
+    "`Play` starts the program: {:?}",
+    harness.output.drawn.playback_readout
+  );
+  assert!(
+    harness
+      .output
+      .drawn
+      .playback_hits
+      .iter()
+      .any(|(word, _)| word == "Pause"),
+    "and the control names what pressing it again would do"
+  );
+
+  harness.click(hit(&harness.output.drawn.playback_hits, "Pause"));
+  assert!(!harness.preview().playing(), "`Pause` stops it again");
+
+  // `Step` and `Reset` are the two controls S8's list does not name and this shell keeps (M5 A10): the buttons
+  // are wired to the playhead they describe, which is a claim about the bar rather than about the preview.
+  harness.click(hit(&harness.output.drawn.playback_hits, "Reset"));
+  assert_eq!(harness.preview().cursor(), 0, "`Reset` rewinds to the first move");
+  harness.click(hit(&harness.output.drawn.playback_hits, "Step"));
+  assert_eq!(harness.preview().cursor(), 1, "`Step` advances exactly one move");
+  assert!(
+    !harness.preview().playing(),
+    "and leaves playback paused, so the next frame cannot undo the step"
+  );
+}
+
+#[test]
+fn to_the_end_cuts_the_whole_program_and_reads_as_the_references_own_line() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  harness.click(hit(&harness.output.drawn.playback_hits, "To the end"));
+
+  assert!(
+    harness.preview().finished(),
+    "`To the end` plays the program out"
+  );
+  assert_eq!(
+    harness.preview().field().volumes(),
+    whole_program_field().volumes(),
+    "the field it leaves is the whole-program sweep, so `To the end` is a cut and not a jump cut"
+  );
+  assert_eq!(
+    harness.output.drawn.preview_bar, 1.0,
+    "and the bar's fill is the clock's own answer"
+  );
+
+  // The reference's own line, from a program that runs exactly five seconds and ends at Z 5.000.
+  let mut drilling = Harness::drilling();
+  drilling.frame(Vec::new());
+  drilling.click(hit(&drilling.output.drawn.playback_hits, "To the end"));
+  assert_eq!(
+    drilling.output.drawn.playback_readout,
+    "0:05 / 0:05  T22 · Drilling 1 · Z 5.000",
+    "S8's readout, in its own words"
+  );
+}
+
+#[test]
+fn the_scrubber_seeks_the_playhead_to_the_point_it_was_pressed() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  harness.click(hit(&harness.output.drawn.playback_hits, "To the end"));
+  assert!(harness.preview().finished());
+
+  let (left, right, y) = harness
+    .output
+    .drawn
+    .scrubber
+    .expect("the bar must report the track it drew");
+  assert!(right > left, "the scrubber has a length to seek along");
+
+  // Back to the start: seeking is a re-cut, so nothing is removed at zero. The press is on the track's own left
+  // end, because a pixel into a 129 px track is already a tenth of a second of program.
+  harness.click((left, y));
+  assert_eq!(harness.preview().cursor(), 0, "the playhead is back at the first move");
+  assert!(
+    harness.preview().elapsed().abs() < 1.0e-9,
+    "and its clock reads nothing spent: {}",
+    harness.preview().elapsed()
+  );
+  assert_eq!(
+    harness.preview().field().volumes(),
+    untouched().volumes(),
+    "a playhead at zero must leave the stock untouched"
+  );
+
+  // Half way along the track is half of the program's own time.
+  harness.click(((left + right) * 0.5, y));
+  let half = harness.preview().duration() * 0.5;
+  assert!(
+    (harness.preview().elapsed() - half).abs() < 0.01 * harness.preview().duration(),
+    "the middle of the track is half the program: {} against {half}",
+    harness.preview().elapsed()
+  );
+}
+
+#[test]
+fn the_speed_control_names_the_speed_it_sets() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let speed = harness
+    .output
+    .drawn
+    .playback_hits
+    .iter()
+    .find(|(word, _)| word.ends_with('x'))
+    .map(|(word, at)| (word.clone(), *at))
+    .expect("the bar must name the speed it is set to");
+  assert_eq!(speed.0, "60x", "the default speed is the preview's own");
+  assert_eq!(harness.preview().speed(), 60.0);
+
+  harness.click(speed.1);
+  assert_eq!(harness.preview().speed(), 200.0, "the chip steps to the next speed");
+  assert!(
+    harness
+      .output
+      .drawn
+      .playback_hits
+      .iter()
+      .any(|(word, _)| word == "200x"),
+    "and the frame that set it is the frame that says so: {:?}",
+    harness.output.drawn.playback_hits
+  );
+}
+
+#[test]
+fn the_question_mark_opens_the_help_panel() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+  assert!(!harness.shell.show_help, "the panel starts closed");
+
+  harness.click(hit(&harness.output.drawn.layer_chips, "?"));
+  assert!(
+    harness.shell.show_help,
+    "`?` must do something: it opens the F1 panel, which teaches every command"
+  );
+}
+
+#[test]
+fn a_split_with_no_program_draws_no_overlay_row_and_says_why() {
+  let mut harness = Harness::bare();
+  harness.shell.set_view_3d(true);
+  harness.frame(Vec::new());
+
+  assert!(
+    harness.output.drawn.split.is_some(),
+    "the split is a mode, so it opens with or without a program"
+  );
+  assert!(
+    harness.output.drawn.layer_chips.is_empty(),
+    "no overlay row: a checkbox over nothing is a control that lies"
+  );
+  assert!(
+    harness.output.drawn.playback_hits.is_empty() && harness.output.drawn.playback_readout.is_empty(),
+    "and no playback bar, for the same reason"
+  );
+  assert!(
+    harness
+      .texts
+      .iter()
+      .any(|text| text.contains("No program to preview")),
+    "the half says why it is empty, painted: {:?}",
+    harness.texts
+  );
+}
+
+#[test]
+fn the_rulers_frame_the_drawing_half_and_stop_where_the_three_d_half_begins() {
+  let mut harness = Harness::new();
+  harness.frame(Vec::new());
+
+  let rulers = &harness.output.drawn.rulers;
+  let (_, three_d) = harness.halves();
+  let band_end = rulers.top_band.0 + rulers.top_band.2;
+  assert!(
+    (band_end - three_d.min.x).abs() <= 1.0,
+    "the top band ends where the 3D half begins: {band_end} against {}",
+    three_d.min.x
+  );
+  assert!(
+    rulers.top_band.3 > 0.0 && !rulers.top.is_empty(),
+    "the band still numbers the drawing half: {:?}",
+    rulers.top_band
+  );
 }
