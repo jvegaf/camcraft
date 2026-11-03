@@ -389,3 +389,22 @@ words: *"design/prancheta-reference/ + README"*.
   **`ShellOutput::canvas` changed meaning** — from the central area to the drawing area. No consumer outside
   `cam-ui` reads it (`cam-cli` and `cam-desktop` do not), so the blast radius is this crate's tests, and the
   doc comment on the field says which rect it is.
+- **L21 (the T5 review: approved on the first receipt, after two harness failures).** Lineage
+  `review-54750e7c98594128`, tier **high** (`process_boundary`), **three lenses** (`risk`, `readability`,
+  `reliability`), 5 paths, 1 080 changed lines, correction budget 200 — **unused, nothing to correct**. Three
+  reviewer runs over the pi host relay (62.2 kB of prompt each), **approved**, authority **burned**
+  (`gentle-ai.review-acknowledged/v1`, revision `sha256:e40de020…`). Delivery stays ordinary repository policy.
+  **The narrowing paid off exactly as L18 predicted:** the candidate was `4c619e1..HEAD` — five paths, this
+  branch and nothing else — against the 26-path whole-branch projection that had died on
+  `lens_context_budget_exceeded` in T4. One branch per task turned a hard stop into a normal review.
+  **Two START attempts died before the provider.** Both `pre_native`, both `git_command_failed`,
+  `git grep: failed to create thread`, exit 128, `mutation_performed: false` — no lineage, nothing burned. The
+  service cgroup was at **`pids.max = 64` with 45 PIDs in use**; the second attempt also coincided with this
+  session's own workspace suite. The owner authorised raising the limit whenever a START needs it, so it went
+  to **512** for the run and **back to 64** as soon as the receipt closed. Same defect as L12 and L17, third
+  time; the rule is now explicit rather than re-derived per session.
+  **Three advisories, all `informational`, none blocking:** `R2-001` (`lib.rs:1938-1948`), `R2-002`
+  (`ruler.rs:112-132`, a suggestion), `R3-001` (`lib.rs:1940-1948`). They join the twenty-four this feature
+  already owes. Note what the candidate *already* contained when the reviewers saw it: `b349d28`, the two test
+  corrections and the wheel test that the independent read demanded. The review judged the corrected tree, not
+  the first delivery.
