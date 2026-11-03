@@ -274,3 +274,18 @@ CLI does not have.
   library being read (the positive half of L3's trade), the soft refusal sentence when the log sits at the
   target, and the same clean-symlink read at store level with `open_read_only`. They are named here instead of
   being quietly assumed to exist.
+- **L10 (the accumulated candidate, reviewed once more: approved, and two advisories about the tests
+  themselves).** The provider offered the **whole arc** (`75e5174a..b57b6fd`, 4 paths, 528 lines) rather than
+  the last commit, so it was reviewed as a whole: **approved**, lineage `review-d5e23887f517a70b`, authority
+  **burned** (`gentle-ai.review-acknowledged/v1`). Two advisories, both non-blocking and both about the
+  *evidence* rather than the guard: **`R3-001`** (WARNING, `cam-ui/tests/shell.rs:4542-4546`) and **`R3-002`**
+  (SUGGESTION, `cam-store/tests/tools.rs:408`) — they say the two companion tests assert the directory listing
+  and stop there. That is the same sentence the closing verifier wrote in L9, and the reason it handed over a
+  positive-half test. **Two independent views, one conclusion: the guard is proven, the evidence around it is
+  thinner than the guard.** Cost: 2 model runs, 49 216 and 49 241 prompt bytes.
+  **The tier, for the second time in this feature:** `assess` on these same trees said `medium` /
+  `under_budget` / `reviewDue: false`, and the provider's reminder offered the candidate anyway. The offer is
+  what produced these two advisories. When the two mechanisms disagree about whether to review, the offer has
+  now been right twice and the assessment's budget arithmetic has been the thing that would have skipped it.
+  **Not taken, by decision:** both advisories are coverage, not behaviour. They join the three the closing pass
+  handed over, named in L9, and the whole set is the follow-up this feature leaves behind.
