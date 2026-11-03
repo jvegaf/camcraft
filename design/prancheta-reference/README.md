@@ -97,8 +97,14 @@ Five facts that the earlier evidence got wrong or never saw, and that every fram
 
 ## What Campilot has taken from it so far
 
-Nothing yet. The 15 frames arrived after `camui-shell` closed, and the feature that consumes them is
-`odd/tasks/camui-prancheta.md`.
+- **The stage bar is gone, and with it the stage.** `camui-prancheta` T1 (`c9f3c59`) removed the
+  `Design › Edit › Relief › Toolpaths › Prove` strip, the `Stage` enum behind it, and the rail that showed only
+  the current stage's commands. The rail is now the whole command table, grouped and labelled, so a drawing
+  command and an edit command are reachable in the same frame. The two sentences the strip carried that were
+  worth keeping — an empty sheet, and a document with no toolpath — became `next_step(app)` on the Job tab,
+  which asks the document instead of the mode.
+
+The rest of the list below is still `odd/tasks/camui-prancheta.md`'s work.
 
 ## Still to take
 

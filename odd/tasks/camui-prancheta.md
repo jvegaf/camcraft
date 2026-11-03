@@ -90,3 +90,20 @@ words: *"design/prancheta-reference/ + README"*.
 - **L4 (delegation is unavailable, not skipped).** `subagent_list_agents` returns an empty list for this
   repository, so the evidence-budget rule, the writer rule and the context backstop have no configured target.
   Every task below routes inline and the fallback is recorded here rather than silently taken.
+- **L5 (the first review: approved, and four advisories that are all about the evidence).** Candidate
+  `a7a701e..30e130d` (T0+T1, 22 paths, 1115 lines), lineage `review-d5ba49d2146ee31a`, tier **high**, three
+  lenses (`risk`, `readability`, `reliability`), authority **burned** (`gentle-ai.review-acknowledged/v1`).
+  Cost: 3 model runs, ~99.7 kB of prompt each. **Approved with no blocking finding.**
+  The tier was high for two reasons the provider named itself, and one of them is a defect I introduced:
+  `design/prancheta-reference/Screenshot 2026-11-03 031627.png` landed with mode `100755`. A screenshot is not
+  executable. **Fixed after the review** (`chmod 644`), because the review's frozen candidate cannot be edited
+  and a permission bit is not a reason to reopen it — it is a reason to make the next commit clean.
+  **Advisories, all non-blocking and all about the evidence rather than the change:** `R2-001` (readability,
+  `shell.rs:361` — the new "no stage bar" test asserts the *absence of words*, which is the weakest thing a
+  headless test can say), `R2-002` (readability, `shell.rs:481`), `R3-001` (reliability, `shell.rs:481-502` —
+  the same test), and `R2-003` (readability, `README.md:100`).
+  **Taken:** `R2-003`, because it was simply false — the README still said "Nothing yet" after T1 had already
+  taken the correction. **Recorded and deliberately not taken:** `R2-001`, `R2-002` and `R3-001`, which are
+  about how `the_job_tab_names_the_step_the_document_is_missing` and its neighbour are written, not about what
+  the shell does. They are the follow-up this task leaves behind, and they must not be a reason to re-review
+  this candidate: its receipt stands.
