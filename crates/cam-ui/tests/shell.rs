@@ -141,6 +141,30 @@ fn click_at(
   last.expect("a click is two frames")
 }
 
+/// Click one status-bar chip by the beginning of its word.
+///
+/// The bar reports the point it drew each chip at ([`cam_ui::DrawnState::status_chips`]) for the same reason
+/// the palette does: egui cannot be asked for a widget by its text from outside a frame. A prefix instead of
+/// the whole word because the grid chip names the step it snaps to as well (`Grid 10`), which is the change
+/// under test here.
+fn click_status_chip(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  prefix: &str,
+) -> String {
+  let (output, _) = frame_with(ctx, shell, app);
+  let (label, point) = output
+    .drawn
+    .status_chips
+    .iter()
+    .find(|(label, _)| label.starts_with(prefix))
+    .map(|(label, point)| (label.clone(), egui::pos2(point.0, point.1)))
+    .unwrap_or_else(|| panic!("no {prefix:?} chip: {:?}", output.drawn.status_chips));
+  click_at(ctx, shell, app, point);
+  label
+}
+
 /// Click one palette chip by the word on it.
 ///
 /// The palette reports the point it drew each chip at ([`cam_ui::DrawnState::palette_hits`]), because
@@ -380,14 +404,117 @@ fn the_frame_draws_no_stage_bar_and_the_rail_offers_every_group_at_once() {
 }
 
 #[test]
-fn the_status_bar_offers_a_chip_per_snap_kind() {
+fn the_status_bar_chips_are_the_references_five_and_the_grid_names_its_step() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  let (_, texts) = frame(&mut shell, &mut app);
+  // Two frames: the canvas measures the camera after the panels, so the first frame's bar cannot know the
+  // grid step yet, exactly like the zoom it reports beside it.
+  let _ = frame(&mut shell, &mut app);
+  let (output, texts) = frame(&mut shell, &mut app);
+  let labels: Vec<String> = output
+    .drawn
+    .status_chips
+    .iter()
+    .map(|(label, _)| label.clone())
+    .collect();
+  assert_eq!(
+    labels.len(),
+    5,
+    "the reference draws five chips, this bar drew {labels:?}"
+  );
+  assert_eq!(&labels[..4], ["Snaps", "Point", "Mid", "Centre"], "{labels:?}");
+  let step = labels[4]
+    .strip_prefix("Grid ")
+    .and_then(|value| value.parse::<f64>().ok())
+    .unwrap_or_else(|| panic!("the grid chip must name its step in millimetres: {:?}", labels[4]));
+  assert_eq!(
+    step, shell.grid_spacing,
+    "the chip and the shell must name the same step"
+  );
   let all = joined(&texts);
-  for label in ["Endpoint", "Midpoint", "Centre", "Grid", "magnet"] {
+  for label in &labels {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
+}
+
+#[test]
+fn the_snaps_chip_arms_and_disarms_the_magnet() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snapping, "the shell snaps until told otherwise");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Snaps");
+  assert!(!shell.snapping, "the Snaps chip turns the whole magnet off");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Snaps");
+  assert!(shell.snapping, "and turns it back on");
+}
+
+#[test]
+fn the_point_chip_arms_and_disarms_its_own_snap_kind() {
+  use cam_view::SnapKind;
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snap_armed(SnapKind::Endpoint), "endpoints start armed");
+
+  click_status_chip(&ctx, &mut shell, &mut app, "Point");
+  assert!(
+    !shell.snap_armed(SnapKind::Endpoint),
+    "the Point chip is the endpoint snap, not a neighbour"
+  );
+  assert!(
+    shell.snap_armed(SnapKind::Midpoint),
+    "and it leaves the other kinds alone"
+  );
+}
+
+#[test]
+fn the_grid_chip_arms_the_grid_snap_its_own_word_names() {
+  use cam_view::SnapKind;
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  assert!(shell.snap_armed(SnapKind::Grid), "the grid starts armed");
+
+  let label = click_status_chip(&ctx, &mut shell, &mut app, "Grid");
+  assert!(label.starts_with("Grid "), "{label}");
+  assert!(!shell.snap_armed(SnapKind::Grid), "the grid chip disarms the grid");
+}
+
+#[test]
+fn the_status_bar_says_what_just_happened_at_its_right_end() {
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::Draw(DrawShape::Circle {
+      at: Point2::ORIGIN,
+      radius: 10.0,
+    }),
+  );
+  shell.apply_action(&mut app, &UiAction::Offset { distance: -12.0 });
+  let happened = shell.status.clone();
+  assert!(
+    happened.contains("refused"),
+    "the setup must produce a sentence to show: {happened}"
+  );
+
+  let (output, texts) = frame(&mut shell, &mut app);
+  assert_eq!(
+    output.drawn.message, happened,
+    "the right end reports the sentence the last action produced"
+  );
+  let head: String = happened.chars().take(24).collect();
+  assert!(
+    joined(&texts).contains(&head),
+    "and paints it, beginning {head:?} in {:?}",
+    joined(&texts)
+  );
 }
 
 #[test]
@@ -679,13 +806,14 @@ fn opening_and_saving_stamp_the_brand_block_with_the_files_own_write() {
 }
 
 #[test]
-fn the_status_bar_reports_zoom_saved_state_and_history() {
+fn the_status_bar_reports_zoom_and_history() {
+  // The save state is the rail's brand block (camui-prancheta S4, T2b-ii), which names the moment the file
+  // was written; the bar keeps the two facts nothing else on the frame reports.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
   let line = &output.drawn.status_line;
   assert!(line.contains("px/mm"), "{line}");
-  assert!(line.contains("saved"), "{line}");
   assert!(line.contains("undo 0"), "{line}");
 }
 

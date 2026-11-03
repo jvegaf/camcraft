@@ -651,7 +651,18 @@ pub struct DrawnState {
   pub painted_triangles: usize,
   /// Stock edges and toolpath edges the 3D panel painted, `0` when the panel is closed.
   pub painted_3d_lines: usize,
-  /// The sentence the status bar showed at its right end.
+  /// The sentence the status bar paints at its right end: what the last action produced.
+  ///
+  /// Reported apart from [`Self::status_line`] because the right end is a zone of its own (camui-prancheta
+  /// S7): a test that read the whole line could not tell the outcome from the coordinates beside it.
+  pub message: String,
+  /// Where the status bar drew each snap chip: its word and the point in the window that presses it.
+  ///
+  /// A chip both arms its kind and, for the grid, names the step it snaps to (camui-prancheta S7), so a test
+  /// must press the chip the bar actually drew instead of guessing at the layout — the same reason the
+  /// palette reports its own hits.
+  pub status_chips: Vec<(String, (f32, f32))>,
+  /// The sentence the status bar showed in front of the message: what the current gesture will do.
   pub hint: String,
   /// What the left palette offered, in the order it drew them.
   ///
@@ -1761,80 +1772,120 @@ impl Shell {
     }
   }
 
+  /// The status bar: the reference's three zones (camui-prancheta S7).
+  ///
+  /// Left: where the pointer is, with the two facts nothing else on the frame reports — the zoom this drawing
+  /// is shown at and the steps available in each direction. Middle: the snaps, where a chip arms its kind and
+  /// the grid chip names the step it snaps to. Right: what the last action produced, with the gesture's own
+  /// sentence in front of it, where the reference keeps it beside the chips.
+  ///
+  /// The save state is **not** here: the rail's brand block names the moment the document was written
+  /// (`Saved 2026-11-03 19:30 UTC` or `Unsaved changes`), and a bar saying `saved` beside a block saying when
+  /// would be the same fact twice, the second time without the moment (T2b-ii, L16).
   fn status_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
-    let snapping = self.snapping;
-    let mut toggled: Vec<SnapKind> = Vec::new();
-    let mut magnet = false;
-    let mut hint = String::new();
+    let cursor = match self.cursor_world {
+      Some(point) => format!("X {:.2}   Y {:.2}", point.x, point.y),
+      None => "X —   Y —".to_owned(),
+    };
+    // "undo / redo" are the steps available in each direction; dropped steps are reported separately
+    // because they are a warning, not a redo count.
+    let dropped = app.history_dropped();
+    let dropped = if dropped > 0 {
+      format!("   {dropped} step(s) dropped")
+    } else {
+      String::new()
+    };
+    let facts = format!(
+      "zoom {:.2} px/mm   undo {} / redo {}{dropped}",
+      app.camera().pixels_per_mm(),
+      app.history_depth(),
+      app.redo_depth()
+    );
+    let grid = grid_chip(self.grid_spacing);
+    let message = self.status.clone();
+    let hint = self.hint();
+    let mut chips: Vec<(String, (f32, f32))> = Vec::new();
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
+        ui.label(
+          RichText::new(&cursor)
+            .monospace()
+            .size(theme::CAPTION)
+            .color(palette.get(Role::Text)),
+        );
         ui.label(
           RichText::new("mm")
             .size(theme::CAPTION)
             .color(palette.get(Role::TextDim)),
         );
         ui.separator();
-        // One chip per snap kind, the reference's `Ponta | Meio | Centro` strip: what the pointer will
-        // stick to is a thing an operator arms and disarms while working, not a setting in a dialog.
+        ui.label(
+          RichText::new(&facts)
+            .monospace()
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.separator();
+        // The reference's `Encaixes | Ponto | Meio | Centro | Grid 10` strip: what the pointer will stick to is
+        // a thing an operator arms and disarms while working, not a setting in a dialog. Each click is applied
+        // in the frame it happens, so the frame that arms a chip is the frame that says it is armed (L13).
+        let response = chrome::chip(ui, &palette, "Snaps", self.snapping);
+        chips.push((
+          "Snaps".to_owned(),
+          (response.rect.center().x, response.rect.center().y),
+        ));
+        if response.clicked() {
+          self.snapping = !self.snapping;
+        }
         for (kind, label) in [
-          (SnapKind::Endpoint, "Endpoint"),
-          (SnapKind::Midpoint, "Midpoint"),
+          (SnapKind::Endpoint, "Point"),
+          (SnapKind::Midpoint, "Mid"),
           (SnapKind::Center, "Centre"),
-          (SnapKind::Grid, "Grid"),
         ] {
-          let on = self.snap_kinds.contains(&kind);
-          if chrome::chip(ui, &palette, label, on).clicked() {
-            toggled.push(kind);
+          let response = chrome::chip(ui, &palette, label, self.snap_armed(kind));
+          chips.push((
+            label.to_owned(),
+            (response.rect.center().x, response.rect.center().y),
+          ));
+          if response.clicked() {
+            self.toggle_snap(kind);
           }
         }
-        if chrome::chip(ui, &palette, "magnet", snapping).clicked() {
-          magnet = true;
+        let response = chrome::chip(ui, &palette, &grid, self.snap_armed(SnapKind::Grid));
+        chips.push((
+          grid.clone(),
+          (response.rect.center().x, response.rect.center().y),
+        ));
+        if response.clicked() {
+          self.toggle_snap(SnapKind::Grid);
         }
-        ui.separator();
-        let cursor = match self.cursor_world {
-          Some(point) => format!("X {:.2}  Y {:.2} mm", point.x, point.y),
-          None => "—".to_owned(),
-        };
-        let dirty = if app.is_dirty() { "modified" } else { "saved" };
-        // "undo / redo" are the steps available in each direction; dropped steps are reported
-        // separately because they are a warning, not a redo count.
-        let dropped = app.history_dropped();
-        let dropped = if dropped > 0 {
-          format!("   {dropped} step(s) dropped")
-        } else {
-          String::new()
-        };
-        let line = format!(
-          "{cursor}   zoom {:.2} px/mm   {dirty}   undo {} / redo {}{dropped}   {}",
-          app.camera().pixels_per_mm(),
-          app.history_depth(),
-          app.redo_depth(),
-          self.status
-        );
-        ui.monospace(&line);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-          // The right end belongs to one sentence: what the current gesture will do. It is the cheapest
-          // teaching in the interface and it changes with the tool instead of lying about it.
+          // The right end belongs to one sentence: what the action just produced. The gesture's own sentence
+          // sits in front of it — the reference keeps it beside the chips — and yields the width, because
+          // "what just happened" is the answer an operator looks for when a command answers back.
           ui.add(
             egui::Label::new(
-              RichText::new(self.hint())
+              RichText::new(&message)
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            )
+            .truncate(),
+          );
+          ui.add(
+            egui::Label::new(
+              RichText::new(&hint)
                 .size(theme::CAPTION)
                 .color(palette.get(Role::TextDim)),
             )
             .truncate(),
           );
         });
-        hint = self.hint();
-        output.drawn.status_line = line;
       });
     });
-    for kind in toggled {
-      self.toggle_snap(kind);
-    }
-    if magnet {
-      self.snapping = !self.snapping;
-    }
+    output.drawn.status_line = format!("{cursor} mm   {facts}   {message}");
+    output.drawn.message = message;
+    output.drawn.status_chips = chips;
     output.drawn.hint = hint;
   }
 
@@ -2928,6 +2979,27 @@ fn single_selection(app: &AppState) -> Result<String, String> {
 ///
 /// The command layer already guarantees a refusal leaves the document, the history and the dirty flag
 /// untouched; this adds the label, the outcome and the selection of whatever the command created.
+/// The grid chip's own words: the step it snaps to, in millimetres (`Grid 10`, `Grid 2.5`).
+///
+/// The reference writes `Grid 10`, and a chip that said only `Grid` would hide the one number an operator
+/// needs to know what the snap will do. No step yet — the first frame, before the canvas has measured the
+/// camera — is `Grid —`: zero is not a step, and `Grid 0` would name a snap that can never fire, because the
+/// kernel arms no grid candidate at zero (`cam_view::pick`).
+fn grid_chip(spacing: f64) -> String {
+  if !spacing.is_finite() || spacing <= 0.0 {
+    return "Grid —".to_owned();
+  }
+  let step = if spacing.fract().abs() < 1e-9 {
+    format!("{spacing:.0}")
+  } else {
+    format!("{spacing:.2}")
+      .trim_end_matches('0')
+      .trim_end_matches('.')
+      .to_owned()
+  };
+  format!("Grid {step}")
+}
+
 fn apply_command(app: &mut AppState, command: Command) -> Result<ActionReport, String> {
   let label = command.label();
   let outcome = app
