@@ -66,7 +66,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `c22f57a` |
 | T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `8a386f2` |
 | T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `38ea6dd` |
-| T4 | Status bar in three zones, with the contextual message | S7 | inline | — |
+| T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `482625b` |
 | T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
 | T6 | `2D \| 3D` toggle, split canvas, overlay row, axis triad and playback bar | S8 | inline | — |
 | T7 | The tool library as a master-detail modal | S9 | inline | — |
@@ -279,3 +279,36 @@ words: *"design/prancheta-reference/ + README"*.
   **One process note for the next session:** the whole-branch projection means every review re-reads T0
   onwards, and a 3-lens pass over 2 839 lines costs roughly 600 kB of prompt. The slices in L11 are the answer;
   until delivery splits them, each new work unit pays that bill.
+- **L16 (T4: the three zones, and the two things that left the bar to make room).** `482625b`, **1226 tests
+  pass workspace-wide** (114 of them in the shell target). The bar is the reference's three zones: `X … Y …`
+  on the left with the zoom and the steps available in each direction, the five chips in the middle, and the
+  sentence the last action produced at the right end.
+  **The chips are the reference's words, and the grid chip names its step.** `Encaixes | Ponto | Meio |
+  Centro | Grid 10` → `Snaps | Point | Mid | Centre | Grid <step>` (S3's mapping, S7's list). `Snaps` is the
+  magnet — the strip armed or disarmed at once — and each kind keeps its own chip. The grid chip reads the
+  shell's own `grid_spacing`, so the number it names is the number `cam_view::pick` snaps to, formatted by
+  `grid_chip` (`Grid 10`, `Grid 2.5`); with no step yet — the first frame, before the canvas has measured the
+  camera — it says `Grid —`, because `Grid 0` would name a snap that can never fire.
+  **A click is applied in the frame it lands in.** The old bar collected its toggles and applied them after the
+  panel closed, which is L13's reporting defect one layer down: the frame that turned a chip on was not the
+  frame that could say it was on. Each chip now mutates the shell where it is clicked, and the bar reports
+  `DrawnState::status_chips` — word and pressable point — so a test presses what the frame drew instead of
+  guessing at the layout, the contract `palette_hits` and `category_hits` already keep.
+  **Two things left the bar, each for its own reason:**
+  1. `saved` / `modified`. The rail's brand block already names *when* the document was written (`Saved
+     2026-11-03 19:30 UTC`, `Unsaved changes` — T2b-ii); the bar printed the same fact a second time, without
+     the moment. What stays is the two facts nothing else on the frame reports: the zoom and the steps
+     available in each direction. The test that pinned the save state in the bar is now
+     `the_status_bar_reports_zoom_and_history`; the save state keeps its own test in the brand block.
+  2. The right end stopped belonging to the gesture sentence. S7 gives it to what just happened, so the
+     message is painted first and keeps its width, and the hint truncates behind it. The hint was already a
+     `truncate()`d label, so the behaviour is not new — but it is now the first thing a narrow window clips,
+     and a long refusal in the bar eats most of it. **That is a decision, not a measurement:**
+     `galley.text()` returns the source string, not what the eye sees, so a headless test cannot tell a whole
+     sentence from a clipped one, and a test claiming to would be `R2-001`'s weakness with a new name. The
+     three tests on the sentence's content stay; the truncation is recorded here instead of pretended to be
+     tested.
+  **Slice:** 253 authored lines across two files, under the ~400-line guidance, and one commit because the two
+  report fields, the paint and the tests describe one rule. It is the seventh slice on this branch (T0+T1,
+  T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `a7a701e`,
+  and splitting the delivery into chained PRs remains the owner's decision (L11).
