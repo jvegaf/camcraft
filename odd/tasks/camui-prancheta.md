@@ -312,3 +312,33 @@ words: *"design/prancheta-reference/ + README"*.
   report fields, the paint and the tests describe one rule. It is the seventh slice on this branch (T0+T1,
   T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `a7a701e`,
   and splitting the delivery into chained PRs remains the owner's decision (L11).
+- **L17 (the T4 review: two harness failures, then a narrowed candidate and an approval).** Lineage
+  `review-ba4913842ce49c58`, tier **high** (`process_boundary` — `crates/cam-ui/src/lib.rs` starts
+  subprocesses), two lenses (`readability`, `reliability`), 3 paths, 341 original lines, correction budget 171
+  — **unused, nothing to correct in the frozen candidate**. Two reviewer runs over the pi host relay (33.6 kB
+  of prompt each), **approved**, authority **burned** (`gentle-ai.review-acknowledged/v1`, revision
+  `sha256:a5854c53…`). Delivery stays ordinary repository policy: nothing pushed, nothing merged.
+  **The first START never reached the provider.** It died `pre_native` with `git_command_failed` — `git grep
+  -I -l -z -i -E ^#! <tree>` → `fatal: grep: failed to create thread`, exit 128 — because the gentle-shell
+  cgroup was back at **`pids.max = 64` with 48 PIDs in use**. `mutation_performed: false`, no lineage, nothing
+  burned: the same incident as L12, and L12's prediction that a session starting at 64 would see it again was
+  exact. With the owner's authorisation the limit was raised to **512** for that one cgroup, and **restored to
+  64 as soon as this review closed**.
+  **The second START failed the budget instead.** With the pids limit gone, the whole-branch projection
+  (`origin/master..HEAD`: 25 paths, ~3 200 lines) came back `lens_context_budget_exceeded` in **preflight** —
+  no authority created, nothing to repair. This is L15's process note turning into a hard stop: past roughly
+  this size the candidate is **no longer reviewable at all**, whatever the lens count. The contract's own
+  remedy is to reduce the scope, so the third attempt named the candidate explicitly — `baseRef 523edd9`,
+  `committedOnly: true`, i.e. **T4 and its doc and nothing else**, the delta no earlier receipt covers (T0+T1 is
+  L5, through T2b-ii is L12, T3 is L15). It created the lineage on the first try.
+  **Consequence for delivery, and it is no longer advisory:** from here on a receipt is only obtainable per
+  narrowed committed range, so the chained slices L11 and L16 asked the owner to decide about are now the only
+  shape that can be reviewed. The alternative is a branch that grows without receipts.
+  **Four advisories, all `informational`, none blocking:** `R2-001` (`lib.rs:2982`), `R2-002`
+  (`lib.rs:2992-2995`), `R2-003` (`lib.rs:1830-1832`) and `R3-001` (`lib.rs:2992-2997`). They join the twenty
+  this feature already owes.
+  **Two of them were the same defect and it was mine, so it was taken immediately:** inserting `grid_chip`
+  anchored on `fn apply_command` split that function's doc comment in two, leaving `apply_command`
+  undocumented and the grid chip wearing both contracts. `9d7bc11` moves the doc block back. A function whose
+  documentation describes another function is worse than an unreviewed follow-up — but **`9d7bc11` is not
+  covered by this receipt**, and it is written down here so the next candidate knows it.
