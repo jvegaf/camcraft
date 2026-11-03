@@ -934,6 +934,12 @@ impl Shell {
       }
     }
 
+    // The one control on the card: the way to change the tool it reads out (camui-prancheta S9). It is drawn
+    // whatever the card said above — a toolpath whose tool the library does not hold is exactly the case in
+    // which an operator wants to choose one — and its words are reported apart from the card's own lines,
+    // because the card is a reading of the tool and this is the way to replace it.
+    self.choose_tool_row(app, ui, output);
+
     // A line of its own rather than a field of the card (S2), measured over the document's own program
     // and written by the playback clock's formatter (S5). No second time formula, no second clock.
     let estimate = match program_for_snapshot(app.document(), &self.tools) {
@@ -1322,7 +1328,8 @@ impl Shell {
     if self.show_3d {
       // Both halves are on screen at once (S8), so the sentence names both gestures: the drawing half
       // still picks and draws, and the 3D half orbits.
-      return "3D half — drag to orbit, wheel to zoom; the drawing half still picks and draws".to_owned();
+      return "3D half — drag to orbit, wheel to zoom; the drawing half still picks and draws"
+        .to_owned();
     }
     if self.active_tool.draws() {
       return format!(
@@ -1836,7 +1843,7 @@ pub(crate) fn paint_segmented(
 /// defined once, in [`Shell::material_dialog`], and a box in a 288 px inspector is where they are
 /// *reported* afterwards. Typing a size into two of these in place would let a job exist in a state
 /// nobody drew a plan for, so the dialog is the only writer and this box is the receipt.
-fn field(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
+pub(crate) fn field(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
   ui.vertical(|ui| {
     ui.label(
       RichText::new(label)
@@ -1874,7 +1881,7 @@ const TOOL_TYPE_LABEL: &str = "Tool";
 
 /// A tool's display name: its `name_format` template rendered, or its id when the template names a field
 /// the tool does not set — the same fallback `cam-cli tools list` prints for the same failure.
-fn tool_name(geometry: &ToolGeometry) -> String {
+pub(crate) fn tool_name(geometry: &ToolGeometry) -> String {
   render_name(&geometry.name_format, TOOL_TYPE_LABEL, geometry)
     .unwrap_or_else(|_| geometry.id.clone())
 }
@@ -1910,7 +1917,7 @@ fn tool_shape_line(tool: &StoredTool) -> String {
 ///
 /// The reference app labels every group this way and it is the single cheapest thing that made a wall of
 /// commands readable: the word is already in the operator's vocabulary, and it costs one line.
-fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
+pub(crate) fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
   ui.add_space(4.0);
   ui.label(
     RichText::new(label)
@@ -2256,7 +2263,7 @@ fn choice_card(
 }
 
 /// One dimension line: its two end ticks, the line between them, and its number.
-fn dimension_line(
+pub(crate) fn dimension_line(
   painter: &egui::Painter,
   palette: &Palette,
   from: egui::Pos2,
