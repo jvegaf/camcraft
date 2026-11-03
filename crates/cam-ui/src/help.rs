@@ -407,9 +407,14 @@ impl Command {
   /// `Align`, `Trim` and the node edits from the Tools tab, and `Icon set` from `F2`.
   ///
   /// **FILE moved here in camui-prancheta T2b, and that is the whole point of the move:** `Open`, `Save`,
-  /// `Save as`, `Import`, `Fit the job`, `Undo` and `Redo` used to be the app bar's own buttons, so the bar
-  /// and the rail would have offered the same seven commands twice (S4). One surface offers a command, and
-  /// the rail is the one the reference gives the command table to.
+  /// `Save as`, `Fit the job`, `Undo` and `Redo` used to be the app bar's own buttons, so the bar and the
+  /// rail would have offered the same seven commands twice (S4). One surface offers a command, and the rail is
+  /// the one the reference gives the command table to.
+  ///
+  /// **`Import` is deliberately not here, and the review is why.** S4 lists it in FILE, and T2b first let it in
+  /// with the rest of the group — but this shell has no import *route*: `ImportFile` is what a host applies
+  /// after its own dialog, and [`Command::action`] returns `None` for `Import`, so a chip for it would be the
+  /// reachable command that silently emits nothing. A rail must not offer what it cannot run (L6).
   pub fn in_palette(self) -> bool {
     self.tool().is_some()
       || matches!(
@@ -417,7 +422,6 @@ impl Command {
         Self::Open
           | Self::Save
           | Self::SaveAs
-          | Self::Import
           | Self::FitJob
           | Self::Undo
           | Self::Redo

@@ -255,3 +255,12 @@ words: *"design/prancheta-reference/ + README"*.
   **Two PRESERVE tests changed shape, not meaning:** `the_tools_tab_offers_every_authoring_command` and
   `the_palette_and_the_tools_tab_build_the_same_seven_actions` now open the `TOOLPATHS` task first, because the
   authoring body is one click further from the idle panel than it was. Their assertions are untouched.
+- **L14 (the first correction: the `Import` chip was a command the rail could not run).** The review of the T3
+  candidate rejected it: `R3-001` (CRITICAL, reliability, `help.rs:419`) — T2b let `Import` into the rail because
+  S4 lists it in FILE, but this shell has **no import route**. `ImportFile` is what a host applies after its own
+  dialog, and `Command::action` answers `None` for `Import`, so the chip was reachable and emitted nothing. The
+  refuter accepted it as candidate-caused and the correction is one line of `in_palette` plus the golden that
+  pinned the chip: `Import` stays out of the rail until a host route exists, and the refusal is written down in
+  `in_palette`'s own doc comment so the next person does not re-add it from the frame. **The lesson is L6's,
+  learned twice:** an entry copied from the reference's list is a claim that the command works, and a command
+  with no action is the same lie as a count nobody measured.

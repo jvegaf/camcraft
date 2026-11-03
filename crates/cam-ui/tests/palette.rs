@@ -83,7 +83,6 @@ fn the_palette_draws_its_golden_in_order() {
       "Open",
       "Save",
       "Save as",
-      "Import",
       "Fit the job",
       "Undo",
       "Redo",
