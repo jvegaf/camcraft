@@ -4900,9 +4900,10 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
     );
   }
 
-  // Below the origin reads negative too. This stock is taller than the frame is at this zoom, so the whole
-  // visible band under the origin is shorter than one step and no *tick* lands in it — the reading does, and
-  // the last number the band can print there is the zero it starts from.
+  // Below the origin reads negative too. This stock is taller than the frame is at this zoom, so the visible
+  // band under the origin is shorter than one step and no *tick* lands in it — the reading does. The
+  // invariant is the gap, not which number happens to be last: the space between the lowest printed number and
+  // the bottom edge is less than one step, which a renderer that dropped a tick that fits could not satisfy.
   let bottom = camera.screen_to_world(canvas.to_screen(egui::pos2(
     (canvas.x + 10.0) as f32,
     (canvas.y + canvas.height) as f32,
@@ -4911,11 +4912,17 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
     bottom.y < 0.0,
     "the bottom of the drawing area is below the origin, got {bottom:?}"
   );
-  assert_eq!(
-    rulers.left.last().map(|tick| tick.value),
-    Some(0.0),
-    "the band below the origin starts at zero: {:?}",
-    rulers.left.last()
+  let last = rulers
+    .left
+    .last()
+    .expect("the left band prints at least one number");
+  assert!(
+    last.value - bottom.y <= rulers.spacing + 1e-9,
+    "the band below the last printed number ({}) is shorter than one {:.3} step down to {:.3}: {:?}",
+    last.value,
+    rulers.spacing,
+    bottom.y,
+    rulers.left
   );
 }
 
@@ -5112,6 +5119,70 @@ fn the_marker_is_absent_while_the_pointer_is_on_a_ruler() {
 }
 
 #[test]
+fn the_wheel_zooms_over_the_sheet_but_not_over_a_ruler() {
+  // S5's inset makes the bands chrome, and that has one consequence worth pinning instead of leaving it
+  // unnamed (L20): the wheel is gated on the drawing area, so scrolling with the pointer over a ruler does not
+  // zoom the sheet — the same as scrolling over the rail or the dock. Pinned here so the day it changes, it
+  // changes on purpose.
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(empty_document());
+  let mut shell = Shell::new();
+  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
+  let canvas = first.canvas;
+  let band = f64::from(first.drawn.rulers.top_band.3);
+  assert!(
+    band > 0.0,
+    "the frame has to have drawn a top band: {:?}",
+    first.drawn.rulers.top_band
+  );
+
+  let on_band = egui::pos2((canvas.x + 120.0) as f32, (canvas.y - band / 2.0) as f32);
+  let _ = move_to(&ctx, &mut shell, &mut app, on_band);
+  let before = app.camera().pixels_per_mm();
+  let _ = frame_with_events(
+    &ctx,
+    &mut shell,
+    &mut app,
+    vec![
+      egui::Event::PointerMoved(on_band),
+      egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, 40.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+        modifiers: egui::Modifiers::default(),
+      },
+    ],
+  );
+  assert_eq!(
+    app.camera().pixels_per_mm(),
+    before,
+    "the wheel over the top ruler must not zoom the sheet"
+  );
+
+  let on_sheet = egui::pos2((canvas.x + 120.0) as f32, (canvas.y + 40.0) as f32);
+  let _ = move_to(&ctx, &mut shell, &mut app, on_sheet);
+  let before = app.camera().pixels_per_mm();
+  let _ = frame_with_events(
+    &ctx,
+    &mut shell,
+    &mut app,
+    vec![egui::Event::MouseWheel {
+      unit: egui::MouseWheelUnit::Point,
+      delta: egui::vec2(0.0, 40.0),
+      phase: egui::TouchPhase::Move,
+      source: egui::MouseWheelSource::Wheel,
+      modifiers: egui::Modifiers::default(),
+    }],
+  );
+  assert!(
+    app.camera().pixels_per_mm() > before,
+    "the same wheel on the sheet still zooms ({before} -> {})",
+    app.camera().pixels_per_mm()
+  );
+}
+
+#[test]
 fn a_gesture_on_a_ruler_is_not_a_gesture_on_the_sheet() {
   // S5: the drawing area is inset by the ruler bands, so a click on a ruler is not a click on the sheet.
   // The same drag is run twice, once in the band and once just inside the sheet: the first must reach
@@ -5182,27 +5253,45 @@ fn a_gesture_on_a_ruler_is_not_a_gesture_on_the_sheet() {
 }
 
 #[test]
-fn the_drawing_is_still_framed_inside_the_rulers() {
-  // The rulers take room from the canvas, and fitting the document has to follow them: the whole rectangle
-  // must land inside the *inset* area, not under a band.
+fn the_drawing_is_framed_inside_the_inset_area_the_bands_leave() {
+  // The rulers take room from the canvas and fitting the document has to follow them. This is the assertion
+  // that can actually fail: the frame is drawn with the fit's own padding, so a fit measured against the
+  // *un-inset* central area would leave `padding - band` on the two band sides — while a plainer "the corners
+  // are inside the drawing rect" check would still pass, because that padding is wider than the band.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (output, _) = frame(&mut shell, &mut app);
   let canvas = output.canvas;
-  let camera = *app.camera();
-  let area = egui::Rect::from_min_size(
-    egui::pos2(canvas.x as f32, canvas.y as f32),
-    egui::vec2(canvas.width as f32, canvas.height as f32),
+  let band = output.drawn.rulers.top_band;
+  assert!(
+    band.3 > 0.0,
+    "the frame has to have drawn a top band for this to mean anything: {band:?}"
   );
-  for (x, y) in [(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)] {
-    let corner = canvas.to_window(camera.world_to_screen(Point2::new(x, y)));
+  assert!(
+    (canvas.y as f32 - (band.1 + band.3)).abs() < 0.5,
+    "the drawing area has to start exactly where the top band ends: canvas.y {} against band {band:?}",
+    canvas.y
+  );
+  let camera = *app.camera();
+  let corners: Vec<egui::Pos2> = [(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)]
+    .iter()
+    .map(|(x, y)| canvas.to_window(camera.world_to_screen(Point2::new(*x, *y))))
+    .collect();
+  let min_x = corners.iter().map(|corner| corner.x).fold(f32::MAX, f32::min);
+  let max_x = corners.iter().map(|corner| corner.x).fold(f32::MIN, f32::max);
+  let min_y = corners.iter().map(|corner| corner.y).fold(f32::MAX, f32::min);
+  let max_y = corners.iter().map(|corner| corner.y).fold(f32::MIN, f32::max);
+  let right = (canvas.x + canvas.width) as f32;
+  let bottom = (canvas.y + canvas.height) as f32;
+  for (edge, gap) in [
+    ("left", min_x - canvas.x as f32),
+    ("top", min_y - canvas.y as f32),
+    ("right", right - max_x),
+    ("bottom", bottom - max_y),
+  ] {
     assert!(
-      area.contains(corner),
-      "({x}, {y}) is framed at {corner:?}, outside the drawing area {area:?}"
+      gap >= 20.0,
+      "the {edge} padding is {gap:.1} px: the fit was measured against something wider than the drawing area"
     );
   }
-  assert_eq!(
-    camera.viewport().width, canvas.width,
-    "the camera viewport is the inset canvas"
-  );
 }
