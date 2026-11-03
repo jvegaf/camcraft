@@ -339,3 +339,50 @@ fn machines_keep_their_travel_limits() {
     .expect("present");
   assert_eq!(data.feed_rate, Some(100.0));
 }
+
+/// The names in a directory, sorted, so a test can prove that reading created nothing.
+fn listing(directory: &std::path::Path) -> Vec<String> {
+  let mut names: Vec<String> = std::fs::read_dir(directory)
+    .expect("the directory lists")
+    .filter_map(|entry| entry.ok())
+    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+    .collect();
+  names.sort();
+  names
+}
+
+// Covers shell-tools-ref S8: a read-only open refuses a library in WAL mode, because SQLite would
+// create its -shm and -wal companions beside it and this constructor never writes anything.
+#[test]
+fn a_read_only_open_refuses_a_wal_library_and_creates_no_sidecar_files() {
+  let directory = scratch("read-only-wal");
+  let path = directory.join("waltools.sqlite");
+  drop(ToolLibrary::open(&path).expect("head library"));
+  {
+    let connection = rusqlite::Connection::open(&path).expect("open the library directly");
+    let mode: String = connection
+      .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
+      .expect("switched to WAL");
+    assert_eq!(
+      mode.to_lowercase(),
+      "wal",
+      "the fixture must really be in WAL mode"
+    );
+  }
+  let before = listing(&directory);
+
+  let error = match ToolLibrary::open_read_only(&path) {
+    Ok(_) => panic!("a WAL library cannot be read without creating its companions"),
+    Err(error) => error.to_string(),
+  };
+  assert!(
+    error.contains("WAL"),
+    "the refusal must name the journal mode: {error}"
+  );
+  assert_eq!(
+    listing(&directory),
+    before,
+    "a read-only open creates nothing beside the library"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}

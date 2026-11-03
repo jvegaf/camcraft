@@ -12,6 +12,7 @@
 //! **not** established from the artifact, so no enum pretends to know it; each toolpath strategy
 //! instead validates the geometric parameters it actually needs.
 
+use std::io::Read;
 use std::path::Path;
 
 use cam_units::{Angle, Format, Length, UnitSystem};
@@ -215,6 +216,38 @@ pub struct ToolLibrary {
   path: String,
 }
 
+/// The magic every SQLite database file starts with.
+const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+
+/// The byte offset of the file format's read and write versions in a SQLite header.
+const FORMAT_VERSION_OFFSET: usize = 18;
+
+/// The journal mode value that means "WAL".
+const WAL_JOURNAL_MODE: u8 = 2;
+
+/// Whether a library file declares WAL journal mode, read out of its own header.
+///
+/// The header is read rather than the mode being asked of SQLite, because asking means opening the
+/// database, and opening a WAL database is exactly what creates its `-shm` and `-wal` companions. A
+/// constructor that cannot promise "nothing is created" is not read-only, so the question has to be
+/// answered before there is a connection to answer it with.
+///
+/// A file that cannot be read, or that is not a SQLite database at all, answers `false`: both already
+/// have their own refusal further down, and inventing a second one here would make a single failure
+/// say two things.
+fn declares_wal(path: &Path) -> bool {
+  let mut header = [0u8; FORMAT_VERSION_OFFSET + 2];
+  let mut file = match std::fs::File::open(path) {
+    Ok(file) => file,
+    Err(_) => return false,
+  };
+  if file.read_exact(&mut header).is_err() || !header.starts_with(SQLITE_MAGIC) {
+    return false;
+  }
+  header[FORMAT_VERSION_OFFSET] == WAL_JOURNAL_MODE
+    || header[FORMAT_VERSION_OFFSET + 1] == WAL_JOURNAL_MODE
+}
+
 impl ToolLibrary {
   /// Open (and migrate) a library file, creating it when absent.
   pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
@@ -252,13 +285,27 @@ impl ToolLibrary {
   /// outside the document's directory — which is exactly the hole this constructor closes.
   ///
   /// The price is that a library this build cannot read without writing is **refused** rather than
-  /// repaired: a file that has never been initialised has no schema to read, and a library left at an
-  /// older [`MIGRATIONS`] rung needs a migration this constructor will not perform. Both are
-  /// [`StoreError::ToolLibrary`] errors naming the file and the reason. An owner that means to create or
-  /// migrate its own library still calls [`Self::open`], which keeps doing exactly that.
+  /// repaired: a file that has never been initialised has no schema to read, a library left at an older
+  /// [`MIGRATIONS`] rung needs a migration this constructor will not perform, and a library in **WAL**
+  /// journal mode is refused because reading one makes SQLite create its `-shm` and `-wal` companions
+  /// beside it. All are [`StoreError::ToolLibrary`] errors naming the file and the reason. An owner that
+  /// means to create or migrate its own library still calls [`Self::open`], which keeps doing exactly
+  /// that.
   pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, StoreError> {
     let path = path.as_ref();
     let display = path.display().to_string();
+    // Asked before there is a connection to ask with: see `declares_wal` for why the file's own
+    // header is the only place this question can be answered without producing the very files it is
+    // about.
+    if declares_wal(path) {
+      return Err(StoreError::ToolLibrary {
+        path: display,
+        reason:
+          "it is in WAL journal mode, and reading one makes SQLite create -shm and -wal files \
+                 beside it; a library is never written by reading it, so this one is refused"
+            .to_owned(),
+      });
+    }
     let connection = Connection::open_with_flags(
       path,
       OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,

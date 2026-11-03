@@ -39,7 +39,16 @@ CLI does not have.
 - **S7 — recorded, not fixed.** `cam-cli` still accepts an absolute `tools_ref` and one that escapes through
   `..`, and nothing in the repository pins that either way: every CLI test sets an absolute `tools_ref`, so
   the rule is untested. Fixing that changes a CLI behaviour and its tests, which is a separate decision, so it
-  is named here and left visible.
+  is named here and left visible. (Refinement, L5: the absolute half **is** incidentally pinned by
+  `cam-cli/tests/cli.rs:974-995` and `:1017-1046`; it is the `..` half that nothing pins.)
+- **S8 — a library in WAL mode is refused, and that is the owner's decision.** The owner's words, verbatim:
+  *"Rechazar bibliotecas WAL"*, choosing among the closes for F1 (L5). `ToolLibrary::open_read_only` refuses a
+  library whose own header declares WAL journal mode, **before any connection exists**, because opening one is
+  precisely what makes SQLite create its `-shm` and `-wal` companions — and S3 says the window creates nothing,
+  anywhere. The refusal is a `StoreError::ToolLibrary` naming the file and the journal mode, so the soft path of
+  S4 applies unchanged: the drawing opens, the snapshot stays empty, and the status says why. The rejected
+  alternative, `immutable=1`, was rejected **because** it stops the creation by ignoring WAL content, which
+  reads stale data — the opposite of what a shop with a live library needs.
 
 ## Tasks
 
@@ -50,6 +59,8 @@ CLI does not have.
   this as their remaining gap. Route: delegated worker.
 - T3 — gate, commits, independent verification, native review (S6). Route: parent. Gate and independent
   verification: L5. Native review: **closed, not pending** — see the last paragraph of L5.
+- T4 — F1 closed the way S8 decided it: the header refusal in `cam-store`, the test that pins it, and the two
+  tests the verifier handed over (S2, S3). Route: parent inline. Commit: the commit that carries this line.
 
 ## Log
 
@@ -159,3 +170,31 @@ CLI does not have.
   review of the same tree would have burned authority to learn what the store already records, so none was
   started. What the review's advisory list was is not recorded here, because the authority does not expose it
   after the burn; the one finding that mattered became code.
+- **L6 (F1 closed: a WAL library is refused, and that is S8).** The owner chose *"Rechazar bibliotecas WAL"*
+  over the two other closes, and the reasoning is worth keeping: `immutable=1` would stop the creation by
+  making SQLite ignore the `-wal` content, which reads **stale** data — it fixes the symptom by denying the
+  file half its state.
+  **The rule lives in `cam-store`, before any connection exists.** `open_read_only` now calls `declares_wal`,
+  which reads the file's own header — the magic `SQLite format 3\0`, and the file-format read and write
+  versions at offsets 18 and 19 — and refuses when either is `2`. Reading the header instead of asking SQLite
+  *is* the fix: asking means opening, opening a WAL database is what creates `-shm` and `-wal`, so the question
+  had to be answered before there was a connection to answer it with. A file that cannot be read, or that is
+  not a SQLite database at all, answers "not WAL" and falls through to the refusal it already had: one failure
+  keeps saying one thing. The message names the file and the journals mode, so S4's soft path needed no change
+  — the drawing opens, the snapshot stays empty, and the status says why.
+  **RED was observed for the reason the fix exists:** the new test
+  `a_read_only_open_refuses_a_wal_library_and_creates_no_sidecar_files` panicked on
+  "a WAL library cannot be read without creating its companions" — `open_read_only` opened it and the
+  companions appeared — and it passes now. It asserts the **directory listing** is unchanged, not only the
+  library's bytes, because F1 was about files that *appear*.
+  **The two tests the verifier handed over are pinned too**, and they passed before the fix: they describe
+  behaviour that already worked and had no test. A reference into a subdirectory resolves against the
+  document's own directory (S2), and a directory symlink beside the document is followed for reading while
+  creating nothing outside, including when the library is not there (S3). `shell.rs` went 108 → 110 and
+  `cam-store`'s `tools` 10 → 11.
+  **Gate:** `./scripts/check.sh` exit 0 — 96 suites, **1 214 tests** (1 211 + the 3 above), 0 failed, run one
+  cargo process at a time.
+  **The cost, stated because it is real:** a library in WAL mode can no longer be read *from the window* at
+  all. That is a total and honest refusal instead of a silent creation, and no library campilot writes is in
+  WAL mode, so this costs nothing on our own files — but a shop library another tool left in WAL mode is
+  refused by the window with a reason, while `cam-cli` keeps reading it through `open`.

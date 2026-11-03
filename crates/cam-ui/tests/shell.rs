@@ -2228,6 +2228,84 @@ fn a_symlink_to_an_empty_file_outside_is_not_written_through() {
   std::fs::remove_dir_all(&base).ok();
 }
 
+// Covers shell-tools-ref S2: a reference into a subdirectory is resolved against the document's own
+// directory, so a nested layout — the shape a shop actually uses — is not mistaken for a broken one.
+#[test]
+fn a_tools_ref_in_a_subdirectory_resolves_beside_the_document() {
+  let directory = scratch("open-tools-nested");
+  std::fs::create_dir_all(directory.join("parts/tools")).expect("nested directories");
+  write_library(&directory.join("parts/tools/lib.sqlite"), 4);
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("parts/tools/lib.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(
+    shell.status, "open file — opened cut.c2d",
+    "a nested reference resolves against the document's own directory: {:?}",
+    shell.status
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// Covers shell-tools-ref S3: a directory symlink beside the document is followed for reading — the
+// shared-library arrangement L3 kept — and reading through it creates nothing outside, not even for a
+// library that is not there.
+#[test]
+fn a_directory_symlink_beside_the_document_is_read_and_creates_nothing_outside() {
+  let base = scratch("open-tools-dir-symlink");
+  let outside = base.join("outside");
+  std::fs::create_dir_all(&outside).expect("outside directory");
+  let library = outside.join("tools.sqlite");
+  write_library(&library, 4);
+  let bytes = std::fs::read(&library).expect("read");
+  let before = listing(&outside);
+  let directory = base.join("drawings");
+  std::fs::create_dir_all(&directory).expect("drawings");
+  std::os::unix::fs::symlink(&outside, directory.join("sub")).expect("directory symlink");
+  let mut document = document_with_toolpath(2, 4);
+  document.tools_ref = Some("sub/tools.sqlite".to_owned());
+  let path = write_c2d(&directory, "cut.c2d", &document);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(&mut app, &UiAction::OpenFile { path });
+
+  assert_eq!(
+    std::fs::read(&library).expect("re-read"),
+    bytes,
+    "the library is read, never written"
+  );
+  assert_eq!(
+    listing(&outside),
+    before,
+    "reading through the link creates nothing outside"
+  );
+  assert_eq!(
+    shell.status, "open file — opened cut.c2d",
+    "the lexical rule keeps the shared-library symlink working"
+  );
+
+  let mut missing = document_with_toolpath(2, 4);
+  missing.tools_ref = Some("sub/new-lib.sqlite".to_owned());
+  let absent = write_c2d(&directory, "missing.c2d", &missing);
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: absent });
+  assert_eq!(
+    listing(&outside),
+    before,
+    "a library that is not there is not created through the link"
+  );
+  assert!(
+    shell.status.contains("holds no such file"),
+    "got {:?}",
+    shell.status
+  );
+  std::fs::remove_dir_all(&base).ok();
+}
+
 #[test]
 fn a_reference_that_climbs_back_into_the_directory_is_still_refused() {
   let directory = scratch("open-tools-climb-back");
