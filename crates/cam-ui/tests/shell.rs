@@ -13,8 +13,7 @@ use cam_store::document::{save_document, DocumentFile};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry, ToolLibrary};
 use cam_ui::help::{Command as HelpCommand, Group};
 use cam_ui::{
-  handle_action, DrawShape, Shell, ShellOutput, Tab, Tool, UiAction,
-  DEFAULT_TOLERANCE_MM,
+  handle_action, DrawShape, Shell, ShellOutput, Tab, Tool, UiAction, DEFAULT_TOLERANCE_MM,
 };
 use cam_units::{Length, UnitSystem};
 
@@ -585,6 +584,93 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
       output.drawn.palette
     );
   }
+}
+
+#[test]
+fn the_rail_foot_names_the_product_and_says_the_work_is_unsaved() {
+  // S4's brand block, on the state every shell starts in: a document with no file has nothing saved that a
+  // stamp could name, and saying so is the honest answer rather than a blank line.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let (output, texts) = frame(&mut shell, &mut app);
+  let all = joined(&texts);
+  for label in ["campilot", "Unsaved changes"] {
+    assert!(all.contains(label), "missing {label:?} in {all}");
+  }
+  assert_eq!(
+    shell.saved_stamp(),
+    "Unsaved changes",
+    "a document with no file has no last write to name"
+  );
+  assert!(
+    all.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))),
+    "the block carries the crate version: {all}"
+  );
+  // The block is at the foot of the rail and the rail is a panel, not a canvas overlay: what it must never be
+  // is a command, so none of the three lines is a chip the palette reports.
+  for line in ["campilot", "Unsaved changes"] {
+    assert!(
+      !output.drawn.palette.iter().any(|chip| chip == line),
+      "{line:?} must not be a rail command: {:?}",
+      output.drawn.palette
+    );
+  }
+}
+
+#[test]
+fn opening_and_saving_stamp_the_brand_block_with_the_files_own_write() {
+  // L7's rule: the line stamps the document. The stamp therefore comes from the file the action read, which
+  // is the file's mtime — not from `now`, and not from the binary.
+  let directory = std::env::temp_dir().join(format!("campilot-stamp-{}", std::process::id()));
+  std::fs::remove_dir_all(&directory).ok();
+  std::fs::create_dir_all(&directory).expect("scratch directory");
+  let path = write_c2d(&directory, "stamped.c2d", &document_with_rectangle());
+  let opened_at = std::fs::metadata(&path)
+    .and_then(|metadata| metadata.modified())
+    .expect("the file has a modification time");
+
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
+
+  let stamp = cam_ui::stamp::format_stamp(opened_at);
+  assert_eq!(shell.saved_stamp(), format!("Saved {stamp}"));
+  let (_, texts) = frame(&mut shell, &mut app);
+  assert!(
+    joined(&texts).contains(&format!("Saved {stamp}")),
+    "the rail must paint the file's own stamp: {}",
+    joined(&texts)
+  );
+
+  // An edit makes the document unsaved without changing what the file last was: the block says the first,
+  // because that is the question an operator asks before closing.
+  shell.apply_action(
+    &mut app,
+    &UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  );
+  assert!(app.is_dirty(), "the rectangle is an unsaved edit");
+  let (_, texts) = frame(&mut shell, &mut app);
+  assert!(
+    joined(&texts).contains("Unsaved changes"),
+    "an edited drawing reads unsaved: {}",
+    joined(&texts)
+  );
+
+  // Saving it stamps it again, from the write that just happened.
+  shell.apply_action(&mut app, &UiAction::Save);
+  assert!(!app.is_dirty(), "a save writes the drawing");
+  let written_at = std::fs::metadata(&path)
+    .and_then(|metadata| metadata.modified())
+    .expect("the file has a modification time");
+  assert_eq!(
+    shell.saved_stamp(),
+    format!("Saved {}", cam_ui::stamp::format_stamp(written_at)),
+    "the stamp follows the write"
+  );
+  std::fs::remove_dir_all(&directory).ok();
 }
 
 #[test]
@@ -1635,33 +1721,6 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
 }
 
 // ---- Opening a document chosen at runtime ------------------------------------------------------
-
-/// Click one of the app bar's icon buttons by the word the command table gives it.
-///
-/// The bar reports the point it drew each button at ([`cam_ui::DrawnState::app_bar_hits`]) for the same
-/// reason the palette does: every one of them is a glyph with no text beside it, so egui cannot be asked
-/// for it by name from outside a frame.
-fn click_app_bar(
-  ctx: &egui::Context,
-  shell: &mut Shell,
-  app: &mut AppState,
-  label: &str,
-) -> ShellOutput {
-  let (output, _) = frame_with(ctx, shell, app);
-  let at = output
-    .drawn
-    .app_bar_hits
-    .iter()
-    .find(|(word, _)| word == label)
-    .map(|(_, point)| egui::pos2(point.0, point.1))
-    .unwrap_or_else(|| {
-      panic!(
-        "no {label:?} button in the app bar: {:?}",
-        output.drawn.app_bar
-      )
-    });
-  click_at(ctx, shell, app, at).0
-}
 
 /// Write a real `.c2d` with the store's own writer, so the shell test opens a file and not a stub.
 fn write_c2d(directory: &std::path::Path, name: &str, document: &Document) -> std::path::PathBuf {
@@ -3793,10 +3852,7 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
         dy: 6.0,
       },
     ),
-    (
-      HelpCommand::Offset,
-      UiAction::Offset { distance: 4.25 },
-    ),
+    (HelpCommand::Offset, UiAction::Offset { distance: 4.25 }),
   ];
 
   for (command, expected) in cases {

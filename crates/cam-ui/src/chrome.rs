@@ -46,6 +46,13 @@ use crate::{Shell, ShellOutput, Tool, UiAction};
 /// One palette chip: the glyph and the command it runs.
 type PaletteChip = (Icon, Command);
 
+/// The height the rail reserves for its foot: three lines of text and a hairline.
+///
+/// A number and not a measurement, because the block is a bottom panel and egui needs its size before the
+/// content exists. It is generous by a few pixels on purpose: a block clipped by its own reserve would cut the
+/// stamp in half, which is the one line in the frame that has to be readable at a glance.
+const BRAND_BLOCK_HEIGHT: f32 = 62.0;
+
 /// A labelled run of palette chips: the group's name and the chips under it.
 type PaletteRun = (Group, Vec<PaletteChip>);
 
@@ -241,9 +248,23 @@ impl Shell {
   ) {
     let palette = self.palette();
     let metrics = self.metrics();
+    // Computed before the panel borrows the shell: the brand block is read-only, and the rail's chips are
+    // not — a `&mut self` closure that had to read `self` inside would not compile, which is the borrow
+    // checker saying the same thing the split of concerns says.
+    let brand = self.brand_lines(app);
     egui::Panel::left("palette")
       .exact_size(metrics.palette_width)
       .show(ui, |ui| {
+        // The brand block is a bottom panel of the rail and not a row inside the scrolling one: a stamp that
+        // scrolled away with the chips would be a footnote, and the rail is the part of the frame the operator
+        // glances at to know what they are looking at. Reserving its height first is also what keeps the
+        // chips' coordinates stable between frames — a layout that grew or shrank as the block measured
+        // itself would report a point the next frame had already moved.
+        egui::Panel::bottom("brand_block")
+          .exact_size(BRAND_BLOCK_HEIGHT)
+          .show(ui, |ui| {
+            brand_block(ui, &palette, &brand);
+          });
         egui::ScrollArea::vertical()
           .id_salt("palette")
           .show(ui, |ui| {
@@ -294,6 +315,24 @@ impl Shell {
             output.drawn.palette_headings = headings;
           });
       });
+  }
+
+  /// The three lines the rail's foot carries: the product, the crate version, and the document's own stamp.
+  ///
+  /// The stamp is L7's answer and not a build stamp: a `build.rs` timestamp in the binary would break
+  /// reproducible builds and would be worse than the version string above it, which is comparable where a
+  /// timestamp is not. `Unsaved changes` is the document's fact (it has edits nobody wrote) and the stamp is
+  /// the file's (when the last write happened), so the two are asked in that order.
+  fn brand_lines(&self, app: &AppState) -> Vec<String> {
+    vec![
+      "campilot".to_owned(),
+      format!("v{}", env!("CARGO_PKG_VERSION")),
+      if app.is_dirty() {
+        "Unsaved changes".to_owned()
+      } else {
+        self.saved_stamp()
+      },
+    ]
   }
 
   /// The palette's runs, derived from the command table.
@@ -1482,6 +1521,32 @@ fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
     .rect_filled(rect, 0.0, palette.get(Role::Hairline));
 }
 
+/// The rail's foot: the product, the crate version, and the document's own stamp.
+///
+/// The block is drawn in a bottom-up layout, so the lines are painted from the bottom of the rail upwards:
+/// the stamp sits lowest, the version above it, and the product name on top of the three. It is the only part
+/// of the rail that is not a command, which is why it is separated by a hairline rather than by a heading — a
+/// heading promises chips under it.
+fn brand_block(ui: &mut egui::Ui, palette: &Palette, lines: &[String]) {
+  ui.add_space(4.0);
+  let width = ui.available_width();
+  let (hairline, _) = ui.allocate_exact_size(egui::vec2(width, 1.0), Sense::hover());
+  ui.painter()
+    .rect_filled(hairline, 0.0, palette.get(Role::Hairline));
+  ui.add_space(2.0);
+  // The last line goes to the bottom of the block, so the list is walked backwards. The first entry is the
+  // product name and gets the size a title gets; the two below it are the version and the stamp, which are
+  // secondary information and say so in colour.
+  for (index, line) in lines.iter().enumerate().rev() {
+    let (size, role) = if index == 0 {
+      (theme::TITLE, Role::TextHi)
+    } else {
+      (theme::CAPTION, Role::TextDim)
+    };
+    ui.label(RichText::new(line).size(size).color(palette.get(role)));
+  }
+}
+
 /// A palette heading that folds its group.
 ///
 /// The same word, weight, colour and hairline as [`section`], plus a caret and a click target: this is the
@@ -1489,12 +1554,7 @@ fn section(ui: &mut egui::Ui, palette: &Palette, label: &str) {
 /// hit. The caret is painted as a triangle instead of written as a glyph because `▾` is a font bet — the
 /// bundled faces may or may not carry it — and a group whose affordance renders as a box is worse than no
 /// affordance at all.
-fn section_toggle(
-  ui: &mut egui::Ui,
-  palette: &Palette,
-  label: &str,
-  open: bool,
-) -> egui::Response {
+fn section_toggle(ui: &mut egui::Ui, palette: &Palette, label: &str, open: bool) -> egui::Response {
   ui.add_space(4.0);
   // The row is allocated as a widget before anything is painted into it, because that is what makes it
   // clickable: a response reused from a child layout answers no click, and this heading is the one control
@@ -1516,8 +1576,11 @@ fn section_toggle(
       egui::pos2(cx + 3.0, cy),
     ]
   };
-  ui.painter()
-    .add(egui::Shape::convex_polygon(points, colour, egui::Stroke::NONE));
+  ui.painter().add(egui::Shape::convex_polygon(
+    points,
+    colour,
+    egui::Stroke::NONE,
+  ));
   ui.painter().text(
     egui::pos2(cx + 8.0, cy),
     egui::Align2::LEFT_CENTER,

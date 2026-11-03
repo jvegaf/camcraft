@@ -345,9 +345,13 @@ impl Command {
   /// The palette run, or app-bar run, this command belongs to.
   pub fn group(self) -> Group {
     match self {
-      Self::Open | Self::Save | Self::SaveAs | Self::Import | Self::FitJob | Self::Undo | Self::Redo => {
-        Group::File
-      }
+      Self::Open
+      | Self::Save
+      | Self::SaveAs
+      | Self::Import
+      | Self::FitJob
+      | Self::Undo
+      | Self::Redo => Group::File,
       Self::Select
       | Self::Line
       | Self::Rectangle
@@ -359,7 +363,9 @@ impl Command {
       | Self::Star
       | Self::AddText
       | Self::AddRectangle => Group::Draw,
-      Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => Group::Edit,
+      Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => {
+        Group::Edit
+      }
       Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
         Group::Organise
       }

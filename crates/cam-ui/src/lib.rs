@@ -40,6 +40,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
@@ -63,6 +64,8 @@ pub mod icons;
 /// The seven commands whose numbers travel with their builders: `Add text`, `Move`, `Rotate`, `Scale`,
 /// `Mirror`, `Array` and `Offset`.
 pub mod params;
+/// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
+pub mod stamp;
 pub mod theme;
 
 pub use chrome::Tab;
@@ -854,6 +857,13 @@ pub struct Shell {
   /// **file-level, not document-level** — the undo history snapshots bare [`cam_model::Document`]s, so an
   /// undo cannot restore or lose them, and a drawing that was never opened has no entries to carry.
   document_extras: BTreeMap<String, Vec<u8>>,
+  /// When the file behind the drawing was last written, as the filesystem reports it.
+  ///
+  /// Read once per action that opens or writes a document, never per frame: the brand block's `Saved …` line
+  /// (camui-prancheta S4, L7) is a fact about the **file**, so it comes from the file's own mtime rather than
+  /// from the moment this process happened to notice the write. `None` covers both "no file yet" and "the
+  /// filesystem answered nothing about this one".
+  saved_at: Option<SystemTime>,
   /// Message shown in the status bar.
   pub status: String,
   /// World position of the cursor, when it is over the canvas.
@@ -971,6 +981,7 @@ impl Default for Shell {
       tools: Vec::new(),
       document_path: None,
       document_extras: BTreeMap::new(),
+      saved_at: None,
       status: String::new(),
       cursor_world: None,
       snap_kinds: vec![
@@ -1069,6 +1080,22 @@ impl Shell {
         extras: &mut self.document_extras,
       }),
     );
+    // The brand block's stamp is read from the file the action just read or wrote, and only when the action
+    // was one of those: a `stat` per frame would be a syscall in the paint loop, and a stamp cached from an
+    // earlier action would describe a file that has since changed. `modified` answers `Err` on a filesystem
+    // that does not keep mtimes, which is an honest `None` — the block then says the work is unsaved.
+    if applied.is_ok()
+      && matches!(
+        action,
+        UiAction::OpenFile { .. } | UiAction::SaveFile { .. } | UiAction::Save
+      )
+    {
+      self.saved_at = self
+        .document_path
+        .as_deref()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .and_then(|metadata| metadata.modified().ok());
+    }
     // An open replaces the document, so everything the shell derived from the previous one goes with it.
     // None of these three is in the undo history — the preview is a picture of a program, the tool
     // snapshot belongs to the drawing that was showing, and the drafts are numbers the dialog has not
@@ -1117,6 +1144,22 @@ impl Shell {
   /// calls `untitled.c2d` and the state in which [`UiAction::Save`] is refused.
   pub fn document_path(&self) -> Option<&Path> {
     self.document_path.as_deref()
+  }
+
+  /// The words the brand block shows at the foot of the rail: `Saved 2026-11-03 19:30 UTC`, or
+  /// `Unsaved changes`.
+  ///
+  /// One source for the line the frame paints and the line a test reads, which is the only way the two can be
+  /// the same sentence. The rule is L7's: the line stamps the **document**, so it is the file's own last write
+  /// ([`Self::saved_at`]) and never a build stamp; a document with no file, or a filesystem that reported no
+  /// mtime, has nothing saved to name. A document with unsaved edits reads `Unsaved changes` too — the panel
+  /// asks [`AppState::is_dirty`] and draws that word itself, because dirty is the document's fact and the
+  /// stamp is the file's.
+  pub fn saved_stamp(&self) -> String {
+    match self.saved_at {
+      Some(at) => format!("Saved {}", crate::stamp::format_stamp(at)),
+      None => "Unsaved changes".to_owned(),
+    }
   }
 
   /// The archive entries this build does not interpret, carried from the last load.
