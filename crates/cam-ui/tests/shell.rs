@@ -447,22 +447,18 @@ fn the_hint_names_the_current_gesture() {
 #[test]
 fn the_palette_labels_its_groups() {
   // The reference app's lesson: a labelled group is what keeps twenty commands findable, and an
-  // unlabelled rail is what made the seven Edit commands nameless.
+  // unlabelled rail is what made the seven Edit commands nameless. The five words are the reference's own
+  // (camui-prancheta S4).
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  assert!(
-    all.contains("DRAW"),
-    "Design must label its drawing group: {all}"
-  );
-  assert!(
-    all.contains("VIEW"),
-    "the invariants get their own group: {all}"
-  );
-  // Every group in the same frame, because there is no stage to switch to.
-  assert!(all.contains("TRANSFORM"), "{all}");
-  assert!(all.contains("VECTOR EDIT"), "{all}");
+  for label in ["DRAW", "EDIT", "ORGANISE", "SHOW AND SELECT"] {
+    assert!(
+      all.contains(label),
+      "the rail must label the {label} run: {all}"
+    );
+  }
 }
 
 #[test]
@@ -3481,13 +3477,16 @@ fn escape_closes_the_help_panel() {
 
 // ---- T8.2: the palette and the app bar read the command table --------------------------------
 
-/// The groups the palette shows, VIEW last: the palette's four runs, and never HISTORY.
+/// The groups the palette shows, SHOW AND SELECT last: the four runs that hold palette commands.
+///
+/// FILE is absent on purpose and not by accident: every file command still lives in the app bar, and a
+/// run the rail draws with no chips in it would be a heading over nothing (camui-prancheta T2a).
 fn palette_groups() -> Vec<Group> {
   vec![
     Group::Draw,
-    Group::Transform,
-    Group::VectorEdit,
-    Group::View,
+    Group::Organise,
+    Group::Edit,
+    Group::ShowAndSelect,
   ]
 }
 
@@ -3545,8 +3544,8 @@ fn the_palette_shows_no_history_run() {
     );
   }
   assert!(
-    !all.contains(Group::History.label()),
-    "the palette must never draw a HISTORY run: {all}"
+    !all.contains(Group::File.label()),
+    "the rail must not head a group it draws no chip under: {all}"
   );
 }
 

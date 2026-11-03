@@ -299,7 +299,7 @@ impl Shell {
 
             // The runs arrive in the table's own order: DRAW, TRANSFORM, VECTOR EDIT and VIEW.
             for (group, chips) in self.palette_runs() {
-              if group == Group::View {
+              if group == Group::ShowAndSelect {
                 ui.add_space(metrics.space(3));
               }
               section(ui, &palette, group.label());

@@ -60,7 +60,8 @@ words: *"design/prancheta-reference/ + README"*.
 | --- | --- | --- | --- | --- |
 | T0 | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame | S11 | inline | `a265633` |
 | T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `c9f3c59` |
-| T2 | Left rail: five collapsible groups with shortcut letters, brand block and `Updated on …` | S4 | inline | — |
+| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | — |
+| T2b | Left rail, second half: move `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` into the FILE group and out of the app bar so the two surfaces never duplicate a command; collapsible groups; the brand block | S4 | inline | — |
 | T3 | Right panel: the ribbon of three categories, the task-editor container with `✓`/`✕`, and `Layers` as its own collapsible block | S6 | inline | — |
 | T4 | Status bar in three zones, with the contextual message | S7 | inline | — |
 | T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
@@ -107,3 +108,25 @@ words: *"design/prancheta-reference/ + README"*.
   about how `the_job_tab_names_the_step_the_document_is_missing` and its neighbour are written, not about what
   the shell does. They are the follow-up this task leaves behind, and they must not be a reason to re-review
   this candidate: its receipt stands.
+- **L6 (T2a: the five groups, and three things I refused to invent).** `Group` is now `File`, `Draw`, `Edit`,
+  `Organise`, `ShowAndSelect` with the reference's own words (`FILE`, `DRAW`, `EDIT`, `ORGANISE`,
+  `SHOW AND SELECT`), and `Command::group` reassigns every command: `Select` stays in DRAW because the reference
+  draws the arrow as the first chip under DESENHAR, `FitJob` moves to FILE because S4 puts fit in the
+  reference's FILE row, and `History` stops being a group because the reference keeps undo and redo in FILE.
+  1210 tests pass.
+  **Three things this task deliberately did not do, each for its own reason:**
+  1. **FILE is not drawn in the rail yet.** Moving `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` into
+     `in_palette` would have made the rail and the app bar offer the same seven commands twice, which is a
+     defect, not a step. The move and the app bar's corresponding removal are T2b, together, in one commit.
+  2. **No single-key letters.** S4 says every glyph carries its shortcut letter, and the reference does. This
+     shell has exactly four bindings — `Cmd+Z`, `Shift+Cmd+Z`, `Delete`/`Backspace` and `F` — so there are four
+     letters to draw and no others. A letter under a chip that no key actually runs would be the same lie as a
+     count nobody measured. The full single-key map changes the canvas input model, not chrome, and it is its
+     own decision.
+  3. **The `Updated on …` line is not drawn.** In the reference it sits in the brand block beside an info icon,
+     on a fresh untitled document, which makes it a *build* stamp rather than a document stamp. Producing one
+     needs a build script and a timestamp in the binary — a reproducibility question about delivery (Task Size
+     risk item 5), not a rail question. Until the owner says which stamp that line carries, the brand block
+     carries the name and the crate version only.
+  The group words reached the F1 help panel for free: it already walks `Group::ALL`, so FILE now heads its
+  commands there without a second list.

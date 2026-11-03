@@ -38,36 +38,41 @@ use crate::{Tool, UiAction};
 /// than read about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
+  /// The document itself: opening, saving, importing, fitting it to the frame, and the two steps
+  /// through the edits already made.
+  File,
   /// Making geometry: the nine canvas gestures, text, and the typed rectangle.
   Draw,
-  /// Moving, turning and repeating what exists.
-  Transform,
   /// Surgery on the vectors themselves.
-  VectorEdit,
-  /// Stepping through the edits already made.
-  History,
-  /// What the frame shows, never what the document holds.
-  View,
+  Edit,
+  /// Moving, turning and repeating what exists.
+  Organise,
+  /// What the frame shows and what selects it, never what the document holds.
+  ShowAndSelect,
 }
 
 impl Group {
   /// Every group, in the order the panel draws them.
+  ///
+  /// The order and the words are the reference app's own (camui-prancheta S4): FILE first because a job
+  /// starts by opening something, then the three that change the drawing, then the one that only changes
+  /// the view.
   pub const ALL: [Group; 5] = [
+    Group::File,
     Group::Draw,
-    Group::Transform,
-    Group::VectorEdit,
-    Group::History,
-    Group::View,
+    Group::Edit,
+    Group::Organise,
+    Group::ShowAndSelect,
   ];
 
   /// The section word above the group's commands.
   pub fn label(self) -> &'static str {
     match self {
+      Self::File => "FILE",
       Self::Draw => "DRAW",
-      Self::Transform => "TRANSFORM",
-      Self::VectorEdit => "VECTOR EDIT",
-      Self::History => "HISTORY",
-      Self::View => "VIEW",
+      Self::Edit => "EDIT",
+      Self::Organise => "ORGANISE",
+      Self::ShowAndSelect => "SHOW AND SELECT",
     }
   }
 }
@@ -331,6 +336,9 @@ impl Command {
   /// The palette run, or app-bar run, this command belongs to.
   pub fn group(self) -> Group {
     match self {
+      Self::Open | Self::Save | Self::SaveAs | Self::Import | Self::FitJob | Self::Undo | Self::Redo => {
+        Group::File
+      }
       Self::Select
       | Self::Line
       | Self::Rectangle
@@ -341,26 +349,18 @@ impl Command {
       | Self::Polygon
       | Self::Star
       | Self::AddText
-      | Self::AddRectangle
-      | Self::Import
-      | Self::Open
-      | Self::Save
-      | Self::SaveAs => Group::Draw,
+      | Self::AddRectangle => Group::Draw,
+      Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => Group::Edit,
       Self::Move | Self::Rotate | Self::Scale | Self::Mirror | Self::Array | Self::Align => {
-        Group::Transform
+        Group::Organise
       }
-      Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => {
-        Group::VectorEdit
-      }
-      Self::Undo | Self::Redo => Group::History,
       Self::View3d
       | Self::Grid
       | Self::Layers
       | Self::Help
       | Self::Theme
       | Self::IconSet
-      | Self::Shortcuts
-      | Self::FitJob => Group::View,
+      | Self::Shortcuts => Group::ShowAndSelect,
     }
   }
 
