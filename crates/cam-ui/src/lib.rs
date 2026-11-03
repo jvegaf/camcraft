@@ -64,11 +64,14 @@ pub mod icons;
 /// The seven commands whose numbers travel with their builders: `Add text`, `Move`, `Rotate`, `Scale`,
 /// `Mirror`, `Array` and `Offset`.
 pub mod params;
+/// The two millimetre rulers along the canvas' top and left edges (camui-prancheta S5).
+pub mod ruler;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
 pub mod theme;
 
 pub use chrome::{Category, Tab};
+pub use ruler::{RulerMarker, RulerTick, Rulers};
 pub mod view3d;
 
 pub use view3d::Preview3d;
@@ -664,6 +667,13 @@ pub struct DrawnState {
   pub status_chips: Vec<(String, (f32, f32))>,
   /// The sentence the status bar showed in front of the message: what the current gesture will do.
   pub hint: String,
+  /// What the two rulers along the canvas' top and left edges drew (camui-prancheta S5).
+  ///
+  /// A report and not a picture, for the same reason the palette reports its chips: the bands, the numbers
+  /// they read off the camera and the amber marker that tracks the pointer are the only part of S5 a test
+  /// cannot see from [`ShellOutput::canvas`], which says where the drawing starts but nothing about what
+  /// frames it.
+  pub rulers: Rulers,
   /// What the left palette offered, in the order it drew them.
   ///
   /// The palette is the part of the frame whose content changes with the stage, and a headless test cannot
@@ -1891,17 +1901,29 @@ impl Shell {
 
   fn canvas(&mut self, app: &mut AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
+    let metrics = self.metrics();
     egui::CentralPanel::default()
       .frame(egui::Frame::NONE.fill(palette.get(Role::Canvas)))
       .show(ui, |ui| {
-        let available = ui.available_rect_before_wrap();
-        let (response, painter) = ui.allocate_painter(available.size(), Sense::click_and_drag());
+        let area = ui.available_rect_before_wrap();
+        // The drawing area starts after the two ruler bands (camui-prancheta S5): a press on a band is a press
+        // on chrome, not a press on the sheet, so the response covers exactly what the camera is told about.
+        // The clamp is for a frame whose central area has not been given its room yet — a band must not be
+        // allowed to make the canvas a negative rectangle.
+        let thickness = metrics.ruler_thickness;
+        let drawing = egui::Rect::from_min_max(
+          egui::pos2(
+            (area.min.x + thickness).min(area.max.x),
+            (area.min.y + thickness).min(area.max.y),
+          ),
+          area.max,
+        );
 
         let canvas = CanvasRect {
-          x: f64::from(response.rect.min.x),
-          y: f64::from(response.rect.min.y),
-          width: f64::from(response.rect.width()),
-          height: f64::from(response.rect.height()),
+          x: f64::from(drawing.min.x),
+          y: f64::from(drawing.min.y),
+          width: f64::from(drawing.width()),
+          height: f64::from(drawing.height()),
         };
         output.canvas = canvas;
         self.last_canvas = canvas;
@@ -1912,6 +1934,23 @@ impl Shell {
         if self.frame_if_needed(app, &canvas) {
           ui.ctx().request_repaint();
         }
+
+        // The bands report what they drew (S5), including whether the pointer is on the sheet: the marker is
+        // drawn only while it is, and `cursor_world` is exactly that question already answered.
+        output.drawn.rulers = ruler::paint(
+          ui.painter(),
+          area,
+          &canvas,
+          app.camera(),
+          &palette,
+          &metrics,
+          self.cursor_world,
+        );
+
+        let response = ui.allocate_rect(drawing, Sense::click_and_drag());
+        // Everything the drawing paints is clipped to the drawing area: the grid and the geometry must not
+        // spill onto a band and print a drawing over a number.
+        let painter = ui.painter().with_clip_rect(drawing);
 
         self.handle_input(app, ui, &response, &canvas, output);
         // The context menu is drawn after the input that opens it, so a right-click and the rows it scopes

@@ -342,6 +342,12 @@ pub struct Metrics {
   pub status_height: f32,
   /// The left palette: grouped, labelled columns of commands.
   pub palette_width: f32,
+  /// The two ruler bands: the one along the canvas' top edge and the one down its left edge.
+  ///
+  /// The same number for both, because a ruler is one instrument drawn twice: unequal bands would read as
+  /// two different scales. It is a measurement and not a spacing step because the numbers inside it are
+  /// what sets its height, and it is not a control height because nothing in it is pressable.
+  pub ruler_thickness: f32,
   /// The right inspector.
   pub dock_width: f32,
   /// One pixel of hairline.
@@ -365,6 +371,7 @@ impl Metrics {
       app_bar_height: 40.0,
       status_height: 26.0,
       palette_width: 200.0,
+      ruler_thickness: 22.0,
       dock_width: 288.0,
       hairline: 1.0,
       icon_size: ICON_SIZE,
