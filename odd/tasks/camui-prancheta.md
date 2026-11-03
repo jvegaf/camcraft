@@ -65,7 +65,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `fa179ab` |
 | T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `c22f57a` |
 | T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `8a386f2` |
-| T3 | Right panel: the ribbon of three categories, the task-editor container with `✓`/`✕`, and `Layers` as its own collapsible block | S6 | inline | — |
+| T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `38ea6dd` |
 | T4 | Status bar in three zones, with the contextual message | S7 | inline | — |
 | T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
 | T6 | `2D \| 3D` toggle, split canvas, overlay row, axis triad and playback bar | S8 | inline | — |
@@ -222,3 +222,36 @@ words: *"design/prancheta-reference/ + README"*.
   to 512 for that one cgroup, and the same START then succeeded on the first attempt. **The linker workaround in
   L9 is therefore a symptom of the same limit, not a property of the toolchain**, and a session that starts with
   `pids.max` back at 64 will see both failures again.
+- **L13 (T3: the ribbon, the task editor, and four things the panel had to decide).** `38ea6dd`, 110 shell tests
+  and the whole workspace green. The tab row is gone: `TOOLPATHS`, `RELIEF AND 3D PART` and `MACHINE AND OUTPUT`
+  are glyph rows (the profile toolpath, the relief, the post-processor — three glyphs the set already had, and no
+  new symbol drawn for a row nobody has seen), and opening one puts a task editor over the body with a header
+  carrying the task's own name and a `✓` / `✕`. `LAYERS` moved out of the panel's furniture and became its own
+  folding block below the editor, so it survives every task opening and closing above it.
+  **Four decisions this task had to make, none of them in S6:**
+  1. **`Selection` is not a category.** The reference draws three, and the shell had four tabs. The selection's
+     numbers are not a task anybody opens — they are what the panel says while nothing is open — so they became
+     the panel's **idle state**, drawn when `Shell::task` is `None`. Nothing the three tabs reached was lost:
+     `TOOLPATHS` holds the authoring body, `MACHINE AND OUTPUT` the job's, and the idle panel the readout.
+  2. **`RELIEF AND 3D PART` opens a state, not a form.** The reference opens a 3D machining strategy there; this
+     shell authors no relief, and the 3D half plays a program `cam-cli` produced. So the task says exactly that,
+     names the split's state and whether a program is loaded, and toggles the split. A form over a capability
+     that does not exist would be the same lie as a count nobody measured (L6). The overlay row, the triad and
+     the playback bar are T6's, and the task says so rather than pre-empting them.
+  3. **`✓` and `✕` differ in exactly one thing.** Every number in the authoring body applies as it is typed, so
+     `Done` has nothing to commit; the one draft the panel holds is the material's (`material_size`, written only
+     by the dialog's own apply), so `Cancel` puts it back to the document's stock and `Done` keeps it. The
+     tooltips say that, because two glyphs that did the same thing would be a control that lies.
+  4. **`Tab` survives as the body selector.** `Shell::set_tab` now opens the tab's category and `tab()` derives
+     from what is open, so a host keeps one call and the panel keeps one answer. The enum was not deleted
+     mid-feature: `design/camui-shell/01-shell-2d.html` still draws tabs, and re-drawing that artboard is T9 —
+     deleting the type now would leave the artboard describing something the code cannot express.
+  The two glyphs are **painted**, not typeset, for the same reason the rail's caret is (L8): `✓` and `✕` are a
+  font bet and an affordance that renders as a box is worse than a drawn mark.
+  **A reporting defect the tests caught and this task fixed:** the panel reported its state *before* handling the
+  click, so the frame that folded `LAYERS` still drew its rows and the frame that closed a task still named it.
+  Both answers are now read after the click, which is what makes "a folded block draws no row" true in the frame
+  it happens rather than one frame later.
+  **Two PRESERVE tests changed shape, not meaning:** `the_tools_tab_offers_every_authoring_command` and
+  `the_palette_and_the_tools_tab_build_the_same_seven_actions` now open the `TOOLPATHS` task first, because the
+  authoring body is one click further from the idle panel than it was. Their assertions are untouched.
