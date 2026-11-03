@@ -2975,10 +2975,6 @@ fn single_selection(app: &AppState) -> Result<String, String> {
     .ok_or_else(|| "nothing is selected".to_owned())
 }
 
-/// Apply one command and describe what it produced.
-///
-/// The command layer already guarantees a refusal leaves the document, the history and the dirty flag
-/// untouched; this adds the label, the outcome and the selection of whatever the command created.
 /// The grid chip's own words: the step it snaps to, in millimetres (`Grid 10`, `Grid 2.5`).
 ///
 /// The reference writes `Grid 10`, and a chip that said only `Grid` would hide the one number an operator
@@ -3000,6 +2996,10 @@ fn grid_chip(spacing: f64) -> String {
   format!("Grid {step}")
 }
 
+/// Apply one command and describe what it produced.
+///
+/// The command layer already guarantees a refusal leaves the document, the history and the dirty flag
+/// untouched; this adds the label, the outcome and the selection of whatever the command created.
 fn apply_command(app: &mut AppState, command: Command) -> Result<ActionReport, String> {
   let label = command.label();
   let outcome = app
