@@ -2,8 +2,8 @@
 
 Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. T0-T4 landed on
 `feat/camui-prancheta` from `master` @ `a7a701e`, merged into `master` when T4 closed; **from T5 on, each task
-gets its own branch from `master`** (L18). No subagents are configured in this repository, so every task routes
-inline.
+gets its own branch from `master`** (L18). T0-T4 routed inline because no subagents were configured here; that
+premise expired (L19), so T5 on routes to a configured worker.
 
 ## Specs
 
@@ -68,7 +68,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `8a386f2` |
 | T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `38ea6dd` |
 | T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `482625b` |
-| T5 | The two mm rulers with the amber cursor marker | S5 | inline | — |
+| T5 | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20) | S5 | worker | `7cb26ae` |
 | T6 | `2D \| 3D` toggle, split canvas, overlay row, axis triad and playback bar | S8 | inline | — |
 | T7 | The tool library as a master-detail modal | S9 | inline | — |
 | T8 | Strategy editors: current-tool card, quick parameter edit, image cards | S10 | inline | — |
@@ -352,3 +352,59 @@ words: *"design/prancheta-reference/ + README"*.
   of its own branch — the T4 candidate was 341 lines and cost ~67 kB of reviewer prompt, an order of magnitude
   under the whole-branch pass that L17 found unreviewable. The narrowing argument T4 needed (`baseRef` to a
   commit three slices back) stops being necessary.
+- **L19 (L4's premise expired: subagents are configured now).** `subagent_list_agents` returns ten targets
+  today, including `gentle-ai-explore`, `gentle-ai-verify` and `gentle-ai-worker`; when L4 was written it
+  returned an empty list. The record is corrected rather than quietly rewritten: **T0-T4 did route inline and
+  that was true when it was written**, and **T5 on routes to the configured worker**, with the parent keeping
+  the feature document, the commits and the review candidates.
+- **L20 (T5: the two rulers, and the three things an independent read caught).** `7cb26ae` (code) and this
+  slice's correction, workspace green at **1239 tests**. `crates/cam-ui/src/ruler.rs` (new) draws the two 22 px
+  bands from three palette roles — `Panel` for the band, `TextDim` for the ink, `Cut` for the marker — stepping
+  by `cam_view::nice_spacing` at the grid's own target and numbering the world coordinate the camera puts
+  under each pixel, so the stock's centred origin reads negative to its left and below it. `Shell::canvas`
+  insets the drawing area by `Metrics::ruler_thickness` before the camera viewport, the click/drag response and
+  the painter's clip rect. **The task routed to a configured worker** for the first time (L19), and the
+  handoff named the document, the task and S5 rather than restating them.
+  **The independent verify could not run a single test.** Its cgroup sat at 63/64 PIDs and 3.0/3.2 GiB, so
+  `rustc` died with `install_ctrlc_handler: WouldBlock` before building a crate; every verdict it returned was
+  static, and it said so. The executed evidence is the parent's: 1238 tests at `7cb26ae`, 1239 after the
+  correction. What the static read was worth: three findings, none cosmetic, all taken.
+  1. **One new test could not fail.** `the_drawing_is_still_framed_inside_the_rulers` checked the document's
+     corners against a rect derived from `output.canvas`, and the fit's 32 px padding is wider than the 22 px
+     band, so a fit measured against the *un-inset* area would have passed it. It now requires the drawing
+     area to start exactly where the band ends and the fit's padding to be measured from that area. **Observed
+     RED:** dropping the inset from `CanvasRect` fails it with `canvas.y 40 against band (200.0, 40.0, 712.0,
+     22.0)`.
+  2. **One assertion locked in a framing accident.** `the_ruler_numbers_are_the_world_coordinates_under_them`
+     ended with `left.last() == Some(0.0)` — true only because this stock is taller than the frame, and it would
+     have punished the negative-below-the-origin behaviour S5 asks for. Replaced by the invariant: the gap
+     between the lowest printed number and the band's bottom edge is **less than one step**. **Observed RED:**
+     making the band drop a tick that fits fails it with `the band below the last printed number (200) is
+     shorter than one 200.000 step down to -131.196`.
+  3. **One consequence was left unnamed, and is now a decision with a test.** Narrowing `output.canvas` from
+     the central area to the inset one also narrowed the `response.hovered()` gate, so the wheel over a band no
+     longer zooms — as it already did not over the rail or the dock — and neither does middle-drag pan nor the
+     canvas context menu. That is right: a band is chrome. `the_wheel_zooms_over_the_sheet_but_not_over_a_ruler`
+     pins both halves, so the day it changes it changes on purpose.
+  **`ShellOutput::canvas` changed meaning** — from the central area to the drawing area. No consumer outside
+  `cam-ui` reads it (`cam-cli` and `cam-desktop` do not), so the blast radius is this crate's tests, and the
+  doc comment on the field says which rect it is.
+- **L21 (the T5 review: approved on the first receipt, after two harness failures).** Lineage
+  `review-54750e7c98594128`, tier **high** (`process_boundary`), **three lenses** (`risk`, `readability`,
+  `reliability`), 5 paths, 1 080 changed lines, correction budget 200 — **unused, nothing to correct**. Three
+  reviewer runs over the pi host relay (62.2 kB of prompt each), **approved**, authority **burned**
+  (`gentle-ai.review-acknowledged/v1`, revision `sha256:e40de020…`). Delivery stays ordinary repository policy.
+  **The narrowing paid off exactly as L18 predicted:** the candidate was `4c619e1..HEAD` — five paths, this
+  branch and nothing else — against the 26-path whole-branch projection that had died on
+  `lens_context_budget_exceeded` in T4. One branch per task turned a hard stop into a normal review.
+  **Two START attempts died before the provider.** Both `pre_native`, both `git_command_failed`,
+  `git grep: failed to create thread`, exit 128, `mutation_performed: false` — no lineage, nothing burned. The
+  service cgroup was at **`pids.max = 64` with 45 PIDs in use**; the second attempt also coincided with this
+  session's own workspace suite. The owner authorised raising the limit whenever a START needs it, so it went
+  to **512** for the run and **back to 64** as soon as the receipt closed. Same defect as L12 and L17, third
+  time; the rule is now explicit rather than re-derived per session.
+  **Three advisories, all `informational`, none blocking:** `R2-001` (`lib.rs:1938-1948`), `R2-002`
+  (`ruler.rs:112-132`, a suggestion), `R3-001` (`lib.rs:1940-1948`). They join the twenty-four this feature
+  already owes. Note what the candidate *already* contained when the reviewers saw it: `b349d28`, the two test
+  corrections and the wheel test that the independent read demanded. The review judged the corrected tree, not
+  the first delivery.
