@@ -48,7 +48,8 @@ CLI does not have.
   delegated worker.
 - T2 — the documents (S1, S2, S7): `README.md`, both shell records, and the two feature documents that named
   this as their remaining gap. Route: delegated worker.
-- T3 — gate, commits, independent verification, native review (S6). Route: parent.
+- T3 — gate, commits, independent verification, native review (S6). Route: parent. Gate and independent
+  verification: L5. Native review: **closed, not pending** — see the last paragraph of L5.
 
 ## Log
 
@@ -108,3 +109,53 @@ CLI does not have.
   handed over — the climb-back refusal, the unusable-reference soft path and the stale-card class — are pinned
   now too, and the stale-card one closed a gap neither the spec nor the unit had thought about: a card from the
   previous document must not survive an open whose library fails to resolve.
+- **L5 (T3: the gate, the independent verification, and the one advisory it produced).**
+  **The gate:** `./scripts/check.sh` with `XDG_CONFIG_HOME` set, **exit 0** — `fmt --check`, `clippy -D
+  warnings`, and the whole suite: **96 suites, 1 211 tests, 0 failed** (up from 1 166; `cam-store` 7 → 22 and
+  `cam-ui` 186, of which `shell` 108). Before it, `pids.max` was 64 again and was raised to 4096 — the recurring
+  cgroup gotcha, per-session, not durable.
+  **The commits:** `aa26315` the resolver (`cam-ui/src/lib.rs` +104, `tests/shell.rs` +260, and the host's own
+  comment, which still called resolving `tools_ref` "the next step"); `6134c1a` T2, the documents; `40625fa`
+  `open_read_only`, which closes L4's hole; `5d77d77` the S2/S3 wording and L4; `75e5174` the allowlist, where a
+  reviewer found that `is_absolute()` plus a `ParentDir` check lets two **Windows** shapes through —
+  root-relative (`\drv\file`) and drive-relative (`C:file`) are neither absolute nor carry `..` — and the rule
+  became "every component is a plain name or `.`", which refuses those by construction.
+  **The independent verification** (a fresh read-only `gentle-ai-verify`, run after the incident below): **S1–S6
+  met, S7 still true.** It executed the hostile cases rather than reading them: an absolute reference and
+  `../outside.sqlite` pointed at *existing* outside libraries are refused with `it is not inside the document's
+  directory` and the outside bytes are untouched; a symlink to a 100-byte non-library leaves 100 bytes; a
+  hardlink to a 0-byte file leaves 0; a missing library reached through a *directory* symlink creates nothing;
+  a genuine hand-built v1 library is refused naming both versions with its bytes identical (no migration), and
+  so is a v3 one. It also confirmed `open_read_only` has `SQLITE_OPEN_READ_ONLY`, no `create_dir_all`, no
+  `migrate` and a version gate (`cam-store/src/tools.rs:259-296`), and that `git diff a1069f2..HEAD -- crates/cam-cli
+  crates/cam-ui/src/chrome.rs` is **empty**, so S5's "what must not change" did not move.
+  **The refinement it made to S7:** the absolute half *is* incidentally pinned — `cam-cli/tests/cli.rs:974-995`
+  and `:1017-1046` set an absolute `tools_ref` and require exit 0 — so "nothing in the repository pins that
+  either way" was slightly overstated; the `..` half is pinned nowhere, which is what S7 actually needs decided.
+  **F1, the advisory it produced, and it is caused by this feature:** a library in **WAL** mode reached through
+  a symlink beside the document still makes the window **create files outside the document's directory** —
+  `waltools.sqlite-shm` (32 768 bytes) and `waltools.sqlite-wal` (0 bytes) appear beside it. The library's own
+  bytes are identical (73 728 → 73 728), the status stays clean (`open file — opened cut.c2d`), and L4's
+  `0 → 73 728` write does **not** reproduce: these are SQLite's own WAL companions, not a write into an existing
+  file, and no library campilot produces is in WAL mode. It does literally contradict S3's "creates nothing
+  anywhere", so it is recorded as an open decision rather than closed by silence. Two candidate closes, each
+  with a cost: `immutable=1` (reads can then be **stale**, because WAL content is ignored — the opposite of what
+  a shop with a live library wants) or refusing a WAL library outright (a restriction, but an honest and total
+  one). Not fixed here.
+  **Not executed, and said rather than implied:** the Windows `Component` shapes were verified by reading the
+  guard, not by running them — this build has no Windows std and no network. The allowlist refuses `RootDir`
+  and `Prefix` by construction, which is the strongest thing a Linux-only build can claim.
+  **The incident that cost the first verification run:** the cgroup OOM killer killed the whole unit at
+  01:03 (`Failed with result 'oom-kill'`, 3 G peak) while the gate and the verifier were both running cargo
+  against a `memory.max` of 3 GiB with `memory.swap.max` = 0, and the session restarted, taking the first
+  run's findings with it. The limits are per session and come back at every restart: memory 3 → 6 GiB, swap
+  0 → 2 GiB, pids 64 → 4096. **Never run two cargo invocations at once in this box**; the gate is parallel
+  inside itself.
+  **The native review of the guard is closed, and was not re-run.** `assess` over the committed candidate
+  `5d77d77..HEAD` — the allowlist alone, 1 path, 12 lines — answers `nativeRisk: high` with
+  `reviewDue: false` / `already_reviewed`, `nativeReviewOutcome: closed`, `outcome_source: derived` and
+  `candidate.consumed: true`. That is the native candidate fact, not a reading of the log: the review for this
+  tree was approved and acknowledged already, and the finding it produced **is** `75e5174`. Starting a second
+  review of the same tree would have burned authority to learn what the store already records, so none was
+  started. What the review's advisory list was is not recorded here, because the authority does not expose it
+  after the burn; the one finding that mattered became code.
