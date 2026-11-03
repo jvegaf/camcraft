@@ -17,7 +17,9 @@ use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, ProfileParams, Toolpath};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::chrome::Category;
-use cam_ui::tool_library::{cut_line, form_groups, tool_title, ToolFamily, ToolFormGroup};
+use cam_ui::tool_library::{
+  cut_line, form_fields, form_groups, tool_title, ToolFamily, ToolFormGroup,
+};
 use cam_ui::{handle_action, Shell, ShellOutput, UiAction};
 use cam_units::{Angle, Length, UnitSystem};
 
@@ -87,6 +89,36 @@ fn base(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool {
       notes: None,
     },
   }
+}
+
+#[test]
+fn a_rate_is_shown_in_the_units_the_library_authored_it_in() {
+  // R3-001 in this task's review: stored rates are millimetres per second, but `rate_units` records the units
+  // the library's author typed them in and `MACHINE` names that unit — so one number was carrying two units at
+  // once (`Feed 100.00 mm/s` beside `Rates in/s`). Converted to the authored unit, both rows agree.
+  let mut inch = flat_mill("T1", Some(1), 6.0);
+  inch.cutting.rate_units = UnitSystem::Inch;
+  let feed = form_fields(ToolFormGroup::Speeds, &inch)
+    .into_iter()
+    .find(|(label, _)| label == "Feed")
+    .expect("the speeds group offers a feed")
+    .1;
+  assert_eq!(feed, "3.94 in/s", "an inch library's feed reads in its own units");
+  let rates = form_fields(ToolFormGroup::Machine, &inch)
+    .into_iter()
+    .find(|(label, _)| label == "Rates")
+    .expect("the machine group names the rates")
+    .1;
+  assert_eq!(rates, "in/s", "and the machine row it is compared against");
+
+  // The millimetre path is what it was: this fix must not move the number a mm library reads.
+  let mm = flat_mill("T2", Some(2), 6.0);
+  let feed = form_fields(ToolFormGroup::Speeds, &mm)
+    .into_iter()
+    .find(|(label, _)| label == "Feed")
+    .expect("the speeds group offers a feed")
+    .1;
+  assert_eq!(feed, "100.00 mm/s");
 }
 
 /// A flat end mill: a diameter and nothing that shapes its tip.

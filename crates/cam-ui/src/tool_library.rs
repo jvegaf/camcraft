@@ -306,8 +306,19 @@ pub fn form_fields(group: ToolFormGroup, tool: &StoredTool) -> Vec<(String, Stri
     Some(length) => format!("{} mm", Format::fixed(2).apply(length.mm())),
     None => "—".to_owned(),
   };
+  // Stored rates are millimetres per second — `cam-store` documents that — but the library records the units
+  // its author typed them in, and `MACHINE` names that unit in its `Rates` row. Printing the stored number under
+  // `mm/s` beside a `Rates in/s` row gave one number two contradictory units, which is R3-001 in this task's
+  // review: an inch-library tool read `Feed 100.00 mm/s` and `Rates in/s` at once. The number is converted to the
+  // authored unit and labelled with it, so both rows say the same thing and it is the one the operator entered.
   let rate = |value: Option<f64>| match value {
-    Some(rate) => format!("{} mm/s", Format::fixed(2).apply(rate)),
+    Some(rate) => {
+      let shown = match cutting.rate_units {
+        cam_units::UnitSystem::Mm => rate,
+        cam_units::UnitSystem::Inch => rate / cam_units::MM_PER_INCH,
+      };
+      format!("{} {}", Format::fixed(2).apply(shown), units_word(cutting))
+    }
     None => "—".to_owned(),
   };
   let rows: Vec<(&str, String)> = match group {
