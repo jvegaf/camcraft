@@ -31,6 +31,14 @@ const GAP: f64 = 10.0;
 /// The coarse search step the fixtures author, in millimetres.
 const STEP: f64 = 10.0;
 
+/// The step by which the module insets a part that touches the board before it asks whether the
+/// material is on the part's own side of the boundary, in millimetres.
+///
+/// Restated here for the reason [`TOL`] is: a test that pushes a part past the board's edge has to
+/// push it by the same step the rule measures, and the module keeps that step private. If the
+/// module's step moves, these boundary cases move with it and say so.
+const INSET_STEP: f64 = 0.01;
+
 /// A rectangular board with its lower-left corner at the origin.
 fn board(width: f64, height: f64) -> Contour {
   primitive::rectangle(Point2::new(0.0, 0.0), width, height).expect("a board")
@@ -562,6 +570,178 @@ fn a_part_that_only_touches_a_circular_board_from_outside_is_unplaced() {
     "a disc of radius 50 fits the circular board: {inside:?}"
   );
   assert!(inside.certifies(&sheet, 0.0));
+}
+
+#[test]
+fn a_part_flush_against_a_rectangular_board_is_placed_and_certified() {
+  // The accept branch of the inside-ness rule, which the refusal tests above pin only from the other
+  // side. A part that is legitimately flush against the board's edge touches the boundary, so the
+  // kernel answers `Touching`, and the rule has to go on to prove the material is on the part's own
+  // side. Invert `INSET_STEP`'s sign and every refusal above stays green while a flush part silently
+  // stops being placed; this is the case that would notice.
+  //
+  // A 100 x 100 part on a 120 x 100 board: flush against the left, bottom and top edges, with its
+  // lower-left corner at the board's own corner.
+  let sheet = board(120.0, 100.0);
+  let parts = [rect(100.0, 100.0)];
+
+  // The 10 mm gap is authored and changes nothing here: the gap is the room a cut needs between
+  // parts, never an inset of the board's own edges.
+  let plan = plan(&sheet, &parts, GAP, false, STEP);
+
+  assert_eq!(
+    placements(&plan),
+    vec![(0, 0, Point2::new(0.0, 0.0), NestRotation::None)],
+    "the flush part is placed at the board's own corner: {plan:?}"
+  );
+  assert_eq!(
+    plan.unplaced(),
+    &[] as &[usize],
+    "a flush part is not left over"
+  );
+  assert_eq!(plan.sheets_used(), 1, "and it opened exactly one board");
+
+  let footprint = outline(&plan, 0).bounds();
+  assert_eq!(
+    footprint.min,
+    Point2::new(0.0, 0.0),
+    "the placed footprint starts at the board's corner"
+  );
+  assert_eq!(
+    footprint.max,
+    Point2::new(100.0, 100.0),
+    "and measures the authored 100 x 100 part"
+  );
+
+  assert_eq!(
+    relation(outline(&plan, 0), &sheet, TOL),
+    Relation::Touching,
+    "the fixture is only a fixture if the placed part touches the board"
+  );
+  assert!(
+    plan.certifies(&sheet, GAP),
+    "the flush part is certified at the authored gap"
+  );
+}
+
+#[test]
+fn a_part_flush_against_an_l_boards_arm_is_placed_and_certified() {
+  // The same accept branch on a board that is not a rectangle, so the rule is pinned as "flush is
+  // legal" rather than "flush is legal on rectangles". The board is `el()`: a 100 x 40 bottom arm
+  // and a 40 x 100 left arm, with the 60 x 60 notch from (40, 40) to (100, 100) taken out of it, so
+  // 6400 mm² of material sit inside a 10000 mm² box. That notch is where the refusal test above puts
+  // a part; this one puts a part on the wall beside it.
+  //
+  //   part 0  a 10 x 100 strip along the left edge. Larger area, so it is placed first, and it is
+  //           what pushes part 1 off the board's own corner: the lattice's first column is blocked.
+  //   part 1  a 20 x 45 part anchored at (20, 0). Its right edge from y = 40 to y = 45 lies flush
+  //           against the left arm's inner wall — the boundary with the notch on its far side —
+  //           while its left, bottom and top edges are in the material. Touching the board is all the
+  //           kernel reports, so the only proof it is inside is the material being on its own side.
+  let sheet = el();
+  let parts = [rect(10.0, 100.0), rect(20.0, 45.0)];
+
+  // No gap between the parts: a 10 mm gap would grow part 0's no-fit region over the anchor at
+  // x = 20, and the subject here is the board's boundary, not the gap between neighbours. The two
+  // parts still end up 10 mm apart, which is a distance rather than a contact.
+  let plan = plan(&sheet, &parts, 0.0, false, STEP);
+
+  assert_eq!(
+    placements(&plan),
+    vec![
+      (0, 0, Point2::new(0.0, 0.0), NestRotation::None),
+      (1, 0, Point2::new(20.0, 0.0), NestRotation::None),
+    ],
+    "the strip takes the corner and the flush part is anchored one strip and one step along: {plan:?}"
+  );
+  assert_eq!(
+    plan.unplaced(),
+    &[] as &[usize],
+    "a flush part is not left over"
+  );
+  assert_eq!(plan.sheets_used(), 1, "and both parts share one board");
+
+  let footprint = outline(&plan, 1).bounds();
+  assert_eq!(
+    footprint.min,
+    Point2::new(20.0, 0.0),
+    "the flush part's footprint starts at its own anchor"
+  );
+  assert_eq!(
+    footprint.max,
+    Point2::new(40.0, 45.0),
+    "and its right edge is the left arm's inner wall, the authored 20 x 45 part away"
+  );
+
+  assert_eq!(
+    relation(outline(&plan, 1), &sheet, TOL),
+    Relation::Touching,
+    "the fixture is only a fixture if the placed part touches the board"
+  );
+  assert!(
+    plan.certifies(&sheet, 0.0),
+    "the flush part is certified against the L's material"
+  );
+}
+
+#[test]
+fn a_flush_part_one_inset_step_past_the_edge_is_refused() {
+  // The boundary in the other direction, so nothing above can be satisfied by loosening the rule:
+  // the same parts, one `INSET_STEP` past the edge they were flush against. A hundredth of a
+  // millimetre is the whole distance between the two outcomes, which is what makes this pair a
+  // boundary instead of two unrelated fixtures.
+
+  // The rectangle: the 100 x 100 part of the first case, on a board one inset step narrower, pokes
+  // 0.01 mm past the right edge.
+  let rectangular = board(120.0, 100.0);
+  let parts = [rect(100.0, 100.0)];
+  let flush = plan(&rectangular, &parts, GAP, false, STEP);
+  assert!(
+    flush.certifies(&rectangular, GAP),
+    "the fixture is certified while it is flush: {flush:?}"
+  );
+  // Exactly as wide as the part is still flush, and still certified: the accepted side of the
+  // boundary is contact, not a clearance.
+  assert!(
+    flush.certifies(&board(100.0, 100.0), GAP),
+    "a part exactly as large as the board sits flush on all four edges and is certified"
+  );
+
+  let narrow = board(100.0 - INSET_STEP, 100.0);
+  let past = plan(&narrow, &parts, GAP, false, STEP);
+  assert_eq!(
+    placements(&past),
+    vec![],
+    "0.01 mm past the edge is not a placement: {past:?}"
+  );
+  assert_eq!(
+    past.unplaced(),
+    &[0],
+    "the packer reports the part instead of squeezing it in"
+  );
+  assert_eq!(past.sheets_used(), 0, "and it opens no board");
+  assert!(
+    !flush.certifies(&narrow, GAP),
+    "the certificate that accepted the flush part refuses the same 0.01 mm past the edge"
+  );
+
+  // The L: the same two parts, with the board moved one inset step to the left, so the flush part's
+  // right edge sits 0.01 mm inside the notch instead of against the wall. Moving the board and
+  // pushing the part are the same geometry; moving the board is the half a test can state without
+  // describing a placement the packer would never make.
+  let l_sheet = el();
+  let l_parts = [rect(10.0, 100.0), rect(20.0, 45.0)];
+  let flush = plan(&l_sheet, &l_parts, 0.0, false, STEP);
+  assert!(
+    flush.certifies(&l_sheet, 0.0),
+    "the L fixture is certified at the wall: {flush:?}"
+  );
+  let shifted =
+    transform::translate(&l_sheet, Vec2::new(-INSET_STEP, 0.0)).expect("a translated board");
+  assert!(
+    !flush.certifies(&shifted, 0.0),
+    "a part one inset step past the left arm's inner wall is outside the material"
+  );
 }
 
 #[test]
