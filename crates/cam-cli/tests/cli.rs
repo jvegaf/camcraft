@@ -9,8 +9,9 @@ use std::process::Command;
 
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
-  ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer, Operation,
-  PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath, VCarveParams,
+  ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer,
+  MouldingProfilePoint, Operation, PocketParams, PocketStrategy, ProfileParams, ProfileSide,
+  RetractMode, Toolpath, VCarveParams,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -6221,5 +6222,567 @@ fn a_circle_v_carve_authored_through_the_cli_emits_the_golden_program() {
     author_and_emit_v_carve(&directory, &document, &library),
     GOLDEN_V_CARVE_CIRCLE
   );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- Moulding (M8 T6; S3, S4) -------------------------------------------------------------------
+
+/// One `toolpath --kind moulding` invocation with the cross-section the tests share.
+///
+/// The rail is `E1` (the selected entity, as every kind names its geometry) and the profile is the
+/// three-point cross-section the flags carry. `--stepover` is left to the caller, so the library
+/// fallback and its refusal can both be reached.
+fn author_moulding(document: &Path, library: &Path, extra: &[&str]) -> Outcome {
+  let mut arguments = vec![
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "moulding",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+    "--profile",
+    "0:0",
+    "--profile",
+    "6:-4",
+    "--profile",
+    "12:0",
+  ];
+  arguments.extend_from_slice(extra);
+  run(&arguments)
+}
+
+#[test]
+fn the_help_lists_the_moulding_kind_its_profile_flag_and_its_exit_codes() {
+  // S4's contract at the CLI's own door: the kind is listed with the others, its one authored-geometry
+  // flag is documented, the help says what it takes no flag for, and the exit code every refusal uses
+  // is stated.
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "inlay or thread (required); a moulding sweeps an authored cross-section",
+    "--profile <lateral:depth>",
+    "pocket, inlay, moulding: ring, row or pass spacing",
+    "takes no depth or tolerance flag",
+    "2   invalid input",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected:?}:\n{}",
+      outcome.stdout
+    );
+  }
+}
+
+#[test]
+fn a_moulding_authored_through_the_cli_stores_the_cross_section_and_the_stepover() {
+  // S3 through the contract (S4): the rail is the selection, the profile is (lateral, depth) points the
+  // flags carry in order, and the stepover is the number the flag names. All three reach the document,
+  // because `emit` recomputes the sweep from the document alone.
+  let directory = scratch("moulding-author");
+  let document = write_vectors(
+    &directory,
+    "moulding.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let added = author_moulding(&document, &library, &["--stepover", "2"]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  assert_eq!(
+    added.stdout, "added TP1 moulding (3 points, 2 mm stepover), tool T1, 1 entity(ies)\n",
+    "{}",
+    added.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  assert_eq!(loaded.toolpaths.len(), 1);
+  assert_eq!(loaded.toolpaths[0].id, "TP1");
+  assert_eq!(loaded.toolpaths[0].name, "Moulding 1");
+  assert_eq!(loaded.toolpaths[0].entity_ids, vec!["E1".to_owned()]);
+  assert!(
+    loaded.toolpaths[0].island_ids.is_empty(),
+    "a moulding leaves nothing standing"
+  );
+  match &loaded.toolpaths[0].operation {
+    Operation::Moulding(params) => {
+      assert_eq!(
+        params.profile,
+        vec![
+          MouldingProfilePoint {
+            lateral: Length::from_mm(0.0),
+            depth: Length::ZERO,
+          },
+          MouldingProfilePoint {
+            lateral: Length::from_mm(6.0),
+            depth: Length::from_mm(-4.0),
+          },
+          MouldingProfilePoint {
+            lateral: Length::from_mm(12.0),
+            depth: Length::ZERO,
+          },
+        ],
+        "the cross-section the flags named, in the order they named it"
+      );
+      assert_eq!(params.stepover, Length::from_mm(2.0));
+    }
+    other => panic!("expected a moulding, got {other:?}"),
+  }
+  assert!(loaded.validate().is_ok(), "and the document is valid");
+
+  // `inspect` names the kind and its parameters.
+  let inspected = run(&["inspect", document.to_str().expect("utf8")]);
+  assert_eq!(inspected.code, 0, "{}", inspected.stderr);
+  let expected = "\
+schema: c2d/document@2
+job: 200.000 x 100.000 x 18.000 mm, origin BottomLeft, safe Z 5.000 mm
+layers: 1
+  L1 \"Vectors\": 1 entity(ies), visible true
+toolpaths: 1
+  TP1 \"Moulding 1\": moulding (3 points, 2 mm stepover), tool T1, 1 entity(ies)
+geometry length: 140.000 mm
+";
+  assert_eq!(inspected.stdout, expected);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_is_byte_identical_across_runs_and_emits_a_stable_program() {
+  // S5's determinism at the new command: the same document and the same flags produce the same bytes,
+  // and the program the document emits is the same bytes on every run.
+  let directory = scratch("moulding-determinism");
+  let first = write_vectors(&directory, "first.c2d", vec![rectangle_contour(40.0, 30.0)]);
+  let second = write_vectors(
+    &directory,
+    "second.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let one = author_moulding(&first, &library, &["--stepover", "2"]);
+  assert_eq!(one.code, 0, "{}", one.stderr);
+  let two = author_moulding(&second, &library, &["--stepover", "2"]);
+  assert_eq!(two.code, 0, "{}", two.stderr);
+  assert_eq!(one.stdout, two.stdout, "the same report, byte for byte");
+  assert_eq!(
+    std::fs::read(&first).expect("read"),
+    std::fs::read(&second).expect("read"),
+    "the same document, byte for byte"
+  );
+
+  let post = write_post(&directory);
+  let program = emit_program(&directory, &first, &library, &post);
+  assert!(
+    program.contains("G01X"),
+    "a moulding is a program of lateral feeds: {program}"
+  );
+  assert_eq!(
+    emit_program(&directory, &first, &library, &post),
+    program,
+    "the emitted program, byte for byte"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_moulding_appends_the_next_id_and_name_and_honours_id_name_and_out() {
+  // Append-and-reload: a second run appends `TP2` with the ordinal in its name instead of colliding,
+  // and `--id`, `--name` and `--out` name what the user asked for without touching the source.
+  let directory = scratch("moulding-append");
+  let document = write_vectors(
+    &directory,
+    "moulding.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+
+  let first = author_moulding(&document, &library, &["--stepover", "2"]);
+  assert_eq!(first.code, 0, "{}", first.stderr);
+  let second = author_moulding(&document, &library, &["--stepover", "2"]);
+  assert_eq!(second.code, 0, "{}", second.stderr);
+  assert_eq!(
+    second.stdout, "added TP2 moulding (3 points, 2 mm stepover), tool T1, 1 entity(ies)\n",
+    "{}",
+    second.stdout
+  );
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let ids: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.id.as_str())
+    .collect();
+  assert_eq!(
+    ids,
+    vec!["TP1", "TP2"],
+    "deterministic ids, in append order"
+  );
+  let names: Vec<&str> = loaded
+    .toolpaths
+    .iter()
+    .map(|toolpath| toolpath.name.as_str())
+    .collect();
+  assert_eq!(names, vec!["Moulding 1", "Moulding 2"]);
+
+  // `--id`, `--name` and `--out`: the named toolpath goes to the named file, and the source keeps
+  // exactly the two toolpaths it had.
+  let before = std::fs::read(&document).expect("read");
+  let out = directory.join("copy.c2d");
+  let named = author_moulding(
+    &document,
+    &library,
+    &[
+      "--stepover",
+      "2",
+      "--id",
+      "TP7",
+      "--name",
+      "Crown moulding",
+      "--out",
+      out.to_str().expect("utf8"),
+    ],
+  );
+  assert_eq!(named.code, 0, "{}", named.stderr);
+  assert_eq!(
+    named.stdout, "added TP7 moulding (3 points, 2 mm stepover), tool T1, 1 entity(ies)\n",
+    "{}",
+    named.stdout
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "--out writes the named file, not the source"
+  );
+  let copied = cam_store::document::load_document(&out).expect("loads");
+  assert_eq!(copied.toolpaths.len(), 3);
+  assert_eq!(copied.toolpaths[2].id, "TP7");
+  assert_eq!(copied.toolpaths[2].name, "Crown moulding");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_refuses_every_flag_it_has_no_meaning_for_by_name() {
+  // S3 fixes the cutting law: the rail, the cross-section and the stepover. Every other flag names a
+  // different law, and accepting one would mean ignoring it — a `--cut-depth 5` nobody applied still
+  // looks applied. Each is refused by name, and a refusal writes nothing.
+  let directory = scratch("moulding-refusals");
+  let library = write_library(&directory);
+  for (flag, value) in [
+    ("--cut-depth", "5"),
+    ("--start-depth", "1"),
+    ("--pass-depth", "2"),
+    ("--allowance", "0.5"),
+    ("--side", "inside"),
+    ("--tab", "0.5:2:1"),
+    ("--lead-in", "3"),
+    ("--lead-out", "3"),
+    ("--ramp", "2"),
+    ("--spacing", "3"),
+    ("--angle", "30"),
+    ("--pitch", "1.5"),
+    ("--thread-direction", "external"),
+    ("--chamfer-width", "3"),
+    ("--inlay-allowance", "0.1"),
+    ("--strategy", "raster"),
+    ("--tolerance", "0.5"),
+    ("--peck-depth", "2"),
+    ("--retract", "full"),
+    ("--retract-amount", "1"),
+    ("--bank", "2:10"),
+  ] {
+    let document = write_vectors(
+      &directory,
+      "refused.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let outcome = author_moulding(&document, &library, &["--stepover", "2", flag, value]);
+    assert_eq!(
+      outcome.code, 2,
+      "{flag}: {}{}",
+      outcome.stdout, outcome.stderr
+    );
+    assert!(
+      outcome.stdout.is_empty(),
+      "{flag}: a refused toolpath reports nothing as added: {}",
+      outcome.stdout
+    );
+    assert!(
+      outcome.stderr.contains(flag),
+      "{flag} is named by the refusal: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains("takes no"),
+      "{flag} is refused as a flag this kind has no meaning for: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{flag}: a refused toolpath writes nothing"
+    );
+  }
+
+  // `--clear` takes no value, so it is its own run.
+  let document = write_vectors(&directory, "clear.c2d", vec![rectangle_contour(40.0, 30.0)]);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = author_moulding(&document, &library, &["--stepover", "2", "--clear"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stdout);
+  assert!(
+    outcome.stderr.contains("--clear") && outcome.stderr.contains("takes no"),
+    "{}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_without_a_cross_section_exits_two_naming_the_profile_flag() {
+  // A cross-section needs two points: one point sweeps nothing and no point is no profile at all. The
+  // flag is named, not the document model's invariant, because it is the command the user typed.
+  let directory = scratch("moulding-profile-refused");
+  let library = write_library(&directory);
+  for extra in [
+    vec!["--stepover", "2"],
+    vec!["--stepover", "2", "--profile", "0:0"],
+    vec!["--stepover", "2", "--profile", "6"],
+  ] {
+    let document = write_vectors(
+      &directory,
+      "profile.c2d",
+      vec![rectangle_contour(40.0, 30.0)],
+    );
+    let before = std::fs::read(&document).expect("read");
+    let mut arguments = vec![
+      "toolpath",
+      document.to_str().expect("utf8"),
+      "--kind",
+      "moulding",
+      "--entities",
+      "E1",
+      "--tool",
+      "1",
+      "--library",
+      library.to_str().expect("utf8"),
+    ];
+    arguments.extend_from_slice(&extra);
+    let outcome = run(&arguments);
+    assert_eq!(outcome.code, 2, "{extra:?}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains("--profile"),
+      "{extra:?}: the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(&document).expect("read"),
+      before,
+      "{extra:?}: a refused toolpath writes nothing"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_stepover_that_is_not_a_length_exits_two_naming_the_flag() {
+  let directory = scratch("moulding-stepover-refused");
+  let document = write_vectors(
+    &directory,
+    "stepover.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+  for stepover in ["0", "-2"] {
+    let outcome = author_moulding(&document, &library, &["--stepover", stepover]);
+    assert_eq!(outcome.code, 2, "{stepover}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains("--stepover"),
+      "{stepover}: the refusal names the flag: {}",
+      outcome.stderr
+    );
+    assert_eq!(std::fs::read(&document).expect("read"), before);
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_whose_laterals_do_not_increase_exits_two_naming_the_point() {
+  // A cross-section is one depth per lateral distance: a lateral that does not exceed the one before it
+  // is two depths for the same place. The command asks the real strategy before it writes anything, so
+  // the refusal arrives here instead of at a later `emit`.
+  let directory = scratch("moulding-laterals");
+  let document = write_vectors(
+    &directory,
+    "laterals.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "moulding",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+    "--profile",
+    "0:0",
+    "--profile",
+    "12:-4",
+    "--profile",
+    "6:0",
+    "--stepover",
+    "2",
+  ]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("moulding profile point 2")
+      && outcome
+        .stderr
+        .contains("must be greater than the previous 12"),
+    "the refusal names the offending point and the lateral before it: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing: the file is byte-identical"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_takes_its_stepover_from_the_library_and_refuses_when_it_has_none() {
+  // The stepover falls back to the tool's own, exactly the way a pocket's and a texture's do, and its
+  // absence is an input error naming the flag rather than a defaulted spacing.
+  let directory = scratch("moulding-stepover-library");
+  let with_stepover = write_vectors(
+    &directory,
+    "library.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let stored = write_small_tool_library(&directory);
+
+  let added = author_moulding(&with_stepover, &stored, &[]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+  let loaded = cam_store::document::load_document(&with_stepover).expect("loads");
+  match &loaded.toolpaths[0].operation {
+    Operation::Moulding(params) => assert_eq!(
+      params.stepover,
+      Length::from_mm(1.0),
+      "the library's own stepover"
+    ),
+    other => panic!("expected a moulding, got {other:?}"),
+  }
+
+  let without = write_vectors(
+    &directory,
+    "no-stepover.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let bare = write_library(&directory);
+  let before = std::fs::read(&without).expect("read");
+  let refused = author_moulding(&without, &bare, &[]);
+  assert_eq!(refused.code, 2, "{}", refused.stdout);
+  assert!(
+    refused.stderr.contains("--stepover") && refused.stderr.contains("no stepover for that tool"),
+    "the refusal names the flag and what is missing: {}",
+    refused.stderr
+  );
+  assert_eq!(std::fs::read(&without).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_profile_flag_belongs_to_the_moulding_kind_and_is_refused_by_name_elsewhere() {
+  // The new flag is named where it means nothing, so a `--profile` nobody applied never looks applied —
+  // the same rule `--islands` already follows.
+  let directory = scratch("moulding-profile-only");
+  let document = write_vectors(
+    &directory,
+    "vcarve.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_vcarve_library(&directory, "vcarve-tools.sqlite", 90.0, 0.0);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "vcarve",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+    "--profile",
+    "0:0",
+  ]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("--profile")
+      && outcome.stderr.contains("only valid with --kind moulding"),
+    "the refusal names the flag and the kind it belongs to: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused toolpath writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_unknown_toolpath_kind_still_exits_two_and_lists_the_kinds() {
+  // PRESERVE: the kind list is a contract too. It gained moulding and every earlier kind is still
+  // there, still refused by that name and still writing nothing.
+  let directory = scratch("moulding-unknown-kind");
+  let document = write_vectors(
+    &directory,
+    "unknown.c2d",
+    vec![rectangle_contour(40.0, 30.0)],
+  );
+  let library = write_library(&directory);
+  let before = std::fs::read(&document).expect("read");
+  let outcome = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "moulded",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("unknown toolpath kind \"moulded\""),
+    "{}",
+    outcome.stderr
+  );
+  for kind in [
+    "profile", "pocket", "drilling", "vcarve", "thread", "moulding",
+  ] {
+    assert!(
+      outcome.stderr.contains(kind),
+      "the refusal lists {kind}: {}",
+      outcome.stderr
+    );
+  }
+  assert_eq!(std::fs::read(&document).expect("read"), before);
   std::fs::remove_dir_all(&directory).ok();
 }
