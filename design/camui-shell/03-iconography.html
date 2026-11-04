@@ -8,19 +8,19 @@
     --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b;
     --bg-overlay:#232a32; --line-hair:#262d36; --line-strong:#35404c;
     --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
-    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    --sel:#6fd3e8; --sel-soft:rgba(105,202,225,.13); --cut:#f5a623; --cut-soft:rgba(240,165,30,.13);
     --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;background:#0a0c0f;color:var(--text);font-family:var(--f);font-size:13px;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;background:var(--bg-canvas);color:var(--text);font-family:var(--f);font-size:13px;-webkit-font-smoothing:antialiased}
   .board{width:1440px;margin:0 auto;padding:28px 32px 56px}
   h1{font-size:28px;font-weight:600;letter-spacing:-.015em;color:var(--text-hi);margin:0 0 6px}
   .lede{color:var(--text-dim);max-width:78ch;margin:0 0 22px}
   .lede b{color:var(--text);font-weight:500}
   h2{font-size:15px;font-weight:600;color:var(--text-hi);margin:30px 0 4px;display:flex;align-items:baseline;gap:10px}
   h2 .n{font-size:11px;color:var(--text-off);font-weight:500;letter-spacing:.08em;font-family:var(--mono)}
-  h2 .hint{margin-left:auto;font-size:11px;color:var(--text-off);font-weight:400;letter-spacing:0}
+  h2 .hint{margin-left:auto;font-size:11px;color:var(--text-dim);font-weight:400;letter-spacing:0}
   /* Families as cards: the layout of 02-stages, in the tokens of design/system.md. */
   .fam{background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;padding:14px 16px 12px;margin-top:10px}
   .fam header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
@@ -44,12 +44,12 @@
   .proof{display:flex;gap:28px;align-items:flex-end;background:var(--bg-panel);border:1px solid var(--line-hair);
     border-radius:6px;padding:18px 22px;margin-top:12px}
   .proof figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:8px}
-  .proof figcaption{font-size:10px;color:var(--text-off);font-family:var(--mono)}
+  .proof figcaption{font-size:10px;color:var(--text-dim);font-family:var(--mono)}
   .rail{display:flex;flex-direction:column;gap:4px;background:var(--bg-app);border:1px solid var(--line-hair);
     border-radius:6px;padding:6px;width:44px;align-items:center}
   .rail .rb{width:32px;height:32px;display:grid;place-items:center;border-radius:4px;color:var(--text)}
   .rail .rb.on{background:var(--sel-soft);border:1px solid var(--sel);color:var(--sel)}
-  .rail .rb svg{width:18px;height:18px}
+  .rail .rb svg{width:20px;height:20px;stroke-width:1.6}
   .rail .sep{width:20px;height:1px;background:var(--line-hair);margin:3px 0}
   .anat{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
   .anat .card{background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;padding:16px 18px}
@@ -106,15 +106,16 @@
         </div>
         <div style="font-size:11px;color:var(--text-dim);line-height:1.8">
           <div><code>line</code> — the simplest icon in the set, at 5×</div>
-          <div style="color:var(--text-off)">dashed square = safe area (2 px inset)</div>
-          <div style="color:var(--text-off)">crosshair = centre and optical axis</div>
+          <div style="color:var(--text-dim)">dashed square = safe area (2 px inset)</div>
+          <div style="color:var(--text-dim)">crosshair = centre and optical axis</div>
         </div>
       </div>
     </div>
     <div class="card">
       <h3>At real sizes</h3>
-      <p>The rail renders at 18 px; zoom-dependent overlays may need 16. Both are cut, not scaled down from a
-      detailed drawing: no icon carries a detail that dies below 18 px.</p>
+      <p>The rail renders at 20 px inside its 32 × 32 target; the app bar takes 18, and zoom-dependent overlays
+      may need 16. All three are cut, not scaled down from a detailed drawing: no icon carries a detail that dies
+      below 16 px.</p>
       <div class="proof" style="border:0;padding:10px 0;background:transparent">
         <figure><svg class="i" viewBox="0 0 24 24" style="width:48px;height:48px"><path d="M3 9.5l9-4.5 9 4.5-9 4.5z"/><path d="M3 9.5v5l9 4.5 9-4.5v-5"/></svg><figcaption>48</figcaption></figure>
         <figure><svg class="i" viewBox="0 0 24 24" style="width:26px;height:26px"><path d="M3 9.5l9-4.5 9 4.5-9 4.5z"/><path d="M3 9.5v5l9 4.5 9-4.5v-5"/></svg><figcaption>26</figcaption></figure>
@@ -209,7 +210,7 @@
   </section>
 
     <section class="fam">
-    <header><b>View, document, display</b><span class="n">16</span><p>Looking at the job, naming it and choosing the light. The four at the end belong to the frame, not to the commands.</p></header>
+    <header><b>View, document, display</b><span class="n">17</span><p>Looking at the job, naming it and choosing the light. The four at the end belong to the frame, not to the commands.</p></header>
     <div class="grid">
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/><rect x="8" y="8" width="8" height="8" rx="1" opacity=".5"/></svg><span class="nm">zoom-fit</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/><rect x="8" y="8" width="5" height="5" opacity=".55"/></svg><span class="nm">zoom-selection</span></div>
@@ -220,6 +221,7 @@
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span class="nm">locked</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1.5" opacity=".5"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7" opacity=".5"/></svg><span class="nm">unlocked</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.3"/><path d="M12 17.4v.2"/></svg><span class="nm">help</span></div>
+    <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="7" height="6" rx="1.5"/><rect x="14" y="5" width="7" height="6" rx="1.5"/><rect x="6" y="14" width="12" height="5" rx="1.5"/></svg><span class="nm">shortcuts</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 15l3-6 3 4 2-2 2 4"/></svg><span class="nm">view-2d</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg><span class="nm">view-3d</span></div>
     <div class="cell"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" fill-opacity=".22"/></svg><span class="nm">theme-auto</span></div>
@@ -244,12 +246,12 @@
     </div>
   </section>
 
-  <h2><span class="n">COUNT</span> 70 icons across six families</h2>
+  <h2><span class="n">COUNT</span> 71 icons across six families</h2>
   <p class="lede" style="margin-top:-4px">The last four — <code style="font-family:var(--mono);font-size:12px">undo</code>,
   <code style="font-family:var(--mono);font-size:12px">redo</code>,
   <code style="font-family:var(--mono);font-size:12px">theme-light</code> and
   <code style="font-family:var(--mono);font-size:12px">theme-dark</code> — were added when the app bar was built: the
-  vocabulary has to cover the frame that uses it, or the shell invents a glyph at the call site. The other sixty-six
+  vocabulary has to cover the frame that uses it, or the shell invents a glyph at the call site. The other sixty-seven
   are the commands.</p>
   <div class="anat">
     <div class="card"><h3>What the set refuses</h3>
