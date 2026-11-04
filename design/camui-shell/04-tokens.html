@@ -5,268 +5,565 @@
 <title>Campilot — visual tokens</title>
 <style>
   :root {
-    /* graphite neutrals — dark (default) */
-    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b;
-    --bg-overlay:#232a32; --line-hair:#262d36; --line-strong:#35404c;
+    /* the graphite neutrals — dark (default) */
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
+    --line-hair:#262d36; --line-strong:#35404c;
     --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
-    /* signals */
-    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    /* the two signals, and the three verdicts. The washes are the signal premultiplied in theme.rs —
+       SelSoft 0x0e,0x1b,0x1e,0x22 and CutSoft 0x20,0x16,0x04,0x22 — with the channels divided by the
+       alpha; the light set is 0x02,0x0d,0x0f,0x18 and 0x11,0x0a,0x00,0x14, on paper. */
+    --sel:#6fd3e8; --sel-soft:rgba(105,202,225,.13); --cut:#f5a623; --cut-soft:rgba(240,165,30,.13);
     --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
     /* type */
-    --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f:Inter,"Inter UI",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
     --t-cap:11px; --t-sec:12px; --t-body:13px; --t-title:15px; --t-dialog:20px; --t-hero:28px;
     /* geometry */
     --r-ctl:4px; --r-panel:6px; --r-dialog:10px; --r-pill:999px;
     --s1:2px; --s2:4px; --s3:6px; --s4:8px; --s5:12px; --s6:16px; --s7:24px; --s8:32px;
-    --ctl-h:24px; --row-h:26px; --bar-h:40px; --rail-w:52px; --dock-w:288px; --status-h:26px;
+    --ctl-h:24px; --row-h:26px; --bar-h:40px; --status-h:26px; --ruler-h:22px; --brand-h:62px;
+    --rail-w:200px; --dock-w:288px;
   }
+  /* the light set, so both sets can be argued on one board */
   .light {
     --bg-app:#eef1f5; --bg-canvas:#f7f9fb; --bg-panel:#ffffff; --bg-raised:#f2f5f8;
     --bg-overlay:#ffffff; --line-hair:#dde3ea; --line-strong:#c3ccd6;
     --text-hi:#12181f; --text:#2b3440; --text-dim:#5f6b7a; --text-off:#8b95a3;
-    --sel:#0d7c92; --sel-soft:#0d7c9218; --cut:#a86200; --cut-soft:#a8620014;
+    --sel:#0d7c92; --sel-soft:rgba(21,138,159,.09); --cut:#a86200; --cut-soft:rgba(217,128,0,.08);
     --ok:#1f7a43; --warn:#96610a; --danger:#b3342f;
   }
   * { box-sizing:border-box; }
-  html, body { margin:0; background:#0a0c0f; color:var(--text); font-family:var(--f);
+  html, body { margin:0; background:var(--bg-app); color:var(--text); font-family:var(--f);
     font-size:var(--t-body); -webkit-font-smoothing:antialiased; }
-  .board { width:1440px; margin:0 auto; padding:28px 32px 56px; }
+  main { width:1440px; margin:0 auto; padding:28px 32px 40px; }
+  :focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
   h1 { font-size:var(--t-hero); font-weight:600; letter-spacing:-.015em; color:var(--text-hi); margin:0 0 6px; }
-  .lede { color:var(--text-dim); max-width:74ch; margin:0 0 4px; }
+  .lede { color:var(--text-dim); max-width:96ch; margin:0; line-height:1.65; }
   .lede b { color:var(--text); font-weight:500; }
   h2 { font-size:var(--t-title); font-weight:600; color:var(--text-hi); margin:36px 0 12px;
        display:flex; align-items:center; gap:10px; }
   h2::after { content:""; flex:1; height:1px; background:var(--line-hair); }
-  h2 .n { font-size:var(--t-cap); color:var(--text-off); font-weight:500; letter-spacing:.08em; }
+  h2 .n { font-size:var(--t-cap); color:var(--text-off); font-weight:400; letter-spacing:.08em;
+       font-family:var(--mono); border:1px solid var(--line-hair); border-radius:var(--r-ctl); padding:1px 6px; }
+  h2 .src { order:2; font-family:var(--mono); font-size:var(--t-cap); font-weight:400; color:var(--text-off); }
   .cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   .card { background:var(--bg-panel); border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:16px 18px; }
   .card h3 { margin:0 0 2px; font-size:var(--t-body); font-weight:600; color:var(--text-hi); }
-  .card .sub { color:var(--text-off); font-size:var(--t-cap); margin-bottom:14px; }
-  .sw { display:flex; align-items:center; gap:10px; padding:3px 0; }
-  .chip { width:46px; height:26px; border-radius:var(--r-ctl); border:1px solid var(--line-strong); flex:none; }
-  .sw code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:var(--t-cap);
-             color:var(--text-hi); min-width:92px; }
-  .sw .v { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:var(--t-cap);
-           color:var(--text-dim); min-width:74px; font-variant-numeric:tabular-nums; }
-  .sw .u { font-size:var(--t-cap); color:var(--text-off); }
-  .signals { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:12px; }
-  .sig { border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:12px 14px; background:var(--bg-panel); }
-  .sig .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:8px; vertical-align:1px; }
+  .card .sub { color:var(--text-dim); font-size:var(--t-cap); margin:0 0 14px; line-height:1.55; }
+  .card .note { margin:12px 0 0; padding-top:10px; border-top:1px solid var(--line-hair);
+    font-size:var(--t-cap); color:var(--text-dim); line-height:1.55; }
+  .card code, .sig code, .state code { font-family:var(--mono); font-size:var(--t-cap); color:var(--text); }
+  /* swatch rows */
+  .sw { display:grid; grid-template-columns:48px 92px 128px 1fr; align-items:center; gap:10px;
+    padding:3px 0; font-size:var(--t-cap); }
+  .chipbox { width:48px; height:20px; border-radius:var(--r-ctl); border:1px solid var(--line-strong);
+    flex:none; position:relative; overflow:hidden; display:block; }
+  .chipbox .wash { position:absolute; top:0; bottom:0; left:50%; right:0; }
+  .sw .nm { font-family:var(--mono); color:var(--text); }
+  .sw .v { font-family:var(--mono); color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  .sw .u { color:var(--text-dim); }
+  /* signal cards */
+  .signals { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .verdicts { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
+  .sig { border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:14px 16px; background:var(--bg-panel); }
+  .sig .top { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .sig .dot { width:14px; height:14px; border-radius:50%; display:inline-block; flex:none; }
   .sig b { color:var(--text-hi); font-weight:600; font-size:var(--t-sec); }
-  .sig p { margin:6px 0 0; font-size:var(--t-cap); color:var(--text-dim); }
-  .sig code { font-family:ui-monospace, Menlo, monospace; color:var(--text-dim); }
+  .sig p { margin:6px 0 0; font-size:var(--t-cap); color:var(--text-dim); line-height:1.55; }
+  .sig .big { height:38px; border-radius:var(--r-ctl); border:1px solid var(--line-strong); margin:10px 0 8px; }
+  .sig .washrow { display:flex; align-items:center; gap:8px; font-size:var(--t-cap); color:var(--text-dim); }
+  .sig .washbox { width:56px; height:20px; border-radius:var(--r-ctl); border:1px solid var(--line-strong);
+    background:var(--bg-panel); position:relative; overflow:hidden; flex:none; }
+  .sig .washbox span { position:absolute; inset:0; }
+  /* stock ramp */
+  .ramp { height:64px; border-radius:var(--r-ctl); border:1px solid var(--line-strong); }
+  .rampline { display:flex; align-items:center; gap:10px; margin-top:10px; font-size:var(--t-cap); color:var(--text-dim); }
+  .rampedge { width:2px; height:26px; background:var(--line-strong); display:inline-block; }
+  /* type table */
   table.type { width:100%; border-collapse:collapse; }
-  table.type td { padding:6px 0; border-bottom:1px solid var(--line-hair); vertical-align:baseline; }
-  table.type td:first-child { width:140px; color:var(--text-off); font-size:var(--t-cap);
-    font-family:ui-monospace, Menlo, monospace; }
-  table.type td:last-child { color:var(--text-off); font-size:var(--t-cap); }
-  .grid-ruler { display:flex; gap:6px; align-items:flex-end; margin-top:8px; }
-  .grid-ruler div { background:var(--sel-soft); border:1px solid var(--line-strong);
-    border-radius:2px; text-align:center; font-size:9px; color:var(--text-dim); line-height:1; padding-top:4px; }
-  .specs { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  table.type caption { text-align:left; font-size:var(--t-cap); color:var(--text-dim); padding:0 0 8px; }
+  table.type th { text-align:left; font-size:var(--t-cap); font-weight:400; font-family:var(--mono);
+    color:var(--text-off); border-bottom:1px solid var(--line-hair); padding:0 12px 6px 0; }
+  table.type td { padding:7px 12px 7px 0; border-bottom:1px solid var(--line-hair); vertical-align:baseline; }
+  table.type tr:last-child td { border-bottom:0; }
+  table.type td:first-child { width:146px; color:var(--text-off); font-size:var(--t-cap); font-family:var(--mono); }
+  table.type td:last-child { width:230px; color:var(--text-dim); font-size:var(--t-cap); text-align:right; }
+  /* numbers */
+  table.nums { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:var(--t-sec);
+    font-variant-numeric:tabular-nums; }
+  table.nums th { text-align:right; font-weight:400; font-size:var(--t-cap); color:var(--text-off);
+    border-bottom:1px solid var(--line-hair); padding:0 0 6px; }
+  table.nums th:first-child { text-align:left; }
+  table.nums td { text-align:right; padding:5px 0; border-bottom:1px solid var(--line-hair); color:var(--text-hi); }
+  table.nums td:first-child { text-align:left; color:var(--text-dim); }
+  table.nums tr:last-child td { border-bottom:0; }
+  /* geometry */
+  .specs { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .spec { background:var(--bg-raised); border:1px solid var(--line-hair); border-radius:var(--r-panel); padding:12px 14px; }
   .spec b { display:block; color:var(--text-hi); font-size:var(--t-sec); margin-bottom:4px; }
-  .spec span { font-family:ui-monospace, Menlo, monospace; font-size:var(--t-cap); color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  .spec .v { font-family:var(--mono); font-size:var(--t-cap); color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  .ladder { display:flex; align-items:flex-end; gap:8px; margin-top:12px; }
+  .ladder div { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:4px;
+    font-family:var(--mono); font-size:var(--t-cap); color:var(--text-dim); }
+  .ladder i { background:var(--sel-soft); border:1px solid var(--line-strong); border-radius:2px; display:block; }
+  .radii { display:flex; align-items:flex-end; gap:10px; margin-top:12px; }
+  .radii div { text-align:center; font-family:var(--mono); font-size:var(--t-cap); color:var(--text-dim); }
+  .radii i { display:block; width:30px; height:30px; background:var(--bg-overlay); border:1px solid var(--line-strong);
+    margin-bottom:4px; }
+  .dims { margin-top:12px; display:flex; flex-direction:column; gap:7px; }
+  .dims div { display:grid; grid-template-columns:132px 1fr 42px; align-items:center; gap:10px;
+    font-family:var(--mono); font-size:var(--t-cap); color:var(--text-dim); }
+  .dims i { height:8px; background:var(--sel-soft); border:1px solid var(--line-strong); border-radius:2px; display:block; }
+  .dims span:last-child { text-align:right; color:var(--text-hi); font-variant-numeric:tabular-nums; }
+  /* component states */
   .states { display:flex; flex-wrap:wrap; gap:26px; align-items:flex-start; }
   .stack { display:flex; flex-direction:column; gap:8px; }
   .stack .cap { font-size:var(--t-cap); color:var(--text-off); letter-spacing:.04em; text-transform:uppercase; }
   .btn { height:var(--ctl-h); padding:0 10px; border-radius:var(--r-ctl); border:1px solid var(--line-strong);
-    background:var(--bg-raised); color:var(--text-hi); font:inherit; font-size:var(--t-body); display:inline-flex;
-    align-items:center; gap:6px; }
-  .btn:hover { background:#252d36; }
-  .btn:focus-visible { outline:2px solid var(--sel); outline-offset:1px; }
+    background:transparent; color:var(--text-hi); font:inherit; font-size:var(--t-body); font-weight:500;
+    display:inline-flex; align-items:center; gap:6px; transition:background 120ms ease; }
+  .btn:hover:not([disabled]) { background:var(--bg-raised); }
+  .btn:focus-visible { outline:2px solid var(--sel); outline-offset:2px; }
   .btn[disabled] { color:var(--text-off); border-color:var(--line-hair); background:transparent; }
-  .btn.cut { background:var(--cut); border-color:var(--cut); color:#1a1206; font-weight:600; }
-  .btn.cut:hover { filter:brightness(1.06); }
-  .iconbtn { width:28px; height:28px; display:grid; place-items:center; border-radius:var(--r-ctl);
-    border:1px solid transparent; background:transparent; color:var(--text); }
-  .iconbtn svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6;
-    stroke-linecap:round; stroke-linejoin:round; }
+  .btn.cut { background:var(--cut); border-color:var(--cut); color:var(--bg-panel); }
+  .iconbtn { width:32px; height:32px; display:grid; place-items:center; border-radius:var(--r-ctl);
+    border:1px solid transparent; background:transparent; color:var(--text); padding:0;
+    transition:background 120ms ease; }
+  .iconbtn:hover { background:var(--bg-raised); color:var(--text-hi); }
   .iconbtn.on { background:var(--sel-soft); border-color:var(--sel); color:var(--sel); }
+  svg.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6;
+    stroke-linecap:round; stroke-linejoin:round; flex:none; }
   .field { display:inline-flex; align-items:center; height:var(--ctl-h); border:1px solid var(--line-strong);
     border-radius:var(--r-ctl); background:var(--bg-raised); font-variant-numeric:tabular-nums;
-    font-size:var(--t-body); color:var(--text-hi); padding:0 8px; min-width:78px; }
-  .field .u2 { color:var(--text-off); margin-left:auto; padding-left:8px; font-size:var(--t-cap); }
-  .pill { height:20px; padding:0 8px; border-radius:var(--r-pill); font-size:var(--t-cap);
-    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); color:var(--text-dim); }
-  .pill.on { color:var(--sel); border-color:var(--sel); background:var(--sel-soft); }
-  .row { display:flex; align-items:center; gap:8px; height:var(--row-h); padding:0 8px;
-    border-radius:var(--r-ctl); font-size:var(--t-body); color:var(--text); }
-  .row.hov { background:var(--bg-raised); }
-  .row.sel { background:var(--sel-soft); color:var(--text-hi); }
-  .swatchline { display:flex; align-items:center; gap:8px; font-size:var(--t-cap); color:var(--text-off); }
-  .swatchline i { width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid var(--line-strong); }
+    font-size:var(--t-body); color:var(--text-hi); padding:0 8px; min-width:96px; gap:10px; }
+  .field .u2 { color:var(--text-dim); margin-left:auto; padding-left:8px; font-size:var(--t-cap);
+    font-family:var(--f); }
+  .field.focus { outline:2px solid var(--sel); outline-offset:2px; }
+  .snav { height:18px; padding:0 7px; border-radius:9px; display:inline-flex; align-items:center;
+    font-size:var(--t-cap); color:var(--text-dim); border:1px solid transparent; background:transparent;
+    border-radius:var(--r-pill); transition:background 120ms ease; }
+  .snav.on { background:var(--sel-soft); border-color:var(--sel); color:var(--sel); }
+  .strip { display:flex; align-items:center; gap:10px; height:40px; padding:0 12px; background:var(--bg-panel);
+    border:1px solid var(--line-hair); border-radius:var(--r-ctl); }
+  .strip .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:var(--t-cap); color:var(--text); }
+  .strip .dim { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:var(--t-cap); color:var(--text-dim); }
+  .sep { width:1px; height:18px; background:var(--line-hair); }
+  .rail { width:var(--rail-w); background:var(--bg-panel); border:1px solid var(--line-hair);
+    border-radius:var(--r-panel); padding:6px 8px 8px; }
+  .head { display:flex; align-items:center; gap:8px; height:14px; margin:4px 0 0; font-size:var(--t-cap);
+    color:var(--text-dim); letter-spacing:.07em; padding-bottom:6px; border-bottom:1px solid var(--line-hair); }
+  .caret { width:0; height:0; border-top:3.5px solid transparent; border-bottom:3.5px solid transparent;
+    border-left:5px solid currentColor; flex:none; }
+  .caret.open { border-left:3.5px solid transparent; border-right:3.5px solid transparent;
+    border-top:5px solid currentColor; border-bottom:0; }
+  .rchip { display:grid; place-items:center; width:32px; height:32px; padding:0;
+    border-radius:var(--r-ctl); border:1px solid transparent; color:var(--text);
+    background:transparent; transition:background 120ms ease; }
+  .rchip svg { width:20px; height:20px; }
+  .rchip.hov { background:var(--bg-raised); color:var(--text-hi); }
+  .rchip.on { background:var(--sel-soft); border-color:var(--sel); color:var(--sel); }
+  .ribbon { width:var(--dock-w); background:var(--bg-panel); border:1px solid var(--line-hair);
+    border-radius:var(--r-panel); padding:8px 10px; }
+  .ribbon .rhead { display:flex; align-items:center; justify-content:space-between; font-size:var(--t-title);
+    font-weight:600; color:var(--text-hi); padding-bottom:6px; border-bottom:1px solid var(--line-hair); }
+  .ribbon .rrow { display:flex; align-items:center; gap:8px; height:32px; }
+  .ribbon .word { font-size:var(--t-cap); color:var(--text-off); }
+  /* image cards */
+  .cards { display:flex; gap:10px; }
+  .imgcard { width:104px; border-radius:var(--r-ctl); border:1px solid var(--line-strong);
+    background:var(--bg-raised); padding:5px 6px 4px; }
+  .imgcard.on { border-width:1.5px; border-color:var(--sel); background:var(--sel-soft); }
+  .imgcard svg { display:block; width:100%; height:38px; }
+  .imgcard .w { font-size:var(--t-sec); color:var(--text); }
+  .imgcard.on .w { color:var(--text-hi); }
+  .art-vec { fill:none; stroke:var(--text); stroke-width:1; }
+  .art-pass { fill:none; stroke:var(--cut); stroke-width:1.2; }
+  .art-tip { fill:var(--text-hi); }
+  .menu { width:200px; background:var(--bg-overlay); border:1px solid var(--line-hair);
+    border-radius:var(--r-panel); padding:4px; }
+  .mrow { display:flex; align-items:center; height:var(--ctl-h); padding:0 8px; border-radius:var(--r-ctl);
+    font-size:var(--t-sec); color:var(--text); }
+  .mrow.dark { color:var(--text-off); }
   .rule { margin-top:10px; padding:10px 12px; border-left:2px solid var(--cut); background:var(--cut-soft);
-    border-radius:0 var(--r-ctl) var(--r-ctl) 0; font-size:var(--t-sec); color:var(--text); }
+    border-radius:0 var(--r-ctl) var(--r-ctl) 0; font-size:var(--t-sec); color:var(--text); line-height:1.6; }
   .rule b { color:var(--text-hi); }
-  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+  .rule code { font-family:var(--mono); font-size:var(--t-cap); color:var(--text); }
+  ul.out { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:0 24px; }
+  ul.out li { padding:9px 0; border-bottom:1px solid var(--line-hair); font-size:var(--t-cap);
+    color:var(--text-dim); line-height:1.55; }
+  ul.out b { display:block; font-size:var(--t-sec); font-weight:600; color:var(--text-hi); margin-bottom:2px; }
+  ul.out code { font-family:var(--mono); font-size:var(--t-cap); color:var(--text); }
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
-<main class="board">
+<main>
   <h1>Campilot — visual tokens</h1>
-  <p class="lede">The reference app's charm is not decoration: it is a <b>graphite canvas, one line weight, and two signals</b>
-  that never compete. Geometry you touch is cyan; material the tool will remove is amber. Everything else is neutral.
-  Values below are the only ones the shell is allowed to use.</p>
+  <p class="lede">The reference app's charm is not decoration: it is a <b>graphite canvas, one line weight, and two
+  signals</b> that never compete. Geometry you touch is cyan; material the tool will remove is amber. Everything else
+  is neutral. These are the values <code>crates/cam-ui/src/theme.rs</code> resolves, and the shell they dress is the
+  one <code>camui-prancheta</code> delivered: a rail of five folding groups over a brand block, two rulers, a ribbon
+  and a task editor on the right, three zones in the status bar.</p>
 
-  <h2><span class="n">01</span> Surfaces, text, hairlines <span class="n" style="margin-left:auto">dark is the default; light is a full peer</span></h2>
+  <h2><span class="n">01</span> Surfaces, hairlines and ink <span class="src">both sets; dark is the default</span></h2>
   <div class="cols">
     <section class="card">
       <h3>Dark — workshop default</h3>
-      <div class="sub">A dark shop, a bright screen, a dusty part: the canvas must beat the panels for attention.</div>
-      <div class="sw"><i class="chip" style="background:#12151a"></i><code>bg-app</code><span class="v">#12151a</span><span class="u">window frame, app bar</span></div>
-      <div class="sw"><i class="chip" style="background:#0d1014"></i><code>bg-canvas</code><span class="v">#0d1014</span><span class="u">drawing surface — the darkest</span></div>
-      <div class="sw"><i class="chip" style="background:#171b21"></i><code>bg-panel</code><span class="v">#171b21</span><span class="u">rail, dock, status bar</span></div>
-      <div class="sw"><i class="chip" style="background:#1e242b"></i><code>bg-raised</code><span class="v">#1e242b</span><span class="u">inputs, hovered rows</span></div>
-      <div class="sw"><i class="chip" style="background:#232a32"></i><code>bg-overlay</code><span class="v">#232a32</span><span class="u">menus, tooltips, popovers</span></div>
-      <div class="sw"><i class="chip" style="background:#262d36"></i><code>line-hair</code><span class="v">#262d36</span><span class="u">1 px division, always</span></div>
-      <div class="sw"><i class="chip" style="background:#35404c"></i><code>line-strong</code><span class="v">#35404c</span><span class="u">input and control borders</span></div>
-      <div class="sw"><i class="chip" style="background:#e7ecf3"></i><code>text-hi</code><span class="v">#e7ecf3</span><span class="u">titles, values, labels</span></div>
-      <div class="sw"><i class="chip" style="background:#c3ccd8"></i><code>text</code><span class="v">#c3ccd8</span><span class="u">body, list rows</span></div>
-      <div class="sw"><i class="chip" style="background:#8b95a3"></i><code>text-dim</code><span class="v">#8b95a3</span><span class="u">help, units, secondary</span></div>
-      <div class="sw"><i class="chip" style="background:#5c6673"></i><code>text-off</code><span class="v">#5c6673</span><span class="u">disabled only — never for reading</span></div>
+      <p class="sub">A dark shop, a bright screen, a dusty part: the canvas must beat the panels for attention.
+      Canvas &lt; App &lt; Panel &lt; Raised &lt; Overlay.</p>
+      <div class="sw"><i class="chipbox" style="background:#12151a"></i><code class="nm">bg-app</code><span class="v">#12151a</span><span class="u">the window behind every panel, the app bar</span></div>
+      <div class="sw"><i class="chipbox" style="background:#0d1014"></i><code class="nm">bg-canvas</code><span class="v">#0d1014</span><span class="u">the drawing area and the 3D half — the darkest</span></div>
+      <div class="sw"><i class="chipbox" style="background:#171b21"></i><code class="nm">bg-panel</code><span class="v">#171b21</span><span class="u">app bar, rail, inspector, status bar, ruler bands</span></div>
+      <div class="sw"><i class="chipbox" style="background:#1e242b"></i><code class="nm">bg-raised</code><span class="v">#1e242b</span><span class="u">fields, hovered chips, ribbon hover</span></div>
+      <div class="sw"><i class="chipbox" style="background:#232a32"></i><code class="nm">bg-overlay</code><span class="v">#232a32</span><span class="u">the tool library modal, the 3D overlay row</span></div>
+      <div class="sw"><i class="chipbox" style="background:#262d36"></i><code class="nm">line-hair</code><span class="v">#262d36</span><span class="u">the 1 px line between docked surfaces</span></div>
+      <div class="sw"><i class="chipbox" style="background:#35404c"></i><code class="nm">line-strong</code><span class="v">#35404c</span><span class="u">a control's own edge</span></div>
+      <div class="sw"><i class="chipbox" style="background:#e7ecf3"></i><code class="nm">text-hi</code><span class="v">#e7ecf3</span><span class="u">the product, the document, a task's name</span></div>
+      <div class="sw"><i class="chipbox" style="background:#c3ccd8"></i><code class="nm">text</code><span class="v">#c3ccd8</span><span class="u">command labels, field values</span></div>
+      <div class="sw"><i class="chipbox" style="background:#8b95a3"></i><code class="nm">text-dim</code><span class="v">#8b95a3</span><span class="u">ruler numerals, second lines, tooltips</span></div>
+      <div class="sw"><i class="chipbox" style="background:#5c6673"></i><code class="nm">text-off</code><span class="v">#5c6673</span><span class="u">headings and half a count — never body</span></div>
+      <p class="note">A separator is never a border: <code>line-hair</code> divides two docked surfaces, and
+      <code>line-strong</code> is what a control draws around itself where a hairline would be too quiet.</p>
     </section>
 
     <section class="card light">
       <h3>Light — office, quoting, printing</h3>
-      <div class="sub">Same geometry, same weight. Signals darken until they pass AA on white instead of glowing.</div>
-      <div class="sw"><i class="chip" style="background:#eef1f5"></i><code>bg-app</code><span class="v">#eef1f5</span><span class="u">window frame, app bar</span></div>
-      <div class="sw"><i class="chip" style="background:#f7f9fb"></i><code>bg-canvas</code><span class="v">#f7f9fb</span><span class="u">drawing surface</span></div>
-      <div class="sw"><i class="chip" style="background:#ffffff"></i><code>bg-panel</code><span class="v">#ffffff</span><span class="u">rail, dock, status bar</span></div>
-      <div class="sw"><i class="chip" style="background:#f2f5f8"></i><code>bg-raised</code><span class="v">#f2f5f8</span><span class="u">inputs, hovered rows</span></div>
-      <div class="sw"><i class="chip" style="background:#ffffff"></i><code>bg-overlay</code><span class="v">#ffffff</span><span class="u">menus — shadow, not fill</span></div>
-      <div class="sw"><i class="chip" style="background:#dde3ea"></i><code>line-hair</code><span class="v">#dde3ea</span><span class="u">1 px division</span></div>
-      <div class="sw"><i class="chip" style="background:#c3ccd6"></i><code>line-strong</code><span class="v">#c3ccd6</span><span class="u">control borders</span></div>
-      <div class="sw"><i class="chip" style="background:#12181f"></i><code>text-hi</code><span class="v">#12181f</span><span class="u">titles, values</span></div>
-      <div class="sw"><i class="chip" style="background:#2b3440"></i><code>text</code><span class="v">#2b3440</span><span class="u">body</span></div>
-      <div class="sw"><i class="chip" style="background:#5f6b7a"></i><code>text-dim</code><span class="v">#5f6b7a</span><span class="u">help, units</span></div>
-      <div class="sw"><i class="chip" style="background:#8b95a3"></i><code>text-off</code><span class="v">#8b95a3</span><span class="u">disabled</span></div>
+      <p class="sub">Same geometry, same weight, App &lt; Raised &lt; Canvas &lt; Panel. Signals darken until they pass AA
+      on paper instead of glowing.</p>
+      <div class="sw"><i class="chipbox" style="background:#eef1f5"></i><code class="nm">bg-app</code><span class="v">#eef1f5</span><span class="u">the window behind every panel, the app bar</span></div>
+      <div class="sw"><i class="chipbox" style="background:#f7f9fb"></i><code class="nm">bg-canvas</code><span class="v">#f7f9fb</span><span class="u">the drawing area and the 3D half</span></div>
+      <div class="sw"><i class="chipbox" style="background:#ffffff"></i><code class="nm">bg-panel</code><span class="v">#ffffff</span><span class="u">app bar, rail, inspector, status bar, ruler bands</span></div>
+      <div class="sw"><i class="chipbox" style="background:#f2f5f8"></i><code class="nm">bg-raised</code><span class="v">#f2f5f8</span><span class="u">fields, hovered chips</span></div>
+      <div class="sw"><i class="chipbox" style="background:#ffffff"></i><code class="nm">bg-overlay</code><span class="v">#ffffff</span><span class="u">the modal — a shadow, not a fill</span></div>
+      <div class="sw"><i class="chipbox" style="background:#dde3ea"></i><code class="nm">line-hair</code><span class="v">#dde3ea</span><span class="u">the 1 px line between docked surfaces</span></div>
+      <div class="sw"><i class="chipbox" style="background:#c3ccd6"></i><code class="nm">line-strong</code><span class="v">#c3ccd6</span><span class="u">a control's own edge</span></div>
+      <div class="sw"><i class="chipbox" style="background:#12181f"></i><code class="nm">text-hi</code><span class="v">#12181f</span><span class="u">the product, the document, a task's name</span></div>
+      <div class="sw"><i class="chipbox" style="background:#2b3440"></i><code class="nm">text</code><span class="v">#2b3440</span><span class="u">command labels, field values</span></div>
+      <div class="sw"><i class="chipbox" style="background:#5f6b7a"></i><code class="nm">text-dim</code><span class="v">#5f6b7a</span><span class="u">ruler numerals, second lines, tooltips</span></div>
+      <div class="sw"><i class="chipbox" style="background:#8b95a3"></i><code class="nm">text-off</code><span class="v">#8b95a3</span><span class="u">headings and half a count — never body</span></div>
+      <p class="note">Twelve pairs the shell writes on clear AA body (4.5) or AA large (3.0) in both sets, and
+      <code>theme.rs</code> fails the build on any of them. <code>text-off</code> is deliberately outside those twelve.</p>
     </section>
   </div>
 
-  <h2><span class="n">02</span> The two signals</h2>
+  <h2><span class="n">02</span> The two signals, and the one gradient <span class="src">Sel vs Cut; the stock ramp</span></h2>
   <div class="signals">
-    <div class="sig"><span class="dot" style="background:var(--sel)"></span><b>Selection</b>
-      <p>Anything the pointer owns: selection, hover, focus ring, active tool, active tab.</p>
-      <p><code>--sel #6fd3e8</code> · <code>--sel-soft 13%</code></p></div>
-    <div class="sig"><span class="dot" style="background:var(--cut)"></span><b>Cut</b>
-      <p>What the tool does to material: toolpath preview, depth, feeds, and the one primary action.</p>
-      <p><code>--cut #f5a623</code> · <code>--cut-soft 13%</code></p></div>
-    <div class="sig"><span class="dot" style="background:var(--ok)"></span><b>Pass</b>
-      <p>Verification only: simulation clean, no gouge, no uncut, file written.</p>
-      <p><code>--ok #5ec27f</code></p></div>
-    <div class="sig"><span class="dot" style="background:var(--warn)"></span><b>Watch</b>
-      <p>Something is legal but unwise: tool too wide, toolpath deeper than the stock.</p>
-      <p><code>--warn #f0b429</code></p></div>
-    <div class="sig"><span class="dot" style="background:var(--danger)"></span><b>Stop</b>
-      <p>Gouge, crash, open vector where a closed one is required. Always paired with words.</p>
-      <p><code>--danger #f2635f</code></p></div>
+    <div class="sig">
+      <div class="top"><span class="dot" style="background:var(--sel)"></span><b>Selection — cyan</b></div>
+      <div class="big" style="background:var(--sel)"></div>
+      <p><code>--sel #6fd3e8</code>. Picked vectors, the active toggle, the active rail chip, the ribbon's open
+      category, the focus ring, the <code>TOP</code> axis. Drawn as a dashed-then-solid outline with square handles, so
+      a monochrome print still reads it as a selection.</p>
+      <div class="washrow" style="margin-top:8px"><span class="washbox"><span style="background:var(--sel-soft)"></span></span>
+      <span><code>--sel-soft</code> <code>rgba(105,202,225,.13)</code> — the wash under a selected chip or row, drawn straight onto the panel</span></div>
+    </div>
+    <div class="sig">
+      <div class="top"><span class="dot" style="background:var(--cut)"></span><b>Cutting — amber</b></div>
+      <div class="big" style="background:var(--cut)"></div>
+      <p><code>--cut #f5a623</code>. The ruler marker, the toolpath preview, the depth a pass reaches, and the one
+      primary action. Drawn at 1.6 px with a round cap — a different shape from a selection, not only a different
+      colour.</p>
+      <div class="washrow" style="margin-top:8px"><span class="washbox"><span style="background:var(--cut-soft)"></span></span>
+      <span><code>--cut-soft</code> <code>rgba(240,165,30,.13)</code> — the wash under the primary action and the cut chip</span></div>
+    </div>
   </div>
-  <div class="rule"><b>Rule:</b> a colour never carries a message alone. Cut and Selection differ in hue and in weight
-  (toolpaths are 2 px dashed, geometry is 1.4 px solid), so the screen survives a monochrome screenshot and a colour-blind operator.</div>
+  <div class="signals" style="margin-top:14px">
+    <div class="sig" style="grid-column:span 2">
+      <p style="margin:0"><b style="color:var(--text-hi)">Why they can never be confused:</b> the two sit at least 60°
+      apart in hue, and the shell proves it in a test rather than trusting the eye. A third accent is the end of the
+      argument — with two signals every mark means one of two things, and with three it means whichever one you guess.
+      On paper the same two roles are <code>#0d7c92</code> and <code>#a86200</code>: a cyan that reads on
+      <code>#0d1014</code> disappears on <code>#f7f9fb</code>, so the light set darkens both signals until they clear AA
+      against its canvas.</p>
+    </div>
+  </div>
+  <div class="verdicts">
+    <div class="sig"><div class="top"><span class="dot" style="background:var(--ok)"></span><b>Ok — a pass</b></div>
+      <p><code>#5ec27f</code>. A verification came back clean, the tool resolved, the program was written. The
+      <code>RIGHT</code> axis of the triad.</p></div>
+    <div class="sig"><div class="top"><span class="dot" style="background:var(--warn)"></span><b>Warn — unwise</b></div>
+      <p><code>#f0b429</code>. Legal and still a bad idea: a tool wider than the slot, a depth past the stock. A number
+      the shell will not trust.</p></div>
+    <div class="sig"><div class="top"><span class="dot" style="background:var(--danger)"></span><b>Danger — a refusal</b></div>
+      <p><code>#f2635f</code>. A gouge, a crash, an open vector where a closed one is required. Always paired with
+      words. The <code>FRONT</code> axis.</p></div>
+  </div>
 
-  <h2><span class="n">03</span> Type — Inter if installed, system sans otherwise</h2>
+  <div class="card" style="margin-top:14px">
+    <h3>The stock ramp — the only gradient in the shell</h3>
+    <p class="sub">Material is the one thing that shades, because it is the one thing being cut: a lit top face into a
+    darker floor, with the edge a role of its own rather than a darker mix.</p>
+    <div class="cols">
+      <div>
+        <div class="ramp" style="background:linear-gradient(180deg,#d6dce6,#424c58)"></div>
+        <div class="rampline"><code>dark</code> <code>#d6dce6</code> → <code>#424c58</code>, edge
+        <span class="rampedge" style="background:#6e7b8a"></span> <code>#6e7b8a</code></div>
+      </div>
+      <div>
+        <div class="ramp" style="background:linear-gradient(180deg,#c6d1dd,#a6b3c3);border-color:#c3ccd6"></div>
+        <div class="rampline"><code>light</code> <code>#c6d1dd</code> → <code>#a6b3c3</code>, edge
+        <span class="rampedge" style="background:#4a5563"></span> <code>#4a5563</code></div>
+      </div>
+    </div>
+    <p class="note">The ramp is <code>stock_shade(t)</code>, which clamps <code>t</code> to <code>0..=1</code>: <code>-1</code>
+    and <code>2</code> return the ends and <code>NaN</code> returns the top. Every stop on it — <code>StockTop</code> and
+    <code>StockBottom</code> alike — is held to at least <b>1.45:1</b> against the canvas, because the material is a solid
+    and not a word: 3:1 would make the stock darker than the cut signal it carries. <code>StockBottom</code> is always
+    darker than <code>StockTop</code> and never the canvas itself, and <code>StockEdge</code> clears <b>3:1</b> against both
+    the canvas and the stock's own top, so a cut edge stays legible even where the fill is page-light.
+    Nothing else in the shell interpolates — a gradient anywhere else is decoration pretending to be state.</p>
+  </div>
+
+  <h2><span class="n">03</span> Type — Inter if installed, system sans otherwise <span class="src">eight styles, one second family</span></h2>
   <div class="cols">
     <section class="card">
-      <h3>Scale</h3>
+      <h3>The eight styles</h3>
       <table class="type">
-        <tr><td>--t-hero 28/600</td><td style="font-size:28px;font-weight:600;color:#e7ecf3;letter-spacing:-.02em">Empty state only</td><td>1 line, centred</td></tr>
-        <tr><td>--t-dialog 20/600</td><td style="font-size:20px;font-weight:600;color:#e7ecf3">New toolpath</td><td>dialog title</td></tr>
-        <tr><td>--t-title 15/600</td><td style="font-size:15px;font-weight:600;color:#e7ecf3">Toolpath settings</td><td>dock section, group header</td></tr>
-        <tr><td>--t-body 13/400</td><td style="font-size:13px;color:#c3ccd8">Outside drops the part, Inside cuts holes</td><td>everything readable</td></tr>
-        <tr><td>--t-sec 12/400</td><td style="font-size:12px;color:#c3ccd8">60° V-bit · 12.7 mm</td><td>secondary row, chip</td></tr>
-        <tr><td>--t-cap 11/400</td><td style="font-size:11px;color:#8b95a3">mm · X 128.40 · zoom 214%</td><td>status bar, units, help</td></tr>
+        <caption>Size in px / weight. Nothing is fetched at run time.</caption>
+        <thead><tr><th scope="col">style</th><th scope="col">sample</th><th scope="col">where it is</th></tr></thead>
+        <tbody>
+          <tr><td>Hero 28 / 600</td><td style="font-size:var(--t-hero);font-weight:600;color:var(--text-hi);letter-spacing:-.02em">Nothing drawn yet</td><td>an artboard's own headline</td></tr>
+          <tr><td>Dialog 20 / 600</td><td style="font-size:var(--t-dialog);font-weight:600;color:var(--text-hi)">Choose tool</td><td>the tool library's title</td></tr>
+          <tr><td>Title 15 / 600</td><td style="font-size:var(--t-title);font-weight:600;color:var(--text-hi)">bracket-plate.c2d</td><td>the product, the document, a task</td></tr>
+          <tr><td>Body 13 / 400</td><td style="font-size:var(--t-body);color:var(--text)">Outside drops the part free</td><td>labels, field values, sentences</td></tr>
+          <tr><td>Button 13 / 500</td><td style="font-size:var(--t-body);font-weight:500;color:var(--text-hi)">Generate toolpath</td><td>buttons and chips</td></tr>
+          <tr><td>Small 12 / 400</td><td style="font-size:var(--t-sec);color:var(--text)">Ø6 · 2 cut(s)</td><td>second lines, tooltips</td></tr>
+          <tr><td>Caption 11 / 400</td><td style="font-size:var(--t-cap);color:var(--text-dim)">zoom 0.42 px/mm</td><td>status bar, version, headings</td></tr>
+          <tr><td>Monospace 12 / 400</td><td style="font-family:var(--mono);font-size:var(--t-sec);color:var(--text)">T22 · Z 5.000</td><td>a number that must not shift</td></tr>
+        </tbody>
       </table>
+      <p class="note">Numbers are tabular and set in the same face: a machinist compares a column down its decimals, so a
+      figure that changes width as it changes value is a figure that moves under the eye.</p>
     </section>
+
     <section class="card">
-      <h3>Numbers are furniture</h3>
-      <div class="sub">Every value that a machinist may compare sits in a column, so it gets tabular figures and a unit column.</div>
-      <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums;color:#c3ccd8;line-height:1.9">
-        <div><span style="color:#8b95a3">depth</span> <span style="float:right;color:#e7ecf3">6.000</span> mm</div>
-        <div><span style="color:#8b95a3">stepdown</span> <span style="float:right;color:#e7ecf3">2.000</span> mm</div>
-        <div><span style="color:#8b95a3">feed</span> <span style="float:right;color:#e7ecf3">1200.0</span> mm/min</div>
-        <div><span style="color:#8b95a3">plunge</span> <span style="float:right;color:#e7ecf3">300.0</span> mm/min</div>
-        <div><span style="color:#8b95a3">rpm</span> <span style="float:right;color:#e7ecf3">18000</span> rpm</div>
-      </div>
-      <div class="rule" style="--cut:#6fd3e8"><b>Never</b> mix units in one column, and never hide the unit: the status bar says
-      <span style="font-family:ui-monospace,Menlo,monospace">mm</span> and no field repeats it.</div>
+      <h3>Numbers are furniture — the unit appears once per column</h3>
+      <p class="sub">The unit is a column heading, not a suffix on every row. Repeating <code>mm</code> five times is five
+      pieces of noise in front of one fact.</p>
+      <table class="nums">
+        <caption style="text-align:left;font-size:var(--t-cap);color:var(--text-dim);padding:0 0 8px">
+          A cut, as the editor holds it — three columns, three units, printed once each.</caption>
+        <thead><tr><th scope="col"></th><th scope="col">mm</th><th scope="col">mm/min</th><th scope="col">rpm</th></tr></thead>
+        <tbody>
+          <tr><td>depth</td><td>6.000</td><td></td><td></td></tr>
+          <tr><td>stepdown</td><td>2.000</td><td></td><td></td></tr>
+          <tr><td>feed</td><td></td><td>1200.0</td><td></td></tr>
+          <tr><td>plunge</td><td></td><td>300.0</td><td></td></tr>
+          <tr><td>speed</td><td></td><td></td><td>18000</td></tr>
+        </tbody>
+      </table>
+      <div class="rule"><b>Never</b> mix units in one column, and never hide the unit: the app bar names the working
+      unit once, the status bar names it beside the coordinates, and no field repeats it.</div>
     </section>
   </div>
 
-  <h2><span class="n">04</span> Geometry — spacing, radii, control sizes</h2>
+  <h2><span class="n">04</span> Geometry — the ladder, the radii, the five fixed widths <span class="src">Metrics::shell</span></h2>
   <div class="specs">
-    <div class="spec"><b>Spacing</b><span>2 · 4 · 6 · 8 · 12 · 16 · 24 · 32</span>
-      <div class="grid-ruler"><div style="width:2px;height:14px"></div><div style="width:4px;height:14px"></div>
-      <div style="width:8px;height:14px"></div><div style="width:16px;height:14px"></div><div style="width:32px;height:14px"></div></div></div>
-    <div class="spec"><b>Radii</b><span>4 control · 6 panel · 10 dialog · 999 pill</span>
-      <div style="display:flex;gap:8px;margin-top:10px"><i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:4px"></i>
-      <i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:6px"></i>
-      <i style="width:26px;height:26px;background:#1e242b;border:1px solid #35404c;border-radius:10px"></i></div></div>
-    <div class="spec"><b>Control heights</b><span>24 field · 26 row · 40 app bar · 26 status</span>
-      <div style="margin-top:10px;color:#8b95a3;font-size:11px">Rail 52 wide, dock 288, both fixed</div></div>
-    <div class="spec"><b>Elevation</b><span>1 px hairline, only 2 shadows exist</span>
-      <div style="margin-top:10px;color:#8b95a3;font-size:11px">Floating menu: 0 8px 24px #0008<br>Dialog: 0 24px 64px #000a</div></div>
-  </div>
-
-  <h2><span class="n">05</span> Component states</h2>
-  <div class="card">
-    <div class="states">
-      <div class="stack"><span class="cap">Button</span>
-        <button class="btn">Default</button>
-        <button class="btn" style="background:#252d36">Hover</button>
-        <button class="btn" style="outline:2px solid var(--sel);outline-offset:1px">Focus</button>
-        <button class="btn" disabled>Disabled</button></div>
-
-      <div class="stack"><span class="cap">Primary — the cut</span>
-        <button class="btn cut">Generate G-code</button>
-        <button class="btn cut" style="filter:brightness(1.06)">Hover</button>
-        <button class="btn cut" disabled style="background:#3a2e17;border-color:#3a2e17;color:#7a6a4d">Generate</button></div>
-
-      <div class="stack"><span class="cap">Rail icon button</span>
-        <div style="display:flex;gap:6px">
-          <button class="iconbtn" aria-label="Select"><svg viewBox="0 0 24 24"><path d="M4 3l7 17 2.2-6.8L20 11z"/></svg></button>
-          <button class="iconbtn on" aria-label="Select, active"><svg viewBox="0 0 24 24"><path d="M4 3l7 17 2.2-6.8L20 11z"/></svg></button>
-        </div>
-        <div style="font-size:11px;color:#5c6673">active = cyan fill 13% + 1 px cyan border, icon itself stays the same weight</div></div>
-
-      <div class="stack"><span class="cap">Field</span>
-        <span class="field">6.000<span class="u2">mm</span></span>
-        <span class="field" style="outline:1px solid var(--sel)">12.7<span class="u2">mm</span></span>
-        <span class="field" style="color:#5c6673;border-color:#262d36">—<span class="u2">mm</span></span></div>
-
-      <div class="stack"><span class="cap">Tabs &amp; pills</span>
-        <span class="pill on">Properties</span>
-        <span class="pill">Layers</span>
-        <span class="pill">Tools</span>
-        <div style="margin-top:6px"><span class="pill on">2D</span> <span class="pill">3D</span> <span class="pill on">snap 1 mm</span></div></div>
-
-      <div class="stack" style="width:240px"><span class="cap">Rows — layer dock</span>
-        <div class="row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Cut outside<span style="margin-left:auto;color:#5c6673;font-size:11px">14</span></div>
-        <div class="row sel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6fd3e8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Engrave V<span style="margin-left:auto;color:#8b95a3;font-size:11px">31</span></div>
-        <div class="row hov"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M4 4l16 16"/></svg><span style="color:#5c6673">Holes (hidden)</span></div>
-        <div class="row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b95a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Relief<span style="margin-left:auto;color:#5c6673;font-size:11px">2</span></div></div>
+    <div class="spec"><b>Spacing</b><span class="v">2 · 4 · 6 · 8 · 12 · 16 · 24 · 32</span>
+      <div class="ladder">
+        <div><i style="width:var(--s1);height:var(--s1)"></i>2</div>
+        <div><i style="width:var(--s2);height:var(--s2)"></i>4</div>
+        <div><i style="width:var(--s3);height:var(--s3)"></i>6</div>
+        <div><i style="width:var(--s4);height:var(--s4)"></i>8</div>
+        <div><i style="width:var(--s5);height:var(--s5)"></i>12</div>
+        <div><i style="width:var(--s6);height:var(--s6)"></i>16</div>
+        <div><i style="width:var(--s7);height:var(--s7)"></i>24</div>
+        <div><i style="width:var(--s8);height:var(--s8)"></i>32</div>
+      </div>
+      <p class="note" style="margin-top:10px">Eight steps, every one on the 2 px grid and strictly increasing. The 2 px
+      step is a dot on this board, and that is the point: a gap is either on the ladder or it is a number nobody named.</p>
+    </div>
+    <div class="spec"><b>Radii</b><span class="v">4 control · 6 panel · 10 dialog</span>
+      <div class="radii">
+        <div><i style="border-radius:var(--r-ctl)"></i>4</div>
+        <div><i style="border-radius:var(--r-panel)"></i>6</div>
+        <div><i style="border-radius:var(--r-dialog);width:40px;height:40px"></i>10</div>
+      </div>
+      <p class="note" style="margin-top:10px">A chip's pill is the half of its own height — 9 on an 18 px chip — so it
+      never becomes a fourth radius. 10 belongs to the tool library alone.</p>
+    </div>
+    <div class="spec" style="grid-column:span 2"><b>The five fixed widths</b>
+      <span class="v">app bar 40 · rail 200 · ruler 22 · dock 288 · status 26</span>
+      <div class="dims">
+        <div><span>app bar</span><i style="width:var(--bar-h)"></i><span>40</span></div>
+        <div><span>rail</span><i style="width:var(--rail-w)"></i><span>200</span></div>
+        <div><span>ruler band</span><i style="width:var(--ruler-h)"></i><span>22</span></div>
+        <div><span>dock</span><i style="width:var(--dock-w)"></i><span>288</span></div>
+        <div><span>status bar</span><i style="width:var(--status-h)"></i><span>26</span></div>
+        <div><span>brand block</span><i style="width:var(--brand-h)"></i><span>62</span></div>
+      </div>
+      <p class="note">Bars are the value in pixels, so 22 against 288 is the true ratio. Three control heights only —
+      <code>24</code> the control, <code>26</code> the row, and a bar is its own thing — plus the brand block at
+      <b>62</b> at the rail's foot (<code>campilot</code>, <code>v0.0.1</code>, then the document's own stamp, behind a
+      hairline), the 3D split at exactly half the drawing area, and the playback bar at <b>46</b>.
+      The left rail is <b>200</b>, not 52: the stale ASCII frame in the chrome module still draws 52.</p>
     </div>
   </div>
 
-  <h2><span class="n">06</span> What this rules out</h2>
-  <div class="cols">
-    <div class="card"><h3>Banished</h3>
-      <div class="sub">Each one is a thing the current shell does, or would drift into.</div>
-      <p style="margin:0;color:#c3ccd8;line-height:1.75">
-      · A second accent hue “just for this panel”<br>
-      · Filled or gradient icon sets beside the line set<br>
-      · Widgets of more than three heights in one column<br>
-      · Shadows on docked surfaces — hierarchy is a hairline<br>
-      · Colour-only meaning, at any level<br>
-      · A raw <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">DragValue</span> with no unit and no label</p></div>
-    <div class="card"><h3>Mandatory</h3>
-      <div class="sub">The parts a plain egui `ui.label` layout cannot express today.</div>
-      <p style="margin:0;color:#c3ccd8;line-height:1.75">
-      · Every interactive element has a focus ring and a text alternative<br>
-      · Every icon-only control carries a tooltip with its name and shortcut<br>
-      · Numeric fields align right on tabular figures, unit in a fixed column<br>
-      · Destructive or expensive actions are never the primary colour<br>
-      · Motion respects <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">prefers-reduced-motion</span> and never exceeds 140 ms</p></div>
+  <h2><span class="n">05</span> Component states <span class="src">the delivered shell, state by state</span></h2>
+  <div class="card">
+    <div class="states">
+      <div class="stack" style="width:100%"><span class="cap">App bar — idle, 40 px</span>
+        <div class="strip" style="height:var(--bar-h);background:var(--bg-panel);border-radius:var(--r-ctl)">
+          <svg class="i" style="color:var(--sel);width:24px;height:24px" viewBox="0 0 24 24" role="img" aria-label="Campilot mark"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
+          <span style="font-size:var(--t-title);font-weight:600;color:var(--text-hi)">campilot</span>
+          <span class="sep"></span>
+          <span class="dim">bracket-plate.c2d · modified</span>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <button class="btn" disabled type="button">Generate G-code</button>
+            <button class="iconbtn" type="button" aria-label="Help — F1"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.3"/><path d="M12 17.4v.2"/></svg></button>
+            <button class="iconbtn" type="button" aria-label="Theme: dark — press for light"><svg class="i" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+            <span class="sep"></span>
+            <span class="dim">mm</span>
+          </span>
+        </div>
+        <p class="sub" style="margin:0">The bar carries the document and the display; the primary action is disabled
+        while there is nothing to emit, and the sentence in its tooltip says why. No command lives here that the rail
+        also offers — one act, one place.</p>
+      </div>
+
+      <div class="stack"><span class="cap">Rail chip — idle, hover, active</span>
+        <div style="display:flex;flex-direction:row;gap:2px">
+          <button class="rchip" type="button" aria-label="Line" title="Line"><svg class="i" viewBox="0 0 24 24"><path d="M4 19L20 6"/><circle cx="4" cy="19" r="1.3"/><circle cx="20" cy="6" r="1.3"/></svg></button>
+          <button class="rchip hov" type="button" aria-label="Rectangle" title="Rectangle"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></button>
+          <button class="rchip on" type="button" aria-label="Select" title="Select"><svg class="i" viewBox="0 0 24 24"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">A chip is a glyph and nothing else —
+        20 px at 1.6 stroke in a 32 × 32 target, the command's label carried in the tooltip, because the words of this
+        rail are its group headings. Idle is <code>Text</code> on <code>Panel</code>, hover fills <code>Raised</code>,
+        active is the <code>SelSoft</code> wash under a 1 px <code>Sel</code> edge, and the glyph keeps its weight. No chip
+        is ever drawn disabled: the rail offers twenty-eight chips and every one of them is pressable.</span>
+      </div>
+
+      <div class="stack"><span class="cap">A folded group</span>
+        <div class="rail">
+          <div class="head"><span class="caret open"></span>DRAW</div>
+          <div style="display:flex;flex-wrap:wrap;gap:2px;padding:4px 0 6px">
+            <button class="rchip" type="button" aria-label="Select" title="Select"><svg class="i" viewBox="0 0 24 24"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
+            <button class="rchip" type="button" aria-label="Line" title="Line"><svg class="i" viewBox="0 0 24 24"><path d="M4 19L20 6"/><circle cx="4" cy="19" r="1.3"/><circle cx="20" cy="6" r="1.3"/></svg></button>
+          </div>
+          <div class="head"><span class="caret"></span>EDIT</div>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Folding hides the chips and leaves the
+        heading. The caret is painted, not typeset: an affordance that renders as a box is worse than none.</span>
+      </div>
+
+      <div class="stack"><span class="cap">Ribbon — open, and closed</span>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div class="ribbon">
+            <div class="rhead"><span>Inspector</span><span style="font-size:var(--t-cap);color:var(--text-off)">open</span></div>
+            <div class="rrow"><button class="iconbtn on" type="button" aria-label="TOOLPATHS — open"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="9" rx="1"/><rect x="3" y="3" width="18" height="18" rx="5" stroke-dasharray="2 2"/></svg></button><span class="word">TOOLPATHS</span></div>
+            <div class="rrow"><button class="iconbtn" type="button" aria-label="RELIEF AND 3D PART — closed"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10" style="fill:currentColor;fill-opacity:.22"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10"/></svg></button><span class="word">RELIEF AND 3D PART</span></div>
+            <div class="rrow"><button class="iconbtn" type="button" aria-label="MACHINE AND OUTPUT — closed"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M8.5 12l2.5 2.5L8.5 17M15 12l-2.5 2.5L15 17"/></svg></button><span class="word">MACHINE AND OUTPUT</span></div>
+          </div>
+          <div class="ribbon">
+            <div class="rhead"><span>Inspector</span><span style="font-size:var(--t-cap);color:var(--text-off)">closed</span></div>
+            <div class="rrow"><button class="iconbtn" type="button" aria-label="TOOLPATHS — closed"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="9" rx="1"/><rect x="3" y="3" width="18" height="18" rx="5" stroke-dasharray="2 2"/></svg></button><span class="word">TOOLPATHS</span></div>
+            <div class="rrow"><button class="iconbtn" type="button" aria-label="RELIEF AND 3D PART — closed"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10" style="fill:currentColor;fill-opacity:.22"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10"/></svg></button><span class="word">RELIEF AND 3D PART</span></div>
+            <div class="rrow"><button class="iconbtn" type="button" aria-label="MACHINE AND OUTPUT — closed"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M8.5 12l2.5 2.5L8.5 17M15 12l-2.5 2.5L15 17"/></svg></button><span class="word">MACHINE AND OUTPUT</span></div>
+          </div>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Open puts that category's task editor over
+        the panel's body, its header carrying the task's name with a painted ✓ and ✕; a second press closes it. With
+        nothing open the body is the selection's numbers — the idle state, not a fourth category. The words beside each
+        row are this board's legend; the shell draws the glyph and gives the words to the tooltip.</span>
+      </div>
+
+      <div class="stack"><span class="cap">Snap chips — armed, and disarmed</span>
+        <div class="strip" style="height:34px;gap:6px">
+          <span class="snav on">Snaps</span><span class="snav on">Point</span><span class="snav on">Mid</span>
+          <span class="snav">Centre</span><span class="snav on">Grid 10</span>
+        </div>
+        <div class="strip" style="height:34px;gap:6px">
+          <span class="snav">Snaps</span><span class="snav">Point</span><span class="snav">Mid</span>
+          <span class="snav">Centre</span><span class="snav">Grid 2.5</span>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Armed is the <code>SelSoft</code> wash
+        under a 1 px <code>Sel</code> edge and <code>Sel</code> ink; disarmed is <code>TextDim</code> ink and no edge, with
+        <code>Raised</code> on hover. A chip both arms the snap and names its value, and the grid chip names the step the
+        pick actually snaps to — <code>Grid 10</code>, <code>Grid 2.5</code>, and <code>Grid —</code> before the canvas has
+        measured one, because <code>Grid 0</code> would name a snap that can never fire.</span>
+      </div>
+
+      <div class="stack"><span class="cap">The primary action — enabled, disabled</span>
+        <button class="btn cut" type="button">Generate toolpath</button>
+        <button class="btn" type="button" disabled>Generate G-code</button>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Enabled is the <code>Cut</code> fill with
+        <code>Panel</code> as its ink — dark ink in the dark set, white in the light one, both clearing AA. Disabled is
+        transparent behind a hairline with <code>TextOff</code> ink, and it says why in its tooltip rather than doing
+        nothing. These are buttons: the rail's twenty-eight chips are all pressable and none is ever drawn dark.</span>
+      </div>
+
+      <div class="stack"><span class="cap">The dead control — the object menu's Trim</span>
+        <div class="menu" role="group" aria-label="Object menu, one vector selected">
+          <span class="mrow">Offset</span>
+          <span class="mrow">Join</span>
+          <span class="mrow dark" aria-disabled="true" title="Select two vectors and press Trim: the lower id is the target and the other one cuts it. The button stays dark until two are selected, because a trim needs a target and a cutter.">Trim</span>
+          <span class="mrow">Delete selection</span>
+          <span class="mrow">Move</span>
+          <span class="mrow">Rotate</span>
+          <span class="mrow">Scale</span>
+          <span class="mrow">Mirror</span>
+          <span class="mrow">Array</span>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Over one selected vector the object menu
+        opens with exactly one row dark: <code>Trim</code> needs a target and a cutter, so it is drawn in
+        <code>TextOff</code> instead of promising something the command layer would refuse — and its own tooltip is the
+        instruction that names the missing operand, not a shrug. <code>TextOff</code> is the disabled-only role and sits
+        outside the twelve AA pairs for exactly this reason; the frame's only other dark control is the app bar's
+        <code>Generate G-code</code>, which answers the same way.</span>
+      </div>
+
+      <div class="stack"><span class="cap">Field — with the focus ring</span>
+        <span class="field">6.000<span class="u2">mm</span></span>
+        <span class="field focus">2.000<span class="u2">mm</span></span>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">24 px, <code>Raised</code> behind a 1 px
+        <code>Border</code>, tabular figures, and a 2 px <code>Sel</code> ring drawn outside the control so it never moves
+        what it points at.</span>
+      </div>
+
+      <div class="stack" style="width:240px"><span class="cap">Image card — chosen, and not</span>
+        <div class="cards">
+          <div class="imgcard on">
+            <svg viewBox="0 0 60 38" role="img" aria-label="Profile: the vector, with the bit's pass beside it">
+              <rect class="art-vec" x="12" y="9" width="36" height="22" rx="2"/>
+              <rect class="art-pass" x="6" y="3" width="48" height="34" rx="2"/>
+              <circle class="art-tip" cx="18" cy="33" r="3"/>
+            </svg>
+            <span class="w">Profile</span>
+          </div>
+          <div class="imgcard">
+            <svg viewBox="0 0 60 38" role="img" aria-label="Pocket: the boundary and the rings a clearing pass leaves">
+              <rect class="art-vec" x="4" y="3" width="52" height="32" rx="2"/>
+              <rect class="art-pass" x="9" y="7" width="42" height="24" rx="1"/>
+              <rect class="art-pass" x="14" y="11" width="32" height="16" rx="1"/>
+            </svg>
+            <span class="w">Pocket</span>
+          </div>
+        </div>
+        <span class="word" style="font-size:var(--t-cap);color:var(--text-dim)">Chosen is a 1.5 px <code>Sel</code> edge
+        over the wash and <code>TextHi</code> as its label; a choice that needs a picture gets a picture, and the picture
+        is drawn in the tokens of what it shows: <code>Text</code> for the geometry, <code>Cut</code> for the pass.</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">06</span> What this rules out <span class="src">each one is a drift, not a taste</span></h2>
+  <div class="card">
+    <ul class="out">
+      <li><b>A second accent</b> There is <code>Sel</code> and there is <code>Cut</code>. A hue that means “this panel's
+      active thing” is a third story, and from then on no colour means anything on its own.</li>
+      <li><b>A filled icon beside a stroked one</b> The set is stroke-only at 1.6 in every state, hover included. A
+      glyph's mixed parts are dashes and 22 % washes, never a heavier pen.</li>
+      <li><b>More than three control heights</b> <code>24</code> is the control, <code>26</code> the row, and a bar is its
+      own thing. A fourth height is a fourth rhythm nobody can unsee.</li>
+      <li><b>A shadow on a docked surface</b> Hierarchy between docked surfaces is one hairline. Only the tool library's
+      modal and the 3D overlay cast a shadow, because only they float.</li>
+      <li><b>Colour as the only carrier of meaning</b> Selection and cutting differ in hue <em>and</em> in shape; a
+      refusal is a sentence starting <code>refused:</code> before it is red. A monochrome print still says what happened.</li>
+      <li><b>A number without its unit</b> — and equally, a unit repeated on every row of one column. The unit lives in
+      the column heading, in the working-unit field of the app bar, and beside the coordinates in the status bar.</li>
+    </ul>
   </div>
 </main>
 </body>
