@@ -612,3 +612,28 @@ words: *"design/prancheta-reference/ + README"*.
   try, which is exactly what made the first one's silence suspicious. Both are now RED-verified.
   **Four advisories, all `informational`:** `R2-002` (`strategy.rs:181`), `R2-003` (`:183`), `R2-004`
   (`:802-840`) and `R3-002` (`:225-226`). They join the thirty-six this feature already owes.
+- **L28 (the rename command the editor was missing).** `884732e` on `feat/camui-toolpath-rename`, cut from
+  `42edaab`: `cam_app::Command::SetToolpathName { toolpath_id, name }` with its own label, its dispatch through
+  `toolpath_index`, and a new `CommandError::EmptyToolpathName`. The refusal needed its own variant rather than
+  `EmptyText`, which is about drawn text: reusing it would have been a true sentence about the wrong thing.
+  The assignment happens **after** the checks, so a refusal writes nothing. `cam_ui::UiAction::SetToolpathName`
+  carries it through `apply_command` exactly as `SetToolpathOperation` travels.
+  **The editor's name is one `TextEdit` in both modes** — the control the creating mode already had, not a second
+  vocabulary — and the sentence and constant that explained a name nobody could change are **deleted**: a
+  sentence that explains a limitation has to go when the limitation goes. `generate` emits the rename **only when
+  the trimmed field differs from the document's name**, because an undo step that undid nothing is a lie about
+  what happened.
+  **The ordering is the parent's, and it is the one decision worth reading twice.** The worker pushed the rename
+  first and the operation second, and flagged in its own report that the pair was not atomic: a kernel refusal
+  of the operation would already have written the new name, with a failure message that could not explain it.
+  Inverted to operation-first, the only reachable failure changes nothing — and a rename that failed *after* the
+  operation cannot happen in one frame, because `refusal` already refuses a blank name before either action is
+  built. The test that pinned the order was updated with that reason rather than to accommodate the code.
+  **Six new tests:** three in `cam-app` (it renames; a blank name is refused and writes nothing; an absent
+  toolpath is refused) plus the label case, and four in `cam-ui` (the field is typeable while editing; `Generate`
+  renames the document; an untouched name emits no rename; `Cancel` puts a typed name back), with a
+  `type_into_name` helper that presses the field, selects all and types. `creating_and_editing_are_one_surface…`
+  lost its `retain("Name")` fudge and now asserts that **both** modes draw `Name` and neither paints the
+  fixed-name sentence, keeping its note, card and order claims untouched.
+  **Workspace: 1 295 tests, exit 0** (baseline 1 289; +6). `cargo fmt --check` clean. The public
+  `cam_ui::strategy::RENAME` constant is gone; nothing else in the workspace referenced it.
