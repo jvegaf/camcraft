@@ -18,7 +18,7 @@
 
 #![warn(missing_docs)]
 
-use cam_geom::{Contour, Point2};
+use cam_geom::{Bounds, Contour, Point2};
 use cam_units::{Angle, Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
@@ -898,6 +898,127 @@ pub struct Document {
   /// Optional post-processor filename, resolved by the store.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub postp: Option<String>,
+  /// Optional nesting section: the authored sheets, the parts, where each instance landed and the
+  /// cost record the report reads (M9, S1-S4).
+  ///
+  /// Optional and top level, exactly like `tools_ref`/`postp`, so a document written before M9 loads
+  /// and re-saves byte-identically: no existing field learns a new meaning, which is why the schema
+  /// tag stays `c2d/document@2` (invariant 1).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub nesting: Option<Nesting>,
+}
+
+/// The nesting section of a document (M9, S1-S4).
+///
+/// The user's four answers fix its shape: **one master document with N sheets and N instances** (S1),
+/// the placements are **stored in the document** (S2), utilisation and waste are **both the report and
+/// a stored field** (S3), and the sheets are **authored here rather than in a library** (S4).
+///
+/// Nothing here is geometry: a sheet is a size, a part is a selection of the document's own entities
+/// plus how many copies are wanted, and a placement is where the nester put one copy. Where a
+/// placement's material actually sits is one derivation, [`Document::placement_footprint`], and what
+/// fraction of the used sheets it covers is another, [`Document::nesting_utilisation`], so a nester
+/// certifying its own output, [`Document::validate`] refusing a bad record and the report printing one
+/// can never disagree (invariant 2).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Nesting {
+  /// The sheets the parts are nested on, authored in the document (S4).
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub sheets: Vec<NestingSheet>,
+  /// The parts, each a selection of the document's own entities and an instance count (S1).
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub parts: Vec<NestingPart>,
+  /// One entry per instance the nester placed (S2).
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub placements: Vec<NestingPlacement>,
+  /// The cost record, absent until a nesting run has written it (S3).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cost: Option<NestingCost>,
+}
+
+impl Nesting {
+  /// The sheet with this id.
+  pub fn sheet(&self, id: &str) -> Option<&NestingSheet> {
+    self.sheets.iter().find(|sheet| sheet.id == id)
+  }
+
+  /// The part with this id.
+  pub fn part(&self, id: &str) -> Option<&NestingPart> {
+    self.parts.iter().find(|part| part.id == id)
+  }
+}
+
+/// One sheet the parts are nested on, authored in the document (S4).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NestingSheet {
+  /// Stable identifier, referenced by placements.
+  pub id: String,
+  /// Sheet size along X; must be a positive finite length.
+  pub width: Length,
+  /// Sheet size along Y; must be a positive finite length.
+  pub height: Length,
+}
+
+/// One part to nest: a selection of the document's own entities and how many copies are wanted (S1).
+///
+/// The selection is ids into this document, the `MouldingParams` precedent, so a part is not a second
+/// copy of the geometry and cannot drift from it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NestingPart {
+  /// Stable identifier, referenced by placements.
+  pub id: String,
+  /// Entities the part is cut from; at least one, each one present in the document.
+  pub entity_ids: Vec<String>,
+  /// How many copies of this part the nesting must place.
+  pub instances: usize,
+}
+
+impl NestingPart {
+  /// The bounding box of every entity this part is cut from, in document coordinates.
+  ///
+  /// `None` when the part names no entity or names one the document does not hold, both of which
+  /// [`Document::validate`] refuses by name before any footprint is asked for.
+  pub fn bounds(&self, document: &Document) -> Option<Bounds> {
+    let mut bounds = Bounds::empty();
+    for entity_id in &self.entity_ids {
+      let entity_bounds = document.entity(entity_id)?.kind.as_contour()?.bounds();
+      bounds = bounds.include(entity_bounds.min).include(entity_bounds.max);
+    }
+    self.entity_ids.first().map(|_| bounds)
+  }
+}
+
+/// One instance on a sheet: which part, which sheet, where it sits and how it is turned (S2).
+///
+/// `position` is the sheet point the **placed** footprint's lower-left corner occupies, and
+/// `rotation` is the turn the nester chose about the part's own footprint corner. Both are read by
+/// [`Document::placement_footprint`] and nowhere else, so where the material sits has one definition.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NestingPlacement {
+  /// The part this instance is a copy of.
+  pub part_id: String,
+  /// The sheet it is nested on.
+  pub sheet_id: String,
+  /// Where the placed footprint's lower-left corner sits on the sheet, in sheet coordinates.
+  pub position: Point2,
+  /// The turn the nester chose about the part's own footprint corner, counter-clockwise.
+  pub rotation: Angle,
+}
+
+/// The cost record of a nesting run: what the report prints and what the document stores (S3).
+///
+/// The user asked for both, so the report and the field read the same two numbers rather than each
+/// computing its own. Both are fractions of the used sheets' area, and the one arithmetic that
+/// produces them is [`Document::nesting_utilisation`]: the record is written from it, refused against
+/// it and printed from it, so the field and the placements cannot state two utilisations (invariant 2).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NestingCost {
+  /// How many sheets the run consumed.
+  pub sheets_used: usize,
+  /// Fraction of the used sheets' area covered by parts, between 0 and 1.
+  pub utilisation: f64,
+  /// Fraction of the used sheets' area left as waste, between 0 and 1.
+  pub waste: f64,
 }
 
 /// Why a document was rejected.
@@ -1169,6 +1290,158 @@ pub enum ModelError {
     /// The requested start depth in millimetres.
     start_depth: f64,
   },
+  /// A nesting sheet is zero, negative or not a finite size, so it holds no part.
+  ///
+  /// The job's own rule (a stock that is not a positive finite size describes no rectangle) applies to
+  /// every authored sheet, refused here with the sheet's id, the dimension and the value rather than
+  /// clamped into a plausible one (invariant 3).
+  #[error("nesting sheet {sheet:?} {field} must be positive, got {value} mm")]
+  NonPositiveSheetDimension {
+    /// The sheet id.
+    sheet: String,
+    /// Which dimension.
+    field: &'static str,
+    /// The offending value in millimetres.
+    value: f64,
+  },
+  /// A nesting part names no entity, so there is nothing to cut it from.
+  #[error("nesting part {part:?} names no entity ids, so there is nothing to cut it from")]
+  NestingPartTakesNoEntities {
+    /// The part id.
+    part: String,
+  },
+  /// A nesting part cites geometry that does not exist.
+  ///
+  /// The part's selection is ids into this document, so a missing id is a refusal and never an empty
+  /// part: an empty part would nest nothing while the report still counted its instances.
+  #[error("nesting part {part:?} references unknown entity {entity:?}")]
+  NestingPartUnknownEntity {
+    /// The part id.
+    part: String,
+    /// The missing entity id.
+    entity: String,
+  },
+  /// A placement names a part the nesting section does not hold.
+  #[error("nesting placement names unknown part {part:?}")]
+  NestingPlacementUnknownPart {
+    /// The missing part id.
+    part: String,
+  },
+  /// A placement names a sheet the nesting section does not hold.
+  #[error("nesting placement names unknown sheet {sheet:?}")]
+  NestingPlacementUnknownSheet {
+    /// The missing sheet id.
+    sheet: String,
+  },
+  /// A placement's position is not a non-negative, finite point of its sheet.
+  ///
+  /// The position is the sheet point the part's footprint origin lands on, so a negative coordinate
+  /// puts the part past the sheet's lower edges before any geometry is asked about.
+  #[error(
+    "nesting placement of part {part:?} must sit at a non-negative finite point of its sheet, got \
+     {x} mm and {y} mm"
+  )]
+  NestingPlacementPositionNotUsable {
+    /// The part id.
+    part: String,
+    /// The offending X coordinate in millimetres.
+    x: f64,
+    /// The offending Y coordinate in millimetres.
+    y: f64,
+  },
+  /// A placement's footprint leaves its sheet, so the machine would cut past the stock.
+  #[error(
+    "nesting placement of part {part:?} on sheet {sheet:?} leaves the sheet: its footprint reaches \
+     x {x} mm and y {y} mm, the sheet is {width} mm by {height} mm"
+  )]
+  NestingPlacementOutsideSheet {
+    /// The part id.
+    part: String,
+    /// The sheet id.
+    sheet: String,
+    /// The footprint's largest X, in millimetres.
+    x: f64,
+    /// The footprint's largest Y, in millimetres.
+    y: f64,
+    /// The sheet's width in millimetres.
+    width: f64,
+    /// The sheet's height in millimetres.
+    height: f64,
+  },
+  /// Two placements on one sheet overlap, so both parts cannot be cut from that sheet.
+  ///
+  /// Touching is not overlapping: parts nested edge to edge are the point of nesting. What is refused
+  /// is two footprints whose interiors intersect.
+  #[error("nesting placements of parts {first:?} and {second:?} overlap on sheet {sheet:?}")]
+  NestingPlacementsOverlap {
+    /// The part placed first.
+    first: String,
+    /// The part placed second.
+    second: String,
+    /// The sheet both placements name.
+    sheet: String,
+  },
+  /// A part asks for a number of instances the placements do not honour.
+  ///
+  /// The count is authored on the part and the placements are the nester's answer, so a disagreement
+  /// means one of them is stale and the report would count copies the document does not hold.
+  #[error("nesting part {part:?} asks for {wanted} instances but {placed} placements name it")]
+  NestingInstanceCountMismatch {
+    /// The part id.
+    part: String,
+    /// How many instances the part asks for.
+    wanted: usize,
+    /// How many placements name it.
+    placed: usize,
+  },
+  /// The stored cost record claims a number of sheets the placements do not name.
+  ///
+  /// The user asked for the cost to be **both** the report and a stored field (S3), so the record is
+  /// the run's own answer: a count the placements do not support is stale or hand-edited, and the
+  /// report would print a run the document does not hold. Refused naming both numbers (invariant 3).
+  #[error(
+    "nesting cost records {recorded} sheets used but the placements name {placed} distinct sheets"
+  )]
+  NestingCostSheetCountMismatch {
+    /// The count the record claims.
+    recorded: usize,
+    /// The number of distinct sheets the placements name.
+    placed: usize,
+  },
+  /// A stored cost fraction is not a finite fraction of the used area.
+  ///
+  /// Utilisation and waste are fractions of the used sheets' area, so neither can be `NaN`, infinite
+  /// or outside `0.0..=1.0`; refused with the field name and the value rather than clamped into a
+  /// plausible fraction (invariant 3).
+  #[error("nesting cost {field} must be a finite fraction between 0 and 1, got {value}")]
+  NestingCostFractionOutOfRange {
+    /// Which fraction.
+    field: &'static str,
+    /// The offending value.
+    value: f64,
+  },
+  /// A stored cost fraction is not the one the document's own placements and sheets derive (T1c).
+  ///
+  /// A record can be consistent with itself and still be wrong about the area: 0.25 utilisation and
+  /// 0.75 waste sum to one while the placements only cover 0.125 of the used sheets. The user asked
+  /// for the cost to be **both** the report and a stored field (S3), so the field is measured against
+  /// the document rather than against itself, and the refusal states the field, the recorded
+  /// fraction, the fraction [`Document::nesting_utilisation`] derives and the tolerance they were
+  /// compared within (invariant 3).
+  #[error(
+    "nesting cost {field} {recorded} is not the {derived} the document's own placements and sheets \
+     derive, within {tolerance}"
+  )]
+  NestingCostFractionMismatch {
+    /// Which fraction.
+    field: &'static str,
+    /// The recorded fraction.
+    recorded: f64,
+    /// The fraction the document derives.
+    derived: f64,
+    /// The tolerance the two were compared within.
+    tolerance: f64,
+  },
 }
 
 impl Document {
@@ -1181,6 +1454,7 @@ impl Document {
       toolpaths: Vec::new(),
       tools_ref: None,
       postp: None,
+      nesting: None,
     }
   }
 
@@ -1192,6 +1466,93 @@ impl Document {
   /// Look an entity up by id.
   pub fn entity(&self, id: &str) -> Option<&Entity> {
     self.entities().find(|entity| entity.id == id)
+  }
+
+  /// The footprint of the part `placement` places, in its sheet's coordinates.
+  ///
+  /// This is the **one** reading of a placement: the part's own bounding box in document
+  /// coordinates, turned about its own lower-left corner by `placement.rotation`, and then moved so
+  /// the turned footprint's lower-left corner lands exactly on `placement.position`.
+  /// [`Document::validate`] refuses an overlapping or off-sheet placement through it, and a nester
+  /// certifying its own output asks the same function, so a certificate and the load-time check can
+  /// never disagree (invariant 2).
+  ///
+  /// The position is the **placed** footprint's corner and not the part's own origin, because a
+  /// quarter turn about a part's own corner sends the material to negative X: a nester that had to
+  /// compensate for that would be authoring a number nobody can read off the sheet.
+  ///
+  /// `None` when the part is unknown, or when its selection has no area to place: a degenerate
+  /// footprint covers no point of the sheet, so it can neither leave it nor overlap another.
+  pub fn placement_footprint(&self, placement: &NestingPlacement) -> Option<Contour> {
+    let part = self.nesting.as_ref()?.part(&placement.part_id)?;
+    let bounds = part.bounds(self)?;
+    let width = bounds.max.x - bounds.min.x;
+    let height = bounds.max.y - bounds.min.y;
+    if !(width > 0.0 && height > 0.0) {
+      return None;
+    }
+    let local = Contour::from_points(
+      &[
+        Point2::new(0.0, 0.0),
+        Point2::new(width, 0.0),
+        Point2::new(width, height),
+        Point2::new(0.0, height),
+      ],
+      true,
+    )
+    .ok()?;
+    let turned =
+      cam_geom::transform::rotate(&local, placement.rotation.radians(), Point2::ORIGIN).ok()?;
+    let turned_bounds = turned.bounds();
+    cam_geom::transform::translate(
+      &turned,
+      cam_geom::Vec2::new(
+        placement.position.x - turned_bounds.min.x,
+        placement.position.y - turned_bounds.min.y,
+      ),
+    )
+    .ok()
+  }
+
+  /// The utilisation this document's own placements and sheets imply (T1c, S3).
+  ///
+  /// This is **the** arithmetic for utilisation and waste: the placed footprints' area over the area
+  /// of the sheets those placements name, with waste its complement, `1 - utilisation`. The stored
+  /// cost record is written from it, [`Document::validate`] refuses a record that disagrees with it
+  /// and the report prints it, so the document's halves cannot claim two different utilisations and no
+  /// caller needs a third (invariant 2).
+  ///
+  /// The denominator is the sheets **the placements name**, never every sheet the section holds: a
+  /// sheet that is authored but carries no placement is not used, and counting it would report a
+  /// utilisation no part of the run supports.
+  ///
+  /// `None` when the document cannot say — it holds no sheets, or no placement on any of them — rather
+  /// than an invented zero, which is why a cost record is never refused for disagreeing with it.
+  pub fn nesting_utilisation(&self) -> Option<f64> {
+    let nesting = self.nesting.as_ref()?;
+    if nesting.sheets.is_empty() || nesting.placements.is_empty() {
+      return None;
+    }
+
+    let mut used_sheets: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut used_area = 0.0;
+    let mut placed_area = 0.0;
+    for placement in &nesting.placements {
+      let sheet = nesting.sheet(&placement.sheet_id)?;
+      if used_sheets.insert(placement.sheet_id.as_str()) {
+        used_area += sheet.width.mm() * sheet.height.mm();
+      }
+      // A placement with no area covers nothing, so it adds nothing, but the sheet it names is still
+      // one the run used and stays in the denominator (D-M9-6).
+      if let Some(footprint) = self.placement_footprint(placement) {
+        placed_area += footprint.signed_area().abs();
+      }
+    }
+
+    if !(used_area > 0.0 && used_area.is_finite()) {
+      return None;
+    }
+    Some(placed_area / used_area)
   }
 
   /// Rewrite a schema tag this build still reads into the one it writes.
@@ -1310,7 +1671,244 @@ impl Document {
       check_islands(self, toolpath)?;
     }
 
+    check_nesting(self)?;
+
     Ok(())
+  }
+}
+
+/// Check the optional nesting section: authored sheets, parts, placements, their agreement and the
+/// stored cost record.
+///
+/// Every rule refuses naming the offending value rather than defaulting, because each one describes a
+/// job a nester would otherwise silently "fix" into a different one: a sheet with no size, a part with
+/// no geometry, a placement that leaves its sheet or lands on another part, an instance count the
+/// placements do not honour, and a cost record the placements do not support (invariant 3, M8's rule).
+///
+/// Where a placement's material sits is not re-derived here: [`Document::placement_footprint`] is the
+/// one reading of a placement, so this check and a nester certifying its own output agree by
+/// construction (invariant 2).
+fn check_nesting(document: &Document) -> Result<(), ModelError> {
+  let Some(nesting) = &document.nesting else {
+    return Ok(());
+  };
+
+  let mut sheet_ids = std::collections::BTreeSet::new();
+  for sheet in &nesting.sheets {
+    if !sheet_ids.insert(sheet.id.as_str()) {
+      return Err(ModelError::DuplicateId {
+        kind: "nesting sheet",
+        id: sheet.id.clone(),
+      });
+    }
+    for (field, value) in [("width", sheet.width.mm()), ("height", sheet.height.mm())] {
+      if value <= 0.0 || !value.is_finite() {
+        return Err(ModelError::NonPositiveSheetDimension {
+          sheet: sheet.id.clone(),
+          field,
+          value,
+        });
+      }
+    }
+  }
+
+  let mut part_ids = std::collections::BTreeSet::new();
+  for part in &nesting.parts {
+    if !part_ids.insert(part.id.as_str()) {
+      return Err(ModelError::DuplicateId {
+        kind: "nesting part",
+        id: part.id.clone(),
+      });
+    }
+    if part.entity_ids.is_empty() {
+      return Err(ModelError::NestingPartTakesNoEntities {
+        part: part.id.clone(),
+      });
+    }
+    for entity_id in &part.entity_ids {
+      if document.entity(entity_id).is_none() {
+        return Err(ModelError::NestingPartUnknownEntity {
+          part: part.id.clone(),
+          entity: entity_id.clone(),
+        });
+      }
+    }
+  }
+
+  let mut placed_counts: std::collections::BTreeMap<&str, usize> =
+    std::collections::BTreeMap::new();
+  let mut footprints = Vec::with_capacity(nesting.placements.len());
+  for placement in &nesting.placements {
+    let part =
+      nesting
+        .part(&placement.part_id)
+        .ok_or_else(|| ModelError::NestingPlacementUnknownPart {
+          part: placement.part_id.clone(),
+        })?;
+    let sheet = nesting.sheet(&placement.sheet_id).ok_or_else(|| {
+      ModelError::NestingPlacementUnknownSheet {
+        sheet: placement.sheet_id.clone(),
+      }
+    })?;
+    let (x, y) = (placement.position.x, placement.position.y);
+    if !(x.is_finite() && y.is_finite() && x >= 0.0 && y >= 0.0) {
+      return Err(ModelError::NestingPlacementPositionNotUsable {
+        part: part.id.clone(),
+        x,
+        y,
+      });
+    }
+    *placed_counts.entry(part.id.as_str()).or_default() += 1;
+
+    let footprint = document.placement_footprint(placement);
+    if let Some(footprint) = &footprint {
+      let bounds = footprint.bounds();
+      let (width, height) = (sheet.width.mm(), sheet.height.mm());
+      let tolerance = cam_geom::DEFAULT_TOLERANCE;
+      if bounds.max.x > width + tolerance
+        || bounds.max.y > height + tolerance
+        || bounds.min.x < -tolerance
+        || bounds.min.y < -tolerance
+      {
+        return Err(ModelError::NestingPlacementOutsideSheet {
+          part: part.id.clone(),
+          sheet: sheet.id.clone(),
+          x: bounds.max.x,
+          y: bounds.max.y,
+          width,
+          height,
+        });
+      }
+    }
+    footprints.push((part.id.as_str(), sheet.id.as_str(), footprint));
+  }
+
+  for (index, (first_id, first_sheet, first)) in footprints.iter().enumerate() {
+    let Some(first) = first else {
+      continue;
+    };
+    for (second_id, second_sheet, second) in &footprints[index + 1..] {
+      let Some(second) = second else {
+        continue;
+      };
+      if first_sheet != second_sheet {
+        continue;
+      }
+      if footprints_overlap(first, second) {
+        return Err(ModelError::NestingPlacementsOverlap {
+          first: (*first_id).to_owned(),
+          second: (*second_id).to_owned(),
+          sheet: (*first_sheet).to_owned(),
+        });
+      }
+    }
+  }
+
+  for part in &nesting.parts {
+    let placed = placed_counts.get(part.id.as_str()).copied().unwrap_or(0);
+    if placed != part.instances {
+      return Err(ModelError::NestingInstanceCountMismatch {
+        part: part.id.clone(),
+        wanted: part.instances,
+        placed,
+      });
+    }
+  }
+
+  check_nesting_cost(document)?;
+
+  Ok(())
+}
+
+/// The tolerance the stored cost record's fractions are compared with.
+///
+/// It is the crate's existing notion of "close enough", `cam_geom::DEFAULT_TOLERANCE` — the value
+/// this module already uses for the placement and island checks — reused rather than a second
+/// epsilon, so a document has one tolerance and not two. Utilisation and waste are dimensionless
+/// fractions, so this is an absolute tolerance, and the comparison is inclusive: a fraction exactly
+/// the tolerance away from the one the document derives still loads.
+const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
+
+/// Check the stored cost record against the placements and sheets that produced it (S3).
+///
+/// The user asked for utilisation and waste to be **both** the report and a stored field (S3), so the
+/// field and the placements must not be able to disagree. Where the document can answer — it holds
+/// sheets and placements — [`Document::nesting_utilisation`] is the one arithmetic and the record has
+/// to equal it. Three rules, each refusing the record by name and each stating the recorded value
+/// beside the value the document implies (invariant 3):
+///
+/// 1. `sheets_used` is the number of **distinct sheets** the placements name.
+/// 2. `utilisation` and `waste` are finite fractions of the used area, so each is in `0.0..=1.0`.
+/// 3. `utilisation` is the fraction the placements cover and `waste` is its complement, both within
+///    `NESTING_COST_SUM_TOLERANCE`. Agreement with itself is not enough: a record can sum to one and
+///    still claim an area the placements do not support, which is the record this rule exists for.
+///    The sum rule is therefore **implied rather than checked**: both fractions are compared with the
+///    one derivation and its complement, so a record that agrees with each cannot fail to sum to one.
+///
+/// This never recomputes the record: validating does not fix the numbers, because a loader that
+/// quietly corrected a stale record would hide the staleness instead of reporting it. And it never
+/// derives the fractions itself either — the third rule asks the document and compares (invariant 2).
+fn check_nesting_cost(document: &Document) -> Result<(), ModelError> {
+  let Some(nesting) = &document.nesting else {
+    return Ok(());
+  };
+  let Some(cost) = &nesting.cost else {
+    return Ok(());
+  };
+
+  let named_sheets: std::collections::BTreeSet<&str> = nesting
+    .placements
+    .iter()
+    .map(|placement| placement.sheet_id.as_str())
+    .collect();
+  if cost.sheets_used != named_sheets.len() {
+    return Err(ModelError::NestingCostSheetCountMismatch {
+      recorded: cost.sheets_used,
+      placed: named_sheets.len(),
+    });
+  }
+
+  for (field, value) in [("utilisation", cost.utilisation), ("waste", cost.waste)] {
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+      return Err(ModelError::NestingCostFractionOutOfRange { field, value });
+    }
+  }
+
+  // A document that cannot say what it used — no sheets, or nothing placed on them — refuses no
+  // record rather than measuring it against an invented fraction.
+  let Some(utilisation) = document.nesting_utilisation() else {
+    return Ok(());
+  };
+  for (field, recorded, derived) in [
+    ("utilisation", cost.utilisation, utilisation),
+    ("waste", cost.waste, 1.0 - utilisation),
+  ] {
+    if (recorded - derived).abs() > NESTING_COST_SUM_TOLERANCE {
+      return Err(ModelError::NestingCostFractionMismatch {
+        field,
+        recorded,
+        derived,
+        tolerance: NESTING_COST_SUM_TOLERANCE,
+      });
+    }
+  }
+
+  Ok(())
+}
+
+/// Whether two footprints share any area on their sheet.
+///
+/// The kernel's own intersector answers, so this is not a second one (T3's rule): crossing and
+/// containment are overlaps. `Touching` is not — parts nested edge to edge are the point of nesting —
+/// except when the two contours are the same one, which the kernel reports as `Touching` and which is
+/// two copies stacked on one spot.
+fn footprints_overlap(first: &Contour, second: &Contour) -> bool {
+  match cam_geom::winding::relation(first, second, cam_geom::DEFAULT_TOLERANCE) {
+    cam_geom::winding::Relation::Disjoint => false,
+    cam_geom::winding::Relation::Touching => first.bounds() == second.bounds(),
+    cam_geom::winding::Relation::FirstInside
+    | cam_geom::winding::Relation::SecondInside
+    | cam_geom::winding::Relation::Crossing => true,
   }
 }
 

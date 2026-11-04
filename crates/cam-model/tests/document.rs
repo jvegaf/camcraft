@@ -1385,3 +1385,874 @@ fn a_moulding_toolpath_with_a_non_finite_profile_point_is_refused() {
     "{error:?}"
   );
 }
+
+// M9: the optional nesting section (S1-S4). A master document carries N sheets, N parts and the
+// placements the nester chose, plus the cost record the report reads.
+
+fn rectangle(width: f64, height: f64, at: Point2) -> Contour {
+  Contour::from_points(
+    &[
+      at,
+      Point2::new(at.x + width, at.y),
+      Point2::new(at.x + width, at.y + height),
+      Point2::new(at.x, at.y + height),
+    ],
+    true,
+  )
+  .expect("rectangle")
+}
+
+fn nesting_document() -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Parts".to_owned(),
+    visible: true,
+    entities: vec![
+      Entity {
+        id: "E1".to_owned(),
+        kind: EntityKind::Contour {
+          contour: square(100.0),
+        },
+      },
+      Entity {
+        id: "E2".to_owned(),
+        kind: EntityKind::Contour {
+          contour: rectangle(200.0, 50.0, Point2::new(300.0, 300.0)),
+        },
+      },
+    ],
+  });
+  document.nesting = Some(Nesting {
+    sheets: vec![NestingSheet {
+      id: "S1".to_owned(),
+      width: Length::from_mm(600.0),
+      height: Length::from_mm(400.0),
+    }],
+    parts: vec![
+      NestingPart {
+        id: "P1".to_owned(),
+        entity_ids: vec!["E1".to_owned()],
+        instances: 2,
+      },
+      NestingPart {
+        id: "P2".to_owned(),
+        entity_ids: vec!["E2".to_owned()],
+        instances: 1,
+      },
+    ],
+    placements: vec![
+      NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(200.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "P2".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 150.0),
+        rotation: Angle::from_degrees(90.0),
+      },
+    ],
+    // Both fractions are what `Document::nesting_utilisation` derives: the placements cover 30 000
+    // mm² of the one 600 x 400 = 240 000 mm² sheet they name, so utilisation is 0.125 and waste is
+    // its complement, 0.875. A hand-invented pair — 0.25 and 0.75 sum to one and are still wrong about
+    // the area — is exactly the record the cost rule refuses, so derive these; never pick them.
+    cost: Some(NestingCost {
+      sheets_used: 1,
+      utilisation: 0.125,
+      waste: 0.875,
+    }),
+  });
+  document
+}
+
+/// Validate `document`, expecting a refusal that leaves the document exactly as it was.
+fn refusal(document: &Document) -> ModelError {
+  let stored = serde_json::to_string(document).expect("serialises");
+  let error = document.validate().expect_err("must refuse");
+  assert_eq!(
+    serde_json::to_string(document).expect("serialises"),
+    stored,
+    "a refused document is unchanged"
+  );
+  error
+}
+
+#[test]
+fn a_document_written_before_nesting_loads_and_re_saves_byte_identically() {
+  // The section is optional and top level, the `tools_ref`/`postp` precedent: a document authored
+  // before M9 must not gain a byte, so the comparison is against the bytes an older build wrote.
+  let before_m9 = r#"{"schema":"c2d/document@2","job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0},"layers":[{"id":"L1","name":"Part","visible":true,"entities":[{"id":"E1","type":"contour","contour":{"vertices":[{"point":{"x":0.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":100.0},"bulge":0.0},{"point":{"x":0.0,"y":100.0},"bulge":0.0}],"closed":true}}]}],"toolpaths":[]}"#;
+  let document: Document = serde_json::from_str(before_m9).expect("a document written before M9");
+  assert!(document.nesting.is_none(), "no nesting section is present");
+  document.validate().expect("and it still validates");
+  assert_eq!(
+    serde_json::to_string(&document).expect("serialises"),
+    before_m9,
+    "a document written before M9 is re-saved byte for byte"
+  );
+}
+
+#[test]
+fn a_nesting_section_round_trips_losslessly() {
+  let document = nesting_document();
+  document.validate().expect("a valid nesting document");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"nesting\":"), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  let nesting = parsed.nesting.as_ref().expect("the section survives");
+  assert_eq!(nesting.sheets[0].width, Length::from_mm(600.0));
+  assert_eq!(nesting.parts[1].instances, 1);
+  assert_eq!(
+    nesting.placements[2].rotation.degrees().round(),
+    90.0,
+    "the rotation the nester chose is stored as authored"
+  );
+  let cost = nesting.cost.as_ref().expect("the cost record is stored");
+  assert_eq!(cost.sheets_used, 1);
+  assert_eq!(cost.utilisation + cost.waste, 1.0);
+}
+
+#[test]
+fn the_nesting_section_does_not_move_the_schema_tag() {
+  assert_eq!(DOCUMENT_SCHEMA, "c2d/document@2");
+  let json = serde_json::to_string(&nesting_document()).expect("serialises");
+  assert!(json.contains("\"schema\":\"c2d/document@2\""), "{json}");
+}
+
+#[test]
+fn a_non_positive_sheet_dimension_is_refused_naming_the_value() {
+  for value in [0.0, -5.0, f64::INFINITY] {
+    let mut document = nesting_document();
+    document.nesting.as_mut().expect("a nesting section").sheets[0].height = Length::from_mm(value);
+    let error = refusal(&document);
+    assert!(
+      matches!(
+        error,
+        ModelError::NonPositiveSheetDimension {
+          field: "height",
+          ..
+        }
+      ),
+      "{error:?}"
+    );
+    let message = error.to_string();
+    assert!(message.contains("\"S1\""), "{message}");
+    assert!(message.contains("height"), "{message}");
+    assert!(message.contains(&value.to_string()), "{message}");
+  }
+}
+
+#[test]
+fn duplicate_nesting_sheet_ids_are_refused() {
+  let mut document = nesting_document();
+  let clone = document.nesting.as_ref().expect("a section").sheets[0].clone();
+  document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .sheets
+    .push(clone);
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::DuplicateId {
+        kind: "nesting sheet",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("\"S1\""), "{error}");
+}
+
+#[test]
+fn duplicate_nesting_part_ids_are_refused() {
+  let mut document = nesting_document();
+  let clone = document.nesting.as_ref().expect("a section").parts[1].clone();
+  document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .parts
+    .push(clone);
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::DuplicateId {
+        kind: "nesting part",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("\"P2\""), "{error}");
+}
+
+#[test]
+fn a_nesting_part_that_names_no_entity_is_refused() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").parts[0].entity_ids = Vec::new();
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPartTakesNoEntities { .. }),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("\"P1\""), "{error}");
+}
+
+#[test]
+fn a_nesting_part_that_names_a_missing_entity_is_refused_naming_it() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").parts[0].entity_ids = vec!["E-missing".to_owned()];
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPartUnknownEntity { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains("\"E-missing\""), "{message}");
+}
+
+#[test]
+fn a_placement_that_names_a_missing_part_is_refused_naming_it() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[0].part_id = "P-missing".to_owned();
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementUnknownPart { .. }),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("\"P-missing\""), "{error}");
+}
+
+#[test]
+fn a_placement_that_names_a_missing_sheet_is_refused_naming_it() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[1].sheet_id = "S-missing".to_owned();
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementUnknownSheet { .. }),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("\"S-missing\""), "{error}");
+}
+
+#[test]
+fn a_negative_placement_is_refused_naming_the_value() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(-10.0, 0.0);
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementPositionNotUsable { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains("-10"), "{message}");
+}
+
+#[test]
+fn a_placement_that_leaves_its_sheet_is_refused_naming_the_footprint_and_the_sheet() {
+  let mut document = nesting_document();
+  // P1 is 100 mm square, so at x = 550 its footprint reaches 650 mm on a 600 mm sheet.
+  document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(550.0, 0.0);
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementOutsideSheet { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains("\"S1\""), "{message}");
+  assert!(message.contains("650"), "{message}");
+  assert!(message.contains("600"), "{message}");
+}
+
+#[test]
+fn a_rotated_placement_is_measured_by_its_turned_footprint() {
+  // P2 is 200 mm wide and 50 mm tall. Turned a quarter turn it is 50 mm wide, so it fits at x = 550
+  // on a 600 mm sheet only because the rotation the nester chose is honoured.
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[2].position = Point2::new(550.0, 0.0);
+  document
+    .validate()
+    .expect("a quarter turn swaps the footprint's width and height");
+  document.nesting.as_mut().expect("a section").placements[2].rotation = Angle::ZERO;
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementOutsideSheet { .. }),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("750"), "{error}");
+}
+
+#[test]
+fn two_placements_that_overlap_on_a_sheet_are_refused() {
+  let mut document = nesting_document();
+  // The same spot twice: the two footprints are identical, which is an overlap and not a touch.
+  document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(0.0, 0.0);
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementsOverlap { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains("\"S1\""), "{message}");
+
+  // A partial overlap: P2's turned footprint is 50 mm wide, so at x = 80 it bites into P1's 100 mm.
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[2].position = Point2::new(80.0, 80.0);
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementsOverlap { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains("\"P2\""), "{message}");
+}
+
+#[test]
+fn two_placements_that_share_an_edge_are_accepted() {
+  // Parts nested edge to edge are the point of nesting, so touching is not overlapping.
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(100.0, 0.0);
+  document
+    .validate()
+    .expect("two footprints that share an edge do not overlap");
+}
+
+#[test]
+fn a_part_whose_instance_count_disagrees_with_its_placements_is_refused() {
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").parts[0].instances = 3;
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingInstanceCountMismatch { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+  assert!(message.contains('3'), "{message}");
+  assert!(message.contains('2'), "{message}");
+}
+
+// T1b: the stored cost record's own refusals (S3). The user asked for utilisation and waste to be
+// **both** the report and a stored field, so the field and the placements must not be able to
+// disagree. Each rule refuses the record by name and never recomputes it: the numbers are the run's
+// answer and validating does not fix them.
+
+#[test]
+fn a_cost_record_that_disagrees_with_its_placements_sheets_is_refused() {
+  // The three placements all name sheet `S1`, so a record claiming two used sheets is stale. The
+  // refusal states the recorded count and the count the placements imply (invariant 3).
+  let mut document = nesting_document();
+  document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record")
+    .sheets_used = 2;
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostSheetCountMismatch {
+        recorded: 2,
+        placed: 1
+      }
+    ),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains('2'), "the recorded count: {message}");
+  assert!(
+    message.contains('1'),
+    "the count the placements name: {message}"
+  );
+}
+
+#[test]
+fn a_cost_record_whose_fractions_are_not_fractions_is_refused_naming_field_and_value() {
+  // Both fractions are fractions of the used sheets' area, so `NaN`, an infinity and anything outside
+  // `0.0..=1.0` describe no area at all.
+  for (field, value) in [
+    ("utilisation", f64::NAN),
+    ("waste", f64::INFINITY),
+    ("utilisation", 1.5),
+    ("waste", -0.1),
+  ] {
+    let mut document = nesting_document();
+    let cost = document
+      .nesting
+      .as_mut()
+      .expect("a section")
+      .cost
+      .as_mut()
+      .expect("a cost record");
+    match field {
+      "utilisation" => cost.utilisation = value,
+      _ => cost.waste = value,
+    }
+    let error = refusal(&document);
+    assert!(
+      matches!(
+        error,
+        ModelError::NestingCostFractionOutOfRange { field: named, .. } if named == field
+      ),
+      "{error:?}"
+    );
+    let message = error.to_string();
+    assert!(message.contains(field), "the offending field: {message}");
+    assert!(
+      message.contains(&value.to_string()),
+      "the offending value: {message}"
+    );
+  }
+}
+
+#[test]
+fn a_cost_record_whose_waste_the_placements_do_not_imply_is_refused_naming_both_and_the_tolerance()
+{
+  // Utilisation and waste are fractions of the one used area (D-M9-5), so waste has to be the
+  // complement of the utilisation the document derives, 0.125 — not merely a fraction that happens to
+  // complete the record's own arithmetic. The refusal states the recorded waste, the waste the
+  // document derives, and the tolerance they were measured against — `cam_geom::DEFAULT_TOLERANCE`,
+  // the tolerance the rest of the crate already uses rather than a second epsilon.
+  let mut document = nesting_document();
+  document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record")
+    .waste = 0.5;
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "waste",
+        recorded,
+        derived,
+        ..
+      } if recorded == 0.5 && derived == 0.875
+    ),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("waste"), "the offending field: {message}");
+  assert!(message.contains("0.5"), "the recorded waste: {message}");
+  assert!(
+    message.contains("0.875"),
+    "the waste the document derives: {message}"
+  );
+  assert!(
+    message.contains(&cam_geom::DEFAULT_TOLERANCE.to_string()),
+    "the tolerance it was measured against: {message}"
+  );
+}
+
+#[test]
+fn a_cost_record_that_agrees_with_its_placements_loads() {
+  // The accept side of every rule at once: one distinct sheet named, two fractions inside the unit
+  // interval, and a sum of exactly one.
+  let document = nesting_document();
+  let cost = document
+    .nesting
+    .as_ref()
+    .expect("a section")
+    .cost
+    .as_ref()
+    .expect("a cost record");
+  assert_eq!(
+    cost.sheets_used, 1,
+    "the placements name one distinct sheet"
+  );
+  assert_eq!(cost.utilisation + cost.waste, 1.0, "and they sum to one");
+  document
+    .validate()
+    .expect("a cost record that agrees loads");
+}
+
+#[test]
+fn a_nesting_section_without_a_cost_record_still_loads() {
+  // `cost` is absent until a nesting run writes it (D-M9-5), so an authored document and one written
+  // before the record existed are not asked for a record they do not have.
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").cost = None;
+  document.validate().expect("no cost record, no cost rules");
+}
+
+#[test]
+fn a_cost_record_exactly_on_the_tolerance_still_loads() {
+  // The comparison is inclusive — `|recorded - derived| <= tolerance` — so a record one tolerance away
+  // from what the document derives is the last accepted one, and one more step is refused. It lives on
+  // the five-part sheet for a reason: that derivation is 0.25 and 0.75, which are exact in binary,
+  // while `0.125 + 1e-6` computes a distance of 1.000000000001e-06 and would be refused — a boundary
+  // test on the 0.125 fixture would be testing the wrong side of the tolerance.
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  let mut document = five_parts_on_one_sheet();
+  {
+    let cost = document
+      .nesting
+      .as_mut()
+      .expect("a section")
+      .cost
+      .insert(NestingCost {
+        sheets_used: 1,
+        utilisation: 0.25 + tolerance,
+        waste: 1.0 - (0.25 + tolerance),
+      });
+    assert!(
+      (cost.utilisation - 0.25).abs() <= tolerance,
+      "the utilisation sits exactly on the tolerance: {}",
+      cost.utilisation
+    );
+    assert!(
+      (cost.waste - 0.75).abs() <= tolerance,
+      "and so does the waste: {}",
+      cost.waste
+    );
+  }
+  document
+    .validate()
+    .expect("exactly on the tolerance is accepted, because the check is inclusive");
+
+  document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record")
+    .utilisation = 0.25 + 2.0 * tolerance;
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "utilisation",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+}
+
+// T1c: one arithmetic for the fractions (S3). T1b proved that the stored record is consistent with
+// itself; a record can pass that and still claim an area its placements do not cover. So
+// `Document::nesting_utilisation` is now the only answer to "what is this nesting's utilisation", the
+// stored record must equal what it says, and waste must be its complement.
+
+/// A nesting whose arithmetic can be stated in exact numbers: five 100 x 100 parts on a 500 x 400
+/// sheet — 50 000 mm² of material on 200 000 mm² of stock, so utilisation is exactly 0.25 — plus a
+/// second sheet that is authored but named by no placement.
+fn five_parts_on_one_sheet() -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Parts".to_owned(),
+    visible: true,
+    entities: vec![Entity {
+      id: "E1".to_owned(),
+      kind: EntityKind::Contour {
+        contour: square(100.0),
+      },
+    }],
+  });
+  document.nesting = Some(Nesting {
+    sheets: vec![
+      NestingSheet {
+        id: "S1".to_owned(),
+        width: Length::from_mm(500.0),
+        height: Length::from_mm(400.0),
+      },
+      NestingSheet {
+        id: "S2".to_owned(),
+        width: Length::from_mm(1000.0),
+        height: Length::from_mm(1000.0),
+      },
+    ],
+    parts: vec![NestingPart {
+      id: "P1".to_owned(),
+      entity_ids: vec!["E1".to_owned()],
+      instances: 5,
+    }],
+    placements: (0..5)
+      .map(|index| NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(f64::from(index) * 100.0, 0.0),
+        rotation: Angle::ZERO,
+      })
+      .collect(),
+    cost: None,
+  });
+  document
+}
+
+#[test]
+fn the_utilisation_is_the_placed_area_over_the_used_sheet_area() {
+  // 5 x 100 x 100 = 50 000 mm² of placed footprint on the one 500 x 400 = 200 000 mm² sheet the
+  // placements name: utilisation is 50 000 / 200 000 = 0.25 and waste is its complement, 0.75.
+  let mut document = five_parts_on_one_sheet();
+  assert_eq!(document.nesting_utilisation(), Some(0.25));
+
+  document.nesting.as_mut().expect("a section").cost = Some(NestingCost {
+    sheets_used: 1,
+    utilisation: 0.25,
+    waste: 0.75,
+  });
+  document
+    .validate()
+    .expect("the record the document derives loads");
+
+  // The second sheet is authored but carries no placement, so it is not used: counting it would make
+  // the denominator 1 200 000 mm² and the utilisation 0.0416..., which no part of the run supports.
+  let cost = document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record");
+  cost.utilisation = 50_000.0 / 1_200_000.0;
+  cost.waste = 1.0 - cost.utilisation;
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "utilisation",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+  assert!(
+    error.to_string().contains("0.25"),
+    "the derivation excludes the unused sheet: {error}"
+  );
+}
+
+#[test]
+fn a_cost_record_that_the_placements_imply_loads() {
+  // 2 x 100 x 100 for `P1` plus 200 x 50 for `P2` is 30 000 mm² of footprint on the one
+  // 600 x 400 = 240 000 mm² sheet the placements name, so utilisation is 0.125 and waste 0.875.
+  let mut document = nesting_document();
+  assert_eq!(document.nesting_utilisation(), Some(0.125));
+  let cost = document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record");
+  cost.utilisation = 0.125;
+  cost.waste = 0.875;
+  document
+    .validate()
+    .expect("the record the document derives loads");
+}
+
+#[test]
+fn a_cost_record_whose_utilisation_the_placements_do_not_imply_is_refused() {
+  // The gap this rule exists for: 0.25 and 0.75 sum to one, so a rule that only checked the record
+  // against itself called it consistent, but the placements only cover 0.125 of the sheet. The fixture
+  // now carries the derived pair, so the invented one is written here — which is the whole point: a
+  // record nobody derived is refused naming the recorded fraction, the fraction the document derives
+  // and the tolerance they were measured against (invariant 3).
+  let mut document = nesting_document();
+  {
+    let cost = document
+      .nesting
+      .as_mut()
+      .expect("a section")
+      .cost
+      .as_mut()
+      .expect("a cost record");
+    cost.utilisation = 0.25;
+    cost.waste = 0.75;
+    assert_eq!(
+      cost.utilisation + cost.waste,
+      1.0,
+      "the record is consistent with itself and still wrong about the area"
+    );
+  }
+
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "utilisation",
+        recorded,
+        derived,
+        ..
+      } if recorded == 0.25 && derived == 0.125
+    ),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("utilisation"), "{message}");
+  assert!(message.contains("0.25"), "the recorded fraction: {message}");
+  assert!(message.contains("0.125"), "the derived fraction: {message}");
+  assert!(
+    message.contains(&cam_geom::DEFAULT_TOLERANCE.to_string()),
+    "the tolerance it was measured against: {message}"
+  );
+}
+
+#[test]
+fn a_cost_record_whose_waste_is_not_the_complement_is_refused() {
+  // Waste is not merely small or merely positive: with the derived utilisation of 0.125 recorded, the
+  // waste has to be the complement, 0.875. A record that says 0.5 is refused naming what it recorded
+  // and what the document derives.
+  let mut document = nesting_document();
+  let cost = document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record");
+  cost.utilisation = 0.125;
+  cost.waste = 0.5;
+
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "waste",
+        recorded,
+        derived,
+        ..
+      } if recorded == 0.5 && derived == 0.875
+    ),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("waste"), "{message}");
+  assert!(message.contains("0.5"), "the recorded fraction: {message}");
+  assert!(message.contains("0.875"), "the derived fraction: {message}");
+  assert!(
+    message.contains(&cam_geom::DEFAULT_TOLERANCE.to_string()),
+    "the tolerance it was measured against: {message}"
+  );
+}
+
+#[test]
+fn a_cost_record_exactly_on_the_tolerance_against_the_derivation_still_loads() {
+  // The comparison is inclusive — `|recorded - derived| <= tolerance` — so the last accepted record is
+  // one tolerance away from what the document derives and one more step is refused. The derivation is
+  // the 0.25 of the five-part sheet, whose fractions are exact in binary, so this measures the check
+  // and not the rounding of the fixture.
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  let mut document = five_parts_on_one_sheet();
+  let cost = document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .insert(NestingCost {
+      sheets_used: 1,
+      utilisation: 0.25 + tolerance,
+      waste: 1.0 - (0.25 + tolerance),
+    });
+  assert!(
+    (cost.utilisation - 0.25).abs() <= tolerance,
+    "the record sits on the tolerance, not past it: {}",
+    cost.utilisation
+  );
+  document
+    .validate()
+    .expect("exactly on the tolerance is accepted, because the check is inclusive");
+
+  let cost = document
+    .nesting
+    .as_mut()
+    .expect("a section")
+    .cost
+    .as_mut()
+    .expect("a cost record");
+  cost.utilisation = 0.25 + 2.0 * tolerance;
+  cost.waste = 1.0 - cost.utilisation;
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "utilisation",
+        ..
+      }
+    ),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
+  // Two ways a document cannot answer: no sheets at all, and sheets with nothing placed on them. The
+  // derivation returns `None` instead of inventing a zero, and the record is then measured against
+  // nothing rather than against an invented fraction — only its own rules (sheet count, in range)
+  // apply to it.
+  let mut without_sheets = five_parts_on_one_sheet();
+  {
+    let nesting = without_sheets.nesting.as_mut().expect("a section");
+    nesting.sheets.clear();
+    nesting.placements.clear();
+    nesting.parts[0].instances = 0;
+    nesting.cost = Some(NestingCost {
+      sheets_used: 0,
+      utilisation: 0.4,
+      waste: 0.6,
+    });
+  }
+  assert_eq!(
+    without_sheets.nesting_utilisation(),
+    None,
+    "no sheets, so there is nothing to divide by"
+  );
+  without_sheets
+    .validate()
+    .expect("a document that cannot say refuses no record");
+
+  let mut nothing_placed = five_parts_on_one_sheet();
+  {
+    let nesting = nothing_placed.nesting.as_mut().expect("a section");
+    nesting.placements.clear();
+    nesting.parts[0].instances = 0;
+    nesting.cost = Some(NestingCost {
+      sheets_used: 0,
+      utilisation: 0.4,
+      waste: 0.6,
+    });
+  }
+  assert_eq!(
+    nothing_placed.nesting_utilisation(),
+    None,
+    "authored sheets with no placement on them say nothing about utilisation"
+  );
+  nothing_placed
+    .validate()
+    .expect("a document that cannot say refuses no record");
+}
