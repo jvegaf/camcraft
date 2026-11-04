@@ -218,6 +218,9 @@ impl Shell {
     if discard {
       self.material_size = crate::default_material_size();
       self.show_material = false;
+      // The strategy editor's draft goes with the task (camui-prancheta S10): `Cancel` leaves the document, the
+      // tool and the name exactly as they were, and the next opening re-reads them.
+      self.strategy.discard();
     }
     self.task = None;
     self.inspector_tab = Tab::Selection;
@@ -696,7 +699,13 @@ impl Shell {
         // close the task: a frame that drew the header and then the body from the same answer would report a
         // task it had just closed, and the report is what a test and the operator both read.
         if let Some(category) = self.task {
-          self.task_header(ui, &palette, category, output);
+          // The strategy editor's draft is re-read from the document *before* the header is drawn, so the frame
+          // that shows a header also shows the subject it names (L13): a header computed from last frame's seed
+          // would name a toolpath the panel had already stopped editing.
+          if category == Category::Toolpaths {
+            self.strategy.sync(app);
+          }
+          self.task_header(app, ui, &palette, category, output);
           ui.add_space(metrics.space(2));
         }
         match self.task {
@@ -706,11 +715,12 @@ impl Shell {
               .max_height(body)
               .show(ui, |ui| match category {
                 Category::Toolpaths => {
-                  // The card belongs to a toolpath, so it is drawn only while the document holds one: a card
-                  // for a toolpath that does not exist would be describing nothing.
-                  if !app.document().toolpaths.is_empty() {
-                    self.tool_card(app, ui, &palette, output);
-                  }
+                  // S10's editor is the card, the quick block and the sections, in one surface for creating and
+                  // editing; the tool card is drawn **inside** it, from the draft while creating and from the
+                  // document while editing, so there is one card and not two.
+                  self.strategy_editor(app, ui, &palette, output);
+                  // The geometry authoring body S6 put behind this category is not part of a strategy, and it is
+                  // the only surface that reaches those commands: it stays below the editor, unchanged.
                   self.authoring(app, ui, output);
                 }
                 Category::Relief3d => self.relief_task(app, ui, &palette, output),
@@ -761,18 +771,25 @@ impl Shell {
   /// glyph the bundled faces do not carry renders as a box, and a box is not an affordance.
   fn task_header(
     &mut self,
+    app: &AppState,
     ui: &mut egui::Ui,
     palette: &Palette,
     category: Category,
     output: &mut ShellOutput,
   ) {
+    // The header names the task. For `TOOLPATHS` the task *is* a strategy, and S10 gives it its own word:
+    // `New toolpath · <name>` while the editor drafts one and `Edit · <name>` while it edits the document's.
+    let label = match category {
+      Category::Toolpaths => self.strategy.header(&crate::strategy::subject(app)),
+      other => other.label().to_owned(),
+    };
     ui.horizontal(|ui| {
       ui.label(
-        RichText::new(category.label())
+        RichText::new(&label)
           .size(theme::CAPTION)
           .color(palette.get(Role::TextHi)),
       );
-      output.drawn.task_editor = category.label().to_owned();
+      output.drawn.task_editor = label;
       ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         let cancel = glyph_button(
           ui,
@@ -898,39 +915,72 @@ impl Shell {
     let Some(toolpath) = app.document().toolpaths.first() else {
       return;
     };
-    let heading = format!("TOOL — {}", toolpath.name);
+    let name = toolpath.name.clone();
+    let number = Some(toolpath.tool_number);
+    self.tool_card_for(app, ui, palette, output, &name, number, true);
+  }
+
+  /// The card itself, for a tool number the caller owns.
+  ///
+  /// Split from [`Shell::tool_card`] because the strategy editor draws the same card for two subjects
+  /// (camui-prancheta S10): the document's toolpath while editing, and its own draft while creating one. The
+  /// words, the opener and the estimate are one implementation, so the create and edit surfaces cannot show two
+  /// different cards; `estimate` is the one part that needs a document to measure, and a draft has none.
+  pub(crate) fn tool_card_for(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    output: &mut ShellOutput,
+    name: &str,
+    number: Option<u32>,
+    estimate: bool,
+  ) {
+    let heading = format!("TOOL — {name}");
     section(ui, palette, &heading);
     output.drawn.tool_card.push(heading);
 
-    let number = toolpath.tool_number;
-    match stored_tool_for_number(&self.tools, number) {
-      Some(tool) => {
-        let title = format!("T{number} - {}", tool_name(&tool.geometry));
-        let shape = tool_shape_line(tool);
-        ui.label(
-          RichText::new(&title)
-            .size(theme::TITLE)
-            .color(palette.get(Role::TextHi)),
-        );
-        ui.label(
-          RichText::new(&shape)
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-        );
-        output.drawn.tool_card.push(title);
-        output.drawn.tool_card.push(shape);
-      }
+    match number {
+      Some(number) => match stored_tool_for_number(&self.tools, number) {
+        Some(tool) => {
+          let title = format!("T{number} - {}", tool_name(&tool.geometry));
+          let shape = tool_shape_line(tool);
+          ui.label(
+            RichText::new(&title)
+              .size(theme::TITLE)
+              .color(palette.get(Role::TextHi)),
+          );
+          ui.label(
+            RichText::new(&shape)
+              .size(theme::CAPTION)
+              .color(palette.get(Role::TextDim)),
+          );
+          output.drawn.tool_card.push(title);
+          output.drawn.tool_card.push(shape);
+        }
+        None => {
+          let sentence = format!(
+            "T{number} is not in the tool library this window was given, so this toolpath has no tool \
+             to show."
+          );
+          ui.label(
+            RichText::new(&sentence)
+              .size(theme::CAPTION)
+              .color(palette.get(Role::Danger)),
+          );
+          output.drawn.tool_card.push(sentence);
+        }
+      },
+      // A draft that has not chosen a tool yet: a sentence, never a blank card, because an operator looking at
+      // nothing cannot tell "no tool chosen" from "the panel is broken".
       None => {
-        let sentence = format!(
-          "T{number} is not in the tool library this window was given, so this toolpath has no tool \
-           to show."
-        );
+        let sentence = crate::strategy::NO_TOOL_YET;
         ui.label(
-          RichText::new(&sentence)
+          RichText::new(sentence)
             .size(theme::CAPTION)
             .color(palette.get(Role::Danger)),
         );
-        output.drawn.tool_card.push(sentence);
+        output.drawn.tool_card.push(sentence.to_owned());
       }
     }
 
@@ -940,6 +990,9 @@ impl Shell {
     // because the card is a reading of the tool and this is the way to replace it.
     self.choose_tool_row(app, ui, output);
 
+    if !estimate {
+      return;
+    }
     // A line of its own rather than a field of the card (S2), measured over the document's own program
     // and written by the playback clock's formatter (S5). No second time formula, no second clock.
     let estimate = match program_for_snapshot(app.document(), &self.tools) {
@@ -2043,7 +2096,12 @@ fn ribbon_tooltip(category: Category) -> String {
   }
 }
 
-fn section_toggle(ui: &mut egui::Ui, palette: &Palette, label: &str, open: bool) -> egui::Response {
+pub(crate) fn section_toggle(
+  ui: &mut egui::Ui,
+  palette: &Palette,
+  label: &str,
+  open: bool,
+) -> egui::Response {
   ui.add_space(4.0);
   // The row is allocated as a widget before anything is painted into it, because that is what makes it
   // clickable: a response reused from a child layout answers no click, and this heading is the one control
