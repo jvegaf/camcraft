@@ -164,15 +164,16 @@ impl ScriptPanel {
     let mut notices = capture.clone();
     let result = cam_cli::script::run_script_to(&path, &mut reports, &mut notices);
 
-    // A run that captured text replaces the area; one that captured nothing leaves the previous result
-    // where it is, because an empty area would read as "the last run produced nothing" when it only
-    // failed before it could write.
-    let text = capture.text();
-    if !text.is_empty() {
-      self.output = text;
-    }
+    // The **result** decides, never whether the buffer happens to be empty. A script that succeeds
+    // without printing anything has still answered, so its empty report replaces the area — keying off
+    // emptiness would leave the previous run's text on screen with the error cleared, which reads as
+    // "this is what just ran". A run that failed keeps the previous result visible and shows the
+    // diagnostic beside it, even when it managed to print something before failing.
     match result {
-      Ok(()) => self.error = None,
+      Ok(()) => {
+        self.output = capture.text();
+        self.error = None;
+      }
       Err(failure) => self.error = Some(failure.to_string()),
     }
   }

@@ -356,3 +356,80 @@ save {saved}
 
   std::fs::remove_dir_all(&directory).ok();
 }
+
+#[test]
+fn a_successful_script_that_prints_nothing_clears_the_previous_output() {
+  // R3-001, the first path nobody covered: a run that **succeeds** and prints nothing has still
+  // answered, so the area must go empty. Keying off "the buffer is empty" left the previous run's text
+  // on screen with the error cleared, which reads as "this is what just ran".
+  let directory = scratch("empty-success");
+  let document = write_document(&directory);
+  let good = valid_script(&directory, &document);
+  let silent = write_script(&directory, "silent.cam", "# nothing to do\n");
+  let ctx = egui::Context::default();
+  let mut panel = ScriptPanel::with_path(good.display().to_string());
+
+  let first = press_run(&ctx, &mut panel);
+  assert!(contains(&first, "valid: "), "{}", joined(&first));
+  assert!(
+    !panel.output().is_empty(),
+    "the first run has something to show"
+  );
+
+  panel.set_path(silent.display().to_string());
+  let second = press_run(&ctx, &mut panel);
+  assert_eq!(
+    panel.output(),
+    "",
+    "a run that succeeded and printed nothing replaces the area"
+  );
+  assert!(
+    !contains(&second, "valid: "),
+    "the previous report must not survive a successful silent run: {}",
+    joined(&second)
+  );
+}
+
+#[test]
+fn a_failed_run_that_printed_partially_keeps_the_previous_output() {
+  // R3-001, the second path: a run that prints something and then fails used to overwrite the previous
+  // result with its partial capture, which contradicted the documented "a failure keeps the previous
+  // output" rule. The failure answers beside the last complete result.
+  let directory = scratch("partial-failure");
+  let document = write_document(&directory);
+  let good = valid_script(&directory, &document);
+  let partial = write_script(
+    &directory,
+    "partial.cam",
+    // `validate` twice, so the partial capture is *different* text from the previous run: with one
+    // `validate` the two would be identical and the assertion could not tell "kept" from "overwrote".
+    &format!(
+      "open {}\nvalidate\nvalidate\nshet 100 100\n",
+      document.display()
+    ),
+  );
+  let ctx = egui::Context::default();
+  let mut panel = ScriptPanel::with_path(good.display().to_string());
+
+  let _ = press_run(&ctx, &mut panel);
+  let previous = panel.output().to_owned();
+  assert!(!previous.is_empty(), "the first run has something to show");
+
+  panel.set_path(partial.display().to_string());
+  let second = press_run(&ctx, &mut panel);
+  assert_eq!(
+    panel.output(),
+    previous,
+    "a failed run keeps the previous result, not its own partial capture"
+  );
+  assert_ne!(
+    panel.output(),
+    format!("{previous}{previous}"),
+    "the partial capture is what a failure must not leave behind"
+  );
+  assert!(
+    contains(&second, "line 4:1: unknown script command"),
+    "the failure must be painted: {}",
+    joined(&second)
+  );
+}
