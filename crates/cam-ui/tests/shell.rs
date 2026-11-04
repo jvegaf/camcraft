@@ -205,11 +205,15 @@ fn painted_text(output: &egui::FullOutput) -> Vec<String> {
 /// The inspector's body is a scroll area capped at 55 % of the window height, so at the standard 800 px the
 /// lower half of the tab falls outside the clip rect and a click at a reported point lands on nothing above
 /// it. Reporting a point is only useful while the widget it came from is still on screen.
+///
+/// The height grew with camui-prancheta S10: the `TOOLPATHS` task now opens on a strategy editor above the
+/// authoring body, so the tab is taller than it was and the window has to keep the promise this helper makes
+/// instead of the promise it used to be able to keep at 2 000 px.
 fn tall_input() -> egui::RawInput {
   let mut input = raw_input();
   input.screen_rect = Some(egui::Rect::from_min_size(
     egui::Pos2::ZERO,
-    egui::vec2(1200.0, 2000.0),
+    egui::vec2(1200.0, 2600.0),
   ));
   input
 }
@@ -4553,9 +4557,25 @@ fn opening_a_category_puts_its_task_editor_over_the_panel() {
 
   let output = click_point(&ctx, &mut shell, &mut app, at);
   assert_eq!(shell.task(), Some(cam_ui::Category::Toolpaths));
-  assert_eq!(output.drawn.task_editor, "TOOLPATHS");
+  assert_eq!(
+    output.drawn.task_editor, "New toolpath · Profile 1",
+    "the toolpath task is the strategy editor, and S10 makes its header say which mode it is in and whose \
+     strategy it is describing"
+  );
   let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
-  let all = joined(&texts);
+  let mut all_texts = texts;
+  // The strategy editor S10 puts at the top of the task is taller than the 55 % body an 800 px window gives
+  // it, so the authoring body below it starts under the fold. The claim this test makes is S6's — the task
+  // editor, not the selection's numbers, is the panel's content — so the body is read the way an operator
+  // reaches it: the wheel, then the words that were there all along.
+  let inspector = egui::pos2(
+    (output.canvas.x + output.canvas.width) as f32 + 100.0,
+    (output.canvas.y + 260.0) as f32,
+  );
+  all_texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
+  let all = joined(&all_texts);
   assert!(
     all.contains("Add text") && all.contains("Authoring"),
     "the toolpath task carries the authoring body: {all}"
@@ -4652,7 +4672,7 @@ fn the_layers_block_folds_on_its_own_and_leaves_the_task_where_it_was() {
     "folding the layers block must not close the task"
   );
   assert_eq!(
-    output.drawn.task_editor, "TOOLPATHS",
+    output.drawn.task_editor, "New toolpath · Profile 1",
     "the task editor stays where it was"
   );
 }

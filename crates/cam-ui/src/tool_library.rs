@@ -556,7 +556,24 @@ impl Shell {
     self.show_tool_library = false;
     self.tool_library_target = None;
     self.tool_library_selected = None;
+    self.tool_library_for_draft = false;
     self.tool_search.clear();
+  }
+
+  /// Open the library to choose the tool a **new** strategy will cut with (camui-prancheta S10).
+  ///
+  /// The same modal and the same commit, with the one difference the subject forces: the strategy editor is
+  /// drafting a toolpath that does not exist yet, so `Use this tool` has no document row to write and writes the
+  /// draft's tool number instead. Opening it from the card keeps the modal's own promise — the selection starts
+  /// on the tool the draft already names, or on nothing when it names none.
+  pub(crate) fn open_tool_library_for_draft(&mut self) {
+    self.tool_library_target = None;
+    self.tool_library_selected = self.strategy.tool_number.and_then(|number| {
+      stored_tool_for_number(&self.tools, number).map(|tool| tool.geometry.id.clone())
+    });
+    self.tool_library_for_draft = true;
+    self.tool_search.clear();
+    self.show_tool_library = true;
   }
 
   /// The toolpath `Use this tool` would retool, by id, while the modal is open.
@@ -587,6 +604,20 @@ impl Shell {
   /// answer the operator sees must be about the row this frame selected, not the one the last frame had
   /// (L13's reporting rule, which the T3 task paid for).
   fn refusal_for(&self, app: &AppState, tool: Option<&StoredTool>) -> Option<String> {
+    // A draft opened by the strategy editor has no document row to write (S10): the one thing the commit can
+    // mean is "this strategy cuts with this tool", so all it needs is a tool with a number.
+    if self.tool_library_for_draft {
+      let Some(tool) = tool else {
+        return Some(NO_TOOL.to_owned());
+      };
+      if tool.cutting.tool_number.is_none() {
+        return Some(format!(
+          "{} carries no tool number in the library, so a toolpath cannot name it.",
+          tool_title(tool)
+        ));
+      }
+      return None;
+    }
     if self.tools.is_empty() {
       return Some(EMPTY_LIBRARY.to_owned());
     }
@@ -944,7 +975,10 @@ impl Shell {
       self.close_tool_library();
     }
     if let Some(number) = commit {
-      if let Some(target) = self.tool_library_target.clone() {
+      if self.tool_library_for_draft {
+        // The draft's tool, not the document's: `Generate toolpath` is what writes it (S10).
+        self.strategy.tool_number = Some(number);
+      } else if let Some(target) = self.tool_library_target.clone() {
         output.actions.push(UiAction::SetToolpathToolNumber {
           toolpath_id: target,
           tool_number: number,
@@ -971,7 +1005,13 @@ impl Shell {
       .tool_card_hits
       .push((CHOOSE.to_owned(), (centre.x, centre.y)));
     if response.clicked() {
-      self.open_tool_library(app);
+      // The subject decides what the choice can write (S10): a toolpath on screen is retooled, a draft is
+      // filled in for `Generate toolpath` to write.
+      if app.document().toolpaths.is_empty() {
+        self.open_tool_library_for_draft();
+      } else {
+        self.open_tool_library(app);
+      }
     }
   }
 }

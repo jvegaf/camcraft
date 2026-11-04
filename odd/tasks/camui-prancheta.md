@@ -549,3 +549,66 @@ words: *"design/prancheta-reference/ + README"*.
   **One process note, applied rather than re-learned:** the candidate was `aa6393a..HEAD`, so the formatting
   sweep stayed out of the reviewers' diff, and the targeted-validator binding went in **whole** — with its
   `validationRequest` — on the first attempt, which is L23's lesson used instead of paid for again.
+- **L26 (T8: one surface, a draft, and the one place the spec could not be followed).** `5140c13` (code) on top
+  of `d142371` (the formatting debt my own L25 correction left in `tests/tool_library.rs` — one long
+  `assert_eq!`, paid in a commit of its own so it is not in the candidate). `crates/cam-ui/src/strategy.rs`
+  (~1 000 lines) makes the TOOLPATHS body the strategy editor: the **document decides the subject**, so no
+  toolpath opens `New toolpath · <name>` and one opens `Edit · <name>`, both on the same surface with the name,
+  the current-tool card and its `Choose another tool…` (S9's row, reached through a new
+  `Shell::tool_card_for`), the collapsible `Quick parameter edit`, a `CUT` section whose kind is chosen on image
+  cards, the note verbatim, and `Generate toolpath` / `Cancel`.
+  **What `Generate toolpath` actually does:** it emits `UiAction::AddToolpath` while creating and
+  `UiAction::SetToolpathOperation` while editing, both routed through the existing `apply_command`, so the
+  kernel still validates and refuses. **It is not drawn when it cannot act** — no tool, no region, no name, or
+  an operation this shell does not draft — and the footer prints the sentence that says which. `Cancel` (and the
+  header's `✕`) discards the draft and leaves the document, the tool and the name untouched. The draft exists
+  for a reason the tests pin: the tool library modal gained a **draft target**, so `Use this tool` writes the
+  draft while creating and the document while editing — one modal, one commit, two subjects.
+  **The one deviation from S10, and it is the model's, not the UI's:** `cam-app` has `AddToolpath` and
+  `SetToolpathOperation` and **no rename command**, so the name is an editable field only while creating; while
+  editing it is drawn as the document's own reading with `The name is fixed while editing: …`. A field that
+  silently dropped what was typed would be L6's dead control, so the surface says what it can do. Renaming
+  needs a command in `cam-app`, which is outside this task's surfaces — it is recorded here and left as the
+  owner's decision instead of faked.
+  **The image cards carry a picture.** Each card is painted from the operation's own semantics — a contour with
+  the bit on it for `Profile`, a region of rings or raster rows for `Pocket` — and each reports how many strokes
+  it painted, so a card with no picture fails a test. **No screenshot of the reference app is used as product
+  art**, and the module doc says what a real thumbnail would need: a rendered preview of the toolpath, which does
+  not exist before `Generate toolpath` and which this shell has no renderer for (the 3D half renders a
+  *program*).
+  **Three existing tests changed, each with a reason the spec forced:** two header expectations
+  (`task_editor` was the word `TOOLPATHS`, and S10 makes it `New toolpath · Profile 1` / `Edit · <name>`), and
+  `tall_input` from 2 000 to 2 600 px so its own promise — "tall enough for every button to be pressable" — stays
+  true now that the editor occupies the top of the body and the authoring commands start below the fold. That
+  placement is worth a reviewer's eye; `the_tools_tab_offers_every_authoring_command` proves the commands are
+  still reachable by scrolling.
+  **A layout trap paid for and written into the code:** three fixed-width field boxes in a
+  `horizontal_wrapped` row measured wider than the 288 px panel on an un-laid-out pass, dragged the inspector
+  off the window and made its own buttons unclickable. The quick block draws the rates as rows instead, and the
+  comment in `quick_block` says why.
+  **L23's rule, this time written first:** `a_control_the_scroll_area_clips_is_not_reported_as_pressable` failed
+  before the `ui.clip_rect()` retain existed (it reported `Generate toolpath` and `Cancel` as pressable at
+  800 px), then went green. **Workspace: 1 287 tests, exit 0** (baseline 1 274; cam-ui 246 → 259).
+  **The other REDs are T7's honest shape:** the implementation came first and each rule's RED was produced by
+  reverting it — recorded as such rather than dressed up as test-first.
+- **L27 (the T8 review: two findings with one root, and a probe that exposed my own test).** Lineage
+  `review-2828bd1487e94795`, tier **high**, **three lenses**, 7 paths, 2 392 changed lines, correction budget
+  200 of which **92 were spent**. Three reviewer runs (≈119 kB of prompt each) produced a refuter request; the
+  refuter accepted **two CRITICAL findings**, both introduced, and both children of one unconditional method.
+  The targeted validator approved the corrected tree (`sha256:174b27d2…`), authority **burned**
+  (`gentle-ai.review-acknowledged/v1`). **Workspace: 1 289 tests, exit 0.**
+  **`R3-001`:** pressing the kind card the strategy *already was* re-defaulted the operation, silently discarding
+  every number typed into `CUT` and the quick block, and the pocket's clearing pattern — then `Generate` wrote
+  those defaults into the document. **`R2-001`:** while editing, pressing `Pocket` rewrote the draft's name to
+  `Pocket 1` even though `Generate` emits only `SetToolpathOperation` and cannot rename, so the header read
+  `Edit · Pocket 1` over a document still called `Profile 1`. **`a282a50` (92 diff lines)** makes `choose_kind`
+  return when the kind is unchanged, and leave the name alone while editing — the name is the document's reading
+  and nothing on that surface can change it.
+  **The lesson is about my own test, and it is worth more than the fix.** I wrote the R2-001 test, reversed the
+  editing guard, and **the test stayed green**: the fixture is called `Perfil 01`, which is no kind's default, so
+  the rename branch never ran and the test passed for the wrong reason. Rewritten against a document named
+  `Profile 1` — the case the finding names — it fails without the guard. **A revert-probe only proves something
+  when the fixture reaches the branch it reverts**; the second test (the already-chosen card) bit on the first
+  try, which is exactly what made the first one's silence suspicious. Both are now RED-verified.
+  **Four advisories, all `informational`:** `R2-002` (`strategy.rs:181`), `R2-003` (`:183`), `R2-004`
+  (`:802-840`) and `R3-002` (`:225-226`). They join the thirty-six this feature already owes.

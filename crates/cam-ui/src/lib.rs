@@ -47,7 +47,7 @@ use std::time::SystemTime;
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
-use cam_model::Job;
+use cam_model::{Job, Operation};
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
 use cam_store::tools::{StoredTool, ToolLibrary};
@@ -71,6 +71,8 @@ pub mod params;
 pub mod ruler;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
+/// A strategy's editor: the same surface for creating and editing one toolpath (camui-prancheta S10).
+pub mod strategy;
 pub mod theme;
 /// The tool library as a master-detail modal (camui-prancheta S9).
 pub mod tool_library;
@@ -559,6 +561,37 @@ pub enum UiAction {
     /// The new tool number.
     tool_number: u32,
   },
+  /// Add a toolpath, binding the strategy editor's draft to geometry and a tool (camui-prancheta S10).
+  ///
+  /// The strategy editor's `Generate toolpath` is what pushes this, and it carries the whole draft: the name,
+  /// the vectors the strategy cuts, the tool number a chosen tool carries and the operation with its numbers.
+  /// [`cam_app::Command::AddToolpath`] is the rule; the id is minted by the shell because the document carries
+  /// no toolpath counter, by the same `TPn` scan `cam-cli toolpath` performs.
+  AddToolpath {
+    /// Identifier for the new toolpath; it must be free.
+    toolpath_id: String,
+    /// Display name, as the toolpath list shows it.
+    name: String,
+    /// Entities the toolpath is computed from; at least one.
+    entity_ids: Vec<String>,
+    /// Closed contours inside the region that must be left standing; empty for none.
+    island_ids: Vec<String>,
+    /// Tool number, matched against the tool library at emission time.
+    tool_number: u32,
+    /// The operation and its parameters.
+    operation: Operation,
+  },
+  /// Replace one toolpath's operation, with its parameters, and leave the rest of it alone.
+  ///
+  /// This is `Generate toolpath` while the editor is editing an existing strategy (camui-prancheta S10): the
+  /// geometry, the tool and the name are untouched, and the document's own validation refuses an operation that
+  /// cannot cut the toolpath's selection.
+  SetToolpathOperation {
+    /// Identifier of the toolpath to change.
+    toolpath_id: String,
+    /// The new operation and its parameters.
+    operation: Operation,
+  },
 }
 
 impl UiAction {
@@ -596,6 +629,8 @@ impl UiAction {
       Self::Save => "save document",
       Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
+      Self::AddToolpath { .. } => "add toolpath",
+      Self::SetToolpathOperation { .. } => "set toolpath operation",
     }
   }
 }
@@ -941,6 +976,42 @@ pub struct DrawnState {
   /// button, because the card is a reading of the tool a toolpath cuts with and the button is the way to
   /// change it.
   pub tool_card_hits: Vec<(String, (f32, f32))>,
+  /// The note the strategy editor drew under its sections, verbatim (camui-prancheta S10).
+  ///
+  /// Empty while the `TOOLPATHS` task is closed, because an editor nobody opened drew no note. The note is the
+  /// spec's own sentence, so it is reported as one string rather than left to a test that would have to find it
+  /// among the panel's painted text.
+  pub strategy_note: String,
+  /// The sentence drawn in place of `Generate toolpath` because the draft's action does not exist yet.
+  ///
+  /// Empty whenever `Generate toolpath` was drawn — the two are exclusive by design (L6, L14): the footer says
+  /// why instead of offering a button that would emit nothing.
+  pub strategy_refusal: String,
+  /// Every pressable thing the strategy editor drew: its word and the point in the window that presses it.
+  ///
+  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason. Only controls this
+  /// frame really drew are listed: `Generate toolpath` is absent while [`Self::strategy_refusal`] holds the
+  /// reason, and the name is absent while the name is a reading (camui-prancheta S10).
+  pub strategy_hits: Vec<(String, (f32, f32))>,
+  /// The image cards the editor drew, in the order drawn: the card's word, whether it is the chosen one, and
+  /// how many strokes its diagram painted.
+  ///
+  /// The stroke count is the report that makes "a card carries a picture, not an empty box" answerable: a
+  /// headless test reads shapes, and a shape with no strokes in it is the empty box L23 taught us to look for
+  /// even when the frame is green.
+  pub strategy_cards: Vec<(String, bool, usize)>,
+  /// Whether the collapsible `Quick parameter edit` block was expanded this frame.
+  ///
+  /// Reported because a folded block draws no row, and without this a test could not tell "the quick edit holds
+  /// no number" from "the operator folded it" (the same reason [`Self::layers_open`] exists).
+  pub strategy_quick_open: bool,
+  /// The numbers the `Quick parameter edit` block drew, in order: the row's word and its value.
+  ///
+  /// The same numbers [`Self::strategy_fields`] holds for the full section, drawn one click closer: the quick
+  /// edit duplicates values, never a second copy of them.
+  pub strategy_quick_fields: Vec<(String, String)>,
+  /// The numbers the strategy's `CUT` section drew, in order: the row's word and its value.
+  pub strategy_fields: Vec<(String, String)>,
 }
 
 /// What one frame produced.
@@ -1163,6 +1234,20 @@ pub struct Shell {
   /// A draft too: choosing a row changes what the form and the drawing describe, and nothing else. Only
   /// `Use this tool` turns the choice into an action.
   tool_library_selected: Option<String>,
+  /// Whether the library was opened by the strategy editor while it is drafting a **new** toolpath (S10).
+  ///
+  /// The modal's commit writes one thing: a tool number. With a toolpath on screen that is a document edit
+  /// ([`UiAction::SetToolpathToolNumber`]); with only a draft it can only mean "this strategy will cut with
+  /// this tool", so the number lands in [`Shell::strategy`] and `Generate toolpath` is what writes it. The flag
+  /// is what tells the two apart, and it is cleared whenever the modal closes.
+  pub(crate) tool_library_for_draft: bool,
+  /// The strategy editor's draft: the name, the tool and the operation `Generate toolpath` writes
+  /// (camui-prancheta S10).
+  ///
+  /// Public and flat the way [`Self::material_size`] is, because a draft whose numbers could not be set from
+  /// outside a frame is a draft only a mouse could test. It is re-seeded from the document whenever the editor's
+  /// subject changes ([`strategy::Draft::sync`]), and `Cancel` throws it away.
+  pub strategy: strategy::Draft,
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   help_focus: crate::help::Command,
   /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
@@ -1245,6 +1330,8 @@ impl Default for Shell {
       tool_search: String::new(),
       tool_library_target: None,
       tool_library_selected: None,
+      tool_library_for_draft: false,
+      strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }
@@ -3067,6 +3154,34 @@ fn handle_action_with_file(
       Command::SetToolpathToolNumber {
         toolpath_id: toolpath_id.clone(),
         tool_number: *tool_number,
+      },
+    ),
+    UiAction::AddToolpath {
+      toolpath_id,
+      name,
+      entity_ids,
+      island_ids,
+      tool_number,
+      operation,
+    } => apply_command(
+      app,
+      Command::AddToolpath {
+        toolpath_id: toolpath_id.clone(),
+        name: name.clone(),
+        entity_ids: entity_ids.clone(),
+        island_ids: island_ids.clone(),
+        tool_number: *tool_number,
+        operation: operation.clone(),
+      },
+    ),
+    UiAction::SetToolpathOperation {
+      toolpath_id,
+      operation,
+    } => apply_command(
+      app,
+      Command::SetToolpathOperation {
+        toolpath_id: toolpath_id.clone(),
+        operation: operation.clone(),
       },
     ),
     UiAction::SetSelection(ids) => {
