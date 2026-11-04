@@ -6,14 +6,15 @@
 //! 3D` (`Screenshot 2026-11-03 034023.png`) and `Editar · Perfil` (`033350.png`) — and the two frames differ in
 //! the header prefix and in what the footer does, which is exactly what this module makes the difference:
 //! [`subject`] reads the document, [`subject`]`::New` drafts a toolpath that does not exist yet, and
-//! [`subject`]`::Edit` rewrites the operation of the one that does.
+//! [`subject`]`::Edit` rewrites the operation of the one that does — and renames it when the name field holds
+//! something the document does not.
 //!
-//! **One difference the model forces, and it is stated in the frame rather than hidden.** Every number in this
-//! editor is a draft, so the name is applied by [`GENERATE`] when the toolpath is created; `cam-app` has
-//! `AddToolpath` and `SetToolpathOperation` and **no rename command**, so while editing, the name is drawn as
-//! the document's own reading with the sentence [`RENAME`] under it instead of a field that would quietly drop
-//! what was typed. A control that cannot act is not drawn (L6, L14, L22) — the rule the tool library's footer
-//! and the playback bar were both corrected for.
+//! **The name is a field in both modes.** It is the draft's, and [`GENERATE`] writes it: a new toolpath is
+//! created with it, and an existing one is renamed by [`cam_app::Command::SetToolpathName`] before its operation
+//! is rewritten. It is written **only when the field holds a name the document does not**, because a second undo
+//! step for a name nobody touched would be a lie about what the last action was. A control that cannot act is not
+//! drawn (L6, L14, L22) — the rule the tool library's footer and the playback bar were both corrected for, and the
+//! reason the sentence that explained a fixed name went with the limitation it described.
 //!
 //! **What the sections hold, and what they refuse to invent.**
 //!
@@ -73,11 +74,6 @@ pub const NAME: &str = "Name";
 
 /// The section that holds the strategy's own numbers.
 pub const CUT: &str = "CUT";
-
-/// Why the name is a reading rather than a field while editing.
-pub const RENAME: &str =
-  "The name is fixed while editing: this shell has no command to rename a toolpath, and \
-`Generate toolpath` rewrites the operation instead of quietly dropping a name.";
 
 /// Why the quick block's rates are readings.
 pub const RATES: &str =
@@ -196,8 +192,9 @@ impl Draft {
 
   /// Throw the draft away, so the next frame reads the document again.
   ///
-  /// This is what `Cancel` (and the header's `✕`) means: the document, the tool and the name stay exactly as
-  /// they were, and so does everything that was typed.
+  /// This is what `Cancel` (and the header's `✕`) means: the document, its toolpath and that toolpath's name stay
+  /// exactly as they were, and the draft — every number typed into it, the name field included — is thrown away, so
+  /// the next frame reads the document again.
   pub(crate) fn discard(&mut self) {
     self.seeded = None;
   }
@@ -219,9 +216,9 @@ impl Draft {
   ///
   /// The name follows the kind only while it is still the previous kind's default one: a name somebody chose is
   /// theirs, and a `Profile 1` that became a pocket toolpath should say `Pocket 1` rather than name a shape it
-  /// no longer cuts. **Except while editing**, where the name is the document's own reading and `Generate`
-  /// cannot change it (`cam-app` has no rename), so the draft must not invent one — the editor would show a name
-  /// the document does not have (R2-001 in this task's review).
+  /// no longer cuts. **Except while editing**, where the draft's name is the document's own: choosing a kind must
+  /// not quietly rewrite a name the document keeps, because a kind is not a rename — the operator can type a new
+  /// name in the field, and `Generate toolpath` is what writes it (R2-001 in this task's review).
   ///
   /// Pressing the kind the draft already is does nothing at all: re-defaulting on every press silently threw
   /// away the numbers an operator had typed into `CUT` and the quick block, and the frame still reported the
@@ -453,29 +450,67 @@ pub(crate) fn refusal(app: &AppState, draft: &Draft, subject: &Subject) -> Optio
   None
 }
 
-/// The action [`GENERATE`] pushes, or `None` when [`refusal`] has something to say instead.
+/// The actions [`GENERATE`] pushes, in the order it pushes them, or none when [`refusal`] has something to say
+/// instead.
 ///
-/// A new strategy is [`UiAction::AddToolpath`]; an existing one is [`UiAction::SetToolpathOperation`], which
-/// rewrites the operation and leaves the geometry, the tool and the name alone. What the shell cannot see from
-/// here — an open vector under a cutting operation, say — is the document's own rule, refused by the command
-/// with its sentence on the status bar.
-pub(crate) fn generate(app: &AppState, draft: &Draft, subject: &Subject) -> Option<UiAction> {
+/// A new strategy is [`UiAction::AddToolpath`], which carries the name with everything else it creates. An
+/// existing one is renamed — only when the field holds a name the document does not — and then has its operation
+/// rewritten by [`UiAction::SetToolpathOperation`], which leaves the geometry and the tool alone. **The rename is
+/// omitted when the name did not change**: `Generate` over an untouched name emits exactly the operation, so the
+/// history gains no step for a name nobody touched. A step that undid nothing would make undo describe an action
+/// that never happened.
+///
+/// Two actions rather than one command because a rename and an operation change are two edits, `cam-app` has one
+/// command for each, and each is its own step in the history — the same shape `Trim` already has, where one
+/// gesture emits the edges it leaves behind. What the shell cannot see from here — an open vector under a cutting
+/// operation, say — is the document's own rule, refused by the command with its sentence on the status bar.
+pub(crate) fn generate(app: &AppState, draft: &Draft, subject: &Subject) -> Vec<UiAction> {
   if refusal(app, draft, subject).is_some() {
-    return None;
+    return Vec::new();
   }
   match subject {
-    Subject::Edit(toolpath_id) => Some(UiAction::SetToolpathOperation {
-      toolpath_id: toolpath_id.clone(),
-      operation: draft.operation.clone(),
-    }),
-    Subject::New => Some(UiAction::AddToolpath {
-      toolpath_id: free_toolpath_id(app),
-      name: draft.name.trim().to_owned(),
-      entity_ids: app.selection().ids().map(str::to_owned).collect(),
-      island_ids: Vec::new(),
-      tool_number: draft.tool_number?,
-      operation: draft.operation.clone(),
-    }),
+    Subject::Edit(toolpath_id) => {
+      // The operation goes first, the rename second, and the order is a decision: the kernel can refuse an
+      // operation, and a refused operation must leave the document exactly as it was. With the rename first, a
+      // refusal would already have written a name the operator then could not explain from the failure message
+      // (each command's own sentence stays true, but the pair would not). Pushed this way, the only reachable
+      // failure changes nothing; a rename that fails after the operation landed cannot happen in one frame,
+      // because `refusal` already refused a blank name before either action was built.
+      let mut actions = vec![UiAction::SetToolpathOperation {
+        toolpath_id: toolpath_id.clone(),
+        operation: draft.operation.clone(),
+      }];
+      let name = draft.name.trim();
+      let stored = app
+        .document()
+        .toolpaths
+        .iter()
+        .find(|toolpath| toolpath.id == *toolpath_id)
+        .map(|toolpath| toolpath.name.as_str());
+      if stored != Some(name) {
+        actions.push(UiAction::SetToolpathName {
+          toolpath_id: toolpath_id.clone(),
+          name: name.to_owned(),
+        });
+      }
+      actions
+    }
+    Subject::New => {
+      // `refusal` already refused a draft with no tool, so this arm is unreachable today; it answers with no
+      // action rather than with a default number, because a toolpath written with a tool the operator never
+      // chose is a worse answer than none.
+      let Some(tool_number) = draft.tool_number else {
+        return Vec::new();
+      };
+      vec![UiAction::AddToolpath {
+        toolpath_id: free_toolpath_id(app),
+        name: draft.name.trim().to_owned(),
+        entity_ids: app.selection().ids().map(str::to_owned).collect(),
+        island_ids: Vec::new(),
+        tool_number,
+        operation: draft.operation.clone(),
+      }]
+    }
   }
 }
 
@@ -536,39 +571,23 @@ impl Shell {
     // found in the playback bar — so every point this frame reports is filtered against the clip it drew in.
     let clip = ui.clip_rect();
 
-    // 1. the name. A field while the toolpath is being created, a reading with its reason while it is being
-    //    edited: `cam-app` has no rename command, and a field that dropped what was typed would be a lie.
+    // 1. the name. One field in both modes: `cam-app` has `SetToolpathName`, so a name typed here is a name
+    //    `Generate toolpath` can write — when creating and when editing. A control that can act is drawn in both.
     ui.label(
       RichText::new(NAME)
         .size(theme::CAPTION)
         .color(palette.get(Role::TextDim)),
     );
-    match &subject {
-      Subject::New => {
-        let field = ui.add(
-          egui::TextEdit::singleline(&mut self.strategy.name)
-            .hint_text("the toolpath's name")
-            .desired_width(f32::INFINITY),
-        );
-        let centre = field.rect.center();
-        output
-          .drawn
-          .strategy_hits
-          .push((NAME.to_owned(), (centre.x, centre.y)));
-      }
-      Subject::Edit(_) => {
-        ui.label(
-          RichText::new(&self.strategy.name)
-            .size(theme::TITLE)
-            .color(palette.get(Role::TextHi)),
-        );
-        ui.label(
-          RichText::new(RENAME)
-            .size(theme::CAPTION)
-            .color(palette.get(Role::TextDim)),
-        );
-      }
-    }
+    let field = ui.add(
+      egui::TextEdit::singleline(&mut self.strategy.name)
+        .hint_text("the toolpath's name")
+        .desired_width(f32::INFINITY),
+    );
+    let centre = field.rect.center();
+    output
+      .drawn
+      .strategy_hits
+      .push((NAME.to_owned(), (centre.x, centre.y)));
     ui.add_space(metrics.space(2));
 
     // 2. the current-tool card, with its own opener and this frame's number. While editing, the number is the
@@ -643,9 +662,9 @@ impl Shell {
           .strategy_hits
           .push((GENERATE.to_owned(), (centre.x, centre.y)));
         if generate_button.clicked() {
-          if let Some(action) = generate(app, &self.strategy, &subject) {
-            output.actions.push(action);
-          }
+          output
+            .actions
+            .extend(generate(app, &self.strategy, &subject));
         }
       }
       let back = ui.button(RichText::new(CANCEL).size(theme::SMALL));

@@ -421,6 +421,18 @@ pub enum Command {
     /// The new operation and its parameters.
     operation: Operation,
   },
+  /// Rename one toolpath, leaving its geometry, its tool and its operation alone.
+  ///
+  /// A name that is empty or only whitespace is refused before anything is assigned: a blank row in the
+  /// toolpath list is a toolpath nobody can pick out, and an undo step that changed no name an operator can
+  /// read is a step that lied about what happened. The stored name is the caller's own string — the caller
+  /// trims it, the way it trims the name [`Command::AddToolpath`] is given.
+  SetToolpathName {
+    /// Identifier of the toolpath to rename.
+    toolpath_id: String,
+    /// The new display name.
+    name: String,
+  },
   /// Remove a toolpath from the document, leaving its geometry and every other toolpath alone.
   DeleteToolpath {
     /// Identifier of the toolpath to remove.
@@ -470,6 +482,7 @@ impl Command {
       Self::AddToolpath { .. } => "add toolpath",
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
+      Self::SetToolpathName { .. } => "set toolpath name",
       Self::DeleteToolpath { .. } => "delete toolpath",
     }
   }
@@ -740,6 +753,17 @@ impl Command {
         document.toolpaths[index].operation = operation.clone();
         Ok(CommandOutcome::default())
       }
+      Self::SetToolpathName { toolpath_id, name } => {
+        // The toolpath is resolved first, the way every other toolpath command resolves its target, so an id
+        // the document does not hold is refused by name rather than by a complaint about the name. The name
+        // check comes before the assignment, so a refusal leaves the document exactly as it was.
+        let index = toolpath_index(document, toolpath_id)?;
+        if name.trim().is_empty() {
+          return Err(CommandError::EmptyToolpathName);
+        }
+        document.toolpaths[index].name = name.clone();
+        Ok(CommandOutcome::default())
+      }
       Self::DeleteToolpath { toolpath_id } => {
         let index = toolpath_index(document, toolpath_id)?;
         document.toolpaths.remove(index);
@@ -819,6 +843,13 @@ pub enum CommandError {
   /// and see the document change for a word that was never visible.
   #[error("the text to draw must not be empty")]
   EmptyText,
+  /// The toolpath's new name was empty or only whitespace, so there is nothing to show and nothing to undo.
+  ///
+  /// Its own variant rather than [`CommandError::EmptyText`]: that one is about geometry that produced no
+  /// contours, and telling the operator "the text to draw must not be empty" over a rename would be a true
+  /// sentence about the wrong thing.
+  #[error("a toolpath's name must not be empty")]
+  EmptyToolpathName,
   /// A count parameter was below the minimum the shape needs.
   #[error("{kind} must be at least {minimum}, got {value}")]
   TooFew {

@@ -217,6 +217,36 @@ fn click_word(
   click_at(ctx, shell, app, at).0
 }
 
+/// Type `text` into the editor's name field: press the field, select what it holds, then send the word.
+///
+/// A field that is only reported as a point is not yet a field: this presses the point the frame drew and
+/// sends the keystrokes an operator would, so the draft the frame reports is one a keyboard really reached.
+fn type_into_name(
+  ctx: &egui::Context,
+  shell: &mut Shell,
+  app: &mut AppState,
+  drawn: &ShellOutput,
+  text: &str,
+) -> ShellOutput {
+  let at = point_of(&drawn.drawn.strategy_hits, "Name");
+  let _ = click_at(ctx, shell, app, at);
+  let mut input = tall();
+  input.events.push(egui::Event::Key {
+    key: egui::Key::A,
+    physical_key: None,
+    pressed: true,
+    repeat: false,
+    modifiers: egui::Modifiers::COMMAND,
+  });
+  input.events.push(egui::Event::Text(text.to_owned()));
+  let mut captured: Option<ShellOutput> = None;
+  let full = ctx.run_pass(input, |ctx| {
+    captured = Some(shell.show(app, ctx));
+  });
+  full.drop_without_applying_deltas();
+  captured.expect("the shell ran")
+}
+
 /// The words of the editor's controls, in the order it drew them.
 fn controls(drawn: &ShellOutput) -> Vec<String> {
   drawn
@@ -246,7 +276,7 @@ fn creating_and_editing_are_one_surface_and_only_the_header_prefix_changes() {
   // then set it — the order a host follows too.
   let _ = editor_frame(&ctx, &mut shell, &mut app);
   shell.strategy.tool_number = Some(2);
-  let (creating, _) = editor_frame(&ctx, &mut shell, &mut app);
+  let (creating, creating_text) = editor_frame(&ctx, &mut shell, &mut app);
   assert_eq!(
     creating.drawn.task_editor, "New toolpath · Profile 1",
     "the creating mode's header names the draft"
@@ -256,23 +286,17 @@ fn creating_and_editing_are_one_surface_and_only_the_header_prefix_changes() {
   let mut app = AppState::new(profile_document());
   let mut shell = Shell::new();
   shell.set_tools(vec![flat_mill()]);
-  let (editing, _) = editor_frame(&ctx, &mut shell, &mut app);
+  let (editing, editing_text) = editor_frame(&ctx, &mut shell, &mut app);
   assert_eq!(
     editing.drawn.task_editor, "Edit · Perfil 01",
     "the editing mode's header names the document's toolpath"
   );
 
-  // The same surface: every control the one mode drew, the other drew too, in the same order. Two differences
-  // exist and both are named here rather than left to be discovered:
-  //
-  // - the header prefix, above;
-  // - the name. `cam-app` carries `AddToolpath` and `SetToolpathOperation` and **no rename command**, so while
-  //   editing, the name is drawn as the document's own reading with the sentence saying why — a field that
-  //   would drop what was typed is the L6 dead control this feature keeps correcting.
-  let mut creating_controls = controls(&creating);
-  creating_controls.retain(|word| word != "Name");
+  // The same surface: every control the one mode drew, the other drew too, in the same order. The one
+  // difference the spec names is the header prefix, above — and the name is a **field in both modes** now that
+  // `cam-app` can rename a toolpath, so what is asserted here is that both draw it and both draw the same rest.
   assert_eq!(
-    creating_controls,
+    controls(&creating),
     controls(&editing),
     "creating and editing must offer the same editor"
   );
@@ -282,17 +306,20 @@ fn creating_and_editing_are_one_surface_and_only_the_header_prefix_changes() {
     creating.drawn.strategy_hits
   );
   assert!(
-    !controls(&editing).iter().any(|word| word == "Name"),
-    "editing draws the name as a reading, not as a field: {:?}",
+    controls(&editing).iter().any(|word| word == "Name"),
+    "editing offers the same name field, because `Generate` can rename: {:?}",
     editing.drawn.strategy_hits
   );
-  let (_, editing_text) = editor_frame(&ctx, &mut shell, &mut app);
-  assert!(
-    editing_text
-      .iter()
-      .any(|text| text.starts_with("The name is fixed while editing")),
-    "and says why the name cannot be typed: {editing_text:?}"
-  );
+  // The sentence that explained the old limitation is gone with the limitation: a sentence about a name that
+  // could not be changed would now be false, and a false sentence is worse than none.
+  for (mode, painted) in [("creating", &creating_text), ("editing", &editing_text)] {
+    assert!(
+      !painted
+        .iter()
+        .any(|text| text.starts_with("The name is fixed while editing")),
+      "{mode} must not explain a limitation that no longer exists: {painted:?}"
+    );
+  }
   assert_eq!(
     creating.drawn.strategy_note, editing.drawn.strategy_note,
     "the note is the same sentence in both modes"
@@ -456,8 +483,8 @@ fn generating_a_new_strategy_emits_the_action_and_cancel_leaves_the_document_as_
 
 #[test]
 fn generating_an_existing_strategy_rewrites_its_operation_and_leaves_the_rest_alone() {
-  // Editing is not re-creating: `Generate toolpath` writes the operation, and the geometry, the tool and the
-  // name stay the document's.
+  // Editing is not re-creating: `Generate toolpath` writes the operation and leaves the geometry and the tool
+  // alone, and a name nobody typed over stays the document's — the rename is only emitted when it changed.
   let ctx = egui::Context::default();
   let mut app = AppState::new(profile_document());
   let mut shell = Shell::new();
@@ -498,7 +525,7 @@ fn generating_an_existing_strategy_rewrites_its_operation_and_leaves_the_rest_al
   assert_eq!(
     app.document().toolpaths[0].name,
     "Perfil 01",
-    "a rewrite keeps the name"
+    "an untouched name is not rewritten"
   );
   assert_eq!(
     app.document().toolpaths[0].tool_number,
@@ -508,6 +535,153 @@ fn generating_an_existing_strategy_rewrites_its_operation_and_leaves_the_rest_al
   assert_eq!(
     app.document().toolpaths[0].entity_ids,
     vec!["E1".to_owned()]
+  );
+}
+
+#[test]
+fn the_editors_name_is_a_field_an_operator_can_type_into_while_editing() {
+  // The old surface drew the name as a reading while editing because `cam-app` had no rename. `Generate`
+  // renames now, so the field is real in both modes: pressing it and typing reaches the draft, and the header
+  // follows the field rather than the document.
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(profile_document());
+  let mut shell = Shell::new();
+  shell.set_tools(vec![flat_mill()]);
+  let (drawn, _) = editor_frame(&ctx, &mut shell, &mut app);
+  assert!(
+    controls(&drawn).iter().any(|word| word == "Name"),
+    "editing draws the name field: {:?}",
+    drawn.drawn.strategy_hits
+  );
+  assert_eq!(
+    shell.strategy.name, "Perfil 01",
+    "the field opens on the document's name"
+  );
+
+  let _ = type_into_name(&ctx, &mut shell, &mut app, &drawn, "Roughing pass");
+  assert_eq!(
+    shell.strategy.name, "Roughing pass",
+    "the keystrokes reach the draft"
+  );
+  // The header is painted above the field, so the frame that types reads the name it held when it started; the
+  // next frame is the one the operator sees after the keystrokes.
+  let (settled, _) = editor_frame(&ctx, &mut shell, &mut app);
+  assert_eq!(
+    settled.drawn.task_editor, "Edit · Roughing pass",
+    "the header follows the field, not the document"
+  );
+  assert_eq!(
+    app.document().toolpaths[0].name,
+    "Perfil 01",
+    "typing writes nothing: the document keeps its name until Generate"
+  );
+}
+
+#[test]
+fn generate_renames_an_existing_strategy_and_emits_no_rename_when_the_name_is_untouched() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(profile_document());
+  let mut shell = Shell::new();
+  shell.set_tools(vec![flat_mill()]);
+  let (drawn, _) = editor_frame(&ctx, &mut shell, &mut app);
+
+  // An untouched name: Generate is the operation and nothing else. A rename nobody asked for would add a
+  // second undo step that undid nothing, which is a lie about what the last action was.
+  let depth = app.history_depth();
+  let pressed = click_word(&ctx, &mut shell, &mut app, &drawn, "Generate toolpath");
+  assert_eq!(
+    pressed.actions.len(),
+    1,
+    "an untouched name emits no rename: {:?}",
+    pressed.actions
+  );
+  assert!(
+    matches!(pressed.actions[0], UiAction::SetToolpathOperation { .. }),
+    "the one action is the operation: {:?}",
+    pressed.actions
+  );
+  for action in &pressed.actions {
+    shell.apply_action(&mut app, action);
+  }
+  assert_eq!(
+    app.history_depth(),
+    depth + 1,
+    "and the history gains one step, not two"
+  );
+  assert_eq!(app.document().toolpaths[0].name, "Perfil 01");
+
+  // A typed name: the same press emits the operation and the rename, in the order that lets a refused
+  // operation leave the name alone.
+  let (drawn, _) = editor_frame(&ctx, &mut shell, &mut app);
+  let typed = type_into_name(&ctx, &mut shell, &mut app, &drawn, "Roughing pass");
+  let depth = app.history_depth();
+  let pressed = click_word(&ctx, &mut shell, &mut app, &typed, "Generate toolpath");
+  assert_eq!(
+    pressed.actions.len(),
+    2,
+    "a typed name emits the rename and the operation: {:?}",
+    pressed.actions
+  );
+  assert!(
+    matches!(pressed.actions[0], UiAction::SetToolpathOperation { .. }),
+    "the operation goes first, so a refusal cannot leave a renamed toolpath behind: {:?}",
+    pressed.actions
+  );
+  match &pressed.actions[1] {
+    UiAction::SetToolpathName { toolpath_id, name } => {
+      assert_eq!(toolpath_id, "TP9");
+      assert_eq!(name, "Roughing pass");
+    }
+    other => panic!("and then rename what was typed, got {other:?}"),
+  }
+  for action in &pressed.actions {
+    shell.apply_action(&mut app, action);
+  }
+
+  let stored = &app.document().toolpaths[0];
+  assert_eq!(stored.name, "Roughing pass", "Generate writes the name");
+  assert_eq!(stored.tool_number, 2, "a rename keeps the tool");
+  assert_eq!(stored.entity_ids, vec!["E1".to_owned()]);
+  assert_eq!(
+    app.history_depth(),
+    depth + 2,
+    "the rename is a step of its own, so it is one undo of its own"
+  );
+}
+
+#[test]
+fn cancel_puts_a_typed_name_back_and_leaves_the_document_as_it_was() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(profile_document());
+  let mut shell = Shell::new();
+  shell.set_tools(vec![flat_mill()]);
+  let (drawn, _) = editor_frame(&ctx, &mut shell, &mut app);
+  let typed = type_into_name(&ctx, &mut shell, &mut app, &drawn, "Roughing pass");
+  assert_eq!(shell.strategy.name, "Roughing pass");
+
+  let before = app.document().clone();
+  let cancelled = click_word(&ctx, &mut shell, &mut app, &typed, "Cancel");
+  assert!(
+    cancelled.actions.is_empty(),
+    "Cancel must not emit anything: {:?}",
+    cancelled.actions
+  );
+  assert_eq!(
+    app.document(),
+    &before,
+    "Cancel leaves the name, and everything else, as it was"
+  );
+  assert_eq!(shell.task(), None, "Cancel leaves the task");
+
+  let (reopened, painted) = editor_frame(&ctx, &mut shell, &mut app);
+  assert_eq!(
+    shell.strategy.name, "Perfil 01",
+    "the reopened draft reads the document's name, not the typed one"
+  );
+  assert_eq!(reopened.drawn.task_editor, "Edit · Perfil 01");
+  assert!(
+    painted.iter().any(|text| text == "Perfil 01"),
+    "and the frame draws the document's name again: {painted:?}"
   );
 }
 
@@ -1033,10 +1207,10 @@ fn a_control_the_scroll_area_clips_is_not_reported_as_pressable() {
 }
 
 #[test]
-fn changing_the_kind_while_editing_leaves_the_documents_name_where_the_document_keeps_it() {
-  // R2-001 in this task's review: while editing, the name is the document's and `Generate` cannot rewrite it
-  // (`cam-app` has no rename), so the draft must not invent one — the header read `Edit · Pocket 1` over a
-  // document still called `Perfil 01`.
+fn changing_the_kind_while_editing_leaves_the_name_field_on_the_documents_name() {
+  // R2-001 in this task's review: while editing, the draft's name is the document's, so choosing a kind must
+  // not invent one — the header read `Edit · Pocket 1` over a document still called `Perfil 01`. Renaming is
+  // possible now, but a kind is not a rename: the operator types the new name and `Generate` writes it.
   let ctx = egui::Context::default();
   // The document the finding describes: its toolpath still carries the *previous kind's default* name, which is
   // the only case in which the draft would have renamed it. A document called `Perfil 01` would have hidden the
@@ -1056,7 +1230,7 @@ fn changing_the_kind_while_editing_leaves_the_documents_name_where_the_document_
   let after = click_word(&ctx, &mut shell, &mut app, &editing, "Pocket");
   assert_eq!(
     after.drawn.task_editor, "Edit · Profile 1",
-    "the document's name cannot change from an edit surface"
+    "choosing a kind does not rewrite the name field"
   );
   assert_eq!(
     shell.strategy.name, "Profile 1",

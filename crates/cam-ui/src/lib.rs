@@ -592,6 +592,18 @@ pub enum UiAction {
     /// The new operation and its parameters.
     operation: Operation,
   },
+  /// Rename one toolpath, leaving its geometry, its tool and its operation alone.
+  ///
+  /// This is the strategy editor's `Generate toolpath` while editing, and it is pushed only when the name field
+  /// holds something other than the name the document already has: the editor is where a strategy is named, and
+  /// the document is where the name lives. [`cam_app::Command::SetToolpathName`] is the rule, including its
+  /// refusal of a name that is empty or only whitespace.
+  SetToolpathName {
+    /// Identifier of the toolpath to rename.
+    toolpath_id: String,
+    /// The new display name.
+    name: String,
+  },
 }
 
 impl UiAction {
@@ -631,6 +643,7 @@ impl UiAction {
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
       Self::AddToolpath { .. } => "add toolpath",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
+      Self::SetToolpathName { .. } => "set toolpath name",
     }
   }
 }
@@ -3182,6 +3195,13 @@ fn handle_action_with_file(
       Command::SetToolpathOperation {
         toolpath_id: toolpath_id.clone(),
         operation: operation.clone(),
+      },
+    ),
+    UiAction::SetToolpathName { toolpath_id, name } => apply_command(
+      app,
+      Command::SetToolpathName {
+        toolpath_id: toolpath_id.clone(),
+        name: name.clone(),
       },
     ),
     UiAction::SetSelection(ids) => {
