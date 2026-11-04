@@ -13,6 +13,7 @@
 
 #![warn(missing_docs)]
 
+pub mod csv;
 pub mod dxf;
 pub mod eps;
 pub mod pdf;

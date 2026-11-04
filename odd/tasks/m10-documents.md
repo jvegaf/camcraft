@@ -1,0 +1,70 @@
+# M10 — Documents & scripting: the command language, the cut list and the print sheet
+
+Feature document for M10 of `odd/roadmap.md`. Read **until `## Log`** before touching code; the Log is
+the record, not the brief.
+
+## Specs
+
+- **S1 (user, verbatim answer to "¿Con qué se ejecuta la superficie de scripting?"):** "DSL de comandos,
+  sin motor".
+- **S2 (user, verbatim answer to "¿Qué puede tocar un script?"):** "Lectura y mutación del documento".
+- **S3 (user, verbatim answer to "El CSV de piezas, ¿entra, sale, o los dos?"):** "Import y export".
+- **S4 (user, verbatim answer to "¿M10 toca la UI?"):** "CLI más panel mínimo".
+- **S5 (roadmap M10 row, not a user string):** "Documents & scripting — HTML print sheets, CSV import for
+  part lists, scripting surface (Rhai/Lua) with a UI panel — Reporting and extension points; the
+  original's gadget platform is the model". S1 supersedes its "Rhai/Lua": there is **no engine**.
+- **S6 (roadmap non-goal, verbatim from §1):** "the vendor Lua gadget compatibility (a scripting surface is
+  planned, not their dialect)."
+
+## Invariants every task must honour
+
+These are the repo's conventions plus the two laws this milestone's own decisions create; a task that
+breaks one is refused:
+
+1. **One implementation per command, and the script is a caller, not a second parser.** Every command a
+   script can execute must dispatch to the same function the corresponding `cam-cli` subcommand calls.
+   A script that could drift from the CLI — a second geometry parser, a second nesting call with its own
+   defaults — is the defect this law exists to prevent. If a command's logic today lives inside an
+   argument-parsing arm, **extract it** rather than duplicating it.
+2. **Located diagnostics.** A script that fails says **line and column** and the offending token, the way
+   the post-processor parser does. "the script failed" is not an error message.
+3. **The document is the only state.** A script mutates a `Document` and nothing else: no ambient files,
+   no environment, no network, no process spawn. A script cannot import a path the user did not name on
+   the command line or in the script itself.
+4. **Every mutation goes through `Document::validate`.** A script cannot write a document that would not
+   load; the refusal names the offending script line, not only the model's message.
+5. **Determinism is a test.** Two runs of the same script on the same document produce identical bytes,
+   including the generated HTML and CSV.
+6. **No new dependency.** S1 chose no engine; a template engine for the HTML sheet is refused for the same
+   reason. `Cargo.lock` is a reviewable surface and it must not move.
+7. **Every new command, flag or message updates `const HELP`** (`crates/cam-cli/src/main.rs:27`) and the
+   docs that describe it; a test asserts the help mentions the flags, as `tests/cli.rs:552` does.
+8. **Environment:** every cargo command needs `RUSTUP_HOME=/home/th3g3ntl3man/.rustup
+   CARGO_HOME=/home/th3g3ntl3man/.cargo`; a commit needs `-c user.name="Jose Vega" -c
+   user.email="josevega234@gmail.com"`. Workers never commit. Never write scratch under `/tmp` (full
+   tmpfs); use `/var/tmp` and clean it up.
+
+## Tasks
+
+| ID | Task | Specs | Route | Commit |
+| --- | --- | --- | --- | --- |
+| T1 | The command language: a line-oriented grammar, a parser with located diagnostics, and a dispatch table whose every entry calls the function the CLI subcommand already calls | S1 S2 | worker | — |
+| T2 | CSV: parts **in** (name, width, height, quantity) as nesting parts, and the cut list **out** from M9's placements, both with line-located refusals | S3 | worker | — |
+| T3 | The HTML print sheet: a fixed renderer, deterministic bytes, one command that writes it | S5 | worker | — |
+| T4 | The minimal panel: run a script from the shell behind `cam-ui`'s adapter, show its output and its located errors | S4 | worker | — |
+| T5 | Goldens for the script run, the cut list and the sheet; determinism twice over; the milestone differential against its cut point | S1-S5 | worker | — |
+| T6 | Docs: `docs/m10-documents.md`, `odd/roadmap.md` §4.13, README, `docs/format.md` if the document moves, and this document's evidence | S1-S6 | parent | — |
+
+Order is the dependency order; each task is one work unit and one commit. T1 defines the dispatch table,
+so it goes first and alone.
+
+## Log
+
+- **L1 (user, verbatim):** "dale" — authorising M10, the milestone `odd/roadmap.md` names as next.
+- **L2 (user decisions, verbatim option labels):** "DSL de comandos, sin motor"; "Lectura y mutación del
+  documento"; "Import y export"; "CLI más panel mínimo". Recorded as S1-S4 above.
+- **L3 (exploration, before the specs):** no CSV support exists anywhere in the workspace
+  (`grep -rln csv crates/` is empty, so the `cam-import` row in §3 names an intention, not a feature);
+  `Cargo.lock` holds **482** packages and is treated as a reviewable surface; the roadmap's own M10 row
+  leaves the engine undecided ("Rhai/Lua"), which is why S1 had to decide it and why S5 is marked as the
+  plan rather than as an owner string.
