@@ -219,10 +219,20 @@ impl Draft {
   ///
   /// The name follows the kind only while it is still the previous kind's default one: a name somebody chose is
   /// theirs, and a `Profile 1` that became a pocket toolpath should say `Pocket 1` rather than name a shape it
-  /// no longer cuts.
+  /// no longer cuts. **Except while editing**, where the name is the document's own reading and `Generate`
+  /// cannot change it (`cam-app` has no rename), so the draft must not invent one — the editor would show a name
+  /// the document does not have (R2-001 in this task's review).
+  ///
+  /// Pressing the kind the draft already is does nothing at all: re-defaulting on every press silently threw
+  /// away the numbers an operator had typed into `CUT` and the quick block, and the frame still reported the
+  /// kind as freshly chosen (R3-001).
   pub(crate) fn choose_kind(&mut self, kind: Kind) {
+    if kind_of(&self.operation) == Some(kind) {
+      return;
+    }
+    let editing = matches!(self.seeded, Some(Subject::Edit(_)));
     let previous = default_name(&self.operation);
-    if self.name == previous {
+    if !editing && self.name == previous {
       self.name = default_name(&kind.default_operation());
     }
     self.operation = kind.default_operation();

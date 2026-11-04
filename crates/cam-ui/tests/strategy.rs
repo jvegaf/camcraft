@@ -1031,3 +1031,81 @@ fn a_control_the_scroll_area_clips_is_not_reported_as_pressable() {
     );
   }
 }
+
+#[test]
+fn changing_the_kind_while_editing_leaves_the_documents_name_where_the_document_keeps_it() {
+  // R2-001 in this task's review: while editing, the name is the document's and `Generate` cannot rewrite it
+  // (`cam-app` has no rename), so the draft must not invent one — the header read `Edit · Pocket 1` over a
+  // document still called `Perfil 01`.
+  let ctx = egui::Context::default();
+  // The document the finding describes: its toolpath still carries the *previous kind's default* name, which is
+  // the only case in which the draft would have renamed it. A document called `Perfil 01` would have hidden the
+  // defect — the rename branch never runs for a name somebody chose — so this test asks for `Profile 1`.
+  let mut app = AppState::new(document_with(
+    Operation::Profile(ProfileParams::default()),
+    "Profile 1",
+  ));
+  let mut shell = Shell::new();
+  shell.set_tools(vec![flat_mill()]);
+  let (editing, _) = editor_frame(&ctx, &mut shell, &mut app);
+  assert_eq!(
+    editing.drawn.task_editor, "Edit · Profile 1",
+    "the editing header names the document's toolpath"
+  );
+
+  let after = click_word(&ctx, &mut shell, &mut app, &editing, "Pocket");
+  assert_eq!(
+    after.drawn.task_editor, "Edit · Profile 1",
+    "the document's name cannot change from an edit surface"
+  );
+  assert_eq!(
+    shell.strategy.name, "Profile 1",
+    "and the draft did not take a new one"
+  );
+  assert!(
+    after
+      .drawn
+      .strategy_cards
+      .iter()
+      .any(|(word, chosen, _)| word == "Pocket" && *chosen),
+    "the kind itself did change, or this test would prove nothing: {:?}",
+    after.drawn.strategy_cards
+  );
+}
+
+#[test]
+fn pressing_the_kind_a_strategy_already_is_keeps_the_numbers_that_were_typed() {
+  // R3-001: `choose_kind` re-defaulted the operation on every press, so clicking the card that was already
+  // chosen silently threw away the numbers typed into `CUT` and the quick block.
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(rectangle_document());
+  app.select(vec!["E1".to_owned()]);
+  let mut shell = Shell::new();
+  shell.set_tools(vec![flat_mill()]);
+  let _ = editor_frame(&ctx, &mut shell, &mut app);
+  shell.strategy.tool_number = Some(2);
+  match &mut shell.strategy.operation {
+    Operation::Profile(params) => params.cut_depth = cam_units::Length::from_mm(7.5),
+    other => panic!("the draft opens as a profile, not {other:?}"),
+  }
+  let (chosen, _) = editor_frame(&ctx, &mut shell, &mut app);
+  assert!(
+    chosen
+      .drawn
+      .strategy_cards
+      .iter()
+      .any(|(word, on, _)| word == "Profile" && *on),
+    "the profile card is the chosen one: {:?}",
+    chosen.drawn.strategy_cards
+  );
+
+  let _ = click_word(&ctx, &mut shell, &mut app, &chosen, "Profile");
+  match &shell.strategy.operation {
+    Operation::Profile(params) => assert!(
+      (params.cut_depth.mm() - 7.5).abs() < 1e-9,
+      "pressing the chosen kind must not re-default the numbers, got {}",
+      params.cut_depth.mm()
+    ),
+    other => panic!("the draft changed kind by itself: {other:?}"),
+  }
+}
