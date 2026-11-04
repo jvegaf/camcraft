@@ -115,3 +115,44 @@ so it goes first and alone.
   workspace crates can satisfy, because the lock records that list. The invariant was therefore **wrong,
   not the change**: it now reads "no new external dependency, and the package count does not move" — 482
   before and after — which is what it always meant.
+- **L7 (the milestone's differential, run against M10's cut point).** The cut point is `955fc54`
+  ("docs(odd): close M9 and record what it leaves open"), the last commit before M10's first,
+  `b3d1170` ("feat(cam-import): read a part list from CSV, refusing each bad row by line");
+  `git log --oneline 955fc54..HEAD` lists those eight commits and nothing else, so the archive holds
+  M9's binary — the surface this milestone promised not to move. `git archive 955fc54 | tar -x -C
+  /var/tmp/camm10diff.*/base`, built there with a `CARGO_TARGET_DIR` of its own; the current binary
+  is `ba91f5e`'s, built the same way. The base binary and the current one then each ran **31
+  invocations** in a fresh directory, and the current binary ran them **twice, in two directories
+  (`cur`, `cur2`), to prove the harness deterministic before it judged anything**: those two runs are
+  `diff -r` clean over all 31 steps' exit codes, stdout, stderr and file inventories. Fixtures: one
+  small SVG imported by each side (report, then `--out`) and a tool library each side authored with
+  two `tools add` calls — both sides author them, so their bytes are part of the comparison — plus
+  one **shared** nesting document authored by the harness with the current binary's `script`
+  (`open`/`sheet`/`part`/`part`/`nest`/`toolpath`/`save`, kept beside it as `nest.cam`) and copied
+  byte for byte into both directories, because authoring a nesting part needs `parts` or `script` and
+  neither exists at the cut point: a fixture the base binary could not read would have compared
+  nothing. Over that surface — `--help`; `import` report and `--out`; `validate`; `inspect`; `check`;
+  `tools add` twice and `tools list`; `toolpath` profile, pocket and engrave; `emit` twice to `--out`,
+  once to stdout, and once on a document with no toolpath (exit 4); `simulate` at 1 mm and 0.5 mm on
+  the profile, at 1 mm on the pocket and on the nesting; `nest` in place, re-sheeted onto a fresh
+  board, and onto a board too small (exit 7); and the four error paths, unknown command, unknown kind,
+  missing document and missing input — each invocation's exit code, stdout, stderr and the sha256 of
+  **every file it left behind** were recorded after every step: **323 comparison points per side**,
+  the 10 files the run produces (plus the fixture it is given) the 6 documents taken twice, as zip
+  bytes and as their `document.json` payload, the two programs and the library byte for byte. **The
+  only difference is `--help`**: 108 lines became **152**, **44 added and none removed** — `parts`,
+  `cutlist`, `report` and `script` with their flags and the `SCRIPTS:` block that documents the
+  language. Everything else is identical, exit codes included (21×0, 4×2, 1×4, 4×6, 1×7 on each
+  side), and **no file hash differs anywhere**: `part.json` `80f7678…`, `tp-profile.json`
+  `866eb8c…`, `nested.json` `7a76c77…`, `renest.json` `9682154…`, `profile.nc` and `nested.nc`
+  `e4cc3d9…`, `engrave.nc` `6ec9830…`, `lib.sqlite` `eeb0b88…` on the cut point and on `HEAD` alike.
+  The in-place `nest` of an already-nested document left it byte-identical on both sides as well, so
+  M10 moved nothing on the pre-existing command surface — the `nesting`-reaching commands it added
+  are additions, not changes, and the exit-7 board, the error paths and `--help`'s older entries all
+  answer exactly as M9 did. Cleanup was refused, not skipped: `rm -rf` of the sandbox, the second
+  `CARGO_TARGET_DIR`, the harness and the help diff in `/var/tmp` was blocked by the session's own
+  command guard ("child safety blocked a recognized destructive command"), so what remains and
+  where is `/var/tmp/camm10diff.1793835085` (the archived cut point with its own `CARGO_TARGET_DIR`
+  and the three run directories, 427 MB), `/var/tmp/camm10cur-target` (433 MB), `/var/tmp/camm10-harness.sh`,
+  `/var/tmp/.help.diff` and `/var/tmp/.camm10diff-sb`, all for the parent to delete; nothing of the
+  harness is inside the repository, and `git status --short` shows this document and nothing else.
