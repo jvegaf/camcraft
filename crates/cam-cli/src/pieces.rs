@@ -33,6 +33,7 @@
 //! one `\n` after its last row. Two runs over the same document produce the same bytes (M10 invariant
 //! 5) — no map is iterated and no number is formatted twice.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cam_geom::{Contour, Point2};
@@ -102,14 +103,23 @@ pub(crate) fn parts_command(rest: &[String]) -> Result<(), Failure> {
   let destination = args.out.clone().unwrap_or(path);
   cam_store::document::save_document(&destination, &document)
     .map_err(|error| Failure::input(format!("{}: {error}", destination.display())))?;
-  eprintln!(
-    "wrote {} layer(s), {} entity(ies) to {}",
-    document.layers.len(),
-    document.entities().count(),
-    destination.display()
-  );
+  eprint!("{}", save_report(&document, &destination));
   print!("{report}");
   Ok(())
+}
+
+/// The one sentence a written document is reported with: what landed, and where.
+///
+/// Both writers of a document say it — the subcommand, which prints it on stderr once it saved, and
+/// the script's `save`, which hands it to the sink its caller chose (M10 T4b). One function, so a
+/// captured `save` and a printed one cannot word it differently.
+pub(crate) fn save_report(document: &Document, path: &Path) -> String {
+  format!(
+    "wrote {} layer(s), {} entity(ies) to {}\n",
+    document.layers.len(),
+    document.entities().count(),
+    path.display()
+  )
 }
 
 /// The part list path, or the refusal that says the command needs one.
@@ -277,23 +287,26 @@ pub(crate) fn cutlist_command(rest: &[String]) -> Result<(), Failure> {
     .clone()
     .ok_or_else(|| Failure::input("cutlist requires a document path"))?;
   let document = crate::open(&path)?;
-  cut_list_document(&document, &args)
+  cut_list_document(&document, &args, &mut std::io::stdout())
 }
 
-/// Write the cut list of `document`: to stdout, or to `--out`, exactly as `emit` writes its program.
+/// Write the cut list of `document` to `sink`, or to `--out`, exactly as `emit` writes its program.
 ///
 /// The one writer of both routes (M10 invariant 1). The cut list is an **output**, not the document,
 /// which is why a script may name its own `--out` here while a scripted document destination is
-/// refused.
-pub(crate) fn cut_list_document(document: &Document, args: &CutListArgs) -> Result<(), Failure> {
+/// refused. Without `--out` the rows go to the writer the caller chose — the subcommand passes stdout
+/// and a script passes the sink its own caller chose — so a script that lists a cut list without
+/// `--out` no longer prints past a capturing caller (M10 T4b).
+pub(crate) fn cut_list_document(
+  document: &Document,
+  args: &CutListArgs,
+  sink: &mut dyn Write,
+) -> Result<(), Failure> {
   let text = cut_list(document)?;
   match &args.out {
     Some(path) => std::fs::write(path, &text)
       .map_err(|error| Failure::input(format!("{}: {error}", path.display()))),
-    None => {
-      print!("{text}");
-      Ok(())
-    }
+    None => crate::write_report(sink, &text),
   }
 }
 

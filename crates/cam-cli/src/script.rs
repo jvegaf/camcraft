@@ -17,10 +17,11 @@
 //! 2. **Every refusal is located**, in the `cam-post` parser's shape — `line {line}:{column}: {message}`
 //!    — and every mutation passes through `Document::validate` with the script line attached (M10
 //!    invariants 2 and 4).
-//! 3. **The report has one exit, and it is a sink.** [`run_script`] takes the `Write` the caller chose:
-//!    `cam-cli script` passes `io::stdout()` and a caller that wants to display the report — the shell
-//!    panel (T4) — passes a buffer. Nothing in this file prints a report, so a captured run and a
-//!    printed run cannot disagree about a single byte.
+//! 3. **The report has one exit, and it is a sink.** [`run_script_to`] takes the two `Write`s the
+//!    caller chose: `cam-cli script` passes stdout for reports and stderr for notices, which is the
+//!    split the binary's own contract has, and a caller that wants to display the whole run — the
+//!    shell panel (T4) — passes two handles onto its own output area. Nothing in this file prints a
+//!    report or a notice, so a captured run and a printed run cannot disagree about a single byte.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use cam_model::{Document, Nesting, NestingPart, NestingSheet};
 use cam_units::Length;
 
-use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args};
+use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args, save_report};
 use crate::{
   append_toolpath, emit_args, emit_document, fresh_part_id, fresh_sheet_id, nest_args,
   nest_document, only_path, simulate_args, simulate_document, toolpath_args, validate_report,
@@ -141,18 +142,38 @@ pub(crate) fn script_command(rest: &[String]) -> Result<(), Failure> {
 
 /// Run a script, writing every report its commands produce to `out`.
 ///
-/// This is the one body: `cam-cli script` passes `io::stdout()` and a caller that wants to show the
-/// report passes a buffer, so what a caller captures is byte for byte what the binary prints. The
-/// refusals are the same [`Failure`] either way, each carrying the `line {line}:{column}: {message}`
+/// This is the shape the binary's contract has always had: the reports go to the caller's sink and the
+/// one notice a script prints — `save`'s `wrote …` line — goes to this process's stderr, which is where
+/// a command line expects a progress line. A caller with one output area calls [`run_script_to`]
+/// instead and points both writers at it.
+///
+/// The refusals are the same [`Failure`] either way, each carrying the `line {line}:{column}: {message}`
 /// diagnostic of the line that caused it (M10 invariant 2).
 pub fn run_script(path: &Path, out: &mut dyn Write) -> Result<(), Failure> {
+  run_script_to(path, out, &mut std::io::stderr())
+}
+
+/// Run a script, writing every report to `reports` and every notice to `notices`.
+///
+/// **Reports** are the answers the document's commands produce — `nest: …`, `valid: …`, the cut list,
+/// the part list's own report — and **notices** are the one line `save` writes once the document is on
+/// disk. The two are separate streams because the binary separates them: a command's data is stdout and
+/// its progress line is stderr, and `crates/cam-cli/tests/script.rs` pins both. The shell's scripting
+/// panel (T4b) wants one area, so it passes two handles onto one sink and shows the run in the order
+/// the script wrote it.
+pub fn run_script_to(
+  path: &Path,
+  reports: &mut dyn Write,
+  notices: &mut dyn Write,
+) -> Result<(), Failure> {
   let text = std::fs::read_to_string(path)
     .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
 
   let mut session = Session {
     document: None,
     path: None,
-    out,
+    out: reports,
+    notices,
   };
   for (index, raw) in text.lines().enumerate() {
     let line = lex(index + 1, raw)?;
@@ -164,23 +185,30 @@ pub fn run_script(path: &Path, out: &mut dyn Write) -> Result<(), Failure> {
   Ok(())
 }
 
-/// The script's state: the one document it mutates, the path it was read from, and the sink its
-/// reports go to.
+/// The script's state: the one document it mutates, the path it was read from, and the sinks its
+/// reports and notices go to.
 ///
 /// The path is kept because `tools_ref` is resolved relative to the document, exactly as the
-/// subcommands resolve it. Nothing else of the process is read, and nothing is printed: `out` is the
-/// only exit a report has.
+/// subcommands resolve it. Nothing else of the process is read, and nothing is printed: `out` and
+/// `notices` are the only exits either stream has.
 struct Session<'sink> {
   document: Option<Document>,
   path: Option<PathBuf>,
-  /// The `Write` the caller of [`run_script`] chose.
+  /// The `Write` the caller of [`run_script_to`] chose for reports.
   out: &'sink mut dyn Write,
+  /// The `Write` the caller of [`run_script_to`] chose for notices.
+  notices: &'sink mut dyn Write,
 }
 
 impl Session<'_> {
   /// Write a command's report to the caller's sink.
   fn say(&mut self, report: &str) -> Result<(), Failure> {
     write_report(&mut *self.out, report)
+  }
+
+  /// Write a notice — a line about what a command did to the disk — to the caller's notice sink.
+  fn notice(&mut self, notice: &str) -> Result<(), Failure> {
+    write_report(&mut *self.notices, notice)
   }
 
   /// Run one line's command, through the table.
@@ -638,19 +666,18 @@ fn command_save(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
   let arguments = line.exactly(1)?;
   let token = &arguments[0];
   let path = PathBuf::from(&token.text);
-  let (document, _) = session.open_document(line)?;
-  document
-    .validate()
-    .map_err(|error| line.at_word(Failure::input(error.to_string())))?;
-  cam_store::document::save_document(&path, document)
-    .map_err(|error| line.fail_at(token, error.to_string()))?;
-  eprintln!(
-    "wrote {} layer(s), {} entity(ies) to {}",
-    document.layers.len(),
-    document.entities().count(),
-    path.display()
-  );
-  Ok(())
+  // The document borrow ends with this block: the notice goes to the session's own writer, which is a
+  // second borrow of the session and cannot overlap the one the document came from.
+  let notice = {
+    let (document, _) = session.open_document(line)?;
+    document
+      .validate()
+      .map_err(|error| line.at_word(Failure::input(error.to_string())))?;
+    cam_store::document::save_document(&path, document)
+      .map_err(|error| line.fail_at(token, error.to_string()))?;
+    save_report(document, &path)
+  };
+  session.notice(&notice)
 }
 
 /// `parts --csv <file>`: author a nesting part per row of a part list into the open document.
@@ -687,8 +714,13 @@ fn command_cutlist(session: &mut Session, line: &ScriptLine) -> Result<(), Failu
       format!("cutlist {NO_POSITIONAL}"),
     ));
   }
-  let (document, _) = session.open_document(line)?;
-  cut_list_document(document, &args).map_err(|failure| line.locate(failure))
+  // The document and the sink are two fields of the same session, so they are taken apart here: the
+  // cut list needs the document while it writes, which one borrow of the whole session cannot express.
+  let Session { document, out, .. } = session;
+  let document = document
+    .as_ref()
+    .ok_or_else(|| line.fail(line.word().column, NO_DOCUMENT))?;
+  cut_list_document(document, &args, &mut **out).map_err(|failure| line.locate(failure))
 }
 
 /// Refuse a scripted `nest` or `toolpath` a document destination of its own.

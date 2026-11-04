@@ -69,6 +69,12 @@ pub mod icons;
 pub mod params;
 /// The two millimetre rulers along the canvas' top and left edges (camui-prancheta S5).
 pub mod ruler;
+/// The scripting panel: one script path, one `Run`, one output area (M10 T4b, S4).
+///
+/// It runs the script by calling `cam-cli` as a library — never by spawning the binary — and its
+/// running half needs no egui at all, so a caller without a window can still run a script and read what
+/// it produced.
+pub mod script_panel;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
 /// A strategy's editor: the same surface for creating and editing one toolpath (camui-prancheta S10).

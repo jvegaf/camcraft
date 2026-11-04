@@ -35,8 +35,11 @@ breaks one is refused:
    load; the refusal names the offending script line, not only the model's message.
 5. **Determinism is a test.** Two runs of the same script on the same document produce identical bytes,
    including the generated HTML and CSV.
-6. **No new dependency.** S1 chose no engine; a template engine for the HTML sheet is refused for the same
-   reason. `Cargo.lock` is a reviewable surface and it must not move.
+6. **No new external dependency.** S1 chose no engine; a template engine for the HTML sheet is refused for
+   the same reason. `Cargo.lock` is a reviewable surface, and the invariant that matters is the
+   **package count**: it does not move (482). A **workspace-internal** edge may record one line in it —
+   the lock writes a crate's dependency list, so any edge between two workspace crates adds its name —
+   and refusing that would have made the panel impossible, which is why the wording changed (L6).
 7. **Every new command, flag or message updates `const HELP`** (`crates/cam-cli/src/main.rs:27`) and the
    docs that describe it; a test asserts the help mentions the flags, as `tests/cli.rs:552` does.
 8. **Environment:** every cargo command needs `RUSTUP_HOME=/home/th3g3ntl3man/.rustup
@@ -90,3 +93,25 @@ so it goes first and alone.
   change, and one implementation with two callers. Recorded as **D-M10-1**: the crate named `cam-cli`
   is also the home of the operations the shell calls, which reads oddly and is deliberate — the
   alternative was moving thousands of reviewed lines to earn a better name.
+- **L6 (T4b delivered as `partial`, and the invariant it broke).** The two bypasses T4a declared are
+  **closed**: `pieces::cut_list_document` now takes a sink and writes through `crate::write_report`, and
+  `save`'s sentence comes from one new `pieces::save_report` — shared with `parts_command`, which said
+  the same words — delivered to a second session writer through `Session::notice`. So the panel's
+  capture holds the cut list **and** the `wrote …` line, proven by a test that runs
+  open/sheet/part/nest/cutlist/save through `ScriptPanel::run` and asserts both the painted area and the
+  captured text. The CLI's own bytes did not move: a byte-level differential against a copy of the base
+  commit shows identical stdout, stderr and exit code, because the `save` notice stays on stderr where an
+  existing cam-cli test pins it. The panel itself is `cam-ui/src/script_panel.rs`: a heading, a path
+  field, a `Run` button and an output area painted one line per row, with the adapter boundary between
+  `run()` — which touches no egui and calls `cam_cli::script::run_script_to` as a library, never a process
+  — and `ui()`. Four headless frame tests: the report painted, the located `line L:C` error painted, a
+  failed run **keeping** the previous output, and the cut-list/save capture. `cargo test -p cam-ui` 264 →
+  **268**, `cam-cli` **194**, workspace **1506**. Two disclosures were escalated instead of absorbed.
+  First: `cam-cli.workspace = true` was unavailable because `cam-cli` had no entry in the root
+  `[workspace.dependencies]`, so the writer used the path form; the parent added the entry and switched to
+  the workspace form. Second, and the reason this document changed: **`Cargo.lock` moved one line**
+  (`+ "cam-cli"` in cam-ui's dependency list). The writer reported it rather than hiding it, and the
+  finding is right: the original invariant 6 said the lock "must not move", which no edge between two
+  workspace crates can satisfy, because the lock records that list. The invariant was therefore **wrong,
+  not the change**: it now reads "no new external dependency, and the package count does not move" — 482
+  before and after — which is what it always meant.

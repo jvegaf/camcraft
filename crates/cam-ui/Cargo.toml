@@ -9,6 +9,10 @@ publish.workspace = true
 [dependencies]
 egui.workspace = true
 cam-app.workspace = true
+# The scripting panel runs a script by calling the engine, never by spawning the binary (M10 T4b,
+# D-M10-1): `cam-cli` is also the home of the operations the shell calls, and this is a
+# workspace-internal edge rather than a new external one.
+cam-cli.workspace = true
 cam-geom.workspace = true
 cam-import.workspace = true
 cam-model.workspace = true

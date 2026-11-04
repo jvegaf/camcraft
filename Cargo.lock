@@ -809,6 +809,7 @@ name = "cam-ui"
 version = "0.0.1"
 dependencies = [
  "cam-app",
+ "cam-cli",
  "cam-geom",
  "cam-import",
  "cam-model",
