@@ -9,9 +9,10 @@
 //!
 //! 1. **Every command is a caller, never a second implementation.** `open` calls this crate's `open`,
 //!    each command with flags hands its tokens to the subcommand's own argument parser (`nest_args`,
-//!    `toolpath_args`, `emit_args`, `simulate_args`) and then to the subcommand's own execution
-//!    function (`nest_document`, `append_toolpath`, `emit_document`, `simulate_document`), and `save`
-//!    calls `cam_store::document::save_document`. There is no geometry, nesting or emission step in
+//!    `toolpath_args`, `parts_args`, `emit_args`, `cutlist_args`, `simulate_args`) and then to the
+//!    subcommand's own execution function (`nest_document`, `append_toolpath`, `author_parts`,
+//!    `emit_document`, `cut_list_document`, `simulate_document`), and `save` calls
+//!    `cam_store::document::save_document`. There is no geometry, nesting, import or emission step in
 //!    this file at all (M10 invariant 1).
 //! 2. **Every refusal is located**, in the `cam-post` parser's shape — `line {line}:{column}: {message}`
 //!    — and every mutation passes through `Document::validate` with the script line attached (M10
@@ -22,6 +23,7 @@ use std::path::PathBuf;
 use cam_model::{Document, Nesting, NestingPart, NestingSheet};
 use cam_units::Length;
 
+use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args};
 use crate::{
   append_toolpath, emit_args, emit_document, fresh_part_id, fresh_sheet_id, nest_args,
   nest_document, only_path, simulate_args, simulate_document, toolpath_args, validate_report,
@@ -107,6 +109,18 @@ const COMMANDS: &[Command] = &[
     word: "save",
     usage: "<document>",
     run: command_save,
+  },
+  // `cam-cli parts`: `parts_args` for the flags, `author_parts` for the import.
+  Command {
+    word: "parts",
+    usage: "--csv <file> [--layer <name>]",
+    run: command_parts,
+  },
+  // `cam-cli cutlist`: `cutlist_args` for the flag, `cut_list_document` for the rows.
+  Command {
+    word: "cutlist",
+    usage: "[--out <path>]",
+    run: command_cutlist,
   },
 ];
 
@@ -616,6 +630,45 @@ fn command_save(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
     path.display()
   );
   Ok(())
+}
+
+/// `parts --csv <file>`: author a nesting part per row of a part list into the open document.
+///
+/// The tokens go to `parts`' own parser and then to `author_parts`, the function the subcommand
+/// calls, so a scripted import can neither read a different dialect nor author different records
+/// (M10 invariant 1). `--out` is refused because a script writes its document with `save`.
+fn command_parts(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
+  let tokens = line.tokens_as_strings();
+  let args = parts_args(&tokens).map_err(|failure| line.locate(failure))?;
+  if let Some(path) = &args.document {
+    return Err(line.fail_at(
+      line.token_for(&path.to_string_lossy()),
+      format!("parts {NO_POSITIONAL}"),
+    ));
+  }
+  refuse_document_destination(line, None, &args.out)?;
+  let report = session.mutate(line, |document| {
+    author_parts(document, &args).map_err(|failure| line.locate(failure))
+  })?;
+  print!("{report}");
+  Ok(())
+}
+
+/// `cutlist [--out <path>]`: write the cut list of the open document.
+///
+/// The tokens go to `cutlist`' own parser and then to `cut_list_document`, the function the
+/// subcommand calls, so a scripted cut list is the bytes the subcommand writes (M10 invariant 1).
+fn command_cutlist(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
+  let tokens = line.tokens_as_strings();
+  let args = cutlist_args(&tokens).map_err(|failure| line.locate(failure))?;
+  if let Some(path) = &args.document {
+    return Err(line.fail_at(
+      line.token_for(&path.to_string_lossy()),
+      format!("cutlist {NO_POSITIONAL}"),
+    ));
+  }
+  let (document, _) = session.open_document(line)?;
+  cut_list_document(document, &args).map_err(|failure| line.locate(failure))
 }
 
 /// Refuse a scripted `nest` or `toolpath` a document destination of its own.

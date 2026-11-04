@@ -365,7 +365,7 @@ shet 100 100
   assert_eq!(
     outcome.stderr,
     "error: line 3:1: unknown script command \"shet\"; expected one of open, sheet, part, nest, \
-     toolpath, validate, emit, simulate, save\n"
+     toolpath, validate, emit, simulate, save, parts, cutlist\n"
   );
   assert!(outcome.stdout.is_empty(), "{}", outcome.stdout);
 

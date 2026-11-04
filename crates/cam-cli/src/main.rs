@@ -1,5 +1,5 @@
 //! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`,
-//! `nest`, `emit`, `simulate` and `script`.
+//! `nest`, `parts`, `cutlist`, `emit`, `simulate` and `script`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -13,6 +13,7 @@
 //! command language (`script`) calls the same functions (M10 invariant 1), so no behaviour has a
 //! second implementation.
 
+mod pieces;
 mod script;
 
 use std::path::{Path, PathBuf};
@@ -133,6 +134,14 @@ COMMANDS:
     simulate <document>       Simulate the program and report removed, gouge, uncut and crashes
         --library <path>      Tool library; defaults to the document's tools_ref
         --resolution <mm>     Cell size of the removal grid (default 1)
+    parts <document>          Author a nesting part per row of a CSV part list
+        --csv <file>          The part list: a header row, then name,width,height,quantity (required)
+        --layer <name>        Put every part's rectangle in one new layer with this name (default Parts)
+        --out <path>          Write the document here; without it the document that was read is written
+    cutlist <document>        Write the cut list a nesting stored: a header row, then a placement per
+                              row: x, y, width and height in millimetres, rotation in degrees
+                              (counter-clockwise), every number at three decimals
+        --out <path>          Write the cut list here instead of stdout
     script <file>             Run a script: one command per line, against one document
 
 SCRIPTS:
@@ -155,9 +164,12 @@ SCRIPTS:
     validate                   Check the open document and print the counts validate prints
     emit --post <file>         Compute the program and write it; takes emit's own --out and
                                --library
+    cutlist [--out <path>]     Write the cut list from the open document; takes cutlist's own --out
     simulate                   Simulate the program and report it; takes simulate's own --library
                                and --resolution
     save <document>            Validate the open document and write it here
+    parts --csv <file>         Author a nesting part per row of a part list into the open document;
+                               takes parts' own --layer and refuses --out
 
 OPTIONS:
     -h, --help                Show this help
@@ -314,6 +326,8 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "check" => check(rest),
     "toolpath" => toolpath_command(rest),
     "nest" => nest_command(rest),
+    "parts" => pieces::parts_command(rest),
+    "cutlist" => pieces::cutlist_command(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     "simulate" => simulate_command(rest),
