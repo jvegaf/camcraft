@@ -6,62 +6,142 @@
 <style>
   :root{
     --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
-    --line-hair:#262d36; --line-strong:#35404c; --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
-    --sel:#6fd3e8; --sel-soft:#6fd3e822; --cut:#f5a623; --cut-soft:#f5a62322;
+    --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    /* the washes are the signals premultiplied in theme.rs — SelSoft 0x0e,0x1b,0x1e,0x22 and CutSoft
+       0x20,0x16,0x04,0x22 — with the channels divided by the alpha, or the tint darkens twice */
+    --sel:#6fd3e8; --sel-soft:rgba(105,202,225,.13); --cut:#f5a623; --cut-soft:rgba(240,165,30,.13);
     --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
-    --f: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --f:Inter,"Inter UI",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:#0a0c0f;color:var(--text);font-family:var(--f);font-size:13px;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--bg-app);color:var(--text);font-family:var(--f);font-size:13px;
+    -webkit-font-smoothing:antialiased}
   main{width:1440px;margin:0 auto;padding:28px 32px 40px}
+  a,button,[tabindex]{outline-offset:2px}
+  :focus-visible{outline:2px solid var(--sel);outline-offset:2px}
   h1{font-size:28px;font-weight:600;letter-spacing:-.015em;color:var(--text-hi);margin:0 0 6px}
-  .lede{color:var(--text-dim);margin:0 0 6px;max-width:84ch}
+  .lede{color:var(--text-dim);margin:0;max-width:96ch;line-height:1.65}
   .lede code{font-family:var(--mono);font-size:12px;color:var(--text)}
-  h2{font-size:15px;font-weight:600;color:var(--text-hi);margin:28px 0 12px;display:flex;align-items:baseline;gap:10px}
-  h2 span{margin-left:auto;font-size:11px;color:var(--text-off);font-weight:400;font-family:var(--mono)}
+  h2{font-size:15px;font-weight:600;color:var(--text-hi);margin:34px 0 12px;display:flex;align-items:center;gap:10px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line-hair)}
+  h2 .n{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text-off);
+    border:1px solid var(--line-hair);border-radius:4px;padding:1px 6px}
+  h2 .src{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text-off);order:2}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  .card{background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;padding:15px 17px}
-  .card h3{margin:0 0 3px;font-size:13px;color:var(--text-hi)}
-  .card .src{font-size:10px;font-family:var(--mono);color:var(--text-off);margin-bottom:12px}
-  .sw{display:flex;align-items:center;gap:9px;padding:2px 0}
-  .sw i{width:34px;height:20px;border-radius:3px;border:1px solid var(--line-strong);flex:none}
-  .sw code{font-family:var(--mono);font-size:10px;color:var(--text-hi);min-width:76px}
-  .sw em{font-family:var(--mono);font-size:10px;color:var(--text-dim);font-style:normal;min-width:66px;font-variant-numeric:tabular-nums}
-  .sw b{font-size:10px;color:var(--text-off);font-weight:400}
-  .light .sw code{color:#12181f}
-  .light{background:#fff;border-color:#dde3ea}
-  .light h3{color:#12181f} .light .src,.light .sw b{color:#8b95a3} .light .sw em{color:#5f6b7a}
-  .type div{display:flex;align-items:baseline;gap:12px;padding:5px 0;border-bottom:1px solid var(--line-hair)}
-  .type div:last-child{border-bottom:0}
-  .type .k{font-family:var(--mono);font-size:10px;color:var(--text-off);min-width:132px}
-  .geo{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-  .geo div{background:var(--bg-raised);border:1px solid var(--line-hair);border-radius:6px;padding:10px 12px}
-  .geo b{display:block;font-size:11px;color:var(--text-hi);margin-bottom:3px}
-  .geo span{font-family:var(--mono);font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
-  .comp{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
-  .stack{display:flex;flex-direction:column;gap:7px}
-  .cap{font-size:10px;color:var(--text-off);text-transform:uppercase;letter-spacing:.07em}
-  .btn{height:24px;padding:0 10px;border-radius:4px;border:1px solid var(--line-strong);background:var(--bg-raised);
-    color:var(--text-hi);font:inherit;font-size:13px;cursor:pointer}
-  .btn:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
-  .btn.cut{background:var(--cut);border-color:var(--cut);color:#1a1206;font-weight:600}
-  .field{display:inline-flex;align-items:center;height:24px;min-width:84px;padding:0 8px;border:1px solid var(--line-strong);
-    border-radius:4px;background:var(--bg-raised);font-family:var(--mono);font-size:11px;color:var(--text-hi)}
-  .field em{font-style:normal;color:var(--text-off);margin-left:auto;padding-left:8px;font-size:10px}
-  .pill{height:20px;padding:0 8px;border-radius:999px;border:1px solid var(--line-hair);color:var(--text-dim);
-    font-size:11px;display:inline-flex;align-items:center}
-  .pill.on{border-color:var(--sel);background:var(--sel-soft);color:var(--sel)}
-  .row{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:4px;font-size:12px}
-  .row.on{background:var(--sel-soft);box-shadow:inset 0 0 0 1px var(--sel)}
-  .row svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-  .rail{display:flex;gap:5px;background:var(--bg-app);border:1px solid var(--line-hair);border-radius:6px;padding:5px}
-  .rail span{width:28px;height:28px;display:grid;place-items:center;border-radius:4px;border:1px solid transparent;color:var(--text)}
-  .rail span.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
-  .rail svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-  .rules{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  .rules p{margin:0 0 7px;font-size:12px;color:var(--text-dim);line-height:1.7}
-  .rules b{color:var(--text)}
+  .card{background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;padding:16px 18px}
+  .card h3{margin:0 0 3px;font-size:13px;font-weight:600;color:var(--text-hi)}
+  .card .sub{margin:0 0 12px;font-size:11px;color:var(--text-dim);line-height:1.5}
+  .card code{font-family:var(--mono);font-size:11px;color:inherit}
+  /* the light set, rendered with theme.rs::Palette::light's own values */
+  .lt{background:#ffffff;border-color:#dde3ea}
+  .lt h3{color:#12181f}
+  .lt .sub,.lt .use,.lt .note{color:#5f6b7a}
+  .lt .role{color:#2b3440}
+  .lt .val{color:#5f6b7a}
+  .lt .box{border-color:#c3ccd6}
+  .note{margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line-hair);font-size:11px;
+    color:var(--text-dim);line-height:1.55}
+  .lt .note{border-top-color:#dde3ea}
+  /* colour rows */
+  .sw{display:grid;grid-template-columns:44px 96px 150px 1fr;align-items:center;gap:10px;padding:2px 0;
+    font-size:11px;line-height:1.4}
+  .box{display:block;width:44px;height:18px;border-radius:3px;border:1px solid var(--line-strong);
+    position:relative;overflow:hidden}
+  .box .wash{position:absolute;top:0;bottom:0;left:50%;right:0}
+  .role{font-family:var(--mono);color:var(--text)}
+  .val{font-family:var(--mono);color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .use{color:var(--text-dim)}
+  /* type */
+  .tr{display:grid;grid-template-columns:132px 1fr 236px;align-items:baseline;gap:16px;padding:7px 0;
+    border-bottom:1px solid var(--line-hair)}
+  .tr:last-child{border-bottom:0}
+  .k{font-family:var(--mono);font-size:11px;color:var(--text-off)}
+  .where{font-size:11px;color:var(--text-dim);text-align:right}
+  /* geometry table */
+  table.geo{width:100%;border-collapse:collapse;font-size:12px}
+  table.geo caption{text-align:left;font-size:11px;color:var(--text-dim);padding:0 0 8px}
+  table.geo th{text-align:left;font-size:11px;font-weight:400;font-family:var(--mono);color:var(--text-off);
+    border-bottom:1px solid var(--line-hair);padding:0 12px 6px 0}
+  table.geo td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line-hair);color:var(--text);vertical-align:top}
+  table.geo tr:last-child td{border-bottom:0}
+  table.geo td:first-child{font-family:var(--mono);font-size:11px;color:var(--text-hi);width:196px}
+  table.geo td:nth-child(2){font-family:var(--mono);font-size:11px;color:var(--text-dim);width:236px;
+    font-variant-numeric:tabular-nums}
+  /* components */
+  .frame{border:1px solid var(--line-hair);border-radius:6px;overflow:hidden;background:var(--bg-panel)}
+  .appbar{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;background:var(--bg-panel);
+    border-bottom:1px solid var(--line-hair)}
+  .appbar .name{font-size:15px;font-weight:600;color:var(--text-hi)}
+  .appbar .doc{font-size:11px;color:var(--text-dim)}
+  .appbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .appbar .unit{font-size:11px;color:var(--text-dim)}
+  .sep{width:1px;height:18px;background:var(--line-hair)}
+  svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;
+    stroke-linejoin:round;flex:none}
+  .btn{height:24px;padding:0 10px;border-radius:4px;border:1px solid var(--line-strong);background:transparent;
+    color:var(--text-hi);font-family:var(--f);font-size:13px;font-weight:500;display:inline-flex;
+    align-items:center;gap:6px;transition:background 120ms ease}
+  .btn:hover:not([disabled]){background:var(--bg-raised)}
+  .btn.primary{background:var(--cut);border-color:var(--cut);color:var(--bg-panel)}
+  .btn[disabled]{color:var(--text-off);border-color:var(--line-hair);background:transparent;cursor:not-allowed}
+  .iconbtn{width:32px;height:32px;display:grid;place-items:center;border-radius:4px;border:1px solid transparent;
+    background:transparent;color:var(--text);padding:0;transition:background 120ms ease}
+  .iconbtn:hover{background:var(--bg-raised);color:var(--text-hi)}
+  .iconbtn.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  .field{display:inline-flex;align-items:center;gap:10px;height:24px;padding:0 8px;border:1px solid var(--line-strong);
+    border-radius:4px;background:var(--bg-raised);color:var(--text-hi);font-size:13px;
+    font-variant-numeric:tabular-nums}
+  .field .u{font-size:11px;color:var(--text-dim);font-family:var(--f)}
+  .fieldrow{display:flex;align-items:center;gap:12px;height:26px}
+  .fieldrow .lbl{font-size:11px;color:var(--text-dim);width:96px}
+  .stack{display:flex;flex-direction:column;gap:8px}
+  .cap{font-size:11px;color:var(--text-off);letter-spacing:.07em;text-transform:uppercase}
+  /* rail */
+  .rail{width:200px;background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;
+    padding:6px 8px 8px}
+  .head{display:flex;align-items:center;gap:8px;height:14px;margin:4px 0 0;font-size:11px;color:var(--text-dim);
+    letter-spacing:.07em;padding-bottom:6px;border-bottom:1px solid var(--line-hair)}
+  .caret{width:0;height:0;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;
+    border-left:5px solid currentColor;flex:none}
+  .caret.open{border-left:3.5px solid transparent;border-right:3.5px solid transparent;
+    border-top:5px solid currentColor;border-bottom:0}
+  .chips{display:flex;flex-wrap:wrap;gap:2px;padding:4px 0 6px}
+  .chip{display:grid;place-items:center;width:32px;height:32px;padding:0;border-radius:4px;
+    border:1px solid transparent;color:var(--text);background:transparent;transition:background 120ms ease}
+  .chip svg{width:20px;height:20px}
+  .brand{height:62px;margin-top:6px;padding-top:7px;border-top:1px solid var(--line-hair);
+    display:flex;flex-direction:column}
+  .brand .prod{font-size:15px;font-weight:600;color:var(--text-hi)}
+  .brand .ver,.brand .stamp{font-size:11px;color:var(--text-dim)}
+  .chip:hover{background:var(--bg-raised);color:var(--text-hi)}
+  .chip.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  /* ribbon + inspector strip */
+  .ribbon{width:288px;background:var(--bg-panel);border:1px solid var(--line-hair);border-radius:6px;
+    padding:8px 10px}
+  .ribbon .rhead{display:flex;align-items:center;justify-content:space-between;font-size:15px;font-weight:600;
+    color:var(--text-hi);padding-bottom:6px;border-bottom:1px solid var(--line-hair)}
+  .ribbon .row{display:flex;align-items:center;gap:8px;height:32px}
+  .legend{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:11px;
+    color:var(--text-dim);line-height:1.5}
+  .legend li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start}
+  .legend b{color:var(--text-hi);font-family:var(--mono);font-size:11px;font-weight:400}
+  /* status bar */
+  .status{display:flex;align-items:center;gap:10px;height:26px;padding:0 12px;background:var(--bg-panel);
+    border-top:1px solid var(--line-hair);font-size:11px}
+  .status .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text)}
+  .status .facts{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text-dim)}
+  .status .unit{color:var(--text-dim)}
+  .status .chipsrow{display:flex;align-items:center;gap:6px}
+  .snav{height:18px;padding:0 7px;border-radius:9px;display:inline-flex;align-items:center;font-size:11px;
+    color:var(--text-dim);border:1px solid transparent;background:transparent}
+  .snav.on{background:var(--sel-soft);border-color:var(--sel);color:var(--sel)}
+  .status .right{margin-left:auto;display:flex;gap:12px;align-items:center}
+  .status .hint{color:var(--text-off)}
+  .rules ul{margin:0;padding-left:16px}
+  .rules li{margin:0 0 6px;font-size:12px;color:var(--text-dim);line-height:1.6}
+  .rules b{color:var(--text);font-weight:600}
   .rules code{font-family:var(--mono);font-size:11px;color:var(--text)}
   @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -69,125 +149,248 @@
 <body>
 <main>
   <h1>Campilot — design system</h1>
-  <p class="lede">The runtime truth is <code>crates/cam-ui/src/theme.rs</code>; this board renders the same values so a
-  new screen can be drawn without opening the source. Every colour below is a <code>Role</code>, not a hex: widgets
-  ask for a role and both sets re-resolve.</p>
+  <p class="lede">Twenty-one roles, eight text styles and one geometry, rendered exactly as
+  <code>crates/cam-ui/src/theme.rs</code> defines them, over the shell <code>camui-prancheta</code> delivered:
+  a 200 px rail of five folding groups, two 22 px rulers, a ribbon and a task editor on the right, and a status
+  bar in three zones. A widget never names a colour — it asks <code>Palette::get(Role::…)</code>, so both sets
+  re-resolve from the same list.</p>
 
-  <h2>Colour <span>theme.rs::Palette</span></h2>
+  <h2><span class="n">01</span> Colour <span class="src">theme.rs::Palette — Role::ALL, 21 roles, two sets</span></h2>
   <div class="cols">
     <section class="card">
       <h3>Dark — default</h3>
-      <div class="src">Palette::dark()</div>
-      <div class="sw"><i style="background:#12151a"></i><code>app</code><em>#12151a</em><b>window frame, app bar</b></div>
-      <div class="sw"><i style="background:#0d1014"></i><code>canvas</code><em>#0d1014</em><b>drawing surface — darkest</b></div>
-      <div class="sw"><i style="background:#171b21"></i><code>panel</code><em>#171b21</em><b>rail, dock, status</b></div>
-      <div class="sw"><i style="background:#1e242b"></i><code>raised</code><em>#1e242b</em><b>inputs, hover</b></div>
-      <div class="sw"><i style="background:#232a32"></i><code>overlay</code><em>#232a32</em><b>menus, tooltips</b></div>
-      <div class="sw"><i style="background:#262d36"></i><code>hairline</code><em>#262d36</em><b>1 px division</b></div>
-      <div class="sw"><i style="background:#35404c"></i><code>border</code><em>#35404c</em><b>control borders</b></div>
-      <div class="sw"><i style="background:#e7ecf3"></i><code>text-hi</code><em>#e7ecf3</em><b>titles, values</b></div>
-      <div class="sw"><i style="background:#c3ccd8"></i><code>text</code><em>#c3ccd8</em><b>body</b></div>
-      <div class="sw"><i style="background:#8b95a3"></i><code>text-dim</code><em>#8b95a3</em><b>help, units</b></div>
-      <div class="sw"><i style="background:#5c6673"></i><code>text-off</code><em>#5c6673</em><b>disabled only</b></div>
-      <div class="sw"><i style="background:#6fd3e8"></i><code>sel</code><em>#6fd3e8</em><b>selection signal</b></div>
-      <div class="sw"><i style="background:#f5a623"></i><code>cut</code><em>#f5a623</em><b>cut signal</b></div>
-      <div class="sw"><i style="background:#5ec27f"></i><code>ok</code><em>#5ec27f</em><b>verdict</b></div>
-      <div class="sw"><i style="background:#f0b429"></i><code>warn</code><em>#f0b429</em><b>verdict</b></div>
-      <div class="sw"><i style="background:#f2635f"></i><code>danger</code><em>#f2635f</em><b>verdict</b></div>
+      <p class="sub"><code>Palette::dark()</code>. Canvas &lt; App &lt; Panel &lt; Raised &lt; Overlay: a surface that outranks
+      its parent stops reading as one.</p>
+      <div class="sw"><i class="box" style="background:#12151a"></i><code class="role">App</code><span class="val">#12151a</span><span class="use">the window behind every panel</span></div>
+      <div class="sw"><i class="box" style="background:#0d1014"></i><code class="role">Canvas</code><span class="val">#0d1014</span><span class="use">the drawing area and the 3D half</span></div>
+      <div class="sw"><i class="box" style="background:#171b21"></i><code class="role">Panel</code><span class="val">#171b21</span><span class="use">app bar, rail, inspector, status bar, ruler bands</span></div>
+      <div class="sw"><i class="box" style="background:#1e242b"></i><code class="role">Raised</code><span class="val">#1e242b</span><span class="use">chips, ribbon hover, fields</span></div>
+      <div class="sw"><i class="box" style="background:#232a32"></i><code class="role">Overlay</code><span class="val">#232a32</span><span class="use">the tool library modal and the 3D overlay row</span></div>
+      <div class="sw"><i class="box" style="background:#262d36"></i><code class="role">Hairline</code><span class="val">#262d36</span><span class="use">the 1 px line between docked surfaces</span></div>
+      <div class="sw"><i class="box" style="background:#35404c"></i><code class="role">Border</code><span class="val">#35404c</span><span class="use">a control's own edge, where a hairline is too quiet</span></div>
+      <div class="sw"><i class="box" style="background:#e7ecf3"></i><code class="role">TextHi</code><span class="val">#e7ecf3</span><span class="use">the product, the document, a task's name</span></div>
+      <div class="sw"><i class="box" style="background:#c3ccd8"></i><code class="role">Text</code><span class="val">#c3ccd8</span><span class="use">command labels, field values</span></div>
+      <div class="sw"><i class="box" style="background:#8b95a3"></i><code class="role">TextDim</code><span class="val">#8b95a3</span><span class="use">ruler numerals, second lines, tooltips</span></div>
+      <div class="sw"><i class="box" style="background:#5c6673"></i><code class="role">TextOff</code><span class="val">#5c6673</span><span class="use">section headings, half a count — never body</span></div>
+      <div class="sw"><i class="box" style="background:#6fd3e8"></i><code class="role">Sel</code><span class="val">#6fd3e8</span><span class="use">picked vectors, the active toggle, the TOP axis</span></div>
+      <div class="sw"><i class="box" style="background:#171b21"><span class="wash" style="background:var(--sel-soft)"></span></i><code class="role">SelSoft</code><span class="val">rgba(105,202,225,.13)</span><span class="use">the wash under a selected chip or row</span></div>
+      <div class="sw"><i class="box" style="background:#f5a623"></i><code class="role">Cut</code><span class="val">#f5a623</span><span class="use">the ruler marker, the toolpath preview, the primary action</span></div>
+      <div class="sw"><i class="box" style="background:#171b21"><span class="wash" style="background:var(--cut-soft)"></span></i><code class="role">CutSoft</code><span class="val">rgba(240,165,30,.13)</span><span class="use">the wash under the primary action and the cut chip</span></div>
+      <div class="sw"><i class="box" style="background:#5ec27f"></i><code class="role">Ok</code><span class="val">#5ec27f</span><span class="use">a pass, a resolved tool, the RIGHT axis</span></div>
+      <div class="sw"><i class="box" style="background:#f0b429"></i><code class="role">Warn</code><span class="val">#f0b429</span><span class="use">a number the shell will not trust</span></div>
+      <div class="sw"><i class="box" style="background:#f2635f"></i><code class="role">Danger</code><span class="val">#f2635f</span><span class="use">a refusal, and the FRONT axis</span></div>
+      <div class="sw"><i class="box" style="background:#d6dce6"></i><code class="role">StockTop</code><span class="val">#d6dce6</span><span class="use">the lit face of the material</span></div>
+      <div class="sw"><i class="box" style="background:#424c58"></i><code class="role">StockBottom</code><span class="val">#424c58</span><span class="use">the shade under it</span></div>
+      <div class="sw"><i class="box" style="background:#6e7b8a"></i><code class="role">StockEdge</code><span class="val">#6e7b8a</span><span class="use">the cut edge of the sheet</span></div>
+      <p class="note">The two <code>-soft</code> rows are the signal premultiplied (<code>0x0e,0x1b,0x1e,0x22</code> and
+      <code>0x20,0x16,0x04,0x22</code>), so the colour is the signal itself at 13 % — divide the channels by the alpha
+      before writing the CSS or the tint darkens twice. The swatch's right half shows the wash over <code>Panel</code>.
+      <code>Sel</code> and <code>Cut</code> sit at least 60° apart in hue.</p>
     </section>
-    <section class="card light">
-      <h3>Light — same design on paper</h3>
-      <div class="src">Palette::light()</div>
-      <div class="sw"><i style="background:#eef1f5"></i><code>app</code><em>#eef1f5</em><b>window frame</b></div>
-      <div class="sw"><i style="background:#f7f9fb"></i><code>canvas</code><em>#f7f9fb</em><b>drawing surface</b></div>
-      <div class="sw"><i style="background:#ffffff"></i><code>panel</code><em>#ffffff</em><b>rail, dock, status</b></div>
-      <div class="sw"><i style="background:#f2f5f8"></i><code>raised</code><em>#f2f5f8</em><b>inputs, hover</b></div>
-      <div class="sw"><i style="background:#ffffff"></i><code>overlay</code><em>#ffffff</em><b>menus, shadow</b></div>
-      <div class="sw"><i style="background:#dde3ea"></i><code>hairline</code><em>#dde3ea</em><b>1 px division</b></div>
-      <div class="sw"><i style="background:#c3ccd6"></i><code>border</code><em>#c3ccd6</em><b>control borders</b></div>
-      <div class="sw"><i style="background:#12181f"></i><code>text-hi</code><em>#12181f</em><b>titles, values</b></div>
-      <div class="sw"><i style="background:#2b3440"></i><code>text</code><em>#2b3440</em><b>body</b></div>
-      <div class="sw"><i style="background:#5f6b7a"></i><code>text-dim</code><em>#5f6b7a</em><b>help, units</b></div>
-      <div class="sw"><i style="background:#8b95a3"></i><code>text-off</code><em>#8b95a3</em><b>disabled only</b></div>
-      <div class="sw"><i style="background:#0d7c92"></i><code>sel</code><em>#0d7c92</em><b>selection, darkened for AA</b></div>
-      <div class="sw"><i style="background:#a86200"></i><code>cut</code><em>#a86200</em><b>cut signal</b></div>
-      <div class="sw"><i style="background:#1f7a43"></i><code>ok</code><em>#1f7a43</em><b>verdict</b></div>
-      <div class="sw"><i style="background:#96610a"></i><code>warn</code><em>#96610a</em><b>verdict</b></div>
-      <div class="sw"><i style="background:#b3342f"></i><code>danger</code><em>#b3342f</em><b>verdict</b></div>
+
+    <section class="card lt">
+      <h3>Light — the same design on paper</h3>
+      <p class="sub"><code>Palette::light()</code>. App &lt; Raised &lt; Canvas &lt; Panel. Signals darken until they clear AA on
+      a light canvas, which is why <code>Sel</code> is <code>#0d7c92</code> and <code>Cut</code> is <code>#a86200</code>.</p>
+      <div class="sw"><i class="box" style="background:#eef1f5"></i><code class="role">App</code><span class="val">#eef1f5</span><span class="use">the window behind every panel</span></div>
+      <div class="sw"><i class="box" style="background:#f7f9fb"></i><code class="role">Canvas</code><span class="val">#f7f9fb</span><span class="use">the drawing area and the 3D half</span></div>
+      <div class="sw"><i class="box" style="background:#ffffff"></i><code class="role">Panel</code><span class="val">#ffffff</span><span class="use">app bar, rail, inspector, status bar, ruler bands</span></div>
+      <div class="sw"><i class="box" style="background:#f2f5f8"></i><code class="role">Raised</code><span class="val">#f2f5f8</span><span class="use">chips, ribbon hover, fields</span></div>
+      <div class="sw"><i class="box" style="background:#ffffff"></i><code class="role">Overlay</code><span class="val">#ffffff</span><span class="use">the modal — a shadow, not a fill, separates it</span></div>
+      <div class="sw"><i class="box" style="background:#dde3ea"></i><code class="role">Hairline</code><span class="val">#dde3ea</span><span class="use">the 1 px line between docked surfaces</span></div>
+      <div class="sw"><i class="box" style="background:#c3ccd6"></i><code class="role">Border</code><span class="val">#c3ccd6</span><span class="use">a control's own edge</span></div>
+      <div class="sw"><i class="box" style="background:#12181f"></i><code class="role">TextHi</code><span class="val">#12181f</span><span class="use">the product, the document, a task's name</span></div>
+      <div class="sw"><i class="box" style="background:#2b3440"></i><code class="role">Text</code><span class="val">#2b3440</span><span class="use">command labels, field values</span></div>
+      <div class="sw"><i class="box" style="background:#5f6b7a"></i><code class="role">TextDim</code><span class="val">#5f6b7a</span><span class="use">ruler numerals, second lines, tooltips</span></div>
+      <div class="sw"><i class="box" style="background:#8b95a3"></i><code class="role">TextOff</code><span class="val">#8b95a3</span><span class="use">section headings, half a count — never body</span></div>
+      <div class="sw"><i class="box" style="background:#0d7c92"></i><code class="role">Sel</code><span class="val">#0d7c92</span><span class="use">picked vectors, the active toggle, the TOP axis</span></div>
+      <div class="sw"><i class="box" style="background:#ffffff"><span class="wash" style="background:rgba(21,138,159,.09)"></span></i><code class="role">SelSoft</code><span class="val">rgba(21,138,159,.09)</span><span class="use">the wash under a selected chip or row</span></div>
+      <div class="sw"><i class="box" style="background:#a86200"></i><code class="role">Cut</code><span class="val">#a86200</span><span class="use">the ruler marker, the toolpath preview, the primary action</span></div>
+      <div class="sw"><i class="box" style="background:#ffffff"><span class="wash" style="background:rgba(217,128,0,.08)"></span></i><code class="role">CutSoft</code><span class="val">rgba(217,128,0,.08)</span><span class="use">the wash under the primary action and the cut chip</span></div>
+      <div class="sw"><i class="box" style="background:#1f7a43"></i><code class="role">Ok</code><span class="val">#1f7a43</span><span class="use">a pass, a resolved tool, the RIGHT axis</span></div>
+      <div class="sw"><i class="box" style="background:#96610a"></i><code class="role">Warn</code><span class="val">#96610a</span><span class="use">a number the shell will not trust</span></div>
+      <div class="sw"><i class="box" style="background:#b3342f"></i><code class="role">Danger</code><span class="val">#b3342f</span><span class="use">a refusal, and the FRONT axis</span></div>
+      <div class="sw"><i class="box" style="background:#c6d1dd"></i><code class="role">StockTop</code><span class="val">#c6d1dd</span><span class="use">the lit face of the material</span></div>
+      <div class="sw"><i class="box" style="background:#a6b3c3"></i><code class="role">StockBottom</code><span class="val">#a6b3c3</span><span class="use">the shade under it</span></div>
+      <div class="sw"><i class="box" style="background:#4a5563"></i><code class="role">StockEdge</code><span class="val">#4a5563</span><span class="use">the cut edge of the sheet</span></div>
+      <p class="note">The light washes are <code>0x02,0x0d,0x0f,0x18</code> and <code>0x11,0x0a,0x00,0x14</code> — 9 % and
+      8 % of the light signals. Twelve pairs the shell writes on clear <b>AA body (4.5)</b> or <b>AA large (3.0)</b> in
+      both sets, proven by test in <code>theme.rs</code> — the one exception is <code>TextOff</code>, the disabled-only
+      role.</p>
     </section>
   </div>
 
-  <h2>Type <span>theme.rs::apply — egui's own variants are re-sized, the extras are named</span></h2>
-  <div class="card type">
-    <div><span class="k">hero() 28/600</span><span style="font-size:28px;font-weight:600;color:#e7ecf3;letter-spacing:-.02em">Empty drawing</span></div>
-    <div><span class="k">dialog() 20/600</span><span style="font-size:20px;font-weight:600;color:#e7ecf3">New toolpath</span></div>
-    <div><span class="k">title() 15/600</span><span style="font-size:15px;font-weight:600;color:#e7ecf3">Toolpath settings</span></div>
-    <div><span class="k">Body 13/400</span><span style="font-size:13px">Outside drops the part free. Inside cuts holes and windows.</span></div>
-    <div><span class="k">Button 13/500</span><span style="font-size:13px;font-weight:500;color:#e7ecf3">Generate G-code</span></div>
-    <div><span class="k">Small 12/400</span><span style="font-size:12px">60° V-bit · 12.7 mm</span></div>
-    <div><span class="k">caption() 11/400</span><span style="font-size:11px;color:#8b95a3">X 128.40 · zoom 214 %</span></div>
-    <div><span class="k">Monospace 12/400</span><span style="font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums">6.000 mm · 1200 mm/min</span></div>
-  </div>
-
-  <h2>Geometry <span>Metrics::shell()</span></h2>
-  <div class="geo">
-    <div><b>spacing</b><span>2 4 6 8 12 16 24 32</span></div>
-    <div><b>radii</b><span>4 control · 6 panel · 10 dialog · 999 pill</span></div>
-    <div><b>heights</b><span>24 control · 26 row · 40 bar · 26 status</span></div>
-    <div><b>fixed widths</b><span>rail 52 · dock 288</span></div>
-    <div><b>hairline</b><span>1 px — the only border weight</span></div>
-    <div><b>icons</b><span>24 box · 1.6 stroke</span></div>
-    <div><b>shadows</b><span>0 8 24 menu · 0 24 64 dialog</span></div>
-    <div><b>motion</b><span>≤ 140 ms, reduced-motion aware</span></div>
-  </div>
-
-  <h2>Components</h2>
+  <h2><span class="n">02</span> Type <span class="src">theme.rs — one family, eight styles</span></h2>
   <div class="card">
-    <div class="comp">
-      <div class="stack"><span class="cap">Rail — active glyph keeps its weight</span>
-        <div class="rail">
-          <span class="on"><svg viewBox="0 0 24 24"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></span>
-          <span><svg viewBox="0 0 24 24"><path d="M4 19L20 6"/><circle cx="4" cy="19" r="1.3"/></svg></span>
-          <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></span>
-          <span><svg viewBox="0 0 24 24"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></span>
-          <span><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.6 6.1.8-4.4 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.3 9.9l6.1-.8z"/></svg></span>
+    <div class="tr"><span class="k">Hero 28 / 600</span><span style="font-size:28px;font-weight:600;color:var(--text-hi);letter-spacing:-.02em">Nothing drawn yet</span><span class="where">an artboard's own headline; no widget uses it</span></div>
+    <div class="tr"><span class="k">Dialog 20 / 600</span><span style="font-size:20px;font-weight:600;color:var(--text-hi)">Choose tool</span><span class="where">the tool library's title</span></div>
+    <div class="tr"><span class="k">Title 15 / 600</span><span style="font-size:15px;font-weight:600;color:var(--text-hi)">bracket-plate.c2d</span><span class="where">the product, the document, a task's name</span></div>
+    <div class="tr"><span class="k">Body 13 / 400</span><span style="font-size:13px;color:var(--text)">Outside drops the part free. Inside cuts holes and windows.</span><span class="where">command labels, field values, sentences</span></div>
+    <div class="tr"><span class="k">Button 13 / 500</span><span style="font-size:13px;font-weight:500;color:var(--text-hi)">Generate toolpath</span><span class="where">buttons and chips</span></div>
+    <div class="tr"><span class="k">Small 12 / 400</span><span style="font-size:12px;color:var(--text)">Ø6 · 2 cut(s)</span><span class="where">second lines, tooltips, ruler numerals</span></div>
+    <div class="tr"><span class="k">Caption 11 / 400</span><span style="font-size:11px;color:var(--text-dim)">zoom 0.42 px/mm   undo 12 / redo 3</span><span class="where">the crate version, a section's heading</span></div>
+    <div class="tr"><span class="k">Monospace 12 / 400</span><span style="font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--text)">T22 · Z 5.000 · 0:05 / 0:05</span><span class="where">a number that must not shift</span></div>
+  </div>
+
+  <h2><span class="n">03</span> Geometry <span class="src">theme.rs::Metrics::shell, plus the values each module declares</span></h2>
+  <div class="card">
+    <table class="geo">
+      <caption>Eight spacing steps, three radii, three control heights and five fixed widths — every one the number the
+      shell lays out with.</caption>
+      <thead>
+        <tr><th scope="col">token</th><th scope="col">value</th><th scope="col">note</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>spacing</td><td>2 4 6 8 12 16 24 32</td><td>eight steps, all on the 2 px grid, strictly increasing</td></tr>
+        <tr><td>radius_control</td><td>4</td><td>buttons, fields, rail chips, rail headings</td></tr>
+        <tr><td>radius_panel</td><td>6</td><td>a card, the rail's rows block, the modal's columns</td></tr>
+        <tr><td>radius_dialog</td><td>10</td><td>the tool library only</td></tr>
+        <tr><td>control_height</td><td>24</td><td>one row a control sits in</td></tr>
+        <tr><td>row_height</td><td>26</td><td>one row of a list</td></tr>
+        <tr><td>app_bar_height</td><td>40</td><td>the bar above every zone</td></tr>
+        <tr><td>status_height</td><td>26</td><td>a promise, not a measurement — the bar is laid out by its content</td></tr>
+        <tr><td>palette_width</td><td>200</td><td>the left rail, not 52</td></tr>
+        <tr><td>ruler_thickness</td><td>22</td><td>each band, so 22 px top and 22 px left</td></tr>
+        <tr><td>dock_width</td><td>288</td><td>the inspector: ribbon, task editor, LAYERS</td></tr>
+        <tr><td>brand block</td><td>62</td><td>declared in chrome.rs — the rail's foot, behind a hairline</td></tr>
+        <tr><td>hairline</td><td>1</td><td>every separator, and the ruler's division marks</td></tr>
+        <tr><td>icon</td><td>24 at 1.6 stroke</td><td>the box; a rail glyph is drawn at 20, an app-bar glyph at 18</td></tr>
+        <tr><td>3D split</td><td>half</td><td>exactly half the drawing area, left to right</td></tr>
+        <tr><td>playback bar</td><td>46</td><td>above the 3D readout</td></tr>
+        <tr><td>overlay row line</td><td>18</td><td>the 3D half's row of checkboxes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="n">04</span> Components <span class="src">the delivered shell, one instance each</span></h2>
+  <div class="card">
+    <div class="stack">
+      <div class="frame">
+        <div class="appbar">
+          <svg class="i" style="color:var(--sel);width:24px;height:24px" viewBox="0 0 24 24" role="img" aria-label="Campilot mark"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
+          <span class="name">campilot</span>
+          <span class="sep"></span>
+          <span class="doc">bracket-plate.c2d · modified</span>
+          <span class="right">
+            <button class="btn" disabled type="button">Generate G-code</button>
+            <button class="iconbtn" type="button" aria-label="Help — F1"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.3"/><path d="M12 17.4v.2"/></svg></button>
+            <button class="iconbtn" type="button" aria-label="Theme: dark — press for light"><svg class="i" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+            <span class="sep"></span>
+            <span class="unit">mm</span>
+          </span>
+        </div>
+        <div class="status">
+          <span class="mono">X 12.40   Y 88.00</span><span class="unit">mm</span>
+          <span class="sep"></span>
+          <span class="facts">zoom 0.42 px/mm   undo 12 / redo 3</span>
+          <span class="sep"></span>
+          <span class="chipsrow">
+            <span class="snav on">Snaps</span><span class="snav on">Point</span><span class="snav on">Mid</span>
+            <span class="snav">Centre</span><span class="snav on">Grid 10</span>
+          </span>
+          <span class="right"><span style="color:var(--text-dim)">Tool: T22 · 6 mm flat</span><span class="hint">drag to pan</span></span>
         </div>
       </div>
-      <div class="stack"><span class="cap">Buttons</span>
-        <button class="btn">Cancel</button>
-        <button class="btn" style="outline:2px solid var(--sel);outline-offset:1px">Focus</button>
-        <button class="btn cut">Generate G-code</button>
+      <p class="sub" style="margin:0;font-size:11px;color:var(--text-dim);max-width:92ch">App bar at 40 px: the mark, the
+      product, the document and its <code>· modified</code>; from the right edge inward the primary action, the help and
+      theme glyphs, the separator and the working unit. The bar offers no command the rail also offers — one act, one
+      place. Status bar at 26 px in three zones: the live coordinates, the snap chips where <code>Grid</code> names its
+      step, and the sentence the last action produced.</p>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:18px">
+    <div class="card">
+      <div class="stack">
+        <div class="rail">
+          <div class="head"><span class="caret open"></span>DRAW</div>
+          <div class="chips">
+            <button class="chip on" type="button" aria-label="Select" title="Select"><svg class="i" viewBox="0 0 24 24"><path d="M5 3l6.4 16.6 2.3-6.8 6.8-2.4z"/></svg></button>
+            <button class="chip" type="button" aria-label="Line" title="Line"><svg class="i" viewBox="0 0 24 24"><path d="M4 19L20 6"/><circle cx="4" cy="19" r="1.3"/><circle cx="20" cy="6" r="1.3"/></svg></button>
+            <button class="chip" type="button" aria-label="Rectangle" title="Rectangle"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="6.5" width="16" height="11" rx="1"/></svg></button>
+            <button class="chip" type="button" aria-label="Polyline" title="Polyline"><svg class="i" viewBox="0 0 24 24"><path d="M3 18l4.5-8 4.5 5.5L20 6"/><rect x="1.8" y="16.8" width="2.4" height="2.4"/><rect x="6.3" y="8.8" width="2.4" height="2.4"/><rect x="10.8" y="14.3" width="2.4" height="2.4"/><rect x="18.8" y="4.8" width="2.4" height="2.4"/></svg></button>
+            <button class="chip" type="button" aria-label="Arc" title="Arc"><svg class="i" viewBox="0 0 24 24"><path d="M4 18A11 11 0 0 1 19.5 11.5"/><circle cx="4" cy="18" r="1.3"/><circle cx="19.5" cy="11.5" r="1.3"/></svg></button>
+            <button class="chip" type="button" aria-label="Circle" title="Circle"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 12h8" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="1.3"/></svg></button>
+          </div>
+          <div class="head"><span class="caret"></span>EDIT</div>
+          <div class="brand">
+            <span class="prod">campilot</span>
+            <span class="ver">v0.0.1</span>
+            <span class="stamp">Saved 2026-11-03 19:30 UTC</span>
+          </div>
+        </div>
+        <p class="sub" style="margin:0;font-size:11px;color:var(--text-dim)">The rail at 200 px, one group opened and the
+        next folded, over the 62 px brand block. <b>The words are the group headings; a chip is a glyph and nothing
+        else</b> — 20 px on the 1.6 stroke, and its label is the tooltip (<code>Select</code>, <code>Line</code>,
+        <code>Rectangle</code>, …), which is why the palette is the part of the frame that carries no text of its own.
+        No chip is ever drawn disabled: all twenty-eight are pressable, because what a command can do is decided when it
+        runs and reported in the status bar. A heading is a 14 px row the operator folds, and the caret is painted rather
+        than written. A chip is 32 × 32, radius 4; idle is <code>Text</code> on <code>Panel</code>, hover fills
+        <code>Raised</code>, active is the <code>SelSoft</code> wash under a 1 px <code>Sel</code> edge. No letter is drawn
+        next to a glyph — no rail command has a single-key shortcut.</p>
       </div>
-      <div class="stack"><span class="cap">Field — tabular, unit once</span>
-        <span class="field">6.000<em>mm</em></span>
-        <span class="field">1200<em>mm/min</em></span>
-      </div>
-      <div class="stack"><span class="cap">Tabs</span>
-        <span class="pill on">Selection</span>
-        <span class="pill">Toolpath</span>
-        <span class="pill">Material</span>
-      </div>
-      <div class="stack" style="width:236px"><span class="cap">Layer rows</span>
-        <div class="row"><svg viewBox="0 0 24 24" style="color:#8b95a3"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Cut outside<span style="margin-left:auto;font-size:10px;color:#5c6673">14</span></div>
-        <div class="row on"><svg viewBox="0 0 24 24" style="color:#6fd3e8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Engrave V<span style="margin-left:auto;font-size:10px;color:#8b95a3">31</span></div>
-        <div class="row" style="color:#5c6673"><svg viewBox="0 0 24 24" style="color:#5c6673;opacity:.7"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M4 4l16 16"/></svg>Holes (hidden)</div>
+    </div>
+
+    <div class="card">
+      <div class="stack">
+        <div class="fieldrow"><span class="lbl">Depth</span><span class="field">6.000<span class="u">mm</span></span></div>
+        <div class="fieldrow"><span class="lbl">Stepdown</span><span class="field">2.000<span class="u">mm</span></span></div>
+        <div class="fieldrow"><span class="lbl">Feed</span><span class="field">1200.0<span class="u">mm/min</span></span></div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+          <button class="btn primary" type="button">Generate toolpath</button>
+          <button class="btn" type="button">Cancel</button>
+        </div>
+        <p class="sub" style="margin:0;font-size:11px;color:var(--text-dim)">A field row is a label and a field in one
+        26 px row; a field is 24 px, <code>Raised</code> behind a 1 px <code>Border</code>, its number tabular, and the unit
+        in a fixed column — <code>mm</code> once per column, never inside the number. The primary action is the one
+        <code>Cut</code> fill in the shell and its ink is <code>Panel</code>, which resolves to a dark ink in the dark set and
+        to white in the light one; when it cannot act, the sentence that says why takes its place.</p>
       </div>
     </div>
   </div>
 
-  <h2>Rules</h2>
-  <div class="rules">
+  <div class="card" style="margin-top:18px">
+    <div style="display:flex;gap:28px;align-items:flex-start">
+      <div class="ribbon">
+        <div class="rhead"><span>Inspector</span><svg class="i" style="color:var(--text-dim)" viewBox="0 0 24 24"><path d="M15 14L20 9l-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></div>
+        <div class="row"><button class="iconbtn on" type="button" aria-label="TOOLPATHS — the authoring body, the tool card, the estimate"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="9" rx="1"/><rect x="3" y="3" width="18" height="18" rx="5" stroke-dasharray="2 2"/></svg></button><span style="font-size:11px;color:var(--text-dim)">open</span></div>
+        <div class="row"><button class="iconbtn" type="button" aria-label="RELIEF AND 3D PART — whether the canvas is split, and what it is playing"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10" style="fill:currentColor;fill-opacity:.22"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10"/></svg></button><span style="font-size:11px;color:var(--text-off)">closed</span></div>
+        <div class="row"><button class="iconbtn" type="button" aria-label="MACHINE AND OUTPUT — stock, material, zero and the program"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M8.5 12l2.5 2.5L8.5 17M15 12l-2.5 2.5L15 17"/></svg></button><span style="font-size:11px;color:var(--text-off)">closed</span></div>
+      </div>
+      <ul class="legend" style="flex:1">
+        <li><svg class="i" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="9" rx="1"/><rect x="3" y="3" width="18" height="18" rx="5" stroke-dasharray="2 2"/></svg><span><b>TOOLPATHS</b> — what makes and describes toolpaths: the authoring body, the tool card, the estimate.</span></li>
+        <li><svg class="i" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10" style="fill:currentColor;fill-opacity:.22"/><path d="M6 19c0-6.5 2.7-10 6-10s6 3.5 6 10"/></svg><span><b>RELIEF AND 3D PART</b> — whether the canvas is split, and what the 3D half is playing.</span></li>
+        <li><svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M8.5 12l2.5 2.5L8.5 17M15 12l-2.5 2.5L15 17"/></svg><span><b>MACHINE AND OUTPUT</b> — stock, material, zero, and the program that leaves the machine.</span></li>
+        <li style="border-bottom:0"><span>The ribbon is one glyph row per category, in that order, each with a tooltip that
+        says what opening it gives you; a second press on the open category closes it, and the header of the task it
+        opened carries the task's name with a painted check (<b>Done</b>) and cross (<b>Cancel</b>).</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2><span class="n">05</span> Rules <span class="src">design/system.md</span></h2>
+  <div class="cols rules">
     <div class="card"><h3>Mandatory</h3>
-      <p>· Every pair the shell writes on meets <b>AA (4.5:1)</b>; strokes and signals meet <b>3:1</b> — proven by test, not by eye.</p>
-      <p>· Every interactive element has a <b>2 px focus ring</b> on both sets.</p>
-      <p>· Every icon-only control carries a tooltip with its name and key.</p>
-      <p>· Numeric fields align right on tabular figures, unit in a fixed column.</p>
+      <ul>
+        <li><b>Contrast is proven, not asserted.</b> Twelve pairs the shell writes on clear AA body (4.5) or AA large (3.0) in both sets — <code>TextHi</code> on <code>App</code>/<code>Panel</code>, <code>Text</code> on <code>Panel</code>/<code>Canvas</code>, <code>TextDim</code> on <code>App</code>/<code>Panel</code>, <code>Sel</code> and <code>Cut</code> on <code>Panel</code>/<code>Canvas</code>, <code>Ok</code> and <code>Warn</code> on <code>Panel</code>.</li>
+        <li><b>The luminance ladder holds</b> — dark Canvas &lt; App &lt; Panel &lt; Raised &lt; Overlay, light App &lt; Raised &lt; Canvas &lt; Panel.</li>
+        <li><b>Selection and cutting never share a hue</b>: at least 60° apart, and they differ in shape too — <code>Sel</code> is a dashed-then-solid outline with square handles, <code>Cut</code> is 1.6 px with a round cap. A monochrome print still tells them apart.</li>
+        <li><b>The stock reads as a solid</b>: every stop on the ramp clears <b>1.45:1</b> against the canvas, <code>StockBottom</code> is always darker than <code>StockTop</code>, and <code>StockEdge</code> is held to <b>3:1</b> against both the canvas and the stock's own top.</li>
+        <li><b>A 2 px <code>Sel</code> focus ring</b> outside every interactive element, so it never moves what it points at.</li>
+        <li><b>Motion is ≤ 140 ms</b> and <code>prefers-reduced-motion: reduce</code> turns every transition and animation off.</li>
+        <li><b>A unit once per column</b>, a tooltip on every icon-only control, and a sentence — never a dead control — when an action cannot run.</li>
+      </ul>
     </div>
     <div class="card"><h3>Forbidden</h3>
-      <p>· A second accent hue, or a filled variant beside the line icon set.</p>
-      <p>· Shadows on docked surfaces, or a border weight other than 1 px.</p>
-      <p>· Colour as the only carrier of meaning.</p>
-      <p>· Any gap that is not on the spacing scale, any numeric field without a unit.</p>
+      <ul>
+        <li>A <b>second accent</b>. There is <code>Sel</code> and there is <code>Cut</code>; a third means the screen is telling two stories.</li>
+        <li>A <b>filled icon</b> beside a stroked one — the set is stroke-only at 1.6, and a glyph's mixed parts are dashes and washes, never a heavier pen.</li>
+        <li><b>More than three control heights</b>. 24 is the control, 26 the row, and a bar is its own thing.</li>
+        <li>A <b>shadow on a docked surface</b>. Only the modal and the overlay cast one.</li>
+        <li><b>Colour as the only carrier of meaning</b>, at any level.</li>
+        <li>A <b>number without its unit</b>, or a unit on every row of one column.</li>
+        <li>An <b>unnamed value</b>. If it is not in this board or in <code>theme.rs</code>, it is not a token.</li>
+      </ul>
     </div>
   </div>
 </main>
