@@ -1751,6 +1751,159 @@ fn a_part_whose_instance_count_disagrees_with_its_placements_is_refused() {
   assert!(message.contains('2'), "{message}");
 }
 
+// T1d: a document that authors sheets and parts and has never been nested. The user's workflow is
+// "author the sheets and parts, then nest" (S1), so the state between those two steps is a request,
+// not a corrupt document: the instance counts say how many copies the run must place, and there is
+// nothing for them to disagree with until a placement exists.
+
+/// A master document as a user authors it before the first nesting run: two sheets, two parts asking
+/// for three and two instances, and **no placements at all**.
+fn authored_nesting_document() -> Document {
+  let mut document = nesting_document();
+  let nesting = document.nesting.as_mut().expect("a section");
+  nesting.sheets.push(NestingSheet {
+    id: "S2".to_owned(),
+    width: Length::from_mm(500.0),
+    height: Length::from_mm(400.0),
+  });
+  nesting.parts[0].instances = 3;
+  nesting.parts[1].instances = 2;
+  nesting.placements.clear();
+  // No cost record either: it is absent until a run writes it (D-M9-5).
+  nesting.cost = None;
+  document
+}
+
+/// The placements that honour the authored counts: three copies of `P1` and two of `P2`, all on `S1`.
+fn fully_nested_placements() -> Vec<NestingPlacement> {
+  [
+    ("P1", 0.0, 0.0),
+    ("P1", 100.0, 0.0),
+    ("P1", 0.0, 100.0),
+    ("P2", 0.0, 250.0),
+    ("P2", 0.0, 320.0),
+  ]
+  .into_iter()
+  .map(|(part_id, x, y)| NestingPlacement {
+    part_id: part_id.to_owned(),
+    sheet_id: "S1".to_owned(),
+    position: Point2::new(x, y),
+    rotation: Angle::ZERO,
+  })
+  .collect()
+}
+
+#[test]
+fn an_authored_nesting_with_no_placements_validates_and_round_trips() {
+  // The state the user authors (S1): sheets and parts, no nesting run yet. It has to load, validate
+  // and save, because `nest` is the command that answers it and the first nesting has no other route.
+  let document = authored_nesting_document();
+  document
+    .validate()
+    .expect("a request that has not been nested yet is valid");
+  assert_eq!(
+    document.nesting_utilisation(),
+    None,
+    "nothing is placed, so nothing is used yet"
+  );
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"nesting\":"), "{json}");
+  assert!(!json.contains("\"placements\":"), "{json}");
+  let reloaded: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(reloaded, document, "the authored request round-trips");
+  assert_eq!(
+    serde_json::to_string(&reloaded).expect("serialises"),
+    json,
+    "and it re-saves byte for byte"
+  );
+  reloaded.validate().expect("and it still validates");
+  let nesting = reloaded.nesting.as_ref().expect("the section survives");
+  assert_eq!(nesting.sheets.len(), 2);
+  assert_eq!(nesting.parts[0].instances, 3);
+  assert_eq!(nesting.parts[1].instances, 2);
+  assert!(nesting.placements.is_empty(), "still not nested");
+}
+
+#[test]
+fn a_partially_nested_document_is_still_refused() {
+  // The relaxation stops exactly where the document holds one placement: from then on every count has
+  // to agree with the placements naming it, because a half-nested document has no honest meaning. One
+  // copy of a part that asks for three is stale, and a part no placement names is unplaced.
+  let mut document = authored_nesting_document();
+  document.nesting.as_mut().expect("a section").placements = vec![NestingPlacement {
+    part_id: "P1".to_owned(),
+    sheet_id: "S1".to_owned(),
+    position: Point2::new(0.0, 0.0),
+    rotation: Angle::ZERO,
+  }];
+  let error = refusal(&document);
+  assert_eq!(
+    error,
+    ModelError::NestingInstanceCountMismatch {
+      part: "P1".to_owned(),
+      wanted: 3,
+      placed: 1,
+    },
+    "{error:?}"
+  );
+
+  // Every other part is still measured: `P1` is fully placed, but `P2` asks for two and names none.
+  let mut document = authored_nesting_document();
+  document.nesting.as_mut().expect("a section").placements = fully_nested_placements()
+    .into_iter()
+    .filter(|placement| placement.part_id == "P1")
+    .collect();
+  let error = refusal(&document);
+  assert_eq!(
+    error,
+    ModelError::NestingInstanceCountMismatch {
+      part: "P2".to_owned(),
+      wanted: 2,
+      placed: 0,
+    },
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P2\""), "{message}");
+  assert!(message.contains('2'), "{message}");
+  assert!(message.contains('0'), "{message}");
+}
+
+#[test]
+fn a_fully_nested_document_still_validates_its_instance_counts() {
+  // The other side of the narrowing: the rule was not removed, so a document whose placements honour
+  // every count validates, and one copy too many is refused from the opposite direction.
+  let mut document = authored_nesting_document();
+  document.nesting.as_mut().expect("a section").placements = fully_nested_placements();
+  document
+    .validate()
+    .expect("placements that honour every instance count");
+  assert!(
+    document.nesting_utilisation().is_some(),
+    "something is used now"
+  );
+
+  let mut document = authored_nesting_document();
+  let mut placements = fully_nested_placements();
+  placements.push(NestingPlacement {
+    part_id: "P2".to_owned(),
+    sheet_id: "S1".to_owned(),
+    position: Point2::new(200.0, 250.0),
+    rotation: Angle::ZERO,
+  });
+  document.nesting.as_mut().expect("a section").placements = placements;
+  let error = refusal(&document);
+  assert_eq!(
+    error,
+    ModelError::NestingInstanceCountMismatch {
+      part: "P2".to_owned(),
+      wanted: 2,
+      placed: 3,
+    },
+    "{error:?}"
+  );
+}
+
 // T1b: the stored cost record's own refusals (S3). The user asked for utilisation and waste to be
 // **both** the report and a stored field, so the field and the placements must not be able to
 // disagree. Each rule refuses the record by name and never recomputes it: the numbers are the run's

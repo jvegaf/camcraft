@@ -7319,14 +7319,15 @@ crash: none
 ///
 /// `contours` become `E1..En` on one layer, so a part names its geometry by the 1-based index of the
 /// contour it is cut from. `sheets` is the authored board list, in order, and `placements` are the
-/// instances a previous run put on them.
+/// instances a previous run put on them; the cost record is left absent, which is the state a document
+/// is in before its first run.
 ///
-/// A fixture has to be a document that **loads**, and the model's own instance rule is why every
-/// fixture here is a nesting a run already produced: a part that asks for more copies than the
-/// document places is refused by `Document::validate` (`NestingInstanceCountMismatch`), so a document
-/// can never be saved, or opened, half nested. `nest` therefore re-nests a document that carries
-/// parts, and a run that cannot place every instance writes nothing and leaves that document as it
-/// was. The cost record is left absent, which is the state a document is in before its first run.
+/// `placements: &[]` is the **authored** state the user writes by hand (S1): sheets and parts with
+/// their instance counts and nothing placed yet. A document that holds some placements must hold them
+/// all, because `Document::validate` refuses a part whose instances the placements fall short of
+/// (`NestingInstanceCountMismatch`) — so a fixture with placements is a nesting a run already
+/// produced, and one without is the request that run answers. Both states load and save, and `nest` is
+/// the command that crosses from the first to the second.
 fn write_nesting_document(
   directory: &Path,
   name: &str,
@@ -8104,6 +8105,189 @@ unplaced: none
     (cost.utilisation - 0.75).abs() < 1e-12,
     "{}",
     cost.utilisation
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_first_nesting_takes_an_authored_document_with_parts_and_no_placements() {
+  // The state the user authors (S1): two boards and two parts with their instance counts, no
+  // placement and no cost. Until the model's instance rule learnt this state, a section that asked for
+  // instances and placed none was refused at load, so `nest` could only re-nest a document a run had
+  // already nested — and a fresh document had no CLI route to its first nesting. This is that route.
+  //
+  // The run has to honour the authored counts (2 panels, 1 shelf) and fill the authored boards in
+  // order: the packer's own placements, the part and sheet ids they name, the cost record the document
+  // derives from them, and nothing invented.
+  let directory = scratch("nest-first");
+  let document = write_nesting_document(
+    &directory,
+    "authored.c2d",
+    vec![
+      rectangle_contour(600.0, 400.0),
+      rectangle_contour(300.0, 200.0),
+    ],
+    &[("Panel", &[1], 2), ("Shelf", &[2], 1)],
+    &[("S1", 1000.0, 600.0), ("S2", 1000.0, 600.0)],
+    &[],
+  );
+
+  // Before the run the document is exactly the request: the section is there, and it places nothing.
+  let authored = load_nesting(&document);
+  assert!(authored.placements.is_empty(), "the request places nothing");
+  assert!(authored.cost.is_none(), "the request carries no cost");
+
+  let outcome = run(&["nest", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  let expected = "\
+nest: 2 sheet(s) of 1000.000 x 600.000 mm, 2 part(s), 3 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: used
+sheet S2: used
+part: Panel rectangle, 2 instance(s)
+placement: Panel on S1 at (0.000, 0.000), rotation none, 600.000 x 400.000 mm
+placement: Panel on S2 at (0.000, 0.000), rotation none, 600.000 x 400.000 mm
+part: Shelf rectangle, 1 instance(s)
+placement: Shelf on S1 at (0.000, 400.000), rotation none, 300.000 x 200.000 mm
+algorithm: rectangle, maxrects
+sheets used: 2
+utilisation: 0.450
+waste: 0.550
+unplaced: none
+";
+  assert_eq!(outcome.stdout, expected);
+
+  // The written document holds the placements the report printed, naming the authored parts and the
+  // authored boards — the request became a nesting, and no board had to be invented for it.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let nesting = loaded.nesting.as_ref().expect("the section is written");
+  assert_eq!(
+    nesting.placements,
+    vec![
+      NestingPlacement {
+        part_id: "Panel".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "Panel".to_owned(),
+        sheet_id: "S2".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "Shelf".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 400.0),
+        rotation: Angle::ZERO,
+      },
+    ]
+  );
+  let sheets: Vec<&str> = nesting
+    .sheets
+    .iter()
+    .map(|sheet| sheet.id.as_str())
+    .collect();
+  assert_eq!(sheets, vec!["S1", "S2"], "the authored boards, in order");
+
+  // The cost record is the document's own arithmetic and nothing else (T1c): two 600 x 400 panels and
+  // one 300 x 200 shelf are 540 000 mm2 of the two 1000 x 600 mm boards' 1 200 000 mm2, so 0.45 — the
+  // fraction `Document::nesting_utilisation` derives from the placements the run just wrote.
+  let cost = nesting.cost.as_ref().expect("the cost record is written");
+  assert_eq!(cost.sheets_used, 2);
+  assert_eq!(
+    Some(cost.utilisation),
+    loaded.nesting_utilisation(),
+    "the record is exactly the fraction the document derives"
+  );
+  assert!(
+    (cost.utilisation - 0.45).abs() < 1e-12,
+    "{}",
+    cost.utilisation
+  );
+  assert!((cost.waste - 0.55).abs() < 1e-12, "{}", cost.waste);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_first_nested_document_re_nests_to_identical_bytes() {
+  // Determinism (invariant 4) across the one state change this command exists for: the first run
+  // answers an authored request, the second re-nests the nesting it wrote. Both states are valid, so
+  // both runs are, and the command is idempotent on its own output — the second run prints the same
+  // report and leaves the same bytes.
+  let directory = scratch("nest-first-determinism");
+  let document = write_nesting_document(
+    &directory,
+    "authored.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 2)],
+    &[("S1", 1000.0, 600.0)],
+    &[],
+  );
+  let arguments = ["nest", document.to_str().expect("utf8")];
+
+  let first = run(&arguments);
+  assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+  let after_first = load_nesting(&document);
+  assert_eq!(
+    after_first.placements.len(),
+    2,
+    "the first run placed both authored instances"
+  );
+  let first_bytes = std::fs::read(&document).expect("read");
+
+  let second = run(&arguments);
+  assert_eq!(second.code, 0, "{}{}", second.stdout, second.stderr);
+  let second_bytes = std::fs::read(&document).expect("read");
+
+  assert_eq!(first.stdout, second.stdout, "the report is byte-identical");
+  assert_eq!(first_bytes, second_bytes, "the document is byte-identical");
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_first_nesting_that_cannot_fit_leaves_the_authored_request_untouched() {
+  // A request the run cannot satisfy is a finding about the request (exit 7), and the request survives
+  // it: a 1200 x 500 mm part on the authored 1000 x 600 mm board fits nowhere upright, so the report
+  // names the part and how many of its copies landed, and the document keeps every byte it had. The
+  // existing exit-7 fixture re-nests a nested document; this one is the **authored** state, which only
+  // just became legal, so a command that rewrote it would destroy the request it failed to answer.
+  let directory = scratch("nest-first-unplaced");
+  let document = write_nesting_document(
+    &directory,
+    "wide.c2d",
+    vec![rectangle_contour(1200.0, 500.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[],
+  );
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&["nest", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 7, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+nest: 1 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 1 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: unused
+part: P1 rectangle, 1 instance(s)
+algorithm: rectangle, maxrects
+sheets used: 0
+utilisation: none
+waste: none
+unplaced: P1, 1 of 1 instance(s)
+";
+  assert_eq!(outcome.stdout, expected);
+  assert!(
+    outcome.stderr.contains("P1") && outcome.stderr.contains("unplaced"),
+    "the failure names the part and the finding: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a run that could not satisfy the request writes nothing"
   );
   std::fs::remove_dir_all(&directory).ok();
 }

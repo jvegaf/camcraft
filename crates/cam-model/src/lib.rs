@@ -1381,10 +1381,12 @@ pub enum ModelError {
     /// The sheet both placements name.
     sheet: String,
   },
-  /// A part asks for a number of instances the placements do not honour.
+  /// A part asks for a number of instances the placements of a nested document do not honour.
   ///
-  /// The count is authored on the part and the placements are the nester's answer, so a disagreement
-  /// means one of them is stale and the report would count copies the document does not hold.
+  /// Once any placement exists the authored count and the placements are the nester's two halves of
+  /// one answer, so a disagreement means one of them is stale and the report would count copies the
+  /// document does not hold; a section with no placement at all is not refused, because it is a
+  /// request that has not been nested yet and there is nothing for the count to disagree with.
   #[error("nesting part {part:?} asks for {wanted} instances but {placed} placements name it")]
   NestingInstanceCountMismatch {
     /// The part id.
@@ -1683,7 +1685,12 @@ impl Document {
 /// Every rule refuses naming the offending value rather than defaulting, because each one describes a
 /// job a nester would otherwise silently "fix" into a different one: a sheet with no size, a part with
 /// no geometry, a placement that leaves its sheet or lands on another part, an instance count the
-/// placements do not honour, and a cost record the placements do not support (invariant 3, M8's rule).
+/// placements do not honour **once the document holds one**, and a cost record the placements do not
+/// support (invariant 3, M8's rule).
+///
+/// The instance counts are the one rule with a state of its own: a section whose parts ask for
+/// instances and which holds no placement at all is a request that has not been nested yet — the
+/// state the user authors, and the one `nest` answers — so only a partly nested document is refused.
 ///
 /// Where a placement's material sits is not re-derived here: [`Document::placement_footprint`] is the
 /// one reading of a placement, so this check and a nester certifying its own output agree by
@@ -1804,9 +1811,14 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     }
   }
 
+  // The instance counts are honoured only once the document holds a placement: parts naming instances
+  // with no placement at all is a request that has not been nested yet (T1d, S1), and there is nothing
+  // for the count to disagree with. From the first placement on the equality holds for every part, so
+  // a partial or miscounted nesting is still refused.
+  let nested = !nesting.placements.is_empty();
   for part in &nesting.parts {
     let placed = placed_counts.get(part.id.as_str()).copied().unwrap_or(0);
-    if placed != part.instances {
+    if nested && placed != part.instances {
       return Err(ModelError::NestingInstanceCountMismatch {
         part: part.id.clone(),
         wanted: part.instances,
