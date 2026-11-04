@@ -10,8 +10,8 @@ use std::process::Command;
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
   ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer,
-  MouldingProfilePoint, Operation, PocketParams, PocketStrategy, ProfileParams, ProfileSide,
-  RetractMode, Toolpath, VCarveParams,
+  MouldingParams, MouldingProfilePoint, Operation, PocketParams, PocketStrategy, ProfileParams,
+  ProfileSide, RetractMode, Toolpath, VCarveParams,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -6784,5 +6784,526 @@ fn an_unknown_toolpath_kind_still_exits_two_and_lists_the_kinds() {
     );
   }
   assert_eq!(std::fs::read(&document).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// --- M8 T7: golden moulding programs, a straight rail and a closed frame ------------------------
+
+/// The straight-rail fixture's rail: 60 mm along `+X` at `y = 50.5`.
+///
+/// The half millimetre is the whole reason the numbers below are exact: a pass at a whole lateral
+/// distance lands on the **centre line** of a row of the simulation's 1 mm cells (`y = 50.5 - lateral`
+/// is the centre of row `50 - lateral`), and a 0.5 mm bit's footprint (radius 0.25) stays inside that
+/// row. The rail runs with the tool to the right of travel, so its positive lateral side is `-Y`.
+fn golden_straight_rail() -> Contour {
+  Contour::from_points(&[Point2::new(10.0, 50.5), Point2::new(70.0, 50.5)], false)
+    .expect("a straight rail")
+}
+
+/// The closed-frame fixture's rail: a 40 x 20 mm rectangle, counter-clockwise, whose vertex list
+/// starts in the **middle** of its bottom edge.
+///
+/// The start vertex is the frame's seam, and a seam in the middle of an edge is the one that joins
+/// itself exactly: the sample arriving at the seam and the one leaving it are collinear, so their
+/// normals agree and the offset walk closes without a diagonal across the corner. A seam *at* a corner
+/// emits one closing feed the claim does not cover, which `cam-sim`'s moulding oracle measures and
+/// records as a known limit; the golden program below is the clean case, and its numbers are the ones
+/// the CLI contract can promise.
+fn golden_frame_rail() -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(50.5, 40.5),
+      Point2::new(70.5, 40.5),
+      Point2::new(70.5, 60.5),
+      Point2::new(30.5, 60.5),
+      Point2::new(30.5, 40.5),
+    ],
+    true,
+  )
+  .expect("a closed frame")
+}
+
+/// A 0.5 mm bit at the feed rates the golden programs carry.
+///
+/// The diameter moves no depth — a moulding's cross-section is authored, not derived from the tool —
+/// but it decides how wide a pass's claim is in the simulation, and 0.5 mm keeps a pass's footprint
+/// inside one row of 1 mm cells. So the programs below are the same bytes for any bit, and the reports
+/// beside them are exact for this one.
+fn write_moulding_library(directory: &Path) -> PathBuf {
+  let path = directory.join("moulding-tools.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G1".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(0.5)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  library
+    .put_cutting_data(&CuttingData {
+      id: "C1".to_owned(),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: Some(Length::from_mm(6.0)),
+      stepover: None,
+      clear_stepover: None,
+      tool_number: Some(1),
+      notes: None,
+    })
+    .expect("cutting data");
+  library.link("E1", "G1", "C1", None, None).expect("link");
+  path
+}
+
+/// A document carrying the golden moulding, built the way `cam-cli toolpath` writes one: id `TP1`,
+/// name `Moulding 1`, tool `T1`, the rail as its one entity and the cross-section in the operation.
+///
+/// It is hand-built so the same program can be asserted three ways — as built, after a `c2d` save and
+/// load round trip, and with the toolpath authored through the binary — and the three can only differ
+/// in how the toolpath got into the document.
+fn write_moulding_document(
+  directory: &Path,
+  name: &str,
+  rail: Contour,
+  profile: &[(f64, f64)],
+  stepover: f64,
+) -> PathBuf {
+  let path = write_vectors(directory, name, vec![rail]);
+  let mut document = cam_store::document::load_document(&path).expect("loads");
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Moulding 1".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 1,
+    operation: Operation::Moulding(MouldingParams {
+      profile: profile
+        .iter()
+        .map(|(lateral, depth)| MouldingProfilePoint {
+          lateral: Length::from_mm(*lateral),
+          depth: Length::from_mm(*depth),
+        })
+        .collect(),
+      stepover: Length::from_mm(stepover),
+    }),
+  });
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// Author the same moulding through the binary from the geometry-only fixture, then emit it.
+fn author_and_emit_moulding(
+  directory: &Path,
+  document: &Path,
+  library: &Path,
+  profile: &[&str],
+  stepover: &str,
+) -> String {
+  let mut arguments = vec![
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "moulding",
+    "--entities",
+    "E1",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+    "--stepover",
+    stepover,
+  ];
+  for point in profile {
+    arguments.push("--profile");
+    arguments.push(point);
+  }
+  let authored = run(&arguments);
+  assert_eq!(authored.code, 0, "{}", authored.stderr);
+  emit_program(directory, document, library, &write_post(directory))
+}
+
+/// The whole program the straight rail emits, byte for byte.
+///
+/// Derived and then read, never captured and blessed: 21 lines — the header, three passes and the
+/// footer. The passes are the stepover law's laterals 0, 2 and 4, at the cross-section's own depths 1,
+/// 3 and 1 mm, so each is a rapid to `(10, 50.5 - lateral)` at `safe_z = 5`, a plunge to its own Z, one
+/// feed to `x = 70`, and a retract. The program is a **family of Z heights**, which is what a moulding
+/// is: nothing in it depends on the rail position except the XY of a feed.
+const GOLDEN_MOULDING_STRAIGHT: &str = "\
+( Moulding 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X10.0000Y50.5000\r\n\
+N40G01Z-1.0000F100.0\r\n\
+N50G01X70.0000\r\n\
+N60G00Z5.0000\r\n\
+N70G00X10.0000Y48.5000\r\n\
+N80G01Z-3.0000\r\n\
+N90G01X70.0000\r\n\
+N100G00Z5.0000\r\n\
+N110G00X10.0000Y46.5000\r\n\
+N120G01Z-1.0000\r\n\
+N130G01X70.0000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Z5.0000\r\n\
+N160G00X0.0000Y0.0000\r\n\
+N170M05\r\n\
+N180M30\r\n\
+";
+
+/// The whole program the closed frame emits, byte for byte.
+///
+/// Derived and then read, never captured and blessed: 33 lines — the header, two passes and the footer.
+/// The two passes are the stepover law's laterals 0 and 2 — the cross-section is flat, 2 mm wide and
+/// 2 mm deep, and the stepover equals its width, which is the law's two-edge-pass case — so the first
+/// pass is the frame itself and the second is the frame 2 mm outside it.
+///
+/// Each pass is the closed rail's walk (ten samples: one per segment end, so a corner appears twice,
+/// once arriving and once leaving) written as one feed per sample. A corner sample that repeats its
+/// own point emits a bare `G01` block — a zero-length feed, and the price of carrying both normals
+/// instead of averaging them into a direction the rail never has. On the **outer** pass the two corner
+/// samples differ, so each corner is a 45 degree diagonal (`N180G01X72.5000Y40.5000`), which is the
+/// offset family's own corner and not an invented arc. The last sample of the walk is the pass's own
+/// first point, because the frame's vertex list starts in the middle of an edge, so the program needs
+/// no closing feed; each pass retracts to `safe_z = 5`, and nothing in the program depends on the rail
+/// position — a moulding is a family of Z heights, one per lateral pass.
+const GOLDEN_MOULDING_FRAME: &str = "\
+( Moulding 1 )\r\n\
+( CamPilot fixture Mach3 Arcs (mm) (*.nc) )\r\n\
+N0G00G17G90G21\r\n\
+N10T1M06\r\n\
+N20S18000M03\r\n\
+N30G00X50.5000Y40.5000\r\n\
+N40G01Z-2.0000F100.0\r\n\
+N50G01X70.5000\r\n\
+N60G01\r\n\
+N70G01Y60.5000\r\n\
+N80G01\r\n\
+N90G01X30.5000\r\n\
+N100G01\r\n\
+N110G01Y40.5000\r\n\
+N120G01\r\n\
+N130G01X50.5000\r\n\
+N140G00Z5.0000\r\n\
+N150G00Y38.5000\r\n\
+N160G01Z-2.0000\r\n\
+N170G01X70.5000\r\n\
+N180G01X72.5000Y40.5000\r\n\
+N190G01Y60.5000\r\n\
+N200G01X70.5000Y62.5000\r\n\
+N210G01X30.5000\r\n\
+N220G01X28.5000Y60.5000\r\n\
+N230G01Y40.5000\r\n\
+N240G01X30.5000Y38.5000\r\n\
+N250G01X50.5000\r\n\
+N260G00Z5.0000\r\n\
+N270G00Z5.0000\r\n\
+N280G00X0.0000Y0.0000\r\n\
+N290M05\r\n\
+N300M30\r\n\
+";
+
+#[test]
+fn a_straight_rail_moulding_emits_the_golden_program() {
+  let directory = scratch("moulding-golden-straight");
+  let document = write_moulding_document(
+    &directory,
+    "straight.c2d",
+    golden_straight_rail(),
+    &[(0.0, -1.0), (2.0, -3.0), (4.0, -1.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+
+  let program = emit_program(&directory, &document, &library, &write_post(&directory));
+  assert_eq!(program, GOLDEN_MOULDING_STRAIGHT);
+  assert_eq!(program.lines().count(), 21, "the pinned program's own size");
+  // The three numbers that state the law rather than the emitter: three passes, three depths, and a
+  // lateral that is the row the pass runs along.
+  assert_eq!(
+    program.matches("G00X10.0000Y").count(),
+    3,
+    "one rapid per pass"
+  );
+  assert_eq!(program.matches("G01Z-").count(), 3, "one plunge per pass");
+  assert!(
+    program.contains("N30G00X10.0000Y50.5000\r") && program.contains("N70G00X10.0000Y48.5000\r"),
+    "passes at laterals 0 and 2 are rows 50 and 48: {program}"
+  );
+  // S5's determinism clause, on the golden: a second run is the same bytes.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &write_post(&directory)),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_straight_rail_moulding_survives_a_document_save_and_load_round_trip() {
+  // The program is a function of the document alone (S4), so a document that made the `c2d` round trip
+  // emits the same program — which is what says the operation's record is complete: the rail is the
+  // entity, and the cross-section and the stepover are in `MouldingParams`.
+  let directory = scratch("moulding-golden-straight-round-trip");
+  let document = write_moulding_document(
+    &directory,
+    "straight.c2d",
+    golden_straight_rail(),
+    &[(0.0, -1.0), (2.0, -3.0), (4.0, -1.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  save_document(&reloaded, &loaded).expect("saved");
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &write_post(&directory)),
+    GOLDEN_MOULDING_STRAIGHT
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_straight_rail_moulding_authored_through_the_cli_emits_the_golden_program() {
+  // S4 end to end: the same program from a document that carries geometry and nothing else, with the
+  // toolpath authored by the command a user runs.
+  let directory = scratch("moulding-golden-straight-authored");
+  let document = write_vectors(&directory, "straight.c2d", vec![golden_straight_rail()]);
+  let library = write_moulding_library(&directory);
+  let profile = ["0:-1", "2:-3", "4:-1"];
+
+  assert_eq!(
+    author_and_emit_moulding(&directory, &document, &library, &profile, "2"),
+    GOLDEN_MOULDING_STRAIGHT
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_closed_frame_moulding_emits_the_golden_program() {
+  let directory = scratch("moulding-golden-frame");
+  let document = write_moulding_document(
+    &directory,
+    "frame.c2d",
+    golden_frame_rail(),
+    &[(0.0, -2.0), (2.0, -2.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+
+  let program = emit_program(&directory, &document, &library, &write_post(&directory));
+  assert_eq!(program, GOLDEN_MOULDING_FRAME);
+  assert_eq!(program.lines().count(), 33, "the pinned program's own size");
+  assert_eq!(
+    program.matches("G01Z-2.0000").count(),
+    2,
+    "one plunge per pass, both at the cross-section's own -2 mm"
+  );
+  assert_eq!(
+    program.lines().filter(|line| line.ends_with("G01")).count(),
+    4,
+    "the inner pass's four corner samples repeat their point, so each is a bare feed"
+  );
+  assert!(
+    program.contains("N180G01X72.5000Y40.5000\r"),
+    "the outer pass's first corner is a 45 degree diagonal: {program}"
+  );
+  assert_eq!(
+    program.matches("G02").count() + program.matches("G03").count(),
+    0,
+    "a moulding emits no arc move: {program}"
+  );
+  // S5's determinism clause, on the golden: a second run is the same bytes.
+  assert_eq!(
+    emit_program(&directory, &document, &library, &write_post(&directory)),
+    program
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_closed_frame_moulding_survives_a_document_save_and_load_round_trip() {
+  let directory = scratch("moulding-golden-frame-round-trip");
+  let document = write_moulding_document(
+    &directory,
+    "frame.c2d",
+    golden_frame_rail(),
+    &[(0.0, -2.0), (2.0, -2.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+
+  let reloaded = directory.join("reloaded.c2d");
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  save_document(&reloaded, &loaded).expect("saved");
+  assert_eq!(
+    emit_program(&directory, &reloaded, &library, &write_post(&directory)),
+    GOLDEN_MOULDING_FRAME
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_closed_frame_moulding_authored_through_the_cli_emits_the_golden_program() {
+  // The same program from a document that carries the frame and nothing else, with the toolpath
+  // authored by the command a user runs — a closed rail, a closed walk and two passes.
+  let directory = scratch("moulding-golden-frame-authored");
+  let document = write_vectors(&directory, "frame.c2d", vec![golden_frame_rail()]);
+  let library = write_moulding_library(&directory);
+  let profile = ["0:-2", "2:-2"];
+
+  assert_eq!(
+    author_and_emit_moulding(&directory, &document, &library, &profile, "2"),
+    GOLDEN_MOULDING_FRAME
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+/// The whole report the straight rail's correct program prints, byte for byte.
+///
+/// 60 columns of 1 mm cell centres lie under each of the three passes (columns 10 to 69: the pass runs
+/// from `x = 10` to `x = 70`, and a cell centre half a millimetre past either end is outside the 0.25 mm
+/// footprint), and the passes are 1, 3 and 1 mm deep — so the removed volume is `60 x 5 = 300 mm3` of
+/// the 360 000 mm3 the 200 x 100 x 18 mm stock holds. Twelve moves and 180 mm of cutting: three passes
+/// of a rapid, a plunge, one feed and a retract.
+const CLEAN_MOULDING_REPORT: &str = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 12 move(s), 180.000 mm cutting length
+removed: 300.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+
+#[test]
+fn simulate_reports_a_correct_moulding_with_no_gouge_and_no_uncut_material() {
+  // S6 through the contract: the document authors a cross-section, `emit`'s own program cuts it, and
+  // the simulation finds nothing to report in either direction — the claim and the program read the
+  // same rail, the same profile and the same stepover, so a correct moulding is exact cell for cell.
+  let directory = scratch("moulding-simulate-clean");
+  let document = write_moulding_document(
+    &directory,
+    "straight.c2d",
+    golden_straight_rail(),
+    &[(0.0, -1.0), (2.0, -3.0), (4.0, -1.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert_eq!(outcome.stdout, CLEAN_MOULDING_REPORT);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_deeper_than_the_stock_reports_uncut_and_exits_six() {
+  // S6's too-shallow sign, stated so the document is the defect: the cross-section asks for 2 mm out of
+  // a 1 mm stock, so the deepest millimetre of every claimed cell is material the program never
+  // removes. The frame's claim is 248 cell centres (120 on the rail's own pass and 128 on the pass
+  // 2 mm outside it, whose four corner diagonals add a cell each), so `uncut` is 248 mm3 over 248
+  // cells and the report exits 6.
+  //
+  // The other sign is not reachable this way, and that is the gouge-is-zero argument rather than a gap
+  // in the test: a moulding's claim and its program read the same authored cross-section and the same
+  // tool, and the claim's footprint contains the program's (`cut - rise(d)` with `rise` growing with
+  // distance), so no document that validates can emit a program that cuts deeper than its own claim.
+  // The gouge sign is proved where it can be produced — by `cam-sim`'s moulding oracle, on a program
+  // written 1 mm too deep at every pass.
+  let directory = scratch("moulding-simulate-uncut");
+  let document = write_moulding_document(
+    &directory,
+    "frame.c2d",
+    golden_frame_rail(),
+    &[(0.0, -2.0), (2.0, -2.0)],
+    2.0,
+  );
+  let library = write_moulding_library(&directory);
+  set_job(&document, |job| job.thickness = Length::from_mm(1.0));
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 6, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+simulate: 200.000 x 100.000 x 1.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 24 move(s), 251.314 mm cutting length
+removed: 248.000 mm3 of 20000.000 mm3, 248 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 248.000 mm3 over 248 cell(s)
+crash: none
+";
+  assert_eq!(outcome.stdout, expected);
+  assert!(outcome.stderr.contains("uncut"), "{}", outcome.stderr);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_moulding_over_two_rails_cuts_and_claims_both_of_them() {
+  // The multi-rail case, end to end: the rail rides on the selection (T1's schema decision, S3), so a
+  // toolpath that names two rails is two sweeps and one toolpath — never one sweep and a refusal. The
+  // program is the two rails' passes in `entity_ids` order, and the claim is both rails' offset
+  // families, so the report is the sum of the two and still exact in both signs.
+  //
+  // Each rail is the golden fixture's 60 mm run, and they are 20 mm apart, so nothing they claim
+  // overlaps: 2 x 60 columns x (1 + 3 + 1) mm = 600 mm3, 24 moves and 360 mm of cutting.
+  let directory = scratch("moulding-two-rails");
+  let second = Contour::from_points(&[Point2::new(10.0, 30.5), Point2::new(70.0, 30.5)], false)
+    .expect("a second rail");
+  let document = write_vectors(
+    &directory,
+    "two-rails.c2d",
+    vec![golden_straight_rail(), second],
+  );
+  let library = write_moulding_library(&directory);
+  let authored = run(&[
+    "toolpath",
+    document.to_str().expect("utf8"),
+    "--kind",
+    "moulding",
+    "--entities",
+    "E1,E2",
+    "--tool",
+    "1",
+    "--library",
+    library.to_str().expect("utf8"),
+    "--stepover",
+    "2",
+    "--profile",
+    "0:-1",
+    "--profile",
+    "2:-3",
+    "--profile",
+    "4:-1",
+  ]);
+  assert_eq!(authored.code, 0, "{}", authored.stderr);
+  assert_eq!(
+    authored.stdout, "added TP1 moulding (3 points, 2 mm stepover), tool T1, 2 entity(ies)\n",
+    "{}",
+    authored.stdout
+  );
+
+  let outcome = simulate(&document, &library, &[]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+simulate: 200.000 x 100.000 x 18.000 mm, 1 x 1 mm cells (200 x 100), 1 toolpath(s)
+program: 24 move(s), 360.000 mm cutting length
+removed: 600.000 mm3 of 360000.000 mm3, 0 through cell(s)
+gouge: 0.000 mm3 over 0 cell(s)
+uncut: 0.000 mm3 over 0 cell(s)
+crash: none
+";
+  assert_eq!(outcome.stdout, expected);
   std::fs::remove_dir_all(&directory).ok();
 }

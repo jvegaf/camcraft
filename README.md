@@ -4,7 +4,7 @@ A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, built a
 answer to a simple question: *what would the reference CAM application look like if it were designed today, in Rust,
 with the domain separated from the window?*
 
-**Status: M7 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
+**Status: M8 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
 post-processor produce real G-code, byte for byte tested — for **profile**, **pocket** (offset rings
 and raster rows, with islands), **drilling** (pecks, both retract modes, drill-bank selection), the six
 depth-variant strategies — **chamfer** (a V-bit bevel whose depth is derived from the bit's angle),
@@ -12,18 +12,20 @@ depth-variant strategies — **chamfer** (a V-bit bevel whose depth is derived f
 spacing and angle, deliberately not a pocket), the **inlay** pair (female cavity and male plug from one
 command) and **thread milling** (a helical descent, emitted as a helical arc) — and **V-carve**: the
 medial axis of the region walked with the tip at `−d/tan(θ/2)` for each tip's own distance `d` to the
-boundary, so the toolpath is a depth **field** rather than a fixed-Z pass. Around it: M1 built the
+boundary, so the toolpath is a depth **field** rather than a fixed-Z pass, and **moulding**: a rail with
+an authored cross-section swept along it, one lateral pass per stepover offset, so the toolpath is a
+family of Z heights taken from the profile rather than from the bit. Around it: M1 built the
 editor shell, M2 the vector authoring and editing commands, M3 the DXF, SVG, PDF, EPS and raster
 importers, M4 the toolpaths, authored headlessly through `cam-cli toolpath`, and M5 the simulation that
 checks them — the emitted program swept over a heightfield of the stock, a report of removed, gouge and
-uncut material and of every crash, and a 3D preview the shell plays. Every one of the ten strategies is
-measured against that simulation, in both signs. Moulding (a swept profile) is next (M8).
+uncut material and of every crash, and a 3D preview the shell plays. Every one of the eleven strategies
+is measured against that simulation, in both signs.
 
 ## What works today
 
 ```
 dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move stream ──▶ post-processor ──▶ part.nc
-     (cam-import)        (c2d/document@2)   ten         (Rapid/Feed/     (.pp dialect)
+     (cam-import)        (c2d/document@2)   eleven      (Rapid/Feed/     (.pp dialect)
                           (validated)       strategies   Arc/Helix/Retract)
                                                         │
                                                         ▼
@@ -32,15 +34,16 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
 
 - **Arc geometry end to end.** Arcs are first-class from the document through the offset to the
   emitter: a circle cut with a profile toolpath emits `G02`/`G03`, never a polyline.
-- **Ten strategies, one contract.** Profile (inside/outside/on, tabs, passes, lead-in/out), pocket
+- **Eleven strategies, one contract.** Profile (inside/outside/on, tabs, passes, lead-in/out), pocket
   (offset rings or raster rows, allowance, stepover, nesting islands) and drilling (peck depth, both
   retract modes, drill-bank selection), then M6's six depth variants: chamfer (derived V-bit depth),
   quick engrave, fluting (ramped), texture (grooves at a spacing and angle, never a clearing pass), the
-  inlay pair and thread milling, and M7's **V-carve**: the region's medial axis, walked at the depth
-  each tip's own distance to the boundary demands, emitted as varying-Z linear feeds because a
-  V-carve's Z is a function of position and no arc move can carry it. Each is authored by
-  `cam-cli toolpath` and reaches G-code through `cam-cli emit`, so the test surface is the program a
-  machine would run.
+  inlay pair and thread milling, M7's **V-carve**: the region's medial axis, walked at the depth each
+  tip's own distance to the boundary demands, emitted as varying-Z linear feeds because a V-carve's Z is
+  a function of position and no arc move can carry it — and M8's **moulding**: an authored cross-section
+  swept along a rail at a stepover, one lateral pass per offset, each at the depth its own profile point
+  demands. Each is authored by `cam-cli toolpath` and reaches G-code through `cam-cli emit`, so the test
+  surface is the program a machine would run.
 - **The V-carve's proof is the distance field itself.** A V-bit's body is above its cone, so a tip at
   `−d/tan(θ/2)` can only leave material standing and never cut deeper than the field: `gouge` is
   **exactly zero**, not "within a tolerance", for any tip set inside the region, and a dropped piece of
@@ -49,6 +52,16 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   `1332.5` of its analytic `1333.333 mm³` and a radius-15 disc `3534.152` of `3534.292`, with zero gouge
   and zero uncut, while a **deliberately thinned axis** reports `uncut` and still zero gouge and a
   **20% too deep** program reports `gouge 629.557 mm³`.
+- **The moulding's proof is coverage plus a monotone tool law.** The claim and the program walk the rail
+  with the same arc-length walk, the sweep's samples lie on that polyline, and a tool's `rise` grows with
+  distance — so a correct moulding can never remove more than its authored cross-section authorised:
+  `gouge` is **exactly zero**, and a pass dropped or a cross-section authored 1 mm shallower costs
+  `uncut` and nothing else. The simulation authorises the cross-section swept along the rail from the
+  document alone, and the oracle asserts both signs on a straight rail, a **closed frame** and a V-bit
+  cone (660 and 496 mm³ exact with zero gouge and zero uncut; `uncut 300`/`248` 1 mm shallow; `gouge
+  300`/`248` and `gouge 603.671` 1 mm deep). One case is measured rather than argued: a closed rail whose
+  drawing *starts* at a corner reports `gouge 2.000 mm³` over one cell at the seam, recorded as a known
+  limit in [docs/m8-moulding.md](docs/m8-moulding.md#known-limits-each-a-decision).
 - **A simulation, and every strategy measured against it.** `cam-cli simulate` sweeps the emitted
   program over a heightfield of the stock and reports the removed material, the through-cut cells,
   the gouge, the uncut material and every crash that rams the tool. The error bound is the
@@ -190,12 +203,12 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | Crate | Responsibility |
 | --- | --- |
 | `cam-units` | Millimetres, angles, locale-independent fixed-decimal formatting |
-| `cam-geom` | Points, arcs, bulged contours, chaining, tessellation, arc-preserving offset, regions and their exact boundary distance, the verified medial axis |
+| `cam-geom` | Points, arcs, bulged contours, chaining, tessellation, arc-preserving offset, regions and their exact boundary distance, the verified medial axis, and the moulding rail's arc-length walk with its cross-section and stepover law |
 | `cam-move` | The move vocabulary: the contract between toolpaths and the emitter |
 | `cam-model` | Job, layers, entities, toolpaths, schema version, validation |
 | `cam-store` | `.c2d` documents and the SQLite tool library, both with migrations |
 | `cam-post` | `.pp` parser and the data-driven G-code emitter |
-| `cam-toolpath` | Machining strategies: profile, pocket (offset and raster, with islands), drilling, the six M6 depth variants, and the V-carve |
+| `cam-toolpath` | Machining strategies: profile, pocket (offset and raster, with islands), drilling, the six M6 depth variants, the V-carve and the moulding |
 | `cam-sim` | Material-removal simulation: the stock's heightfield, swept removal, gouge and uncut reporting |
 | `cam-cli` | Headless pipeline and the verification surface |
 | `cam-import` | DXF, SVG, PDF, EPS and PNG raster import, with a report of what was converted or skipped |
@@ -227,7 +240,7 @@ The program plan, milestone sequence and risk register are in [odd/roadmap.md](o
 
 ## Testing
 
-1056 tests across 79 test targets, all deterministic — including the editor, which runs real `egui`
+1374 tests across 101 test targets, all deterministic — including the editor, which runs real `egui`
 frames headless and asserts on both the actions they produce and the text they paint:
 
 ```bash
@@ -237,13 +250,13 @@ cargo test --workspace
 They cover, in order of what they protect: golden G-code (byte for byte, through the real binary,
 including pocket-with-island and drilling programs), property tests on the geometry kernel (offset
 simplicity, arc fidelity, area monotonicity, winding against a fine tessellation, a distance proof that
-never keeps a piece it has not measured), the simulation's oracle for every strategy M4, M6 and M7 ship (a
-pocket's removed volume against its analytic area within the coverage bound, a chamfer's both flanks, a
-ramped flute's closed form, a thread's spiral and its crest, a V-carve's distance field on a square and a
-disc, each with a program cut a millimetre shallow reported as uncut and one cut a millimetre deep
-reported as gouge), the document and tool-library round
-trips and migrations (including `c2d/document@1` loading and saving as `@2`), every parser diagnostic by
-line and column, and the editor's behaviour — undo restoring a document exactly, picking measured in
+never keeps a piece it has not measured), the simulation's oracle for every strategy M4, M6, M7 and M8
+ship (a pocket's removed volume against its analytic area within the coverage bound, a chamfer's both
+flanks, a ramped flute's closed form, a thread's spiral and its crest, a V-carve's distance field on a
+square and a disc, a moulding's swept cross-section on a straight rail, a closed frame and a V-bit cone,
+each with a program cut a millimetre shallow reported as uncut and one cut a millimetre deep reported as
+gouge), the document and tool-library round trips and migrations (including `c2d/document@1` loading and
+saving as `@2`), every parser diagnostic by line and column, and the editor's behaviour — undo restoring a document exactly, picking measured in
 pixels at any zoom, snapping, and synthetic clicks, drags, wheel and keys driving the real shell.
 
 The native window itself is the one thing not covered by automation: it needs a display. It is
@@ -252,11 +265,16 @@ verified by building and by launching it under a compositor, which is how the sc
 
 ## Next
 
-M8 is moulding: a rail and a profile swept along it with a stepover, the first strategy whose answer
-depends on a cross-section rather than a single depth. It was scheduled after V-carve because it needs
-the distance field M7 built. M7 itself carried one defect forward and closed it rather than leaving it:
-`cam-sim` used to build its field at the document origin while programs are emitted in machine
-coordinates, so at any origin corner other than bottom-left the report and the preview disagreed about
-where the cut was — for every strategy since M5 — and the fix (`cam-model::Frame`, honoured at every
+M9 is nesting: sheets and parts, rectangle maxrects + guillotine first, free-profile NFP second, with a
+cost and summary report — the next of the two milestones the plan still holds (M9, then M10's print
+sheets and scripting surface). M8, delivered, was moulding: a rail and a cross-section swept along it
+with a stepover, the first strategy whose answer depends on a cross-section rather than a single depth.
+It was scheduled after V-carve on the expectation that it needed the distance field M7 built, and it did
+not: the cross-section is authored data, so M8 changed no post contract, no schema and no dependency, and
+spent its effort on the rail's arc-length walk and the stepover law's coverage certificate instead. M7
+itself carried one defect forward and closed it rather than leaving it: `cam-sim` used to build its field
+at the document origin while programs are emitted in machine coordinates, so at any origin corner other
+than bottom-left the report and the preview disagreed about where the cut was — for every strategy since M5 — and the fix (`cam-model::Frame`, honoured at every
 boundary including the handedness of every arc) has a test per origin corner. See
-[odd/roadmap.md](odd/roadmap.md) §4 and §4.6–4.10 for what M4, the region work, M5, M6 and M7 delivered.
+[odd/roadmap.md](odd/roadmap.md) §4 and §4.6–4.11 for what M4, the region work, M5, M6, M7 and M8
+delivered.
