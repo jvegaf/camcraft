@@ -1,32 +1,33 @@
 {
   "title": "Campilot shell",
-  "brief": "Redesign the Campilot (Rust + egui CAM app) desktop shell after the visual and structural concept extracted from the reference app Prancheta CNC: one line-weight icon language, a graphite canvas that outranks the panels, named workflow stages with gates, a collapsible inspector, and teaching strings inside the tool.",
+  "brief": "Redesign the Campilot (Rust + egui CAM app) desktop shell after the visual and structural concept extracted from the reference app Prancheta CNC: one line-weight icon language, a graphite canvas that outranks the panels, a 200 px rail of five labelled groups that folds, a right panel that is a ribbon plus the task it opens, two millimetre rulers, a status bar in three zones, and teaching strings inside the tool. There is no stage bar: the workflow is carried by the rail and by whatever task the panel has open.",
+  "feature": "odd/tasks/camui-prancheta.md",
   "artboards": [
     {
       "file": "01-shell-2d.html",
-      "title": "2D shell — app bar, stage bar, labelled palette, collapsible inspector, status bar",
-      "tradeoff": "One screen, one job: the operator always knows the next step, but the palette can only show one stage of commands at a time and experts pay a stage switch.",
+      "title": "2D shell — app bar, a 200 px rail of five labelled groups, two rulers, ribbon plus the open task, three-zone status bar",
+      "tradeoff": "One screen, one job: every command is reachable by folding a group instead of remembering a mode, but twenty-eight glyph-only chips put the teaching burden on tooltips and on the status bar sentence that answers each press.",
       "width": 1440,
       "height": 900
     },
     {
       "file": "02-stages.html",
-      "title": "The staged workflow and its gates",
-      "tradeoff": "Gates turn 'looks done' into a checkable fact and teach the app through its own help panel; the cost is a linear path that fits sign work but not exploration.",
+      "title": "Where the workflow went, once the stage bar was removed",
+      "tradeoff": "The workflow lives in the rail and in the task the panel has open, so nothing has to be remembered as a place you are standing; the cost is that progress is legible only from the document and from the status bar, never from a strip that totals it up.",
       "width": 1440,
       "height": 1560
     },
     {
       "file": "03-iconography.html",
-      "title": "Icon set — 66 glyphs on one 24 × 24 grid",
-      "tradeoff": "A single stroke weight reads as one hand and never shimmers when selection moves; the cost is that no icon can carry fine detail, so complex strategies rely on labels.",
+      "title": "Icon set — 71 glyphs on one 24 × 24 grid",
+      "tradeoff": "A single stroke weight reads as one hand and never shimmers when selection moves; the cost is that no icon can carry fine detail, so complex strategies rely on tooltips and on labels the rail does not draw.",
       "width": 1440,
       "height": 1760
     },
     {
       "file": "04-tokens.html",
       "title": "Visual tokens — dark and light, two signals, type and geometry",
-      "tradeoff": "Two signal colours keep cut and selection unambiguous in monochrome and for colour-blind operators; the cost is a monochrome UI that needs icon quality to carry the personality.",
+      "tradeoff": "Two signal colours keep cut and selection unambiguous in monochrome and for colour-blind operators; the cost is a monochrome UI whose personality has to be carried by icon quality and by one 13 % wash.",
       "width": 1440,
       "height": 1300
     }
