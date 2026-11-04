@@ -831,7 +831,7 @@ fn the_footer_offers_only_the_library_actions_this_shell_can_perform() {
     "the commit pair is missing: {hits:?}"
   );
   assert!(
-    hits.iter().any(|word| *word == "T1 - Tool (6mm)"),
+    hits.contains(&"T1 - Tool (6mm)"),
     "the tree rows are not pressable: {hits:?}"
   );
 }

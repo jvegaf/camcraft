@@ -174,6 +174,20 @@ fn next_step(app: &AppState) -> Option<&'static str> {
   None
 }
 
+/// The subject a tool card reads: the word its heading carries, the number the library is asked for, and
+/// whether a program exists to measure.
+///
+/// One argument instead of three because the card's own doc already treats them as one subject: the name in
+/// the heading, the tool that name belongs to, and whether the estimate below the card can be measured at all.
+pub(crate) struct ToolSubject<'a> {
+  /// The word the heading carries: the document toolpath's name, or the draft's.
+  pub name: &'a str,
+  /// The tool number to read out of the library, when the subject has one.
+  pub number: Option<u32>,
+  /// Whether a program exists to measure the cutting time over. A draft has none.
+  pub estimate: bool,
+}
+
 impl Shell {
   /// Which body the inspector is showing.
   pub fn tab(&self) -> Tab {
@@ -917,7 +931,17 @@ impl Shell {
     };
     let name = toolpath.name.clone();
     let number = Some(toolpath.tool_number);
-    self.tool_card_for(app, ui, palette, output, &name, number, true);
+    self.tool_card_for(
+      app,
+      ui,
+      palette,
+      output,
+      ToolSubject {
+        name: &name,
+        number,
+        estimate: true,
+      },
+    );
   }
 
   /// The card itself, for a tool number the caller owns.
@@ -932,15 +956,13 @@ impl Shell {
     ui: &mut egui::Ui,
     palette: &Palette,
     output: &mut ShellOutput,
-    name: &str,
-    number: Option<u32>,
-    estimate: bool,
+    subject: ToolSubject<'_>,
   ) {
-    let heading = format!("TOOL — {name}");
+    let heading = format!("TOOL — {}", subject.name);
     section(ui, palette, &heading);
     output.drawn.tool_card.push(heading);
 
-    match number {
+    match subject.number {
       Some(number) => match stored_tool_for_number(&self.tools, number) {
         Some(tool) => {
           let title = format!("T{number} - {}", tool_name(&tool.geometry));
@@ -990,7 +1012,7 @@ impl Shell {
     // because the card is a reading of the tool and this is the way to replace it.
     self.choose_tool_row(app, ui, output);
 
-    if !estimate {
+    if !subject.estimate {
       return;
     }
     // A line of its own rather than a field of the card (S2), measured over the document's own program
@@ -1767,29 +1789,6 @@ pub(crate) struct Segmented {
   pub cell_rects: Vec<egui::Rect>,
 }
 
-/// A segmented control: mutually exclusive choices in one joined strip.
-///
-/// The reference uses these for every small decision (`Material | Último vetor`, `Não | De 90° | Livre`,
-/// `2D | 3D`) and it is the right shape: the alternatives are visible, so choosing is a comparison instead
-/// of a search. Returns the index the operator picked and the geometry it drew at.
-pub(crate) fn segmented(
-  ui: &mut egui::Ui,
-  palette: &Palette,
-  labels: &[&str],
-  active: usize,
-) -> Segmented {
-  let control = segmented_cells(ui, palette, labels);
-  paint_segmented(
-    ui.painter(),
-    control.rect,
-    &control.cell_rects,
-    labels,
-    active,
-    palette,
-  );
-  control
-}
-
 /// Lay a segmented control out and report it, without painting it.
 ///
 /// The canvas' `2D | 3D` needs this: it is laid out before the frame knows whether it splits (L13's rule) but it
@@ -1840,7 +1839,7 @@ fn segmented_cells(ui: &mut egui::Ui, palette: &Palette, labels: &[&str]) -> Seg
 
 /// Paint a segmented control: the strip, the chosen cell and every word.
 ///
-/// Separate from [`segmented`] so it can be called a **second** time, later in the frame. The canvas'
+/// Separate from [`segmented_cells`] so it can be called a **second** time, later in the frame. The canvas'
 /// `2D | 3D` sits on the ruler band; the band is painted after the widget is laid out, and a later painter
 /// wins — which is how the control ended up under the band's own fill and numbers, invisible in 2D mode
 /// (R2-002 in the T6 review). One function for both paints, so the two cannot drift apart.

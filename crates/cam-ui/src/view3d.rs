@@ -1610,7 +1610,8 @@ impl Shell {
 
     // `To the end` shares the control line with the transport and the speed; `Step` and `Reset` live on the
     // readout's line, at its right end, where a second pair of pacing controls does not crowd the scrubber.
-    for word in ["To the end"] {
+    {
+      let word = "To the end";
       let size = chip_size(&painter, palette, word, false);
       let rect = egui::Rect::from_min_size(egui::pos2(left, middle - 9.0), size);
       left += size.x + metrics.space(1);

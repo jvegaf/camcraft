@@ -885,7 +885,7 @@ pub struct DrawnState {
   ///
   /// `None` while 3D is off, because a split that is not open has no halves. [`ShellOutput::canvas`] is the
   /// first of the two when the split is open: the rectangle the 2D camera is told about.
-  pub split: Option<((f32, f32, f32, f32), (f32, f32, f32, f32))>,
+  pub split: Option<(PixelRect, PixelRect)>,
   /// The words the 3D half's overlay row drew — `Material`, `Vectors`, `Toolpaths`, `Tool`, `Centre`, `?` —
   /// and the point that presses each (camui-prancheta S8).
   ///
@@ -1026,6 +1026,12 @@ pub struct DrawnState {
   /// The numbers the strategy's `CUT` section drew, in order: the row's word and its value.
   pub strategy_fields: Vec<(String, String)>,
 }
+
+/// A rectangle in window pixels, as `(x, y, width, height)`.
+///
+/// The shape a drawn surface reports its own geometry in: `chrome::rect_report` turns an `egui::Rect` into one,
+/// and [`DrawnState::split`] holds the canvas' two halves as a pair of them.
+pub type PixelRect = (f32, f32, f32, f32);
 
 /// What one frame produced.
 #[derive(Clone, Debug, Default, PartialEq)]

@@ -605,7 +605,17 @@ impl Shell {
       ),
       Subject::New => (self.strategy.tool_number, false),
     };
-    self.tool_card_for(app, ui, palette, output, &name, number, estimate);
+    self.tool_card_for(
+      app,
+      ui,
+      palette,
+      output,
+      chrome::ToolSubject {
+        name: &name,
+        number,
+        estimate,
+      },
+    );
 
     // 3. the quick block: the same numbers the section below holds, one click closer.
     let quick = chrome::section_toggle(ui, palette, QUICK, self.strategy.quick_open);
@@ -707,42 +717,40 @@ impl Shell {
         .map(|toolpath| toolpath.tool_number),
       Subject::New => self.strategy.tool_number,
     };
-    match number.and_then(|number| stored_tool_for_number(&self.tools, number)) {
-      Some(tool) => {
-        let rates =
-          crate::tool_library::form_fields(crate::tool_library::ToolFormGroup::Speeds, tool);
-        // One row per rate, in the block's own shape: a word at the left and its value at the right. The
-        // library's boxed field widget is not used here because three fixed-width boxes in a wrapping row
-        // measure wider than the panel on the frame that has not been laid out yet, and a child wider than its
-        // panel drags the whole frame's layout out with it (the panel then reports a content width the shell
-        // never intended and the next frame draws the surface off the window).
-        for (label, value) in &rates {
-          ui.horizontal(|ui| {
-            ui.label(
-              RichText::new(label)
-                .size(theme::CAPTION)
-                .color(palette.get(Role::TextDim)),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-              ui.label(
-                RichText::new(value)
-                  .size(theme::SMALL)
-                  .color(palette.get(Role::TextHi)),
-              );
-            });
-          });
-        }
-        if !rates.is_empty() {
+    // A missing tool is said by the card above, in its own sentence: a second one here would be the same
+    // fact twice, so this `if let` has no `else`.
+    let tool = number.and_then(|number| stored_tool_for_number(&self.tools, number));
+    if let Some(tool) = tool {
+      let rates =
+        crate::tool_library::form_fields(crate::tool_library::ToolFormGroup::Speeds, tool);
+      // One row per rate, in the block's own shape: a word at the left and its value at the right. The
+      // library's boxed field widget is not used here because three fixed-width boxes in a wrapping row
+      // measure wider than the panel on the frame that has not been laid out yet, and a child wider than its
+      // panel drags the whole frame's layout out with it (the panel then reports a content width the shell
+      // never intended and the next frame draws the surface off the window).
+      for (label, value) in &rates {
+        ui.horizontal(|ui| {
           ui.label(
-            RichText::new(RATES)
+            RichText::new(label)
               .size(theme::CAPTION)
               .color(palette.get(Role::TextDim)),
           );
-        }
+          ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+              RichText::new(value)
+                .size(theme::SMALL)
+                .color(palette.get(Role::TextHi)),
+            );
+          });
+        });
       }
-      // A missing tool is said by the card above, in its own sentence: a second one here would be the same
-      // fact twice.
-      None => {}
+      if !rates.is_empty() {
+        ui.label(
+          RichText::new(RATES)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+      }
     }
   }
 
@@ -861,11 +869,10 @@ impl Shell {
     }
     let now = clearing(&self.strategy.operation);
     for (word, _, strokes) in drawn {
-      let chosen = match (word.as_str(), now) {
-        ("Offset", Some(PocketStrategy::Offset)) => true,
-        ("Raster", Some(PocketStrategy::Raster)) => true,
-        _ => false,
-      };
+      let chosen = matches!(
+        (word.as_str(), now),
+        ("Offset", Some(PocketStrategy::Offset)) | ("Raster", Some(PocketStrategy::Raster))
+      );
       output.drawn.strategy_cards.push((word, chosen, strokes));
     }
   }
