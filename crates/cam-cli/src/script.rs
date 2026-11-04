@@ -523,7 +523,7 @@ fn command_part(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
 fn command_nest(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   let tokens = line.tokens_as_strings();
   let args = nest_args(&tokens).map_err(|failure| line.locate(failure))?;
-  refuse_document_destination(line, None, &args.out)?;
+  refuse_document_destination(line, args.path.as_ref(), &args.out)?;
   let request = NestRequest {
     sheets: args.sheets,
     gap: args.gap,

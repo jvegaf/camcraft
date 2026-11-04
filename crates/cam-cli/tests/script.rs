@@ -854,3 +854,37 @@ fn a_script_needs_a_path_and_an_open_document() {
 
   std::fs::remove_dir_all(&directory).ok();
 }
+
+#[test]
+fn a_script_refuses_a_positional_document_for_nest() {
+  // R1-001: `nest` used to accept a positional document into its own parser and then drop it, passing
+  // `None` to the refusal — so `open a` plus `nest b` nested **a**, and a following `save b` could
+  // overwrite **b** with a's document. The refusal is the fix; the second half proves that the file the
+  // script named is never written, which is the part a silent success would have hidden.
+  let directory = scratch("nest-positional");
+  let document = write_document(&directory, &[("P1", &["E1"], 1)]);
+  let other = directory.join("other.c2d");
+  std::fs::copy(&document, &other).expect("copy");
+  let before = std::fs::read(&other).expect("read");
+
+  let script = write_script(
+    &directory,
+    "nest-path.cam",
+    &format!(
+      "open {document}\nnest --sheets 400x300 {other}\nsave {other}\n",
+      document = document.display(),
+      other = other.display()
+    ),
+  );
+  let outcome = script_outcome(&script);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert_eq!(
+    outcome.stderr,
+    "error: line 2:23: nest takes no document path: a script mutates the document `open` read\n"
+  );
+  assert_eq!(
+    std::fs::read(&other).expect("read"),
+    before,
+    "a script that cannot nest writes nothing to the document it named"
+  );
+}
