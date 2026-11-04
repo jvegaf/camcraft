@@ -888,3 +888,142 @@ fn a_script_refuses_a_positional_document_for_nest() {
     "a script that cannot nest writes nothing to the document it named"
   );
 }
+
+/// A script's report captured through the library's sink entry point instead of printed.
+///
+/// This runs the one body `cam-cli script` also runs: the binary passes `io::stdout()` and this passes
+/// a buffer, so the test below proves the two are the same bytes.
+fn captured(script: &Path) -> (Result<(), cam_cli::Failure>, Vec<u8>) {
+  let mut buffer: Vec<u8> = Vec::new();
+  let result = cam_cli::script::run_script(script, &mut buffer);
+  (result, buffer)
+}
+
+#[test]
+fn a_scripts_report_reaches_a_sink_byte_identical_to_the_binarys_stdout() {
+  // The invariant T4 rests on: the report a caller captures and the report the binary prints come out
+  // of one body. A `print!` left in the engine, or a second captured path beside it, makes this test
+  // differ — which is the point of asserting bytes instead of "contains".
+  let directory = scratch("sink");
+  let document = write_document(&directory, &[]);
+  let library = write_library(&directory);
+  let csv = directory.join("parts.csv");
+  std::fs::write(&csv, "name,width,height,quantity\nside,30,20,2\n").expect("csv written");
+  let cutlist = directory.join("cut-list.csv");
+
+  // Every command that reports on stdout, in one script: the part list, the nest, the counts, a
+  // toolpath and a cut list. It ends with `save`, whose message is stderr, as the contract says.
+  let reports = write_script(
+    &directory,
+    "sink.cam",
+    &format!(
+      "\
+open {document}
+sheet 100 100
+part 2 E1
+part 1 E2
+parts --csv {csv}
+nest --gap 0
+validate
+toolpath --kind profile --entities E2 --tool 1 --pass-depth 4 --cut-depth 3
+validate
+cutlist --out {cutlist}
+save {saved}
+",
+      document = document.display(),
+      csv = csv.display(),
+      cutlist = cutlist.display(),
+      saved = directory.join("saved.c2d").display()
+    ),
+  );
+  // And one that ends in a **finding**: its report is the finding's body, so a sink must hold it
+  // before the failure comes back — the `Outcome::Finding` arm the subcommands share.
+  let finding = write_script(
+    &directory,
+    "finding.cam",
+    &format!(
+      "\
+open {document}
+toolpath --kind profile --entities E2 --tool 1 --pass-depth 4 --cut-depth 3
+simulate --library {library}
+",
+      document = document.display(),
+      library = library.display()
+    ),
+  );
+
+  for script in [&reports, &finding] {
+    let printed = script_outcome(script);
+    let (result, buffer) = captured(script);
+    assert_eq!(
+      buffer,
+      printed.stdout.as_bytes(),
+      "a caller's sink must be the bytes the binary prints, or the two paths will drift: {}",
+      script.display()
+    );
+    let code = match &result {
+      Ok(()) => 0,
+      Err(failure) => failure.code(),
+    };
+    assert_eq!(
+      code,
+      printed.code,
+      "the sink path and the binary must agree on the exit code: {}",
+      script.display()
+    );
+  }
+
+  let printed = script_outcome(&reports);
+  assert_eq!(printed.code, 0, "{}", printed.stderr);
+  // The comparison is not vacuous: this script's stdout is every report its commands produce.
+  for needle in [
+    "format: csv",
+    "nest: 1 sheet(s)",
+    "valid: ",
+    "added TP2 profile",
+  ] {
+    assert!(
+      printed.stdout.contains(needle),
+      "the sink test is missing {needle:?} from {}",
+      printed.stdout
+    );
+  }
+  assert_eq!(
+    String::from_utf8(captured(&reports).1).expect("the report is text"),
+    printed.stdout
+  );
+
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_scripts_located_failure_comes_back_from_the_sink_entry_point() {
+  // The captured path carries the same located diagnostic the binary prints on stderr, code and all.
+  let directory = scratch("sink-failure");
+  let document = write_document(&directory, &[]);
+  let script = write_script(
+    &directory,
+    "sink-failure.cam",
+    &format!(
+      "# the board\nopen {document}\nshet 100 100\n",
+      document = document.display()
+    ),
+  );
+
+  let printed = script_outcome(&script);
+  assert_eq!(printed.code, 2, "{}", printed.stderr);
+
+  let (result, buffer) = captured(&script);
+  let failure = result.expect_err("the script fails");
+  assert_eq!(failure.code(), printed.code);
+  assert_eq!(
+    failure.message,
+    "line 3:1: unknown script command \"shet\"; expected one of open, sheet, part, nest, \
+     toolpath, validate, emit, simulate, save, parts, cutlist"
+  );
+  assert_eq!(format!("error: {failure}\n"), printed.stderr);
+  assert_eq!(buffer, printed.stdout.as_bytes());
+  assert!(buffer.is_empty());
+
+  std::fs::remove_dir_all(&directory).ok();
+}

@@ -17,8 +17,13 @@
 //! 2. **Every refusal is located**, in the `cam-post` parser's shape — `line {line}:{column}: {message}`
 //!    — and every mutation passes through `Document::validate` with the script line attached (M10
 //!    invariants 2 and 4).
+//! 3. **The report has one exit, and it is a sink.** [`run_script`] takes the `Write` the caller chose:
+//!    `cam-cli script` passes `io::stdout()` and a caller that wants to display the report — the shell
+//!    panel (T4) — passes a buffer. Nothing in this file prints a report, so a captured run and a
+//!    printed run cannot disagree about a single byte.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use cam_model::{Document, Nesting, NestingPart, NestingSheet};
 use cam_units::Length;
@@ -27,7 +32,7 @@ use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args};
 use crate::{
   append_toolpath, emit_args, emit_document, fresh_part_id, fresh_sheet_id, nest_args,
   nest_document, only_path, simulate_args, simulate_document, toolpath_args, validate_report,
-  Failure, NestRequest, Outcome,
+  write_report, Failure, NestRequest,
 };
 
 /// Why a command that needs the document says so: a script reads one, it never guesses at one.
@@ -131,10 +136,24 @@ const COMMANDS: &[Command] = &[
 /// directory or another file (M10 invariant 3).
 pub(crate) fn script_command(rest: &[String]) -> Result<(), Failure> {
   let path = only_path(rest, "script")?;
-  let text = std::fs::read_to_string(&path)
+  run_script(&path, &mut std::io::stdout())
+}
+
+/// Run a script, writing every report its commands produce to `out`.
+///
+/// This is the one body: `cam-cli script` passes `io::stdout()` and a caller that wants to show the
+/// report passes a buffer, so what a caller captures is byte for byte what the binary prints. The
+/// refusals are the same [`Failure`] either way, each carrying the `line {line}:{column}: {message}`
+/// diagnostic of the line that caused it (M10 invariant 2).
+pub fn run_script(path: &Path, out: &mut dyn Write) -> Result<(), Failure> {
+  let text = std::fs::read_to_string(path)
     .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
 
-  let mut session = Session::default();
+  let mut session = Session {
+    document: None,
+    path: None,
+    out,
+  };
   for (index, raw) in text.lines().enumerate() {
     let line = lex(index + 1, raw)?;
     if line.tokens.is_empty() {
@@ -145,17 +164,25 @@ pub(crate) fn script_command(rest: &[String]) -> Result<(), Failure> {
   Ok(())
 }
 
-/// The script's state: the one document it mutates and the path it was read from.
+/// The script's state: the one document it mutates, the path it was read from, and the sink its
+/// reports go to.
 ///
 /// The path is kept because `tools_ref` is resolved relative to the document, exactly as the
-/// subcommands resolve it. Nothing else of the process is read.
-#[derive(Default)]
-struct Session {
+/// subcommands resolve it. Nothing else of the process is read, and nothing is printed: `out` is the
+/// only exit a report has.
+struct Session<'sink> {
   document: Option<Document>,
   path: Option<PathBuf>,
+  /// The `Write` the caller of [`run_script`] chose.
+  out: &'sink mut dyn Write,
 }
 
-impl Session {
+impl Session<'_> {
+  /// Write a command's report to the caller's sink.
+  fn say(&mut self, report: &str) -> Result<(), Failure> {
+    write_report(&mut *self.out, report)
+  }
+
   /// Run one line's command, through the table.
   fn execute(&mut self, line: &ScriptLine) -> Result<(), Failure> {
     let word = line.word();
@@ -534,16 +561,9 @@ fn command_nest(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
   let outcome = session.mutate(line, |document| {
     nest_document(document, &request).map_err(|failure| line.locate(failure))
   })?;
-  match outcome {
-    Outcome::Done(report) => {
-      print!("{report}");
-      Ok(())
-    }
-    Outcome::Finding(report, failure) => {
-      print!("{report}");
-      Err(line.at_word(failure))
-    }
-  }
+  outcome
+    .write_to(&mut *session.out)
+    .map_err(|failure| line.at_word(failure))
 }
 
 /// `toolpath [options]`: append a toolpath to the open document.
@@ -561,19 +581,20 @@ fn command_toolpath(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
   let report = session.mutate(line, |document| {
     append_toolpath(document, &document_path, &args).map_err(|failure| line.locate(failure))
   })?;
-  print!("{report}");
-  Ok(())
+  session.say(&report)
 }
 
-/// `validate`: check the open document and print the counts the subcommand prints.
+/// `validate`: check the open document and write the counts the subcommand prints.
 fn command_validate(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   line.exactly(0)?;
-  let (document, _) = session.open_document(line)?;
-  document
-    .validate()
-    .map_err(|error| line.at_word(Failure::input(error.to_string())))?;
-  print!("{}", validate_report(document));
-  Ok(())
+  let report = {
+    let (document, _) = session.open_document(line)?;
+    document
+      .validate()
+      .map_err(|error| line.at_word(Failure::input(error.to_string())))?;
+    validate_report(document)
+  };
+  session.say(&report)
 }
 
 /// `emit --post <file>`: write the program the open document makes.
@@ -603,9 +624,9 @@ fn command_simulate(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
   let (document, document_path) = session.open_document(line)?;
   let outcome =
     simulate_document(document, document_path, &args).map_err(|failure| line.locate(failure))?;
-  // The report is the finding's body, so it is printed before the exit code says which one it was.
+  // The report is the finding's body, so it is written before the exit code says which one it was.
   outcome
-    .print_and_result()
+    .write_to(&mut *session.out)
     .map_err(|failure| line.at_word(failure))
 }
 
@@ -650,8 +671,7 @@ fn command_parts(session: &mut Session, line: &ScriptLine) -> Result<(), Failure
   let report = session.mutate(line, |document| {
     author_parts(document, &args).map_err(|failure| line.locate(failure))
   })?;
-  print!("{report}");
-  Ok(())
+  session.say(&report)
 }
 
 /// `cutlist [--out <path>]`: write the cut list of the open document.

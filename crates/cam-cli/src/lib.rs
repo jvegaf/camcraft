@@ -17,6 +17,7 @@ pub mod pieces;
 pub mod printsheet;
 pub mod script;
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cam_geom::nest::{NestAlgorithm, NestOptions, NestPlan, NestRotation};
@@ -290,17 +291,34 @@ pub enum Outcome {
 impl Outcome {
   /// Print the report, then answer with the command's result.
   pub fn print_and_result(self) -> Result<(), Failure> {
+    self.write_to(&mut std::io::stdout())
+  }
+
+  /// Write the report to `sink`, then answer with the command's result.
+  ///
+  /// This is the one body behind [`Outcome::print_and_result`]: a subcommand passes stdout, a script
+  /// passes the sink its caller chose (`script::run_script`), so neither can report something the other
+  /// would not (M10 invariant 1). The report is the finding's body, so it is written before the failure
+  /// is returned.
+  pub fn write_to(self, sink: &mut dyn Write) -> Result<(), Failure> {
     match self {
-      Self::Done(report) => {
-        print!("{report}");
-        Ok(())
-      }
+      Self::Done(report) => write_report(sink, &report),
       Self::Finding(report, failure) => {
-        print!("{report}");
+        write_report(sink, &report)?;
         Err(failure)
       }
     }
   }
+}
+
+/// Write a report to the sink its caller chose: the one way a report leaves this crate.
+///
+/// `print!` panics when its own write fails, which a caller holding a buffer should never inherit, so a
+/// sink that refuses the bytes becomes a refusal instead.
+pub(crate) fn write_report(sink: &mut dyn Write, report: &str) -> Result<(), Failure> {
+  sink
+    .write_all(report.as_bytes())
+    .map_err(|error| Failure::input(format!("cannot write the report: {error}")))
 }
 
 pub fn run(arguments: &[String]) -> Result<(), Failure> {
