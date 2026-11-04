@@ -7,12 +7,12 @@
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Operation, OriginCorner, ProfileParams, ProfileSide,
-  Toolpath,
+  Document, EngraveParams, Entity, EntityKind, Job, Layer, Operation, OriginCorner, ProfileParams,
+  ProfileSide, Toolpath,
 };
 use cam_move::ToolShape;
 use cam_toolpath::{profile, program_for, ProfileRequest, ProgramTool, ToolSpec, ToolpathError};
-use cam_units::Length;
+use cam_units::{Angle, Length};
 
 fn tool(number: u32, diameter: f64) -> ToolSpec {
   ToolSpec {
@@ -176,5 +176,36 @@ fn a_tool_number_the_specs_do_not_hold_is_refused_by_name() {
   assert_eq!(
     error.to_string(),
     "tool T7 used by toolpath \"TP1\" is not in the library"
+  );
+}
+
+#[test]
+fn an_engrave_still_carries_the_bits_real_shape() {
+  // Preserved while M8 added moulding to this arm of the shape match: an authored-depth groove says
+  // nothing about the cutter, so the program carries the bit the library describes — a V-bit when it
+  // records an angle, a cylinder otherwise (M6 A8).
+  let (document, _) = document_with(vec![Toolpath {
+    id: "TP1".to_owned(),
+    name: "Engrave".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: 3,
+    operation: Operation::Engrave(EngraveParams::default()),
+  }]);
+
+  let angled = ToolSpec {
+    included_angle: Some(Angle::from_degrees(60.0)),
+    ..tool(3, 0.2)
+  };
+  let program = program_for(&document, &[sharp(angled)]).expect("a program");
+  assert_eq!(
+    program.segments[0].tool,
+    ToolShape::v_bit(Angle::from_degrees(60.0), Length::ZERO)
+  );
+
+  let program = program_for(&document, &[sharp(tool(3, 3.0))]).expect("a program");
+  assert_eq!(
+    program.segments[0].tool,
+    ToolShape::cylinder(Length::from_mm(3.0))
   );
 }

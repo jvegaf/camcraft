@@ -12,7 +12,9 @@
 //! descent around a circle at a pitch per revolution — the one strategy whose program is not a stack of
 //! constant-Z moves. M7 adds `vcarve`, which walks the selected region's medial axis with one tip per
 //! vertex at the depth that vertex's own clearance demands, so its program is a depth field rather than
-//! a set of passes at all.
+//! a set of passes at all. M8 adds `moulding`, which sweeps an authored cross-section along a rail with a
+//! stepover: one walk of the rail per overlapped lateral pass, each at the depth the cross-section
+//! authors there.
 //!
 //! Must not depend on `cam-post` or any UI crate.
 
@@ -23,6 +25,7 @@ pub mod drill;
 pub mod engrave;
 pub mod fluting;
 pub mod inlay;
+pub mod moulding;
 pub mod pocket;
 pub mod texture;
 pub mod thread;
@@ -33,6 +36,7 @@ pub use drill::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use engrave::{engrave, EngraveRequest};
 pub use fluting::{fluting, FlutingRequest};
 pub use inlay::{female, inlay, male, InlayRequest, Inlaypath};
+pub use moulding::{moulding, MouldingRequest};
 pub use pocket::{pocket, PocketRequest, Pocketpath};
 pub use texture::{texture, TextureRequest};
 pub use thread::{thread, ThreadRequest};
@@ -408,6 +412,43 @@ pub enum ToolpathError {
   IslandNotAContour {
     /// Id of the offending island.
     island: String,
+  },
+  /// A moulding profile has fewer than two points, so no cross-section exists to sweep.
+  ///
+  /// The document model refuses it as the document loads (M8 T1), but a caller that hands the strategy
+  /// its parameters directly reaches it without passing through there, and a profile of one point sweeps
+  /// nothing at all.
+  #[error("a moulding profile needs at least two points, got {points}")]
+  MouldingProfileTooShort {
+    /// How many points the profile held.
+    points: usize,
+  },
+  /// A moulding profile's lateral distances do not strictly increase.
+  ///
+  /// A cross-section is one depth per lateral distance, so a lateral that does not exceed the one before
+  /// it is two depths for the same place. Refused with both values and the offending index rather than
+  /// resolved by picking one, because either pick cuts a profile the document did not author (S3).
+  #[error(
+    "moulding profile point {index} at lateral {lateral} mm must be greater than the previous \
+     {previous} mm: a cross-section is one depth per lateral distance"
+  )]
+  MouldingProfileLateral {
+    /// Index of the offending point in the profile.
+    index: usize,
+    /// The lateral distance of the point before it, in millimetres.
+    previous: f64,
+    /// The offending lateral distance in millimetres.
+    lateral: f64,
+  },
+  /// The geometry kernel refused a moulding's geometry for a reason the strategy does not restate.
+  ///
+  /// A rail with no length is the case this is reached for: it has no sweep behind it, and a program of
+  /// zero moves would look like a strategy that ran and found nothing to cut. The kernel's sentence is
+  /// kept verbatim instead of being guessed at (the `MedialAxis` precedent).
+  #[error("the moulding's geometry could not be built: {reason}")]
+  MouldingGeometry {
+    /// What the kernel said, verbatim.
+    reason: String,
   },
   /// A strategy refused the toolpath it was handed.
   ///
@@ -1049,17 +1090,19 @@ fn segment_for(
       }
       ToolShape::v_bit(included_angle, flat_diameter)
     }
-    // An engrave, a flute or a texture carries the tool's real shape, whatever it is: a V-bit when the
-    // library records an angle and a cylinder otherwise (M6 A8). Nothing about the path depends on it —
-    // a groove's depth is authored and a ramp is a length — but the simulation must sweep the groove the
-    // bit actually cuts, and a segment that said "cylinder" for a V-bit would report a correct engrave
-    // as gouge, and a correct V-groove flute or texture as a flat slot.
-    Operation::Engrave(_) | Operation::Fluting(_) | Operation::Texture(_) => {
-      match spec.included_angle {
-        Some(included_angle) => ToolShape::v_bit(included_angle, flat_diameter),
-        None => ToolShape::cylinder(spec.diameter),
-      }
-    }
+    // An engrave, a flute, a texture or a moulding carries the tool's real shape, whatever it is: a
+    // V-bit when the library records an angle and a cylinder otherwise (M6 A8). Nothing about the path
+    // depends on it — a groove's depth is authored, a ramp is a length and a moulding's cross-section is
+    // authored data too (M8 S3) — but the simulation must sweep the groove the bit actually cuts, and a
+    // segment that said "cylinder" for a V-bit would report a correct engrave as gouge, a correct
+    // V-groove flute or texture as a flat slot, and a correct moulding as the wrong cross-section.
+    Operation::Engrave(_)
+    | Operation::Fluting(_)
+    | Operation::Texture(_)
+    | Operation::Moulding(_) => match spec.included_angle {
+      Some(included_angle) => ToolShape::v_bit(included_angle, flat_diameter),
+      None => ToolShape::cylinder(spec.diameter),
+    },
     // A V-carve's cone is the bit's own, and the simulation must sweep the shape the machine really
     // has: the program's Z says `clearance / tan(document's angle / 2)`, and if the library's angle is
     // not that one, the carve really is a different shape and the report must say so rather than
@@ -1288,6 +1331,23 @@ fn segment_for(
         male(&request)
       };
       moves.extend(half.map_err(|error| in_toolpath(toolpath, error))?);
+    }
+    Operation::Moulding(params) => {
+      // A moulding's rail is the selected entity, and one rail is one sweep: two selected rails are two
+      // mouldings, the way two selected vectors are two flutes. The profile and the stepover live in the
+      // operation itself (M8 T1), so the selection stays a single list of rails.
+      for entity_id in &toolpath.entity_ids {
+        let contour = contour_of(document, toolpath, entity_id)?;
+        moves.extend(
+          moulding(&MouldingRequest {
+            rail: contour,
+            params,
+            tool: &spec,
+            job: &document.job,
+          })
+          .map_err(|error| in_toolpath(toolpath, error))?,
+        );
+      }
     }
   }
 
