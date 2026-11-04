@@ -510,6 +510,61 @@ fn a_part_larger_than_the_board_is_reported_unplaced() {
 }
 
 #[test]
+fn a_part_that_fits_neither_arm_of_an_l_shaped_board_is_unplaced() {
+  // Here the L is the **board**, not a part. Its 100 x 40 bottom arm and 40 x 100 left arm leave the
+  // 60 x 60 notch from (40, 40) to (100, 100) as the only room in the bounding box, and a 50 x 50
+  // square fits neither arm, so it fits no part of the material at all. A predicate that accepts
+  // `Touching` as proof of inside-ness places it in the notch — a part off the stock, reported placed.
+  let sheet = el();
+  let parts = [rect(50.0, 50.0)];
+  let plan = plan(&sheet, &parts, 0.0, false, STEP);
+
+  assert_eq!(
+    placements(&plan),
+    vec![],
+    "the square fits neither arm, so nothing is placed"
+  );
+  assert_eq!(plan.unplaced(), &[0], "the square is reported, not dropped");
+  assert_eq!(plan.sheets_used(), 0, "and it opens no board");
+}
+
+#[test]
+fn a_part_that_only_touches_a_circular_board_from_outside_is_unplaced() {
+  // The board is the disc of radius 100 about (100, 100), so its bounding box is 200 x 200. The part
+  // is the disc of radius r = 100 (3 - 2 sqrt 2) = 17.157287525380986 mm, anchored at that box's
+  // corner: its centre is (r, r), and sqrt 2 (100 - r) = 100 + r, so the two circles are tangent at
+  // (29.289321881345245, 29.289321881345245) and the part lies wholly outside the board, sharing
+  // exactly one boundary point with it — `Touching`, and nothing more than `Touching`.
+  let sheet = primitive::circle(Point2::new(100.0, 100.0), 100.0).expect("a circular board");
+  let radius = 100.0 * (3.0 - 2.0 * 2.0_f64.sqrt());
+  let part = disc(radius);
+  assert_eq!(
+    relation(&part, &sheet, TOL),
+    Relation::Touching,
+    "the fixture is only a fixture if the part touches the board from outside"
+  );
+
+  // The coarse step leaves the bounding box's own corner as the one anchor the heuristic tries.
+  let touching = plan(&sheet, &[part], 0.0, false, 200.0);
+  assert_eq!(
+    placements(&touching),
+    vec![],
+    "the part is not placed off the stock"
+  );
+  assert_eq!(touching.unplaced(), &[0], "it is reported unplaced");
+  assert_eq!(touching.sheets_used(), 0, "and it opens no board");
+
+  // The same board holds a part that is inside it, so the refusal is the geometry, not the board.
+  let inside = plan(&sheet, &[disc(50.0)], 0.0, false, STEP);
+  assert_eq!(
+    inside.placements().len(),
+    1,
+    "a disc of radius 50 fits the circular board: {inside:?}"
+  );
+  assert!(inside.certifies(&sheet, 0.0));
+}
+
+#[test]
 fn a_second_sheet_is_opened_only_when_the_first_cannot_hold_the_part() {
   let board = board(100.0, 100.0);
 
@@ -627,6 +682,36 @@ fn the_certificate_fails_when_a_plan_breaks_it() {
   );
   // And a board with no room in it holds nothing.
   assert!(!plan.certifies(&board(1.0e-9, 1.0e-9), GAP));
+}
+
+#[test]
+fn the_certificate_refuses_a_placement_the_board_does_not_contain() {
+  // One plan, two boards. The plan is built on a board that contains its parts and then asked about a
+  // board that does not, so the certificate — never the packer — is what answers. A certificate that
+  // reads `Touching` as inside-ness answers `true` to both, which is the false positive pinned here.
+  let square_board = board(100.0, 100.0);
+  let l_plan = plan(&square_board, &[el(), rect(50.0, 50.0)], 0.0, false, STEP);
+  assert!(
+    l_plan.certifies(&square_board, 0.0),
+    "the plan is legal on the square board: {l_plan:?}"
+  );
+  assert!(
+    !l_plan.certifies(&el(), 0.0),
+    "the 50 x 50 square sits in the L's notch, so the L does not contain the plan"
+  );
+
+  let box_board = board(200.0, 200.0);
+  let circle = primitive::circle(Point2::new(100.0, 100.0), 100.0).expect("a circular board");
+  let radius = 100.0 * (3.0 - 2.0 * 2.0_f64.sqrt());
+  let circle_plan = plan(&box_board, &[disc(radius)], 0.0, false, STEP);
+  assert!(
+    circle_plan.certifies(&box_board, 0.0),
+    "the disc sits in the square board's corner: {circle_plan:?}"
+  );
+  assert!(
+    !circle_plan.certifies(&circle, 0.0),
+    "and the same disc touches the circular board's boundary from outside it"
+  );
 }
 
 #[test]

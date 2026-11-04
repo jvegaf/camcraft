@@ -75,6 +75,15 @@
 //! from — is never reported unplaced: "unplaced" says the part does not fit, not that it did not fit
 //! the board that happened to be tried.
 //!
+//! Inside-ness is the board's **material**, never the mere absence of a crossing. A candidate whose
+//! outline meets the board nowhere is inside when [`Relation::FirstInside`] says so, because then its
+//! outline and the material it encloses lie in the material's interior. A candidate that *touches* the
+//! board's boundary is inside only when the material is on the part's side of that boundary, which is
+//! decided by insetting the part by [`INSET_STEP`] and asking the same relation again: a part flush
+//! against an edge insets to a part strictly inside the board, while a part outside a concave board —
+//! in an L's notch, or sharing one boundary point with a circular board — insets to a part still
+//! outside it. Touching alone proves nothing, and the module certifies nothing it cannot prove.
+//!
 //! # Determinism
 //!
 //! Parts are sorted by area descending with a **stable** sort, so equal areas keep the caller's order.
@@ -108,6 +117,15 @@ pub const NO_FIT_HEURISTIC: &str = "free-profile no-fit heuristic";
 /// the crate's tolerance keeps this module's answers consistent with the region and winding code it
 /// asks.
 const TOLERANCE: f64 = crate::DEFAULT_TOLERANCE;
+
+/// The step, in millimetres, by which a candidate that touches the board is inset before the board is
+/// asked whether the part's own side of that boundary is material.
+///
+/// A hundredth of a millimetre: far above [`TOLERANCE`], one micrometre, so an inset part that was
+/// flush against an edge is still measurably inside it; and far below any feature a cut can hold, so
+/// the step refuses no part a shop makes. It is the only slack the inside-ness rule has, and it is
+/// stated here rather than left implicit.
+const INSET_STEP: f64 = 0.01;
 
 /// The options a free-profile nesting run is driven by.
 ///
@@ -346,8 +364,9 @@ impl ProfileNestPlan {
     NO_FIT_HEURISTIC
   }
 
-  /// True when this plan keeps the promise nesting makes: every placement is inside the board, and
-  /// every pair on one board is further apart than `gap` millimetres and does not intersect.
+  /// True when this plan keeps the promise nesting makes: every placement is inside the board's
+  /// material, and every pair on one board is further apart than `gap` millimetres and does not
+  /// intersect.
   ///
   /// The check is the packer's own rule, applied to the plan instead of believed: each outline must be
   /// inside the board, and each ordered pair on one board must be `Disjoint` from the other outline and
@@ -539,12 +558,22 @@ fn oriented(part: &Contour, rotation: NestRotation) -> Result<Contour, GeomError
   transform::translate(&turned, Vec2::new(-bounds.min.x, -bounds.min.y))
 }
 
-/// True when `candidate` lies inside `sheet`, its own edges included.
+/// True when `candidate` lies inside `sheet`'s material, its own edges included.
 ///
 /// The bounding box decides first — it is the cheap half, and it also covers an arc bulging past the
-/// convex hull of its vertices — and the kernel's relation decides the rest: a part inside the board is
-/// `FirstInside`, one flush against an edge is `Touching`, and one poking through a concave board edge
-/// is `Crossing`, which is not inside at all.
+/// convex hull of its vertices — and the kernel's relation then answers the shape. Its two accepting
+/// answers are not the same claim:
+///
+/// * [`Relation::FirstInside`] means the outlines meet nowhere and the candidate is inside the board.
+///   The candidate's outline is connected and meets no boundary, so it and the material it encloses
+///   lie in the material's interior: the board contains it.
+/// * [`Relation::Touching`] proves nothing on its own. It is also what a candidate wholly outside a
+///   concave board reports when the two share a single boundary point, and what a part in an L's
+///   notch reports. A touching candidate is accepted only when the material is on its own side of the
+///   boundary it touches, which [`inset_is_inside`] decides.
+///
+/// `Crossing` pokes through a boundary, `Disjoint` shares nothing, and `SecondInside` is a candidate
+/// that encloses the board instead: none of them is inside it.
 fn inside_sheet(candidate: &Contour, sheet: &Contour, sheet_bounds: Bounds) -> bool {
   let bounds = candidate.bounds();
   if bounds.min.x < sheet_bounds.min.x - TOLERANCE
@@ -554,10 +583,37 @@ fn inside_sheet(candidate: &Contour, sheet: &Contour, sheet_bounds: Bounds) -> b
   {
     return false;
   }
-  matches!(
-    relation(candidate, sheet, TOLERANCE),
-    Relation::FirstInside | Relation::Touching
-  )
+  match relation(candidate, sheet, TOLERANCE) {
+    Relation::FirstInside => true,
+    Relation::Touching => inset_is_inside(candidate, sheet),
+    Relation::SecondInside | Relation::Crossing | Relation::Disjoint => false,
+  }
+}
+
+/// True when `candidate` inset by [`INSET_STEP`] is strictly inside `sheet`.
+///
+/// This asks the "material on the part's side" rule once, of the whole part. Insetting a part by a
+/// hundredth of a millimetre keeps its material and drops the empty side of every boundary it has, so
+/// a part that sat flush against the board's edge is now strictly inside the board — `FirstInside`,
+/// because it touches nothing — while a part outside the board insets to a part that is still outside
+/// it, which the same relation answers `Disjoint`, `Crossing` or `Touching` and never `FirstInside`.
+/// The offset kernel is exact for lines and arcs and the relation is a statement about the whole
+/// outline, so this is a claim about every point of the inset part and not about sampled ones. A part
+/// the offset kernel refuses cannot prove it is inside, so it is refused rather than placed:
+/// soundness is what this module guarantees, and incompleteness is what it documents.
+fn inset_is_inside(candidate: &Contour, sheet: &Contour) -> bool {
+  let Ok(region) = Region::new(vec![candidate.clone()]) else {
+    return false;
+  };
+  let Ok(inset) = region.offset(INSET_STEP, TOLERANCE) else {
+    return false;
+  };
+  !inset.region.boundaries.is_empty()
+    && inset
+      .region
+      .boundaries
+      .iter()
+      .all(|boundary| relation(boundary, sheet, TOLERANCE) == Relation::FirstInside)
 }
 
 /// True when `candidate` may not be placed beside a part with this `outline` and blocked region.
