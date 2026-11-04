@@ -23,13 +23,13 @@ Requirements as stated by the owner (user strings verbatim, in the user's langua
 
 | ID | Task | Specs | Route | Status | Commit |
 | --- | --- | --- | --- | --- | --- |
-| T1 | `cam-model` vocabulary + document: `MouldingParams` (rail ref, profile points, stepover, depth), `Operation::Moulding`, schema decision (no bump, rail on `entity_ids`) | S1, S2, S3, S4, S5 | inline, test-first | done, uncommitted (vertical slice) | |
-| T2 | `cam-geom` rail geometry: arc-length parametrisation, normals, arcs preserved, profile swept to a certified band/envelope (property tests) | S1, S2, S3 | delegated, test-first (research-adjacent unit) | done, uncommitted (vertical slice) | |
-| T3 | Stepover law: offset family along the rail, coverage/overlap certificate, refusals by name | S3, S6 | delegated, test-first (landed inside T2–T4 chain, lives in `cam-geom::moulding::StepoverLaw`) | done, uncommitted (vertical slice) | |
-| T4 | `cam-toolpath::moulding`: varying-Z feeds from cross-section × rail position, branch/retract rules, refusals by name | S3, S4, S5 | delegated, test-first | done, uncommitted (interim refusal + errors.rs entry removed, guard green) | |
-| T5 | `cam-sim` claim `claim_moulding` from the document alone, one-signed; state plainly whether `gouge` is zero by construction | S6 | delegated, test-first (parallel with T6, disjoint surfaces) | done, uncommitted (vertical slice) | |
-| T6 | `cam-cli --kind moulding`: flags, help, refusal table for unused flags, `inspect` | S4 | delegated, test-first (parallel with T5, disjoint surfaces) | done, uncommitted (vertical slice) | |
-| T7 | Closing evidence: oracles in both signs + golden programs, `docs/m8-moulding.md`, roadmap §4.11 + README close-out, `./scripts/check.sh` green | S1–S7 | delegated | in_progress (on committed slices) | |
+| T1 | `cam-model` vocabulary + document: `MouldingParams` (rail ref, profile points, stepover, depth), `Operation::Moulding`, schema decision (no bump, rail on `entity_ids`) | S1, S2, S3, S4, S5 | inline, test-first | done (`89b75bb`/`c3d3a6d`) | |
+| T2 | `cam-geom` rail geometry: arc-length parametrisation, normals, arcs preserved, profile swept to a certified band/envelope (property tests) | S1, S2, S3 | delegated, test-first (research-adjacent unit) | done (`89b75bb`/`c3d3a6d`) | |
+| T3 | Stepover law: offset family along the rail, coverage/overlap certificate, refusals by name | S3, S6 | delegated, test-first (landed inside T2–T4 chain, lives in `cam-geom::moulding::StepoverLaw`) | done (`89b75bb`/`c3d3a6d`) | |
+| T4 | `cam-toolpath::moulding`: varying-Z feeds from cross-section × rail position, branch/retract rules, refusals by name | S3, S4, S5 | delegated, test-first | done (`c3d3a6d`) | |
+| T5 | `cam-sim` claim `claim_moulding` from the document alone, one-signed; state plainly whether `gouge` is zero by construction | S6 | delegated, test-first (parallel with T6, disjoint surfaces) | done (`89b75bb`/`c3d3a6d`) | |
+| T6 | `cam-cli --kind moulding`: flags, help, refusal table for unused flags, `inspect` | S4 | delegated, test-first (parallel with T5, disjoint surfaces) | done (`89b75bb`/`c3d3a6d`) | |
+| T7 | Closing evidence: oracles in both signs + golden programs, `docs/m8-moulding.md`, roadmap §4.11 + README close-out, `./scripts/check.sh` green | S1–S7 | delegated | done (`b3b16e5`) | |
 
 ## Recorded out of scope
 
