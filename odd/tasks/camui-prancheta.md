@@ -637,3 +637,14 @@ words: *"design/prancheta-reference/ + README"*.
   fixed-name sentence, keeping its note, card and order claims untouched.
   **Workspace: 1 295 tests, exit 0** (baseline 1 289; +6). `cargo fmt --check` clean. The public
   `cam_ui::strategy::RENAME` constant is gone; nothing else in the workspace referenced it.
+- **L29 (the rename review: approved on the first pass, and what the four advisories say).** Lineage
+  `review-463dc34b6b39af90`, tier **high**, **three lenses**, 6 paths, 555 changed lines, correction budget 200 —
+  **unused, nothing to correct**. Three reviewer runs (≈49.6 kB of prompt each, the cheapest of the feature
+  because the candidate was one work unit), **approved on the last admitted event**, authority **burned**
+  (`gentle-ai.review-acknowledged/v1`, revision `sha256:64a679c2…`). No refuter was requested: after two
+  consecutive corrections on T6 and T8 this is the first candidate since T5 that a reviewer read and accepted
+  as it stood — the operation-first ordering written into `generate` (L28) is the reason the pair's failure mode
+  was already right before anyone looked at it.
+  **Four advisories, all `informational`:** `R2-001` (`strategy.rs:457-458`), `R3-001` (`:483-490`), `R3-002`
+  (`:479-482`) and `R3-003` (`tests/strategy.rs:625-628`). They join the forty this feature already owes. None
+  of them is a reason to re-review this candidate; its receipt stands.
