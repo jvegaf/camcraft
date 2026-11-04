@@ -3154,6 +3154,92 @@ fn setting_an_operation_on_an_absent_toolpath_is_refused_naming_it() {
 }
 
 #[test]
+fn renaming_a_toolpath_changes_only_its_name_and_one_undo_restores_it() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle.clone()], 4))
+    .expect("the toolpath is added");
+  let before = app.document().toolpaths[0].clone();
+
+  let rename = || Command::SetToolpathName {
+    toolpath_id: "TP1".to_owned(),
+    name: "Roughing pass".to_owned(),
+  };
+  assert_single_undo_restores(&mut app, rename());
+  app.execute(rename()).expect("the name is set");
+
+  let after = app.document().toolpaths[0].clone();
+  assert_eq!(after.name, "Roughing pass");
+  assert_eq!(after.id, before.id, "a rename keeps the id");
+  assert_eq!(
+    after.tool_number, before.tool_number,
+    "a rename keeps the tool"
+  );
+  assert_eq!(
+    after.entity_ids, before.entity_ids,
+    "a rename keeps the geometry"
+  );
+  assert_eq!(
+    after.operation, before.operation,
+    "a rename keeps the operation"
+  );
+  assert_eq!(
+    app.document().toolpaths.len(),
+    1,
+    "and touches no other toolpath"
+  );
+}
+
+#[test]
+fn renaming_a_toolpath_to_an_empty_or_blank_name_is_refused_and_writes_nothing() {
+  let mut app = state_with_layer();
+  let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
+  app
+    .execute(add_toolpath("TP1", vec![rectangle], 4))
+    .expect("the toolpath is added");
+
+  for name in ["", "   ", "\t\n "] {
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::SetToolpathName {
+        toolpath_id: "TP1".to_owned(),
+        name: name.to_owned(),
+      },
+    );
+    assert_eq!(
+      error,
+      CommandError::EmptyToolpathName,
+      "{name:?}: {error:?}"
+    );
+    assert_eq!(error.to_string(), "a toolpath's name must not be empty");
+    assert_eq!(
+      app.document().toolpaths[0].name,
+      "TP1 profile",
+      "{name:?}: a refused rename leaves the old name standing"
+    );
+  }
+}
+
+#[test]
+fn renaming_an_absent_toolpath_is_refused_naming_it() {
+  let mut app = state_with_layer();
+  let error = assert_refused_atomically(
+    &mut app,
+    Command::SetToolpathName {
+      toolpath_id: "TP9".to_owned(),
+      name: "Roughing pass".to_owned(),
+    },
+  );
+  assert_eq!(
+    error,
+    CommandError::UnknownToolpath("TP9".to_owned()),
+    "{error:?}"
+  );
+  assert_eq!(error.to_string(), "toolpath \"TP9\" does not exist");
+}
+
+#[test]
 fn deleting_a_toolpath_removes_only_that_one() {
   let mut app = state_with_layer();
   let rectangle = draw_rectangle(&mut app, Point2::ORIGIN, 20.0, 10.0);
@@ -3231,6 +3317,14 @@ fn the_toolpath_commands_have_human_labels() {
     }
     .label(),
     "set toolpath operation"
+  );
+  assert_eq!(
+    Command::SetToolpathName {
+      toolpath_id: "TP1".to_owned(),
+      name: "Roughing pass".to_owned(),
+    }
+    .label(),
+    "set toolpath name"
   );
   assert_eq!(
     Command::DeleteToolpath {
