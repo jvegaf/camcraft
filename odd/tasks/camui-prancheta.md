@@ -733,3 +733,31 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   height, so I did not invent numbers. And **`chrome.rs:12` is left alone**: its module diagram still draws
   `│ 52 │` for a rail that `palette_width` makes 200. It is a code comment, not a design artefact, so it is
   recorded in `## Backlog` instead of being fixed inside T9's surfaces.
+- **L32 (the delivery shape: five chained review candidates, because one could not be reviewed at all).** The whole
+  branch as a single candidate was **refused by the provider**, not by me: `lens_context_budget_exceeded` — 8 paths
+  and ~2 300 lines of HTML exceed the reviewer's evidence budget, `mutation_outcome: none`, no authority created,
+  nothing burned, and the cause says retrying that exact candidate cannot succeed. The fix the cause names is a
+  chained sequence of smaller candidates, so the branch was re-cut as six branches off `2e52952`, each containing
+  only its own slice's paths (`review/t9-1` … `review/t9-6`, kept as the exact reviewed trees).
+  **Five candidates now carry a burned receipt, all approved, none corrected:**
+  `review-5b02c33628496345` (`system.md` + `system.html`, tier medium, one `review-reliability` run,
+  **4 advisories**: `system.html:274`, `:290`, `:354-356`, `system.md:66`);
+  `review-2781d3ca2a33d57f` (`01-shell-2d.html`, medium, one run, **1 advisory**: `:21-24`);
+  `review-e3a48f441b77f133` (`02-stages.html`, medium, one run, **no findings**);
+  `review-8f14cca9c417e30a` (`04-tokens.html`, medium, one run, **2 advisories**: `04-tokens.html:413` and this
+  document at `:88`);
+  `review-a19d6e0dc7a8590a` (`03-iconography.html` + `design.json`, medium, one run, **no findings**).
+  **The sixth candidate needs none**: the provider answered `stop` with `acknowledged_predecessor_passive_delta`
+  for the record itself, which is a passive delta on a path whose predecessor was already acknowledged.
+  **One reviewer run was wasted and it is worth recording why:** the first `review-reliability` artifact for the
+  `system.md` candidate was refused at admission (`evidence_path_out_of_scope`: the reviewer cited a path outside
+  the frozen repository). Admission consumed nothing; STATUS reoffered the same slot, the second run satisfied it,
+  and the refused bytes were never resubmitted.
+  **Every tier came back `medium` for a reason the provider states and I did not anticipate:** an `.html` artefact
+  counts as an *executable change* (`risk_reasons: executable_change`), so the design boards are reviewed as
+  software, not as prose. That is why each slice cost one real reviewer run instead of closing instantly like the
+  documentation-only candidate in L30 did.
+  **Delivery state, and it is the owner's:** `feat/camui-prancheta-t9` @ `3a14cc7` holds the seven commits, all five
+  artefact slices carry burned receipts, the branch is **not merged into `master` and not pushed**, and `master`
+  stayed at `2e52952` throughout. The review lifecycle stops at acknowledgement; commit, push and merge follow
+  ordinary repository policy.
