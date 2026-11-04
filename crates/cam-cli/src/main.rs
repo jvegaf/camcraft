@@ -1,5 +1,5 @@
 //! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`,
-//! `nest`, `emit` and `simulate`.
+//! `nest`, `emit`, `simulate` and `script`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -8,6 +8,12 @@
 //! `0` success, `2` invalid input, `3` unsupported schema, `4` post-processor error, `5` vector
 //! issues, `6` a simulation that found gouge, uncut material or a crash (D-M5-6), `7` a nesting that
 //! could not place every instance (M9).
+//!
+//! Every command's logic lives in a function that its argument-parsing arm calls, and the scripted
+//! command language (`script`) calls the same functions (M10 invariant 1), so no behaviour has a
+//! second implementation.
+
+mod script;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -127,6 +133,31 @@ COMMANDS:
     simulate <document>       Simulate the program and report removed, gouge, uncut and crashes
         --library <path>      Tool library; defaults to the document's tools_ref
         --resolution <mm>     Cell size of the removal grid (default 1)
+    script <file>             Run a script: one command per line, against one document
+
+SCRIPTS:
+    A script is read from <file> and executed one line at a time against the document it opens:
+    a line holds a command word and its arguments, `#` at the start of a token begins a comment to
+    the end of the line, blank lines are ignored, an argument may be wrapped in double quotes when
+    it contains a space, and nothing else of the language exists: no variables, no conditionals, no
+    loops. A failure names its line and column and the token it is about. Every command calls the
+    same function its `cam-cli` subcommand calls, so a script cannot cut differently.
+
+    open <document>            Read the document this script mutates; a script opens exactly one
+    sheet <width> <height>     Author a nesting sheet in millimetres; it is named S1, S2, ...
+    part <instances> <ids>     Author a nesting part from this document's entity ids, separated by
+                               commas; it is named P1, P2, ...
+    nest [options]             Nest the authored parts onto the authored sheets and store the
+                               placements and the cost; takes nest's own --sheets, --gap,
+                               --rotation, --algorithm and --step
+    toolpath [options]         Append a toolpath; takes toolpath's own --kind, --entities, --tool
+                               and every other toolpath flag
+    validate                   Check the open document and print the counts validate prints
+    emit --post <file>         Compute the program and write it; takes emit's own --out and
+                               --library
+    simulate                   Simulate the program and report it; takes simulate's own --library
+                               and --resolution
+    save <document>            Validate the open document and write it here
 
 OPTIONS:
     -h, --help                Show this help
@@ -219,6 +250,48 @@ impl Failure {
       message: message.into(),
     }
   }
+
+  /// The same failure, said at a position in a script: the `cam-post` parser's diagnostic shape,
+  /// `line {line}:{column}: {message}` (M10 invariant 2).
+  ///
+  /// It rewrites the message and keeps the code, so a scripted command exits with the code its
+  /// subcommand would have: a scripted `emit` that the post cannot express is still `4`, not a generic
+  /// `2` that hides what happened.
+  fn at(self, line: usize, column: usize) -> Self {
+    Self {
+      code: self.code,
+      message: format!("line {line}:{column}: {}", self.message),
+    }
+  }
+}
+
+/// What a command produced, for the commands that can end in a **finding** rather than a refusal.
+///
+/// A `nest` that could not place every instance and a `simulation` that found a defect both have a
+/// report to print and a failure to exit with, in that order: the report is the finding's body. Both
+/// the subcommand and the scripted command read this one shape, so a script cannot print a report its
+/// subcommand would have refused to print first (M10 invariant 1).
+enum Outcome {
+  /// The report, and the command succeeded.
+  Done(String),
+  /// The report, and the finding the command ends with.
+  Finding(String, Failure),
+}
+
+impl Outcome {
+  /// Print the report, then answer with the command's result.
+  fn print_and_result(self) -> Result<(), Failure> {
+    match self {
+      Self::Done(report) => {
+        print!("{report}");
+        Ok(())
+      }
+      Self::Finding(report, failure) => {
+        print!("{report}");
+        Err(failure)
+      }
+    }
+  }
 }
 
 fn run(arguments: &[String]) -> Result<(), Failure> {
@@ -244,6 +317,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     "simulate" => simulate_command(rest),
+    "script" => script::script_command(rest),
     other => Err(Failure::input(format!(
       "unknown command {other:?}; see --help"
     ))),
@@ -285,13 +359,21 @@ fn classify_invalid(path: &Path, error: &cam_store::StoreError) -> Failure {
 fn validate(rest: &[String]) -> Result<(), Failure> {
   let path = only_path(rest, "validate")?;
   let document = open(&path)?;
-  println!(
-    "valid: {} layer(s), {} entity(ies), {} toolpath(s)",
+  print!("{}", validate_report(&document));
+  Ok(())
+}
+
+/// The report `cam-cli validate` prints for a document that loaded.
+///
+/// The script's `validate` command prints this same report for the document it holds, so a scripted
+/// run and a command-line run describe a document in one sentence, not two (M10 invariant 1).
+fn validate_report(document: &Document) -> String {
+  format!(
+    "valid: {} layer(s), {} entity(ies), {} toolpath(s)\n",
     document.layers.len(),
     document.entities().count(),
     document.toolpaths.len()
-  );
-  Ok(())
+  )
 }
 
 fn inspect(rest: &[String]) -> Result<(), Failure> {
@@ -681,7 +763,11 @@ struct ToolpathArgs {
   profile: Vec<(f64, f64)>,
 }
 
-fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
+/// Everything `cam-cli toolpath`'s command line holds, parsed and nothing more.
+///
+/// The scripted `toolpath` command hands its tokens to this same parser (M10 invariant 1), so a flag
+/// means one thing in both places and no second parser exists to drift from it.
+fn toolpath_args(rest: &[String]) -> Result<ToolpathArgs, Failure> {
   let mut args = ToolpathArgs::default();
   let mut index = 0;
   while index < rest.len() {
@@ -754,10 +840,35 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     index += 2;
   }
 
+  Ok(args)
+}
+
+fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
+  let args = toolpath_args(rest)?;
   let path = args
     .path
     .clone()
     .ok_or_else(|| Failure::input("toolpath requires a document path"))?;
+  let mut document = open(&path)?;
+  let report = append_toolpath(&mut document, &path, &args)?;
+  let destination = args.out.clone().unwrap_or(path);
+  cam_store::document::save_document(&destination, &document)
+    .map_err(|error| Failure::input(error.to_string()))?;
+  print!("{report}");
+  Ok(())
+}
+
+/// Append the toolpaths one `toolpath` command means to a document, and report them.
+///
+/// This is the whole command after its command line: the operation, the geometry its own strategy can
+/// refuse, the `TPn` id and name, the inlay pair, the model's `validate` and the report. It writes
+/// nothing — the caller saves — so the subcommand and the scripted command share one implementation and
+/// differ only in where the document came from and where it goes (M10 invariant 1).
+fn append_toolpath(
+  document: &mut Document,
+  document_path: &Path,
+  args: &ToolpathArgs,
+) -> Result<String, Failure> {
   let kind = args
     .kind
     .clone()
@@ -803,8 +914,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     .tool
     .ok_or_else(|| Failure::input("toolpath requires --tool"))?;
 
-  let mut document = open(&path)?;
-  let library = open_library_hint(&document, &path, args.library.as_deref())?;
+  let library = open_library_hint(document, document_path, args.library.as_deref())?;
   // The bank summary below needs the tool the same way `emit` does, so read the whole tool here.
   let tool_data = library
     .as_ref()
@@ -1496,8 +1606,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   // a male with no cavity, or a cavity with no plug.
   if let Operation::Inlay(params) = &operation {
     return append_inlay(
-      &mut document,
-      args.out.clone().unwrap_or(path),
+      document,
       &entity_ids,
       tool_number,
       params,
@@ -1546,7 +1655,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   // `emit`, so the selection is checked here, while the command can still say no and change nothing.
   if matches!(operation, Operation::Drilling(_)) {
     for entity_id in &entity_ids {
-      let contour = contour_of(&document, &id, entity_id)?;
+      let contour = contour_of(document, &id, entity_id)?;
       if circle_centre(contour).is_none() {
         return Err(Failure::input(
           ToolpathError::NotACircle {
@@ -1583,7 +1692,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
           .unwrap_or(0),
       };
       for entity_id in &entity_ids {
-        let contour = contour_of(&document, &id, entity_id)?;
+        let contour = contour_of(document, &id, entity_id)?;
         thread(&ThreadRequest {
           entity: entity_id,
           contour,
@@ -1604,7 +1713,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   if let Operation::VCarve(params) = &operation {
     let mut contours = Vec::with_capacity(entity_ids.len());
     for entity_id in &entity_ids {
-      contours.push(contour_of(&document, &id, entity_id)?);
+      contours.push(contour_of(document, &id, entity_id)?);
     }
     let spec = ToolSpec {
       number: tool_number,
@@ -1660,7 +1769,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
           .unwrap_or(0),
       };
       for entity_id in &entity_ids {
-        let contour = contour_of(&document, &id, entity_id)?;
+        let contour = contour_of(document, &id, entity_id)?;
         moulding(&MouldingRequest {
           rail: contour,
           params,
@@ -1684,17 +1793,13 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     .validate()
     .map_err(|error| Failure::input(error.to_string()))?;
 
-  let destination = args.out.clone().unwrap_or(path);
-  cam_store::document::save_document(&destination, &document)
-    .map_err(|error| Failure::input(error.to_string()))?;
-
   let islands = if island_ids.is_empty() {
     String::new()
   } else {
     format!(", {} island(s)", island_ids.len())
   };
-  println!(
-    "added {id} {}, tool T{tool_number}, {} entity(ies){islands}",
+  let mut report = format!(
+    "added {id} {}, tool T{tool_number}, {} entity(ies){islands}\n",
     operation_label(&operation),
     entity_ids.len()
   );
@@ -1702,7 +1807,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   // Nothing of it reaches the program, and a selection that cannot be computed says why.
   let bank_report = match &operation {
     Operation::Drilling(params) if params.bank.is_some() => Some(bank_summary(
-      &document,
+      document,
       &entity_ids,
       tool_number,
       params,
@@ -1711,13 +1816,14 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
     )),
     _ => None,
   };
-  if let Some(report) = bank_report {
-    println!("{report}");
+  if let Some(bank) = bank_report {
+    report.push_str(&bank);
+    report.push('\n');
   }
-  Ok(())
+  Ok(report)
 }
 
-/// Append the two toolpaths one inlay means, in the fixed order, and write the document back.
+/// Append the two toolpaths one inlay means, in the fixed order, and report them.
 ///
 /// `inlay female` (the region grown by the allowance) is appended first and `inlay male` (the job
 /// rectangle with that region standing as an island) second, with consecutive `TPn` ids and those exact
@@ -1729,16 +1835,16 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
 /// The pair's own geometry rules are asked here, by the real strategy, before anything is written: a
 /// document whose only failure mode is a later `emit` is worse than a command that says no. A tool
 /// whose diameter the library does not record is not a reason to refuse here — `emit` names that one —
-/// so the check is skipped and the pocket's own refusal takes over.
+/// so the check is skipped and the pocket's own refusal takes over. It writes nothing: the caller
+/// saves, exactly as it does for a single toolpath.
 fn append_inlay(
   document: &mut Document,
-  destination: PathBuf,
   entity_ids: &[String],
   tool_number: u32,
   params: &cam_model::InlayParams,
   diameter: Option<Length>,
   cutting: Option<&CuttingData>,
-) -> Result<(), Failure> {
+) -> Result<String, Failure> {
   let female_id = next_toolpath_id(document, None);
   let male_id = next_toolpath_id(document, Some(&female_id));
 
@@ -1788,18 +1894,12 @@ fn append_inlay(
     .validate()
     .map_err(|error| Failure::input(error.to_string()))?;
 
-  cam_store::document::save_document(&destination, document)
-    .map_err(|error| Failure::input(error.to_string()))?;
-
-  println!(
-    "added {female_id} inlay female, tool T{tool_number}, {} entity(ies)",
+  Ok(format!(
+    "added {female_id} inlay female, tool T{tool_number}, {} entity(ies)\nadded {male_id} inlay \
+     male, tool T{tool_number}, {} island(s)\n",
+    entity_ids.len(),
     entity_ids.len()
-  );
-  println!(
-    "added {male_id} inlay male, tool T{tool_number}, {} island(s)",
-    entity_ids.len()
-  );
-  Ok(())
+  ))
 }
 
 /// The next free `TPn` id, skipping `taken` as well when a pair is being named at once.
@@ -2145,14 +2245,25 @@ struct NestRun {
   profile: Option<(&'static str, f64)>,
 }
 
-/// Nest the document's parts onto its sheets, report the run and write the placements and the cost.
+/// One `nest` run's request: everything the run asks for that is not the document itself.
 ///
-/// The shape follows `toolpath`: read the document, add what the command was asked for, validate and
-/// write it back to `--out` (the document itself by default), with the report on stdout. What differs
-/// is what a run can end with — a nesting that could not place every instance is a finding with its
-/// own exit code and writes nothing, because a document whose placements fall short of a part's
-/// instance count does not load.
-fn nest_command(rest: &[String]) -> Result<(), Failure> {
+/// Every field is an `Option` exactly where the command distinguishes "the caller said nothing" from
+/// "the caller said the default", because a flag that means nothing for a document is refused by name
+/// rather than defaulted.
+#[derive(Default)]
+struct NestRequest {
+  sheets: Vec<(f64, f64)>,
+  gap: Option<f64>,
+  rotation: Option<String>,
+  algorithm: Option<String>,
+  step: Option<f64>,
+}
+
+/// Everything `cam-cli nest`'s command line holds, parsed and nothing more.
+///
+/// The scripted `nest` command hands its tokens to this same parser (M10 invariant 1), so an option
+/// means one thing in both places and no second parser exists to drift from it.
+fn nest_args(rest: &[String]) -> Result<NestArgs, Failure> {
   let mut args = NestArgs::default();
   let mut index = 0;
   while index < rest.len() {
@@ -2201,13 +2312,58 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
     index += 2;
   }
 
-  let path = args
-    .path
-    .ok_or_else(|| Failure::input("nest requires a document path"))?;
-  let mut document = open(&path)?;
+  Ok(args)
+}
 
-  let gap = args.gap.unwrap_or(0.0);
-  let allow_rotation = match args.rotation.as_deref() {
+fn nest_command(rest: &[String]) -> Result<(), Failure> {
+  let NestArgs {
+    path,
+    out,
+    sheets,
+    gap,
+    rotation,
+    algorithm,
+    step,
+  } = nest_args(rest)?;
+  let path = path.ok_or_else(|| Failure::input("nest requires a document path"))?;
+  let mut document = open(&path)?;
+  let request = NestRequest {
+    sheets,
+    gap,
+    rotation,
+    algorithm,
+    step,
+  };
+  let outcome = nest_document(&mut document, &request)?;
+  match outcome {
+    Outcome::Done(report) => {
+      let destination = out.unwrap_or(path);
+      cam_store::document::save_document(&destination, &document)
+        .map_err(|error| Failure::input(format!("{}: {error}", destination.display())))?;
+      print!("{report}");
+      Ok(())
+    }
+    Outcome::Finding(report, failure) => {
+      print!("{report}");
+      Err(failure)
+    }
+  }
+}
+
+/// Nest the document's parts onto its sheets, store the placements and the cost, and report the run.
+///
+/// The shape follows `toolpath`: take the document, add what the command was asked for, validate, and
+/// hand the report back — the caller writes it out, `--out` or the document itself. What differs is
+/// what a run can end with — a nesting that could not place every instance is an [`Outcome::Finding`]
+/// with its own exit code, and it writes nothing. `target` is the caller's document and is replaced
+/// only when the run succeeded, because a document whose placements fall short of a part's instance
+/// count does not load: every refusal leaves the caller's document exactly as it was found (M10
+/// invariant 4).
+fn nest_document(target: &mut Document, request: &NestRequest) -> Result<Outcome, Failure> {
+  let mut document = target.clone();
+
+  let gap = request.gap.unwrap_or(0.0);
+  let allow_rotation = match request.rotation.as_deref() {
     None | Some("off") => false,
     Some("on") => true,
     Some(other) => {
@@ -2216,7 +2372,7 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
       )))
     }
   };
-  let algorithm = match args.algorithm.as_deref() {
+  let algorithm = match request.algorithm.as_deref() {
     None | Some("auto") => NestAlgorithm::Auto,
     Some("maxrects") => NestAlgorithm::MaxRects,
     Some("guillotine") => NestAlgorithm::Guillotine,
@@ -2226,7 +2382,7 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
       )))
     }
   };
-  let step = args
+  let step = request
     .step
     .unwrap_or(cam_geom::nest_profile::DEFAULT_SEARCH_STEP);
 
@@ -2248,7 +2404,7 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
   // kept a board nobody named would report a nesting on a sheet the caller had replaced. Without the
   // flag the document's own boards are it, and there is no default board — a sheet size is authored,
   // not assumed.
-  let mut sheets: Vec<NestingSheet> = if args.sheets.is_empty() {
+  let mut sheets: Vec<NestingSheet> = if request.sheets.is_empty() {
     if nesting.sheets.is_empty() {
       return Err(Failure::input(
         "nest needs --sheets: the document authors no sheets to nest on, and a nesting has no default \
@@ -2257,7 +2413,7 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
     }
     nesting.sheets.clone()
   } else {
-    args
+    request
       .sheets
       .iter()
       .enumerate()
@@ -2305,13 +2461,13 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
   // its 22: a `--step` nobody searched with, or an `--algorithm` no packer ran, still looks applied.
   let has_rectangle = parts.iter().any(|part| part.class == NestClass::Rectangle);
   let has_profile = parts.iter().any(|part| part.class == NestClass::Profile);
-  if args.algorithm.is_some() && !has_rectangle {
+  if request.algorithm.is_some() && !has_rectangle {
     return Err(Failure::input(
       "nest takes no --algorithm: no part in this document is a rectangle, so neither maxrects nor \
        guillotine packs anything, and a free profile is placed by the no-fit heuristic --step drives",
     ));
   }
-  if args.step.is_some() && !has_profile {
+  if request.step.is_some() && !has_profile {
     return Err(Failure::input(
       "nest takes no --step: every part in this document is a rectangle, so the free-profile \
        heuristic never searches a lattice and no step is applied",
@@ -2496,32 +2652,31 @@ fn nest_command(rest: &[String]) -> Result<(), Failure> {
     // refuses a document whose placements fall short of a part's instance count
     // (`NestingInstanceCountMismatch`), so a partial nesting has no honest form to store and the
     // document stays exactly as the run found it. The report is the finding, and exit 7 names it.
-    print!("{report}");
     let named: Vec<String> = shortfall
       .iter()
       .map(|(number, placed, wanted)| {
         format!("{} ({placed} of {wanted} instance(s))", parts[*number].id)
       })
       .collect();
-    return Err(Failure::nesting(format!(
-      "the nesting left {} of {} instance(s) unplaced: {}; the document was not written",
-      shortfall
-        .iter()
-        .map(|(_, placed, wanted)| wanted - placed)
-        .sum::<usize>(),
-      parts.iter().map(|part| part.instances).sum::<usize>(),
-      named.join(", ")
-    )));
+    return Ok(Outcome::Finding(
+      report,
+      Failure::nesting(format!(
+        "the nesting left {} of {} instance(s) unplaced: {}; the document was not written",
+        shortfall
+          .iter()
+          .map(|(_, placed, wanted)| wanted - placed)
+          .sum::<usize>(),
+        parts.iter().map(|part| part.instances).sum::<usize>(),
+        named.join(", ")
+      )),
+    ));
   }
 
   document
     .validate()
     .map_err(|error| Failure::input(error.to_string()))?;
-  let destination = args.out.clone().unwrap_or(path);
-  cam_store::document::save_document(&destination, &document)
-    .map_err(|error| Failure::input(format!("{}: {error}", destination.display())))?;
-  print!("{report}");
-  Ok(())
+  *target = document;
+  Ok(Outcome::Done(report))
 }
 
 /// The `W x H` one `--sheets` flag authors, in millimetres.
@@ -2632,6 +2787,19 @@ fn fresh_sheet_id(sheets: &[NestingSheet]) -> String {
   loop {
     let id = format!("S{number}");
     if sheets.iter().all(|sheet| sheet.id != id) {
+      return id;
+    }
+    number += 1;
+  }
+}
+
+/// The next free `P{n}` part id: the `fresh_sheet_id` scan, so a scripted `part` that authors one
+/// part per line names them P1, P2, ... and never collides with a part the document already holds.
+fn fresh_part_id(parts: &[NestingPart]) -> String {
+  let mut number = parts.len() + 1;
+  loop {
+    let id = format!("P{number}");
+    if parts.iter().all(|part| part.id != id) {
       return id;
     }
     number += 1;
@@ -2767,47 +2935,77 @@ fn nest_report(
   text
 }
 
-fn emit_command(rest: &[String]) -> Result<(), Failure> {
-  let mut document_path: Option<PathBuf> = None;
-  let mut post_path: Option<PathBuf> = None;
-  let mut out_path: Option<PathBuf> = None;
-  let mut library_path: Option<PathBuf> = None;
+/// Everything `cam-cli emit`'s command line holds, parsed and nothing more.
+///
+/// The scripted `emit` command hands its tokens to this same parser (M10 invariant 1).
+#[derive(Default)]
+struct EmitArgs {
+  document: Option<PathBuf>,
+  post: Option<PathBuf>,
+  out: Option<PathBuf>,
+  library: Option<PathBuf>,
+}
+
+fn emit_args(rest: &[String]) -> Result<EmitArgs, Failure> {
+  let mut args = EmitArgs::default();
 
   let mut index = 0;
   while index < rest.len() {
     match rest[index].as_str() {
       "--post" => {
-        post_path = rest.get(index + 1).map(PathBuf::from);
+        args.post = rest.get(index + 1).map(PathBuf::from);
         index += 2;
       }
       "--out" => {
-        out_path = rest.get(index + 1).map(PathBuf::from);
+        args.out = rest.get(index + 1).map(PathBuf::from);
         index += 2;
       }
       "--library" => {
-        library_path = rest.get(index + 1).map(PathBuf::from);
+        args.library = rest.get(index + 1).map(PathBuf::from);
         index += 2;
       }
       other if other.starts_with('-') => {
         return Err(Failure::input(format!("unknown emit option {other:?}")))
       }
       other => {
-        if document_path.is_some() {
+        if args.document.is_some() {
           return Err(Failure::input("emit takes exactly one document"));
         }
-        document_path = Some(PathBuf::from(other));
+        args.document = Some(PathBuf::from(other));
         index += 1;
       }
     }
   }
 
-  let document_path =
-    document_path.ok_or_else(|| Failure::input("emit requires a document path"))?;
-  let post_path = post_path.ok_or_else(|| Failure::input("emit requires --post"))?;
+  Ok(args)
+}
 
+fn emit_command(rest: &[String]) -> Result<(), Failure> {
+  let args = emit_args(rest)?;
+  let document_path = args
+    .document
+    .clone()
+    .ok_or_else(|| Failure::input("emit requires a document path"))?;
   let document = open(&document_path)?;
+  emit_document(&document, &document_path, &args)
+}
 
-  let library_path = match library_path.or_else(|| {
+/// Compute the program an open document makes and write it, or print it.
+///
+/// The one emitter for both callers: the `emit` subcommand and the scripted `emit` command differ only
+/// in how they found the document, so neither can produce a program the other would not (M10
+/// invariant 1).
+fn emit_document(
+  document: &Document,
+  document_path: &Path,
+  args: &EmitArgs,
+) -> Result<(), Failure> {
+  let post_path = args
+    .post
+    .clone()
+    .ok_or_else(|| Failure::input("emit requires --post"))?;
+
+  let library_path = match args.library.clone().or_else(|| {
     document.tools_ref.as_ref().map(|reference| {
       document_path
         .parent()
@@ -2834,7 +3032,7 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
   // crate that can see both halves of it (T2.0), so the emitter, the simulation and, later, the
   // shell's estimate cannot disagree about what the document cuts.
   let stream =
-    program_for(&document, &library).map_err(|error| Failure::input(error.to_string()))?;
+    program_for(document, &library).map_err(|error| Failure::input(error.to_string()))?;
 
   let meta = ProgramMeta {
     file_name: document_path
@@ -2845,9 +3043,9 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
   };
   let emitted = emit(&post, &stream, &meta).map_err(|error| Failure::post(error.to_string()))?;
 
-  match out_path {
+  match &args.out {
     Some(path) => {
-      std::fs::write(&path, &emitted.text)
+      std::fs::write(path, &emitted.text)
         .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
       eprintln!("wrote {} line(s) to {}", emitted.lines, path.display());
     }
@@ -2865,48 +3063,75 @@ fn emit_command(rest: &[String]) -> Result<(), Failure> {
 /// tool.
 const TOLERANCE_PER_CELL: f64 = 8.0;
 
-/// `simulate`: run the document's program over a heightfield and report what it did to the stock.
+/// Everything `cam-cli simulate`'s command line holds, parsed and nothing more.
 ///
-/// The report is the contract (A7): the same document prints the same bytes, and a program that
-/// gouges, leaves material standing or rams the tool exits `6` rather than `0` (D-M5-6). Nothing is
-/// written: a simulation is a question about the document, not a change to it.
-fn simulate_command(rest: &[String]) -> Result<(), Failure> {
-  let mut document_path: Option<PathBuf> = None;
-  let mut library_path: Option<PathBuf> = None;
-  let mut resolution = cam_sim::DEFAULT_CELL;
+/// The scripted `simulate` command hands its tokens to this same parser (M10 invariant 1).
+#[derive(Default)]
+struct SimulateArgs {
+  document: Option<PathBuf>,
+  library: Option<PathBuf>,
+  resolution: Option<f64>,
+}
+
+fn simulate_args(rest: &[String]) -> Result<SimulateArgs, Failure> {
+  let mut args = SimulateArgs::default();
 
   let mut index = 0;
   while index < rest.len() {
     match rest[index].as_str() {
       "--library" => {
-        library_path = Some(PathBuf::from(option_value(rest, index, "--library")?));
+        args.library = Some(PathBuf::from(option_value(rest, index, "--library")?));
         index += 2;
       }
       "--resolution" => {
-        resolution = parse_mm(option_value(rest, index, "--resolution")?, "--resolution")?;
+        args.resolution = Some(parse_mm(
+          option_value(rest, index, "--resolution")?,
+          "--resolution",
+        )?);
         index += 2;
       }
       other if other.starts_with('-') => {
         return Err(Failure::input(format!("unknown simulate option {other:?}")))
       }
       other => {
-        if document_path.is_some() {
+        if args.document.is_some() {
           return Err(Failure::input("simulate takes exactly one document"));
         }
-        document_path = Some(PathBuf::from(other));
+        args.document = Some(PathBuf::from(other));
         index += 1;
       }
     }
   }
 
-  let document_path =
-    document_path.ok_or_else(|| Failure::input("simulate requires a document path"))?;
+  Ok(args)
+}
+
+fn simulate_command(rest: &[String]) -> Result<(), Failure> {
+  let args = simulate_args(rest)?;
+  let document_path = args
+    .document
+    .clone()
+    .ok_or_else(|| Failure::input("simulate requires a document path"))?;
   let document = open(&document_path)?;
+  simulate_document(&document, &document_path, &args)?.print_and_result()
+}
+
+/// Simulate the program an open document makes, and report what it did to the stock.
+///
+/// The one simulation for both callers: the `simulate` subcommand and the scripted `simulate` command
+/// differ only in how they found the document, so neither can report a cut the other would not (M10
+/// invariant 1).
+fn simulate_document(
+  document: &Document,
+  document_path: &Path,
+  args: &SimulateArgs,
+) -> Result<Outcome, Failure> {
+  let resolution = args.resolution.unwrap_or(cam_sim::DEFAULT_CELL);
 
   // The library resolves exactly as `emit`'s does: `--library`, else the document's own `tools_ref`
   // relative to the document.
   let library_path =
-    match library_path.or_else(|| {
+    match args.library.clone().or_else(|| {
       document.tools_ref.as_ref().map(|reference| {
         document_path
           .parent()
@@ -2926,7 +3151,7 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
   // The program is the one `emit` would run (D-M5-1): the same segments, built by the same
   // function, so the simulation cannot disagree with the machine about what was cut.
   let stream =
-    program_for(&document, &library).map_err(|error| Failure::input(error.to_string()))?;
+    program_for(document, &library).map_err(|error| Failure::input(error.to_string()))?;
 
   let cell = Length::from_mm(resolution);
   let mut field =
@@ -2940,7 +3165,7 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
       .map(|segment| (segment.tool_number, segment.tool)),
   );
   let target =
-    target_for(&document, cell, &tools).map_err(|error| Failure::input(error.to_string()))?;
+    target_for(document, cell, &tools).map_err(|error| Failure::input(error.to_string()))?;
 
   let removal = sweep::apply(&stream, &mut field);
   let deviation = deviations(
@@ -2950,7 +3175,7 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
   )
   .map_err(|error| Failure::input(error.to_string()))?;
 
-  print_report(&document, &stream, &field, &deviation, &removal);
+  let report = simulate_report(document, &stream, &field, &deviation, &removal);
 
   let mut defects = Vec::new();
   if deviation.gouge > 0.0 {
@@ -2963,27 +3188,31 @@ fn simulate_command(rest: &[String]) -> Result<(), Failure> {
     defects.push(format!("{} crash(es)", removal.crashes.len()));
   }
   if defects.is_empty() {
-    Ok(())
+    Ok(Outcome::Done(report))
   } else {
-    Err(Failure::simulation(format!(
-      "the simulation found defects: {}",
-      defects.join(", ")
-    )))
+    Ok(Outcome::Finding(
+      report,
+      Failure::simulation(format!(
+        "the simulation found defects: {}",
+        defects.join(", ")
+      )),
+    ))
   }
 }
 
 /// The six-line report, in one order and one decimal count, so two runs print the same bytes (S9).
-fn print_report(
+fn simulate_report(
   document: &Document,
   stream: &MoveStream,
   field: &Heightfield,
   deviation: &cam_sim::Deviation,
   removal: &cam_sim::Removal,
-) {
+) -> String {
   let grid = field.grid();
   let volumes = field.volumes();
   let cell = short_decimal(grid.cell.mm());
-  println!(
+  let mut lines: Vec<String> = Vec::new();
+  lines.push(format!(
     "simulate: {} x {} x {} mm, {cell} x {cell} mm cells ({} x {}), {} toolpath(s)",
     decimal(document.job.width.mm()),
     decimal(document.job.height.mm()),
@@ -2991,41 +3220,44 @@ fn print_report(
     grid.columns,
     grid.rows,
     document.toolpaths.len()
-  );
-  println!(
+  ));
+  lines.push(format!(
     "program: {} move(s), {} mm cutting length",
     stream.move_count(),
     decimal(stream.cut_length().mm())
-  );
-  println!(
+  ));
+  lines.push(format!(
     "removed: {} mm3 of {} mm3, {} through cell(s)",
     decimal(volumes.removed),
     decimal(grid.volume(document.job.thickness)),
     volumes.through_cells
-  );
-  println!(
+  ));
+  lines.push(format!(
     "gouge: {} mm3 over {} cell(s)",
     decimal(deviation.gouge),
     deviation.gouge_cells
-  );
-  println!(
+  ));
+  lines.push(format!(
     "uncut: {} mm3 over {} cell(s)",
     decimal(deviation.uncut),
     deviation.uncut_cells
-  );
+  ));
   if removal.crashes.is_empty() {
-    println!("crash: none");
+    lines.push("crash: none".to_owned());
   }
   for crash in &removal.crashes {
-    println!(
+    lines.push(format!(
       "crash: {} move {} at ({}, {}, {})",
       crash.toolpath,
       crash.move_index,
       decimal(crash.at.x.mm()),
       decimal(crash.at.y.mm()),
       decimal(crash.at.z.mm())
-    );
+    ));
   }
+  let mut text = lines.join("\n");
+  text.push('\n');
+  text
 }
 
 /// A millimetre figure with the report's three decimals, through `cam-units` so it is locale-free.
