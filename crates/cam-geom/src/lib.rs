@@ -23,6 +23,7 @@ pub mod edit;
 pub mod intersect;
 pub mod join;
 pub mod medial;
+pub mod moulding;
 pub mod offset;
 mod point;
 pub mod primitive;
@@ -54,7 +55,7 @@ pub const DEFAULT_TOLERANCE: f64 = 1.0e-6;
 pub const MAX_TESSELLATION_STEPS: usize = 4096;
 
 /// Errors produced by the geometry kernel.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum GeomError {
   /// A contour needs at least two vertices.
   #[error("a contour needs at least two vertices, got {vertices}")]
@@ -91,5 +92,62 @@ pub enum GeomError {
   UnsupportedCharacter {
     /// The character that could not be drawn.
     character: char,
+  },
+  /// A moulding rail has no length for the sweep to advance along.
+  ///
+  /// A rail with no perimeter has no sweep behind it, and a point asked of it would be an invention
+  /// rather than a place on a shape (M8 T2).
+  #[error("a moulding rail needs a length to sweep along, got {length} mm")]
+  MouldingRailTooShort {
+    /// The rail's perimeter in millimetres.
+    length: f64,
+  },
+  /// A moulding profile has fewer than two points, so it is not a cross-section.
+  #[error("a moulding profile needs at least two points, got {points}")]
+  MouldingProfileTooShort {
+    /// How many points were supplied.
+    points: usize,
+  },
+  /// A moulding profile point is not a finite pair of millimetres.
+  #[error(
+    "a moulding profile point must use finite millimetres, got lateral {lateral} mm and depth \
+     {depth} mm"
+  )]
+  MouldingProfilePointNotFinite {
+    /// The offending lateral distance in millimetres.
+    lateral: f64,
+    /// The offending depth in millimetres.
+    depth: f64,
+  },
+  /// A moulding profile's lateral distances are not strictly increasing.
+  ///
+  /// A cross-section is one depth per lateral distance, so a lateral that does not exceed the one
+  /// before it is two depths for the same place. Refused with both values rather than resolved by
+  /// picking one (M8 T2, T3).
+  #[error(
+    "moulding profile point {index} at lateral {lateral} mm must be greater than the previous \
+     {previous} mm: a cross-section is one depth per lateral distance"
+  )]
+  MouldingProfileLateralOrder {
+    /// Index of the offending point in the profile.
+    index: usize,
+    /// The lateral distance of the point before it, in millimetres.
+    previous: f64,
+    /// The offending lateral distance in millimetres.
+    lateral: f64,
+  },
+  /// A moulding stepover is zero, negative or not finite, so it cannot space passes.
+  #[error("a moulding stepover must be a positive number of millimetres, got {stepover} mm")]
+  MouldingStepoverNotPositive {
+    /// The offending stepover in millimetres.
+    stepover: f64,
+  },
+  /// A moulding walk was asked for a chord tolerance that is zero, negative or not finite.
+  #[error(
+    "a moulding rail sample tolerance must be a positive number of millimetres, got {tolerance} mm"
+  )]
+  MouldingToleranceNotPositive {
+    /// The offending tolerance in millimetres.
+    tolerance: f64,
   },
 }
