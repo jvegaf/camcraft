@@ -103,7 +103,10 @@ fn a_rate_is_shown_in_the_units_the_library_authored_it_in() {
     .find(|(label, _)| label == "Feed")
     .expect("the speeds group offers a feed")
     .1;
-  assert_eq!(feed, "3.94 in/s", "an inch library's feed reads in its own units");
+  assert_eq!(
+    feed, "3.94 in/s",
+    "an inch library's feed reads in its own units"
+  );
   let rates = form_fields(ToolFormGroup::Machine, &inch)
     .into_iter()
     .find(|(label, _)| label == "Rates")
