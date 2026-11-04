@@ -51,7 +51,8 @@ breaks one is refused:
 | T1 | The command language: a line-oriented grammar, a parser with located diagnostics, and a dispatch table whose every entry calls the function the CLI subcommand already calls | S1 S2 | worker | — |
 | T2 | CSV: parts **in** (name, width, height, quantity) as nesting parts, and the cut list **out** from M9's placements, both with line-located refusals | S3 | worker | — |
 | T3 | The HTML print sheet: a fixed renderer, deterministic bytes, one command that writes it | S5 | worker | — |
-| T4 | The minimal panel: run a script from the shell behind `cam-ui`'s adapter, show its output and its located errors | S4 | worker | — |
+| T3b | Move the command language out of the binary into a `cam-script` library crate, so the shell can run a script at all: `cam-cli` has no lib target, so `cam-ui` cannot depend on it, and the engine must have one home that both callers use | S1 S2 S4 | worker | — |
+| T4 | The minimal panel: run a script from the shell behind `cam-ui`'s adapter, show its output and its located errors — over `cam-script`, never by spawning the CLI | S4 | worker | — |
 | T5 | Goldens for the script run, the cut list and the sheet; determinism twice over; the milestone differential against its cut point | S1-S5 | worker | — |
 | T6 | Docs: `docs/m10-documents.md`, `odd/roadmap.md` §4.13, README, `docs/format.md` if the document moves, and this document's evidence | S1-S6 | parent | — |
 
@@ -68,3 +69,13 @@ so it goes first and alone.
   `Cargo.lock` holds **482** packages and is treated as a reviewable surface; the roadmap's own M10 row
   leaves the engine undecided ("Rhai/Lua"), which is why S1 had to decide it and why S5 is marked as the
   plan rather than as an owner string.
+- **L4 (T4 is not reachable as written, found before it started).** `crates/cam-cli` has **no `[lib]`
+  target** — it is `main.rs` plus modules — so `cam-ui` cannot depend on it, and a panel that runs a
+  script cannot use the engine where T1 put it. Spawning the CLI as a subprocess would be the
+  alternative, and it is refused: it duplicates path and environment handling and puts a process
+  boundary between the shell and its own document. So **T3b** was opened to move the command language
+  into a `cam-script` library that both `cam-cli` and `cam-ui` call, which is invariant 1 taken
+  literally — the engine has one home and both callers are callers. T4's row now depends on it, and
+  this is the second requirement-level finding of the milestone: the first was that no CSV support
+  existed at all (L3). `cam-ui` already depends on `cam-store`, `cam-program`, `cam-sim`, `cam-import`
+  and `cam-model`, so the new crate's edges are the toolpath and post crates it does not have yet.

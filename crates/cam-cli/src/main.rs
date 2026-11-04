@@ -1,5 +1,5 @@
 //! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`,
-//! `nest`, `parts`, `cutlist`, `emit`, `simulate` and `script`.
+//! `nest`, `parts`, `cutlist`, `report`, `emit`, `simulate` and `script`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -14,6 +14,7 @@
 //! second implementation.
 
 mod pieces;
+mod printsheet;
 mod script;
 
 use std::path::{Path, PathBuf};
@@ -142,6 +143,14 @@ COMMANDS:
                               row: x, y, width and height in millimetres, rotation in degrees
                               (counter-clockwise), every number at three decimals
         --out <path>          Write the cut list here instead of stdout
+    report <document>         Write an HTML print sheet of the document: the job, its layers, every
+                              toolpath with its operation and authored parameters, the tools the
+                              toolpaths name and the nesting with the utilisation the document
+                              derives. One self-contained file, no external asset, no script, every
+                              style inside it, the same bytes on every run, every id and name
+                              escaped; a document that cannot be reported honestly says so on the
+                              sheet rather than guessing
+        --out <path>          Write the sheet here instead of stdout
     script <file>             Run a script: one command per line, against one document
 
 SCRIPTS:
@@ -328,6 +337,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "nest" => nest_command(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
+    "report" => printsheet::report_command(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     "simulate" => simulate_command(rest),
