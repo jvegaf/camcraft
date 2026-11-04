@@ -10,8 +10,9 @@ use std::process::Command;
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
   ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer,
-  MouldingParams, MouldingProfilePoint, Operation, PocketParams, PocketStrategy, ProfileParams,
-  ProfileSide, RetractMode, Toolpath, VCarveParams,
+  MouldingParams, MouldingProfilePoint, Nesting, NestingPart, NestingPlacement, NestingSheet,
+  Operation, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode, Toolpath,
+  VCarveParams,
 };
 use cam_store::document::save_document;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
@@ -7305,5 +7306,804 @@ uncut: 0.000 mm3 over 0 cell(s)
 crash: none
 ";
   assert_eq!(outcome.stdout, expected);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// ---------------------------------------------------------------------------------------------------
+// `cam-cli nest` (M9 T4, S2, S3, S6)
+// ---------------------------------------------------------------------------------------------------
+
+/// A document that authors a nesting section **and is already nested**, the way S1, S2 and S4 say one
+/// is authored: the sheets live in the document, and each part is a selection of the document's own
+/// entities plus how many copies of it the run must place.
+///
+/// `contours` become `E1..En` on one layer, so a part names its geometry by the 1-based index of the
+/// contour it is cut from. `sheets` is the authored board list, in order, and `placements` are the
+/// instances a previous run put on them.
+///
+/// A fixture has to be a document that **loads**, and the model's own instance rule is why every
+/// fixture here is a nesting a run already produced: a part that asks for more copies than the
+/// document places is refused by `Document::validate` (`NestingInstanceCountMismatch`), so a document
+/// can never be saved, or opened, half nested. `nest` therefore re-nests a document that carries
+/// parts, and a run that cannot place every instance writes nothing and leaves that document as it
+/// was. The cost record is left absent, which is the state a document is in before its first run.
+fn write_nesting_document(
+  directory: &Path,
+  name: &str,
+  contours: Vec<Contour>,
+  parts: &[(&str, &[usize], usize)],
+  sheets: &[(&str, f64, f64)],
+  placements: &[(&str, &str, f64, f64)],
+) -> PathBuf {
+  let mut document = Document::new(Job {
+    width: Length::from_mm(200.0),
+    height: Length::from_mm(100.0),
+    thickness: Length::from_mm(18.0),
+    units: UnitSystem::Mm,
+    origin: cam_model::OriginCorner::BottomLeft,
+    safe_z: Length::from_mm(5.0),
+  });
+  document.layers.push(Layer {
+    id: "L1".to_owned(),
+    name: "Parts".to_owned(),
+    visible: true,
+    entities: contours
+      .into_iter()
+      .enumerate()
+      .map(|(index, contour)| Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour { contour },
+      })
+      .collect(),
+  });
+  document.nesting = Some(Nesting {
+    sheets: sheets
+      .iter()
+      .map(|(id, width, height)| NestingSheet {
+        id: (*id).to_owned(),
+        width: Length::from_mm(*width),
+        height: Length::from_mm(*height),
+      })
+      .collect(),
+    parts: parts
+      .iter()
+      .map(|(id, entities, instances)| NestingPart {
+        id: (*id).to_owned(),
+        entity_ids: entities.iter().map(|index| format!("E{index}")).collect(),
+        instances: *instances,
+      })
+      .collect(),
+    placements: placements
+      .iter()
+      .map(|(part, sheet, x, y)| NestingPlacement {
+        part_id: (*part).to_owned(),
+        sheet_id: (*sheet).to_owned(),
+        position: Point2::new(*x, *y),
+        rotation: Angle::ZERO,
+      })
+      .collect(),
+    cost: None,
+  });
+  let path = directory.join(name);
+  save_document(&path, &document).expect("document saved");
+  path
+}
+
+/// An L-shaped bracket: 60 000 mm2 of material inside a 300 x 400 mm box, 120 000 mm2, so its
+/// footprint is not the rectangle its bounds suggest and only the free-profile heuristic can place it.
+fn l_bracket() -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(300.0, 0.0),
+      Point2::new(300.0, 100.0),
+      Point2::new(100.0, 100.0),
+      Point2::new(100.0, 400.0),
+      Point2::new(0.0, 400.0),
+    ],
+    true,
+  )
+  .expect("L bracket")
+}
+
+fn load_nesting(path: &Path) -> Nesting {
+  cam_store::document::load_document(path)
+    .expect("the nested document loads")
+    .nesting
+    .expect("the nested document carries a nesting section")
+}
+
+/// The whole report a rectangle nesting prints, byte for byte.
+///
+/// One 600 x 400 mm panel on one authored 1000 x 600 mm board, gap 0, rotation off: maxrects puts the
+/// only part at the board's own corner, so the placement is `(0.000, 0.000)` and the document's own
+/// utilisation is 240 000 of 600 000 mm2 — `Document::nesting_utilisation`, not the nester's view of
+/// it, which is the trap T1c closed and T4 must not reopen.
+const NEST_REPORT: &str = "\
+nest: 1 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 1 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: used
+part: P1 rectangle, 1 instance(s)
+placement: P1 on S1 at (0.000, 0.000), rotation none, 600.000 x 400.000 mm
+algorithm: rectangle, maxrects
+sheets used: 1
+utilisation: 0.400
+waste: 0.600
+unplaced: none
+";
+
+#[test]
+fn a_rectangle_part_nests_onto_one_sheet_and_the_document_records_the_placement_and_the_cost() {
+  let directory = scratch("nest-rectangle");
+  let document = write_nesting_document(
+    &directory,
+    "panel.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+
+  let outcome = run(&["nest", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(outcome.stderr.is_empty(), "{}", outcome.stderr);
+  assert_eq!(outcome.stdout, NEST_REPORT);
+
+  // The document is written back with the placements and the cost (S2, S3), and the placement is the
+  // one the report printed: the part's own corner on the sheet's own corner.
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let nesting = loaded.nesting.as_ref().expect("the section is written");
+  assert_eq!(
+    nesting.placements,
+    vec![NestingPlacement {
+      part_id: "P1".to_owned(),
+      sheet_id: "S1".to_owned(),
+      position: Point2::new(0.0, 0.0),
+      rotation: Angle::ZERO,
+    }]
+  );
+
+  // The cost record is the document's own arithmetic and nothing else (T1c): written from
+  // `Document::nesting_utilisation`, so the field and the placements cannot state two utilisations.
+  let cost = nesting.cost.as_ref().expect("the cost record is written");
+  assert_eq!(cost.sheets_used, 1);
+  assert_eq!(
+    Some(cost.utilisation),
+    loaded.nesting_utilisation(),
+    "the record is exactly the fraction the document derives"
+  );
+  assert!(
+    (cost.utilisation - 0.4).abs() < 1e-12,
+    "{}",
+    cost.utilisation
+  );
+  assert!((cost.waste - 0.6).abs() < 1e-12, "{}", cost.waste);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_second_sheet_is_opened_when_the_parts_do_not_fit_one() {
+  // A document nested on one 2000 x 1000 mm board, re-nested onto 1000 x 600 mm boards: two 600 x 400
+  // mm instances no longer share a board, so the packer opens a second one — and the document, which
+  // authored one, has to hold the board the run actually used, or the placement would name a sheet
+  // that does not exist (S4).
+  let directory = scratch("nest-second-sheet");
+  let document = write_nesting_document(
+    &directory,
+    "two-panels.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 2)],
+    &[("S1", 2000.0, 1000.0)],
+    &[("P1", "S1", 0.0, 0.0), ("P1", "S1", 600.0, 0.0)],
+  );
+
+  let outcome = run(&[
+    "nest",
+    document.to_str().expect("utf8"),
+    "--sheets",
+    "1000x600",
+  ]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+nest: 2 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 2 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: used
+sheet S2: used
+part: P1 rectangle, 2 instance(s)
+placement: P1 on S1 at (0.000, 0.000), rotation none, 600.000 x 400.000 mm
+placement: P1 on S2 at (0.000, 0.000), rotation none, 600.000 x 400.000 mm
+algorithm: rectangle, maxrects
+sheets used: 2
+utilisation: 0.400
+waste: 0.600
+unplaced: none
+";
+  assert_eq!(outcome.stdout, expected);
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let nesting = loaded.nesting.as_ref().expect("the section is written");
+  assert_eq!(nesting.sheets.len(), 2, "the opened board is authored too");
+  assert_eq!(nesting.sheets[1].id, "S2");
+  assert_eq!(nesting.sheets[1].width.mm(), 1000.0);
+  assert_eq!(nesting.sheets[1].height.mm(), 600.0);
+  let sheets: Vec<&str> = nesting
+    .placements
+    .iter()
+    .map(|placement| placement.sheet_id.as_str())
+    .collect();
+  assert_eq!(sheets, vec!["S1", "S2"]);
+  let cost = nesting.cost.as_ref().expect("the cost record is written");
+  assert_eq!(cost.sheets_used, 2);
+  assert_eq!(Some(cost.utilisation), loaded.nesting_utilisation());
+  assert!(
+    (cost.utilisation - 0.4).abs() < 1e-12,
+    "{}",
+    cost.utilisation
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_part_that_fits_no_sheet_is_reported_with_its_id_and_exits_seven() {
+  // A 1200 x 500 mm part nested on a 2000 x 1000 mm board, re-nested onto 1000 x 600 mm boards with
+  // rotation off: no board holds it. That is a finding about the document's own request, not invalid
+  // input, so it has its own exit code — and the document is left exactly as it was, because
+  // `Document::validate` refuses a document whose placements fall short of each part's instance count
+  // (`NestingInstanceCountMismatch`), so a partial nesting has no honest form to store.
+  let directory = scratch("nest-unplaced");
+  let document = write_nesting_document(
+    &directory,
+    "wide.c2d",
+    vec![rectangle_contour(1200.0, 500.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 2000.0, 1000.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&[
+    "nest",
+    document.to_str().expect("utf8"),
+    "--sheets",
+    "1000x600",
+  ]);
+  assert_eq!(outcome.code, 7, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+nest: 1 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 1 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: unused
+part: P1 rectangle, 1 instance(s)
+algorithm: rectangle, maxrects
+sheets used: 0
+utilisation: none
+waste: none
+unplaced: P1, 1 of 1 instance(s)
+";
+  assert_eq!(outcome.stdout, expected);
+  assert!(
+    outcome.stderr.contains("P1") && outcome.stderr.contains("unplaced"),
+    "the failure names the part and the finding: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "an incomplete nesting writes nothing"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_free_profile_part_goes_through_the_no_fit_heuristic_and_the_report_names_it() {
+  // The L bracket is not a rectangle, so it takes the other nester S6 names — the free-profile no-fit
+  // heuristic — and the report says so, per part class, and names the lattice step it searched with.
+  //
+  // Its utilisation is 0.200 and not 0.100, and that is the document's definition rather than a
+  // rounding: a placement's footprint is the part's bounding box (D-M9-2), so 300 x 400 = 120 000 of
+  // the board's 600 000 mm2 is what the one arithmetic counts, conservative for a curved or notched
+  // outline by design. The report reads that arithmetic, never the nester's view of the run.
+  let directory = scratch("nest-profile");
+  let document = write_nesting_document(
+    &directory,
+    "bracket.c2d",
+    vec![l_bracket()],
+    &[("Bracket", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("Bracket", "S1", 0.0, 0.0)],
+  );
+
+  let outcome = run(&["nest", document.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+nest: 1 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 1 instance(s)
+options: gap 0.000 mm, rotation off
+sheet S1: used
+part: Bracket free profile, 1 instance(s)
+placement: Bracket on S1 at (0.000, 0.000), rotation none, 300.000 x 400.000 mm
+algorithm: free profile, free-profile no-fit heuristic at 10.000 mm
+sheets used: 1
+utilisation: 0.200
+waste: 0.800
+unplaced: none
+";
+  assert_eq!(outcome.stdout, expected);
+
+  let nesting = load_nesting(&document);
+  assert_eq!(
+    nesting.placements,
+    vec![NestingPlacement {
+      part_id: "Bracket".to_owned(),
+      sheet_id: "S1".to_owned(),
+      position: Point2::new(0.0, 0.0),
+      rotation: Angle::ZERO,
+    }]
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn nest_refuses_the_flags_a_documents_own_classes_give_no_meaning_to_by_name() {
+  // The moulding's rule, at this command's door: a flag that was never applied still looks applied, so
+  // a run takes no `--step` when every part is a rectangle (the no-fit heuristic never searches) and
+  // no `--algorithm` when no part is one (neither maxrects nor guillotine packs anything).
+  let directory = scratch("nest-inapplicable");
+  let rectangles = write_nesting_document(
+    &directory,
+    "panels.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+  let profiles = write_nesting_document(
+    &directory,
+    "brackets.c2d",
+    vec![l_bracket()],
+    &[("Bracket", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("Bracket", "S1", 0.0, 0.0)],
+  );
+
+  for (document, flag, value) in [
+    (&rectangles, "--step", "2"),
+    (&rectangles, "--step", "10"),
+    (&profiles, "--algorithm", "guillotine"),
+    (&profiles, "--algorithm", "auto"),
+  ] {
+    let before = std::fs::read(document).expect("read");
+    let outcome = run(&["nest", document.to_str().expect("utf8"), flag, value]);
+    assert_eq!(outcome.code, 2, "{flag} {value}: {}", outcome.stderr);
+    assert!(
+      outcome.stderr.contains(flag) && outcome.stderr.contains("takes no"),
+      "the refusal names {flag}: {}",
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(document).expect("read"),
+      before,
+      "{flag} writes nothing"
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn nest_refuses_a_flag_value_it_cannot_honour_by_name() {
+  let directory = scratch("nest-flag-values");
+  let rectangles = write_nesting_document(
+    &directory,
+    "panels.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+  let profiles = write_nesting_document(
+    &directory,
+    "brackets.c2d",
+    vec![l_bracket()],
+    &[("Bracket", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("Bracket", "S1", 0.0, 0.0)],
+  );
+
+  // Each refusal names the flag and the value it refused, and nothing is written.
+  for (document, arguments) in [
+    (&rectangles, vec!["--rotation", "sideways"]),
+    (&rectangles, vec!["--algorithm", "triangle"]),
+    (&rectangles, vec!["--gap", "-1"]),
+    (&rectangles, vec!["--sheets", "1000"]),
+    (&rectangles, vec!["--sheets", "0x600"]),
+    (&profiles, vec!["--step", "0"]),
+  ] {
+    let before = std::fs::read(document).expect("read");
+    let mut command = vec!["nest", document.to_str().expect("utf8")];
+    command.extend_from_slice(&arguments);
+    let outcome = run(&command);
+    assert_eq!(outcome.code, 2, "{arguments:?}: {}", outcome.stderr);
+    let flag = arguments[0];
+    assert!(
+      outcome.stderr.contains(flag),
+      "the refusal names {flag}: {}",
+      outcome.stderr
+    );
+    assert!(
+      outcome.stderr.contains(arguments[1]),
+      "the refusal names the value {:?}: {}",
+      arguments[1],
+      outcome.stderr
+    );
+    assert_eq!(
+      std::fs::read(document).expect("read"),
+      before,
+      "{arguments:?} writes nothing"
+    );
+  }
+
+  // A flag from another command is not this command's to ignore: `--cut-depth` here would be a depth
+  // nobody applied, so it is refused as an option this command does not have.
+  let before = std::fs::read(&rectangles).expect("read");
+  let outcome = run(&[
+    "nest",
+    rectangles.to_str().expect("utf8"),
+    "--cut-depth",
+    "5",
+  ]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("--cut-depth") && outcome.stderr.contains("unknown nest option"),
+    "the refusal names the flag it does not have: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&rectangles).expect("read"), before);
+
+  // Boards of two sizes cannot be one run: both nesters pack identical boards, so a second size is
+  // refused by name instead of silently packed at the first board's size.
+  let two_sizes = run(&[
+    "nest",
+    rectangles.to_str().expect("utf8"),
+    "--sheets",
+    "1000x600",
+    "--sheets",
+    "800x600",
+  ]);
+  assert_eq!(
+    two_sizes.code, 2,
+    "{}{}",
+    two_sizes.stdout, two_sizes.stderr
+  );
+  assert!(
+    two_sizes.stderr.contains("identical boards") && two_sizes.stderr.contains("800.000"),
+    "the refusal names both boards: {}",
+    two_sizes.stderr
+  );
+  assert_eq!(std::fs::read(&rectangles).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn nest_refuses_a_document_with_no_parts_or_no_boards_by_name() {
+  let directory = scratch("nest-nothing-to-nest");
+
+  // Boards are authored, never defaulted (S4), so a document that authors none names --sheets.
+  let no_boards = write_nesting_document(
+    &directory,
+    "no-boards.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 0)],
+    &[],
+    &[],
+  );
+  let before = std::fs::read(&no_boards).expect("read");
+  let outcome = run(&["nest", no_boards.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("--sheets"),
+    "the refusal names the flag that would author them: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&no_boards).expect("read"), before);
+
+  // And a document with boards but no part has nothing to nest: no default part list either.
+  let no_parts = write_nesting_document(
+    &directory,
+    "no-parts.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[],
+    &[("S1", 1000.0, 600.0)],
+    &[],
+  );
+  let before = std::fs::read(&no_parts).expect("read");
+  let outcome = run(&["nest", no_parts.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("part"),
+    "the refusal says what is missing: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&no_parts).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn nest_refuses_a_part_that_is_not_one_closed_contour_by_name() {
+  // Neither nester accepts a selection of several contours or an open wire, and nesting one part's
+  // bounding box while calling it two parts would be a report nobody could reconcile with the cut. The
+  // refusal names the part, so the author knows which selection to fix.
+  let directory = scratch("nest-part-shape");
+  let two_entities = write_nesting_document(
+    &directory,
+    "two-entities.c2d",
+    vec![
+      rectangle_contour(300.0, 200.0),
+      rectangle_contour(100.0, 100.0),
+    ],
+    &[("P1", &[1, 2], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+  let before = std::fs::read(&two_entities).expect("read");
+  let outcome = run(&["nest", two_entities.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("P1") && outcome.stderr.contains("one closed contour"),
+    "the refusal names the part and the rule: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&two_entities).expect("read"), before);
+
+  let open = write_nesting_document(
+    &directory,
+    "open.c2d",
+    vec![
+      Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(100.0, 0.0)], false)
+        .expect("open wire"),
+    ],
+    &[("Rail", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("Rail", "S1", 0.0, 0.0)],
+  );
+  let before = std::fs::read(&open).expect("read");
+  let outcome = run(&["nest", open.to_str().expect("utf8")]);
+  assert_eq!(outcome.code, 2, "{}{}", outcome.stdout, outcome.stderr);
+  assert!(
+    outcome.stderr.contains("Rail") && outcome.stderr.contains("open"),
+    "the refusal names the part and what is wrong with it: {}",
+    outcome.stderr
+  );
+  assert_eq!(std::fs::read(&open).expect("read"), before);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn two_nest_runs_print_and_write_identical_bytes() {
+  // Determinism is a test and not a hope (invariant 4). The fixture mixes both classes, so both
+  // nesters run, and it authors its boards on the command line, so the second run has to reproduce the
+  // sheet list the first one wrote as well as its placements and its report.
+  let directory = scratch("nest-determinism");
+  let document = write_nesting_document(
+    &directory,
+    "mixed.c2d",
+    vec![rectangle_contour(600.0, 400.0), l_bracket()],
+    &[("Panel", &[1], 2), ("Bracket", &[2], 1)],
+    &[
+      ("S1", 1000.0, 600.0),
+      ("S2", 1000.0, 600.0),
+      ("S3", 1000.0, 600.0),
+    ],
+    &[
+      ("Panel", "S1", 0.0, 0.0),
+      ("Panel", "S2", 0.0, 0.0),
+      ("Bracket", "S3", 0.0, 0.0),
+    ],
+  );
+  let arguments = [
+    "nest",
+    document.to_str().expect("utf8"),
+    "--sheets",
+    "1000x600",
+    "--sheets",
+    "1000x600",
+    "--gap",
+    "8",
+  ];
+
+  let first = run(&arguments);
+  assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+  let first_bytes = std::fs::read(&document).expect("read");
+
+  let second = run(&arguments);
+  assert_eq!(second.code, 0, "{}{}", second.stdout, second.stderr);
+  let second_bytes = std::fs::read(&document).expect("read");
+
+  assert_eq!(first.stdout, second.stdout, "the report is byte-identical");
+  assert_eq!(first_bytes, second_bytes, "the document is byte-identical");
+
+  // The mixed fixture is also the one that shows the two classes never share a board: neither nester
+  // can be handed the other's placements as an occupied board, so the free profile is nested on sheets
+  // of its own rather than on top of a panel.
+  let nesting = load_nesting(&document);
+  let panels: Vec<&str> = nesting
+    .placements
+    .iter()
+    .filter(|placement| placement.part_id == "Panel")
+    .map(|placement| placement.sheet_id.as_str())
+    .collect();
+  let brackets: Vec<&str> = nesting
+    .placements
+    .iter()
+    .filter(|placement| placement.part_id == "Bracket")
+    .map(|placement| placement.sheet_id.as_str())
+    .collect();
+  assert_eq!(panels, vec!["S1", "S2"]);
+  assert!(
+    brackets.iter().all(|sheet| !panels.contains(sheet)),
+    "the free profile gets a board of its own: {brackets:?} against {panels:?}"
+  );
+  assert_eq!(
+    nesting.sheets.len(),
+    3,
+    "every board a placement names is authored in the document"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_algorithm_flag_names_the_heuristic_the_report_reports() {
+  // Both heuristics S6 names are reachable from the command surface by name, and the report says which
+  // one packed instead of leaving the caller to infer it.
+  let directory = scratch("nest-algorithm");
+  for (requested, reported) in [
+    ("auto", "maxrects"),
+    ("maxrects", "maxrects"),
+    ("guillotine", "guillotine"),
+  ] {
+    let document = write_nesting_document(
+      &directory,
+      "panels.c2d",
+      vec![rectangle_contour(600.0, 400.0)],
+      &[("P1", &[1], 1)],
+      &[("S1", 1000.0, 600.0)],
+      &[("P1", "S1", 0.0, 0.0)],
+    );
+    let outcome = run(&[
+      "nest",
+      document.to_str().expect("utf8"),
+      "--algorithm",
+      requested,
+    ]);
+    assert_eq!(outcome.code, 0, "{requested}: {}", outcome.stderr);
+    let expected = format!("algorithm: rectangle, {reported}\n");
+    assert!(
+      outcome.stdout.contains(&expected),
+      "--algorithm {requested} reports {reported}: {}",
+      outcome.stdout
+    );
+  }
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn nest_writes_the_out_path_and_leaves_the_input_document_alone() {
+  // `--out` is the write-back surface, exactly as `toolpath` has one: without it the document is
+  // rewritten in place, with it the nesting lands where the caller asked and the input keeps every
+  // byte it had.
+  let directory = scratch("nest-out");
+  let document = write_nesting_document(
+    &directory,
+    "panel.c2d",
+    vec![rectangle_contour(600.0, 400.0)],
+    &[("P1", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+  let before = std::fs::read(&document).expect("read");
+  let out = directory.join("nested.c2d");
+
+  let outcome = run(&[
+    "nest",
+    document.to_str().expect("utf8"),
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  assert_eq!(std::fs::read(&document).expect("read"), before);
+  assert_eq!(load_nesting(&out).placements.len(), 1);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn the_help_lists_the_nest_command_its_flags_and_its_exit_code() {
+  // Invariant 6: a command, its flags and a new exit code are documented where a caller looks first.
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  for expected in [
+    "nest <document>",
+    "--sheets <WxH>",
+    "--gap <mm>",
+    "--rotation <on|off>",
+    "--algorithm <mode>",
+    "--step <mm>",
+    "unplaced",
+    "7   a nesting could not place every instance",
+  ] {
+    assert!(
+      outcome.stdout.contains(expected),
+      "help is missing {expected:?}:\n{}",
+      outcome.stdout
+    );
+  }
+}
+
+#[test]
+fn a_quarter_turn_places_a_part_the_board_only_holds_sideways() {
+  // A 500 x 900 mm part on a 1000 x 600 mm board fits only turned, so `--rotation on` is the one way it
+  // enters — and the turn reaches the document as a quarter turn counter-clockwise about the part's own
+  // footprint corner (D-M9-1). The test then asks the document's own footprint derivation where the
+  // material sits: `Document::placement_footprint` has to agree with the 900 x 500 mm the report
+  // printed, or the placement a nester chose and the placement the model validates would be two
+  // different rectangles.
+  let directory = scratch("nest-quarter-turn");
+  let document = write_nesting_document(
+    &directory,
+    "rail.c2d",
+    vec![rectangle_contour(500.0, 900.0)],
+    &[("P1", &[1], 1)],
+    // Authored on a board tall enough to hold it upright, then re-nested onto the short board that
+    // only holds it turned.
+    &[("S1", 1000.0, 1000.0)],
+    &[("P1", "S1", 0.0, 0.0)],
+  );
+
+  let outcome = run(&[
+    "nest",
+    document.to_str().expect("utf8"),
+    "--sheets",
+    "1000x600",
+    "--rotation",
+    "on",
+  ]);
+  assert_eq!(outcome.code, 0, "{}{}", outcome.stdout, outcome.stderr);
+  let expected = "\
+nest: 1 sheet(s) of 1000.000 x 600.000 mm, 1 part(s), 1 instance(s)
+options: gap 0.000 mm, rotation on
+sheet S1: used
+part: P1 rectangle, 1 instance(s)
+placement: P1 on S1 at (0.000, 0.000), rotation quarter turn, 900.000 x 500.000 mm
+algorithm: rectangle, maxrects
+sheets used: 1
+utilisation: 0.750
+waste: 0.250
+unplaced: none
+";
+  assert_eq!(outcome.stdout, expected);
+
+  let loaded = cam_store::document::load_document(&document).expect("loads");
+  let nesting = loaded.nesting.as_ref().expect("the section is written");
+  assert_eq!(
+    nesting.placements[0].rotation,
+    Angle::from_radians(FRAC_PI_2)
+  );
+  let footprint = loaded
+    .placement_footprint(&nesting.placements[0])
+    .expect("the placed footprint");
+  let bounds = footprint.bounds();
+  // The turn is arithmetic on floating-point cosines, so the corners are compared within the crate's
+  // tolerance rather than bit for bit; the report's three decimals are what a reader sees.
+  assert!(
+    bounds.min.x.abs() < 1e-9 && bounds.min.y.abs() < 1e-9,
+    "{bounds:?}"
+  );
+  assert!(
+    (bounds.max.x - 900.0).abs() < 1e-9 && (bounds.max.y - 500.0).abs() < 1e-9,
+    "{bounds:?}"
+  );
+  let cost = nesting.cost.as_ref().expect("the cost record is written");
+  assert_eq!(Some(cost.utilisation), loaded.nesting_utilisation());
+  assert!(
+    (cost.utilisation - 0.75).abs() < 1e-12,
+    "{}",
+    cost.utilisation
+  );
   std::fs::remove_dir_all(&directory).ok();
 }

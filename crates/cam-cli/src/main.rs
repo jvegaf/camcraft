@@ -1,17 +1,23 @@
 //! Headless pipeline: `validate`, `inspect`, `import`, `check`, `postp validate`, `tools`, `toolpath`,
-//! `emit` and `simulate`.
+//! `nest`, `emit` and `simulate`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
 //!
 //! Contract: machine output on stdout, human diagnostics on stderr, and these exit codes:
 //! `0` success, `2` invalid input, `3` unsupported schema, `4` post-processor error, `5` vector
-//! issues, `6` a simulation that found gouge, uncut material or a crash (D-M5-6).
+//! issues, `6` a simulation that found gouge, uncut material or a crash (D-M5-6), `7` a nesting that
+//! could not place every instance (M9).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use cam_model::{Document, Operation, Toolpath};
+use cam_geom::nest::{NestAlgorithm, NestOptions, NestPlan, NestRotation};
+use cam_geom::nest_profile::{ProfileNestOptions, ProfileNestPlan};
+use cam_geom::{Bounds, Contour, Point2, Vec2};
+use cam_model::{
+  Document, Nesting, NestingCost, NestingPart, NestingPlacement, NestingSheet, Operation, Toolpath,
+};
 use cam_move::MoveStream;
 use cam_post::{emit, parse_post, ProgramMeta};
 use cam_program::program_for;
@@ -22,7 +28,7 @@ use cam_toolpath::{
   circle_centre, drill, inlay, moulding, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
   MouldingRequest, ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
 };
-use cam_units::{Format, Length};
+use cam_units::{Angle, Format, Length};
 
 const HELP: &str = "\
 cam-cli — headless CAM pipeline
@@ -94,6 +100,23 @@ COMMANDS:
         --lead-in <mm>        profile: straight lead-in
         --lead-out <mm>       profile: straight lead-out
         --tab <pos:width:height>  profile: repeatable holding tab
+    nest <document>           Nest its parts onto its sheets and store the placements and the cost; a
+                              part left unplaced is reported with its id and exits 7
+        --sheets <WxH>        A board to nest on, as width x height in millimetres; repeat it once per
+                              authored sheet. It replaces the document's own sheets, because a sheet is
+                              an authored record that lives in the document. Required when the document
+                              authors none
+        --gap <mm>            Minimum separation between parts on a board (default 0)
+        --rotation <on|off>   Whether a part may be turned a quarter turn to enter a board (default
+                              off); a turn is a fallback, never a tie-break
+        --algorithm <mode>    auto, maxrects or guillotine for rectangular parts (default auto, which
+                              runs both, keeps the better plan and maxrects on a tie); a part whose
+                              outline is not a rectangle is a free profile and takes no algorithm
+        --step <mm>           free profile: the lattice step the no-fit heuristic searches in (default
+                              10). It costs a placement that lies between two steps, never an
+                              illegal one
+        --out <path>          Write the document here; without it the nesting is written to the
+                              document that was read
     postp validate <file>     Parse a post-processor and print a summary
     tools list <library>      List the tools in a SQLite tool library
     tools add <library>       Add or replace a tool: --id, --diameter, --number, [--name-format]
@@ -115,6 +138,7 @@ EXIT CODES:
     4   post-processor error, including a program the post cannot express
     5   the document has vector issues (check only)
     6   the simulation found gouge, uncut material or a crash (simulate only)
+    7   a nesting could not place every instance, so nothing was written (nest only)
 ";
 
 fn main() -> ExitCode {
@@ -181,6 +205,20 @@ impl Failure {
       message: message.into(),
     }
   }
+
+  /// A nesting that could not place every instance the document asks for (M9).
+  ///
+  /// This is a **finding**, not invalid input: every flag was usable and every record in the document
+  /// is sound, and the report is what contradicts the request. It gets a code of its own because `6`
+  /// is the simulation's finding and is spoken for, and because a caller scripting a cut has to see
+  /// `0` only when every instance landed — while still being able to tell "I could not nest this" from
+  /// "you gave me something I cannot read".
+  fn nesting(message: impl Into<String>) -> Self {
+    Self {
+      code: 7,
+      message: message.into(),
+    }
+  }
 }
 
 fn run(arguments: &[String]) -> Result<(), Failure> {
@@ -202,6 +240,7 @@ fn run(arguments: &[String]) -> Result<(), Failure> {
     "import" => import_command(rest),
     "check" => check(rest),
     "toolpath" => toolpath_command(rest),
+    "nest" => nest_command(rest),
     "tools" => tools(rest),
     "emit" => emit_command(rest),
     "simulate" => simulate_command(rest),
@@ -2040,6 +2079,692 @@ fn contour_of<'a>(
     .kind
     .as_contour()
     .ok_or_else(|| Failure::input(format!("entity {entity_id:?} is not a contour")))
+}
+
+/// Everything `cam-cli nest` accepts, before it is turned into one nesting run.
+#[derive(Default)]
+struct NestArgs {
+  path: Option<PathBuf>,
+  out: Option<PathBuf>,
+  sheets: Vec<(f64, f64)>,
+  gap: Option<f64>,
+  rotation: Option<String>,
+  algorithm: Option<String>,
+  step: Option<f64>,
+}
+
+/// One part of the document's nesting section, as the nesters need it: one closed contour and the
+/// class its own geometry puts it in.
+struct NestPart {
+  id: String,
+  instances: usize,
+  contour: Contour,
+  class: NestClass,
+}
+
+/// Which of the two nesters a part's geometry sends it to (S6, S7).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NestClass {
+  /// A rectangle: the cabinetry panels S7 ships first, packed by maxrects and guillotine.
+  Rectangle,
+  /// Everything else: a free profile, placed by the no-fit heuristic.
+  Profile,
+}
+
+impl NestClass {
+  /// How the report names the class.
+  fn label(self) -> &'static str {
+    match self {
+      Self::Rectangle => "rectangle",
+      Self::Profile => "free profile",
+    }
+  }
+}
+
+/// One instance a run placed, before it is written into the document.
+///
+/// `position` is the **placed** footprint's lower-left corner and `rotation` the turn the nester took
+/// (D-M9-1), which is exactly what a [`NestingPlacement`] stores, so nothing is re-derived on the way
+/// in.
+#[derive(Clone, Copy)]
+struct NestedInstance {
+  part: usize,
+  sheet: usize,
+  position: Point2,
+  rotation: Angle,
+  size: Vec2,
+}
+
+/// What a run was asked for and what packed it: the two options every class shares, the algorithm the
+/// rectangle plan was produced by, and the heuristic the free profiles were placed with.
+#[derive(Default)]
+struct NestRun {
+  gap: f64,
+  allow_rotation: bool,
+  rectangle: Option<NestAlgorithm>,
+  profile: Option<(&'static str, f64)>,
+}
+
+/// Nest the document's parts onto its sheets, report the run and write the placements and the cost.
+///
+/// The shape follows `toolpath`: read the document, add what the command was asked for, validate and
+/// write it back to `--out` (the document itself by default), with the report on stdout. What differs
+/// is what a run can end with — a nesting that could not place every instance is a finding with its
+/// own exit code and writes nothing, because a document whose placements fall short of a part's
+/// instance count does not load.
+fn nest_command(rest: &[String]) -> Result<(), Failure> {
+  let mut args = NestArgs::default();
+  let mut index = 0;
+  while index < rest.len() {
+    let flag = rest[index].as_str();
+    // Every option takes exactly one value.
+    let take = |what: &str| value_at(rest, index, what);
+    match flag {
+      "--out" => args.out = Some(PathBuf::from(take("--out")?)),
+      "--sheets" => args.sheets.push(parse_sheet(&take("--sheets")?)?),
+      "--gap" => {
+        let value = take("--gap")?;
+        let gap = parse_mm(&value, "--gap")?;
+        if !gap.is_finite() || gap < 0.0 {
+          return Err(Failure::input(format!(
+            "--gap must be a non-negative distance in mm, got {value}"
+          )));
+        }
+        args.gap = Some(gap);
+      }
+      "--step" => {
+        let value = take("--step")?;
+        let step = parse_mm(&value, "--step")?;
+        if !step.is_finite() || step <= 0.0 {
+          return Err(Failure::input(format!(
+            "--step must be a positive distance in mm, got {value}"
+          )));
+        }
+        args.step = Some(step);
+      }
+      "--rotation" => args.rotation = Some(take("--rotation")?),
+      "--algorithm" => args.algorithm = Some(take("--algorithm")?),
+      other if other.starts_with('-') => {
+        return Err(Failure::input(format!("unknown nest option {other:?}")))
+      }
+      other => {
+        if args.path.is_some() {
+          return Err(Failure::input(
+            "nest takes exactly one document, before its options",
+          ));
+        }
+        args.path = Some(PathBuf::from(other));
+        index += 1;
+        continue;
+      }
+    }
+    index += 2;
+  }
+
+  let path = args
+    .path
+    .ok_or_else(|| Failure::input("nest requires a document path"))?;
+  let mut document = open(&path)?;
+
+  let gap = args.gap.unwrap_or(0.0);
+  let allow_rotation = match args.rotation.as_deref() {
+    None | Some("off") => false,
+    Some("on") => true,
+    Some(other) => {
+      return Err(Failure::input(format!(
+        "--rotation expects on or off, got {other:?}"
+      )))
+    }
+  };
+  let algorithm = match args.algorithm.as_deref() {
+    None | Some("auto") => NestAlgorithm::Auto,
+    Some("maxrects") => NestAlgorithm::MaxRects,
+    Some("guillotine") => NestAlgorithm::Guillotine,
+    Some(other) => {
+      return Err(Failure::input(format!(
+        "--algorithm expects auto, maxrects or guillotine, got {other:?}"
+      )))
+    }
+  };
+  let step = args
+    .step
+    .unwrap_or(cam_geom::nest_profile::DEFAULT_SEARCH_STEP);
+
+  // The parts are authored in the document (S1) and there is no default part list: a part is a
+  // selection of this document's own entities, so there is nothing a flag could name.
+  let Some(nesting) = document.nesting.take() else {
+    return Err(Failure::input(
+      "nest needs parts: the document authors no nesting section, so there is nothing to nest",
+    ));
+  };
+  if nesting.parts.is_empty() {
+    return Err(Failure::input(
+      "nest needs parts: the document authors no nesting parts, so there is nothing to nest",
+    ));
+  }
+
+  // The boards this run nests on. `--sheets` authors them on the command line and replaces whatever
+  // the document held: the sheets are authored records that live in the document (S4), and a run that
+  // kept a board nobody named would report a nesting on a sheet the caller had replaced. Without the
+  // flag the document's own boards are it, and there is no default board — a sheet size is authored,
+  // not assumed.
+  let mut sheets: Vec<NestingSheet> = if args.sheets.is_empty() {
+    if nesting.sheets.is_empty() {
+      return Err(Failure::input(
+        "nest needs --sheets: the document authors no sheets to nest on, and a nesting has no default \
+         board",
+      ));
+    }
+    nesting.sheets.clone()
+  } else {
+    args
+      .sheets
+      .iter()
+      .enumerate()
+      .map(|(number, (width, height))| NestingSheet {
+        id: format!("S{}", number + 1),
+        width: Length::from_mm(*width),
+        height: Length::from_mm(*height),
+      })
+      .collect()
+  };
+
+  // Both nesters pack **identical** boards — one `NestPlan` is one sheet, repeated — so boards of two
+  // sizes cannot be one run, and are refused by name rather than packed on the first board's size.
+  let width = sheets[0].width.mm();
+  let height = sheets[0].height.mm();
+  for sheet in &sheets[1..] {
+    if (sheet.width.mm() - width).abs() > cam_geom::DEFAULT_TOLERANCE
+      || (sheet.height.mm() - height).abs() > cam_geom::DEFAULT_TOLERANCE
+    {
+      return Err(Failure::input(format!(
+        "sheet {:?} is {} x {} mm but sheet {:?} is {} x {} mm: a nesting packs identical boards, so \
+         one run cannot nest onto boards of two sizes",
+        sheets[0].id,
+        decimal(width),
+        decimal(height),
+        sheet.id,
+        decimal(sheet.width.mm()),
+        decimal(sheet.height.mm()),
+      )));
+    }
+  }
+
+  let mut parts: Vec<NestPart> = Vec::with_capacity(nesting.parts.len());
+  for part in &nesting.parts {
+    let contour = part_contour(&document, part)?;
+    parts.push(NestPart {
+      id: part.id.clone(),
+      instances: part.instances,
+      class: classify(&contour),
+      contour,
+    });
+  }
+
+  // Every flag that means nothing for this document is refused by name, the rule `moulding` follows for
+  // its 22: a `--step` nobody searched with, or an `--algorithm` no packer ran, still looks applied.
+  let has_rectangle = parts.iter().any(|part| part.class == NestClass::Rectangle);
+  let has_profile = parts.iter().any(|part| part.class == NestClass::Profile);
+  if args.algorithm.is_some() && !has_rectangle {
+    return Err(Failure::input(
+      "nest takes no --algorithm: no part in this document is a rectangle, so neither maxrects nor \
+       guillotine packs anything, and a free profile is placed by the no-fit heuristic --step drives",
+    ));
+  }
+  if args.step.is_some() && !has_profile {
+    return Err(Failure::input(
+      "nest takes no --step: every part in this document is a rectangle, so the free-profile \
+       heuristic never searches a lattice and no step is applied",
+    ));
+  }
+
+  let board = Bounds {
+    min: Point2::ORIGIN,
+    max: Point2::new(width, height),
+  };
+  let mut run = NestRun {
+    gap,
+    allow_rotation,
+    ..NestRun::default()
+  };
+  let mut instances: Vec<NestedInstance> = Vec::new();
+  let mut boards_used = 0;
+
+  if has_rectangle {
+    // A rectangle part goes through `cam_geom::nest` — maxrects plus the guillotine pass S6 names —
+    // which packs axis-aligned boxes, so a rectangle selection becomes the box its own bounds are.
+    // Every instance is one entry in the parts list, so a plan index maps back to the part it belongs
+    // to and an unplaced entry names the part and not a copy number.
+    let mut owner: Vec<usize> = Vec::new();
+    let mut boxes: Vec<Bounds> = Vec::new();
+    for (number, part) in parts.iter().enumerate() {
+      if part.class != NestClass::Rectangle {
+        continue;
+      }
+      let bounds = part.contour.bounds();
+      for _ in 0..part.instances {
+        owner.push(number);
+        boxes.push(bounds);
+      }
+    }
+    let options = NestOptions::new(gap, allow_rotation)
+      .map_err(|error| Failure::input(error.to_string()))?
+      .with_algorithm(algorithm);
+    let plan =
+      NestPlan::new(board, &boxes, options).map_err(|error| Failure::input(error.to_string()))?;
+    run.rectangle = Some(plan.algorithm());
+    boards_used = plan.sheets_used();
+    for placement in plan.placements() {
+      instances.push(NestedInstance {
+        part: owner[placement.part()],
+        sheet: placement.sheet(),
+        position: placement.origin(),
+        rotation: nest_angle(placement.rotation()),
+        size: placement.footprint_size(),
+      });
+    }
+  }
+
+  if has_profile {
+    // A free-profile part goes through `cam_geom::nest_profile`, the sound but incomplete no-fit
+    // heuristic: one call packs one board and reports the parts it could not fit, so a round that
+    // placed nothing has found the parts that fit no board — the loop is bounded by the part count and
+    // never guesses. The two classes get their own boards because neither nester can be handed the
+    // other's placements as an occupied board: a mixed document nests each class on sheets of its own,
+    // which the report says instead of hiding.
+    let options = ProfileNestOptions::new(gap, allow_rotation)
+      .map_err(|error| Failure::input(error.to_string()))?
+      .with_step(step)
+      .map_err(|error| Failure::input(error.to_string()))?;
+    let board_outline = Contour::from_points(
+      &[
+        Point2::ORIGIN,
+        Point2::new(width, 0.0),
+        Point2::new(width, height),
+        Point2::new(0.0, height),
+      ],
+      true,
+    )
+    .map_err(|error| Failure::input(error.to_string()))?;
+
+    let mut pool: Vec<(usize, Contour)> = Vec::new();
+    for (number, part) in parts.iter().enumerate() {
+      if part.class != NestClass::Profile {
+        continue;
+      }
+      for _ in 0..part.instances {
+        pool.push((number, part.contour.clone()));
+      }
+    }
+
+    let mut boards = 0;
+    while !pool.is_empty() {
+      let contours: Vec<Contour> = pool.iter().map(|(_, contour)| contour.clone()).collect();
+      let plan = ProfileNestPlan::new(&board_outline, &contours, options)
+        .map_err(|error| Failure::input(error.to_string()))?;
+      run.profile = Some((plan.algorithm(), options.step()));
+      if plan.placements().is_empty() {
+        break;
+      }
+      for (index, placement) in plan.placements().iter().enumerate() {
+        let outline = plan.outline(index).ok_or_else(|| {
+          Failure::input("the free-profile nester reported a placement with no outline")
+        })?;
+        let bounds = outline.bounds();
+        instances.push(NestedInstance {
+          part: pool[placement.part()].0,
+          sheet: boards_used + boards,
+          position: placement.origin(),
+          rotation: nest_angle(placement.rotation()),
+          size: Vec2::new(bounds.width(), bounds.height()),
+        });
+      }
+      boards += 1;
+      pool = plan
+        .unplaced()
+        .iter()
+        .map(|index| pool[*index].clone())
+        .collect();
+    }
+    boards_used += boards;
+  }
+
+  // Open the boards the run used, so every placement names a sheet the document holds: a nester
+  // repeats one board, and a board it needed that the document does not author is authored here at the
+  // same size (S4). A board the document authored and the run did not use stays, and the report says
+  // it was unused.
+  while sheets.len() < boards_used {
+    sheets.push(NestingSheet {
+      id: fresh_sheet_id(&sheets),
+      width: Length::from_mm(width),
+      height: Length::from_mm(height),
+    });
+  }
+
+  let placements: Vec<NestingPlacement> = instances
+    .iter()
+    .map(|instance| NestingPlacement {
+      part_id: parts[instance.part].id.clone(),
+      sheet_id: sheets[instance.sheet].id.clone(),
+      position: instance.position,
+      rotation: instance.rotation,
+    })
+    .collect();
+
+  document.nesting = Some(Nesting {
+    sheets,
+    parts: nesting.parts,
+    placements,
+    cost: None,
+  });
+
+  // The cost record is written from **`Document::nesting_utilisation`** and from nothing else. The
+  // nester has its own `NestPlan::utilisation`, but that is its view of its own run: a record derived
+  // from it would be the second arithmetic T1c closed, and the model's own load-time check would then
+  // refuse the document this command had just written. One derivation, then, feeding the record and
+  // the report alike — and when the document cannot answer, no record at all, because an invented
+  // zero would be a claim nobody made.
+  let fractions = document
+    .nesting_utilisation()
+    .map(|utilisation| (utilisation, 1.0 - utilisation));
+  let used_sheets = document
+    .nesting
+    .as_ref()
+    .map(|nesting| {
+      nesting
+        .placements
+        .iter()
+        .map(|placement| placement.sheet_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+    })
+    .unwrap_or(0);
+  if let Some((utilisation, waste)) = fractions {
+    if let Some(nesting) = document.nesting.as_mut() {
+      nesting.cost = Some(NestingCost {
+        sheets_used: used_sheets,
+        utilisation,
+        waste,
+      });
+    }
+  }
+
+  let report = nest_report(&document, &parts, &instances, &run, used_sheets, fractions);
+  let shortfall = nest_shortfall(&parts, &instances);
+  if !shortfall.is_empty() {
+    // A nesting that could not place every instance is a finding, and nothing is written: the model
+    // refuses a document whose placements fall short of a part's instance count
+    // (`NestingInstanceCountMismatch`), so a partial nesting has no honest form to store and the
+    // document stays exactly as the run found it. The report is the finding, and exit 7 names it.
+    print!("{report}");
+    let named: Vec<String> = shortfall
+      .iter()
+      .map(|(number, placed, wanted)| {
+        format!("{} ({placed} of {wanted} instance(s))", parts[*number].id)
+      })
+      .collect();
+    return Err(Failure::nesting(format!(
+      "the nesting left {} of {} instance(s) unplaced: {}; the document was not written",
+      shortfall
+        .iter()
+        .map(|(_, placed, wanted)| wanted - placed)
+        .sum::<usize>(),
+      parts.iter().map(|part| part.instances).sum::<usize>(),
+      named.join(", ")
+    )));
+  }
+
+  document
+    .validate()
+    .map_err(|error| Failure::input(error.to_string()))?;
+  let destination = args.out.clone().unwrap_or(path);
+  cam_store::document::save_document(&destination, &document)
+    .map_err(|error| Failure::input(format!("{}: {error}", destination.display())))?;
+  print!("{report}");
+  Ok(())
+}
+
+/// The `W x H` one `--sheets` flag authors, in millimetres.
+fn parse_sheet(value: &str) -> Result<(f64, f64), Failure> {
+  let malformed = || {
+    Failure::input(format!(
+      "--sheets expects <width>x<height> in millimetres, got {value:?}"
+    ))
+  };
+  let (width, height) = value.split_once('x').ok_or_else(malformed)?;
+  let width = width.trim().parse::<f64>().map_err(|_| malformed())?;
+  let height = height.trim().parse::<f64>().map_err(|_| malformed())?;
+  if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+    return Err(Failure::input(format!(
+      "--sheets must name a positive width and height in millimetres, got {value}"
+    )));
+  }
+  Ok((width, height))
+}
+
+/// The one closed contour a part is nested from, or the refusal that names the part.
+///
+/// Both nesters place a single outline, and a part whose selection is several contours or an open wire
+/// has no single outline to place: nesting its bounding box and reporting it as one part would be a
+/// placement the cut does not match, so the part is refused by name instead of guessed at.
+fn part_contour(document: &Document, part: &NestingPart) -> Result<Contour, Failure> {
+  let [entity_id] = part.entity_ids.as_slice() else {
+    return Err(Failure::input(format!(
+      "nesting part {:?} names {} entities, so its outline is not one closed contour and neither \
+       nester can place it: a part is nested from exactly one closed contour",
+      part.id,
+      part.entity_ids.len()
+    )));
+  };
+  let entity = document.entity(entity_id).ok_or_else(|| {
+    Failure::input(format!(
+      "nesting part {:?} references unknown entity {entity_id:?}",
+      part.id
+    ))
+  })?;
+  let contour = entity.kind.as_contour().ok_or_else(|| {
+    Failure::input(format!(
+      "nesting part {:?} selects entity {entity_id:?}, which is not a contour",
+      part.id
+    ))
+  })?;
+  if !contour.is_closed() {
+    return Err(Failure::input(format!(
+      "nesting part {:?} selects entity {entity_id:?}, which is an open contour: a part's footprint \
+       is the area it encloses, so a part is nested from a closed contour",
+      part.id
+    )));
+  }
+  Ok(contour.clone())
+}
+
+/// Which nester a part's own geometry puts it in (S6, S7).
+///
+/// A part is a **rectangle** when its selection is one closed, arc-free contour of four vertices whose
+/// area is its bounding box's: those are the cabinetry panels S7 ships first, and they go through
+/// `cam_geom::nest`, whose maxrects and guillotine passes are the two heuristics S6 names. Every other
+/// closed contour is a **free profile** and goes through `cam_geom::nest_profile`, the no-fit
+/// heuristic. The class is read from the part and never from a flag, so a part cannot be handed to an
+/// engine that cannot express it, and the report names the class of every part.
+fn classify(contour: &Contour) -> NestClass {
+  let bounds = contour.bounds();
+  let box_area = bounds.width() * bounds.height();
+  let area = contour.signed_area().abs();
+  // A four-vertex closed contour whose area is its box's can only be the box itself: every other
+  // quadrilateral inscribed in the box has strictly less area, and a self-intersecting one — a bowtie
+  // through the same four corners — has less again. The tolerance is the crate's, relative to the box,
+  // so a panel authored on a grid is a rectangle and a sliver is not a coincidence.
+  let is_rectangle = !contour.has_arcs()
+    && contour.len() == 4
+    && box_area > 0.0
+    && (area - box_area).abs() <= cam_geom::DEFAULT_TOLERANCE * box_area;
+  if is_rectangle {
+    NestClass::Rectangle
+  } else {
+    NestClass::Profile
+  }
+}
+
+/// The turn a nester chose in the document's own terms: a quarter turn counter-clockwise about the
+/// part's footprint corner (D-M9-1), or none. Both nesters speak [`NestRotation`], so one mapping
+/// serves both and a document has one rotation concept and not two.
+fn nest_angle(rotation: NestRotation) -> Angle {
+  match rotation {
+    NestRotation::None => Angle::ZERO,
+    NestRotation::QuarterTurn => Angle::from_radians(std::f64::consts::FRAC_PI_2),
+  }
+}
+
+/// The name a plan's algorithm is reported by.
+fn algorithm_label(algorithm: NestAlgorithm) -> &'static str {
+  match algorithm {
+    // A plan never reports this: it names the heuristic that packed it.
+    NestAlgorithm::Auto => "auto",
+    NestAlgorithm::MaxRects => "maxrects",
+    NestAlgorithm::Guillotine => "guillotine",
+  }
+}
+
+/// The next free `S{n}` sheet id: the `next_toolpath_id` scan, from `len + 1` upwards, so a document
+/// that authors its own ids never collides with one a run opens.
+fn fresh_sheet_id(sheets: &[NestingSheet]) -> String {
+  let mut number = sheets.len() + 1;
+  loop {
+    let id = format!("S{number}");
+    if sheets.iter().all(|sheet| sheet.id != id) {
+      return id;
+    }
+    number += 1;
+  }
+}
+
+/// How many instances of each part a run placed, beside how many the part asks for.
+///
+/// The one reading of "did this part get nested": the report and the exit code both read it, so they
+/// cannot disagree about what was left out.
+fn nest_shortfall(parts: &[NestPart], instances: &[NestedInstance]) -> Vec<(usize, usize, usize)> {
+  parts
+    .iter()
+    .enumerate()
+    .map(|(number, part)| {
+      let placed = instances
+        .iter()
+        .filter(|instance| instance.part == number)
+        .count();
+      (number, placed, part.instances)
+    })
+    .filter(|(_, placed, wanted)| placed < wanted)
+    .collect()
+}
+
+/// The report `cam-cli nest` prints: the boards, every placement, the engine that packed each part
+/// class and what the document's own arithmetic says about utilisation and waste.
+///
+/// One order, one decimal count and no iteration over a map, so two runs print the same bytes
+/// (invariant 4). Every number is either a placement the run made or a value
+/// [`Document::nesting_utilisation`] derived from the document that was written, so the report and the
+/// stored section cannot disagree (invariant 2).
+fn nest_report(
+  document: &Document,
+  parts: &[NestPart],
+  instances: &[NestedInstance],
+  run: &NestRun,
+  used_sheets: usize,
+  fractions: Option<(f64, f64)>,
+) -> String {
+  let Some(nesting) = document.nesting.as_ref() else {
+    return String::new();
+  };
+  let width = nesting.sheets.first().map_or(0.0, |sheet| sheet.width.mm());
+  let height = nesting
+    .sheets
+    .first()
+    .map_or(0.0, |sheet| sheet.height.mm());
+
+  let mut lines: Vec<String> = Vec::new();
+  lines.push(format!(
+    "nest: {} sheet(s) of {} x {} mm, {} part(s), {} instance(s)",
+    nesting.sheets.len(),
+    decimal(width),
+    decimal(height),
+    parts.len(),
+    parts.iter().map(|part| part.instances).sum::<usize>(),
+  ));
+  lines.push(format!(
+    "options: gap {} mm, rotation {}",
+    decimal(run.gap),
+    if run.allow_rotation { "on" } else { "off" },
+  ));
+  for (number, sheet) in nesting.sheets.iter().enumerate() {
+    let used = instances.iter().any(|instance| instance.sheet == number);
+    lines.push(format!(
+      "sheet {}: {}",
+      sheet.id,
+      if used { "used" } else { "unused" }
+    ));
+  }
+  for (number, part) in parts.iter().enumerate() {
+    lines.push(format!(
+      "part: {} {}, {} instance(s)",
+      part.id,
+      part.class.label(),
+      part.instances,
+    ));
+    for instance in instances.iter().filter(|instance| instance.part == number) {
+      lines.push(format!(
+        "placement: {} on {} at ({}, {}), rotation {}, {} x {} mm",
+        part.id,
+        nesting.sheets[instance.sheet].id,
+        decimal(instance.position.x),
+        decimal(instance.position.y),
+        if instance.rotation == Angle::ZERO {
+          "none"
+        } else {
+          "quarter turn"
+        },
+        decimal(instance.size.x),
+        decimal(instance.size.y),
+      ));
+    }
+  }
+  if let Some(algorithm) = run.rectangle {
+    lines.push(format!(
+      "algorithm: rectangle, {}",
+      algorithm_label(algorithm)
+    ));
+  }
+  if let Some((heuristic, step)) = run.profile {
+    lines.push(format!(
+      "algorithm: free profile, {heuristic} at {} mm",
+      decimal(step)
+    ));
+  }
+  lines.push(format!("sheets used: {used_sheets}"));
+  match fractions {
+    Some((utilisation, waste)) => {
+      lines.push(format!("utilisation: {}", decimal(utilisation)));
+      lines.push(format!("waste: {}", decimal(waste)));
+    }
+    None => {
+      lines.push("utilisation: none".to_owned());
+      lines.push("waste: none".to_owned());
+    }
+  }
+  let shortfall = nest_shortfall(parts, instances);
+  if shortfall.is_empty() {
+    lines.push("unplaced: none".to_owned());
+  }
+  for (number, placed, wanted) in shortfall {
+    lines.push(format!(
+      "unplaced: {}, {} of {} instance(s)",
+      parts[number].id,
+      wanted - placed,
+      wanted
+    ));
+  }
+  let mut text = lines.join("\n");
+  text.push('\n');
+  text
 }
 
 fn emit_command(rest: &[String]) -> Result<(), Failure> {
