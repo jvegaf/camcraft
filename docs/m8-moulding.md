@@ -91,9 +91,14 @@ cam-cli toolpath <document> --kind moulding --entities <rail ids> --tool <n>
 
 Per pass, in the stepover law's order: a **rapid** to the pass's first point at the job's `safe_z`, a
 **plunge** there to the depth the cross-section authors at that lateral offset, **one `Move::Feed` per
-rail sample** at that same Z, the **closing feed** where the walk does not end on its own first point,
-and a **retract** to `safe_z` (D-M4-6's rule between passes, unchanged: a pass that merely *looks*
-adjacent can be on the far side of a wall).
+point of the pass's offset walk** ([`Rail::offset_walk`]) at that same Z, and a **retract** to `safe_z`
+(D-M4-6's rule between passes, unchanged: a pass that merely *looks* adjacent can be on the far side of
+a wall). The walk is one function in the kernel and not a convention each boundary restates, because
+the claim authorises against the same polyline: `offset_walk` is the samples offset by the pass's
+lateral, plus the **closing edge** a closed rail needs when its seam sits on a corner — where the
+walk's last sample and its first are the same *point* carrying two different normals — and nothing at
+all when the seam is in the middle of an edge, where the two tangents are collinear and the two offset
+points are one point up to `SEAM_EPSILON`.
 
 The Z is a property of the **lateral offset**, not of the rail position: every pass sits at the depth
 its own cross-section point demands, so the program is a family of Z heights rather than one depth. No
@@ -134,18 +139,22 @@ document** — never the emitted moves — so a claim built from the program wou
 construction, including where both are wrong (M6 A5, D-M6-6). Claims are never summed: the deepest
 claim wins (D-M5-2), which a test pins by sweeping two mouldings along one rail.
 
-**One corner of that argument is not true, and M8 delivers measured rather than asserted.** A **closed**
-rail whose vertex list **starts at a corner** has a seam where the walk's last sample and its first are
-the same *point* carrying two different normals. The strategy bridges them with one closing feed across
-the corner, and the claim measures a walked path with `windows(2)`, so that diagonal is an edge of the
-program that nothing authorised: on the 40 x 20 mm frame below it is **`gouge 2.000 mm³` over one cell**
-— cell `(29, 39)`, the seam diagonal's own centre — on a program that is otherwise exact. A frame whose
-vertex list starts **in the middle of an edge** has collinear tangents at the seam, joins itself exactly
-and is exact in both signs — which is why the frame oracle and the frame golden use that one, and why
-`cam-sim/tests/moulding.rs` pins the corner case as a recorded limit rather than hiding it
-(`a_closed_rail_whose_start_vertex_is_a_corner_reports_the_seam_diagonal_as_gouge_a_known_limit`). The
-fix is a claim that closes its walk; it is a `src/` change and M8's code was frozen for this evidence
-pass.
+**One corner of that argument was false as M8 first shipped it, and the fix is the walk's own law.** A
+**closed** rail whose vertex list **starts at a corner** has a seam where the walk's last sample and its
+first are the same *point* carrying two different normals: the strategy bridges them with one closing
+feed across the corner, and while the claim measured a walked path with `windows(2)` alone, that
+diagonal was an edge of the program that nothing authorised. On the 40 x 20 mm frame below it was
+**`gouge 2.000 mm³` over one cell** — cell `(29, 39)`, the seam diagonal's own centre — on a program
+that was otherwise exact. The trigger is the drawing's own start vertex, arbitrary in a DXF and
+wherever the user began the rectangle in the shell, so it was a real case and not a corner case in the
+colloquial sense. The fix is not a special case on the claim's side: the pass's polyline is
+[`Rail::offset_walk`] in `cam-geom`, the strategy emits it and the claim authorises against it, so the
+two cannot disagree about where a pass cuts. The corner frame is now exact in both signs — `496.000`
+mm³ removed against `496.000` claimed, over the seam-smooth frame's own **248** cell centres — and
+`cam-sim/tests/moulding.rs` pins it as
+`a_closed_rail_whose_start_vertex_is_a_corner_claims_its_seam_diagonal`. A seam **in the middle of an
+edge** has collinear tangents, `offset_walk` appends nothing, and its numbers are unchanged, which is
+what makes this a fix to one case rather than a renumbering of the frame.
 
 ## What the simulation authorises, in both signs
 
@@ -165,7 +174,7 @@ rather than a bound:
 | … the frame, 1 mm deep at both passes | `496.000` | `744.000` | `0.0` | **`248.000`** (248 cells) | −3 |
 | V-bit cone (90°), one pass at `-4` mm | `1027.127` | `1027.127` | **`0.0`** | **`0.0`** | −3.75 |
 | … the cone, 1 mm deeper | `1027.127` | `1630.974` | `0.0` | **`603.671`** (676 cells) | −4.75 |
-| the frame **whose seam is a corner**, correct program | `494.000` (247 cells) | `496.000` | `0.0` | **`2.000`** (1 cell) | −2 |
+| the frame **whose seam is a corner**, correct program | `496.000` (248 cells) | `496.000` | **`0.0`** | **`0.0`** | −2 |
 
 The straight rail's numbers are exact for a reason worth keeping: the rail is at `y = 50.5`, so the pass
 at lateral `L` lies on the centre line of row `50 − L`, and the profile `-1` at lateral 0, `-4` at
@@ -192,7 +201,13 @@ End to end through the binary, three reports say the same thing on the CLI's own
   (`a_moulding_deeper_than_the_stock_reports_uncut_and_exits_six`);
 - **two rails** in one toolpath cut and claim both — `removed: 600.000 mm3`, `gouge: 0.000`,
   `uncut: 0.000`, exit `0` (`a_moulding_over_two_rails_cuts_and_claims_both_of_them`), which is the
-  multi-rail case proven end to end rather than assumed.
+  multi-rail case proven end to end rather than assumed;
+- a **corner seam** through the binary — a 40 x 20 mm frame imported from SVG, whose start vertex the
+  importer normalises to a corner — prints `gouge: 0.000 mm3 over 0 cell(s)` and exits `0` at 0.25, 0.5
+  and 1 mm resolutions with a 2 mm bit, where the same document reported `gouge: 3.000 mm3 over 24
+  cell(s)` at 0.25 mm, `3.000` over 6 at 0.5 mm and `2.000` over 1 at 1 mm and exited **6** before the
+  walk was shared. The program is byte-identical either way: 21 moves, `removed` unchanged at every
+  resolution.
 
 **The gouge sign cannot be reached through the CLI by a document that validates**, and that is the
 argument above rather than a gap in the tests: the claim's footprint contains the program's, both read
@@ -237,11 +252,13 @@ is an input error naming the flag rather than a defaulted spacing.
   `DEFAULT_CHORD_TOLERANCE`, which is what makes the claim's polyline the program's — and **no test pins
   its value**. Changing it moves the programs of every curved rail and moves nothing in a straight one.
   A silent coupling, recorded rather than papered over.
-- **A closed rail whose start vertex is a corner reports the seam diagonal as gouge** (measured:
-  `2.000 mm³` over 1 cell on the 40 × 20 mm frame). The trigger is the drawing's own start vertex, which
-  is arbitrary in a DXF and wherever the user began the rectangle in the shell, so it is a real case and
-  not a corner case in the colloquial sense. A seam in the middle of an edge is exact. Not fixed here:
-  M8's code was frozen for the evidence pass.
+- **A closed rail whose start vertex is a corner is exact, and that is the walk's law rather than a
+  special case** (closed after M8's delivery; measured before as `2.000 mm³` over 1 cell on the 40 × 20
+  mm frame). A pass's polyline is [`Rail::offset_walk`] — the samples offset by the pass's lateral plus
+  the closing edge a corner seam needs, and nothing when the seam is mid-edge — and the strategy and the
+  claim both read it, so the program's corner diagonal is authorised like every other edge it cuts. The
+  trigger, the drawing's own start vertex, stayed the reason it mattered: a DXF may start a frame
+  anywhere, and the shell starts it wherever the user did.
 - **The stepover certifies coverage of the span, not the removal of it.** The law guarantees every
   lateral position is within half a stepover of a pass; the material a pass actually removes is the
   **bit's** footprint, so a bit narrower than the stepover leaves ridges between passes. On the frame's

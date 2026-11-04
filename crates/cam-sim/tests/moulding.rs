@@ -660,7 +660,7 @@ const FRAME_SEAM: f64 = 50.5;
 /// tangents are collinear and the offset walk joins itself exactly, at a corner they are not and the
 /// strategy emits one extra feed across the corner that [`claim_moulding`]'s walk does not cover. The
 /// corner case is measured, not assumed, in
-/// [`a_closed_rail_whose_start_vertex_is_a_corner_reports_the_seam_diagonal_as_gouge_a_known_limit`].
+/// [`a_closed_rail_whose_start_vertex_is_a_corner_claims_its_seam_diagonal`].
 fn frame_rail() -> Contour {
   Contour::from_points(
     &[
@@ -675,8 +675,8 @@ fn frame_rail() -> Contour {
   .expect("a closed frame")
 }
 
-/// The same rectangle whose vertex list starts at the bottom-left **corner**: the seam the limit test
-/// measures. Everything else is identical, so the two fixtures differ in one number of the drawing.
+/// The same rectangle whose vertex list starts at the bottom-left **corner**: the seam the closing-edge
+/// test measures. Everything else is identical, so the two fixtures differ in one number of the drawing.
 fn corner_seam_frame_rail() -> Contour {
   Contour::from_points(
     &[
@@ -752,7 +752,7 @@ fn frame_program(rail: &Contour, laterals: &[f64], depths: &[f64]) -> MoveStream
       });
     }
     // A closed rail's walk ends where it closes; a walk that ends on a *different* offset point (a
-    // corner seam) needs the closing feed, which is the edge the limit test below measures.
+    // corner seam) needs the closing feed, which is the edge the closing-edge test below measures.
     let last = moves.last().expect("a move").destination();
     if last.xy().distance_to(start.xy()) > 1.0e-9 {
       moves.push(Move::Feed { to: start });
@@ -903,24 +903,22 @@ fn a_frame_rail_a_millimetre_deep_gouges() {
 }
 
 #[test]
-fn a_closed_rail_whose_start_vertex_is_a_corner_reports_the_seam_diagonal_as_gouge_a_known_limit() {
-  // **A recorded limit, measured rather than assumed** (M8 T7, `docs/m8-moulding.md`).
-  //
+fn a_closed_rail_whose_start_vertex_is_a_corner_claims_its_seam_diagonal() {
   // The same frame, drawn with its vertex list starting at a corner instead of in the middle of an
   // edge. A closed rail's walk carries one sample per segment end, so the last sample of the walk and
   // the first are the same *point* carrying **two different normals** — and the strategy bridges them
-  // with one closing feed across the corner, which the claim's polyline does not contain: the claim
-  // measures a walked path with `windows(2)` and its walk ends on a different offset point, so the
-  // seam's diagonal is an edge of the program that nothing authorised.
+  // with one closing feed across the corner. [`Rail::offset_walk`] is that polyline, the strategy's and
+  // the claim's alike, so the diagonal is authorised and the program that cuts it is exact.
   //
-  // The corner case is one cell of 2 mm of material at each of the frame's start corners — here one
-  // cell, `(29, 39)`, the centre of the bottom-left seam's diagonal — and it is reported as `gouge` on
-  // a program that is otherwise exact. It is pinned rather than hidden so a fix has to change this
-  // test, and because the number is the one the roadmap's known limits quote.
+  // This fixture is where M8 recorded a **known limit**: while the claim measured
+  // `samples.windows(2)` alone, the seam's diagonal was an edge of the program that nothing
+  // authorised, and this test asserted `gouge 2.000 mm³ over 1 cell` on a program that was otherwise
+  // exact — one cell, `(29, 39)`, the centre of the bottom-left seam's diagonal. Pinning the wrong
+  // number was the point: a fix had to come with an assertion, and this is the assertion.
   //
-  // A start vertex in the middle of an edge — the ordinary case, and the fixture every other test in
-  // this block uses — has collinear tangents at the seam and no such edge, which is why the frame
-  // oracles above are clean.
+  // A start vertex in the middle of an edge — the fixture every other test in this block uses — has
+  // collinear tangents at the seam, so its walk closes with a zero-length edge and its own numbers are
+  // unchanged; that is what makes this a fix to one case and not a renumbering of the frame.
   let rail = corner_seam_frame_rail();
   let document = frame_document(rail.clone());
   let measured = measure(&document, &frame_program(&rail, &[0.0, 2.0], &[2.0, 2.0]));
@@ -929,19 +927,21 @@ fn a_closed_rail_whose_start_vertex_is_a_corner_reports_the_seam_diagonal_as_gou
     "the program still cuts both passes in full"
   );
   assert_eq!(
-    measured.deviation.gouge, 2.0,
-    "one cell of 2 mm at the seam corner: {:?}",
+    measured.deviation.gouge, 0.0,
+    "a correct frame moulding never cuts below its own cross-section, corner seam included: {:?}",
     measured.deviation
   );
-  assert_eq!(measured.deviation.gouge_cells, 1);
+  assert_eq!(measured.deviation.gouge_cells, 0);
   assert_eq!(
     measured.deviation.uncut, 0.0,
-    "nothing is claimed that the program does not cut"
+    "and the seam diagonal is claimed, so nothing the program cuts stands unclaimed: {:?}",
+    measured.deviation
   );
+  assert_eq!(measured.deviation.uncut_cells, 0);
   assert_eq!(
     claimed_cells(&target_of(&document)),
-    247,
-    "and the claim is one cell short of the seam-smooth frame's 248, because the seam diagonal is not in it"
+    248,
+    "the seam-smooth frame's own 248 cell centres, because the seam diagonal is in the claim too"
   );
 }
 

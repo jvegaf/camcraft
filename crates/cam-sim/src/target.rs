@@ -569,7 +569,8 @@ fn claim_v_carve(target: &mut Target, region: &Region, params: &VCarveParams, th
 /// coverage plus a monotone tool law, and it holds for a cylinder and a cone alike:
 ///
 /// - **The claim's footprint contains the program's.** Both walk the rail with
-///   `Rail::samples(DEFAULT_CHORD_TOLERANCE)` — the very walk `cam-toolpath::moulding` emits — so the
+///   `Rail::samples(DEFAULT_CHORD_TOLERANCE)` and read the pass's polyline from the same
+///   [`Rail::offset_walk`] — the very walk `cam-toolpath::moulding` emits, closing edge included — so the
 ///   pass *polyline* measured here is the polyline the program cuts. The sweep then samples that
 ///   polyline more finely, at half a cell per move (`cam_sim::sweep`), and every one of its samples
 ///   lies *on* it, so a cell's distance to the program's nearest sample is never smaller than its
@@ -616,10 +617,7 @@ fn claim_moulding(
       continue;
     }
     let reach = tool.radius_at(cut);
-    let path: Vec<Point2> = samples
-      .iter()
-      .map(|sample| sample.offset(*lateral))
-      .collect();
+    let path = rail.offset_walk(&samples, *lateral);
     let Some(window) = walk_window(&path, reach, grid) else {
       continue;
     };
@@ -672,9 +670,10 @@ fn walk_window(path: &[Point2], reach: f64, grid: Grid) -> Option<Window> {
 
 /// The distance from `point` to a walked path, in millimetres: the nearest of its segments.
 ///
-/// A closed rail's walk ends where it closes, so its last point is its first and the polyline closes by
-/// itself. A path of one point — a rail that walked to a single sample — has no segment to measure
-/// against, and the point's own distance is the honest answer.
+/// A closed rail's walk ends where it closes — [`Rail::offset_walk`] carries the closing edge when the
+/// seam is a corner, and appends nothing when it is in the middle of an edge — so the polyline is closed
+/// exactly where the program is. A path of one point, a rail that walked to a single sample, has no
+/// segment to measure against, and the point's own distance is the honest answer.
 fn distance_to_walk(point: Point2, path: &[Point2]) -> f64 {
   match path {
     [] => f64::INFINITY,

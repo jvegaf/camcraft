@@ -52,16 +52,17 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   `1332.5` of its analytic `1333.333 mm³` and a radius-15 disc `3534.152` of `3534.292`, with zero gouge
   and zero uncut, while a **deliberately thinned axis** reports `uncut` and still zero gouge and a
   **20% too deep** program reports `gouge 629.557 mm³`.
-- **The moulding's proof is coverage plus a monotone tool law.** The claim and the program walk the rail
-  with the same arc-length walk, the sweep's samples lie on that polyline, and a tool's `rise` grows with
-  distance — so a correct moulding can never remove more than its authored cross-section authorised:
-  `gouge` is **exactly zero**, and a pass dropped or a cross-section authored 1 mm shallower costs
-  `uncut` and nothing else. The simulation authorises the cross-section swept along the rail from the
-  document alone, and the oracle asserts both signs on a straight rail, a **closed frame** and a V-bit
-  cone (660 and 496 mm³ exact with zero gouge and zero uncut; `uncut 300`/`248` 1 mm shallow; `gouge
-  300`/`248` and `gouge 603.671` 1 mm deep). One case is measured rather than argued: a closed rail whose
-  drawing *starts* at a corner reports `gouge 2.000 mm³` over one cell at the seam, recorded as a known
-  limit in [docs/m8-moulding.md](docs/m8-moulding.md#known-limits-each-a-decision).
+- **The moulding's proof is coverage plus a monotone tool law.** The claim and the program read the same
+  pass polyline — `Rail::offset_walk` over the same arc-length walk, closing edge included — the sweep's
+  samples lie on that polyline, and a tool's `rise` grows with distance — so a correct moulding can never
+  remove more than its authored cross-section authorised: `gouge` is **exactly zero**, and a pass dropped
+  or a cross-section authored 1 mm shallower costs `uncut` and nothing else. The simulation authorises the
+  cross-section swept along the rail from the document alone, and the oracle asserts both signs on a
+  straight rail, a **closed frame** and a V-bit cone (660 and 496 mm³ exact with zero gouge and zero
+  uncut; `uncut 300`/`248` 1 mm shallow; `gouge 300`/`248` and `gouge 603.671` 1 mm deep). A closed rail
+  whose drawing *starts* at a corner is exact too: the seam's corner diagonal is an edge the program cuts,
+  so the claim carries it, and what was measured at delivery as `gouge 2.000 mm³` over one cell is pinned
+  closed in [docs/m8-moulding.md](docs/m8-moulding.md#known-limits-each-a-decision).
 - **A simulation, and every strategy measured against it.** `cam-cli simulate` sweeps the emitted
   program over a heightfield of the stock and reports the removed material, the through-cut cells,
   the gouge, the uncut material and every crash that rams the tool. The error bound is the

@@ -61,9 +61,10 @@ pub struct MouldingRequest<'a> {
 ///
 /// Per pass, in the stepover law's order: a rapid to the pass's first point at the job's safe Z, a
 /// plunge there to the depth the cross-section authors at that lateral offset, one [`Move::Feed`] per
-/// rail sample, a closing feed for a closed rail, and a retract back to safe Z. A closed rail's walk
-/// includes the point where it closes, and the closing feed covers the edge from it to the pass's first
-/// sample.
+/// point of the pass's offset walk ([`Rail::offset_walk`]), and a retract back to safe Z. A closed rail's
+/// walk closes on the point where the rail closes, and `offset_walk` carries that closing edge — the
+/// corner's diagonal at a seam that sits on a corner, and nothing at all at a seam in the middle of an
+/// edge, where the two ends are one point.
 ///
 /// # The refusals, and why they are here
 ///
@@ -92,14 +93,11 @@ pub fn moulding(request: &MouldingRequest<'_>) -> Result<Vec<Move>, ToolpathErro
   let samples = rail
     .samples(DEFAULT_CHORD_TOLERANCE)
     .map_err(geometry_error)?;
-  let first_sample = match samples.first() {
-    Some(sample) => *sample,
-    None => {
-      return Err(ToolpathError::MouldingGeometry {
-        reason: "the rail produced no samples to walk".to_owned(),
-      })
-    }
-  };
+  if samples.is_empty() {
+    return Err(ToolpathError::MouldingGeometry {
+      reason: "the rail produced no samples to walk".to_owned(),
+    });
+  }
 
   let safe_z = request.job.safe_z;
   let at = |point: cam_geom::Point2, z: Length| Point3 {
@@ -110,23 +108,19 @@ pub fn moulding(request: &MouldingRequest<'_>) -> Result<Vec<Move>, ToolpathErro
   let mut moves = Vec::new();
   for lateral in law.passes() {
     let z = Length::from_mm(cross.depth_at(*lateral));
-    let start = machine_point(request.job, first_sample.offset(*lateral));
+    let walk = rail.offset_walk(&samples, *lateral);
+    let mut points = walk.into_iter();
+    let Some(first) = points.next() else {
+      continue;
+    };
+    let start = machine_point(request.job, first);
     moves.push(Move::Rapid {
       to: at(start, safe_z),
     });
     moves.push(Move::Feed { to: at(start, z) });
-    for sample in &samples[1..] {
-      let point = machine_point(request.job, sample.offset(*lateral));
+    for point in points {
+      let point = machine_point(request.job, point);
       moves.push(Move::Feed { to: at(point, z) });
-    }
-    if rail.is_closed() {
-      // The walk's last sample sits where the rail closes; the pass still has the edge from it to the
-      // first sample to cut, and a seamless rail produces no duplicate move.
-      let last = moves.last().map(|movement| movement.destination());
-      let closes = last.map_or(true, |last| last.xy().distance_to(start) > 1.0e-9);
-      if closes {
-        moves.push(Move::Feed { to: at(start, z) });
-      }
     }
     let last = moves
       .last()
