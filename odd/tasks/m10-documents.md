@@ -51,7 +51,7 @@ breaks one is refused:
 | T1 | The command language: a line-oriented grammar, a parser with located diagnostics, and a dispatch table whose every entry calls the function the CLI subcommand already calls | S1 S2 | worker | — |
 | T2 | CSV: parts **in** (name, width, height, quantity) as nesting parts, and the cut list **out** from M9's placements, both with line-located refusals | S3 | worker | — |
 | T3 | The HTML print sheet: a fixed renderer, deterministic bytes, one command that writes it | S5 | worker | — |
-| T3b | Move the command language out of the binary into a `cam-script` library crate, so the shell can run a script at all: `cam-cli` has no lib target, so `cam-ui` cannot depend on it, and the engine must have one home that both callers use | S1 S2 S4 | worker | — |
+| T3b | Make `cam-cli` a **library plus a thin binary**: every operation and the command language become `pub` in the crate's lib target, and `main.rs` keeps only argument parsing and printing. Then the shell calls the same functions the binary calls, instead of a second implementation or a process boundary | S1 S2 S4 | worker | — |
 | T4 | The minimal panel: run a script from the shell behind `cam-ui`'s adapter, show its output and its located errors — over `cam-script`, never by spawning the CLI | S4 | worker | — |
 | T5 | Goldens for the script run, the cut list and the sheet; determinism twice over; the milestone differential against its cut point | S1-S5 | worker | — |
 | T6 | Docs: `docs/m10-documents.md`, `odd/roadmap.md` §4.13, README, `docs/format.md` if the document moves, and this document's evidence | S1-S6 | parent | — |
@@ -79,3 +79,14 @@ so it goes first and alone.
   this is the second requirement-level finding of the milestone: the first was that no CSV support
   existed at all (L3). `cam-ui` already depends on `cam-store`, `cam-program`, `cam-sim`, `cam-import`
   and `cam-model`, so the new crate's edges are the toolpath and post crates it does not have yet.
+- **L5 (T3b's shape, cheaper than L4 first said).** L4 proposed moving the engine into a new
+  `cam-script` crate. Designing it showed that the engine is not the only thing the shell needs: the
+  **operations** it dispatches to (`nest_document`, `append_toolpath`, `emit_document`,
+  `simulate_document`, `validate_report`) live in `main.rs` too, so a new crate would have to absorb
+  them or the shell would reimplement them — the second implementation invariant 1 exists to prevent.
+  The cheap honest shape is therefore to make `cam-cli` a **library plus a thin binary**: the
+  operations and the command language become `pub` in the lib target, `main.rs` keeps argument parsing
+  and printing, and `cam-ui` depends on the library. Zero code moves between crates, zero behaviour
+  change, and one implementation with two callers. Recorded as **D-M10-1**: the crate named `cam-cli`
+  is also the home of the operations the shell calls, which reads oddly and is deliberate — the
+  alternative was moving thousands of reviewed lines to earn a better name.
