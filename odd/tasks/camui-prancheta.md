@@ -69,10 +69,23 @@ words: *"design/prancheta-reference/ + README"*.
 | T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `38ea6dd` |
 | T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `482625b` |
 | T5 | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20) | S5 | worker | `7cb26ae` |
-| T6 | `2D \| 3D` toggle, split canvas, overlay row, axis triad and playback bar | S8 | inline | — |
-| T7 | The tool library as a master-detail modal | S9 | inline | — |
-| T8 | Strategy editors: current-tool card, quick parameter edit, image cards | S10 | inline | — |
+| T6 | ✅ delivered — `2D \| 3D` as a mode that splits the canvas, with the overlay row of four checkboxes plus `Centre` and `?`, the home button, the `TOP`/`FRONT`/`RIGHT` triad and the playback bar. Merged into `master` as `c176c62`; the refuter's two defects corrected in `ad0eaaa` (L23) | S8 | inline | `2630feb` |
+| T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `c5f4d78`; the units finding corrected in `620330c` (L25) | S9 | inline | `7df91c9` |
+| T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `42edaab`; two CRITICAL findings corrected in `a282a50` (L27) | S10 | inline | `5140c13` |
+| T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `223e876`, reviewed and approved on the first pass (L29) | S10 | worker | `884732e` |
 | T9 | `design/system.md` and the artboards re-synced to the delivered shell | S1 | inline | — |
+
+## Backlog
+
+Debt this feature knowingly leaves open. None of it blocks delivery; all of it is recorded so it is not
+rediscovered. The advisory details live in the `Advisories` paragraph of each review entry in `## Log`, not here.
+
+| Item | What | Where it is recorded |
+| --- | --- | --- |
+| Advisories ×44 | `informational` findings from this feature's review receipts, none of them blocking. The count is the one the last review states it is owed | the `Advisories` paragraph of each review entry in `## Log` |
+| `PASSES` unit bug | the readout prints `Length` in mm whatever `rate_units` says — a true sentence about the wrong unit | L25 |
+| Dead `segmented` wrapper | left behind by `ad0eaaa`; no live caller | the entry that records `ad0eaaa` |
+| T9 | the design artefacts still describe the pre-Prancheta shell | `## Tasks`, S1 |
 
 ## Log
 
@@ -648,3 +661,20 @@ words: *"design/prancheta-reference/ + README"*.
   **Four advisories, all `informational`:** `R2-001` (`strategy.rs:457-458`), `R3-001` (`:483-490`), `R3-002`
   (`:479-482`) and `R3-003` (`tests/strategy.rs:625-628`). They join the forty this feature already owes. None
   of them is a reason to re-review this candidate; its receipt stands.
+- **L30 (the ODD record brought back in line with `master`, on the owner's word).** Owner: "sanea primero".
+  The task table had stopped telling the truth: **T6, T7 and T8 were merged** (`c176c62`, `c5f4d78`, `42edaab`)
+  and their rows still read a bare description with no tick and no commit — the shape of a task nobody
+  delivered. Three rows now carry what each one actually landed, its merge commit and its **feat** commit — the
+  column's existing convention, which `482625b` on T4 settles: the commit that landed the behaviour, not the
+  branch tip and not the entry that documents it — plus the commit that corrected it. A **fourth delivered task
+  was missing from the table entirely**: the rename (`884732e`, merged `223e876`) exists in the Log as L28/L29
+  but was never a row, so it is now T8b under S10 — the spec that asked for the name field in the first place,
+  and L28 already says a worker delivered it, which is why its `Route` cell can be filled and its older
+  siblings' cannot. The debt this feature owes was also only legible by
+  reading twelve review entries in order; it is now a `## Backlog` table that names the four items and points
+  at the entry that holds each one, so nothing is restated (a restated inventory goes stale, and that is the
+  defect this entry repairs). **No code touched, no test changed**: the workspace is `master` @ `223e876`,
+  1 295 tests green, tree clean. **One cell left as it was, because I could not verify it rather than guess:**
+  T6, T7 and T8 read `inline` in the `Route` column while L19 says every task from T5 on routes to a worker, and
+  T5's own row says `worker`. The commit history cannot tell an inline delivery from a delegated one, so the
+  contradiction is recorded here instead of being papered over.
