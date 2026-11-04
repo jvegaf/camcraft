@@ -8217,11 +8217,16 @@ fn a_first_nested_document_re_nests_to_identical_bytes() {
   // answers an authored request, the second re-nests the nesting it wrote. Both states are valid, so
   // both runs are, and the command is idempotent on its own output — the second run prints the same
   // report and leaves the same bytes.
+  //
+  // The two instances must fit the **one** authored sheet: a fixture that only fits because `nest`
+  // opens a second sheet would prove sheet growth and idempotence at once, and a reader could not
+  // tell which of the two made it pass. 400 x 400 twice on 1000 x 600 fits upright, with rotation
+  // off, in one sheet — so this test is about the bytes and nothing else.
   let directory = scratch("nest-first-determinism");
   let document = write_nesting_document(
     &directory,
     "authored.c2d",
-    vec![rectangle_contour(600.0, 400.0)],
+    vec![rectangle_contour(400.0, 400.0)],
     &[("P1", &[1], 2)],
     &[("S1", 1000.0, 600.0)],
     &[],
@@ -8235,6 +8240,11 @@ fn a_first_nested_document_re_nests_to_identical_bytes() {
     after_first.placements.len(),
     2,
     "the first run placed both authored instances"
+  );
+  assert_eq!(
+    after_first.sheets.len(),
+    1,
+    "both instances fit the authored sheet, so the run opened no second one"
   );
   let first_bytes = std::fs::read(&document).expect("read");
 
