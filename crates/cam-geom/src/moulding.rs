@@ -45,10 +45,10 @@ pub const DEFAULT_CHORD_TOLERANCE: f64 = 0.001;
 /// How far apart two offset points must be before the edge between them is a real edge, in millimetres.
 ///
 /// A closed rail's offset walk ends on the point where the rail closes. At a seam in the middle of an
-/// edge the segment’s two normals are collinear and the two offset points are the same point up to
-/// floating-point noise; at a seam on a **corner** they are genuinely apart and the edge between them is
-/// the corner’s diagonal, which is material the program removes. This is the only number that tells the
-/// two cases apart, and [`Rail::offset_walk`] is the only place it is read.
+/// edge the two normals there are collinear, so the two offset points are the same point up to the noise
+/// of the arithmetic that produced them; at a seam on a **corner** they are genuinely apart, and the
+/// edge between them is the corner's diagonal, which is material the program removes. This is the only
+/// number that tells the two cases apart, and [`Rail::offset_walk`] is the only place it is read.
 const SEAM_EPSILON: f64 = 1.0e-9;
 
 /// One point of a moulding cross-section, in millimetres.
@@ -295,13 +295,13 @@ impl Rail {
   }
 
   /// The offset polyline that a pass at `lateral` cuts: one point per sample, and the closing edge a
-  /// closed rail’s seam needs when that seam sits on a corner.
+  /// closed rail's seam needs when that seam sits on a corner.
   ///
   /// This is **the** walk of a pass. `cam-toolpath::moulding` emits it as its feeds and
   /// `cam_sim::target::claim_moulding` claims against it, and it is one function for exactly that
-  /// reason: a claim measuring a different polyline from the program’s would report a correct program as
-  /// `gouge`. A closed rail’s walk ends on the point where the rail closes, carrying the *closing*
-  /// segment’s normal ([`Rail::samples`]), so the last offset point and the first coincide — in the
+  /// reason: a claim measuring a different polyline from the program's would report a correct program as
+  /// `gouge`. A closed rail's walk ends on the point where the rail closes, carrying the *closing*
+  /// segment's normal ([`Rail::samples`]), so the last offset point and the first coincide — in the
   /// middle of an edge, because the two tangents there are collinear — or they do not, and then the edge
   /// between them is a cut the program makes and the claim must authorise. An open rail closes nothing.
   ///

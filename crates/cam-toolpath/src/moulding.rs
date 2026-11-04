@@ -108,18 +108,17 @@ pub fn moulding(request: &MouldingRequest<'_>) -> Result<Vec<Move>, ToolpathErro
   let mut moves = Vec::new();
   for lateral in law.passes() {
     let z = Length::from_mm(cross.depth_at(*lateral));
+    // The walk cannot be empty: the samples it maps were refused above if there were none, and
+    // `offset_walk` returns one point per sample. It is indexed rather than iterated so that the
+    // invariant is stated once instead of being hidden behind an unreachable `continue`.
     let walk = rail.offset_walk(&samples, *lateral);
-    let mut points = walk.into_iter();
-    let Some(first) = points.next() else {
-      continue;
-    };
-    let start = machine_point(request.job, first);
+    let start = machine_point(request.job, walk[0]);
     moves.push(Move::Rapid {
       to: at(start, safe_z),
     });
     moves.push(Move::Feed { to: at(start, z) });
-    for point in points {
-      let point = machine_point(request.job, point);
+    for point in &walk[1..] {
+      let point = machine_point(request.job, *point);
       moves.push(Move::Feed { to: at(point, z) });
     }
     let last = moves

@@ -657,10 +657,10 @@ const FRAME_SEAM: f64 = 50.5;
 /// The vertex list starts in the **middle** of the bottom edge, and that is deliberate. A closed rail's
 /// walk carries one sample per segment end, so the seam is the one place where the walk's first and
 /// last samples are the same *point* with two different normals: in the middle of an edge the two
-/// tangents are collinear and the offset walk joins itself exactly, at a corner they are not and the
-/// strategy emits one extra feed across the corner that [`claim_moulding`]'s walk does not cover. The
-/// corner case is measured, not assumed, in
-/// [`a_closed_rail_whose_start_vertex_is_a_corner_claims_its_seam_diagonal`].
+/// tangents are collinear and the offset walk joins itself, at a corner they are not and the walk
+/// carries the corner's diagonal as one more edge — the pass's real polyline, which
+/// [`Rail::offset_walk`] closes and [`claim_moulding`] authorises against. The corner case is measured,
+/// not assumed, in [`a_closed_rail_whose_start_vertex_is_a_corner_claims_its_seam_diagonal`].
 fn frame_rail() -> Contour {
   Contour::from_points(
     &[
