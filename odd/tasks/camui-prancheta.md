@@ -73,7 +73,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `c5f4d78`; the units finding corrected in `620330c` (L25) | S9 | inline | `7df91c9` |
 | T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `42edaab`; two CRITICAL findings corrected in `a282a50` (L27) | S10 | inline | `5140c13` |
 | T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `223e876`, reviewed and approved on the first pass (L29) | S10 | worker | `884732e` |
-| T9 | `design/system.md` and the artboards re-synced to the delivered shell | S1 | inline | — |
+| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `00e3e45` (system) `89fa0c1` (01) `4765acd` (02) `dc46eaf` (04) `7c54886` (03 + manifest), all on `feat/camui-prancheta-t9`, **not merged and not pushed** (L31) | S1 | inline | `00e3e45..7c54886` |
 
 ## Backlog
 
@@ -82,10 +82,10 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
 
 | Item | What | Where it is recorded |
 | --- | --- | --- |
+| `chrome.rs` frame diagram | the module doc still draws `│ 52 │` for the rail while `palette_width` is 200 and `chrome.rs:414` applies it — a comment that disagrees with the code it heads, outside a design task's surfaces | `chrome.rs:12`, `theme.rs:373` |
 | Advisories ×44 | `informational` findings from this feature's review receipts, none of them blocking. The count is the one the last review states it is owed | the `Advisories` paragraph of each review entry in `## Log` |
 | `PASSES` unit bug | the readout prints `Length` in mm whatever `rate_units` says — a true sentence about the wrong unit | L25 |
 | Dead `segmented` wrapper | left behind by `ad0eaaa`; no live caller | the entry that records `ad0eaaa` |
-| T9 | the design artefacts still describe the pre-Prancheta shell | `## Tasks`, S1 |
 
 ## Log
 
@@ -678,3 +678,58 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   T6, T7 and T8 read `inline` in the `Route` column while L19 says every task from T5 on routes to a worker, and
   T5's own row says `worker`. The commit history cannot tell an inline delivery from a delegated one, so the
   contradiction is recorded here instead of being papered over.
+- **L31 (T9: the design artefacts re-synced to the delivered shell, and the four lies my own brief carried).**
+  Branch `feat/camui-prancheta-t9` cut from `master` @ `2e52952`. Five commits, one per argument, because the
+  whole task is 2 283 changed lines and a single commit would be unreviewable: **`00e3e45`** the authority
+  (`design/system.md` + `system.html`), **`89fa0c1`** the 2D shell, **`4765acd`** the workflow board,
+  **`dc46eaf`** the token board, **`7c54886`** the icon board and the manifest. **Not merged, not pushed** —
+  delivery is the owner's decision, and the slice boundaries are those five commits, in that order.
+  **What was wrong, measured against the code rather than against the old board.** `system.md` documented a shell
+  from before this feature: a stage bar, an `Inspector` with `Selection`/`Toolpath`/`Material` tabs, a "52 px rail"
+  it said the shell had abandoned, and the four group words `DRAW`/`TRANSFORM`/`VECTOR EDIT`/`VIEW`. It also
+  rendered only 16 of the 21 roles (`system.html`) and left four undeclared anywhere. `01-shell-2d.html` drew the
+  stage bar S2 removed, the tabs S6 replaced, and Portuguese content (`FARMÁCIA`, `SÃO JOÃO`,
+  `letreiro-farmacia.c2d`) in a shell whose copy is English by S3. `02-stages.html` argued five stages with gates
+  and claimed the shell *today* is one flat column of `ui.label` — true before `camui-shell`, false since.
+  `03-iconography.html` counted 70 glyphs where `icons.rs` asserts 71. `04-tokens.html` drew a tabbed inspector
+  and a `2D | 3D | snap 1 mm` pill row that do not exist.
+  **Three premises in my own brief were false, and the writers found them by reading the source instead of
+  obeying me.** (1) I wrote `v4.5.1` for the crate, which is the tool's version, not this project's: `Cargo.toml`
+  says `0.0.1`. (2) I wrote "chip = glyph + label"; `palette_panel` calls `icon_button(..., 20.0)` with
+  `palette_tooltip(command)` and its own comment says the palette is "the part of the frame that carries no text
+  of its own" — the words are the group headings, a chip is a glyph and nothing else. (3) I asked for a greyed
+  chip "with the reason"; the delivered rail passes `enabled=true` for all twenty-eight, so a greyed chip would
+  have been a false claim about the present. The real dead control is the object menu's `Trim`, dark until two
+  vectors are selected. A fourth correction was arithmetic: `theme.rs` hands egui **premultiplied** channels, so
+  `rgba()` copied straight from the source darkens the wash twice; de-premultiplied, the washes land on the
+  signals (`rgba(105,202,225,.13)`, `rgba(240,165,30,.13)`).
+  **The independent audit then found six more, and one of them was the authority's fault.** `03` painted its page
+  in `#0a0c0f`, a colour no role owns, and declared its washes as `#6fd3e822`/`#f5a62322`; six places painted
+  **prose** in `TextOff` at 11–13 px, roughly 3:1 and outside the twelve pairs `theme.rs` proves; `01`'s rail chip
+  was 32 × 32 while `system.md` claimed a 24 px control — and there the file was wrong, not the artboard, because
+  `icon_button` really does allocate 32 and a hit area is not a fourth control height. `01` also had no `Name`
+  field, which S10 requires and `strategy.rs` draws. All six closed, plus the three the fix worker reported but
+  was not authorised to touch: `03`'s `h2 .hint` prose, `02`'s 24 px chip, and `03`'s prose still claiming the
+  rail renders at 18 px (18 is the app bar's; the rail takes 20).
+  **Two rules the audit earned are now in the authority, and they are the part worth keeping:** `TextOff` never
+  carries a sentence — it is the ink of a heading, a count and half a row, and prose takes `TextDim`, the pair
+  proved at 4.5:1; and a chip's label is its tooltip, so a pointer-less reader has only `aria-label` and the two
+  must stay in sync.
+  **The icon count is 71, and the missing glyph was `shortcuts`** — `icons.rs:1237`, drawn in the rail's SHOW AND
+  SELECT row since the app bar existed, absent from the board. Added by transliterating the runtime's own three
+  rounded rectangles (`SHORTCUTS`), so the board and the code now draw the same shape; `view/document/display`
+  goes 16 → 17 and the prose and `design.json` say 71.
+  **Verification, and why it is not a test.** These are static artefacts: nothing in the repo reads them
+  (`scripts/check.sh` is fmt/clippy/cargo test over `crates/`), so there is no RED to observe and saying otherwise
+  would be theatre. What ran instead: each writer's self-containment and colour audit; one independent verifier
+  over nine checks (self-containment, colour truth against the 21 + 21 roles and four named washes, fonts, the rail's
+  28 chips with no label and no letter and none disabled, no present-tense stage bar or tabs, counts,
+  version, manifest, `TextOff` contrast); and the parent's own pass over the five files — one `<style>` each, zero
+  `<script>`, zero external URL, **zero hex outside the roles**, only the four washes, 28 chips, `Name` present,
+  71 cells, the reduced-motion rule in all five. Canvas: `camui-shell` opened and refreshed.
+  **Two honest limits.** The 01 frame is exact at 1440 × 900 because its CSS fixes it; 02, 03 and 04 are
+  auto-height boards, and their `design.json` heights stay declared viewports rather than measurements — there is
+  a `firefox` on this machine but no scripting harness (playwright, selenium, marionette) to read a document
+  height, so I did not invent numbers. And **`chrome.rs:12` is left alone**: its module diagram still draws
+  `│ 52 │` for a rail that `palette_width` makes 200. It is a code comment, not a design artefact, so it is
+  recorded in `## Backlog` instead of being fixed inside T9's surfaces.
