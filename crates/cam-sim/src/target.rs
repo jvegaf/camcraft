@@ -11,7 +11,8 @@
 //! the document's own pattern (M6 A5, D-M6-6), an inlay authorises the half it is — the region grown by
 //! the allowance for the female, the job rectangle minus the region for the male (M6 A6, D-M6-7) — a thread authorises the **spiral** its helical descent
 //! leaves in the annulus its tool sweeps, cell by cell (M6 A7) — a V-carve authorises the **distance
-//! field** itself, at each cell's own centre (M7 A1, A6) — and
+//! field** itself, at each cell's own centre (M7 A1, A6) — a moulding authorises its authored
+//! **cross-section** swept along the rail's own offset family at the stepover's passes (M8 T5, S3) — and
 //! every cell nothing claims is authorised to lose nothing.
 //! Gouge and uncut are then one subtraction with two signs (D-M5-2): removed deeper than authorised, and
 //! authorised deeper than removed.
@@ -32,9 +33,14 @@ use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 use std::ops::Range;
 
+use cam_geom::moulding::{
+  CrossSection, CrossSectionPoint, Rail, StepoverLaw, DEFAULT_CHORD_TOLERANCE,
+};
 use cam_geom::offset::{offset_contour, OffsetOptions};
-use cam_geom::{region::Region, Contour, Point2, Segment, DEFAULT_TOLERANCE};
-use cam_model::{Document, Operation, ProfileParams, ProfileSide, Tab, Toolpath, VCarveParams};
+use cam_geom::{region::Region, Contour, LineSeg, Point2, Segment, DEFAULT_TOLERANCE};
+use cam_model::{
+  Document, MouldingParams, Operation, ProfileParams, ProfileSide, Tab, Toolpath, VCarveParams,
+};
 use cam_move::ToolShape;
 use cam_units::Length;
 use thiserror::Error;
@@ -464,6 +470,31 @@ fn claim_toolpath(
       // the claim is clamped: everything else is the distance field as it stands.
       claim_v_carve(target, &region, params, document.job.thickness.mm());
     }
+    Operation::Moulding(params) => {
+      // A moulding's claim is the document's own cross-section swept along the document's own rail at
+      // the document's own stepover, never the passes the program emitted — see [`claim_moulding`] for
+      // the law and for why a correct program's gouge is exactly zero. The rail rides on `entity_ids`
+      // (T1's schema decision, S3), so every entity the toolpath names is one rail.
+      let tool = tools
+        .shape(toolpath.tool_number)
+        .ok_or_else(|| TargetError::MissingTool {
+          toolpath: toolpath.id.clone(),
+          tool_number: toolpath.tool_number,
+        })?;
+      if toolpath.entity_ids.is_empty() {
+        // Authorising nothing here would report every cell the program cuts as a gouge, which is a
+        // report about the claim and not about the cut — the reason T1 refused the whole operation
+        // rather than claiming nothing while it was unimplemented.
+        return Err(TargetError::Geometry {
+          toolpath: toolpath.id.clone(),
+          reason: "it names no rail, and a moulding sweeps a cross-section along one".to_owned(),
+        });
+      }
+      for id in &toolpath.entity_ids {
+        let rail = contour_of(document, toolpath, id)?;
+        claim_moulding(target, toolpath, rail, params, tool)?;
+      }
+    }
   }
   Ok(())
 }
@@ -506,6 +537,152 @@ fn claim_v_carve(target: &mut Target, region: &Region, params: &VCarveParams, th
         *slot = authorised;
       }
     }
+  }
+}
+
+/// Claim the depth a moulding authorises, cell by cell: the document's cross-section swept along the
+/// document's rail at the document's stepover (M8 T5; S3, S6).
+///
+/// # The law
+///
+/// S3's reading is all of it: the rail is an XY path, the profile is authored data — a cross-section of
+/// `(lateral, depth)` points — and the stepover spaces the overlapped lateral passes. So the claim is
+/// read from the document: [`Rail`] walks the named contour by arc length, [`CrossSection`] reads the
+/// profile as one depth per lateral distance, and [`StepoverLaw`] places the passes. Those are the calls
+/// `cam-toolpath::moulding` makes for the program — the relationship a texture's claim has to
+/// `TextureParams::grooves` — and none of them is a move: a claim built from the emitted passes would
+/// agree with them by construction, including where both are wrong (M6 A5, D-M6-6).
+///
+/// Each pass is the rail's own offset family at its lateral distance, cut at the depth the
+/// cross-section authors there and swept by the tool's footprint: a cell `d` millimetres from the pass
+/// is authorised `cut − rise(d)` while `d` is inside `radius_at(cut)` — `cut` itself for a cylinder,
+/// and the cone's own flank for a V-bit, the subtraction a chamfer's, an engrave's and a flute's claims
+/// pay (M6 A8). The deepest claim wins and claims are never summed (D-M5-2).
+///
+/// A cross-section's depth is zero at the stock surface and negative below
+/// (`cam_model::MouldingProfilePoint`), so a positive authored depth asks to cut *above* the stock and
+/// authorises nothing: the program feeds above the surface there and removes nothing.
+///
+/// # Why `gouge` is zero by construction
+///
+/// Unlike the V-carve's (M7 A1, which rests on a Lipschitz distance field), the argument here is
+/// coverage plus a monotone tool law, and it holds for a cylinder and a cone alike:
+///
+/// - **The claim's footprint contains the program's.** Both walk the rail with
+///   `Rail::samples(DEFAULT_CHORD_TOLERANCE)` — the very walk `cam-toolpath::moulding` emits — so the
+///   pass *polyline* measured here is the polyline the program cuts. The sweep then samples that
+///   polyline more finely, at half a cell per move (`cam_sim::sweep`), and every one of its samples
+///   lies *on* it, so a cell's distance to the program's nearest sample is never smaller than its
+///   distance to this polyline. With [`REACH_SLACK`], every cell the program can reach is claimed.
+/// - **The claim's depth there is never shallower.** The tool's `rise` grows with the radius
+///   ([`ToolShape::rise_at_radius`]) and the program's sample is at least as far away, so
+///   `cut − rise(claimed distance) ≥ cut − rise(the program's distance)`.
+///
+/// So a correct program can never remove more than was authorised, whatever the bit's shape and
+/// whatever the rail's curvature; the only deviation it can show is `uncut` at the footprint's edge,
+/// where the sweep's samples may stop a fraction of a cell short. `tests/moulding.rs` asserts both
+/// signs — the zero, and the gouge a too-deep program must produce — rather than assuming either.
+fn claim_moulding(
+  target: &mut Target,
+  toolpath: &Toolpath,
+  rail_contour: &Contour,
+  params: &MouldingParams,
+  tool: ToolShape,
+) -> Result<(), TargetError> {
+  let cross = CrossSection::new(
+    params
+      .profile
+      .iter()
+      .map(|point| CrossSectionPoint {
+        lateral: point.lateral.mm(),
+        depth: point.depth.mm(),
+      })
+      .collect(),
+  )
+  .map_err(|error| moulding_geometry(toolpath, error))?;
+  let law = StepoverLaw::new(&cross, params.stepover.mm())
+    .map_err(|error| moulding_geometry(toolpath, error))?;
+  let rail = Rail::new(rail_contour).map_err(|error| moulding_geometry(toolpath, error))?;
+  let samples = rail
+    .samples(DEFAULT_CHORD_TOLERANCE)
+    .map_err(|error| moulding_geometry(toolpath, error))?;
+  let grid = target.grid;
+  let columns = grid.columns;
+  for lateral in law.passes() {
+    // The material this pass cuts, in millimetres below the stock surface. A cross-section's depths are
+    // zero at the surface and negative below, so a positive one cuts nothing at all.
+    let cut = -cross.depth_at(*lateral);
+    if cut <= 0.0 {
+      continue;
+    }
+    let reach = tool.radius_at(cut);
+    let path: Vec<Point2> = samples
+      .iter()
+      .map(|sample| sample.offset(*lateral))
+      .collect();
+    let Some(window) = walk_window(&path, reach, grid) else {
+      continue;
+    };
+    for row in window.rows {
+      for column in window.columns.clone() {
+        let centre = grid.centre(column, row);
+        let distance = distance_to_walk(centre, &path);
+        if distance > reach + REACH_SLACK {
+          continue;
+        }
+        let authorised = (cut - tool.rise_at_radius(distance)).max(0.0);
+        let slot = &mut target.authorised[row * columns + column];
+        if authorised > *slot {
+          *slot = authorised;
+        }
+      }
+    }
+  }
+  Ok(())
+}
+
+/// The moulding's refusal for whatever the geometry kernel refused, naming the toolpath.
+///
+/// The document model refuses a malformed profile and a stepover with no distance behind it as the
+/// document loads (M8 T1); they are repeated here because a target can be derived from a `Document`
+/// built in memory. Everything else keeps the kernel's own words rather than a guess at which refusal
+/// it was, which is the rule `cam-toolpath::moulding`'s own `geometry_error` follows.
+fn moulding_geometry(toolpath: &Toolpath, error: cam_geom::GeomError) -> TargetError {
+  TargetError::Geometry {
+    toolpath: toolpath.id.clone(),
+    reason: error.to_string(),
+  }
+}
+
+/// The cell window that holds a walked path, widened by the tool's `reach`, clamped to the grid.
+fn walk_window(path: &[Point2], reach: f64, grid: Grid) -> Option<Window> {
+  let mut bounds = cam_geom::Bounds::empty();
+  for point in path {
+    bounds.min = Point2::new(bounds.min.x.min(point.x), bounds.min.y.min(point.y));
+    bounds.max = Point2::new(bounds.max.x.max(point.x), bounds.max.y.max(point.y));
+  }
+  bounds_window(
+    cam_geom::Bounds {
+      min: Point2::new(bounds.min.x - reach, bounds.min.y - reach),
+      max: Point2::new(bounds.max.x + reach, bounds.max.y + reach),
+    },
+    grid,
+  )
+}
+
+/// The distance from `point` to a walked path, in millimetres: the nearest of its segments.
+///
+/// A closed rail's walk ends where it closes, so its last point is its first and the polyline closes by
+/// itself. A path of one point — a rail that walked to a single sample — has no segment to measure
+/// against, and the point's own distance is the honest answer.
+fn distance_to_walk(point: Point2, path: &[Point2]) -> f64 {
+  match path {
+    [] => f64::INFINITY,
+    [only] => point.distance_to(*only),
+    _ => path
+      .windows(2)
+      .map(|pair| LineSeg::new(pair[0], pair[1]).distance_to_point(point))
+      .fold(f64::INFINITY, f64::min),
   }
 }
 

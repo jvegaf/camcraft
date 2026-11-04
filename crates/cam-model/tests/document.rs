@@ -1289,3 +1289,99 @@ fn a_pre_existing_document_still_re_saves_byte_identically() {
   );
   reloaded.validate().expect("and it still validates");
 }
+
+#[test]
+fn a_moulding_toolpath_round_trips_its_rail_and_profile() {
+  // S3: the rail goes in XY as the selected entity; the profile carries (lateral offset, Z depth)
+  // points and the stepover spaces the overlapped lateral passes.
+  let mut document = document_with_square();
+  document.toolpaths[0].entity_ids = vec!["E1".to_owned()];
+  document.toolpaths[0].operation = Operation::Moulding(MouldingParams {
+    profile: vec![
+      MouldingProfilePoint {
+        lateral: Length::from_mm(0.0),
+        depth: Length::ZERO,
+      },
+      MouldingProfilePoint {
+        lateral: Length::from_mm(6.0),
+        depth: Length::from_mm(-4.0),
+      },
+      MouldingProfilePoint {
+        lateral: Length::from_mm(12.0),
+        depth: Length::ZERO,
+      },
+    ],
+    stepover: Length::from_mm(2.0),
+  });
+  document.validate().expect("valid moulding document");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"kind\":\"moulding\""), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+}
+
+#[test]
+fn a_moulding_toolpath_without_a_profile_is_refused() {
+  let mut document = document_with_square();
+  document.toolpaths[0].operation = Operation::Moulding(MouldingParams {
+    profile: Vec::new(),
+    stepover: Length::from_mm(2.0),
+  });
+  let error = document
+    .validate()
+    .expect_err("must refuse an empty profile");
+  assert!(
+    matches!(error, ModelError::MouldingProfileTooShort { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_moulding_toolpath_with_a_non_positive_stepover_is_refused() {
+  let mut document = document_with_square();
+  document.toolpaths[0].operation = Operation::Moulding(MouldingParams {
+    profile: vec![
+      MouldingProfilePoint {
+        lateral: Length::from_mm(0.0),
+        depth: Length::ZERO,
+      },
+      MouldingProfilePoint {
+        lateral: Length::from_mm(6.0),
+        depth: Length::from_mm(-4.0),
+      },
+    ],
+    stepover: Length::ZERO,
+  });
+  let error = document
+    .validate()
+    .expect_err("must refuse a zero stepover");
+  assert!(
+    matches!(error, ModelError::MouldingStepoverNotPositive { .. }),
+    "{error:?}"
+  );
+}
+
+#[test]
+fn a_moulding_toolpath_with_a_non_finite_profile_point_is_refused() {
+  let mut document = document_with_square();
+  document.toolpaths[0].operation = Operation::Moulding(MouldingParams {
+    profile: vec![
+      MouldingProfilePoint {
+        lateral: Length::from_mm(0.0),
+        depth: Length::ZERO,
+      },
+      MouldingProfilePoint {
+        lateral: Length::from_mm(f64::INFINITY),
+        depth: Length::from_mm(-4.0),
+      },
+    ],
+    stepover: Length::from_mm(2.0),
+  });
+  let error = document
+    .validate()
+    .expect_err("must refuse a non-finite point");
+  assert!(
+    matches!(error, ModelError::MouldingProfilePointNotFinite { .. }),
+    "{error:?}"
+  );
+}

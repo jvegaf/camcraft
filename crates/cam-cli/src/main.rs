@@ -19,8 +19,8 @@ use cam_sim::{deviations, sweep, target_for, Heightfield, ToolShapes};
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_toolpath::{
-  circle_centre, drill, inlay, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
-  ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
+  circle_centre, drill, inlay, moulding, thread, vcarve, DrillHole, DrillRequest, InlayRequest,
+  MouldingRequest, ThreadRequest, ToolSpec, ToolpathError, VCarveRequest,
 };
 use cam_units::{Format, Length};
 
@@ -45,19 +45,28 @@ COMMANDS:
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
         --kind <kind>         profile, pocket, drilling, chamfer, vcarve, engrave, fluting, texture,
-                              inlay or thread (required); a vcarve walks the region's medial axis at
-                              the depth the distance to the boundary demands, so it takes no depth at
-                              all; a texture cuts grooves only, so the material between them stands
-                              and the region is never cleared; an inlay appends **two** toolpaths, a
-                              female cavity and the male plug that fits it; a thread mills one
-                              helical descent around each circle, one pitch per revolution
+                              inlay or thread (required); a moulding sweeps an authored cross-section
+                              along the rail it selects, one overlapped lateral pass per --stepover,
+                              and takes no depth or tolerance flag: the cross-section's own depths
+                              are the Z law, and the rail's walk chords an arc at a fixed tolerance;
+                              a vcarve walks the region's medial axis at the depth the distance to
+                              the boundary demands, so it takes no depth at all; a texture cuts
+                              grooves only, so the material between them stands and the region is
+                              never cleared; an inlay appends **two** toolpaths, a female cavity and
+                              the male plug that fits it; a thread mills one helical descent around
+                              each circle, one pitch per revolution
         --entities <ids>      Comma-separated entity ids (required)
         --islands <ids>       pocket: contours inside the pocket to leave standing
         --tool <number>       Tool number in the library (required)
         --side <side>         profile: inside, outside or on (default outside)
         --allowance <mm>      profile, pocket: material left on the vector
         --strategy <mode>     pocket: offset or raster (default offset)
-        --stepover <mm>       pocket, inlay: ring or row spacing; defaults to the tool's stepover
+        --profile <lateral:depth>  moulding: one point of the swept cross-section, as a lateral offset
+                              from the rail and a depth below the stock surface in millimetres
+                              (negative is deeper); repeat it for every point, in increasing lateral
+                              order, at least two
+        --stepover <mm>       pocket, inlay, moulding: ring, row or pass spacing; defaults to the
+                              tool's stepover
         --spacing <mm>        texture: distance between grooves; defaults to the tool's stepover.
                               The material between grooves stands: a texture does not clear
         --angle <degrees>     texture: direction of the grooves, from the X axis (default 0)
@@ -630,6 +639,7 @@ struct ToolpathArgs {
   pitch: Option<f64>,
   thread_direction: Option<String>,
   tolerance: Option<f64>,
+  profile: Vec<(f64, f64)>,
 }
 
 fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
@@ -670,6 +680,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       }
       "--ramp" => args.ramp = Some(parse_mm(&take("--ramp")?, "--ramp")?),
       "--spacing" => args.spacing = Some(parse_mm(&take("--spacing")?, "--spacing")?),
+      "--profile" => args.profile.push(parse_profile_point(&take("--profile")?)?),
       "--pitch" => args.pitch = Some(parse_mm(&take("--pitch")?, "--pitch")?),
       "--thread-direction" => args.thread_direction = Some(take("--thread-direction")?),
       "--inlay-allowance" => {
@@ -739,6 +750,14 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
   if !island_ids.is_empty() && kind != "pocket" {
     return Err(Failure::input(format!(
       "--islands is only valid with --kind pocket, not {kind:?}"
+    )));
+  }
+  // A cross-section belongs to the kind that sweeps one. Every other kind has no profile, so the flag
+  // is refused by name rather than accepted and dropped, the rule `--islands` already follows.
+  if !args.profile.is_empty() && kind != "moulding" {
+    return Err(Failure::input(format!(
+      "--profile is only valid with --kind moulding, not {kind:?}: it is the cross-section a moulding \
+       sweeps along its rail"
     )));
   }
   let tool_number = args
@@ -1248,10 +1267,187 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         cut_depth: mm(default_cut_depth(args.cut_depth)),
       })
     }
+    "moulding" => {
+      // A moulding sweeps an authored cross-section along the rail it selects (S3): the rail is the
+      // selection, the profile says (lateral, depth) and the stepover spaces the overlapped lateral
+      // passes. So every flag that names another cutting law has no meaning here — a depth, a side, a
+      // pass law, a tab, a lead, a texture's spacing or angle, a thread's pitch, a bevel's width, an
+      // inlay's clearance, a clearing pattern, a drilling law — and a tolerance has none either, because
+      // the rail's walk chords an arc at the fixed tolerance `cam-geom` declares for it (M8 L9).
+      // Accepting one would mean ignoring it, and a `--cut-depth 5` nobody applied still looks applied.
+      // Refused by name, so nothing that was never applied looks applied.
+      for (flag, given, reason) in [
+        (
+          "--cut-depth",
+          args.cut_depth.is_some(),
+          "every lateral pass sits at the depth its own cross-section point authors, so there is no \
+           one depth to name",
+        ),
+        (
+          "--start-depth",
+          args.start_depth.is_some(),
+          "the cross-section's depths are measured from the stock surface, and a start depth would \
+           be a second Z law over them",
+        ),
+        (
+          "--pass-depth",
+          args.pass_depth.is_some(),
+          "a pass is one walk of the rail at the depth its lateral point demands, so there is no \
+           stepdown law",
+        ),
+        (
+          "--allowance",
+          args.allowance.is_some(),
+          "the rail and the cross-section are the geometry, so there is no wall to leave standing",
+        ),
+        (
+          "--side",
+          args.side.is_some(),
+          "the laterals already say which side of the rail each pass cuts: positive is right of \
+           travel, negative left of it",
+        ),
+        (
+          "--tab",
+          !args.tabs.is_empty(),
+          "the depth is a function of the lateral offset, and a tab would be a second Z law over it",
+        ),
+        (
+          "--lead-in",
+          args.lead_in.is_some(),
+          "every pass plunges on its first rail sample",
+        ),
+        (
+          "--lead-out",
+          args.lead_out.is_some(),
+          "every pass retracts on its last rail sample",
+        ),
+        (
+          "--ramp",
+          args.ramp.is_some(),
+          "a pass is walked at the depth its lateral point demands; there is no entry ramp",
+        ),
+        (
+          "--spacing",
+          args.spacing.is_some(),
+          "a spacing belongs to a texture's grooves, and a moulding's passes are spaced by \
+           --stepover",
+        ),
+        (
+          "--angle",
+          args.angle.is_some(),
+          "the grooves' direction belongs to a texture; a moulding follows its rail",
+        ),
+        (
+          "--pitch",
+          args.pitch.is_some(),
+          "a pitch belongs to a thread's helix",
+        ),
+        (
+          "--thread-direction",
+          args.thread_direction.is_some(),
+          "a thread's direction belongs to a thread's helix",
+        ),
+        (
+          "--chamfer-width",
+          args.chamfer_width.is_some(),
+          "a bevel's width belongs to a chamfer; a moulding has no width parameter",
+        ),
+        (
+          "--inlay-allowance",
+          args.inlay_allowance.is_some(),
+          "a clearance belongs to an inlay pair",
+        ),
+        (
+          "--strategy",
+          args.strategy.is_some(),
+          "a clearing pattern belongs to a pocket; the cross-section is the only pattern here",
+        ),
+        (
+          "--tolerance",
+          args.tolerance.is_some(),
+          "the rail's walk chords an arc at the fixed tolerance the geometry kernel declares, so \
+           there is no step for a flag to name",
+        ),
+        (
+          "--clear",
+          args.clear,
+          "a clear stepover belongs to a pocket's clearing, and a moulding's --stepover already \
+           spaces the passes of one cross-section",
+        ),
+        (
+          "--peck-depth",
+          args.peck_depth.is_some(),
+          "pecking belongs to a drilling toolpath",
+        ),
+        (
+          "--retract",
+          args.retract.is_some(),
+          "a retract law belongs to a drilling toolpath, and a moulding retracts to safe Z between \
+           passes",
+        ),
+        (
+          "--retract-amount",
+          args.retract_amount.is_some(),
+          "a retract law belongs to a drilling toolpath",
+        ),
+        (
+          "--bank",
+          args.bank.is_some(),
+          "a drill bank belongs to a drilling toolpath",
+        ),
+      ] {
+        if given {
+          return Err(Failure::input(format!(
+            "--kind moulding takes no {flag}: {reason}"
+          )));
+        }
+      }
+      // A cross-section is at least two points: one point sweeps nothing, so the flag is named here
+      // rather than left for the document's own invariant to state a count nobody can act on.
+      if args.profile.len() < 2 {
+        return Err(Failure::input(format!(
+          "a moulding needs at least two --profile <lateral>:<depth> points, got {}: they are the \
+           cross-section the rail sweeps",
+          args.profile.len()
+        )));
+      }
+      // The stepover falls back to the library's own stepover exactly the way a pocket's does, and its
+      // absence is an input error naming the flag rather than a defaulted spacing.
+      let stepover = match (
+        args.stepover,
+        cutting.as_ref().and_then(|cutting| cutting.stepover),
+      ) {
+        (Some(stepover), _) => stepover,
+        (None, Some(stepover)) => stepover.mm(),
+        (None, None) => {
+          return Err(Failure::input(
+            "a moulding needs --stepover: the tool library has no stepover for that tool",
+          ))
+        }
+      };
+      // A stepover with no distance behind it cannot space passes. The document refuses it too; here it
+      // is refused naming the flag the user typed.
+      if !stepover.is_finite() || stepover <= 0.0 {
+        return Err(Failure::input(format!(
+          "--stepover must be a positive length in mm, got {stepover}"
+        )));
+      }
+      Operation::Moulding(cam_model::MouldingParams {
+        profile: args
+          .profile
+          .iter()
+          .map(|(lateral, depth)| cam_model::MouldingProfilePoint {
+            lateral: mm(*lateral),
+            depth: mm(*depth),
+          })
+          .collect(),
+        stepover: mm(stepover),
+      })
+    }
     other => {
       return Err(Failure::input(format!(
         "unknown toolpath kind {other:?}; expected profile, pocket, drilling, chamfer, vcarve, \
-         engrave, fluting, texture, inlay or thread"
+         engrave, fluting, texture, inlay, thread or moulding"
       )))
     }
   };
@@ -1299,6 +1495,7 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
         Operation::Texture(_) => "Texture",
         Operation::Inlay(_) => "Inlay",
         Operation::Thread(_) => "Thread",
+        Operation::Moulding(_) => "Moulding",
       };
       let ordinal = document.toolpaths.len() + 1;
       format!("{base} {ordinal}")
@@ -1395,6 +1592,45 @@ fn toolpath_command(rest: &[String]) -> Result<(), Failure> {
       job: &document.job,
     })
     .map_err(|error| Failure::input(error.to_string()))?;
+  }
+
+  // A moulding's sweep is walked here, while the command can still say no and change nothing: the
+  // strategy's own refusals — a profile whose laterals do not increase, a stepover with no distance
+  // behind it, a rail with no length — are answerable with the geometry in hand, and a document whose
+  // only failure mode is a later `emit` is worse than a command that answers now (the drilling, thread
+  // and vcarve checks above). A tool the library does not record a diameter for is not a reason to
+  // refuse here — `emit` names that one — so the check is skipped and the program's own refusal takes
+  // over.
+  if let Operation::Moulding(params) = &operation {
+    if let Some(diameter) = diameter {
+      let spec = ToolSpec {
+        number: tool_number,
+        diameter,
+        included_angle: None,
+        feed_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.feed_rate)
+          .unwrap_or(0.0),
+        plunge_rate: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.plunge_rate)
+          .unwrap_or(0.0),
+        spindle_speed: cutting
+          .as_ref()
+          .and_then(|cutting| cutting.spindle_speed)
+          .unwrap_or(0),
+      };
+      for entity_id in &entity_ids {
+        let contour = contour_of(&document, &id, entity_id)?;
+        moulding(&MouldingRequest {
+          rail: contour,
+          params,
+          tool: &spec,
+          job: &document.job,
+        })
+        .map_err(|error| Failure::input(error.to_string()))?;
+      }
+    }
   }
 
   document.toolpaths.push(Toolpath {
@@ -1706,6 +1942,11 @@ fn operation_label(operation: &Operation) -> String {
       params.spacing.mm(),
       params.angle.degrees()
     ),
+    Operation::Moulding(params) => format!(
+      "moulding ({} points, {} mm stepover)",
+      params.profile.len(),
+      params.stepover.mm()
+    ),
   }
 }
 
@@ -1748,6 +1989,22 @@ fn parse_bank(value: &str) -> Result<(u32, f64), Failure> {
     .split_once(':')
     .ok_or_else(|| Failure::input(format!("--bank expects <count>:<pitch> mm, got {value:?}")))?;
   Ok((parse_count(count, "--bank")?, parse_mm(pitch, "--bank")?))
+}
+
+/// One point of a moulding's cross-section: `<lateral>:<depth>`, both in millimetres.
+///
+/// A cross-section is authored data (S3), so its points are values on one flag rather than geometry
+/// selected from the document: the rail is the selection, the profile is what the user types.
+fn parse_profile_point(value: &str) -> Result<(f64, f64), Failure> {
+  let (lateral, depth) = value.split_once(':').ok_or_else(|| {
+    Failure::input(format!(
+      "--profile expects <lateral>:<depth> in millimetres, got {value:?}"
+    ))
+  })?;
+  Ok((
+    parse_mm(lateral, "--profile")?,
+    parse_mm(depth, "--profile")?,
+  ))
 }
 
 fn parse_tab(value: &str) -> Result<(f64, f64, f64), Failure> {

@@ -781,6 +781,53 @@ impl Default for ThreadParams {
   }
 }
 
+/// One point of a moulding cross-section: how deep the cut sits at a lateral distance from the rail.
+///
+/// S3: the rail goes in XY as the selected entity; the profile is authored data, a cross-section of
+/// (lateral offset, Z depth) points the sweep walks while stepping over by `stepover`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MouldingProfilePoint {
+  /// Lateral distance from the rail, in millimetres. May be negative (the other side of the rail).
+  pub lateral: Length,
+  /// Cut depth at this lateral distance, in millimetres: zero at the stock surface, negative below.
+  pub depth: Length,
+}
+
+/// Parameters of a moulding toolpath: a cross-section swept along a rail with a stepover (S1, S3).
+///
+/// The rail is the selected entity (an open path or a closed loop); the profile and the stepover live
+/// here, beside the operation, so `entity_ids` still carries a single selection list and documents
+/// written before M8 load byte-identically (T1 design decision, see the feature document's L5).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MouldingParams {
+  /// Cross-section points ordered from one side to the other; at least two.
+  pub profile: Vec<MouldingProfilePoint>,
+  /// Lateral distance between consecutive sweep passes; must be a positive finite number.
+  pub stepover: Length,
+}
+
+impl Default for MouldingParams {
+  fn default() -> Self {
+    Self {
+      profile: vec![
+        MouldingProfilePoint {
+          lateral: Length::from_mm(0.0),
+          depth: Length::ZERO,
+        },
+        MouldingProfilePoint {
+          lateral: Length::from_mm(6.0),
+          depth: Length::from_mm(-4.0),
+        },
+        MouldingProfilePoint {
+          lateral: Length::from_mm(12.0),
+          depth: Length::ZERO,
+        },
+      ],
+      stepover: Length::from_mm(2.0),
+    }
+  }
+}
+
 /// The machining operation of a toolpath.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -805,6 +852,8 @@ pub enum Operation {
   Inlay(InlayParams),
   /// Mill a thread: one helical descent around each selected circle, one `pitch` per revolution.
   Thread(ThreadParams),
+  /// Sweep a cross-section along the selected rail with a stepover (M8, S3).
+  Moulding(MouldingParams),
 }
 
 /// A machining operation bound to geometry and a tool.
@@ -987,6 +1036,37 @@ pub enum ModelError {
     /// The toolpath id.
     toolpath: String,
     /// The offending tolerance in millimetres.
+    value: f64,
+  },
+  /// A moulding profile has fewer than two points, so there is no cross-section to sweep.
+  #[error("toolpath {toolpath:?} moulding profile needs at least two points, got {points}")]
+  MouldingProfileTooShort {
+    /// The toolpath id.
+    toolpath: String,
+    /// How many profile points were supplied.
+    points: usize,
+  },
+  /// A moulding profile point is not finite, so no depth behind it exists.
+  #[error(
+    "toolpath {toolpath:?} moulding profile point must use finite millimetres, got lateral \
+     {lateral} mm and depth {depth} mm"
+  )]
+  MouldingProfilePointNotFinite {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending lateral distance in millimetres.
+    lateral: f64,
+    /// The offending depth in millimetres.
+    depth: f64,
+  },
+  /// A moulding stepover is zero, negative or not a finite number.
+  #[error(
+    "toolpath {toolpath:?} moulding stepover must be a positive number of millimetres, got {value} mm"
+  )]
+  MouldingStepoverNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending stepover in millimetres.
     value: f64,
   },
   /// A flute's ramp is negative, which would enter upwards.
@@ -1202,6 +1282,9 @@ impl Document {
           // and a flute is one groove per vector, drawn as a line as often as a loop (A4), so the two
           // accept an open vector and nothing else here does.
           Operation::Engrave(_) | Operation::Fluting(_) => false,
+          // A moulding rail is a sweep path: an open vector sweeps a strip, a closed loop sweeps a
+          // frame, so either bounds the rail and the closed-geometry rule does not apply (S3).
+          Operation::Moulding(_) => false,
         };
         if needs_closed_geometry {
           let closed = entity
@@ -1223,6 +1306,7 @@ impl Document {
       check_texture(toolpath)?;
       check_inlay(toolpath)?;
       check_thread(toolpath)?;
+      check_moulding(toolpath)?;
       check_islands(self, toolpath)?;
     }
 
@@ -1375,6 +1459,43 @@ fn check_thread(toolpath: &Toolpath) -> Result<(), ModelError> {
       toolpath: toolpath.id.clone(),
       cut_depth: params.cut_depth.mm(),
       start_depth: params.start_depth.mm(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a moulding's own parameters: a sweep needs a cross-section and a stepover with distance
+/// behind them.
+///
+/// A profile of fewer than two points sweeps nothing, a non-finite coordinate would emit an infinite
+/// Z, and a stepover with no distance behind it cannot space passes. All three are refused naming the
+/// offending value rather than clamped into a different moulding.
+fn check_moulding(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Moulding(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  if params.profile.len() < 2 {
+    return Err(ModelError::MouldingProfileTooShort {
+      toolpath: toolpath.id.clone(),
+      points: params.profile.len(),
+    });
+  }
+  for point in &params.profile {
+    let lateral = point.lateral.mm();
+    let depth = point.depth.mm();
+    if !lateral.is_finite() || !depth.is_finite() {
+      return Err(ModelError::MouldingProfilePointNotFinite {
+        toolpath: toolpath.id.clone(),
+        lateral,
+        depth,
+      });
+    }
+  }
+  let stepover = params.stepover.mm();
+  if !stepover.is_finite() || stepover <= 0.0 {
+    return Err(ModelError::MouldingStepoverNotPositive {
+      toolpath: toolpath.id.clone(),
+      value: stepover,
     });
   }
   Ok(())

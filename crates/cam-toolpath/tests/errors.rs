@@ -114,6 +114,15 @@ fn every_variant() -> Vec<ToolpathError> {
     ToolpathError::IslandNotAContour {
       island: "E9".to_owned(),
     },
+    ToolpathError::MouldingProfileTooShort { points: 1 },
+    ToolpathError::MouldingProfileLateral {
+      index: 2,
+      previous: 6.0,
+      lateral: 6.0,
+    },
+    ToolpathError::MouldingGeometry {
+      reason: "a moulding rail needs a length to sweep along, got 0 mm".to_owned(),
+    },
     ToolpathError::InToolpath {
       toolpath: "TP1".to_owned(),
       source: Box::new(ToolpathError::NoHoles),
@@ -126,7 +135,7 @@ fn every_variant_keeps_its_message() {
   let variants = every_variant();
   assert_eq!(
     variants.len(),
-    35,
+    38,
     "every variant must be listed exactly once"
   );
 
@@ -280,6 +289,22 @@ fn every_variant_keeps_its_message() {
       }
       ToolpathError::IslandNotAContour { island } => {
         format!("island {island:?} is not a contour")
+      }
+      ToolpathError::MouldingProfileTooShort { points } => {
+        format!("a moulding profile needs at least two points, got {points}")
+      }
+      ToolpathError::MouldingProfileLateral {
+        index,
+        previous,
+        lateral,
+      } => {
+        format!(
+          "moulding profile point {index} at lateral {lateral} mm must be greater than the previous \
+           {previous} mm: a cross-section is one depth per lateral distance"
+        )
+      }
+      ToolpathError::MouldingGeometry { reason } => {
+        format!("the moulding's geometry could not be built: {reason}")
       }
       ToolpathError::InToolpath { toolpath, source } => {
         format!("toolpath {toolpath:?}: {source}")

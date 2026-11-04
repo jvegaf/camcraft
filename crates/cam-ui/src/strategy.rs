@@ -257,6 +257,7 @@ fn kind_word(operation: &Operation) -> &'static str {
     Operation::Texture(_) => "Texture",
     Operation::Inlay(_) => "Inlay",
     Operation::Thread(_) => "Thread",
+    Operation::Moulding(_) => "Moulding",
   }
 }
 
