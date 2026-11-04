@@ -4,7 +4,7 @@ A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, built a
 answer to a simple question: *what would the reference CAM application look like if it were designed today, in Rust,
 with the domain separated from the window?*
 
-**Status: M8 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
+**Status: M9 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
 post-processor produce real G-code, byte for byte tested — for **profile**, **pocket** (offset rings
 and raster rows, with islands), **drilling** (pecks, both retract modes, drill-bank selection), the six
 depth-variant strategies — **chamfer** (a V-bit bevel whose depth is derived from the bit's angle),
@@ -63,6 +63,20 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   whose drawing *starts* at a corner is exact too: the seam's corner diagonal is an edge the program cuts,
   so the claim carries it, and what was measured at delivery as `gouge 2.000 mm³` over one cell is pinned
   closed in [docs/m8-moulding.md](docs/m8-moulding.md#known-limits-each-a-decision).
+- **Nesting's proof is a certificate per placement.** `cam-cli nest` packs a document's authored sheets
+  and parts and stores the placements and one cost record, and each nester states its promise as one
+  predicate instead of restating the arithmetic. Rectangles go through **maxrects**, with a **guillotine**
+  pass that is not decoration: on a 234 × 173 mm board at gap 8 it fits three parts on **one** sheet
+  where maxrects needs **two** (`0.5067` against `0.2534` utilisation), and both plans are certified.
+  Everything that is not a rectangle goes through a free-profile **no-fit heuristic** that is sound — a
+  placement is refused unless it is disjoint from every part already on the board **and** from every part
+  grown by the gap — and, measured, incomplete: a 50 × 50 square on a 100 × 100 board at step 20 opens a
+  second board although `(45, 0)` is legal, and step 5 finds it. The one arithmetic is
+  `Document::nesting_utilisation` — placed footprint over the sheets the placements **name**, never every
+  authored sheet — and the report, the stored field and load-time validation all read it, so a
+  hand-written `0.25` where the placements derive `0.125` is refused naming both numbers. A nesting that
+  cannot place every instance exits `7` and writes nothing, because a partial nesting has no honest
+  stored form.
 - **A simulation, and every strategy measured against it.** `cam-cli simulate` sweeps the emitted
   program over a heightfield of the stock and reports the removed material, the through-cut cells,
   the gouge, the uncut material and every crash that rams the tool. The error bound is the
@@ -241,7 +255,7 @@ The program plan, milestone sequence and risk register are in [odd/roadmap.md](o
 
 ## Testing
 
-1374 tests across 101 test targets, all deterministic — including the editor, which runs real `egui`
+1452 tests across 103 test targets, all deterministic — including the editor, which runs real `egui`
 frames headless and asserts on both the actions they produce and the text they paint:
 
 ```bash
@@ -266,10 +280,12 @@ verified by building and by launching it under a compositor, which is how the sc
 
 ## Next
 
-M9 is nesting: sheets and parts, rectangle maxrects + guillotine first, free-profile NFP second, with a
-cost and summary report — the next of the two milestones the plan still holds (M9, then M10's print
-sheets and scripting surface). M8, delivered, was moulding: a rail and a cross-section swept along it
-with a stepover, the first strategy whose answer depends on a cross-section rather than a single depth.
+M10 is what the plan still holds: HTML print sheets, CSV part lists and the scripting surface. M9,
+delivered, was nesting: sheets and parts, rectangle **maxrects + guillotine** first and a sound-but-
+incomplete **free-profile no-fit heuristic** second, with one arithmetic for utilisation and waste that
+the report, the stored cost record and load-time validation all read. M8 was moulding: a rail and a
+cross-section swept along it with a stepover, the first strategy whose answer depends on a cross-section
+rather than a single depth.
 It was scheduled after V-carve on the expectation that it needed the distance field M7 built, and it did
 not: the cross-section is authored data, so M8 changed no post contract, no schema and no dependency, and
 spent its effort on the rail's arc-length walk and the stepover law's coverage certificate instead. M7
