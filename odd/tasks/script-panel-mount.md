@@ -94,3 +94,22 @@ before touching code; the Log is the record, not the brief.
   unspent, because the only edit that would satisfy the finding is one the repository's own gate refuses.**
   Nothing was submitted, and closing that lineage is an explicit owner decision (abandon the authority),
   not a technical step a worker can take.
+- **L7 (the owner abandoned the authority, and the review of the mount is now closed as discarded).**
+  `review-5eb75a623cbfc72e` is **abandoned**, not corrected: `operator_disposition` by the owner, recorded
+  by the audited native operation as `gentle-ai.review-reclaim-record/v1` at
+  `2026-11-05T03:58:17Z`, revision `sha256:286f6a57…`, snapshot
+  `sha256:7271a7de…`, discarded work `00-review-risk`, `01-review-resilience`, `02-review-readability`,
+  `03-review-reliability` with `findings_present: true`. Its state moved to
+  `review-transactions/quarantine/review-5eb75a623cbfc72e-441271739` (`residue:
+  review-state.json`) and the workspace holds no authority for it. L6's "left in `correction_required`"
+  describes the state before this entry. **What is lost is the outside view, not the code**: the mount is
+  verified by `./scripts/check.sh` (1517 tests over 110 result lines), by the modal's own test (opened
+  from its chip, `Esc` closes it, `output.canvas` byte-identical open and closed) and by `clippy -D
+  warnings`. `assess` measures the following docs-only commit as `passive` / `reviewDue: false`, which is
+  the provider's own reason not to re-review documentation.
+- **L8 (a warning for whoever reviews this target next).** Nothing about the mount's candidate changed, so
+  a fresh review of the same commits can file the same inverted `R3-001`: the refuter reasoned about
+  `egui::Id` without reading `egui-0.37.0/src/id.rs`. If that happens, the cheapest refutation is
+  `grep -n 'pub fn unique' /home/th3g3ntl3man/.cargo/registry/src/*/egui-0.37.0/src/id.rs`, and the
+  demanded spelling (`Id::new`) is the deprecated one — so the correction must not be made, and the
+  authority should be abandoned again rather than appeased.
