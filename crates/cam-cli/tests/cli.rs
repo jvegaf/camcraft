@@ -7643,6 +7643,47 @@ unplaced: none
 }
 
 #[test]
+fn a_search_step_too_fine_for_the_anchor_cap_is_refused_with_the_lattice_it_asked_for() {
+  // The cap is arithmetic, not a taste in millimetres: a 1000 x 600 board at 0.2 mm asks for
+  // 5001 x 3001 anchors, and the refusal says so before the search starts.
+  let directory = scratch("nest-step-cap");
+  let document = write_nesting_document(
+    &directory,
+    "brackets.c2d",
+    vec![l_bracket()],
+    &[("Bracket", &[1], 1)],
+    &[("S1", 1000.0, 600.0)],
+    &[("Bracket", "S1", 0.0, 0.0)],
+  );
+  let before = std::fs::read(&document).expect("read");
+
+  let outcome = run(&["nest", document.to_str().expect("utf8"), "--step", "0.2"]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert!(
+    outcome.stderr.contains(
+      "a 0.2 mm search step over this board needs 5001 x 3001 = 15008001 anchors, over the 4000000 \
+       anchor cap; use a coarser --step"
+    ),
+    "the refusal names the lattice and the cap: {}",
+    outcome.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("read"),
+    before,
+    "a refused step leaves the document alone"
+  );
+
+  // The same board at 2 mm is 501 x 301 = 150 801 anchors, so the step is the caller's again.
+  let outcome = run(&["nest", document.to_str().expect("utf8"), "--step", "2"]);
+  assert_ne!(
+    outcome.code, 2,
+    "a 2 mm step is under the cap: {}",
+    outcome.stderr
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn nest_refuses_the_flags_a_documents_own_classes_give_no_meaning_to_by_name() {
   // The moulding's rule, at this command's door: a flag that was never applied still looks applied, so
   // a run takes no `--step` when every part is a rectangle (the no-fit heuristic never searches) and

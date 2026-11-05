@@ -195,6 +195,29 @@ pub enum GeomError {
     /// The offending step in millimetres.
     step: f64,
   },
+  /// A free-profile nesting run was given a search step fine enough to ask for more lattice anchors
+  /// than the cap allows.
+  ///
+  /// The cost of a search is `(floor(width/step)+1) * (floor(height/step)+1)` anchors, so halving the
+  /// step quadruples it and a step of a thousandth of a millimetre asks a full sheet for 10^12 of them.
+  /// The refusal names the step, the lattice it would walk and the cap, in the words the simulator's
+  /// cell cap already uses, because it is the same kind of cost (M9, advisory `R1-STEP-DOS`).
+  #[error(
+    "a {step} mm search step over this board needs {columns} x {rows} = {anchors} anchors, over the \
+     {cap} anchor cap; use a coarser --step"
+  )]
+  SearchLatticeTooFine {
+    /// The offending step in millimetres.
+    step: f64,
+    /// The lattice's columns, one per anchor position across the board.
+    columns: usize,
+    /// The lattice's rows, one per anchor position up the board.
+    rows: usize,
+    /// `columns * rows`: the anchors the step would walk.
+    anchors: usize,
+    /// The most anchors a single search may walk.
+    cap: usize,
+  },
   /// A free-profile nesting sheet is not a closed contour, so it encloses no board.
   #[error("a free-profile nesting sheet must be a closed contour")]
   SheetNotClosed,

@@ -331,7 +331,9 @@ The command refuses, with exit `2` and the document byte-identical: **a flag its
 meaning to** (`--step` when every part is a rectangle, because the no-fit heuristic never searches a
 lattice; `--algorithm` when no part is one, because neither maxrects nor guillotine packs anything);
 **a flag value it cannot honour**, naming the flag and the value (`--rotation sideways`,
-`--algorithm triangle`, `--gap -1`, `--sheets 1000`, `--sheets 0x600`, `--step 0`); **a flag from
+`--algorithm triangle`, `--gap -1`, `--sheets 1000`, `--sheets 0x600`, `--step 0`); **a search step
+finer than the anchor cap allows**, naming the step, the lattice it asked for and the cap (`--step 0.2`
+on a 1000 x 600 board is `5001 x 3001 = 15008001 anchors, over the 4000000 anchor cap`); **a flag from
 another command**, as `unknown nest option "--cut-depth"`, because a depth nobody applied still looks
 applied (M8's rule); **boards of two sizes**, because both nesters pack identical boards and one run
 cannot pack two; **nothing to nest** (no section, no parts, and no boards with no `--sheets`); and **a
@@ -454,9 +456,16 @@ pre-existing command and nothing else on that surface moving at all.
   board's size fits flush on all four edges; `the_certificate_holds_at_the_sheets_own_edges` and
   `a_part_flush_against_a_rectangular_board_is_placed_and_certified` pin it, and `a_flush_part_one_inset_step_past_the_edge_is_refused`
   pins the other side at exactly `INSET_STEP`.
-- **The search step is the caller's, and defaults to 10 mm.** Its cost is the incompleteness measured
-  above; the report states the step it searched with (`free-profile no-fit heuristic at 10.000 mm`), so
-  a reader can see the lattice the plan paid for.
+- **The search step is the caller's, and defaults to 10 mm — within a cap.** A search walks
+  `(floor(width/step)+1) * (floor(height/step)+1)` anchor positions over the board, so the cost is
+  quadratic in the fineness the caller asks for, and a step of a thousandth of a millimetre would ask
+  a full sheet for 10^12 of them. A lattice past `MAX_SEARCH_ANCHORS`, four million — the same ceiling
+  the simulator's cell grid (`MAX_CELLS`) and the medial axis's lattice (`MAX_LATTICE_SAMPLES`) already
+  use — is refused **before the run starts**, with the step, the columns, the rows and the cap. The
+  default sheet at half a millimetre is `2439 x 4877 = 11895003` anchors and is refused; at 2 mm it is
+  `744200` and is the caller's to choose. Its cost is the incompleteness measured above; the report
+  states the step it searched with (`free-profile no-fit heuristic at 10.000 mm`), so a reader can see
+  the lattice the plan paid for.
 - **A quarter turn is a fallback, not a tie-break (D-M9-8).** The cabinetry plan is all `None`; a
   500 × 900 part on a 1000 × 600 board enters only with `--rotation on`, as a 900 × 500 footprint at
   `0.750` utilisation.

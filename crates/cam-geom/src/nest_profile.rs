@@ -103,6 +103,19 @@ pub use crate::nest::NestRotation;
 /// The coarse search step a run uses when the caller authors none, in millimetres.
 pub const DEFAULT_SEARCH_STEP: f64 = 10.0;
 
+/// The most lattice anchors one search may walk, after which the caller's step is refused as too fine.
+///
+/// A search is a lattice walk over the board, so its cost is
+/// `(floor(width / step) + 1) * (floor(height / step) + 1)` anchor positions, each one a translated,
+/// inset, collision-tested candidate: halving the step quadruples the work, and a step of a thousandth
+/// of a millimetre asks a full sheet for 10^12 of them. The cap is looked at once, over the **board**
+/// and not over a part, because that is the largest lattice any part on that board can ask for.
+///
+/// Four million, the ceiling the simulator's cell grid (`MAX_CELLS`) and the medial axis's lattice
+/// (`MAX_LATTICE_SAMPLES`) already use: a caller meets one order of magnitude across the knife, the
+/// carve and the nest instead of three different ones.
+pub const MAX_SEARCH_ANCHORS: usize = 4_000_000;
+
 /// The name of the one algorithm this module implements, reported by
 /// [`ProfileNestPlan::algorithm`].
 ///
@@ -261,6 +274,21 @@ impl ProfileNestPlan {
     let height = sheet_bounds.height();
     if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
       return Err(GeomError::SheetNotMeasurable { width, height });
+    }
+    // The lattice is the board's, not the part's: a part with no spare distance on either axis asks for
+    // the largest one, so the cap is looked at once here rather than per candidate. Saturated, so a
+    // step so fine that the counts overflow is refused instead of panicking on the arithmetic.
+    let columns = lattice_steps(width, options.step()).saturating_add(1);
+    let rows = lattice_steps(height, options.step()).saturating_add(1);
+    let anchors = columns.saturating_mul(rows);
+    if anchors > MAX_SEARCH_ANCHORS {
+      return Err(GeomError::SearchLatticeTooFine {
+        step: options.step(),
+        columns,
+        rows,
+        anchors,
+        cap: MAX_SEARCH_ANCHORS,
+      });
     }
     for (index, part) in parts.iter().enumerate() {
       if !part.is_closed() {

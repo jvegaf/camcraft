@@ -11,7 +11,7 @@
 //! and then asserts the plan did not find it.
 
 use cam_geom::nest::NestRotation;
-use cam_geom::nest_profile::{ProfileNestOptions, ProfileNestPlan};
+use cam_geom::nest_profile::{ProfileNestOptions, ProfileNestPlan, MAX_SEARCH_ANCHORS};
 use cam_geom::primitive;
 use cam_geom::transform;
 use cam_geom::winding::{relation, Relation};
@@ -892,6 +892,31 @@ fn the_certificate_refuses_a_placement_the_board_does_not_contain() {
     !circle_plan.certifies(&circle, 0.0),
     "and the same disc touches the circular board's boundary from outside it"
   );
+}
+
+#[test]
+fn a_search_step_fine_enough_to_ask_for_more_anchors_than_the_cap_is_refused() {
+  // The board the default job authors, 1219 by 2438 mm. A search walks
+  // `(floor(width / step) + 1) * (floor(height / step) + 1)` anchors, so the cap is a statement about
+  // arithmetic rather than a taste in millimetres: at 0.5 mm this board asks for
+  // 2439 * 4877 = 11 895 003 of them.
+  let sheet = board(1219.0, 2438.0);
+  assert_eq!(
+    ProfileNestPlan::new(&sheet, &[rect(100.0, 60.0)], options(GAP, false, 0.5)),
+    Err(GeomError::SearchLatticeTooFine {
+      step: 0.5,
+      columns: 2439,
+      rows: 4877,
+      anchors: 11_895_003,
+      cap: MAX_SEARCH_ANCHORS,
+    }),
+    "a step finer than the cap allows is refused with the lattice it asked for"
+  );
+  // The other side of the same boundary: the same board at 2 mm is 610 * 1220 = 744 200 anchors, and
+  // which of the two the caller wants is still the caller's decision.
+  let plan = ProfileNestPlan::new(&sheet, &[rect(100.0, 60.0)], options(GAP, false, 2.0))
+    .expect("a 2 mm search step is under the cap");
+  assert_eq!(plan.sheets_used(), 1);
 }
 
 #[test]

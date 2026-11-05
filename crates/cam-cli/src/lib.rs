@@ -122,7 +122,8 @@ COMMANDS:
                               outline is not a rectangle is a free profile and takes no algorithm
         --step <mm>           free profile: the lattice step the no-fit heuristic searches in (default
                               10). It costs a placement that lies between two steps, never an
-                              illegal one
+                              illegal one; a step whose lattice asks for more than 4000000 anchor
+                              positions over the board is refused with the count it asked for
         --out <path>          Write the document here; without it the nesting is written to the
                               document that was read
     postp validate <file>     Parse a post-processor and print a summary

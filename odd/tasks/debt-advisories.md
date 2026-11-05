@@ -13,6 +13,9 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   finding's subject is established. A finding whose reviewer text is unrecoverable and whose anchor no
   longer identifies its subject is **not** closed by a plausible-looking edit: it stays open, named as
   unrecoverable, and is re-filed by a review of the current tree if the owner wants it back.
+- **S5 (user, verbatim option label chosen for "¿Qué forma toma el piso de `--step`?"):** "Cap de 4M
+  anclas (idioma de M5)". The floor is not a millimetre minimum: it is the lattice's anchor count
+  measured against the cap the simulator and the medial axis already use.
 - **S4 (repo law that binds every task here):** a fix changes the diagnostic or the wording it was
   filed against, never the acceptance of valid input. The one exception is refused below rather than
   smuggled in (T5's step floor is the owner's decision, not a readability fix).
@@ -25,6 +28,7 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
 | T2 | The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `106ab8b` |
 | T3 | `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `68adb00` |
 | T4 | The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `3d6589f` |
+| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | pending |
 
 ## Log
 
@@ -107,3 +111,19 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   accepted and the provider then chose `review-reliability` itself, while reporting
   `lenses_required: true`. Agent lens selection is therefore inert on this contract and the tier's
   default is what actually runs.
+- **L11 (T5, the deferred item decided).** L4's live advisory is closed by the owner's choice of S5: the
+  step keeps no millimetre floor, and the cost it can buy is bounded instead. `cam-geom` gained
+  `MAX_SEARCH_ANCHORS = 4_000_000` — the ceiling `cam-sim`'s `MAX_CELLS` and `cam-geom`'s
+  `MAX_LATTICE_SAMPLES` already use — and `ProfileNestPlan::new` refuses a step whose lattice over the
+  **board** exceeds it, before any search runs. The lattice is
+  `(floor(width/step)+1) * (floor(height/step)+1)`, so the check is arithmetic and board-proportional:
+  a 1219 x 2438 sheet at 0.5 mm asks `2439 x 4877 = 11895003` anchors and is refused, at 2 mm it asks
+  `744200` and is still the caller's to choose; a 1000 x 600 board at 0.2 mm asks `5001 x 3001 =
+  15008001` and is refused at the command's own door with exit `2` and the document untouched. The
+  counts saturate, so a step fine enough to overflow `usize` is refused instead of panicking. New error
+  `GeomError::SearchLatticeTooFine` speaks M5's dialect — *"… needs N anchors, over the C anchor cap;
+  use a coarser --step"*. RED first: the 0.5 mm plan **succeeded** while the test demanded the refusal;
+  after the check `cargo test -p cam-geom --test nest_profile` is **18 passed**, which includes the
+  fixtures that author 20 mm, 5 mm and 200 mm — a floor in millimetres would have had to argue with
+  those, and a cap does not. `const HELP` and `docs/m9-nesting.md` (the "the step is the caller's"
+  invariant and the refusal list) now state the cap and the two counts.
