@@ -84,3 +84,26 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   **`106ab8b`** (T2, the CSV quoting refusal) and **`3d6589f`** (T4, the fixture's path segment), with
   this document in `docs(odd):` on top of them. Local only — **not pushed**, and pushing stays the
   owner's decision. L7's "uncommitted" describes the moment it was written, not the tree now.
+- **L9 (the review, and the same blindness a second time).** The candidate — all four commits, 7 paths,
+  212 changed lines — was reviewed as lineage **`review-b5fe4921af681292`** at tier `medium`, with the
+  provider's own lens selection: **`review-reliability`**, one host-relay model run, with the cost
+  forecast given before it ran. Closure was **`approved`** on the first admitted event with **no
+  correction**, and the receipt was burned (`gentle-ai.review-acknowledged/v1`, consumed revision
+  `sha256:c6f0aa64ca3876e06c1900d5d6ddabec1464b810db221840647e053376679d0e`). Its one finding is
+  **`R3-001`** — reliability, WARNING, *informational* — at `crates/cam-import/src/csv.rs:180-193`,
+  which is inside the very block T2 added: this fix has a successor advisory of its own. **And that
+  finding's wording is already gone.** The lineage never gets a state directory —
+  `review-transactions/v2/` holds only `review-61e0b405dc7f498b`, `review-305eaa8746f90d29` and
+  `review-3592c554bf15c02f` — and its only record is
+  `review-transactions/terminal-consumption/v1/67cbe40925a63e44cce8de98e72de753881bcb2f6ebbd4050975c962ff6e5a07.json`,
+  which carries the schema, the repository, the target and the lineage and nothing else. So the
+  blindness L2 found in M9's and M10's receipts is not an old accident: it is what the store does to
+  **every** receipt, including one burned minutes ago. The consequence for method: a finding's words
+  have to be written down where the next session can read them at the moment they arrive — inside the
+  same session that received them — or they do not survive.
+- **L10 (the ninth lens attempt).** `start` with an explicit lens selection
+  (`["reliability","readability"]` plus a reason) was refused `native-start-input-invalid` /
+  `lenses-invalid`, `lineage_created: false`, nothing burned; the same `start` without a selection was
+  accepted and the provider then chose `review-reliability` itself, while reporting
+  `lenses_required: true`. Agent lens selection is therefore inert on this contract and the tier's
+  default is what actually runs.
