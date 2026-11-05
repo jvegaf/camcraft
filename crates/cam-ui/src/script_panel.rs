@@ -47,6 +47,13 @@ use crate::theme::{self, Palette, Role, Theme};
 /// the panel.
 pub const PATH_FIELD_WIDTH: f32 = 380.0;
 
+/// The most height the output area may take, in points.
+///
+/// The panel has to live inside something, and an area that grows with its text cannot: a script that
+/// prints for hundreds of lines would push a window past any screen. The body scrolls instead, inside
+/// this ceiling.
+pub const BODY_HEIGHT: f32 = 240.0;
+
 /// The sentence above the field.
 pub const PATH_LABEL: &str = "Script file";
 
@@ -88,6 +95,7 @@ impl Write for Capture {
 /// The state is plain data on purpose: a test, or a caller with no window, sets the path, calls
 /// [`ScriptPanel::run`] and reads the two answers, and only then decides whether painting it is worth a
 /// frame.
+#[derive(Clone, Debug)]
 pub struct ScriptPanel {
   /// The path as typed, kept verbatim so the field shows what the operator wrote.
   path: String,
@@ -97,6 +105,11 @@ pub struct ScriptPanel {
   error: Option<String>,
   /// Where this frame drew the `Run` button: the point that presses it.
   run_button: Option<(f32, f32)>,
+  /// The size the output area took this frame, in points.
+  ///
+  /// Reported for the reason [`Self::run_button`] is: a surface that has to live inside a window needs
+  /// to know how tall its body grew, and a headless test cannot measure a widget any other way.
+  body_size: Option<(f32, f32)>,
   /// The set the panel paints its words in.
   theme: Theme,
 }
@@ -109,6 +122,7 @@ impl ScriptPanel {
       output: String::new(),
       error: None,
       run_button: None,
+      body_size: None,
       theme: Theme::Dark,
     }
   }
@@ -148,6 +162,11 @@ impl ScriptPanel {
   /// the way the palette and the status bar report theirs.
   pub fn run_button(&self) -> Option<(f32, f32)> {
     self.run_button
+  }
+
+  /// The size the output area took in the last frame, or `None` while no frame has run.
+  pub fn body_size(&self) -> Option<(f32, f32)> {
+    self.body_size
   }
 
   /// Run the named script: the panel's whole job, and the only part of it that needs no frame.
@@ -217,7 +236,15 @@ impl ScriptPanel {
     }
 
     ui.separator();
-    self.paint_text(ui, &palette);
+    self.body_size = None;
+    // Bounded and scrollable, because the panel is drawn inside a window now: an area that grows with
+    // its own text would push that window past the screen. The rect reported is the viewport's, so a
+    // test can say the body stayed inside `BODY_HEIGHT` instead of trusting the call.
+    let body = egui::ScrollArea::vertical()
+      .max_height(BODY_HEIGHT)
+      .auto_shrink([false, false])
+      .show(ui, |ui| self.paint_text(ui, &palette));
+    self.body_size = Some((body.inner_rect.width(), body.inner_rect.height()));
   }
 
   /// The output area: the failure first, then what the run captured, one line per row.

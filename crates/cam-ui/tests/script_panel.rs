@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer};
 use cam_store::document::save_document;
-use cam_ui::script_panel::{ScriptPanel, PATH_LABEL, RUN, TITLE};
+use cam_ui::script_panel::{ScriptPanel, BODY_HEIGHT, PATH_LABEL, RUN, TITLE};
 
 // ---------------------------------------------------------------------------------------------
 // Fixtures
@@ -185,6 +185,36 @@ fn contains(painted: &[String], needle: &str) -> bool {
 
 fn joined(painted: &[String]) -> String {
   painted.join("\n")
+}
+
+#[test]
+fn a_long_run_stays_inside_a_bounded_body() {
+  // A window can hold this panel only if the output area has a ceiling: without one a script that prints
+  // for hundreds of lines grows the body past any screen, and a surface that cannot be sized is not one
+  // (mount task T1).
+  let directory = scratch("bounded-body");
+  let document = write_document(&directory);
+  let mut script = format!("open {}\n", document.display());
+  for _ in 0..80 {
+    script.push_str("validate\n");
+  }
+  let path = directory.join("bounded.cam");
+  std::fs::write(&path, &script).expect("script written");
+  let ctx = egui::Context::default();
+  let mut panel = ScriptPanel::with_path(path.to_str().expect("utf8"));
+
+  let _ = press_run(&ctx, &mut panel);
+
+  assert!(
+    !panel.output().is_empty(),
+    "the run printed something to measure"
+  );
+  let (_, height) = panel.body_size().expect("the frame reported the body");
+  assert!(
+    height <= BODY_HEIGHT + 1.0,
+    "the body took {height} points, past the {BODY_HEIGHT} a window can hold"
+  );
+  std::fs::remove_dir_all(&directory).ok();
 }
 
 // ---------------------------------------------------------------------------------------------
