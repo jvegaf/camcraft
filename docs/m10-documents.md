@@ -302,8 +302,9 @@ the whole run in the order the script wrote it. Four headless frame tests pin th
 rules: the report painted, the located error painted with its line and column, a failed run keeping the
 last result, and the cut-list-plus-`save` capture.
 
-The module is **not mounted in the shell** — see §"Known limits", where that is recorded with its
-evidence rather than called finished.
+The module **is mounted now**: a palette command (`Command::Script`, in the SHOW AND SELECT group)
+opens it as a modal over the canvas, `Esc` closes it, and the frame's canvas does not move — see
+`odd/tasks/script-panel-mount.md` and §"Known limits" for what the mount does not solve.
 
 ## D-M10-1: the crate named `cam-cli` is also the operations home
 
@@ -416,10 +417,16 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   report written to a closed or broken pipe now exits `2` with a message instead of aborting with a
   panic (exit `101`). The change is deliberate — a caller holding a buffer must not inherit `print!`'s
   panic — and no test provokes `EPIPE`, which is the honest state of that claim.
-- **The panel is a standalone module, not a shell tab.** `pub mod script_panel;` in
-  `crates/cam-ui/src/lib.rs:77` is its only reference outside itself and its tests: no window draws it
-  yet. Mounting it is a line in the shell's layout, and the shell's own layout was not in this
-  milestone's surfaces.
+- **The panel is mounted as a modal, and the artboards do not draw it (was: "a standalone module,
+  not a shell tab").** The mount is `crates/cam-ui/src/chrome.rs::script_dialog` behind
+  `Command::Script`, an `egui::Modal` on S9's precedent; a test pins that `output.canvas` is identical
+  with the panel open and closed, so the frame's five zones are untouched. Two residuals stand, named
+  rather than hidden: **the design authority still has no zone for it** — `design/system.md:18-22`
+  enumerates five zones, `design/camui-shell/02-stages.html:358` says "Five zones and nothing else", and
+  `grep -ri script design/` finds nothing, so the surface exists in the shell and not in the boards; and
+  **the panel edits a file on disk, not the shell's document** — `run_script_to` takes no `Document`
+  (`crates/cam-cli/src/script.rs:164`), so a script's mutations reach the shell only when the file is
+  opened again.
 - **The panel runs synchronously on the frame that pressed `Run`.** Deliberate, and recorded in the
   module: one script over one document, no worker thread, no queue and no progress state. A script that
   took seconds would block the painter, which is a known cost rather than a surprise.
