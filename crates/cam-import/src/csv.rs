@@ -168,9 +168,29 @@ fn decode(bytes: &[u8]) -> Result<&str, ImportError> {
   })
 }
 
-/// Split a data line into its trimmed fields, refusing a wrong field count and any quoting.
+/// Split a data line into its trimmed fields, refusing any quoting and a wrong field count.
+///
+/// Quoting is refused **before** the count is checked. A field an exporter quoted because it holds a
+/// separator splits into two, so counting first answers a row a spreadsheet wrote with "expected 4
+/// fields, found 5" — a number the user cannot act on — instead of naming the one fault the message is
+/// about.
 fn split(line: &str, number: usize) -> Result<Vec<&str>, ImportError> {
   let fields: Vec<&str> = line.split(',').map(str::trim).collect();
+
+  if let Some((index, field)) = fields
+    .iter()
+    .enumerate()
+    .find(|(_, field)| field.contains('"'))
+  {
+    let message = format!("quoted fields are not supported; found '\"' in {field:?}");
+    // A quote past the last column the format has still names its line: there is no column name to
+    // print for it, and indexing one would panic on the row it is refusing.
+    return Err(if index < FIELDS {
+      field_refusal(number, index, message)
+    } else {
+      refusal(number, message)
+    });
+  }
 
   if fields.len() != FIELDS {
     return Err(refusal(
@@ -180,16 +200,6 @@ fn split(line: &str, number: usize) -> Result<Vec<&str>, ImportError> {
         fields.len()
       ),
     ));
-  }
-
-  for (index, field) in fields.iter().enumerate() {
-    if field.contains('"') {
-      return Err(field_refusal(
-        number,
-        index,
-        format!("quoted fields are not supported; found '\"' in {field:?}"),
-      ));
-    }
   }
 
   Ok(fields)

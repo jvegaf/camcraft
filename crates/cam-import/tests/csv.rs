@@ -234,6 +234,23 @@ fn quoted_fields_are_refused_by_name_rather_than_mis_parsed() {
 }
 
 #[test]
+fn a_quoted_field_that_contains_the_separator_is_refused_as_quoting_not_as_a_field_count() {
+  // A spreadsheet exports a name with a separator in it as `"post, left"`. Split on commas, that row
+  // is five fields, so a count error would answer with a number the user cannot act on while hiding
+  // the fault the format can name: quoting is not supported.
+  assert_eq!(
+    refusal("name,width,height,quantity\n\"post, left\",120,80,4\n"),
+    "csv at line 2, field 1 (\"name\"): quoted fields are not supported; found '\"' in \"\\\"post\""
+  );
+  // A quote past the last column the format has still names the line, and never indexes past the
+  // column names it would print.
+  assert_eq!(
+    refusal("name,width,height,quantity\nbrush,120,80,4,\"spare\n"),
+    "csv at line 2: quoted fields are not supported; found '\"' in \"\\\"spare\""
+  );
+}
+
+#[test]
 fn a_byte_order_mark_and_crlf_endings_are_tolerated() {
   let list = import("\u{feff}name,width,height,quantity\r\nbracket,120,80,4\r\n".as_bytes())
     .expect("import");
