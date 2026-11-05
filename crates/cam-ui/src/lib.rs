@@ -1242,6 +1242,18 @@ pub struct Shell {
   /// View state: opening the modal, searching it and cancelling out of it are not edits, and only
   /// `Use this tool` writes. `Esc` closes it without writing, the rule the material dialog already follows.
   pub show_tool_library: bool,
+  /// Whether the script modal is open (M10 T4b, S4).
+  ///
+  /// View state: opening the panel, typing a path into it and closing it again are not edits, and `Run`
+  /// edits the file the script names on disk — so the shell's own document does not change and there is
+  /// nothing for `Esc` to undo. The panel itself is [`Self::script`].
+  pub show_script: bool,
+  /// The scripting panel the Script modal draws: the path, `Run`, and the last report.
+  ///
+  /// A draft of the frame's own, the rule [`Self::material_size`] follows. Private because the modal is
+  /// the only thing that reads it: the panel is drawn whole by [`Shell::script_dialog`], and a field
+  /// nothing else touches has no second caller to be public for.
+  script: script_panel::ScriptPanel,
   /// The text the tool-library modal's search field holds.
   ///
   /// A draft of the frame's own, like [`Self::material_size`]: it filters the tree and reaches nothing else,
@@ -1352,6 +1364,8 @@ impl Default for Shell {
       show_material: false,
       material_size: default_material_size(),
       show_tool_library: false,
+      show_script: false,
+      script: script_panel::ScriptPanel::new(),
       tool_search: String::new(),
       tool_library_target: None,
       tool_library_selected: None,
@@ -1731,6 +1745,14 @@ impl Shell {
     if self.show_tool_library {
       self.tool_library_dialog(&ctx, app, &mut output);
     }
+    // The script panel is the shell's third modal (M10 T4b, S4), and `Esc` closes it for the reason the
+    // other two close: nothing it holds is a document edit, so leaving it has nothing to undo.
+    if self.show_script && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.show_script = false;
+    }
+    if self.show_script {
+      self.script_dialog(&ctx);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -1738,7 +1760,7 @@ impl Shell {
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
     // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
-    if !self.show_material && !self.show_tool_library {
+    if !self.show_material && !self.show_tool_library && !self.show_script {
       self.track_pointer(app, &ctx);
     }
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,

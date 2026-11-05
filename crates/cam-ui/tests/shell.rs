@@ -3834,6 +3834,53 @@ fn the_shortcuts_chip_still_opens_the_shortcuts_sheet() {
 }
 
 #[test]
+fn the_script_chip_opens_the_panel_and_escape_closes_it_without_moving_the_canvas() {
+  // M10 T4b/S1: the panel is the sixth surface and it is a window over the canvas, so opening it must add
+  // a surface and leave the drawing where it was (S2) — a mount that re-laid the frame out would move
+  // `output.canvas` and, with it, every gesture that reads the rectangle.
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  let (closed, closed_texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(!shell.show_script, "the script panel must start closed");
+  assert!(
+    !joined(&closed_texts).contains(cam_ui::script_panel::PATH_LABEL),
+    "a closed panel paints nothing: {}",
+    joined(&closed_texts)
+  );
+
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Script.label());
+  assert!(
+    shell.show_script,
+    "the SHOW AND SELECT Script chip must open the panel"
+  );
+
+  // An egui area positions itself on a sizing pass, so the frame it opens in is not the one that
+  // settles: the modal is read on the quiet frame after, the way `open_material_dialog` reads its own.
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (open, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    joined(&texts).contains(cam_ui::script_panel::PATH_LABEL),
+    "the modal must paint the panel's own path label: {}",
+    joined(&texts)
+  );
+  assert_eq!(
+    open.canvas, closed.canvas,
+    "the panel is a window over the canvas, so the drawing must not move"
+  );
+
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::Escape);
+  assert!(!shell.show_script, "Escape must close the script panel");
+  let (_, after) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    !joined(&after).contains(cam_ui::script_panel::PATH_LABEL),
+    "a closed panel paints nothing after Escape: {}",
+    joined(&after)
+  );
+}
+
+#[test]
 fn the_app_bar_labels_match_the_table() {
   // The bar holds no table command since camui-prancheta T2b: FILE moved to the rail. The report is empty,
   // and a button that came back — under any label — would have to come back here.

@@ -225,6 +225,8 @@ pub enum Command {
   IconSet,
   /// List the keys the shell answers to.
   Shortcuts,
+  /// Open the script panel.
+  Script,
   /// Frame everything drawn in the window.
   FitJob,
 }
@@ -294,6 +296,7 @@ impl Command {
     Command::Theme,
     Command::IconSet,
     Command::Shortcuts,
+    Command::Script,
   ];
 
   /// The word the frame already shows for this command.
@@ -338,6 +341,7 @@ impl Command {
       Self::Theme => "Theme",
       Self::IconSet => "Icon set",
       Self::Shortcuts => "Shortcuts",
+      Self::Script => "Script",
       Self::FitJob => "Fit the job",
     }
   }
@@ -375,7 +379,8 @@ impl Command {
       | Self::Help
       | Self::Theme
       | Self::IconSet
-      | Self::Shortcuts => Group::ShowAndSelect,
+      | Self::Shortcuts
+      | Self::Script => Group::ShowAndSelect,
     }
   }
 
@@ -403,7 +408,7 @@ impl Command {
   ///
   /// The rail is a subset of the table, and this is the only list that says which subset: the seven FILE
   /// commands, the nine gestures plus text, the five transforms the Tools tab also runs, offset and join,
-  /// and the four view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
+  /// and the five view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
   /// `Align`, `Trim` and the node edits from the Tools tab, and `Icon set` from `F2`.
   ///
   /// **FILE moved here in camui-prancheta T2b, and that is the whole point of the move:** `Open`, `Save`,
@@ -437,6 +442,7 @@ impl Command {
           | Self::Layers
           | Self::Help
           | Self::Shortcuts
+          | Self::Script
       )
   }
 
@@ -679,6 +685,14 @@ impl Command {
         how: "Press Shortcuts in the palette's VIEW run. It lists only keys that work today, because a \
               list of chords nobody implemented is a promise the shell does not keep.",
         related: &[Command::Help, Command::Undo, Command::FitJob],
+      },
+      Self::Script => Help {
+        what: "Runs a command script against a file on disk and shows the report it printed, or the \
+               line that stopped it.",
+        how: "Press Script in the palette, type the path of a script, then press Run. It runs the same \
+              engine the command line uses, against the file the script names, so the drawing this \
+              window holds does not change. Esc closes the panel.",
+        related: &[Command::Open, Command::Save, Command::Help],
       },
       Self::FitJob => Help {
         what: "Frames everything drawn in the window, so a part drawn at 1219 mm still reads at one glance.",

@@ -39,6 +39,7 @@ use egui::{Align, Layout, RichText, Sense};
 
 use crate::help::{Command, Group, MenuScope};
 use crate::icons::Icon;
+use crate::script_panel;
 use crate::theme::{self, Metrics, Palette, Role, Theme};
 use crate::view3d::{clock_text, seconds_for};
 use crate::{Shell, ShellOutput, Tool, UiAction};
@@ -553,6 +554,7 @@ impl Shell {
       Command::Layers => self.inspector_open = !self.inspector_open,
       Command::Help => self.show_help = !self.show_help,
       Command::Shortcuts => self.show_shortcuts = !self.show_shortcuts,
+      Command::Script => self.show_script = !self.show_script,
       Command::View3d => self.show_3d = !self.show_3d,
       Command::Theme => self.flip_theme(),
       _ => output.actions.extend(self.command_action(command, app)),
@@ -1363,6 +1365,38 @@ impl Shell {
     self.show_material = true;
   }
 
+  /// The script modal (M10 T4b, S4): the panel's own row and its report, over the canvas.
+  ///
+  /// It is a modal for the reason the tool library is one (camui-prancheta S9): the panel's path field is
+  /// 380 points wide and the right dock is 288, so no zone of the frame has room for it. A window adds the
+  /// surface without moving the drawing, and `Esc` closes it because the panel writes nothing to the
+  /// document — a script edits the file it names on disk (S3).
+  pub(crate) fn script_dialog(&mut self, ctx: &egui::Context) {
+    let palette = self.palette();
+    let metrics = self.metrics();
+    // The panel is the only thing the closure touches: it holds the path field, `Run` and the last report,
+    // and none of them is shell state a frame could read while the modal is open.
+    let script = &mut self.script;
+    egui::Modal::new(egui::Id::unique("campilot-script-panel"))
+      .frame(
+        egui::Frame::NONE
+          .fill(palette.get(Role::Overlay))
+          .stroke(egui::Stroke::new(
+            metrics.hairline,
+            palette.get(Role::Border),
+          ))
+          .corner_radius(egui::CornerRadius::same(metrics.radius_dialog as u8))
+          .inner_margin(egui::Margin::same(metrics.space(5) as i8)),
+      )
+      .show(ctx, |ui| {
+        // The panel's own row is a label, a 380-point field and `Run`, so the window is sized for those
+        // three and their gaps: a field narrower than `PATH_FIELD_WIDTH` would scroll the path the
+        // operator is typing.
+        ui.set_max_width(script_panel::PATH_FIELD_WIDTH + metrics.space(7) * 3.0);
+        script.ui(ui);
+      });
+  }
+
   /// The sentence the material dialog is showing, or nothing when its three numbers describe a sheet.
   ///
   /// Derived from the drafts rather than stored, so the sentence cannot outlive the number it complains
@@ -1596,6 +1630,9 @@ fn command_icon(command: Command) -> Icon {
     Command::Layers => Icon::Layers,
     Command::Help => Icon::Help,
     Command::Shortcuts => Icon::Shortcuts,
+    // A script is a program file the engine reads line by line, which is the one glyph in the set that
+    // draws a program file; the fallback `Select` would say a script is a click on the sheet.
+    Command::Script => Icon::Gcode,
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
     Command::Open => Icon::Open,
@@ -1640,6 +1677,7 @@ pub fn palette_tooltip(command: Command) -> String {
     Command::Layers => format!("{label} — the inspector, collapse or expand"),
     Command::Help => format!("{label} — F1"),
     Command::Shortcuts => format!("{label} — the keys the shell answers to"),
+    Command::Script => format!("{label} — run a command script and read its report"),
     _ => label.to_owned(),
   }
 }
