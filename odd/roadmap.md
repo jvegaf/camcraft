@@ -2,7 +2,10 @@
 
 Status: **executed through M10.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
 `etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M10 are delivered; §4 carries
-the evidence for each, and §6 the risk register with the one row M7 closed.
+the evidence for each, and §6 the risk register with the one row M7 closed. **After M10 the work did not
+continue as milestones**: the findings those milestones left open became two recorded features with their
+own documents — the advisory debt (`odd/tasks/debt-advisories.md`, six advisories closed, ten unrecoverable)
+and the script panel's mount (`odd/tasks/script-panel-mount.md`) — and the roadmap's Log in §8 names both.
 
 Owner decisions taken at plan time (verbatim from the decision record, see `## Log`):
 
@@ -930,9 +933,10 @@ name because a destination that was accepted and ignored still looks applied; `s
 parser is reconstructed from its message (quoted token, then named flag, then the command word) and
 falls back to the word when a message names neither; a **refused write is now a refusal and not a
 panic** — `write_report` maps a failed `write_all` to a named failure where `print!` used to panic, so a
-report into a broken pipe exits `2` instead of aborting, and no test provokes `EPIPE`; the panel is a
-**standalone module**, not a shell tab (`pub mod script_panel;` is its only reference outside itself and
-its tests), and it runs **synchronously** on the frame that pressed `Run`; the sheet **omits** the
+report into a broken pipe exits `2` instead of aborting, and no test provokes `EPIPE`; the panel was a
+**standalone module** with no shell tab in M10 and **is mounted now** — `Command::Script` opens it as a
+modal over the canvas (`odd/tasks/script-panel-mount.md`) — and it runs **synchronously** on the frame
+that pressed `Run`; the sheet **omits** the
 program, the simulation and the file name and says so under its own `Omitted` heading; the two CSV
 shapes are **two formats, not one schema**, so `cam_import::csv::import` deliberately does not read a
 cut list back; and **`docs/format.md`'s command-line table is stale** from M9 onwards — it lists neither
@@ -1012,3 +1016,18 @@ regression, and we did not decompile their algorithms.
   `evidence/installer-extract/`; REA evidence IDs recorded in dossier §5.
 - **L4 (plan):** this document. Next executable artifact is
   `odd/tasks/m0-foundation.md`.
+- **L5 (after M10, two features and no milestone).** M0–M10 were the whole plan, so the work that followed
+  started from the debt the milestones left rather than from a plan row. **The advisory debt**
+  (`odd/tasks/debt-advisories.md`): six advisories closed — four with the reviewer's own words recovered
+  from a sibling lineage, plus `1ab52143/R1-STEP-DOS` (the search step is now bounded by
+  `MAX_SEARCH_ANCHORS`, four million, the same ceiling the simulator's cell grid and the medial axis's
+  lattice use) and `R3-CAP-BOUNDARY` (the cap's inclusive edge, proved by installing the mutated
+  comparison) — ten unrecoverable because the review store keeps a receipt's lineage and not its findings.
+  **The script panel's mount** (`odd/tasks/script-panel-mount.md`): `ScriptPanel` is drawn as S9's modal
+  from a palette command, `Esc` closes it, and a test pins that the frame's canvas is byte-identical with
+  it open and closed — the recorded claim that the wiring "would move every existing shell golden" was
+  measured and is false, since this crate keeps no pixel goldens at all. Six advisories were carried in
+  and four were answered: three by the fixes above and one — a **BLOCKER filed against
+  `egui::Id::unique`** by the mount's refuter — by contradicting it with evidence, because the constructor
+  exists (`egui-0.37.0/src/id.rs:91`) and the spelling it demanded is deprecated. That authority is left
+  unburned and its lineage open, which is an owner decision rather than a technical step.

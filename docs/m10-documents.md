@@ -427,6 +427,12 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   **the panel edits a file on disk, not the shell's document** — `run_script_to` takes no `Document`
   (`crates/cam-cli/src/script.rs:164`), so a script's mutations reach the shell only when the file is
   opened again.
+  A third residual belongs to the mount rather than to the milestone: its review's refuter filed a
+  **BLOCKER** against `egui::Id::unique` — that the constructor does not exist and the crate cannot
+  compile — which is false and is contradicted by `egui-0.37.0/src/id.rs:91`, by two sibling call sites
+  and by a green build; the spelling it demanded, `egui::Id::new`, is deprecated in 0.37, so the demanded
+  correction would have failed `clippy -D warnings`. That lineage is left unburned in
+  `correction_required` and closing it is an owner decision (`odd/tasks/script-panel-mount.md`, L6).
 - **The panel runs synchronously on the frame that pressed `Run`.** Deliberate, and recorded in the
   module: one script over one document, no worker thread, no queue and no progress state. A script that
   took seconds would block the painter, which is a known cost rather than a surprise.
