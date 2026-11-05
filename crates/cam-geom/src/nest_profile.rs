@@ -275,9 +275,17 @@ impl ProfileNestPlan {
     if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
       return Err(GeomError::SheetNotMeasurable { width, height });
     }
+    for (index, part) in parts.iter().enumerate() {
+      if !part.is_closed() {
+        return Err(GeomError::PartNotClosed { part: index });
+      }
+    }
     // The lattice is the board's, not the part's: a part with no spare distance on either axis asks for
     // the largest one, so the cap is looked at once here rather than per candidate. Saturated, so a
     // step so fine that the counts overflow is refused instead of panicking on the arithmetic.
+    //
+    // After the parts, not before: a document that already has a geometry fault keeps the error that
+    // names the offending part, and a cost refusal never answers a question the caller did not ask.
     let columns = lattice_steps(width, options.step()).saturating_add(1);
     let rows = lattice_steps(height, options.step()).saturating_add(1);
     let anchors = columns.saturating_mul(rows);
@@ -289,11 +297,6 @@ impl ProfileNestPlan {
         anchors,
         cap: MAX_SEARCH_ANCHORS,
       });
-    }
-    for (index, part) in parts.iter().enumerate() {
-      if !part.is_closed() {
-        return Err(GeomError::PartNotClosed { part: index });
-      }
     }
 
     let mut packer = Packer::new(sheet, sheet_bounds, options);

@@ -7673,12 +7673,23 @@ fn a_search_step_too_fine_for_the_anchor_cap_is_refused_with_the_lattice_it_aske
     "a refused step leaves the document alone"
   );
 
-  // The same board at 2 mm is 501 x 301 = 150 801 anchors, so the step is the caller's again.
+  // The same board at 2 mm is 501 x 301 = 150 801 anchors, so the step is the caller's again: the run
+  // reaches the search and its report says which step it searched with. Asserting that is the
+  // difference between proving the accepted behaviour and accepting any exit other than `2` (review
+  // `review-2b7f8544a4b4dbd6`, finding `R2-001`).
   let outcome = run(&["nest", document.to_str().expect("utf8"), "--step", "2"]);
-  assert_ne!(
-    outcome.code, 2,
-    "a 2 mm step is under the cap: {}",
+  assert!(
+    matches!(outcome.code, 0 | 7),
+    "a nesting run ends in 0, or in 7 when it cannot place everything, got {}: {}",
+    outcome.code,
     outcome.stderr
+  );
+  assert!(
+    outcome
+      .stdout
+      .contains("free-profile no-fit heuristic at 2.000 mm"),
+    "the report names the step the search used: {}",
+    outcome.stdout
   );
   std::fs::remove_dir_all(&directory).ok();
 }

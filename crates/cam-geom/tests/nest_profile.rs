@@ -920,6 +920,20 @@ fn a_search_step_fine_enough_to_ask_for_more_anchors_than_the_cap_is_refused() {
 }
 
 #[test]
+fn an_over_cap_step_does_not_hide_an_open_part_the_document_already_has() {
+  // The cap is a cost refusal, not a document refusal. A document that already has a geometry fault
+  // keeps the error that names the offending part, or the new refusal answers a question the caller
+  // did not ask (review `review-2b7f8544a4b4dbd6`, finding `R3-001`).
+  let sheet = board(1219.0, 2438.0);
+  let open = primitive::line(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0)).expect("a line");
+  assert_eq!(
+    ProfileNestPlan::new(&sheet, &[rect(10.0, 10.0), open], options(GAP, false, 0.5)),
+    Err(GeomError::PartNotClosed { part: 1 }),
+    "the part that is not closed is named before the step's cost is refused"
+  );
+}
+
+#[test]
 fn refusals_name_their_value() {
   assert_eq!(
     ProfileNestOptions::new(-1.0, true),
