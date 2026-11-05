@@ -146,3 +146,17 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   }` is the answer), and the accepted-step branch now asserts the run ends in `0` or `7` **and** that the
   report names the step it searched with, instead of "not 2". `cam-geom`'s nest_profile target: **19
   passed**; workspace **1514 tests over 110 result lines**; whole gate green.
+- **L13 (the fixes reviewed: approved, and the cap's boundary was not pinned).** Lineage
+  **`review-85153ac6e3a443c8`** — the whole step-cap feature including its two corrections, tier `high`,
+  206 changed lines, four host-relay runs — closed **`approved`** on the first admitted event, receipt
+  burned (`sha256:57192970…`). One advisory, severity **SUGGESTION**: **`R3-CAP-BOUNDARY`**
+  (reliability, `crates/cam-geom/src/nest_profile.rs:292`): *"The new cap's inclusive boundary is not
+  pinned by a test: `anchors > MAX_SEARCH_ANCHORS` allows exactly 4,000,000 anchors, but the added tests
+  exercise only 11,895,003 (refused) and 744,200 (accepted), so a mutation to `>=` would not be caught.
+  Cheap cases are a 1999x1999 board at step 1 (2000x2000 = 4,000,000 anchors) and a 2000x2000 board at
+  step 1 (2001x2001 = 4,004,001)."* Taken in the reviewer's own two cases:
+  `the_anchor_cap_is_inclusive_at_exactly_the_cap` asserts 4 000 000 accepted and 4 004 001 refused —
+  and, because it passed on the first attempt, it was proven by **installing the mutation**: with `>=`
+  in place the test **fails**, restored it passes, and the source was restored byte-identical. The
+  lesson repeats with a sharper edge: the counts the earlier tests pinned were large and specific, and
+  the **comparison** was still nobody's test.

@@ -934,6 +934,37 @@ fn an_over_cap_step_does_not_hide_an_open_part_the_document_already_has() {
 }
 
 #[test]
+fn the_anchor_cap_is_inclusive_at_exactly_the_cap() {
+  // `anchors > MAX_SEARCH_ANCHORS` allows exactly the cap. Without this pair a mutation of the
+  // comparison to `>=` would pass every other test, because the only counts pinned are 11 895 003
+  // (refused) and 744 200 (accepted) — review `review-85153ac6e3a443c8`, finding `R3-CAP-BOUNDARY`.
+  // 1999 x 1999 at 1 mm is (1999 + 1) * (1999 + 1) = exactly 4 000 000 anchors.
+  let at_cap = ProfileNestPlan::new(
+    &board(1999.0, 1999.0),
+    &[rect(20.0, 10.0)],
+    options(GAP, false, 1.0),
+  )
+  .expect("exactly the cap is allowed");
+  assert_eq!(at_cap.sheets_used(), 1);
+  // 2000 x 2000 at 1 mm is 2001 * 2001 = 4 004 001: three thousand and one anchors past it.
+  assert_eq!(
+    ProfileNestPlan::new(
+      &board(2000.0, 2000.0),
+      &[rect(20.0, 10.0)],
+      options(GAP, false, 1.0)
+    ),
+    Err(GeomError::SearchLatticeTooFine {
+      step: 1.0,
+      columns: 2001,
+      rows: 2001,
+      anchors: 4_004_001,
+      cap: MAX_SEARCH_ANCHORS,
+    }),
+    "one anchor past the cap is refused"
+  );
+}
+
+#[test]
 fn refusals_name_their_value() {
   assert_eq!(
     ProfileNestOptions::new(-1.0, true),
