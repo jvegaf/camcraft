@@ -24,7 +24,14 @@ use cam_ui::script_panel::{ScriptPanel, PATH_LABEL, RUN, TITLE};
 // ---------------------------------------------------------------------------------------------
 
 /// A scratch directory under `/var/tmp`: the brief forbids `/tmp`, which is a full tmpfs here.
+///
+/// `name` is one path segment and nothing else: it is joined onto a directory this helper deletes
+/// first, so a name carrying a separator or a `..` would aim that deletion at somebody else's tree.
 fn scratch(name: &str) -> PathBuf {
+  assert!(
+    !name.contains('/') && !name.contains('\\') && !name.contains(".."),
+    "a scratch name is one path segment, got {name:?}"
+  );
   let directory =
     PathBuf::from("/var/tmp").join(format!("campilot-panel-{}-{name}", std::process::id()));
   let _ = std::fs::remove_dir_all(&directory);
