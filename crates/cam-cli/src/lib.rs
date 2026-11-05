@@ -167,9 +167,11 @@ SCRIPTS:
                                commas; it is named P1, P2, ...
     nest [options]             Nest the authored parts onto the authored sheets and store the
                                placements and the cost; takes nest's own --sheets, --gap,
-                               --rotation, --algorithm and --step
+                               --rotation, --algorithm and --step, and refuses --out and a
+                               positional document, because a script writes its document with save
     toolpath [options]         Append a toolpath; takes toolpath's own --kind, --entities, --tool
-                               and every other toolpath flag
+                               and every other toolpath flag except --out, which it refuses along
+                               with a positional document: a script writes its document with save
     validate                   Check the open document and print the counts validate prints
     emit --post <file>         Compute the program and write it; takes emit's own --out and
                                --library

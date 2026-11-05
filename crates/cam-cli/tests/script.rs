@@ -396,6 +396,32 @@ fn a_bad_argument_count_reports_the_line_and_the_column_past_the_last_token() {
 }
 
 #[test]
+fn a_bad_argument_count_after_a_quoted_token_reports_the_column_past_its_closing_quote() {
+  let directory = scratch("bad-count-quoted");
+  let document = write_document(&directory, &[]);
+  let script = write_script(
+    &directory,
+    "bad-count-quoted.cam",
+    &format!(
+      "open {document}\nsheet \"100 200\"\n",
+      document = document.display()
+    ),
+  );
+
+  let outcome = script_outcome(&script);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  // `sheet "100 200"` is fifteen characters and the closing quote is the fifteenth, so the argument
+  // the line does not have would have gone in column sixteen. Adding the token's text length to the
+  // opening quote's column stops at fourteen: inside the token, two short of one past it.
+  assert_eq!(
+    outcome.stderr,
+    "error: line 2:16: sheet expects <width> <height> in millimetres, got 1 argument(s)\n"
+  );
+
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn a_bad_value_reports_the_line_and_column_of_the_offending_token() {
   let directory = scratch("bad-value");
   let document = write_document(&directory, &[]);
@@ -833,6 +859,30 @@ fn the_help_lists_the_script_command_and_every_command_the_language_knows() {
     assert!(
       outcome.stdout.contains(needle),
       "help is missing {needle:?}"
+    );
+  }
+}
+
+#[test]
+fn the_script_help_says_which_destinations_a_scripted_command_refuses() {
+  let outcome = run(&["--help"]);
+  assert_eq!(outcome.code, 0);
+  // The two lines used to claim the commands take "every other" flag while the scripted `toolpath` and
+  // `nest` refuse `--out` and a positional document by name (`NO_OUT` / `NO_POSITIONAL` in
+  // `script.rs`), so the help described options a script would refuse. Compared with whitespace
+  // collapsed: the claim spans lines in `const HELP` and must not be pinned to its indentation.
+  let help = outcome
+    .stdout
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ");
+  for needle in [
+    "takes nest's own --sheets, --gap, --rotation, --algorithm and --step, and refuses --out and a positional document",
+    "and every other toolpath flag except --out, which it refuses along with a positional document",
+  ] {
+    assert!(
+      help.contains(needle),
+      "help is missing {needle:?}: {help}"
     );
   }
 }

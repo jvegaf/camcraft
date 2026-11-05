@@ -278,7 +278,8 @@ struct Token {
 struct ScriptLine {
   number: usize,
   tokens: Vec<Token>,
-  /// Where an argument the line does not have would have gone: one past the last token's text.
+  /// Where an argument the line does not have would have gone: one past the last token, counting a
+  /// quoted token's two quotes as part of it.
   end_column: usize,
 }
 
@@ -440,6 +441,8 @@ impl ScriptLine {
 /// not a grammar with expressions.
 fn lex(number: usize, line: &str) -> Result<ScriptLine, Failure> {
   let mut tokens: Vec<Token> = Vec::new();
+  // Where an argument this line does not have would have gone; `1` for a line with no token at all.
+  let mut end_column = 1;
   let mut characters = line.char_indices().peekable();
   while let Some(&(start, character)) = characters.peek() {
     if character.is_whitespace() {
@@ -468,10 +471,13 @@ fn lex(number: usize, line: &str) -> Result<ScriptLine, Failure> {
           .at(number, start + 1),
         );
       }
+      let length = text.len();
       tokens.push(Token {
         text,
         column: start + 1,
       });
+      // One past the closing quote, not one past the text inside it: `column` is the opening quote's.
+      end_column = start + 3 + length;
       continue;
     }
     let mut text = String::new();
@@ -482,15 +488,13 @@ fn lex(number: usize, line: &str) -> Result<ScriptLine, Failure> {
       text.push(inner);
       characters.next();
     }
+    let length = text.len();
     tokens.push(Token {
       text,
       column: start + 1,
     });
+    end_column = start + 1 + length;
   }
-
-  let end_column = tokens
-    .last()
-    .map_or(1, |token| token.column + token.text.len());
   Ok(ScriptLine {
     number,
     tokens,
