@@ -28,7 +28,7 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
 | T2 | The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `106ab8b` |
 | T3 | `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `68adb00` |
 | T4 | The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `3d6589f` |
-| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | pending |
+| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `c6eb633` + `b06c004` |
 
 ## Log
 
@@ -127,3 +127,22 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   fixtures that author 20 mm, 5 mm and 200 mm — a floor in millimetres would have had to argue with
   those, and a cap does not. `const HELP` and `docs/m9-nesting.md` (the "the step is the caller's"
   invariant and the refusal list) now state the cap and the two counts.
+- **L12 (the step cap reviewed: approved, and two findings against it).** Lineage
+  **`review-2b7f8544a4b4dbd6`**: tier `high` — a `process_boundary` signal, not a judgement about the
+  change — 159 changed lines, correction budget 80, **four** host-relay reviewer runs (risk, resilience,
+  readability, reliability), closed **`approved`** on the first admitted event with no correction, receipt
+  burned (`sha256:59108c52…`). Its two advisories are defects `c6eb633` **introduced**, both
+  `causal_disposition: introduced`, and **this time their words survived**: the lineage kept a state
+  directory, and reading it *before* the acknowledgement is what kept them — the discipline L9 asked for,
+  paying for itself one review later. **`R2-001`** (readability, `crates/cam-cli/tests/cli.rs:7678`): *"The
+  under-cap branch only asserts `outcome.code != 2`; a failure with any other nonzero code (including a
+  panic) would satisfy it, so the test does not prove the stated accepted behavior and can hide
+  regressions in the new cap boundary."* **`R3-001`** (reliability,
+  `crates/cam-geom/src/nest_profile.rs:284`): *"The new anchor-cap check runs before the existing
+  part-closed loop, so a document that is both over the anchor cap and contains an open part now reports
+  SearchLatticeTooFine instead of PartNotClosed; the step error masks the geometry error that identifies
+  the offending part."* Both fixed in **`b06c004`**: the cap check moved after the part loop (RED first —
+  an open-part document at an over-cap step answered `SearchLatticeTooFine` where `PartNotClosed { part: 1
+  }` is the answer), and the accepted-step branch now asserts the run ends in `0` or `7` **and** that the
+  report names the step it searched with, instead of "not 2". `cam-geom`'s nest_profile target: **19
+  passed**; workspace **1514 tests over 110 result lines**; whole gate green.
