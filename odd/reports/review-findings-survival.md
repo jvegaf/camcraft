@@ -1,9 +1,11 @@
 # What survives a review, and what this repository does about it
 
-A method note with two halves: the mechanism as it was **measured** in this clone, and the upstream ask that
-would end it. It exists because the same loss has now happened four times — M9's advisories, M10's, the
-advisory-debt review's own `R3-001`, and the six findings of `review-cf16da5a0b71e7b8` — and because a
-repository that keeps losing evidence should say so where the next session will read it.
+A method note with two halves: the mechanism as it was **measured** in this clone, and the three changes that
+would end the loss — recorded here rather than reported anywhere, because this repository is not a fork of the
+tooling and has no upstream to file against. It exists because the same loss has now happened four times — M9's
+advisories, M10's, the advisory-debt review's own `R3-001`, and the six findings of
+`review-cf16da5a0b71e7b8` — and because a repository that keeps losing evidence should say so where the next
+session will read it.
 
 ## 1. The mechanism
 
@@ -44,9 +46,16 @@ unsearched for budget reasons and are named here rather than glossed: `~/.cache`
 moment the transaction closes, and no later session can recover them. "Compact" is doing exactly what it
 says; this is a design tradeoff, not corruption.
 
-## 2. The upstream ask
+## 2. The ask that has no destination here
 
-Addressed to Gentle AI, with the evidence above:
+This repository is **not a fork** of the tooling and has no upstream to send anything to: `gentle-ai` is
+separate software that campilot uses, installed outside this tree. So the three points below are not a report
+filed somewhere — they are the **record of a defect this repository can describe precisely and cannot fix**,
+kept so that no later session has to rediscover it, and ready to hand over the day whoever owns that code asks
+what is wrong. Without this paragraph the next session reads the measured facts and reconstructs the argument
+from scratch; that has already happened once.
+
+The three changes that would end the loss, most useful first:
 
 1. **Persist the admitted results** for `compact-v2` lineages — the file that already exists for rejected
    results (`rejected-results/<lineage>/<lens>-<n>-<hash>.json`) is the shape, and keeping it for admitted
@@ -58,8 +67,9 @@ Addressed to Gentle AI, with the evidence above:
    live, so a caller can record them before acknowledging. The window is the transaction, so the verb has to
    work before the receipt is burned rather than after.
 
-What this repository cannot do is patch the store: `gentle-ai` is not code here. That is why the second half
-of this note exists.
+What this repository cannot do is patch the store: `gentle-ai` is not code here and no `Cargo.toml` in this
+workspace depends on it — it is a tool this repository calls, owned elsewhere. That is why the second half of
+this note exists: the practice is the part this repository can execute.
 
 ## 3. The practice this repository adopts
 

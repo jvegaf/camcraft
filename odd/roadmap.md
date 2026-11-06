@@ -1057,7 +1057,9 @@ regression, and we did not decompile their algorithms.
   `.git/gentle-ai` — a `v2` lineage keeps a 4.6–23.9 KB `review-state.json` with the admitted artifacts and
   their prose inside, a `compact-v2` lineage keeps a **259-byte** terminal-consumption record and nothing
   else, rejected results are the only ones written to disk, and an abandoned authority keeps more than an
-  approved one — and it states the upstream ask that would end the loss. The second half is binding here:
+  approved one. It also records the three changes that would end the loss — as a record, not a report: this
+  repository is not a fork of that tooling and has no upstream to file against. The second half is binding
+  here:
   findings are written down in the session that receives them **before** the receipt is burned, an inferred
   subject is marked as an inference, no finding is closed by a plausible-looking edit, and the quarantine
   residue is read before any finding is declared unreadable.
