@@ -109,3 +109,42 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   `cam-ui/tests/{script_panel,shell}.rs`, `docs/m10-documents.md`) and two new
   (`crates/cam-cli/tests/script_in_memory.rs`, this document). The commit message carries the evidence
   L6 measured, so the gate and the differential are readable from `git log` and not only from here.
+- **L8 (the native review: approved, receipt burned, and six advisories whose words did not survive).**
+  Lineage **`review-cf16da5a0b71e7b8`** over `f19cf4c..95e2cf1` — the commit L7 made, 9 paths, 910 changed
+  lines. Tier **`high`**, on a `process_boundary` signal naming `crates/cam-ui/src/lib.rs` ("code that
+  starts other processes"), not a judgement about the change; correction budget **200**, of which **zero**
+  was spent. Two START attempts: the first with an explicit lens selection was refused
+  `native-start-input-invalid` / `lenses-invalid`, `lineage_created: false`, nothing burned — the same
+  inert selection `odd/tasks/debt-advisories.md` L10 recorded — so the provider chose the four lenses
+  itself: **risk, resilience, readability, reliability**. Four host-relay reviewer runs (prompts 80 115,
+  80 129, 80 161 and 80 140 bytes; results 944, 4 302, 2 805 and 2 766), closure **`approved` on the last
+  admitted event**, no correction, and the receipt burned: `gentle-ai.review-acknowledged/v1`, consumed
+  revision `sha256:506f7b2a356f1076b478767fd04b0edf02b4aa52bf762bd0730ae32386d213fc`.
+  Its six findings are **all `informational`** — none opened a correction and none reopens the lineage —
+  and **their wording is not in the envelope**: it lists id, lens, severity, location and disposition, so
+  what follows is the anchor and, where the code still says what the finding was about, this document's
+  reading of it, marked as such rather than presented as the reviewer's words (the store blindness of
+  `odd/tasks/debt-advisories.md` L9, one review later):
+  - **`R2-001`** readability, `WARNING`, `crates/cam-cli/tests/script_in_memory.rs:112-126` — the `save`
+    refusal test. Read: it asserts the message *contains* `writes no file` instead of pinning the whole
+    diagnostic, so a rewrite of that sentence would pass the test.
+  - **`R2-002`** readability, `SUGGESTION`, `crates/cam-cli/src/script.rs:325-327` — the `document_path`
+    match. Read: the `(_, Some(path))` arm decides on one field while the other two decide on both, so
+    the arm order carries meaning a reader has to reconstruct.
+  - **`R2-003`** readability, `SUGGESTION`, `crates/cam-cli/src/script.rs:760-762` — the guard at the top of
+    `command_save`. Read: the same "the shell owns it" guard the `command_open` edit added, written twice,
+    with no helper naming the rule once.
+  - **`R3-001`** reliability, `SUGGESTION`, `crates/cam-ui/src/script_panel.rs:255-260` — the clone-and-commit
+    block. Read: the accepted path is pinned (the shell test), and what is not is the panel's own edge — a
+    successful run that changed nothing.
+  - **`R4-001`** resilience, `WARNING`, `crates/cam-ui/src/chrome.rs:1405-1407` —
+    `app.replace_document_undoable(document)`. **Read, and the one worth acting on:** the commit is
+    unconditional, so a script that succeeds and changes nothing still records an undo step and marks the
+    document modified; a guard comparing the returned document with the one passed in would leave a no-op
+    run a no-op. This is an inference from the anchor, not the reviewer's sentence.
+  - **`R4-002`** resilience, `SUGGESTION`, `crates/cam-ui/src/script_panel.rs:256-261` — the same block. Read:
+    the whole document is cloned on the frame that pressed `Run`, on the UI thread, which is the cost the
+    module's own "synchronous, deliberately" rule already accepts for the run but does not name for the copy.
+  Per the provider, these are **separate later work and never a reason to re-run this candidate**. The one
+  with a behavioural edge is `R4-001`: a future task that guards the commit would close it, and would need
+  its own candidate and its own review.
