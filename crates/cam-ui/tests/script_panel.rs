@@ -1,22 +1,15 @@
-//! The scripting panel (M10 T4b, spec S4: "CLI más panel mínimo").
+//! The scripting panel: one script, one `Run`, one output area (M10 T4b), now over the shell's document
+//! (M11 T2).
 //!
-//! S4 asked for a panel that runs a script and shows what happened, and these tests read it the way the
-//! rest of this crate's UI tests do: real `egui` frames, painted text, and the panel's own state. Four
-//! things are pinned here, and each is a promise S4 or a T4b invariant makes:
-//!
-//! * a successful script paints its report;
-//! * a failing script paints the engine's located `line:column` diagnostic;
-//! * a failure keeps the previous result visible instead of clearing the area;
-//! * a captured run holds the **cut list** and the **`save` line**, which are the two things T4a left
-//!   printing past the sink. That last one is also the adapter's test: the panel is driven through
-//!   [`cam_ui::script_panel::ScriptPanel::run`], which needs no frame at all, and then painted to prove
-//!   the same text reaches the screen.
+//! Every test here drives the real widget and reads what the frame painted, because the panel's contract
+//! is what an operator sees. The document is the one the panel's caller owns: a run mutates a copy and
+//! hands it back only when every line was accepted, which is why most tests below read both the painted
+//! text and the returned document.
 
 use std::path::{Path, PathBuf};
 
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer};
-use cam_store::document::save_document;
 use cam_ui::script_panel::{ScriptPanel, BODY_HEIGHT, PATH_LABEL, RUN, TITLE};
 
 // ---------------------------------------------------------------------------------------------
@@ -52,8 +45,11 @@ fn rectangle(width: f64, height: f64) -> Contour {
   .expect("rectangle")
 }
 
-/// The document every test opens: one layer with two rectangular parts on it.
-fn write_document(directory: &Path) -> PathBuf {
+/// The document every test runs against: one layer with two rectangular parts on it.
+///
+/// It is a value, not a file: since M11 the panel edits the document its caller holds, so a script that
+/// names a path on disk has nothing to do with the document any more.
+fn document() -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
@@ -74,9 +70,7 @@ fn write_document(directory: &Path) -> PathBuf {
       },
     ],
   });
-  let path = directory.join("parts.c2d");
-  save_document(&path, &document).expect("document saved");
-  path
+  document
 }
 
 fn write_script(directory: &Path, name: &str, body: &str) -> PathBuf {
@@ -85,21 +79,17 @@ fn write_script(directory: &Path, name: &str, body: &str) -> PathBuf {
   path
 }
 
-/// A script that succeeds: it opens the document and asks the model what it holds.
-fn valid_script(directory: &Path, document: &Path) -> PathBuf {
-  write_script(
-    directory,
-    "valid.cam",
-    &format!("open {}\nvalidate\n", document.display()),
-  )
+/// A script that succeeds: it asks the model what the document holds.
+fn valid_script(directory: &Path) -> PathBuf {
+  write_script(directory, "valid.cam", "validate\n")
 }
 
 /// A script that fails on its third line, with the word `shet` where `sheet` belongs.
-fn broken_script(directory: &Path, document: &Path) -> PathBuf {
+fn broken_script(directory: &Path) -> PathBuf {
   write_script(
     directory,
     "broken.cam",
-    &format!("# the board\nopen {}\nshet 100 100\n", document.display()),
+    "# the board\nvalidate\nshet 100 100\n",
   )
 }
 
@@ -129,42 +119,54 @@ fn painted_text(output: &egui::FullOutput) -> Vec<String> {
     .collect()
 }
 
-/// Run one frame and report the text it painted.
-fn frame(ctx: &egui::Context, panel: &mut ScriptPanel) -> Vec<String> {
-  frame_with(ctx, panel, Vec::new())
+/// Run one frame and report the text it painted, and the document it handed back.
+fn frame(
+  ctx: &egui::Context,
+  panel: &mut ScriptPanel,
+  document: &Document,
+) -> (Vec<String>, Option<Document>) {
+  frame_with(ctx, panel, document, Vec::new())
 }
 
 fn frame_with(
   ctx: &egui::Context,
   panel: &mut ScriptPanel,
+  document: &Document,
   events: Vec<egui::Event>,
-) -> Vec<String> {
+) -> (Vec<String>, Option<Document>) {
   let mut input = raw_input();
   input.events = events;
+  let mut committed = None;
   // egui 0.37 stacks its panels on a root `Ui`, which is where a panel with no parent of its own goes.
   let full = ctx.run_pass(input, |ctx| {
-    ctx.root_ui(|ui| panel.ui(ui));
+    ctx.root_ui(|ui| committed = panel.ui(ui, document, None));
   });
   let texts = painted_text(&full);
   // The texture deltas belong to a renderer a headless test does not have; dropping them silently is
   // exactly what epaint forbids, so say so explicitly.
   full.drop_without_applying_deltas();
-  texts
+  (texts, committed)
 }
 
 /// Press the panel's one button: read the point the frame drew it at, then click there.
 ///
 /// A click is two frames, the way a mouse reports it, and the frame that reports the click is the one
 /// the release lands in — which is also the frame the panel runs the script in.
-fn press_run(ctx: &egui::Context, panel: &mut ScriptPanel) -> Vec<String> {
-  let _ = frame(ctx, panel);
+fn press_run(
+  ctx: &egui::Context,
+  panel: &mut ScriptPanel,
+  document: &Document,
+) -> (Vec<String>, Option<Document>) {
+  let _ = frame(ctx, panel, document);
   let at = panel.run_button().expect("the frame drew the Run button");
   let at = egui::pos2(at.0, at.1);
   let mut painted: Vec<String> = Vec::new();
+  let mut committed = None;
   for pressed in [true, false] {
-    painted = frame_with(
+    (painted, committed) = frame_with(
       ctx,
       panel,
+      document,
       vec![
         egui::Event::PointerMoved(at),
         egui::Event::PointerButton {
@@ -176,7 +178,7 @@ fn press_run(ctx: &egui::Context, panel: &mut ScriptPanel) -> Vec<String> {
       ],
     );
   }
-  painted
+  (painted, committed)
 }
 
 fn contains(painted: &[String], needle: &str) -> bool {
@@ -193,17 +195,16 @@ fn a_long_run_stays_inside_a_bounded_body() {
   // for hundreds of lines grows the body past any screen, and a surface that cannot be sized is not one
   // (mount task T1).
   let directory = scratch("bounded-body");
-  let document = write_document(&directory);
-  let mut script = format!("open {}\n", document.display());
+  let document = document();
+  let mut script = String::new();
   for _ in 0..80 {
     script.push_str("validate\n");
   }
-  let path = directory.join("bounded.cam");
-  std::fs::write(&path, &script).expect("script written");
+  let path = write_script(&directory, "bounded.cam", &script);
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(path.to_str().expect("utf8"));
 
-  let _ = press_run(&ctx, &mut panel);
+  let _ = press_run(&ctx, &mut panel, &document);
 
   assert!(
     !panel.output().is_empty(),
@@ -218,18 +219,18 @@ fn a_long_run_stays_inside_a_bounded_body() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The four promises
+// The promises the panel had before M11, unchanged
 // ---------------------------------------------------------------------------------------------
 
 #[test]
 fn a_successful_script_paints_its_report() {
   let directory = scratch("paints-report");
-  let document = write_document(&directory);
-  let script = valid_script(&directory, &document);
+  let document = document();
+  let script = valid_script(&directory);
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(script.display().to_string());
 
-  let painted = press_run(&ctx, &mut panel);
+  let (painted, _) = press_run(&ctx, &mut panel, &document);
 
   // The panel's own words first: a frame that painted none of them would make the rest meaningless.
   for word in [TITLE, PATH_LABEL, RUN] {
@@ -255,7 +256,11 @@ fn a_successful_script_paints_its_report() {
   // The adapter boundary itself: a caller that has no egui runs the same script through the same
   // engine and reads the same report, with no frame and no widget anywhere.
   let mut headless = ScriptPanel::with_path(script.display().to_string());
-  headless.run();
+  let mut headless_document = document.clone();
+  assert!(
+    headless.run(&mut headless_document, None),
+    "the headless run accepts the script"
+  );
   assert!(headless.error().is_none(), "{:?}", headless.error());
   assert!(
     headless.output().contains(report),
@@ -269,12 +274,12 @@ fn a_successful_script_paints_its_report() {
 #[test]
 fn a_failing_script_paints_the_located_error_with_its_line_and_column() {
   let directory = scratch("paints-error");
-  let document = write_document(&directory);
-  let script = broken_script(&directory, &document);
+  let document = document();
+  let script = broken_script(&directory);
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(script.display().to_string());
 
-  let painted = press_run(&ctx, &mut panel);
+  let (painted, committed) = press_run(&ctx, &mut panel, &document);
 
   // The word `shet` is the third line's first token, so the diagnostic is `line 3:1` — the whole point
   // of invariant 2: a mistyped command says where it is, and the panel shows it rather than a generic
@@ -290,6 +295,10 @@ fn a_failing_script_paints_the_located_error_with_its_line_and_column() {
     error.starts_with(located),
     "the error the panel keeps must be the engine's own diagnostic: {error}"
   );
+  assert!(
+    committed.is_none(),
+    "a run that failed hands back no document: the shell must keep the one it has"
+  );
 
   std::fs::remove_dir_all(&directory).ok();
 }
@@ -297,20 +306,20 @@ fn a_failing_script_paints_the_located_error_with_its_line_and_column() {
 #[test]
 fn a_failed_run_keeps_the_last_result_visible() {
   let directory = scratch("keeps-last");
-  let document = write_document(&directory);
-  let good = valid_script(&directory, &document);
-  let bad = broken_script(&directory, &document);
+  let document = document();
+  let good = valid_script(&directory);
+  let bad = broken_script(&directory);
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(good.display().to_string());
 
-  let first = press_run(&ctx, &mut panel);
+  let (first, _) = press_run(&ctx, &mut panel, &document);
   let report = "valid: 1 layer(s), 2 entity(ies), 0 toolpath(s)";
   assert!(contains(&first, report), "{}", joined(&first));
   let last_result = panel.output().to_owned();
 
   // A later run that fails must answer beside the last result, not instead of it.
   panel.set_path(bad.display().to_string());
-  let second = press_run(&ctx, &mut panel);
+  let (second, _) = press_run(&ctx, &mut panel, &document);
   assert!(
     contains(&second, "line 3:1: unknown script command"),
     "the failure must be painted: {}",
@@ -331,82 +340,18 @@ fn a_failed_run_keeps_the_last_result_visible() {
 }
 
 #[test]
-fn a_captured_run_holds_the_cut_list_and_the_save_line() {
-  // T4a left two bypasses: a scripted `cutlist` without `--out` printed straight to the process's
-  // stdout, and `save` wrote its `wrote …` line with `eprintln!`. Neither went through the sink the
-  // engine takes, so a capturing caller — this panel — lost both. This is the end-to-end proof that
-  // both now arrive, and it is asserted through the panel and through the painted frame, because a
-  // caller with no egui reads the first and an operator reads the second.
-  let directory = scratch("capture");
-  let document = write_document(&directory);
-  let saved = directory.join("nested.c2d");
-  let script = write_script(
-    &directory,
-    "run.cam",
-    &format!(
-      "\
-open {document}
-sheet 100 100
-part 1 E1
-nest --gap 0
-cutlist
-save {saved}
-",
-      document = document.display(),
-      saved = saved.display()
-    ),
-  );
-  let ctx = egui::Context::default();
-  let mut panel = ScriptPanel::with_path(script.display().to_string());
-
-  let painted = press_run(&ctx, &mut panel);
-
-  // The cut list: its one header row and the row the document's placement makes.
-  for needle in [
-    "part,sheet,x,y,rotation,width,height",
-    "P1,S1,0.000,0.000,0.000,40.000,30.000",
-  ] {
-    assert!(
-      contains(&painted, needle),
-      "the painted area lost the cut list's {needle:?}: {}",
-      joined(&painted)
-    );
-    assert!(
-      panel.output().contains(needle),
-      "a capturing caller lost the cut list's {needle:?}: {}",
-      panel.output()
-    );
-  }
-  // And the `save` line, which names the document it wrote.
-  let save_line = format!("wrote 1 layer(s), 2 entity(ies) to {}", saved.display());
-  assert!(
-    contains(&painted, &save_line),
-    "the painted area lost the save line: {}",
-    joined(&painted)
-  );
-  assert!(
-    panel.output().contains(&save_line),
-    "a capturing caller lost the save line: {}",
-    panel.output()
-  );
-  assert!(panel.error().is_none(), "{:?}", panel.error());
-
-  std::fs::remove_dir_all(&directory).ok();
-}
-
-#[test]
 fn a_successful_script_that_prints_nothing_clears_the_previous_output() {
   // R3-001, the first path nobody covered: a run that **succeeds** and prints nothing has still
   // answered, so the area must go empty. Keying off "the buffer is empty" left the previous run's text
   // on screen with the error cleared, which reads as "this is what just ran".
   let directory = scratch("empty-success");
-  let document = write_document(&directory);
-  let good = valid_script(&directory, &document);
+  let document = document();
+  let good = valid_script(&directory);
   let silent = write_script(&directory, "silent.cam", "# nothing to do\n");
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(good.display().to_string());
 
-  let first = press_run(&ctx, &mut panel);
+  let (first, _) = press_run(&ctx, &mut panel, &document);
   assert!(contains(&first, "valid: "), "{}", joined(&first));
   assert!(
     !panel.output().is_empty(),
@@ -414,7 +359,7 @@ fn a_successful_script_that_prints_nothing_clears_the_previous_output() {
   );
 
   panel.set_path(silent.display().to_string());
-  let second = press_run(&ctx, &mut panel);
+  let (second, _) = press_run(&ctx, &mut panel, &document);
   assert_eq!(
     panel.output(),
     "",
@@ -433,27 +378,24 @@ fn a_failed_run_that_printed_partially_keeps_the_previous_output() {
   // result with its partial capture, which contradicted the documented "a failure keeps the previous
   // output" rule. The failure answers beside the last complete result.
   let directory = scratch("partial-failure");
-  let document = write_document(&directory);
-  let good = valid_script(&directory, &document);
+  let document = document();
+  let good = valid_script(&directory);
   let partial = write_script(
     &directory,
     "partial.cam",
     // `validate` twice, so the partial capture is *different* text from the previous run: with one
     // `validate` the two would be identical and the assertion could not tell "kept" from "overwrote".
-    &format!(
-      "open {}\nvalidate\nvalidate\nshet 100 100\n",
-      document.display()
-    ),
+    "validate\nvalidate\nshet 100 100\n",
   );
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(good.display().to_string());
 
-  let _ = press_run(&ctx, &mut panel);
+  let _ = press_run(&ctx, &mut panel, &document);
   let previous = panel.output().to_owned();
   assert!(!previous.is_empty(), "the first run has something to show");
 
   panel.set_path(partial.display().to_string());
-  let second = press_run(&ctx, &mut panel);
+  let (second, _) = press_run(&ctx, &mut panel, &document);
   assert_eq!(
     panel.output(),
     previous,
@@ -465,8 +407,98 @@ fn a_failed_run_that_printed_partially_keeps_the_previous_output() {
     "the partial capture is what a failure must not leave behind"
   );
   assert!(
-    contains(&second, "line 4:1: unknown script command"),
+    contains(&second, "line 3:1: unknown script command"),
     "the failure must be painted: {}",
     joined(&second)
   );
+
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+// ---------------------------------------------------------------------------------------------
+// What M11 changed: the run edits the caller's document, and it writes no file
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_run_hands_back_the_document_it_mutated() {
+  // The whole point of the task: a script run from the shell edits the shell's document. The panel
+  // hands that document back — one value, so the caller keeps it through its own edit path — and the
+  // cut list it printed is the document's own answer, not a file's.
+  let directory = scratch("hands-back");
+  let document = document();
+  assert!(document.nesting.is_none(), "the fixture starts un-nested");
+  let script = write_script(
+    &directory,
+    "nest.cam",
+    "sheet 100 100\npart 1 E1\nnest --gap 0\ncutlist\n",
+  );
+  let ctx = egui::Context::default();
+  let mut panel = ScriptPanel::with_path(script.display().to_string());
+
+  let (painted, committed) = press_run(&ctx, &mut panel, &document);
+
+  for needle in [
+    "part,sheet,x,y,rotation,width,height",
+    "P1,S1,0.000,0.000,0.000,40.000,30.000",
+  ] {
+    assert!(
+      contains(&painted, needle),
+      "the painted area lost the cut list's {needle:?}: {}",
+      joined(&painted)
+    );
+    assert!(
+      panel.output().contains(needle),
+      "a capturing caller lost the cut list's {needle:?}: {}",
+      panel.output()
+    );
+  }
+  assert!(panel.error().is_none(), "{:?}", panel.error());
+
+  let edited = committed.expect("an accepted run hands its document back");
+  let nesting = edited.nesting.as_ref().expect(
+    "the sheet, the part and the placement the script authored are in the document it hands back",
+  );
+  assert_eq!(nesting.sheets.len(), 1, "one sheet, the one authored");
+  assert_eq!(nesting.parts.len(), 1, "one part, the one authored");
+  assert!(
+    document.nesting.is_none(),
+    "the document the caller passed in is untouched: the panel mutates a copy"
+  );
+
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn save_is_refused_because_the_shell_writes_the_document() {
+  // S3 of this feature: a script run from the shell writes no file. The rule is refused on its own
+  // line, located, and nothing reaches the disk — the shell's Save is the one writer.
+  let directory = scratch("no-save");
+  let document = document();
+  let target = directory.join("nested.c2d");
+  let script = write_script(
+    &directory,
+    "save.cam",
+    &format!("sheet 100 100\nsave {}\n", target.display()),
+  );
+  let ctx = egui::Context::default();
+  let mut panel = ScriptPanel::with_path(script.display().to_string());
+
+  let (painted, committed) = press_run(&ctx, &mut panel, &document);
+
+  let located = "line 2:1: a script run from the shell writes no file";
+  assert!(
+    contains(&painted, located),
+    "the refusal must be painted, located at the line that tried: {}",
+    joined(&painted)
+  );
+  assert!(
+    !target.exists(),
+    "nothing reached the disk: the shell's Save is the only writer"
+  );
+  assert!(
+    committed.is_none(),
+    "and the sheet the first line authored is not kept: a run is one transaction"
+  );
+
+  std::fs::remove_dir_all(&directory).ok();
 }

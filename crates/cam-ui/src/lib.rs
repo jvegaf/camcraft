@@ -1244,15 +1244,16 @@ pub struct Shell {
   pub show_tool_library: bool,
   /// Whether the script modal is open (M10 T4b, S4).
   ///
-  /// View state: opening the panel, typing a path into it and closing it again are not edits, and `Run`
-  /// edits the file the script names on disk — so the shell's own document does not change and there is
-  /// nothing for `Esc` to undo. The panel itself is [`Self::script`].
+  /// View state, with one exception it is worth stating: opening the panel, typing a path into it and
+  /// closing it again are not edits, and `Run` edits **the shell's document** in one undo step (M11) — so
+  /// `Esc` has nothing of its own to undo, and what a run changed survives closing the window. The panel
+  /// itself is [`Self::script`].
   pub show_script: bool,
   /// The scripting panel the Script modal draws: the path, `Run`, and the last report.
   ///
-  /// A draft of the frame's own, the rule [`Self::material_size`] follows. Private because the modal is
-  /// the only thing that reads it: the panel is drawn whole by [`Shell::script_dialog`], and a field
-  /// nothing else touches has no second caller to be public for.
+  /// A draft of the frame's own, the rule [`Self::material_size`] follows: the path field and the report
+  /// reach nothing else. Reached through [`Self::script_panel`], because a headless test has to be able to
+  /// name a script and press `Run`.
   script: script_panel::ScriptPanel,
   /// The text the tool-library modal's search field holds.
   ///
@@ -1419,6 +1420,17 @@ impl Shell {
   /// The measurements of the current set.
   pub fn metrics(&self) -> theme::Metrics {
     self.theme.metrics()
+  }
+
+  /// The scripting panel the Script modal draws, so a headless test can name a script and read the point
+  /// `Run` was drawn at (M11 T2).
+  ///
+  /// The modal is still the only thing that *paints* it, and the shell still owns the commit: a run
+  /// mutates a copy and the copy reaches [`AppState`] only through [`AppState::replace_document_undoable`].
+  /// This exists for the same reason the palette reports its chips' points — a widget a test cannot
+  /// press is a widget nothing pins.
+  pub fn script_panel(&mut self) -> &mut script_panel::ScriptPanel {
+    &mut self.script
   }
 
   /// Apply one action and show what it produced in the status bar.
@@ -1746,12 +1758,13 @@ impl Shell {
       self.tool_library_dialog(&ctx, app, &mut output);
     }
     // The script panel is the shell's third modal (M10 T4b, S4), and `Esc` closes it for the reason the
-    // other two close: nothing it holds is a document edit, so leaving it has nothing to undo.
+    // other two close: the panel holds no edit of its own, so leaving it has nothing to undo — what `Run`
+    // changed is in the document, one undo step at a time (M11 T2).
     if self.show_script && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
       self.show_script = false;
     }
     if self.show_script {
-      self.script_dialog(&ctx);
+      self.script_dialog(&ctx, app);
     }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive

@@ -1369,14 +1369,18 @@ impl Shell {
   ///
   /// It is a modal for the reason the tool library is one (camui-prancheta S9): the panel's path field is
   /// 380 points wide and the right dock is 288, so no zone of the frame has room for it. A window adds the
-  /// surface without moving the drawing, and `Esc` closes it because the panel writes nothing to the
-  /// document — a script edits the file it names on disk (S3).
-  pub(crate) fn script_dialog(&mut self, ctx: &egui::Context) {
+  /// surface without moving the drawing, and `Esc` closes it. What `Run` does to the document is the
+  /// shell's own edit path: the run mutates a copy and the copy replaces the document only when every
+  /// line was accepted.
+  pub(crate) fn script_dialog(&mut self, ctx: &egui::Context, app: &mut AppState) {
     let palette = self.palette();
     let metrics = self.metrics();
+    // Cloned before the panel's own borrow is taken: the run reads this path and never writes it.
+    let document_path = self.document_path.clone();
     // The panel is the only thing the closure touches: it holds the path field, `Run` and the last report,
     // and none of them is shell state a frame could read while the modal is open.
     let script = &mut self.script;
+    let mut committed = None;
     egui::Modal::new(egui::Id::unique("campilot-script-panel"))
       .frame(
         egui::Frame::NONE
@@ -1393,8 +1397,14 @@ impl Shell {
         // three and their gaps: a field narrower than `PATH_FIELD_WIDTH` would scroll the path the
         // operator is typing.
         ui.set_max_width(script_panel::PATH_FIELD_WIDTH + metrics.space(7) * 3.0);
-        script.ui(ui);
+        committed = script.ui(ui, app.document(), document_path.as_deref());
       });
+    // A run the engine accepted replaces the shell's document in one step, through the same history and
+    // the same modified state every other edit uses: the panel writes no file, so the document it
+    // mutated is only real once the shell holds it (M11 T2).
+    if let Some(document) = committed {
+      app.replace_document_undoable(document);
+    }
   }
 
   /// The sentence the material dialog is showing, or nothing when its three numbers describe a sheet.

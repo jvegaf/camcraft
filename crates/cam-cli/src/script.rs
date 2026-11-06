@@ -22,6 +22,10 @@
 //!    split the binary's own contract has, and a caller that wants to display the whole run — the
 //!    shell panel (T4) — passes two handles onto its own output area. Nothing in this file prints a
 //!    report or a notice, so a captured run and a printed run cannot disagree about a single byte.
+//! 4. **The document can come from the caller.** [`run_script_to`] reads it from the `open` line and
+//!    writes it with `save`; [`run_script_on`] mutates a document its caller already owns — the shell's
+//!    — as **one transaction**, and refuses `open` and `save`: a file it did not read is not its to
+//!    write, and the shell's own Save writes the document.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -44,6 +48,15 @@ const NO_POSITIONAL: &str = "takes no document path: a script mutates the docume
 
 /// Why a scripted command takes no `--out`.
 const NO_OUT: &str = "takes no --out: a script writes its document with `save <document>`";
+
+/// Why a command that resolves a file beside the document refuses an untitled one.
+const NO_PATH: &str = "this document has no path yet: a command that reads a file beside it needs one, so save the document first";
+
+/// Why a script that mutates its caller's document has nothing to open.
+const ALREADY_OPEN: &str = "a script run from the shell already has a document open: it mutates the shell's own, so `open` has nothing to read";
+
+/// Why a script that mutates its caller's document writes nothing.
+const NO_WRITE: &str = "a script run from the shell writes no file: the document belongs to the shell, and its Save writes it";
 
 /// One command the language knows: its word, what its line reads like, and the function that runs it.
 ///
@@ -166,15 +179,65 @@ pub fn run_script_to(
   reports: &mut dyn Write,
   notices: &mut dyn Write,
 ) -> Result<(), Failure> {
-  let text = std::fs::read_to_string(path)
-    .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
-
+  let text = read_script(path)?;
   let mut session = Session {
     document: None,
     path: None,
+    in_memory: false,
     out: reports,
     notices,
   };
+  run_lines(&text, &mut session)
+}
+
+/// Run the script at `script` against `document`, which the caller owns.
+///
+/// This is the entry point the shell's scripting panel calls: the document is the one the shell already
+/// has open, so a run mutates the caller's document and writes no file. `document_path` is the path the
+/// document was loaded from — `None` when it is untitled — and it is used for one thing: the commands
+/// that resolve a file beside the document (`toolpath`'s `tools_ref`, `emit`'s and `simulate`'s
+/// post-processor) need it, exactly as they do from a command line.
+///
+/// **The whole run is one transaction.** The lines run against a copy, and the copy replaces `document`
+/// only when every line was accepted, so a refusal leaves the caller's document as it was — which is
+/// what a run whose result the user has not seen must do. Each accepted mutation is still validated on
+/// the way, in [`Session::mutate`]: a run cannot buy a document the model would refuse.
+///
+/// Two commands belong to the file rather than to the document, and a script in this shape refuses both:
+/// `open` has nothing to read, because the shell's document is already open, and `save` writes no file,
+/// because the shell's own Save does. A script written for `cam-cli script` therefore says so on the
+/// line that tried, instead of quietly editing a second document.
+pub fn run_script_on(
+  script: &Path,
+  document: &mut Document,
+  document_path: Option<&Path>,
+  reports: &mut dyn Write,
+  notices: &mut dyn Write,
+) -> Result<(), Failure> {
+  let text = read_script(script)?;
+  let mut session = Session {
+    document: Some(document.clone()),
+    path: document_path.map(Path::to_path_buf),
+    in_memory: true,
+    out: reports,
+    notices,
+  };
+  run_lines(&text, &mut session)?;
+  *document = session
+    .document
+    .take()
+    .expect("a run against the caller's document always holds it");
+  Ok(())
+}
+
+/// Read the script at `path`, refusing with the path in the message.
+fn read_script(path: &Path) -> Result<String, Failure> {
+  std::fs::read_to_string(path)
+    .map_err(|error| Failure::input(format!("{}: {error}", path.display())))
+}
+
+/// Run every line of `text`, in order, and stop at the first refusal.
+fn run_lines(text: &str, session: &mut Session<'_>) -> Result<(), Failure> {
   for (index, raw) in text.lines().enumerate() {
     let line = lex(index + 1, raw)?;
     if line.tokens.is_empty() {
@@ -194,6 +257,9 @@ pub fn run_script_to(
 struct Session<'sink> {
   document: Option<Document>,
   path: Option<PathBuf>,
+  /// Whether the document belongs to the caller — a shell, not a file — so no command may read or
+  /// write a file for it. See [`run_script_on`].
+  in_memory: bool,
   /// The `Write` the caller of [`run_script_to`] chose for reports.
   out: &'sink mut dyn Write,
   /// The `Write` the caller of [`run_script_to`] chose for notices.
@@ -231,11 +297,34 @@ impl Session<'_> {
     (command.run)(self, line)
   }
 
-  /// The open document and the path it was read from, or the refusal that says none is open.
+  /// The open document, or the refusal that says a script has read none.
+  ///
+  /// A command that reads nothing beside the document asks for this and no more: `validate` and
+  /// `cutlist` answer from the document alone, and an untitled document — what a shell holds before its
+  /// first save — is a perfectly good document to answer about.
+  fn the_document(&self, line: &ScriptLine) -> Result<&Document, Failure> {
+    self
+      .document
+      .as_ref()
+      .ok_or_else(|| line.fail(line.word().column, NO_DOCUMENT))
+  }
+
+  /// The open document and the path it was read from, or the refusal that says which is missing.
   fn open_document(&self, line: &ScriptLine) -> Result<(&Document, &std::path::Path), Failure> {
+    let document = self.the_document(line)?;
+    let path = self.document_path(line)?;
+    Ok((document, path))
+  }
+
+  /// The path of the open document, or the refusal that says a command needs one.
+  ///
+  /// A document can be open **and** untitled — that is what a shell holds before its first save — and a
+  /// command that resolves a file beside it says so, instead of claiming no document is open.
+  fn document_path(&self, line: &ScriptLine) -> Result<&std::path::Path, Failure> {
     match (&self.document, &self.path) {
-      (Some(document), Some(path)) => Ok((document, path)),
-      _ => Err(line.fail(line.word().column, NO_DOCUMENT)),
+      (_, Some(path)) => Ok(path),
+      (Some(_), None) => Err(line.fail(line.word().column, NO_PATH)),
+      (None, None) => Err(line.fail(line.word().column, NO_DOCUMENT)),
     }
   }
 
@@ -509,6 +598,10 @@ fn lex(number: usize, line: &str) -> Result<ScriptLine, Failure> {
 fn command_open(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   let arguments = line.exactly(1)?;
   let token = &arguments[0];
+  if session.in_memory {
+    // The rule is about the command, not about the path the caller typed, so it is located at the word.
+    return Err(line.fail(line.word().column, ALREADY_OPEN));
+  }
   if let Some(path) = &session.path {
     return Err(line.fail_at(
       token,
@@ -606,10 +699,7 @@ fn command_toolpath(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
   let tokens = line.tokens_as_strings();
   let args = toolpath_args(&tokens).map_err(|failure| line.locate(failure))?;
   refuse_document_destination(line, args.path.as_ref(), &args.out)?;
-  let document_path = session
-    .path
-    .clone()
-    .ok_or_else(|| line.fail(line.word().column, NO_DOCUMENT))?;
+  let document_path = session.document_path(line)?.to_path_buf();
   let report = session.mutate(line, |document| {
     append_toolpath(document, &document_path, &args).map_err(|failure| line.locate(failure))
   })?;
@@ -620,7 +710,7 @@ fn command_toolpath(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
 fn command_validate(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   line.exactly(0)?;
   let report = {
-    let (document, _) = session.open_document(line)?;
+    let document = session.the_document(line)?;
     document
       .validate()
       .map_err(|error| line.at_word(Failure::input(error.to_string())))?;
@@ -667,6 +757,9 @@ fn command_simulate(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
 /// The one writer, and it validates again as it writes, so a script cannot leave a document on disk
 /// that would not load (M10 invariant 4).
 fn command_save(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
+  if session.in_memory {
+    return Err(line.fail(line.word().column, NO_WRITE));
+  }
   let arguments = line.exactly(1)?;
   let token = &arguments[0];
   let path = PathBuf::from(&token.text);

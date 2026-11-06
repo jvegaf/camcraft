@@ -424,15 +424,27 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   rather than hidden: **the design authority still has no zone for it** — `design/system.md:18-22`
   enumerates five zones, `design/camui-shell/02-stages.html:358` says "Five zones and nothing else", and
   `grep -ri script design/` finds nothing, so the surface exists in the shell and not in the boards; and
-  **the panel edits a file on disk, not the shell's document** — `run_script_to` takes no `Document`
-  (`crates/cam-cli/src/script.rs:164`), so a script's mutations reach the shell only when the file is
-  opened again.
+  **the panel edits the shell's document, and writes no file** (closed in M11; it used to read and write a
+  file on disk, `odd/tasks/script-panel-document.md`). `cam_cli::script::run_script_on` takes the
+  `&mut Document` the caller owns, the whole run is one transaction — a refused line leaves the document
+  as it was — and `open`/`save` are refused on the line that tries, because the shell's document is
+  already open and the shell's own Save is the one writer. The shell then keeps the result through
+  `AppState::replace_document_undoable`, so a run is one undo step and leaves the modified state set like
+  any other edit. The cost of that shape, named where the operator can read it: a script run from the
+  panel no longer writes the file, so closing the shell without saving loses what it did — the same
+  exposure every palette edit already carries.
   A third residual belongs to the mount rather than to the milestone: its review's refuter filed a
   **BLOCKER** against `egui::Id::unique` — that the constructor does not exist and the crate cannot
   compile — which is false and is contradicted by `egui-0.37.0/src/id.rs:91`, by two sibling call sites
   and by a green build; the spelling it demanded, `egui::Id::new`, is deprecated in 0.37, so the demanded
-  correction would have failed `clippy -D warnings`. That lineage is left unburned in
-  `correction_required` and closing it is an owner decision (`odd/tasks/script-panel-mount.md`, L6).
+  correction would have failed `clippy -D warnings`. That lineage, `review-5eb75a623cbfc72e`, was not
+  corrected: it was **abandoned** — `operator_disposition` by the owner, recorded as
+  `gentle-ai.review-reclaim-record/v1` on 2026-11-05T03:58:17Z and moved to
+  `review-transactions/quarantine/review-5eb75a623cbfc72e-441271739` — so no authority is left open and
+  what the mount lacks is the outside view, not a missing correction. Its evidence is `./scripts/check.sh`
+  (1517 tests over 110 result lines), the modal's own test and `clippy -D warnings`
+  (`odd/tasks/script-panel-mount.md`, L6-L8). The same inverted finding can be filed again by any fresh
+  review of the same commits, because nothing about the candidate changed.
 - **The panel runs synchronously on the frame that pressed `Run`.** Deliberate, and recorded in the
   module: one script over one document, no worker thread, no queue and no progress state. A script that
   took seconds would block the painter, which is a known cost rather than a surprise.

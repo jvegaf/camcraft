@@ -7,11 +7,12 @@
 //!
 //! # The adapter boundary
 //!
-//! [`ScriptPanel::run`] touches no egui at all: it reads the script, runs it through
-//! `cam_cli::script::run_script_to` and keeps the text. [`ScriptPanel::ui`] is the thin egui surface on
-//! top, and it is the only function in this file that needs a frame. A caller without egui — the binary,
-//! a test, or a different shell — can therefore run the same script through the same engine and read
-//! [`ScriptPanel::output`] and [`ScriptPanel::error`] without ever building a widget.
+//! [`ScriptPanel::run`] touches no egui at all: it reads the script, runs it against the document the
+//! caller hands it through `cam_cli::script::run_script_on` and keeps the text. [`ScriptPanel::ui`] is
+//! the thin egui surface on top, and it is the only function in this file that needs a frame. A caller
+//! without egui — the binary, a test, or a different shell — can therefore run the same script through
+//! the same engine and read [`ScriptPanel::output`] and [`ScriptPanel::error`] without ever building a
+//! widget.
 //!
 //! Three rules decide what this module is allowed to be:
 //!
@@ -36,9 +37,10 @@
 
 use std::cell::RefCell;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use cam_model::Document;
 use egui::{RichText, Ui};
 
 use crate::theme::{self, Palette, Role, Theme};
@@ -169,19 +171,25 @@ impl ScriptPanel {
     self.body_size
   }
 
-  /// Run the named script: the panel's whole job, and the only part of it that needs no frame.
+  /// Run the named script against `document`, which the caller owns.
   ///
-  /// Deliberately synchronous (see this module's rules): the engine reads one document and mutates it in
-  /// memory, so the work one script costs is bounded by the document, not by a cut. A failure leaves
-  /// [`Self::output`] exactly as the previous run left it — a failed run says why **beside** the last
-  /// result instead of erasing it — and stores the engine's own `line {line}:{column}: {message}`
-  /// diagnostic.
-  pub fn run(&mut self) {
+  /// Deliberately synchronous (see this module's rules): the engine mutates the document in memory, so
+  /// the work one script costs is bounded by the document, not by a cut. `document_path` is the path
+  /// that document was loaded from, or `None` while it is untitled: the scripted commands that resolve a
+  /// file beside the document need it, exactly as they do from a command line. The whole run is one
+  /// transaction — a refusal leaves `document` as it was — and **returns whether it succeeded**, which
+  /// is what tells a caller to keep the document it passed in.
+  ///
+  /// A failure leaves [`Self::output`] exactly as the previous run left it — a failed run says why
+  /// **beside** the last result instead of erasing it — and stores the engine's own
+  /// `line {line}:{column}: {message}` diagnostic.
+  pub fn run(&mut self, document: &mut Document, document_path: Option<&Path>) -> bool {
     let path = PathBuf::from(self.path.trim());
     let capture = Capture::default();
     let mut reports = capture.clone();
     let mut notices = capture.clone();
-    let result = cam_cli::script::run_script_to(&path, &mut reports, &mut notices);
+    let result =
+      cam_cli::script::run_script_on(&path, document, document_path, &mut reports, &mut notices);
 
     // The **result** decides, never whether the buffer happens to be empty. A script that succeeds
     // without printing anything has still answered, so its empty report replaces the area — keying off
@@ -192,16 +200,28 @@ impl ScriptPanel {
       Ok(()) => {
         self.output = capture.text();
         self.error = None;
+        true
       }
-      Err(failure) => self.error = Some(failure.to_string()),
+      Err(failure) => {
+        self.error = Some(failure.to_string());
+        false
+      }
     }
   }
 
   /// Paint the panel: the title, the path field, `Run`, and the output area under them.
   ///
   /// The script runs **inside** the frame that pressed the button and before the output area is
-  /// painted, so the press is answered on the frame that made it rather than a frame later.
-  pub fn ui(&mut self, ui: &mut Ui) {
+  /// painted, so the press is answered on the frame that made it rather than a frame later. `document`
+  /// is the document the caller owns and never changes: the run mutates a copy, and the copy comes back
+  /// as this call's return value when — and only when — every line was accepted, which is how the
+  /// caller learns to keep it.
+  pub fn ui(
+    &mut self,
+    ui: &mut Ui,
+    document: &Document,
+    document_path: Option<&Path>,
+  ) -> Option<Document> {
     let palette = self.theme.palette();
     ui.heading(
       RichText::new(TITLE)
@@ -211,6 +231,7 @@ impl ScriptPanel {
     ui.separator();
 
     let mut run = false;
+    let mut committed = None;
     ui.horizontal(|ui| {
       ui.label(
         RichText::new(PATH_LABEL)
@@ -232,7 +253,12 @@ impl ScriptPanel {
       run = button.clicked();
     });
     if run {
-      self.run();
+      // The run mutates a copy: the caller's document is replaced only when the run says every line was
+      // accepted, so a refusal cannot leave half a script in the shell's document.
+      let mut candidate = document.clone();
+      if self.run(&mut candidate, document_path) {
+        committed = Some(candidate);
+      }
     }
 
     ui.separator();
@@ -245,6 +271,7 @@ impl ScriptPanel {
       .auto_shrink([false, false])
       .show(ui, |ui| self.paint_text(ui, &palette));
     self.body_size = Some((body.inner_rect.width(), body.inner_rect.height()));
+    committed
   }
 
   /// The output area: the failure first, then what the run captured, one line per row.
