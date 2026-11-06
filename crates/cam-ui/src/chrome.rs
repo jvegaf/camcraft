@@ -1401,9 +1401,13 @@ impl Shell {
       });
     // A run the engine accepted replaces the shell's document in one step, through the same history and
     // the same modified state every other edit uses: the panel writes no file, so the document it
-    // mutated is only real once the shell holds it (M11 T2).
+    // mutated is only real once the shell holds it (M11 T2). A run that produced the document it was
+    // given is not an edit at all — it records no undo step and leaves the modified state alone, so an
+    // accepted script that changed nothing does not turn a saved document into an unsaved one (R4-001).
     if let Some(document) = committed {
-      app.replace_document_undoable(document);
+      if &document != app.document() {
+        app.replace_document_undoable(document);
+      }
     }
   }
 

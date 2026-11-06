@@ -3970,6 +3970,53 @@ fn a_refused_run_leaves_the_shells_document_and_its_modified_state_untouched() {
 }
 
 #[test]
+fn a_run_that_changed_nothing_does_not_mark_the_document_modified() {
+  // R4-001 of the review of M11: the commit path replaced the document unconditionally, so a script that
+  // succeeded and changed nothing still recorded an undo step and left the document unsaved. A run that
+  // produces the document it was given is not an edit.
+  let directory = scratch("modal-noop");
+  let script = directory.join("noop.cam");
+  std::fs::write(&script, "# nothing to do\n").expect("script written");
+  let mut app = AppState::new(document_with_rectangle());
+  let before = app.document().clone();
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Script.label());
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  shell.script_panel().set_path(script.display().to_string());
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let at = shell
+    .script_panel()
+    .run_button()
+    .expect("the modal drew the Run button");
+
+  let (_, texts) = click_at(&ctx, &mut shell, &mut app, egui::pos2(at.0, at.1));
+
+  assert!(
+    !joined(&texts).contains("line 1:"),
+    "the script succeeded, so the frame paints no diagnostic: {}",
+    joined(&texts)
+  );
+  assert!(
+    !app.is_dirty(),
+    "a run that changed nothing must not leave the document unsaved"
+  );
+  assert_eq!(
+    app.document(),
+    &before,
+    "and the document is the one the run was given"
+  );
+  assert!(
+    !app.undo(),
+    "nor does it record an undo step for an edit that never happened"
+  );
+
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn the_app_bar_labels_match_the_table() {
   // The bar holds no table command since camui-prancheta T2b: FILE moved to the rail. The report is empty,
   // and a button that came back — under any label — would have to come back here.

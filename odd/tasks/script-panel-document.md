@@ -141,7 +141,10 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
     `app.replace_document_undoable(document)`. **Read, and the one worth acting on:** the commit is
     unconditional, so a script that succeeds and changes nothing still records an undo step and marks the
     document modified; a guard comparing the returned document with the one passed in would leave a no-op
-    run a no-op. This is an inference from the anchor, not the reviewer's sentence.
+    run a no-op. This is an inference from the anchor, not the reviewer's sentence. **Closed in its own
+    candidate**, because the inference was reproducible: `a_run_that_changed_nothing_does_not_mark_the_
+    document_modified` failed first (a successful `# nothing to do` script left `is_dirty()` true), and
+    the guard now commits only when the document the engine produced differs from the one it was given.
   - **`R4-002`** resilience, `SUGGESTION`, `crates/cam-ui/src/script_panel.rs:256-261` — the same block. Read:
     the whole document is cloned on the frame that pressed `Run`, on the UI thread, which is the cost the
     module's own "synchronous, deliberately" rule already accepts for the run but does not name for the copy.
