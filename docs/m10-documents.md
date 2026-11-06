@@ -429,8 +429,10 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   `&mut Document` the caller owns, the whole run is one transaction — a refused line leaves the document
   as it was — and `open`/`save` are refused on the line that tries, because the shell's document is
   already open and the shell's own Save is the one writer. The shell then keeps the result through
-  `AppState::replace_document_undoable`, so a run is one undo step and leaves the modified state set like
-  any other edit. The cost of that shape, named where the operator can read it: a script run from the
+  `AppState::replace_document_undoable`, so a run that changed something is one undo step and leaves the
+  modified state set like any other edit — and a run that produced the document it was given is not an edit
+  at all, recording neither the step nor the flag (`R4-001` of that change's review). The cost of that shape,
+  named where the operator can read it: a script run from the
   panel no longer writes the file, so closing the shell without saving loses what it did — the same
   exposure every palette edit already carries.
   A third residual belongs to the mount rather than to the milestone: its review's refuter filed a

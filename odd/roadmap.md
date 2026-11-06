@@ -3,9 +3,10 @@
 Status: **executed through M10.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
 `etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M10 are delivered; §4 carries
 the evidence for each, and §6 the risk register with the one row M7 closed. **After M10 the work did not
-continue as milestones**: the findings those milestones left open became two recorded features with their
-own documents — the advisory debt (`odd/tasks/debt-advisories.md`, six advisories closed, ten unrecoverable)
-and the script panel's mount (`odd/tasks/script-panel-mount.md`) — and the roadmap's Log in §8 names both.
+continue as milestones**: the findings those milestones left open became three recorded features with their
+own documents — the advisory debt (`odd/tasks/debt-advisories.md`, six advisories closed, ten unrecoverable),
+the script panel's mount (`odd/tasks/script-panel-mount.md`) and the panel's document
+(`odd/tasks/script-panel-document.md`) — and the roadmap's Log in §8 names all three.
 
 Owner decisions taken at plan time (verbatim from the decision record, see `## Log`):
 
@@ -1029,5 +1030,24 @@ regression, and we did not decompile their algorithms.
   measured and is false, since this crate keeps no pixel goldens at all. Six advisories were carried in
   and four were answered: three by the fixes above and one — a **BLOCKER filed against
   `egui::Id::unique`** by the mount's refuter — by contradicting it with evidence, because the constructor
-  exists (`egui-0.37.0/src/id.rs:91`) and the spelling it demanded is deprecated. That authority is left
-  unburned and its lineage open, which is an owner decision rather than a technical step.
+  exists (`egui-0.37.0/src/id.rs:91`) and the spelling it demanded is deprecated. That authority was
+  **abandoned** rather than left open: `operator_disposition` by the owner, recorded as
+  `gentle-ai.review-reclaim-record/v1` on 2026-11-05 and moved to
+  `review-transactions/quarantine/review-5eb75a623cbfc72e-441271739`, because no correction could satisfy
+  the finding without failing `clippy -D warnings` (`odd/tasks/script-panel-mount.md`, L6-L8).
+- **L6 (after M10, the third feature: the panel edits the shell's document).**
+  `odd/tasks/script-panel-document.md`, delivered in three commits — `95e2cf1` (the change),
+  `ec89684` (its review) and `d95445e` (`R4-001`) — which close the residual the mount left open: a script
+  run from the panel used to edit a file on disk and reach the document only when the file was reopened.
+  The owner chose the shape in two decisions, both quoted verbatim in that document: the panel runs against
+  the shell's document ("El panel edita el documento del shell") and the mutations live in memory, with the
+  file written only by the shell's Save ("Sólo memoria; el archivo lo escribe Save"). `run_script_on` takes
+  the caller's `&mut Document` and the whole run is one transaction; `open` and `save` are refused on the
+  line that tries; the shell commits through `AppState::replace_document_undoable`, and only when the run
+  changed something. Evidence: gate green at 1526 tests, `cam-ui` shell 128 and panel 8, `cam-cli` 26, and a
+  differential of `cam-cli script` — a command the request never named — over eleven scripts against the
+  previous tree with stdout, stderr, exit code and the written document identical. Its native review,
+  lineage `review-cf16da5a0b71e7b8` over `f19cf4c..95e2cf1`, closed **approved** on the last admitted event
+  with zero of its 200-line correction budget spent; the receipt is burned. Its six advisories are all
+  informational — `R4-001` was closed in its own candidate once its anchor reproduced the edge — and their
+  wording did not survive the store, which is the blindness L5 above already names, one review later.
