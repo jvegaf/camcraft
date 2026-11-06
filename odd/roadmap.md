@@ -1051,3 +1051,13 @@ regression, and we did not decompile their algorithms.
   with zero of its 200-line correction budget spent; the receipt is burned. Its six advisories are all
   informational — `R4-001` was closed in its own candidate once its anchor reproduced the edge — and their
   wording did not survive the store, which is the blindness L5 above already names, one review later.
+- **L7 (the blindness, measured and answered).** Four losses of the same kind — M9's, M10's, the debt
+  review's own `R3-001` and L6's six — stopped being an anecdote and became a document:
+  `odd/reports/review-findings-survival.md`. It measures what each contract leaves behind in
+  `.git/gentle-ai` — a `v2` lineage keeps a 4.6–23.9 KB `review-state.json` with the admitted artifacts and
+  their prose inside, a `compact-v2` lineage keeps a **259-byte** terminal-consumption record and nothing
+  else, rejected results are the only ones written to disk, and an abandoned authority keeps more than an
+  approved one — and it states the upstream ask that would end the loss. The second half is binding here:
+  findings are written down in the session that receives them **before** the receipt is burned, an inferred
+  subject is marked as an inference, no finding is closed by a plausible-looking edit, and the quarantine
+  residue is read before any finding is declared unreadable.
