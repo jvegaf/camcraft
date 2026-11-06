@@ -174,3 +174,8 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   all `informational`), the ten unrecoverable advisories named in `odd/tasks/debt-advisories.md`, and the
   store blindness that cost L8's six findings their wording — the one method rule this feature proved
   twice, on its own receipts.
+- **L11 (delivered).** The owner pushed. `origin/master` is `5bed8e1` and the branch is level with it —
+  nothing ahead, nothing behind — so L10's "local and unpushed" describes the state before this entry, the
+  way L11 of `odd/tasks/script-panel-mount.md` supersedes its own L6. The delivery that this repository
+  leaves to its owner was taken: the four commits are on the remote, this documentation entry is the only
+  thing the tree carries past them, and the feature is closed on both sides.
