@@ -1349,6 +1349,20 @@ pub enum ModelError {
     /// The offending Y coordinate in millimetres.
     y: f64,
   },
+  /// A placement names a part whose contour has no positive-area footprint, so where it lands
+  /// cannot be measured.
+  ///
+  /// `placement_footprint` answers `None` for such a part — a closed contour whose bounds have no
+  /// width or no height — and a `None` used to be read as "nothing to check": the sheet and overlap
+  /// checks were skipped and the placement validated anywhere, including off the sheet. A part with
+  /// no footprint cannot be placed at all.
+  #[error(
+    "nesting part {part:?} has no positive-area footprint, so where it is placed cannot be checked"
+  )]
+  NestingPlacementWithoutFootprint {
+    /// The part id.
+    part: String,
+  },
   /// A placement's footprint leaves its sheet, so the machine would cut past the stock.
   #[error(
     "nesting placement of part {part:?} on sheet {sheet:?} leaves the sheet: its footprint reaches \
@@ -1478,6 +1492,11 @@ impl Document {
   /// [`Document::validate`] refuses an overlapping or off-sheet placement through it, and a nester
   /// certifying its own output asks the same function, so a certificate and the load-time check can
   /// never disagree (invariant 2).
+  ///
+  /// `None` when the part offers no footprint to measure: the document holds none of the entities it
+  /// names, or its bounds have no width or no height. Both are refused by name before a placement
+  /// reaches this function, so a `None` here is a document this build would not have accepted — and
+  /// `validate` never reads it as "nothing to check".
   ///
   /// The position is the **placed** footprint's corner and not the part's own origin, because a
   /// quarter turn about a part's own corner sends the material to negative X: a nester that had to
@@ -1768,36 +1787,33 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     *placed_counts.entry(part.id.as_str()).or_default() += 1;
 
     let footprint = document.placement_footprint(placement);
-    if let Some(footprint) = &footprint {
-      let bounds = footprint.bounds();
-      let (width, height) = (sheet.width.mm(), sheet.height.mm());
-      let tolerance = cam_geom::DEFAULT_TOLERANCE;
-      if bounds.max.x > width + tolerance
-        || bounds.max.y > height + tolerance
-        || bounds.min.x < -tolerance
-        || bounds.min.y < -tolerance
-      {
-        return Err(ModelError::NestingPlacementOutsideSheet {
-          part: part.id.clone(),
-          sheet: sheet.id.clone(),
-          x: bounds.max.x,
-          y: bounds.max.y,
-          width,
-          height,
-        });
-      }
+    let Some(footprint) = footprint else {
+      return Err(ModelError::NestingPlacementWithoutFootprint {
+        part: part.id.clone(),
+      });
+    };
+    let bounds = footprint.bounds();
+    let (width, height) = (sheet.width.mm(), sheet.height.mm());
+    let tolerance = cam_geom::DEFAULT_TOLERANCE;
+    if bounds.max.x > width + tolerance
+      || bounds.max.y > height + tolerance
+      || bounds.min.x < -tolerance
+      || bounds.min.y < -tolerance
+    {
+      return Err(ModelError::NestingPlacementOutsideSheet {
+        part: part.id.clone(),
+        sheet: sheet.id.clone(),
+        x: bounds.max.x,
+        y: bounds.max.y,
+        width,
+        height,
+      });
     }
     footprints.push((part.id.as_str(), sheet.id.as_str(), footprint));
   }
 
   for (index, (first_id, first_sheet, first)) in footprints.iter().enumerate() {
-    let Some(first) = first else {
-      continue;
-    };
     for (second_id, second_sheet, second) in &footprints[index + 1..] {
-      let Some(second) = second else {
-        continue;
-      };
       if first_sheet != second_sheet {
         continue;
       }

@@ -1682,6 +1682,42 @@ fn a_placement_that_leaves_its_sheet_is_refused_naming_the_footprint_and_the_she
 }
 
 #[test]
+fn a_placement_is_refused_when_its_part_has_no_positive_area_footprint() {
+  // A closed two-vertex line is a legal `Contour` — two vertices, no consecutive pair coincident —
+  // and its bounds are 100 x 0, so `placement_footprint` answers `None` for it. `check_nesting`
+  // treated that `None` as "nothing to check", so a part with no area could be placed a kilometre
+  // outside the sheet and `validate` answered `Ok`. A part with no footprint cannot be placed at
+  // all, which is the refusal this pins.
+  let mut document = nesting_document();
+  document.layers[0].entities.push(Entity {
+    id: "E-flat".to_owned(),
+    kind: EntityKind::Contour {
+      contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(100.0, 0.0)], true)
+        .expect("a closed two-vertex line is a legal contour"),
+    },
+  });
+  let nesting = document.nesting.as_mut().expect("a section");
+  nesting.parts[0].entity_ids = vec!["E-flat".to_owned()];
+  nesting.placements[1].position = Point2::new(10_000.0, 10_000.0);
+  // The cost record is set to what this build derives once P1's footprint is `None`: only P2's
+  // 10 000 mm² is counted, so the utilisation is 10 000 / 240 000 and waste is its complement.
+  // Without this, `check_nesting_cost` refuses the document and the missing footprint never gets to
+  // be the defect under test — the refusal would be right for the wrong reason.
+  nesting.cost = Some(NestingCost {
+    sheets_used: 1,
+    utilisation: 10_000.0 / 240_000.0,
+    waste: 1.0 - 10_000.0 / 240_000.0,
+  });
+  let error = refusal(&document);
+  assert!(
+    matches!(error, ModelError::NestingPlacementWithoutFootprint { .. }),
+    "{error:?}"
+  );
+  let message = error.to_string();
+  assert!(message.contains("\"P1\""), "{message}");
+}
+
+#[test]
 fn a_rotated_placement_is_measured_by_its_turned_footprint() {
   // P2 is 200 mm wide and 50 mm tall. Turned a quarter turn it is 50 mm wide, so it fits at x = 550
   // on a 600 mm sheet only because the rotation the nester chose is honoured.
