@@ -57,13 +57,14 @@ painted.
 ### Light — `theme.rs::Palette::light`
 
 The same twenty-one roles on paper. Signals are darkened until they clear AA against a light canvas, which is
-why `Sel` is `#0d7c92` here and `Cut` is `#a86200`: a cyan that reads on `#0d1014` disappears on `#f7f9fb`.
+why `Sel` is `#0d7c92` here and `Cut` is `#8b5100`: a cyan that reads on `#0d1014` disappears on `#f7f9fb`, and an
+amber that clears 3:1 on a white panel at `#a86200` still disappears into the shaded half of the material.
 
 | Role | Value | | Role | Value |
 | --- | --- | --- | --- | --- |
 | `App` | `#eef1f5` | | `Sel` | `#0d7c92` |
 | `Canvas` | `#f7f9fb` | | `SelSoft` | `rgba_premultiplied(0x02,0x0d,0x0f,0x18)` |
-| `Panel` | `#ffffff` | | `Cut` | `#a86200` |
+| `Panel` | `#ffffff` | | `Cut` | `#8b5100` |
 | `Raised` | `#f2f5f8` | | `CutSoft` | `rgba_premultiplied(0x11,0x0a,0x00,0x14)` |
 | `Overlay` | `#ffffff` | | `Ok` | `#1f7a43` |
 | `Hairline` | `#dde3ea` | | `Warn` | `#96610a` |
@@ -88,13 +89,19 @@ hue, and the two ends sit 28 and 25 codes apart in the ramp's smallest channel: 
 T9's 8-code difference into 2–5 codes still draws.
 
 The three values are resolved, not picked, and what resolves them is the amber. `Cut` is painted **on** the
-material — the toolpath, the tool marker, the pocket — so the lit face is bounded from both sides: it must stay far
-enough from `Cut` for a 1.6 px signal to read (3:1, measured **3.14:1** dark and **3.05:1** on paper), and far
-enough from the canvas to read as a solid (1.45:1, measured **2.99:1** and **1.48:1**). On paper that window is
-0.024 of luminance wide: `#e6c99f` measures 2.996:1 against the amber, `#dfcfb7` 1.45:1 against the page, and
-`#e8cb9d` is the wheat between them. The dark face is a mid-value walnut for the same reason — a face light enough
-to look like pale wood is also the face the amber disappears into — and this change closes the limit T9 recorded,
-where the dark amber on the bright stock top measured 1.37:1.
+material — the toolpath, the tool marker, the pocket — so the lit face has to stay far enough from `Cut` for a
+1.6 px signal to read (3:1, measured **3.14:1** dark and **4.11:1** on paper), and — on paper, where the material is
+the *darker* of the two — far enough from the canvas to read as a solid (1.45:1, measured **2.99:1** dark and
+**1.48:1** on paper, against a `#dfcfb7` face that measures 1.45:1 and is the one that breaks it). The dark face is
+a mid-value walnut for that first reason — a face light enough to look like pale wood is also the face the amber
+disappears into, and `#75603f` is the value that measures 2.96:1 — which is how this change closes the limit T9
+recorded, where the dark amber on the bright stock top measured 1.37:1.
+
+The paper face was resolved inside a 0.024-wide window: the `#a86200` amber of the time needed 3:1 on it, ruling out
+a face as dark as `#e6c99f` (2.996:1), while the solid floor ruled out one as light as `#dfcfb7`, and `#e8cb9d` is
+the wheat between those two. The amber has since moved to `#8b5100` (see below), which widened that window to
+0.4412–0.6361 of luminance and left the face where it was: what holds it now is the solid floor from above and,
+from below, its own floor — `#cfad7b`, the same wood 1.36:1 deeper, 25 codes away in the ramp's smallest channel.
 
 `StockEdge` is a role of its own rather than a darker mix, held to 3:1 against both the canvas and the stock top. In
 the dark set it is **lighter** than its face — `#ddc9a3`, **11.77:1** off the canvas and **3.93:1** off the face —
@@ -102,9 +109,11 @@ because a face dark enough to carry the amber leaves nothing darker that still c
 is a lit cut edge, not a drawn one. On paper it stays darker than both, `#664d2e` at **7.46:1** and **5.05:1**, and
 1.45:1 away from `TextDim`'s rapid ink so the picture's two kinds of 1 px line are not the same colour.
 
-What the material does **not** fix, recorded: on paper the amber over the *deepest* stop measures **2.25:1**, still
-under the 3:1 stroke floor and unchanged from T9's 2.23:1 — that needs a lighter paper amber, an artboard change,
-not another value for these three roles.
+What the material could not fix, and what did: on paper the amber over the *deepest* stop measured **2.25:1** —
+under the 3:1 stroke floor and unchanged from T9's 2.23:1 — so the fix belonged to the amber and not to these three
+roles, exactly as T4 recorded. T10 moved it, and it is the one value a light-mode picture cannot be re-derived
+without: `#8b5100` measures **3.03:1** on `#cfad7b` and **3.55:1** at half depth, where `#a86200` measured
+2.42:1–2.85:1 across that shaded half, so the defect was the whole lower half of the sheet and not just its end.
 
 ### Contrast, proven not asserted
 
@@ -122,8 +131,11 @@ not another value for these three roles.
 - **The stock is wood, and its shade is the same wood**: the lit face sits inside the 20°–45° band (34° dark, 37° on
   paper; the blue grey it replaced was 218°), the ramp's two ends are 1° apart in hue, and they are 28 / 25 codes
   apart in the smallest channel — under 20 and depth stops reading as depth.
-- **The cut signal reads on the lit face**: 3.14:1 dark and 3.05:1 on paper against the 3:1 stroke floor. This is
-  what pins the tan — a dark face as light as `#75603f` measures 2.96:1, and on paper `#e6c99f` measures 2.996:1.
+- **The cut signal reads on every stop of the stock**, at five depths through `stock_shade`. Dark: **3.14:1** on the
+  lit face, the binding stop there, up to 5.67:1 on the deepest — a face as light as `#75603f` measures 2.96:1. On
+  paper the amber is the darker of the two, so the *deepest* stop binds: **4.11:1** at the top, **3.03:1** on
+  `#cfad7b`, with `#8c5200` — the next step up the same ray — measuring 2.99:1 and the amber this replaces,
+  `#a86200`, 2.25:1.
 
 `TextOff` is deliberately outside the twelve. It is the colour of a heading and of half a count, never of a
 sentence anyone has to read.

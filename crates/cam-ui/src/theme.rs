@@ -42,8 +42,9 @@ pub const AA_LARGE: f32 = 3.0;
 /// The 3D stock is a filled block, not a word and not a hairline, so neither [`AA_BODY`] nor
 /// [`AA_LARGE`] is the right yardstick: 3:1 against the canvas would make the material darker than the
 /// cut signal it carries, and 1:1 is what the light set shipped before this was measured. 1.45:1 is the
-/// largest step the light set can afford — the fill is capped by the darkest stop the artboard's
-/// `#a86200` toolpath still reads on — and it is a step a shadow-lifting compositor cannot eat: measured
+/// largest step the light set can afford — the fill cannot go deeper than the stop the paper amber still
+/// reads on (`#8b5100` on `#cfad7b` is 3.03:1) — and it is a step a shadow-lifting compositor cannot eat:
+/// measured
 /// on the running app, an 8-code difference between `#ffffff` and `#f7f9fb` arrived as 2–5 codes, so a
 /// 37-code difference survives as 10–20. Compare ratios with
 /// [`contrast_ratio`]: `(lighter + 0.05) / (darker + 0.05)` on WCAG relative luminance.
@@ -283,7 +284,15 @@ impl Palette {
       text_off: Color32::from_rgb(0x8b, 0x95, 0xa3),
       sel: Color32::from_rgb(0x0d, 0x7c, 0x92),
       sel_soft: Color32::from_rgba_premultiplied(0x02, 0x0d, 0x0f, 0x18),
-      cut: Color32::from_rgb(0xa8, 0x62, 0x00),
+      // The paper amber, resolved the way the paper tan was: by constraint. `Cut` is painted *on* the
+      // material — the toolpath, the tool marker, the trough's fill — so it has to clear the 3:1 stroke
+      // floor against every stop of the ramp, and the binding stop is the deepest: `#a86200` measured
+      // 2.25:1 there, which is the pair this value closes. On the amber's own ray (35°, the hue `#a86200`
+      // carries) that stop caps the luminance at 0.1153, and the lightest value under the cap — the one
+      // that keeps the most signal — is this one: 3.03:1 on the deepest stop, 4.11:1 on the lit face,
+      // 6.08:1 off the canvas, 6.41:1 on the panel, so every pair it already had is stronger rather than
+      // weaker. The value that breaks it is the next step up the same ray: `#8c5200` measures 2.99:1.
+      cut: Color32::from_rgb(0x8b, 0x51, 0x00),
       cut_soft: Color32::from_rgba_premultiplied(0x11, 0x0a, 0x00, 0x14),
       ok: Color32::from_rgb(0x1f, 0x7a, 0x43),
       warn: Color32::from_rgb(0x96, 0x61, 0x0a),
@@ -291,14 +300,15 @@ impl Palette {
       // The same design on paper, and the one place the two sets are not a mirror. A dark set can put a
       // solid on a near-black canvas; paper cannot carry a near-white one, so the material has to be
       // *darker* than the page, and it is the same wood at the other end of the day: wheat `#e8cb9d`,
-      // 37°, 1.48:1 off the canvas. Its value is pinned from both sides, which is why it looks exact: the
-      // artboard's `#a86200` toolpath needs 3:1 on it (measured 3.05), ruling out a face as dark as
-      // `#e6c99f` (2.996:1), while the solid floor rules out one as light as `#dfcfb7` (1.45:1 off the
-      // page) — a 0.024 window of luminance, and this face sits between those two values. The floor is
-      // the same wood one step down, `#cfad7b` at 36°: 1.36:1 under the face, so depth still reads as
-      // value, and the amber on it measures 2.25:1 instead of the 1.57:1 the old `#8b95a3` floor gave it —
-      // still under 3:1, for the reason T9 recorded: it needs a lighter paper amber, not another value
-      // here.
+      // 37°, 1.48:1 off the canvas. The face was resolved against the amber that shipped with it — the
+      // artboard's `#a86200` needed 3:1 on it (3.05:1 measured), ruling out a face as dark as `#e6c99f`
+      // (2.996:1), while the solid floor ruled out one as light as `#dfcfb7` (1.45:1 off the page): a
+      // 0.024 window of luminance, with this face between the two. Moving the amber to `#8b5100` widened
+      // that window to 0.4412–0.6361 and left the face where it was, because what holds it now is the
+      // solid floor from above — `#dfcfb7` still measures 1.448:1 — and the ramp from below: the face has
+      // to stay lighter than its own floor and share its hue, and `#cfad7b` at 36° is 1.36:1 under it, so
+      // depth still reads as value. On that floor the amber now measures 3.03:1, where `#a86200` gave
+      // 2.25:1 and the old `#8b95a3` floor 1.57:1.
       stock_top: Color32::from_rgb(0xe8, 0xcb, 0x9d),
       stock_bottom: Color32::from_rgb(0xcf, 0xad, 0x7b),
       // 7.46:1 off the canvas and 5.05:1 against the stock's top — darker than the page and darker than
@@ -820,16 +830,19 @@ mod tests {
     // there, so the lightest stop is the nearest one to `#f5a623`. AA_LARGE is the threshold for the same
     // reason the other stroke pairs use it: 3:1 is the honest floor for a 1.6 px signal that is not text.
     //
-    // Measured: 3.14:1 dark, where the face is the binding stop (the floor under it is 5.67:1); 3.05:1 on
-    // paper, where the amber is *darker* than both stops so the face is the easy one. The face is pinned
+    // Measured: 3.14:1 dark, where the face is the binding stop (the floor under it is 5.67:1); 4.11:1 on
+    // paper, up from the 3.05:1 the `#a86200` amber measured here before T10 darkened it — on paper the
+    // amber is *darker* than both stops, so the face is the easy one. The face is pinned
     // from both sides, and that is what fixes the tan: a dark face as light as `#75603f` measures 2.96:1
     // here, while one dark enough to escape this pair falls off the solid floor instead (`#382e21` is
-    // 1.44:1 against the canvas). On paper the window is 0.024 of luminance wide — `#e6c99f` measures
-    // 2.996:1 here and `#dfcfb7` 1.45:1 against the page — which is why the paper tan looks chosen so
-    // exactly.
-    // The light set's amber on the *deepest* stop is 2.25:1, under this floor: the limit T9 recorded (it
-    // was 2.23:1), it needs a lighter paper amber rather than these three roles, and this task does not
-    // move it.
+    // 1.44:1 against the canvas). On paper the window the tan was resolved in was 0.024 of luminance
+    // wide — `#a86200` needed a face as light as `#e6c99f` (2.996:1) while `#dfcfb7` measures 1.45:1
+    // against the page — which is why the paper tan looks chosen so exactly. The amber moved after it, so
+    // that lower bound is not the binding one any more: `#e6c99f` measures 4.04:1 here now, and the face
+    // is held from below by its own floor instead. On paper the amber is darker than both stops, so this
+    // face is the easy pair at 4.11:1; the binding stop there is the deepest one, and
+    // `the_cut_signal_reads_on_the_deepest_stop_of_the_material` is its proof — the 2.25:1 T9 recorded,
+    // which T4 could not fix by moving these three roles and T10 fixed by moving the amber.
     for theme in [Theme::Dark, Theme::Light] {
       let palette = theme.palette();
       let ratio = contrast_ratio(palette.get(Role::Cut), palette.get(Role::StockTop));
@@ -838,6 +851,38 @@ mod tests {
         "{theme:?}: the amber on the stock's lit face is {ratio:.2}:1, under the {AA_LARGE:.1}:1 a \
          1.6 px signal needs — the toolpath disappears into the material"
       );
+    }
+  }
+
+  #[test]
+  fn the_cut_signal_reads_on_the_deepest_stop_of_the_material() {
+    // The pair T4 measured and did not prove: on paper the amber on the *deepest* stop measured 2.25:1,
+    // under the 3:1 a 1.6 px stroke needs, and T4 left it recorded as a limit because the fix was a value
+    // for the amber rather than for the three stock roles. This is that proof, and it walks the whole ramp
+    // rather than the one stop: the toolpath crosses the material at every depth, so every stop between
+    // the ends is a pair the shell actually writes on.
+    //
+    // Proof of the ramp is proof of its ends only because the amber sits *outside* the ramp's own range of
+    // luminance in each set — darker than every stop on paper, lighter than every stop in the dark set —
+    // so the ratio moves monotonically with depth and the binding stop is one of the two ends. In the dark
+    // set that binding stop is the lit face (3.14:1, `the_cut_signal_reads_on_the_lit_face`); on paper it
+    // is this one, the deepest.
+    //
+    // Measured on paper: `#8b5100` is 3.03:1 at this stop, 3.55:1 at half depth and 4.11:1 on the lit
+    // face. The value that breaks it is the next step up the same ray, `#8c5200`, at 2.99:1 — and the
+    // amber this replaces, `#a86200`, measured 2.25:1 here and 2.42:1–2.85:1 across the shaded half, so the
+    // defect was the whole lower half of the sheet and not just its end. In the dark set the amber is
+    // the lighter of the two, so this stop is the easy one: 5.67:1.
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      for depth in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        let ratio = contrast_ratio(palette.get(Role::Cut), palette.stock_shade(depth));
+        assert!(
+          ratio >= AA_LARGE,
+          "{theme:?}: the amber at depth {depth} is {ratio:.2}:1, under the {AA_LARGE:.1}:1 a 1.6 px \
+           signal needs — the toolpath disappears into the material"
+        );
+      }
     }
   }
 
