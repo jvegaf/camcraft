@@ -2895,7 +2895,7 @@ fn set_job_refuses_a_dimension_a_stock_cannot_have() {
       thickness: if field == "thickness" { bad } else { 18.0 },
     };
     let mut document = Document::new(Job::default_sheet());
-    let before = document.job;
+    let before = document.job.clone();
     let error = command
       .apply(&mut document)
       .expect_err("a stock needs three positive dimensions")

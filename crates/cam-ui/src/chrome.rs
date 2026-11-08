@@ -1019,7 +1019,11 @@ impl Shell {
     }
     // A line of its own rather than a field of the card (S2), measured over the document's own program
     // and written by the playback clock's formatter (S5). No second time formula, no second clock.
-    let estimate = match program_for_snapshot(app.document(), &self.tools) {
+    //
+    // No material is selected yet — the shell has no control that names one — and a snapshot holds no
+    // material key to select from anyway (M11 T2), so this is the program the document's own toolpaths
+    // and the snapshot's own records describe.
+    let estimate = match program_for_snapshot(app.document(), &self.tools, None) {
       Ok(program) => format!(
         "Estimated cutting time · {}",
         clock_text(seconds_for(&program))

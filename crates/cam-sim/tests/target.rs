@@ -35,6 +35,7 @@ fn job(extent: f64) -> Job {
     units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   }
 }
 
@@ -1346,7 +1347,7 @@ fn vertex_fixture(ramp: f64) -> (Job, Document) {
     true,
   )
   .expect("a rectangle");
-  let mut document = Document::new(sheet);
+  let mut document = Document::new(sheet.clone());
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),

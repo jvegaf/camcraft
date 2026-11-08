@@ -124,7 +124,7 @@ impl Frame {
 }
 
 /// The stock and coordinate setup of the job.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Job {
   /// Stock size along X.
   pub width: Length,
@@ -138,6 +138,16 @@ pub struct Job {
   pub origin: OriginCorner,
   /// Clearance height for rapids between cutting moves.
   pub safe_z: Length,
+  /// The material the job is asked to cut, naming one the tool library holds cutting data for
+  /// (M11, S1).
+  ///
+  /// Optional and omitted when absent, exactly like `tools_ref`/`postp`/`nesting`: a document whose
+  /// job names no material re-saves byte-identically, which is why the schema tag stays
+  /// `c2d/document@2` (S3). It is the *selector* and not a rate — the feed, the plunge and the
+  /// spindle speed stay in the library, keyed per material and machine, and a material the library
+  /// has nothing for is refused by name rather than replaced by the tool's own record (S4).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub material: Option<String>,
 }
 
 impl Job {
@@ -155,6 +165,7 @@ impl Job {
       units: UnitSystem::Mm,
       origin: OriginCorner::BottomLeft,
       safe_z: Length::from_mm(5.0),
+      material: None,
     }
   }
 

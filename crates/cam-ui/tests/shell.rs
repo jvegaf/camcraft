@@ -4407,7 +4407,7 @@ fn a_refused_measurement_names_the_number_and_leaves_the_job_alone() {
   let mut shell = Shell::new();
   let _ = open_material_dialog(&ctx, &mut shell, &mut app);
 
-  let before = app.document().job;
+  let before = app.document().job.clone();
   shell.material_size = (0.0, 400.0, 18.0);
   let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
   let sentence = output.drawn.material_refusal.clone();
@@ -4467,7 +4467,7 @@ fn the_rotary_card_says_why_it_cannot_be_chosen_and_writes_nothing() {
     "the reason must name what this document can hold: {reason:?}"
   );
 
-  let before = app.document().job;
+  let before = app.document().job.clone();
   let (pressed, _) = click_material(&ctx, &mut shell, &mut app, &settled, "Rotary");
   assert!(
     pressed.actions.is_empty(),
@@ -4561,7 +4561,7 @@ fn cancelling_the_material_dialog_writes_nothing() {
   let mut shell = Shell::new();
   let settled = open_material_dialog(&ctx, &mut shell, &mut app);
 
-  let before = app.document().job;
+  let before = app.document().job.clone();
   let (pressed, _) = click_material(&ctx, &mut shell, &mut app, &settled, "Cancel");
   assert!(
     pressed.actions.is_empty(),
@@ -4581,7 +4581,7 @@ fn a_set_job_action_with_a_zero_is_refused_by_the_shell_path_too() {
   // keep answering the same. The RED that mattered is `set_job_refuses_a_dimension_a_stock_cannot_have`
   // in `cam-app`, where the command answered `Ok(())`.
   let mut app = AppState::new(document_with_rectangle());
-  let before = app.document().job;
+  let before = app.document().job.clone();
   let error = handle_action(
     &mut app,
     &UiAction::SetJob {
@@ -5054,7 +5054,7 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
   let rulers = &output.drawn.rulers;
   let canvas = output.canvas;
   let camera = *app.camera();
-  let job = app.document().job;
+  let job = app.document().job.clone();
   let tolerance = 1.0 / camera.pixels_per_mm();
 
   // The empty document frames the stock, so the middle of the drawing area is the middle of the stock.

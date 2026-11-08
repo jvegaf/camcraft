@@ -37,6 +37,7 @@ fn job(origin: OriginCorner) -> Job {
     units: UnitSystem::Mm,
     origin,
     safe_z: Length::from_mm(SAFE_Z),
+    material: None,
   }
 }
 

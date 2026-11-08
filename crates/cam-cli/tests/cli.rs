@@ -56,6 +56,7 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),
@@ -285,6 +286,164 @@ fn postp_validate_summarises_and_rejects_with_line_and_column() {
   assert_eq!(outcome.code, 4, "{}", outcome.stderr);
   assert!(outcome.stderr.contains("line 2:1"), "{}", outcome.stderr);
   std::fs::remove_dir_all(&directory).ok();
+}
+
+/// One tool with three cutting records: its own (100/30) and one per material (mdf 120/40, hardwood
+/// 60/20). That is the shape the store has carried since migration 1 — a tool's rates are per material
+/// and per machine — and M11's selector is what finally asks for the one you are cutting.
+fn write_library_with_material_rates(directory: &Path) -> PathBuf {
+  let path = directory.join("materials.sqlite");
+  let library = ToolLibrary::open(&path).expect("library");
+  library
+    .put_geometry(&ToolGeometry {
+      id: "G3".to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(6.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    })
+    .expect("geometry");
+  for (id, feed, plunge) in [
+    ("C-own", 100.0, 30.0),
+    ("C-mdf", 120.0, 40.0),
+    ("C-hw", 60.0, 20.0),
+  ] {
+    library
+      .put_cutting_data(&CuttingData {
+        id: id.to_owned(),
+        rate_units: UnitSystem::Mm,
+        feed_rate: Some(feed),
+        plunge_rate: Some(plunge),
+        spindle_speed: Some(18_000),
+        stepdown: Some(Length::from_mm(6.0)),
+        stepover: None,
+        clear_stepover: None,
+        tool_number: Some(1),
+        notes: None,
+      })
+      .expect("cutting data");
+  }
+  library
+    .link("E-own", "G3", "C-own", None, None)
+    .expect("own link");
+  library
+    .link("E-mdf", "G3", "C-mdf", Some("mdf"), None)
+    .expect("mdf link");
+  library
+    .link("E-hw", "G3", "C-hw", Some("hardwood"), None)
+    .expect("hardwood link");
+  path
+}
+
+/// The same document `write_document` builds, with the job's material set — M11's document field. Built
+/// through the model and not by patching bytes: `.c2d` is not text, which the first version of this
+/// helper discovered.
+fn write_document_with_material(directory: &Path, contour: Contour, material: &str) -> PathBuf {
+  let path = write_document(directory, contour, None);
+  let mut document = cam_cli::open(&path).expect("document reopens");
+  document.job.material = Some(material.to_owned());
+  save_document(&path, &document).expect("document with a material saved");
+  path
+}
+
+#[test]
+fn emit_cuts_as_the_material_it_is_asked_for() {
+  // M11's whole point: the library already carries 100/30 for the tool itself and 120/40 for mdf, and
+  // before this the program cut at 100 whatever anyone said. The flag is the explicit selector and it
+  // wins over the document (`Job.material`), which is the field a shell writes.
+  let directory = scratch("emit-material");
+  let library = write_library_with_material_rates(&directory);
+  let post = write_post(&directory);
+
+  // No selector, no document field: today's program, byte for byte.
+  let plain = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let own = run(&[
+    "emit",
+    plain.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(own.code, 0, "{}", own.stderr);
+  assert!(own.stdout.contains("F100.0"), "{}", own.stdout);
+
+  // The flag alone selects mdf.
+  let asked = run(&[
+    "emit",
+    plain.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--material",
+    "mdf",
+  ]);
+  assert_eq!(asked.code, 0, "{}", asked.stderr);
+  assert!(asked.stdout.contains("F120.0"), "{}", asked.stdout);
+  assert!(!asked.stdout.contains("F100.0"), "{}", asked.stdout);
+
+  // The document's own field is honoured without a flag.
+  let authored = write_document_with_material(&directory, rectangle_contour(50.0, 25.0), "mdf");
+  let from_document = run(&[
+    "emit",
+    authored.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+  ]);
+  assert_eq!(from_document.code, 0, "{}", from_document.stderr);
+  assert!(
+    from_document.stdout.contains("F120.0"),
+    "{}",
+    from_document.stdout
+  );
+
+  // And the flag wins over the document, which is S1's ordering.
+  let overridden = run(&[
+    "emit",
+    authored.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--material",
+    "hardwood",
+  ]);
+  assert_eq!(overridden.code, 0, "{}", overridden.stderr);
+  assert!(overridden.stdout.contains("F60.0"), "{}", overridden.stdout);
+}
+
+#[test]
+fn emit_refuses_a_material_the_library_has_no_record_for() {
+  // S4: refused by name, never silently replaced by the tool's own rate — a program that quietly cuts at
+  // a rate nobody chose is the defect this milestone exists to remove.
+  let directory = scratch("emit-material-unknown");
+  let library = write_library_with_material_rates(&directory);
+  let post = write_post(&directory);
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+
+  let outcome = run(&[
+    "emit",
+    document.to_str().expect("utf8"),
+    "--post",
+    post.to_str().expect("utf8"),
+    "--library",
+    library.to_str().expect("utf8"),
+    "--material",
+    "oak",
+  ]);
+  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
+  assert!(outcome.stdout.is_empty(), "{}", outcome.stdout);
+  assert!(outcome.stderr.contains("oak"), "{}", outcome.stderr);
+  assert!(outcome.stderr.contains("T1"), "{}", outcome.stderr);
 }
 
 #[test]
@@ -700,6 +859,7 @@ fn write_vectors(directory: &Path, name: &str, contours: Vec<Contour>) -> PathBu
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),
@@ -4207,6 +4367,7 @@ fn write_sized_vectors(
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),
@@ -7343,6 +7504,7 @@ fn write_nesting_document(
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),

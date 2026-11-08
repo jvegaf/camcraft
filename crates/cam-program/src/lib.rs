@@ -21,11 +21,15 @@ use cam_units::Length;
 
 /// Why a document's program could not be built.
 ///
-/// There are exactly two ways to fail, and neither is given a sentence of this crate's own:
-/// `Display` is the cause's wording, verbatim. The text a person reads belongs to the failure that
-/// produced it — the library's query or the emitter's refusal — and it is byte-for-byte the text
-/// `cam-cli` printed when this mapping was private to that binary, where `tests/cli.rs` pins every
-/// one of those sentences.
+/// Two of the three ways to fail are given no sentence of this crate's own: `Display` is the cause's
+/// wording, verbatim. The text a person reads belongs to the failure that produced it — the library's
+/// query or the emitter's refusal — and it is byte-for-byte the text `cam-cli` printed when this
+/// mapping was private to that binary, where `tests/cli.rs` pins every one of those sentences.
+///
+/// The third is this crate's own, and it is the one M11 exists for: a material the library has no
+/// cutting data for. It names the material and the tool instead of falling back to the tool's own
+/// record, because a program that quietly cuts at a rate nobody chose is the defect the milestone
+/// removes (S4).
 #[derive(Debug, thiserror::Error)]
 pub enum ProgramError {
   /// The tool library could not be read while resolving a tool number.
@@ -34,6 +38,18 @@ pub enum ProgramError {
   /// The emitter refused one of the document's toolpaths.
   #[error("{0}")]
   Toolpath(#[from] cam_toolpath::ToolpathError),
+  /// The library keys no cutting data for the material the job asked to cut (M11 S4).
+  ///
+  /// It carries both names rather than a finished sentence: which of the two the operator has to
+  /// add to the library is the thing they cannot guess, and the wording a person reads belongs to the
+  /// caller that prints it.
+  #[error("tool T{tool_number} has no cutting data for material \"{material}\"")]
+  NoCuttingDataForMaterial {
+    /// The program number the document's toolpath asked for.
+    tool_number: u32,
+    /// The material the job names, exactly as it was written.
+    material: String,
+  },
 }
 
 /// The program a document asks for, with every tool resolved from `library`.
@@ -42,15 +58,40 @@ pub enum ProgramError {
 /// does not hold is refused by name together with the toolpath that asked for it. A caller that
 /// already holds the tools as [`ProgramTool`]s calls `cam-toolpath::program_for` directly; this is
 /// the function for a caller that holds a database.
-pub fn program_for(document: &Document, library: &ToolLibrary) -> Result<MoveStream, ProgramError> {
+///
+/// `material` is the selector the job names (M11 S2). When it is `Some`, each tool's rates come from
+/// the record the library keys for that material instead of the tool's own, and a material the
+/// library has nothing for is refused by name (S4). When it is `None` the program is the one this
+/// function has always built, byte for byte (S3).
+///
+/// The lookup asks for the machine-less record — `machine_id` is `None` — because a job names no
+/// machine yet: M11 selects a material and nothing else.
+pub fn program_for(
+  document: &Document,
+  library: &ToolLibrary,
+  material: Option<&str>,
+) -> Result<MoveStream, ProgramError> {
   let tools = program_tools(
     document,
     |number| -> Result<Option<ProgramTool>, ProgramError> {
-      Ok(
-        library
-          .tool_for_number(number)?
-          .map(|(geometry, cutting)| program_tool(number, &geometry, &cutting)),
-      )
+      let Some((geometry, matched)) = library.tool_for_number(number)? else {
+        return Ok(None);
+      };
+      // With no material selected, the record a program cuts with is the one the library keys **as the
+      // tool's own** — the row whose material is null. Asking `tool_for_number` alone would answer with
+      // whichever row the tool number matched first, which is how a library that keys rates per material
+      // would cut as one of them while nobody had selected any (M11 S3).
+      let own = match material {
+        None => library
+          .cutting_data_for(&geometry.id, None, None)?
+          .unwrap_or(matched),
+        Some(_) => matched,
+      };
+      let in_material = match material {
+        Some(material) => library.cutting_data_for(&geometry.id, Some(material), None)?,
+        None => None,
+      };
+      program_tool(number, &geometry, &own, material, in_material).map(Some)
     },
   )?;
   Ok(cam_toolpath::program_for(document, &tools)?)
@@ -65,23 +106,30 @@ pub fn program_for(document: &Document, library: &ToolLibrary) -> Result<MoveStr
 /// already uses (S3), and each record becomes the builder's tool through the same mapping the library
 /// path uses.
 ///
-/// There is no query here, so there is nothing to fail on the library: the only failure is the
-/// emitter's, and a number the snapshot does not hold is left out exactly as it is in [`program_for`],
-/// so the builder names the missing tool and the toolpath that asked for it.
+/// There is no query here, so nothing about the snapshot itself can fail: a number the snapshot does
+/// not hold is left out exactly as it is in [`program_for`], so the builder names the missing tool and
+/// the toolpath that asked for it.
+///
+/// `material` is the same selector [`program_for`] takes, and a snapshot cannot answer it: a
+/// [`StoredTool`] is the tool's own record with no material attached, so there is nothing in the
+/// snapshot to select from. `None` is therefore the snapshot's whole range, and a material is refused
+/// by name exactly as a missing library record is (S4) — the alternative would be a program cutting
+/// at a rate nobody chose.
 pub fn program_for_snapshot(
   document: &Document,
   tools: &[StoredTool],
-) -> Result<MoveStream, cam_toolpath::ToolpathError> {
+  material: Option<&str>,
+) -> Result<MoveStream, ProgramError> {
   let resolved = program_tools(
     document,
-    |number| -> Result<Option<ProgramTool>, cam_toolpath::ToolpathError> {
-      Ok(
-        stored_tool_for_number(tools, number)
-          .map(|tool| program_tool(number, &tool.geometry, &tool.cutting)),
-      )
+    |number| -> Result<Option<ProgramTool>, ProgramError> {
+      let Some(tool) = stored_tool_for_number(tools, number) else {
+        return Ok(None);
+      };
+      program_tool(number, &tool.geometry, &tool.cutting, material, None).map(Some)
     },
   )?;
-  cam_toolpath::program_for(document, &resolved)
+  Ok(cam_toolpath::program_for(document, &resolved)?)
 }
 
 /// Resolve the document's tools the way the program builder needs them (S6).
@@ -118,8 +166,30 @@ where
 /// The single mapping both entry points resolve through: the library path hands it what
 /// `ToolLibrary::tool_for_number` returned and the snapshot path what `stored_tool_for_number` found,
 /// so the two cannot describe the same tool differently.
-fn program_tool(number: u32, geometry: &ToolGeometry, cutting: &CuttingData) -> ProgramTool {
-  ProgramTool {
+///
+/// `material` is the selector the job names and `in_material` what the library answered for it — the
+/// record keyed for `(geometry, material, machine)`, when there is one. A selector with no answer is
+/// refused here, naming the material and the tool, so this one function is also the one place that
+/// decides which of the two records a program cuts with: the library's record for the material, or,
+/// when nothing is selected, the tool's own (M11 S2, S4).
+fn program_tool(
+  number: u32,
+  geometry: &ToolGeometry,
+  own: &CuttingData,
+  material: Option<&str>,
+  in_material: Option<CuttingData>,
+) -> Result<ProgramTool, ProgramError> {
+  let cutting: &CuttingData = match (material, &in_material) {
+    (None, _) => own,
+    (Some(_), Some(cutting)) => cutting,
+    (Some(material), None) => {
+      return Err(ProgramError::NoCuttingDataForMaterial {
+        tool_number: number,
+        material: material.to_owned(),
+      })
+    }
+  };
+  Ok(ProgramTool {
     spec: ToolSpec {
       number,
       // A tool whose diameter the library does not record keeps the builder's own refusal: zero is
@@ -131,7 +201,7 @@ fn program_tool(number: u32, geometry: &ToolGeometry, cutting: &CuttingData) -> 
       spindle_speed: cutting.spindle_speed.unwrap_or(0),
     },
     flat_diameter: geometry.flat_diameter.unwrap_or(Length::ZERO),
-  }
+  })
 }
 
 #[cfg(test)]
@@ -142,7 +212,7 @@ mod tests {
     Entity, EntityKind, Job, Layer, Operation, OriginCorner, ProfileParams, ProfileSide, Toolpath,
   };
   use cam_move::ToolShape;
-  use cam_store::tools::{CuttingData, ToolGeometry};
+  use cam_store::tools::{CuttingData, Material, ToolGeometry};
   use cam_toolpath::ToolpathError;
   use cam_units::{Angle, UnitSystem};
 
@@ -253,7 +323,7 @@ mod tests {
     let document = document_with(vec![outside_profile("TP1", "Outside", 1)]);
     let library = library_with(1, Some(6.35), None, None, 120.0, 40.0, 18_000);
 
-    let program = program_for(&document, &library).expect("a program");
+    let program = program_for(&document, &library, None).expect("a program");
 
     // One toolpath, one segment, and every number on it is the library's: this function opens no
     // other door onto a tool.
@@ -275,7 +345,7 @@ mod tests {
     // being empty by accident.
     let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
 
-    let error = program_for(&document, &library).expect_err("the tool is missing");
+    let error = program_for(&document, &library, None).expect_err("the tool is missing");
 
     // The sentence is the emitter's, unchanged: the tool is absent from the list this crate built,
     // and the builder is what names it (L6).
@@ -294,7 +364,7 @@ mod tests {
     let document = document_with(vec![outside_profile("TP1", "Outside", 1)]);
     let library = library_with(1, None, None, None, 100.0, 30.0, 18_000);
 
-    let error = program_for(&document, &library).expect_err("no diameter, no offset");
+    let error = program_for(&document, &library, None).expect_err("no diameter, no offset");
 
     // The library's silence about the diameter reaches the emitter as `Length::ZERO`, which is the
     // spec's way of saying "none", so the builder's own sentence is what a person reads.
@@ -314,7 +384,7 @@ mod tests {
     let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
     link_second_tool(&library);
 
-    let program = program_for(&document, &library).expect("a program");
+    let program = program_for(&document, &library, None).expect("a program");
 
     // Every toolpath becomes its own segment, in document order, and a number used twice resolves to
     // the same tool both times.
@@ -387,8 +457,8 @@ mod tests {
     link_second_tool(&library);
     let snapshot = library.tools().expect("the snapshot reads");
 
-    let from_library = program_for(&document, &library).expect("a program");
-    let from_snapshot = program_for_snapshot(&document, &snapshot).expect("a program");
+    let from_library = program_for(&document, &library, None).expect("a program");
+    let from_snapshot = program_for_snapshot(&document, &snapshot, None).expect("a program");
 
     // One per-record mapping, two ways of finding the record: the same tool numbers become the same
     // program, field for field — the tool, its shape, its rates and the order the toolpaths keep.
@@ -401,18 +471,153 @@ mod tests {
     let library = library_with(1, Some(6.0), None, None, 100.0, 30.0, 18_000);
     let snapshot = library.tools().expect("the snapshot reads");
 
-    let error = program_for_snapshot(&document, &snapshot).expect_err("the tool is missing");
+    let error = program_for_snapshot(&document, &snapshot, None).expect_err("the tool is missing");
 
-    // No library, so no `ProgramError`: the snapshot path's only failure is the emitter's, and the
-    // sentence is the one the library path prints for the same absence (L6).
+    // The snapshot path's own failure is the emitter's — no material is selected, so nothing here
+    // can refuse on the library — and the sentence is the one the library path prints for the same
+    // absence (L6).
     assert_eq!(
       error.to_string(),
       "tool T7 used by toolpath \"TP1\" is not in the library"
     );
     assert!(matches!(
       error,
-      ToolpathError::ToolNotInLibrary { tool_number: 7, .. }
+      ProgramError::Toolpath(ToolpathError::ToolNotInLibrary { tool_number: 7, .. })
     ));
+  }
+
+  /// A library holding one 6 mm end mill whose cutting data is keyed per material: `120 / 40 /
+  /// 18 000` in `M1` and `60 / 20 / 12 000` in `M2`, and no material key at all for the record the
+  /// tool resolves by number.
+  ///
+  /// This is the store's own shape (M11 S2): the same tool carries different rates per material, and
+  /// the material is the only thing that says which one a program cuts with.
+  fn library_with_materials() -> ToolLibrary {
+    let library = ToolLibrary::open_in_memory().expect("the library opens");
+    library
+      .put_geometry(&ToolGeometry {
+        id: "G1".to_owned(),
+        name_format: "{Diameter}".to_owned(),
+        tool_type: 0,
+        units: UnitSystem::Mm,
+        diameter: Some(Length::from_mm(6.0)),
+        included_angle: None,
+        flat_diameter: None,
+        num_flutes: Some(2),
+        flute_length: None,
+        tip_radius: None,
+        custom_attributes: None,
+      })
+      .expect("geometry");
+    for (id, name) in [("M1", "MDF"), ("M2", "Hardwood")] {
+      library
+        .put_material(&Material {
+          id: id.to_owned(),
+          name: name.to_owned(),
+        })
+        .expect("material");
+    }
+    for (id, feed, plunge, spindle, material) in [
+      ("C1", 120.0, 40.0, 18_000, "M1"),
+      ("C2", 60.0, 20.0, 12_000, "M2"),
+    ] {
+      library
+        .put_cutting_data(&CuttingData {
+          id: id.to_owned(),
+          rate_units: UnitSystem::Mm,
+          feed_rate: Some(feed),
+          plunge_rate: Some(plunge),
+          spindle_speed: Some(spindle),
+          stepdown: Some(Length::from_mm(2.0)),
+          stepover: None,
+          clear_stepover: None,
+          // The same program number in every material: a material selects *which* record the number
+          // resolves to, it does not renumber the tool.
+          tool_number: Some(1),
+          notes: None,
+        })
+        .expect("cutting data");
+      library
+        .link(&format!("E-{id}"), "G1", id, Some(material), None)
+        .expect("the tool is linked in its material");
+    }
+    library
+  }
+
+  #[test]
+  fn a_material_selects_the_record_the_library_keys_for_it() {
+    let document = document_with(vec![outside_profile("TP1", "Outside", 1)]);
+    let library = library_with_materials();
+
+    let mdf = program_for(&document, &library, Some("M1")).expect("a program");
+    let hardwood = program_for(&document, &library, Some("M2")).expect("a program");
+
+    // S2: the rates come from the record the library keys for (geometry, material, machine) and not
+    // from the tool's own, so the same toolpath cuts at the rate its material was authored with.
+    assert_eq!(
+      (mdf.segments[0].feed_rate, mdf.segments[0].plunge_rate),
+      (120.0, 40.0)
+    );
+    assert_eq!(mdf.segments[0].spindle_speed, 18_000);
+    assert_eq!(
+      (
+        hardwood.segments[0].feed_rate,
+        hardwood.segments[0].plunge_rate
+      ),
+      (60.0, 20.0)
+    );
+    assert_eq!(hardwood.segments[0].spindle_speed, 12_000);
+    // The shape is still the tool's: a material selects rates, never geometry.
+    assert_eq!(mdf.segments[0].tool, hardwood.segments[0].tool);
+    assert_eq!(mdf.segments[0].tool_number, 1);
+  }
+
+  #[test]
+  fn a_material_the_library_has_nothing_for_is_refused_by_name() {
+    let document = document_with(vec![outside_profile("TP1", "Outside", 1)]);
+    let library = library_with_materials();
+
+    let error = program_for(&document, &library, Some("M-unknown")).expect_err("no such material");
+
+    // S4: never the tool's own rate. The refusal names the material and the tool, so an operator can
+    // see which of the two is missing from the library.
+    assert!(
+      matches!(
+        error,
+        ProgramError::NoCuttingDataForMaterial {
+          tool_number: 1,
+          ref material,
+        } if material == "M-unknown"
+      ),
+      "{error:?}"
+    );
+    let sentence = error.to_string();
+    assert!(sentence.contains("M-unknown"), "{sentence}");
+    assert!(sentence.contains("T1"), "{sentence}");
+  }
+
+  #[test]
+  fn a_snapshot_holds_no_material_key_and_refuses_one_by_name() {
+    // The shell is given `Vec<StoredTool>`, and a stored tool carries the tool's own record with no
+    // material attached (S4), so a snapshot can never answer for a selected material. Refusing by
+    // name is the only alternative to quietly cutting at the tool's own rate.
+    let document = document_with(vec![outside_profile("TP1", "Outside", 1)]);
+    let library = library_with_materials();
+    let snapshot = library.tools().expect("the snapshot reads");
+
+    assert!(program_for_snapshot(&document, &snapshot, None).is_ok());
+    let error =
+      program_for_snapshot(&document, &snapshot, Some("M1")).expect_err("the snapshot has no key");
+    assert!(
+      matches!(
+        error,
+        ProgramError::NoCuttingDataForMaterial {
+          tool_number: 1,
+          ref material,
+        } if material == "M1"
+      ),
+      "{error:?}"
+    );
   }
 
   #[test]

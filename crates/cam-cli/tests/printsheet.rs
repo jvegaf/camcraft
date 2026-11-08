@@ -49,6 +49,7 @@ fn job() -> Job {
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   }
 }
 

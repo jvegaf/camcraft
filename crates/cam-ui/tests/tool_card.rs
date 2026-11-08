@@ -225,7 +225,7 @@ fn the_estimate_beside_the_card_is_the_documents_own_cutting_time() {
 
   // The time is this document's own program — the shell builds it from the document's toolpaths and
   // the snapshot — and it is written by the playback clock's formatter, not by one of its own.
-  let program = cam_program::program_for_snapshot(app.document(), &tools).expect("a program");
+  let program = cam_program::program_for_snapshot(app.document(), &tools, None).expect("a program");
   assert_eq!(
     output.drawn.cutting_time,
     format!(

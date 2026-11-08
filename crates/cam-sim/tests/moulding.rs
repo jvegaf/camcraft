@@ -70,6 +70,7 @@ fn job() -> Job {
     units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
     safe_z: Length::from_mm(SAFE_Z),
+    material: None,
   }
 }
 

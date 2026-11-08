@@ -1502,6 +1502,48 @@ fn a_document_written_before_nesting_loads_and_re_saves_byte_identically() {
 }
 
 #[test]
+fn a_job_without_a_material_serialises_without_the_key() {
+  // M11 S3: the material is optional and top level inside the job, the `nesting`/`tools_ref`
+  // precedent, so a document whose job names no material must not gain a byte — the six keys a
+  // pre-M11 build wrote are all it says.
+  let document = Document::new(Job::default_sheet());
+  assert!(
+    document.job.material.is_none(),
+    "the default sheet names none"
+  );
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(
+    json.contains(
+      r#""job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0}"#
+    ),
+    "a job with no material is the six keys and nothing else: {json}"
+  );
+  assert!(!json.contains("\"material\""), "the key is omitted: {json}");
+}
+
+#[test]
+fn a_job_with_a_material_round_trips() {
+  // M11 S1: the document is where the selector lives, so the material it names has to survive a save
+  // and a load unchanged — it is the only thing that decides which cutting data the program uses.
+  let mut document = document_with_square();
+  document.job.material = Some("MDF".to_owned());
+  document.validate().expect("a valid document");
+
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains(r#""material":"MDF""#), "{json}");
+
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed.job.material.as_deref(), Some("MDF"));
+  assert_eq!(parsed, document);
+  assert_eq!(
+    serde_json::to_string(&parsed).expect("re-serialises"),
+    json,
+    "a job that names a material re-saves byte for byte"
+  );
+  assert_eq!(DOCUMENT_SCHEMA, "c2d/document@2", "no schema bump (S3)");
+}
+
+#[test]
 fn a_nesting_section_round_trips_losslessly() {
   let document = nesting_document();
   document.validate().expect("a valid nesting document");

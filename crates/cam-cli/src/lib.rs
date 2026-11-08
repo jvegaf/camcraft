@@ -133,6 +133,7 @@ COMMANDS:
         --post <file>         Post-processor to use (required)
         --out <path>          Write the program here instead of stdout
         --library <path>      Tool library; defaults to the document's tools_ref
+        --material <name>     Cut as this material; overrides the document's own material
     simulate <document>       Simulate the program and report removed, gouge, uncut and crashes
         --library <path>      Tool library; defaults to the document's tools_ref
         --resolution <mm>     Cell size of the removal grid (default 1)
@@ -2980,6 +2981,8 @@ pub struct EmitArgs {
   pub post: Option<PathBuf>,
   pub out: Option<PathBuf>,
   pub library: Option<PathBuf>,
+  /// Cut as this material, overriding the document's own field (M11 S1: the explicit selector wins).
+  pub material: Option<String>,
 }
 
 pub fn emit_args(rest: &[String]) -> Result<EmitArgs, Failure> {
@@ -2998,6 +3001,10 @@ pub fn emit_args(rest: &[String]) -> Result<EmitArgs, Failure> {
       }
       "--library" => {
         args.library = rest.get(index + 1).map(PathBuf::from);
+        index += 2;
+      }
+      "--material" => {
+        args.material = rest.get(index + 1).cloned();
         index += 2;
       }
       other if other.starts_with('-') => {
@@ -3024,6 +3031,14 @@ pub fn emit_command(rest: &[String]) -> Result<(), Failure> {
     .ok_or_else(|| Failure::input("emit requires a document path"))?;
   let document = open(&document_path)?;
   emit_document(&document, &document_path, &args)
+}
+
+/// The material a program is cut as: the explicit selector when it is given, the document's own field
+/// otherwise (M11 S1: the flag wins). One function so that `emit` and `simulate` cannot ask a different
+/// question of the same document — a simulation that swept a different material's program would report
+/// on cuts the machine will never make (S4).
+pub fn selected_material<'a>(document: &'a Document, explicit: Option<&'a str>) -> Option<&'a str> {
+  explicit.or(document.job.material.as_deref())
 }
 
 /// Compute the program an open document makes and write it, or print it.
@@ -3067,8 +3082,12 @@ pub fn emit_document(
   // The program is the document's toolpaths, built by the library's own law (T4) through the one
   // crate that can see both halves of it (T2.0), so the emitter, the simulation and, later, the
   // shell's estimate cannot disagree about what the document cuts.
+  //
+  // M11's selector: `--material` when it is given, the document's own field otherwise. With neither, this
+  // is the program the command has always written, byte for byte.
+  let material = selected_material(document, args.material.as_deref());
   let stream =
-    program_for(document, &library).map_err(|error| Failure::input(error.to_string()))?;
+    program_for(document, &library, material).map_err(|error| Failure::input(error.to_string()))?;
 
   let meta = ProgramMeta {
     file_name: document_path
@@ -3184,10 +3203,13 @@ pub fn simulate_document(
   let library =
     ToolLibrary::open(&library_path).map_err(|error| Failure::input(error.to_string()))?;
 
-  // The program is the one `emit` would run (D-M5-1): the same segments, built by the same
-  // function, so the simulation cannot disagree with the machine about what was cut.
+  // The program is the one `emit` would run (D-M5-1): the same segments, built by the same function,
+  // with the same material decision, so the simulation cannot disagree with the machine about what was
+  // cut. The resolution is the shared one, so `simulate` asks the document the same question `emit`
+  // does when no flag overrides it (M11 S4).
+  let material = selected_material(document, None);
   let stream =
-    program_for(document, &library).map_err(|error| Failure::input(error.to_string()))?;
+    program_for(document, &library, material).map_err(|error| Failure::input(error.to_string()))?;
 
   let cell = Length::from_mm(resolution);
   let mut field =

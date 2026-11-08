@@ -12,6 +12,7 @@ fn job(width: f64, height: f64, thickness: f64) -> Job {
     units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   }
 }
 

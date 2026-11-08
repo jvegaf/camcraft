@@ -55,6 +55,7 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
     units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
     safe_z: Length::from_mm(5.0),
+    material: None,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),
