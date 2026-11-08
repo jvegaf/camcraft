@@ -958,7 +958,10 @@ shapes are **two formats, not one schema**, so `cam_import::csv::import` deliber
 cut list back; and **`docs/format.md`'s command-line table is stale** from M9 onwards — it lists neither
 `nest` nor M10's four commands and its exit table stops at `6` while `nest` exits `7` — recorded rather
 than patched, because M10 changed no document format and the format document's own rows were not part
-of this milestone's contribution.
+of this milestone's contribution. **Patched after M12**, when the audit went to fix it and found the
+staleness itself stale: the table already carried all fifteen commands and the whole exit set, because
+the milestones that added them filled their own rows. What was genuinely missing is what the patch
+adds — `import`'s six trace and tolerance flags, and `tools add`'s `--name-format`.
 
 ### 4.14 M11 delivered (evidence)
 
