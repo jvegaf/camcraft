@@ -1830,32 +1830,39 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     .iter()
     .map(|(_, _, footprint)| footprint.bounds())
     .collect();
-  let mut by_sheet: std::collections::BTreeMap<&str, Vec<usize>> =
-    std::collections::BTreeMap::new();
-  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
-    by_sheet.entry(sheet_id).or_default().push(index);
-  }
-  // Per sheet: the placement indices in the order their boxes start in x, with the running maximum of
-  // where they end. That maximum is the index's whole point — a box far to the left still reaches a
-  // placement if it is wide, so the walk backwards from a placement can stop at the last one whose
-  // prefix reaches it, and a layout spread across the sheet costs a binary search instead of a scan.
+  // A uniform grid over x, one per sheet and keyed by the cell a box occupies, is the interval index:
+  // a candidate is reached only through a cell the placement being tested also occupies, so a box that
+  // spans the sheet is met once and a box a metre away is never looked at. The cell is wide enough that
+  // the grid has about as many columns as a row of placements has entries, which keeps insertion and
+  // query near the square root of the placement count each. This replaces a running maximum of `max.x`:
+  // that bound was sound but not tight, because one box spanning the sheet held it high for every
+  // placement behind it and forced a scan of the whole prefix, relations included
+  // (review-ca5c7eda65951600's `R4-LOAD-REGRESSION`, `R1-001` and `R3-001`).
   let tolerance = cam_geom::DEFAULT_TOLERANCE;
-  let mut orders: std::collections::BTreeMap<&str, Vec<usize>> = by_sheet;
-  let mut position_of = vec![0_usize; footprints.len()];
-  let mut sheet_of = vec![""; footprints.len()];
-  let mut prefix_max: std::collections::BTreeMap<&str, Vec<f64>> =
+  let mut extent = (f64::INFINITY, f64::NEG_INFINITY);
+  for bounds in &boxes {
+    extent = (extent.0.min(bounds.min.x), extent.1.max(bounds.max.x));
+  }
+  let columns = ((footprints.len() as f64).sqrt() * 2.0).max(1.0);
+  let span = if extent.1.is_finite() && extent.1 > extent.0 {
+    extent.1 - extent.0
+  } else {
+    0.0
+  };
+  let cell_width = (span / columns).max(tolerance);
+  let origin = if extent.0.is_finite() { extent.0 } else { 0.0 };
+  let cell_of = |x: f64| ((x - origin) / cell_width).floor() as i64;
+  let mut grid: std::collections::BTreeMap<(&str, i64), Vec<usize>> =
     std::collections::BTreeMap::new();
-  for (sheet_id, order) in orders.iter_mut() {
-    order.sort_by(|left, right| boxes[*left].min.x.total_cmp(&boxes[*right].min.x));
-    let mut running = f64::NEG_INFINITY;
-    let mut maxima = Vec::with_capacity(order.len());
-    for (position, index) in order.iter().enumerate() {
-      position_of[*index] = position;
-      sheet_of[*index] = sheet_id;
-      running = running.max(boxes[*index].max.x);
-      maxima.push(running);
+  let mut sheet_of = vec![""; footprints.len()];
+  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
+    sheet_of[index] = sheet_id;
+    let bounds = boxes[index];
+    let first_cell = cell_of(bounds.min.x - tolerance);
+    let last_cell = cell_of(bounds.max.x + tolerance);
+    for cell in first_cell..=last_cell {
+      grid.entry((*sheet_id, cell)).or_default().push(index);
     }
-    prefix_max.insert(sheet_id, maxima);
   }
   // The refusal must name the pair with the smallest `(earlier, later)` placement indices, which is
   // what a document-order scan names. Visiting pairs in that same order is what lets the first offence
@@ -1864,11 +1871,9 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
   // is the smallest `later`. A sweep in x order cannot do that — it meets pairs in an order the
   // document does not have, which is why the earlier version had to scan them all and this one can
   // stop (review-94cfd23437f72a47's `R1-001` and `R4-001`).
+  let mut visited = vec![0_u64; footprints.len()];
   for earlier in 0..footprints.len() {
     let sheet_id = sheet_of[earlier];
-    let order = &orders[sheet_id];
-    let maxima = &prefix_max[sheet_id];
-    let position = position_of[earlier];
     let box_earlier = boxes[earlier];
     let mut later: Option<usize> = None;
     let consider = |candidate: usize, later: &mut Option<usize>| {
@@ -1878,6 +1883,13 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
         return;
       }
       let box_candidate = boxes[candidate];
+      // Both guards are cheap and both are needed: a cell is wider than a box, so sharing one is not
+      // the same as meeting.
+      if box_candidate.min.x > box_earlier.max.x + tolerance
+        || box_candidate.max.x < box_earlier.min.x - tolerance
+      {
+        return;
+      }
       if box_candidate.min.y > box_earlier.max.y + tolerance
         || box_candidate.max.y < box_earlier.min.y - tolerance
       {
@@ -1888,18 +1900,20 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
       }
       *later = Some(later.map_or(candidate, |seen| seen.min(candidate)));
     };
-    // Forwards in x: every candidate that starts before this box ends.
-    for candidate in &order[position + 1..] {
-      if boxes[*candidate].min.x > box_earlier.max.x + tolerance {
-        break;
+    // A wide box lies in every cell it spans, so the same candidate can be reached twice; the stamp
+    // makes each one be judged once per placement without a set to allocate.
+    let stamp = earlier as u64 + 1;
+    for cell in cell_of(box_earlier.min.x - tolerance)..=cell_of(box_earlier.max.x + tolerance) {
+      let Some(occupants) = grid.get(&(sheet_id, cell)) else {
+        continue;
+      };
+      for candidate in occupants {
+        if visited[*candidate] == stamp {
+          continue;
+        }
+        visited[*candidate] = stamp;
+        consider(*candidate, &mut later);
       }
-      consider(*candidate, &mut later);
-    }
-    // Backwards: bounded by the prefix maximum, because `min.x` alone cannot say which of the boxes
-    // behind this one reach it.
-    let reachable = maxima.partition_point(|value| *value < box_earlier.min.x - tolerance);
-    for candidate in order[reachable..position].iter().rev() {
-      consider(*candidate, &mut later);
     }
     if let Some(later) = later {
       return Err(ModelError::NestingPlacementsOverlap {

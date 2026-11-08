@@ -2109,6 +2109,79 @@ fn an_early_overlap_ends_the_check_instead_of_scanning_every_later_placement() {
 }
 
 #[test]
+fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
+  // One part spans the sheet's whole x range in a y band of its own, and 20 000 small parts sit in a
+  // second band, laid out in ascending x and authored in descending order. No pair is an offence. An
+  // index bounded by a running maximum of `max.x` collapses here — the wide box holds the maximum high
+  // for every placement behind it — so each small part walks the whole prefix and asks for relations
+  // that the guards then discard (review-ca5c7eda65951600's `R4-LOAD-REGRESSION`). This is a tripwire,
+  // not a benchmark: the correct index does a few hundred thousand comparisons, the collapsed one 400
+  // million.
+  const NARROW: usize = 20_000;
+  let mut document = nesting_document();
+  document.layers[0].entities = vec![
+    Entity {
+      id: "E-wide".to_owned(),
+      kind: EntityKind::Contour {
+        contour: rectangle(100_000.0, 10.0, Point2::ORIGIN),
+      },
+    },
+    Entity {
+      id: "E-small".to_owned(),
+      kind: EntityKind::Contour {
+        contour: square(10.0),
+      },
+    },
+  ];
+  {
+    let nesting = document.nesting.as_mut().expect("a section");
+    nesting.sheets = vec![NestingSheet {
+      id: "S1".to_owned(),
+      width: Length::from_mm(100_000.0),
+      height: Length::from_mm(100_000.0),
+    }];
+    nesting.parts = vec![
+      NestingPart {
+        id: "P-small".to_owned(),
+        entity_ids: vec!["E-small".to_owned()],
+        instances: NARROW,
+      },
+      NestingPart {
+        id: "P-wide".to_owned(),
+        entity_ids: vec!["E-wide".to_owned()],
+        instances: 1,
+      },
+    ];
+    let mut placements: Vec<NestingPlacement> = (0..NARROW)
+      .rev()
+      .map(|index| NestingPlacement {
+        part_id: "P-small".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(index as f64 * 4.5, 50_000.0),
+        rotation: Angle::ZERO,
+      })
+      .collect();
+    placements.push(NestingPlacement {
+      part_id: "P-wide".to_owned(),
+      sheet_id: "S1".to_owned(),
+      position: Point2::new(0.0, 0.0),
+      rotation: Angle::ZERO,
+    });
+    nesting.placements = placements;
+    nesting.cost = None;
+  }
+  let started = std::time::Instant::now();
+  document
+    .validate()
+    .expect("one wide part and 20 000 disjoint small ones overlap nothing");
+  let elapsed = started.elapsed();
+  assert!(
+    elapsed < std::time::Duration::from_secs(5),
+    "a wide placement must not force a scan of the whole prefix: {elapsed:?}"
+  );
+}
+
+#[test]
 fn a_part_whose_instance_count_disagrees_with_its_placements_is_refused() {
   let mut document = nesting_document();
   document.nesting.as_mut().expect("a section").parts[0].instances = 3;
