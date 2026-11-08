@@ -1835,51 +1835,79 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
   for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
     by_sheet.entry(sheet_id).or_default().push(index);
   }
-  for order in by_sheet.values_mut() {
-    order.sort_by(|left, right| boxes[*left].min.x.total_cmp(&boxes[*right].min.x));
-  }
+  // Per sheet: the placement indices in the order their boxes start in x, with the running maximum of
+  // where they end. That maximum is the index's whole point — a box far to the left still reaches a
+  // placement if it is wide, so the walk backwards from a placement can stop at the last one whose
+  // prefix reaches it, and a layout spread across the sheet costs a binary search instead of a scan.
   let tolerance = cam_geom::DEFAULT_TOLERANCE;
-  // The refusal the loop returns must be the one the document-order scan used to return: the pair with
-  // the smallest `(earlier, later)` placement indices. The sweep visits pairs in x order, so which one
-  // it meets first is an artefact of the sweep and not a property of the document — the first offence
-  // is therefore accumulated rather than returned early. The work is still the candidate pairs, only
-  // the stop is later.
-  let mut first_offence: Option<(usize, usize, &str)> = None;
-  for (sheet_id, order) in &by_sheet {
-    for (position, first_index) in order.iter().enumerate() {
-      let first_box = boxes[*first_index];
-      for second_index in &order[position + 1..] {
-        let second_box = boxes[*second_index];
-        if second_box.min.x > first_box.max.x + tolerance {
-          break;
-        }
-        if second_box.min.y > first_box.max.y + tolerance
-          || second_box.max.y < first_box.min.y - tolerance
-        {
-          continue;
-        }
-        if !footprints_overlap(&footprints[*first_index].2, &footprints[*second_index].2) {
-          continue;
-        }
-        let (earlier, later) = if first_index < second_index {
-          (*first_index, *second_index)
-        } else {
-          (*second_index, *first_index)
-        };
-        if first_offence.map_or(true, |(seen_earlier, seen_later, _)| {
-          (earlier, later) < (seen_earlier, seen_later)
-        }) {
-          first_offence = Some((earlier, later, sheet_id));
-        }
-      }
+  let mut orders: std::collections::BTreeMap<&str, Vec<usize>> = by_sheet;
+  let mut position_of = vec![0_usize; footprints.len()];
+  let mut sheet_of = vec![""; footprints.len()];
+  let mut prefix_max: std::collections::BTreeMap<&str, Vec<f64>> =
+    std::collections::BTreeMap::new();
+  for (sheet_id, order) in orders.iter_mut() {
+    order.sort_by(|left, right| boxes[*left].min.x.total_cmp(&boxes[*right].min.x));
+    let mut running = f64::NEG_INFINITY;
+    let mut maxima = Vec::with_capacity(order.len());
+    for (position, index) in order.iter().enumerate() {
+      position_of[*index] = position;
+      sheet_of[*index] = sheet_id;
+      running = running.max(boxes[*index].max.x);
+      maxima.push(running);
     }
+    prefix_max.insert(sheet_id, maxima);
   }
-  if let Some((earlier, later, sheet_id)) = first_offence {
-    return Err(ModelError::NestingPlacementsOverlap {
-      first: footprints[earlier].0.to_owned(),
-      second: footprints[later].0.to_owned(),
-      sheet: (*sheet_id).to_owned(),
-    });
+  // The refusal must name the pair with the smallest `(earlier, later)` placement indices, which is
+  // what a document-order scan names. Visiting pairs in that same order is what lets the first offence
+  // end the check instead of being accumulated: `earlier` climbs through the document order, so the
+  // first `earlier` that has any partner at all is the one the refusal is about, and the partner taken
+  // is the smallest `later`. A sweep in x order cannot do that — it meets pairs in an order the
+  // document does not have, which is why the earlier version had to scan them all and this one can
+  // stop (review-94cfd23437f72a47's `R1-001` and `R4-001`).
+  for earlier in 0..footprints.len() {
+    let sheet_id = sheet_of[earlier];
+    let order = &orders[sheet_id];
+    let maxima = &prefix_max[sheet_id];
+    let position = position_of[earlier];
+    let box_earlier = boxes[earlier];
+    let mut later: Option<usize> = None;
+    let consider = |candidate: usize, later: &mut Option<usize>| {
+      // The pair is named with the smaller placement index first, so a candidate ahead of `earlier`
+      // belongs to a pair an earlier turn of the loop already judged.
+      if candidate <= earlier {
+        return;
+      }
+      let box_candidate = boxes[candidate];
+      if box_candidate.min.y > box_earlier.max.y + tolerance
+        || box_candidate.max.y < box_earlier.min.y - tolerance
+      {
+        return;
+      }
+      if !footprints_overlap(&footprints[earlier].2, &footprints[candidate].2) {
+        return;
+      }
+      *later = Some(later.map_or(candidate, |seen| seen.min(candidate)));
+    };
+    // Forwards in x: every candidate that starts before this box ends.
+    for candidate in &order[position + 1..] {
+      if boxes[*candidate].min.x > box_earlier.max.x + tolerance {
+        break;
+      }
+      consider(*candidate, &mut later);
+    }
+    // Backwards: bounded by the prefix maximum, because `min.x` alone cannot say which of the boxes
+    // behind this one reach it.
+    let reachable = maxima.partition_point(|value| *value < box_earlier.min.x - tolerance);
+    for candidate in order[reachable..position].iter().rev() {
+      consider(*candidate, &mut later);
+    }
+    if let Some(later) = later {
+      return Err(ModelError::NestingPlacementsOverlap {
+        first: footprints[earlier].0.to_owned(),
+        second: footprints[later].0.to_owned(),
+        sheet: sheet_id.to_owned(),
+      });
+    }
   }
 
   // The instance counts are honoured only once the document holds a placement: parts naming instances

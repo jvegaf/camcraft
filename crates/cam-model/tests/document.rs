@@ -2061,6 +2061,54 @@ fn placements_on_different_sheets_are_keyed_by_sheet_and_the_named_pair_is_the_e
 }
 
 #[test]
+fn an_early_overlap_ends_the_check_instead_of_scanning_every_later_placement() {
+  // The refusal names the earliest pair in document order, and the check now walks placements in that
+  // same order, so the first `earlier` with any partner ends it. Before, the sweep visited pairs in x
+  // order and had to accumulate a minimum, which meant a document with one overlap at the front paid
+  // for every candidate pair behind it (`94cfd234/R1-001` and `R4-001`).
+  //
+  // This is a tripwire, not a benchmark: with these 5 000 stacked copies the accumulating scan asks for
+  // 12 495 000 winding relations, and the ordered one asks for 4 999 — a factor of 2 500 that no
+  // machine or load average moves. The ceiling is deliberately loose for that reason.
+  const COPIES: usize = 5_000;
+  let mut document = nesting_document();
+  {
+    let nesting = document.nesting.as_mut().expect("a section");
+    nesting.parts[0].instances = COPIES;
+    nesting.parts.truncate(1);
+    nesting.placements = (0..COPIES)
+      .map(|_| NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      })
+      .collect();
+    nesting.cost = None;
+  }
+  let started = std::time::Instant::now();
+  let error = document
+    .validate()
+    .expect_err("5 000 copies on one spot overlap, and the first pair is named");
+  let elapsed = started.elapsed();
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingPlacementsOverlap {
+        ref first,
+        ref second,
+        ref sheet,
+      } if first == "P1" && second == "P1" && sheet == "S1"
+    ),
+    "{error:?}"
+  );
+  assert!(
+    elapsed < std::time::Duration::from_secs(5),
+    "an early overlap must not wait for the whole document: {elapsed:?}"
+  );
+}
+
+#[test]
 fn a_part_whose_instance_count_disagrees_with_its_placements_is_refused() {
   let mut document = nesting_document();
   document.nesting.as_mut().expect("a section").parts[0].instances = 3;
