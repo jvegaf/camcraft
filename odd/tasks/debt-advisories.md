@@ -262,3 +262,29 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
      strict inequalities are exact "because coordinates are whole millimetres", but the real reason a
      shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (*equal* bounds only). The
      code is right and the reason is the wrong one — the comment should say which rule it relies on.
+- **L17 (the sweep's seven, and a sixteenth advisory that the sweep found).** Feature document
+  `odd/tasks/advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
+  work-unit commits: **`c16afd6`** (the contract change alone, because it refuses input that used to
+  load), **`5190f3e`** (three wording advisories and the two missing fixtures) and **`6e0b085`** (the
+  index and the early exit, 61.99 s → 0.05 s on 5 000 stacked copies). **Closed by this sweep**:
+  `94cfd234/R2-002` and `R3-PRUNE-TOLERANCE` and `R3-MULTISHEET-PRUNE`, `39a6d85c/R2-001`, `R2-002`
+  and `R4-003`, and `94cfd234/R1-001` + `R4-001`. The nine L14 called unclosable are untouched and
+  still wait on S4's fresh review.
+  **The sixteenth, and it is not one of the fourteen: `relation` calls overlapping material
+  `Touching` when two edges are collinear.** Measured, not inferred: `cam_geom::winding::relation` over
+  `[0,0]-[100,100]` and `[50,0]-[150,100]` answers `Relation::Touching`, though the two rectangles
+  share 5 000 mm² of interior. The same pair with the edges *not* collinear
+  (`[0,0]-[100,100]` against `[80,80]-[130,280]`) answers `Crossing`, which is why the workspace never
+  noticed. Cause read off `crates/cam-geom/src/winding.rs:245-280`: a coincident edge sets `touching`
+  and no segment pair contributes an interior-to-interior intersection, so the function returns
+  `Touching` before containment is ever probed — the classification never asks whether the interiors
+  overlap, which its own doc claims it is deciding ("They meet without crossing").
+  **What it costs**: `footprints_overlap` accepts `Touching` unless the two bounds are *equal*
+  (`crates/cam-model/src/lib.rs`), so two nested placements that overlap in area while sharing a
+  horizontal or vertical edge load without a refusal — the rule M8 and M9 exist to enforce;
+  `cam-geom/src/nest_profile.rs:657` asks the same predicate for `!= Disjoint`, so the profile nester's
+  own collision test inherits it. This sweep's T6 fixture was rewritten twice around it: the first
+  pair it tried, `[0..100]` and `[50..150]` on one sheet, was exactly this shape and validated `Ok`.
+  **Not fixed here, and deliberately not smuggled into a debt sweep**: the fix changes shared geometry
+  with four consumers (`cam-model`'s nesting, `nest_profile`, `region_offset`, `cam-toolpath`'s inlay)
+  and needs its own document and review. Flagged for the owner in the same turn.
