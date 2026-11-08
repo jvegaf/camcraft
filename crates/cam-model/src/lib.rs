@@ -1831,37 +1831,94 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     .map(|(_, _, footprint)| footprint.bounds())
     .collect();
   // A uniform grid over x, one per sheet and keyed by the cell a box occupies, is the interval index:
-  // a candidate is reached only through a cell the placement being tested also occupies, so a box that
-  // spans the sheet is met once and a box a metre away is never looked at. The cell is wide enough that
-  // the grid has about as many columns as a row of placements has entries, which keeps insertion and
-  // query near the square root of the placement count each. This replaces a running maximum of `max.x`:
-  // that bound was sound but not tight, because one box spanning the sheet held it high for every
-  // placement behind it and forced a scan of the whole prefix, relations included
-  // (review-ca5c7eda65951600's `R4-LOAD-REGRESSION`, `R1-001` and `R3-001`).
+  // a candidate is reached only through a cell the placement being tested also occupies, so a box a
+  // metre away is never looked at. The cell is wide enough that the grid has about as many columns as a
+  // row of placements has entries, which keeps insertion and query near the square root of the
+  // placement count each.
+  //
+  // Both the extent and the column count are **per sheet**. A single global x extent let one placement
+  // far away on one sheet stretch every other sheet's cells until they covered that whole sheet, which
+  // dropped the crowded sheet back onto the quadratic scan the index exists to avoid
+  // (review-1567a12dd01c0090's `R4-001`).
+  //
+  // A box wider than its sheet's cell span is kept out of the grid entirely, in a short per-sheet wide
+  // list. Stored in every cell it covers it would make each of those cells hold O(N) occupants, and
+  // every placement would iterate all of them before the visited stamp discarded them one by one —
+  // O(N²·sqrt N) stamp-loop steps for a document whose pairs are Θ(N²), which is exactly N full-width
+  // strips stacked in y. The wide list gives that document the optimal Θ(N²) scan with no duplication,
+  // and costs one extra entry per query when one wide box sits beside many narrow ones
+  // (review-1567a12dd01c0090's `R3-001`). This replaces a running maximum of `max.x`: that bound was
+  // sound but not tight, because one box spanning the sheet held it high for every placement behind it
+  // and forced a scan of the whole prefix, relations included (review-ca5c7eda65951600's
+  // `R4-LOAD-REGRESSION`, `R1-001` and `R3-001`).
   let tolerance = cam_geom::DEFAULT_TOLERANCE;
-  let mut extent = (f64::INFINITY, f64::NEG_INFINITY);
-  for bounds in &boxes {
-    extent = (extent.0.min(bounds.min.x), extent.1.max(bounds.max.x));
+  // Derived from the footprints themselves, so each placement is attributed to its own sheet exactly
+  // once and there is no `""` sentinel a later edit could leave behind
+  // (review-1567a12dd01c0090's `R2-005`).
+  let sheet_of: Vec<&str> = footprints
+    .iter()
+    .map(|(_, sheet_id, _)| *sheet_id)
+    .collect();
+  // One sheet's interval index: the cells it occupies, and the boxes too wide to be stored in them.
+  struct SheetGrid {
+    origin: f64,
+    cell_width: f64,
+    cells: std::collections::BTreeMap<i64, Vec<usize>>,
+    wide: Vec<usize>,
   }
-  let columns = ((footprints.len() as f64).sqrt() * 2.0).max(1.0);
-  let span = if extent.1.is_finite() && extent.1 > extent.0 {
-    extent.1 - extent.0
-  } else {
-    0.0
-  };
-  let cell_width = (span / columns).max(tolerance);
-  let origin = if extent.0.is_finite() { extent.0 } else { 0.0 };
-  let cell_of = |x: f64| ((x - origin) / cell_width).floor() as i64;
-  let mut grid: std::collections::BTreeMap<(&str, i64), Vec<usize>> =
+  impl SheetGrid {
+    fn cell_of(&self, x: f64) -> i64 {
+      ((x - self.origin) / self.cell_width).floor() as i64
+    }
+  }
+  let mut extents: std::collections::BTreeMap<&str, (f64, f64, usize)> =
     std::collections::BTreeMap::new();
-  let mut sheet_of = vec![""; footprints.len()];
-  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
-    sheet_of[index] = sheet_id;
-    let bounds = boxes[index];
-    let first_cell = cell_of(bounds.min.x - tolerance);
-    let last_cell = cell_of(bounds.max.x + tolerance);
+  for (index, bounds) in boxes.iter().enumerate() {
+    let extent = extents
+      .entry(sheet_of[index])
+      .or_insert((f64::INFINITY, f64::NEG_INFINITY, 0));
+    extent.0 = extent.0.min(bounds.min.x);
+    extent.1 = extent.1.max(bounds.max.x);
+    extent.2 += 1;
+  }
+  let mut grids: std::collections::BTreeMap<&str, SheetGrid> = extents
+    .iter()
+    .map(|(sheet_id, (min, max, count))| {
+      let columns = ((*count as f64).sqrt() * 2.0).max(1.0);
+      let span = if max.is_finite() && max > min {
+        max - min
+      } else {
+        0.0
+      };
+      (
+        *sheet_id,
+        SheetGrid {
+          origin: if min.is_finite() { *min } else { 0.0 },
+          cell_width: (span / columns).max(tolerance),
+          cells: std::collections::BTreeMap::new(),
+          wide: Vec::new(),
+        },
+      )
+    })
+    .collect();
+  for (index, bounds) in boxes.iter().enumerate() {
+    let grid = grids
+      .get_mut(sheet_of[index])
+      .expect("every placement's sheet has a grid");
+    if bounds.max.x - bounds.min.x > grid.cell_width {
+      grid.wide.push(index);
+      continue;
+    }
+    // Both ends are padded by `tolerance`, exactly as the query range below is, and that padding is what
+    // makes two boxes that meet within the tolerance share a cell: the classifier accepts a pair whose
+    // gap is at most the tolerance, so the index has to reach such a pair. Deleting the padding as
+    // redundant would silently stop reporting every near-tolerance overlap. `cell_width` is floored at
+    // the tolerance for the same reason: a narrower cell would make a padded box's range more than a
+    // couple of cells wide and insert every box over and over.
+    let first_cell = grid.cell_of(bounds.min.x - tolerance);
+    let last_cell = grid.cell_of(bounds.max.x + tolerance);
     for cell in first_cell..=last_cell {
-      grid.entry((*sheet_id, cell)).or_default().push(index);
+      grid.cells.entry(cell).or_default().push(index);
     }
   }
   // The refusal must name the pair with the smallest `(earlier, later)` placement indices, which is
@@ -1874,6 +1931,9 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
   let mut visited = vec![0_u64; footprints.len()];
   for earlier in 0..footprints.len() {
     let sheet_id = sheet_of[earlier];
+    let grid = grids
+      .get(sheet_id)
+      .expect("every placement's sheet has a grid");
     let box_earlier = boxes[earlier];
     let mut later: Option<usize> = None;
     let consider = |candidate: usize, later: &mut Option<usize>| {
@@ -1900,11 +1960,22 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
       }
       *later = Some(later.map_or(candidate, |seen| seen.min(candidate)));
     };
-    // A wide box lies in every cell it spans, so the same candidate can be reached twice; the stamp
-    // makes each one be judged once per placement without a set to allocate.
+    // A box still in more than one cell — its padded range crosses a cell edge — can be reached twice,
+    // so the stamp keeps each candidate to one judgement per placement without allocating a set. The
+    // wide list is scanned once by index and shares that stamp, so a pair is never judged twice. The
+    // wide boxes come first because they are the ones a grid query can no longer see.
     let stamp = earlier as u64 + 1;
-    for cell in cell_of(box_earlier.min.x - tolerance)..=cell_of(box_earlier.max.x + tolerance) {
-      let Some(occupants) = grid.get(&(sheet_id, cell)) else {
+    for candidate in &grid.wide {
+      if visited[*candidate] == stamp {
+        continue;
+      }
+      visited[*candidate] = stamp;
+      consider(*candidate, &mut later);
+    }
+    for cell in
+      grid.cell_of(box_earlier.min.x - tolerance)..=grid.cell_of(box_earlier.max.x + tolerance)
+    {
+      let Some(occupants) = grid.cells.get(&cell) else {
         continue;
       };
       for candidate in occupants {

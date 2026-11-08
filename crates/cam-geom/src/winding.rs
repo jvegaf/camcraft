@@ -216,18 +216,22 @@ pub enum Relation {
   SecondInside,
   /// They cross: their boundaries intersect at a point that is not a tangency or an overlap.
   Crossing,
-  /// They meet without crossing and no interior of one lies inside the other: a shared edge with the
-  /// material on opposite sides, a tangency, identical contours, or a containment at a tangency. A
-  /// shared span with the material on the *same* side is `Crossing`, not this.
+  /// They meet without a proper crossing. The four cases this keeps: a shared edge with the material on
+  /// opposite sides, a tangency, identical contours, and a containment at a tangency — a part flush
+  /// inside its board, where one interior does lie inside the other, which is why this is not defined as
+  /// "no interior is shared". A shared span with the material on the *same* side **and no containment**
+  /// is `Crossing` instead: nothing crosses transversally, but the interiors overlap in area.
   Touching,
 }
 
 /// Classify how two closed contours sit relative to each other, within `tolerance` millimetres.
 ///
 /// The boundaries are intersected first — every crossing, including the overlap a shared span implies,
-/// is decided from those intersections — and containment is decided afterwards by asking [`classify`]
-/// about the vertices. Bounding boxes are a fast path to [`Relation::Disjoint`], never the decision: a
-/// rectangle's bounds contain a circle's bounds without containing the circle.
+/// is decided from those intersections. When the boundaries do not share a span, containment is decided
+/// from one probe — the first vertex of one contour, asked about the other. Only the shared-side guard
+/// walks every vertex, precisely because one boundary probe cannot answer for a coincident pair.
+/// Bounding boxes are a fast path to [`Relation::Disjoint`], never the decision: a rectangle's bounds
+/// contain a circle's bounds without containing the circle.
 ///
 /// A contour that merely touches the other's boundary is [`Relation::Touching`], not
 /// [`Relation::Crossing`], because a boolean cannot cut along a shared edge without producing a

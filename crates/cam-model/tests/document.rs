@@ -2186,6 +2186,122 @@ fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
 }
 
 #[test]
+fn a_document_of_wide_strips_is_not_charged_the_cell_duplication() {
+  // Every placement spans the sheet's whole width and its own 10 mm band in y, so no pair overlaps in
+  // area — each pair of neighbours shares an edge with the material on opposite sides. The defect this
+  // pins is in the index, not the classifier: a box wider than the cell span is stored in every cell it
+  // covers, so each cell holds O(N) occupants and every placement iterates O(N·sqrt N) of them, even
+  // though the stamp discards them one by one. That is O(N²·sqrt N) stamp checks where the dense case
+  // is inherently Θ(N²) pairs (review-1567a12dd01c0090's `R3-001`). A box wider than the cell span now
+  // lives in a short per-sheet wide list instead, which this document reduces to the optimal scan. This
+  // is a tripwire, not a benchmark: the ceiling is loose because the difference is a factor of 2·sqrt N —
+  // 16 000 000 stamp-loop steps with the wide list, 2 000 000 000 with every strip in every cell.
+  const STRIPS: usize = 4_000;
+  const BAND: f64 = 10.0;
+  let mut document = nesting_document();
+  document.layers[0].entities = vec![Entity {
+    id: "E-strip".to_owned(),
+    kind: EntityKind::Contour {
+      contour: rectangle(100_000.0, BAND, Point2::ORIGIN),
+    },
+  }];
+  {
+    let nesting = document.nesting.as_mut().expect("a section");
+    nesting.sheets = vec![NestingSheet {
+      id: "S1".to_owned(),
+      width: Length::from_mm(100_000.0),
+      height: Length::from_mm(STRIPS as f64 * BAND + 100.0),
+    }];
+    nesting.parts = vec![NestingPart {
+      id: "P-strip".to_owned(),
+      entity_ids: vec!["E-strip".to_owned()],
+      instances: STRIPS,
+    }];
+    nesting.placements = (0..STRIPS)
+      .map(|index| NestingPlacement {
+        part_id: "P-strip".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, index as f64 * BAND),
+        rotation: Angle::ZERO,
+      })
+      .collect();
+    nesting.cost = None;
+  }
+  let started = std::time::Instant::now();
+  document
+    .validate()
+    .expect("full-width strips stacked in y overlap nothing");
+  let elapsed = started.elapsed();
+  assert!(
+    elapsed < std::time::Duration::from_secs(5),
+    "a wide placement must not be duplicated across the cells it spans: {elapsed:?}"
+  );
+}
+
+#[test]
+fn a_far_away_placement_on_one_sheet_does_not_collapse_another_sheets_cells() {
+  // The cell width used to come from the global x extent over every sheet, so one placement far away in
+  // x on one sheet stretched the other sheet's cells to millions of millimetres and dropped all 20 000
+  // of its placements into a single cell — the scan the index exists to avoid, paid on a sheet that is
+  // perfectly well spread out (review-1567a12dd01c0090's `R4-001`). The extent is per sheet now, so the
+  // late sheet only sizes its own grid. This is a tripwire, not a benchmark: the collapsed scan is
+  // quadratic in the placements of the crowded sheet, the per-sheet one is not.
+  const NARROW: usize = 20_000;
+  let mut document = nesting_document();
+  document.layers[0].entities = vec![Entity {
+    id: "E-small".to_owned(),
+    kind: EntityKind::Contour {
+      contour: square(10.0),
+    },
+  }];
+  {
+    let nesting = document.nesting.as_mut().expect("a section");
+    nesting.sheets = vec![
+      NestingSheet {
+        id: "S1".to_owned(),
+        width: Length::from_mm(300_000.0),
+        height: Length::from_mm(10_000.0),
+      },
+      NestingSheet {
+        id: "S-far".to_owned(),
+        width: Length::from_mm(1_000_000_000.0),
+        height: Length::from_mm(10_000.0),
+      },
+    ];
+    nesting.parts = vec![NestingPart {
+      id: "P-small".to_owned(),
+      entity_ids: vec!["E-small".to_owned()],
+      instances: NARROW + 1,
+    }];
+    let mut placements: Vec<NestingPlacement> = (0..NARROW)
+      .map(|index| NestingPlacement {
+        part_id: "P-small".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(index as f64 * 11.0, 500.0),
+        rotation: Angle::ZERO,
+      })
+      .collect();
+    placements.push(NestingPlacement {
+      part_id: "P-small".to_owned(),
+      sheet_id: "S-far".to_owned(),
+      position: Point2::new(500_000_000.0, 500.0),
+      rotation: Angle::ZERO,
+    });
+    nesting.placements = placements;
+    nesting.cost = None;
+  }
+  let started = std::time::Instant::now();
+  document
+    .validate()
+    .expect("the crowded sheet is spread out and the late sheet has one placement");
+  let elapsed = started.elapsed();
+  assert!(
+    elapsed < std::time::Duration::from_secs(5),
+    "a far-away placement must not collapse another sheet's cells: {elapsed:?}"
+  );
+}
+
+#[test]
 fn two_placements_that_overlap_with_collinear_edges_are_refused() {
   // The sixteenth advisory, at the level it hurt: P1's two 100 mm squares 50 mm apart in x share their
   // whole y extent, so their bottom and top edges coincide along a span while the interiors overlap by

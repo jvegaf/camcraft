@@ -13,9 +13,12 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   `Coincident | Tangent` and the function returns `Touching` before containment is ever probed, so two
   placements that overlap in area load without a refusal.
 - **S4 (what `Touching` must mean afterwards, derived from the enum's own doc):** the boundaries meet
-  and **no interior of one lies inside the other**. The four cases that keep `Touching`:
-  a shared edge with the interiors on opposite sides, a tangency, identical contours, and a
-  containment at a tangency (the inscribed-circle fixture).
+  and **no interior of one crosses into the other's**: material may envelop material (an inscribed
+  circle, a part flush inside its board) but material may not overlap *partially* across a shared span.
+  The four cases that keep `Touching`: a shared edge with the interiors on opposite sides, a tangency,
+  identical contours, and a containment at a tangency (the inscribed-circle fixture). Said the other
+  way, and this is the sentence the enum carries: a shared span with the material on the **same** side
+  is `Crossing` **only when neither contour encloses the other**.
 - **S5 (the rule, and why each clause is there):** when no proper crossing was found, a coincident
   segment pair whose two segments run so that both interiors fall on the **same** side of the shared
   line means the interiors overlap there. The side is decided from the two segments in hand plus each
@@ -30,7 +33,10 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   - **A decisive witness.** `probe` is the *first* vertex (`winding.rs:331`), so one point can answer
     `OnBoundary` for a flush pair or `Outside` from the large contour's side alone; a single probe
     therefore proves nothing. Escalation needs **no vertex of either contour `Inside` the other** and
-    **some vertex of either `Outside` the other**, which together say neither encloses the other.
+    **a vertex of each strictly `Outside` the other** — a two-sided witness, which together say neither
+    contour encloses the other. The one-sided form is wrong: a part flush against its board has every
+    vertex `OnBoundary` while the board's far corners are `Outside` the part, so "some vertex of either
+    is `Outside` the other" escalates exactly the fixtures S6 protects.
   Overlapping interiors with no containment are exactly `Crossing`. Anything ambiguous — every vertex
   `OnBoundary`, as with identical contours — keeps `Touching`.
 - **S6 (repo law, unchanged):** a fix changes the diagnostic or the wording it was filed against,
