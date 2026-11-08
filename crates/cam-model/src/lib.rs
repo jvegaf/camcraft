@@ -1812,19 +1812,71 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     footprints.push((part.id.as_str(), sheet.id.as_str(), footprint));
   }
 
-  for (index, (first_id, first_sheet, first)) in footprints.iter().enumerate() {
-    for (second_id, second_sheet, second) in &footprints[index + 1..] {
-      if first_sheet != second_sheet {
-        continue;
-      }
-      if footprints_overlap(first, second) {
-        return Err(ModelError::NestingPlacementsOverlap {
-          first: (*first_id).to_owned(),
-          second: (*second_id).to_owned(),
-          sheet: (*first_sheet).to_owned(),
-        });
+  // The overlap check is the one quadratic step in loading a nesting, so a pair is pruned twice before
+  // any winding relation is asked: two placements on different sheets cannot overlap, and neither can
+  // two whose bounding boxes do not meet — `footprints_overlap` answers `Disjoint` for them, and the
+  // one relation that survives a separated pair, `Touching`, is reached only through *equal* bounds.
+  // Bucketing by sheet makes the cross-sheet half of the count one visit per placement, and sweeping
+  // each bucket in x stops the inner walk as soon as a candidate starts past the box it is being
+  // compared with, so the work is proportional to the pairs whose x ranges meet and not to
+  // N(N-1)/2 — 49 995 000 pair visits for 10 000 placements before this (review-39a6d85c490202c2's
+  // `R1-quadratic-overlap-validation` and `R4-002`). The boxes are measured once: `Contour::bounds`
+  // walks every vertex, and asking it per pair would trade a quadratic relation count for a quadratic
+  // corner count.
+  let boxes: Vec<Bounds> = footprints
+    .iter()
+    .map(|(_, _, footprint)| footprint.bounds())
+    .collect();
+  let mut by_sheet: std::collections::BTreeMap<&str, Vec<usize>> =
+    std::collections::BTreeMap::new();
+  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
+    by_sheet.entry(sheet_id).or_default().push(index);
+  }
+  for order in by_sheet.values_mut() {
+    order.sort_by(|left, right| boxes[*left].min.x.total_cmp(&boxes[*right].min.x));
+  }
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  // The refusal the loop returns must be the one the document-order scan used to return: the pair with
+  // the smallest `(earlier, later)` placement indices. The sweep visits pairs in x order, so which one
+  // it meets first is an artefact of the sweep and not a property of the document — the first offence
+  // is therefore accumulated rather than returned early. The work is still the candidate pairs, only
+  // the stop is later.
+  let mut first_offence: Option<(usize, usize, &str)> = None;
+  for (sheet_id, order) in &by_sheet {
+    for (position, first_index) in order.iter().enumerate() {
+      let first_box = boxes[*first_index];
+      for second_index in &order[position + 1..] {
+        let second_box = boxes[*second_index];
+        if second_box.min.x > first_box.max.x + tolerance {
+          break;
+        }
+        if second_box.min.y > first_box.max.y + tolerance
+          || second_box.max.y < first_box.min.y - tolerance
+        {
+          continue;
+        }
+        if !footprints_overlap(&footprints[*first_index].2, &footprints[*second_index].2) {
+          continue;
+        }
+        let (earlier, later) = if first_index < second_index {
+          (*first_index, *second_index)
+        } else {
+          (*second_index, *first_index)
+        };
+        if first_offence.map_or(true, |(seen_earlier, seen_later, _)| {
+          (earlier, later) < (seen_earlier, seen_later)
+        }) {
+          first_offence = Some((earlier, later, sheet_id));
+        }
       }
     }
+  }
+  if let Some((earlier, later, sheet_id)) = first_offence {
+    return Err(ModelError::NestingPlacementsOverlap {
+      first: footprints[earlier].0.to_owned(),
+      second: footprints[later].0.to_owned(),
+      sheet: (*sheet_id).to_owned(),
+    });
   }
 
   // The instance counts are honoured only once the document holds a placement: parts naming instances

@@ -160,3 +160,69 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   in place the test **fails**, restored it passes, and the source was restored byte-identical. The
   lesson repeats with a sharper edge: the counts the earlier tests pinned were large and specific, and
   the **comparison** was still nobody's test.
+- **L14 (the ledger reconciled, and the debt cannot be closed by editing).** No task in this document
+  is left, so the table above is the delivery record and this entry is the subject's state. Of the
+  **fourteen** advisories L2 counted, **six** are closed and **nine** are not, and L3's list is stale
+  in one place it never revisited: it still names `1ab52143/R1-STEP-DOS` as open after L11 closed it
+  under the owner's S5 (the cap, not a millimetre floor) — superseded here, not rewritten. The four
+  whose text survived are closed by T1-T4, and `12219c3f/R1-001` is closed by **`3d6589f`** with its
+  anchor verified rather than assumed: `crates/cam-ui/tests/script_panel.rs:29-31` is still the
+  `join` onto `/var/tmp`, the `remove_dir_all` and the `create_dir_all` the finding names, and T4's
+  guard sits three lines above them, so the subject and its resolution are the same three lines. What
+  is **not** closable is the other **nine**: `bd99706d`'s remaining readability and reliability
+  advisories, `1ab52143`'s three, and the successor below — none has reviewer text that survives, and
+  three anchors name `crates/cam-cli/src/main.rs`, a file `6cc3b2d` split down to 16 lines, so they are
+  worse than stale. **`b5fe4921/R3-001`** (reliability, WARNING, `crates/cam-import/src/csv.rs:180-193`)
+  is the fifteenth and was recorded nowhere in this ledger before this line: L9 named it as the
+  successor advisory inside the very block T2 added, its wording went with its receipt, and its anchor
+  is live and precise — the `split` function's quote-before-count branch. Reading that branch does not
+  establish its subject, so it is filed **open and named unrecoverable** rather than guessed at (S3).
+  The consequence, stated so the next session does not re-derive it: this debt **cannot be closed by
+  editing code**. S3's one sanctioned route is a fresh review of the current tree, which re-files these
+  findings with new words and new identities; re-file or accept is the owner's decision, and it is a
+  review-mode decision, not a task.
+- **L15 (the cc2d609 review's six advisories, captured before the burn — and the method that is now proven
+  twice).** Lineage **`review-39a6d85c490202c2`** closed `approved` (see
+  `odd/tasks/m9-nesting.md` L13); its receipt is burned, so these words exist only because the
+  lineage kept a state directory and it was read **before** the acknowledgement. They are informational
+  and none of them reopens anything. Tagged by lineage, as the register requires — `39a6d85c/…`:
+  1. *risk WARNING* (`cam-model/src/lib.rs:1763-1783`, `R1-nesting-footprint-bypass`) — "`check_nesting`
+     treats a `None` footprint as a zero-area placement and skips the off-sheet and overlap checks.
+     `placement_footprint` returns `None` not only for degenerate parts but also when any referenced
+     entity is not a contour (`NestingPart::bounds` uses `as_contour()?`) or when the transform fails,
+     and the earlier part check only verifies that the entity id exists. A document can therefore
+     reference a non-contour entity, place that part anywhere, including outside the sheet or over
+     another placement, record a 0/1 cost, and still pass `Document::validate`, so downstream code that
+     trusts the load-time certificate may act on an unchecked placement." — the corrected half of this is
+     closed by `14a8f0e`; the "non-contour entity" half is **unconstructible** (`EntityKind` has one
+     variant) and is kept as the record of a claim that named a path the type system closes.
+  2. *risk WARNING* (`cam-model/src/lib.rs:1786-1805`, `R1-quadratic-overlap-validation`) — "The new
+     overlap validation nests two loops over every placement and only filters by sheet inside the loop, so
+     it performs O(n^2) iterations regardless of sheet distribution. A large or crafted nesting document
+     therefore makes `Document::validate` consume quadratic CPU and block the CLI; there is no spatial
+     index or placement-count cap bounding the work." **Open, and the most valuable of the six.**
+  3. *resilience WARNING* (`cam-model/src/lib.rs:1786-1797`, `R4-002`) — the same double loop measured in
+     pairs: "calls `cam_geom::winding::relation` for each same-sheet pair. For N placements this is
+     N(N-1)/2 pair visits, **49,995,000 for 10,000 placements**, with no per-sheet grouping or spatial
+     index, so a large authored nesting makes document load/validation quadratic in placement count and
+     can exhaust CPU/time on the normal load path." **Open.**
+  4. *resilience WARNING* (`cam-model/src/lib.rs:1879-1881`, `R4-003`) — "When `nesting_utilisation()`
+     returns None because there are no sheets or no placements, `check_nesting_cost` returns Ok after only
+     the sheet-count and range checks. A cost record with arbitrary in-range values therefore survives
+     validation with no placements to support it; deleting all placements while leaving the cost field
+     yields a document that still loads and can report the stale utilisation/waste." **Open.**
+  5. *readability WARNING* (`cam-model/src/lib.rs:979-987`, `R2-001`) — "`NestingPart::bounds` documents
+     `None` as coming only from an empty selection or an unknown entity, but the implementation also
+     returns `None` through `as_contour()?` for any entity that is not a contour. That hidden third case
+     flows into `Document::placement_footprint` … Either the loader should refuse non-contour entities by
+     name or the doc and handling should make this case explicit." The handling is now explicit at the
+     refusal site; **the `bounds` doc sentence is still the one the finding quotes**, and the validator's
+     own follow-up says the `placement_footprint` enumeration omits the non-contour case. **Open, cheap.**
+  6. *readability SUGGESTION* (`cam-model/src/lib.rs:1830`, `R2-002`) — "The constant is named
+     `NESTING_COST_SUM_TOLERANCE`, but T1c deleted the sum rule; it is now only the absolute tolerance for
+     comparing each recorded fraction with the derived utilisation or its complement. The misleading name
+     keeps the old mental model alive … Rename it to a fraction/tolerance name and align the surrounding
+     doc." **Open, one-line plus its doc.**
+  The method conclusion, now paid for twice: reading the state directory in the same session that receives
+  the findings is the **only** thing that keeps them (L9 lost `R3-001` this way, L12 kept two, this review
+  kept six). It is not optional ceremony — for this store it is the whole record.

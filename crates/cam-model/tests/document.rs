@@ -1682,6 +1682,118 @@ fn a_placement_that_leaves_its_sheet_is_refused_naming_the_footprint_and_the_she
 }
 
 #[test]
+fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
+  // The overlap check buckets footprints by sheet, sweeps each bucket in x and prunes a pair by its
+  // bounding box, so it no longer visits N(N-1)/2 pairs. The prune has to be *exactly* equivalent: the
+  // same document refused, naming the same pair in document order. This is the differential, kept in
+  // the suite rather than in a scratch copy, because a one-off run proves one shape and a seeded scan
+  // proves the class. Coordinates and sizes are whole millimetres, so a shared edge is exact and the
+  // reference can use strict inequalities without a second tolerance.
+  let mut state: u64 = 0x5DEE_CE66;
+  let mut next = move || {
+    state = state
+      .wrapping_mul(6_364_136_223_846_793_005)
+      .wrapping_add(1_442_695_040_888_963_407);
+    ((state >> 33) as f64) / ((u32::MAX >> 1) as f64)
+  };
+  for _ in 0..12 {
+    let count = 2 + (next() * 8.0) as usize;
+    let mut document = Document::new(Job::default_sheet());
+    document.layers.push(Layer {
+      id: "L1".to_owned(),
+      name: "Parts".to_owned(),
+      visible: true,
+      entities: Vec::new(),
+    });
+    let mut nesting = Nesting {
+      sheets: vec![NestingSheet {
+        id: "S1".to_owned(),
+        width: Length::from_mm(600.0),
+        height: Length::from_mm(400.0),
+      }],
+      parts: Vec::new(),
+      placements: Vec::new(),
+      cost: None,
+    };
+    // One part per placement, so an instance count can never be the reason a document is refused and
+    // the overlap verdict is the only thing under comparison.
+    let mut boxes: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for index in 0..count {
+      let size = 20.0 + (next() * 60.0).floor();
+      let part = format!("P{index}");
+      let entity = format!("E{index}");
+      document.layers[0].entities.push(Entity {
+        id: entity.clone(),
+        kind: EntityKind::Contour {
+          contour: square(size),
+        },
+      });
+      nesting.parts.push(NestingPart {
+        id: part.clone(),
+        entity_ids: vec![entity],
+        instances: 1,
+      });
+      let x = (next() * 500.0).floor();
+      let y = (next() * 300.0).floor();
+      nesting.placements.push(NestingPlacement {
+        part_id: part,
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(x, y),
+        rotation: Angle::ZERO,
+      });
+      boxes.push((x, y, x + size, y + size));
+    }
+    let mut expected: Option<(usize, usize)> = None;
+    'scan: for first in 0..boxes.len() {
+      for second in first + 1..boxes.len() {
+        let (left, right) = (boxes[first], boxes[second]);
+        if left.0 < right.2 && right.0 < left.2 && left.1 < right.3 && right.1 < left.3 {
+          expected = Some((first, second));
+          break 'scan;
+        }
+      }
+    }
+    document.nesting = Some(nesting);
+    match expected {
+      Some((first, second)) => {
+        let error = document
+          .validate()
+          .expect_err("an overlapping pair is refused");
+        assert_eq!(
+          error,
+          ModelError::NestingPlacementsOverlap {
+            first: format!("P{first}"),
+            second: format!("P{second}"),
+            sheet: "S1".to_owned(),
+          },
+          "the pair is the one a naive scan names first, in document order"
+        );
+      }
+      None => document
+        .validate()
+        .expect("a document whose placements are pairwise disjoint"),
+    }
+  }
+}
+
+#[test]
+fn placements_on_one_sheet_that_share_x_but_not_y_are_accepted() {
+  // The overlap check prunes a pair by bounding box before any winding relation is asked, and prunes
+  // the whole rest of the bucket once a candidate starts past the box it is compared with. Both prunes
+  // have to be sound: `footprints_overlap` answers `Disjoint` for a separated pair, and the only
+  // relation that survives one, `Touching`, is reached exclusively through *equal* bounds. This pins
+  // the y side of that: two 100 mm squares that share their whole x range and sit 50 mm apart in y are
+  // not an overlap.
+  let mut document = nesting_document();
+  let nesting = document.nesting.as_mut().expect("a section");
+  nesting.placements[1].position = Point2::new(0.0, 150.0);
+  nesting.placements[2].position = Point2::new(400.0, 0.0);
+  document
+    .validate()
+    .expect("a pair that shares x and not y is disjoint");
+}
+
+#[test]
 fn a_placement_is_refused_when_its_part_has_no_positive_area_footprint() {
   // A closed two-vertex line is a legal `Contour` — two vertices, no consecutive pair coincident —
   // and its bounds are 100 x 0, so `placement_footprint` answers `None` for it. `check_nesting`

@@ -7909,8 +7909,20 @@ fn nest_refuses_a_part_that_is_not_one_closed_contour_by_name() {
     &directory,
     "open.c2d",
     vec![
-      Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(100.0, 0.0)], false)
-        .expect("open wire"),
+      // The wire has to have extent. A flat one has no positive-area footprint at all, so
+      // `Document::validate` refuses the placement before `nest` ever reads the document (the model's
+      // `NestingPlacementWithoutFootprint`), and this test's subject — the nester refusing a part that
+      // is not one closed contour, by name — would then be asserted on nobody's behalf. The rule this
+      // exercises is about the *shape* of the selection, not about its area.
+      Contour::from_points(
+        &[
+          Point2::new(0.0, 0.0),
+          Point2::new(100.0, 0.0),
+          Point2::new(100.0, 60.0),
+        ],
+        false,
+      )
+      .expect("open wire"),
     ],
     &[("Rail", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
