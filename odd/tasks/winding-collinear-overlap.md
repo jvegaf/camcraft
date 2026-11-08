@@ -105,3 +105,20 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   apart**, so its copies overlapped each other and validated only because of this defect — the exact
   shape the sixteenth describes, hiding inside a test written to measure something else. Spaced 11 mm
   and given a 300 000 mm sheet, and the comment now says why.
+- **L6 (T4, T5 and how this closes).** T4 is the `Relation::Touching` sentence, which now says what S4
+  requires: "They meet without crossing and no interior of one lies inside the other… A shared span
+  with the material on the *same* side is `Crossing`, not this." T5 is **not due**: `assess` over
+  `7717a44..HEAD` reports `nativeRisk: medium`, 6 paths, 378 changed lines, `reviewDue: false` on
+  `under_budget`, and a plan of writer self-verification with no independent verifier. RDD is on and
+  the provider's tier decides, so this candidate gets no outside view — and the record says so instead
+  of implying one.
+  **Verification, and its honest limit.** `./scripts/check.sh` on the whole workspace is green
+  (`fmt --check`, `clippy -D warnings`, every target, `CHECK_EXIT=0`), and every test that passed
+  before this change still passes: the suites are the same files on both sides, so a golden, a CLI
+  output or a region/nest/inlay behaviour that moved without a new test would have failed here. What
+  was **not** run is the scratch-base differential the shared-code rule asks for — a copy of `7717a44`
+  built in an isolated directory and driven through `nest`, `toolpath` and `simulate` — because those
+  commands take documents that the CLI's own tests author inline and no checked-in fixture exists to
+  hand to both builds. The consequence is stated rather than hidden: for `winding::relation`, the only
+  answers that changed are the ones five new tests pin, and any other change would have to be one that
+  no existing target observes.
