@@ -2,37 +2,40 @@
 //!
 //! The shell had no command table. [`crate::UiAction`] is seventeen *parameterised* variants — it means
 //! "add a 100 × 60 rectangle", not "add a rectangle" — so help cannot hang off it: help belongs to the
-//! command, not to one invocation. [`Command`] is that missing identity: one parameterless name per
-//! thing the operator can ask the shell to do, and the label the frame already shows for it.
+//! command, not to one invocation. [`Command`](crate::help::Command) is that missing identity: one
+//! parameterless name per thing the operator can ask the shell to do, and the label the frame already
+//! shows for it.
 //!
 //! Two rules keep this file from becoming a second source of truth.
 //!
-//! **The label is the word the frame draws, and the frame draws it from here.** [`Command::label`] is
-//! what the palette chips, the app bar's tooltips and the help panel all print, and a test asserts the
-//! palette offers exactly the table's words, so renaming a command renames the button instead of
-//! forking the vocabulary.
+//! **The label is the word the frame draws, and the frame draws it from here.**
+//! [`Command::label`](crate::help::Command::label) is what the palette chips, the app bar's tooltips and
+//! the help panel all print, and a test asserts the palette offers exactly the table's words, so renaming
+//! a command renames the button instead of forking the vocabulary.
 //!
 //! **Only real commands are listed, and each one says where it is reached.** Nine canvas gestures, the
 //! seven commands the Edit rail runs, the ones the Tools tab counts, and the view commands the app bar
-//! and palette offer. [`Command::in_palette`] and [`Command::tool`] are how the rail asks this table
-//! which chips to draw and what pressing one arms, so the palette keeps no list of its own. Nothing the
-//! operator cannot reach is invented here, and a command that is only offered once a number is typed
-//! ([`Command::Trim`] needs two selected vectors, [`Command::Import`] needs a path from a host) says so
-//! in its own words rather than pretending to be a button.
+//! and palette offer. [`Command::in_palette`](crate::help::Command::in_palette) and
+//! [`Command::tool`](crate::help::Command::tool) are how the rail asks this table which chips to draw and
+//! what pressing one arms, so the palette keeps no list of its own. Nothing the operator cannot reach is
+//! invented here, and a command that is only offered once a number is typed
+//! ([`Command::Trim`](crate::help::Command::Trim) needs two selected vectors,
+//! [`Command::Import`](crate::help::Command::Import) needs a path from a host) says so in its own words
+//! rather than pretending to be a button.
 //!
 //! # The teaching voice
 //!
 //! `design/camui-shell/02-stages.html` §04 fixes three rules for every string in the interface —
 //! consequence before mechanics, second person without jargon, and every refusal naming a number — and
-//! [`Help`] is those rules as data: one sentence of *what the operator gets or loses*, then one to
-//! three sentences of *how*, then the commands that are usually wanted next.
+//! [`Help`](crate::help::Help) is those rules as data: one sentence of *what the operator gets or loses*,
+//! then one to three sentences of *how*, then the commands that are usually wanted next.
 
 use crate::{Tool, UiAction};
 
 /// The run of the palette a command sits in.
 ///
 /// Four of these are the palette's own words (`DRAW`, `TRANSFORM`, `VECTOR EDIT`, `VIEW`), which is
-/// what lets the help panel group commands the way the operator finds them. [`Group::History`] is the
+/// what lets the help panel group commands the way the operator finds them. [`Group::File`] is the
 /// app bar's run and has no palette section on purpose: calling Undo a view command would be a lie in
 /// the one place the shell is supposed to be exact, and the palette is where a command is *found* rather
 /// than read about.

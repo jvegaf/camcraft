@@ -7,20 +7,22 @@
 //!
 //! # The adapter boundary
 //!
-//! [`ScriptPanel::run`] touches no egui at all: it reads the script, runs it against the document the
-//! caller hands it through `cam_cli::script::run_script_on` and keeps the text. [`ScriptPanel::ui`] is
-//! the thin egui surface on top, and it is the only function in this file that needs a frame. A caller
-//! without egui — the binary, a test, or a different shell — can therefore run the same script through
-//! the same engine and read [`ScriptPanel::output`] and [`ScriptPanel::error`] without ever building a
-//! widget.
+//! [`ScriptPanel::run`](crate::script_panel::ScriptPanel::run) touches no egui at all: it reads the script,
+//! runs it against the document the caller hands it through `cam_cli::script::run_script_on` and keeps the
+//! text. [`ScriptPanel::ui`](crate::script_panel::ScriptPanel::ui) is the thin egui surface on top, and it is
+//! the only function in this file that needs a frame. A caller without egui — the binary, a test, or a
+//! different shell — can therefore run the same script through the same engine and read
+//! [`ScriptPanel::output`](crate::script_panel::ScriptPanel::output) and
+//! [`ScriptPanel::error`](crate::script_panel::ScriptPanel::error) without ever building a widget.
 //!
 //! Three rules decide what this module is allowed to be:
 //!
 //! 1. **No process spawn.** The panel calls `cam_cli` as a library. It never runs the `cam-cli` binary,
 //!    so there is no path handling, no environment and no second document on the other side of a pipe
 //!    (M10 invariant 1, D-M10-1).
-//! 2. **Synchronous, deliberately.** [`ScriptPanel::run`] reads and runs the script on the frame that
-//!    pressed `Run`. That blocks the painter for the length of one script over one document: no
+//! 2. **Synchronous, deliberately.** [`ScriptPanel::run`](crate::script_panel::ScriptPanel::run) reads and
+//!    runs the script on the frame that pressed `Run`. That blocks the painter for the length of one script
+//!    over one document: no
 //!    geometry is generated and nothing is emitted, and every command is a document edit the engine
 //!    already performs in a test's microseconds. A worker thread would buy a queue, a progress state and
 //!    a race for a span a frame cannot show, so the cost is paid where it is understood.
@@ -32,7 +34,7 @@
 //!
 //! The engine separates a command's **reports** (the cut list, `nest: …`, `valid: …`) from its
 //! **notices** (`save`'s `wrote …` line), because the binary sends the first to stdout and the second to
-//! stderr. The panel has one area, so it hands the engine two [`Capture`] handles onto one buffer: what
+//! stderr. The panel has one area, so it hands the engine two `Capture` handles onto one buffer: what
 //! the operator reads is the whole run, in the order the script wrote it.
 
 use std::cell::RefCell;

@@ -91,9 +91,9 @@ impl Preview3d {
 
   /// Turn the camera, and zoom it about the target.
   ///
-  /// Both gestures go through [`Camera3d::orbit`] and [`Camera3d::zoom`] rather than assigning the
-  /// fields: the pitch clamp and the distance clamp are the camera's rules, and a gesture is not
-  /// allowed a second opinion about them.
+  /// Both gestures go through [`Camera3d::orbit`](cam_view::Camera3d::orbit) and
+  /// [`Camera3d::zoom`](cam_view::Camera3d::zoom) rather than assigning the fields: the pitch clamp and the
+  /// distance clamp are the camera's rules, and a gesture is not allowed a second opinion about them.
   fn take_input(&mut self, ui: &egui::Ui, response: &egui::Response) {
     let delta = response.drag_delta();
     if delta.x != 0.0 || delta.y != 0.0 {

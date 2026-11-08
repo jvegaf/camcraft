@@ -13,7 +13,8 @@
 //! - **The builders.** One function per command, `&Shell` plus the view centre, returning the
 //!   [`UiAction`]. A caller passes the centre in rather than reading the camera, so the shell stays the
 //!   only place that knows where the view is looking.
-//! - **The range.** A count that has a legal span carries it here ([`array_grid_range`]), and the builder
+//! - **The range.** A count that has a legal span carries it here
+//!   ([`array_grid_range`](crate::params::array_grid_range)), and the builder
 //!   that emits the count clamps with the same range the widget refuses to leave. A chip and a form
 //!   therefore cannot disagree about a grid: before this module the widget applied `1..=64` and the
 //!   palette passed the raw field, so a field set by anything other than the widget ran unchecked.

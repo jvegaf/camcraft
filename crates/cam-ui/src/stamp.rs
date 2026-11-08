@@ -1,4 +1,5 @@
-//! The brand block's `Saved …` line: a civil date and time out of a [`SystemTime`], and no dependency.
+//! The brand block's `Saved …` line: a civil date and time out of a [`SystemTime`](std::time::SystemTime),
+//! and no dependency.
 //!
 //! camui-prancheta S4 puts the document's own last-write stamp at the foot of the rail, and L7 fixed what
 //! that line means: it stamps **the document**, not the build, so it comes from the file rather than from
@@ -9,8 +10,8 @@
 //! **The clock is UTC, and the line says so.** A local offset needs a timezone database (or `libc`'s
 //! `localtime_r`, which is a new dependency of this crate and a delivery question), and a shell that printed
 //! UTC as if it were local would be wrong by hours in exactly the case the operator is checking. So
-//! [`format_stamp`] prints `2026-11-03 19:30 UTC`: comparable, unambiguous, and honest about which clock it
-//! read.
+//! [`format_stamp`](crate::stamp::format_stamp) prints `2026-11-03 19:30 UTC`: comparable, unambiguous, and
+//! honest about which clock it read.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

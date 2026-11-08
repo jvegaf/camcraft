@@ -65,8 +65,8 @@ impl Tool {
 
 /// One drawing command, with every number the kernel needs, in world millimetres.
 ///
-/// The shell builds these from a canvas drag, and [`handle_action`] turns one into exactly one
-/// [`Command`]. Carrying the geometry in the action is what lets a test drive a drag and then assert
+/// The shell builds these from a canvas drag, and [`handle_action`](crate::handle_action) turns one into exactly
+/// one [`Command`]. Carrying the geometry in the action is what lets a test drive a drag and then assert
 /// on the command it produced without a display, and it is why a shape is committed once, on release,
 /// rather than once per mouse move.
 #[derive(Clone, Debug, PartialEq)]

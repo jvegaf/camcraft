@@ -83,8 +83,8 @@ pub(crate) struct DocumentFileState<'a> {
 /// build does not interpret, and a write without those entries would drop them from the operator's file —
 /// the one damage [`cam_store::document::DocumentFile`] exists to prevent. [`UiAction::Save`] and
 /// [`UiAction::SaveFile`] therefore answer `refused: …` here, create no file and modify none, and a host
-/// applies every action through [`Shell::apply_action`], which is this handler with the shell's file handed
-/// in.
+/// applies every action through [`Shell::apply_action`](crate::Shell::apply_action), which is this handler with
+/// the shell's file handed in.
 ///
 /// Reading needs no such state: [`UiAction::OpenFile`] still loads and applies a document here, because an
 /// open writes no file — it only leaves the recorded path empty, which is what makes a save refuse after it.

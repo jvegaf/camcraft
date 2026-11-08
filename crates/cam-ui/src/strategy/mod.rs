@@ -1,31 +1,36 @@
 //! A strategy's editor: the same surface for creating and editing one toolpath (camui-prancheta S10).
 //!
-//! S10 asks for one editor, prefixed [`NEW`] or [`EDIT`] with the strategy's name, holding its name field,
-//! the current-tool card with its opener, the collapsible [`QUICK`] block, its own sections, the note
-//! [`NOTE`], and the pair [`GENERATE`] / [`CANCEL`]. The reference draws it twice — `Novo percurso · Desbaste
-//! 3D` (`Screenshot 2026-11-03 034023.png`) and `Editar · Perfil` (`033350.png`) — and the two frames differ in
-//! the header prefix and in what the footer does, which is exactly what this module makes the difference:
-//! [`subject`] reads the document, [`subject`]`::New` drafts a toolpath that does not exist yet, and
-//! [`subject`]`::Edit` rewrites the operation of the one that does — and renames it when the name field holds
-//! something the document does not.
+//! S10 asks for one editor, prefixed [`NEW`](crate::strategy::NEW) or [`EDIT`](crate::strategy::EDIT) with the
+//! strategy's name, holding its name field, the current-tool card with its opener, the collapsible
+//! [`QUICK`](crate::strategy::QUICK) block, its own sections, the note [`NOTE`](crate::strategy::NOTE), and the
+//! pair [`GENERATE`](crate::strategy::GENERATE) / [`CANCEL`](crate::strategy::CANCEL). The reference draws it
+//! twice — `Novo percurso · Desbaste 3D` (`Screenshot 2026-11-03 034023.png`) and `Editar · Perfil`
+//! (`033350.png`) — and the two frames differ in the header prefix and in what the footer does, which is exactly
+//! what this module makes the difference: [`subject`](crate::strategy::subject) reads the document,
+//! [`subject`](crate::strategy::subject)`::New` drafts a toolpath that does not exist yet, and
+//! [`subject`](crate::strategy::subject)`::Edit` rewrites the operation of the one that does — and renames it
+//! when the name field holds something the document does not.
 //!
-//! **The name is a field in both modes.** It is the draft's, and [`GENERATE`] writes it: a new toolpath is
-//! created with it, and an existing one is renamed by [`cam_app::Command::SetToolpathName`] before its operation
-//! is rewritten. It is written **only when the field holds a name the document does not**, because a second undo
-//! step for a name nobody touched would be a lie about what the last action was. A control that cannot act is not
+//! **The name is a field in both modes.** It is the draft's, and [`GENERATE`](crate::strategy::GENERATE) writes
+//! it: a new toolpath is created with it, and an existing one is renamed by
+//! [`cam_app::Command::SetToolpathName`] before its operation is rewritten. It is written **only when the field
+//! holds a name the document does not**, because a second undo step for a name nobody touched would be a lie
+//! about what the last action was. A control that cannot act is not
 //! drawn (L6, L14, L22) — the rule the tool library's footer and the playback bar were both corrected for, and the
 //! reason the sentence that explained a fixed name went with the limitation it described.
 //!
 //! **What the sections hold, and what they refuse to invent.**
 //!
 //! - The **kind** is the model's own: `Profile` or `Pocket` ([`cam_model::Operation`]). Choosing it replaces
-//!   the draft's operation with that kind's defaults, and [`GENERATE`] writes it — a new toolpath starts with
-//!   it, an existing one is rewritten by `SetToolpathOperation`. A document whose toolpath is another
-//!   operation (`Drilling`, `VCarve`, …) is not one this shell drafts: the sections say so, name the operation,
-//!   and the footer says how to replace it rather than pretending to a form it does not have.
-//! - The **numbers** are [`CutField`]s: one table, read by both the [`QUICK`] block and the `CUT` section, so
-//!   the quick edit duplicates values instead of holding a second copy of them (the same single-source rule
-//!   [`crate::params`] keeps for the seven geometry commands).
+//!   the draft's operation with that kind's defaults, and [`GENERATE`](crate::strategy::GENERATE) writes it — a
+//!   new toolpath starts with it, an existing one is rewritten by `SetToolpathOperation`. A document whose
+//!   toolpath is another operation (`Drilling`, `VCarve`, …) is not one this shell drafts: the sections say so,
+//!   name the operation, and the footer says how to replace it rather than pretending to a form it does not
+//!   have.
+//! - The **numbers** are [`CutField`](crate::strategy::CutField)s: one table, read by both the
+//!   [`QUICK`](crate::strategy::QUICK) block and the `CUT` section, so the quick edit duplicates values instead
+//!   of holding a second copy of them (the same single-source rule [`crate::params`] keeps for the seven
+//!   geometry commands).
 //! - **Feed, plunge and spindle are not here.** They belong to the tool library record
 //!   ([`cam_store::tools::CuttingData`]), the shell holds a read-only snapshot and `cam-store` owns the only
 //!   writer, so the quick block draws them as readings from `tool_library::form_fields` — the same rows, in the
@@ -38,8 +43,9 @@
 //! pattern — are drawn as cards carrying a diagram painted from the operation's own semantics (a contour with
 //! the tool on it; a region filled with rings or with raster rows), with two-pixel strokes on the panel's own
 //! palette. What a card would need to carry a real thumbnail instead: a rendered preview of the toolpath, which
-//! does not exist before [`GENERATE`] runs and which this shell has no panel renderer for — the 3D half renders
-//! a *program*, not an authoring draft. A screenshot of the reference app is not product art and is not used.
+//! does not exist before [`GENERATE`](crate::strategy::GENERATE) runs and which this shell has no panel renderer
+//! for — the 3D half renders a *program*, not an authoring draft. A screenshot of the reference app is not
+//! product art and is not used.
 
 use cam_app::AppState;
 use cam_model::{Operation, PocketParams, PocketStrategy, ProfileParams};
@@ -132,8 +138,9 @@ pub(crate) fn subject(app: &AppState, selection: Option<&str>) -> Subject {
 
 /// The editor's draft: the name, the tool and the operation `Generate toolpath` writes.
 ///
-/// Public and flat the way every other parameter of this shell is ([`Shell::material_size`]): a number that
-/// could not be set from outside a frame is a number only a mouse could test.
+/// Public and flat the way every other parameter of this shell is
+/// ([`Shell::material_size`](crate::Shell::material_size)): a number that could not be set from outside a
+/// frame is a number only a mouse could test.
 #[derive(Clone, Debug)]
 pub struct Draft {
   /// The name the toolpath will carry.

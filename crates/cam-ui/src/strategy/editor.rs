@@ -13,9 +13,9 @@ impl Shell {
   /// The strategy editor (S10): one surface for creating and editing.
   ///
   /// Called from the `TOOLPATHS` task body, which is the surface the editor has in this shell: the header above
-  /// it carries [`Draft::header`], and the current-tool card, the quick block, the `CUT` section, the note and
-  /// the footer are drawn here in the spec's order. Every control that cannot act is replaced by the sentence
-  /// that says why, and every reported point is a point this frame really drew.
+  /// it carries [`Draft::header`](crate::strategy::Draft::header), and the current-tool card, the quick block,
+  /// the `CUT` section, the note and the footer are drawn here in the spec's order. Every control that cannot
+  /// act is replaced by the sentence that says why, and every reported point is a point this frame really drew.
   pub(crate) fn strategy_editor(
     &mut self,
     app: &AppState,

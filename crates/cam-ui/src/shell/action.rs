@@ -15,9 +15,10 @@ impl Shell {
   /// Apply one action and show what it produced in the status bar.
   ///
   /// This is what a host calls for every action [`Self::show`] returned. It keeps the one-command
-  /// rule — the work itself happens in the action handler, which is [`handle_action`] with this shell's file
-  /// handed in — and turns the outcome the command layer reports (entity count, ellipse radial error, arcs
-  /// lost to tessellation) and any refusal, with the kernel's own message, into the sentence the user reads.
+  /// rule — the work itself happens in the action handler, which is
+  /// [`handle_action`](crate::handle_action) with this shell's file handed in — and turns the outcome the
+  /// command layer reports (entity count, ellipse radial error, arcs lost to tessellation) and any refusal,
+  /// with the kernel's own message, into the sentence the user reads.
   pub fn apply_action(&mut self, app: &mut AppState, action: &UiAction) {
     // The file behind the drawing is the shell's, not the application's: the path it was read from and the
     // archive entries this build does not interpret travel with the window, so they are handed to the one

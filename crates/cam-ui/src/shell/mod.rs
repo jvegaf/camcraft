@@ -37,9 +37,9 @@ pub use tool::{DrawShape, Tool};
 /// Authoring needs numbers the user does not type during a gesture: how many sides a polygon has, how
 /// far an array copies, how deep an offset goes, how tall the text is. There is no wizard; each one is
 /// an explicit field below with a documented default, editable in the tools area, and every button
-/// reads the field into the [`UiAction`] it pushes. Tolerances are constants
-/// ([`DEFAULT_TOLERANCE_MM`], [`JOIN_TOLERANCE_MM`]) because they are a promise about the result, not
-/// a per-shape taste.
+/// reads the field into the [`UiAction`](crate::UiAction) it pushes. Tolerances are constants
+/// ([`DEFAULT_TOLERANCE_MM`](crate::DEFAULT_TOLERANCE_MM), [`JOIN_TOLERANCE_MM`](crate::JOIN_TOLERANCE_MM))
+/// because they are a promise about the result, not a per-shape taste.
 #[derive(Clone, Debug)]
 pub struct Shell {
   /// The tool armed on the canvas. Default [`Tool::Select`], which keeps M1's click-to-pick gesture.
@@ -81,8 +81,8 @@ pub struct Shell {
   ///
   /// View state, not document state: like the camera, opening the split is not an edit and is not in the undo
   /// history (M5 A12). [`Shell::set_preview`] opens it, the `2D | 3D` toggle at the canvas' top right sets it
-  /// ([`chrome`]'s `view_toggle`), the rail's `3D` command flips it, and [`Shell::set_view_3d`] is how a host
-  /// or a test says so directly.
+  /// ([`chrome`](crate::chrome)'s `view_toggle`), the rail's `3D` command flips it, and
+  /// [`Shell::set_view_3d`] is how a host or a test says so directly.
   pub show_3d: bool,
   /// Which of the 3D half's layers its overlay row is showing (camui-prancheta S8).
   ///
@@ -103,18 +103,20 @@ pub struct Shell {
   pub(crate) tools: Vec<StoredTool>,
   /// The file the drawing was opened from, once a host has opened or saved one.
   ///
-  /// `None` until [`UiAction::OpenFile`] or [`UiAction::SaveFile`] succeeds, which is when the app bar stops
+  /// `None` until [`UiAction::OpenFile`](crate::UiAction::OpenFile) or
+  /// [`UiAction::SaveFile`](crate::UiAction::SaveFile) succeeds, which is when the app bar stops
   /// saying `untitled.c2d` and starts naming the file. The shell keeps the path so the bar can name it and
-  /// [`UiAction::Save`] can write to it: the shell shows no dialog of its own, so this is a record of what
-  /// was read or written and not a file handle.
+  /// [`UiAction::Save`](crate::UiAction::Save) can write to it: the shell shows no dialog of its own, so this is
+  /// a record of what was read or written and not a file handle.
   pub(crate) document_path: Option<PathBuf>,
   /// The archive entries this build does not interpret, carried from the last load.
   ///
   /// [`cam_store::document::DocumentFile`] exists so an entry a later build understands is part of the
   /// document rather than something dropped on the floor, and opening is the moment it is known: the shell
-  /// keeps these beside the path and [`UiAction::Save`] writes them back under their own names. They are
-  /// **file-level, not document-level** — the undo history snapshots bare [`cam_model::Document`]s, so an
-  /// undo cannot restore or lose them, and a drawing that was never opened has no entries to carry.
+  /// keeps these beside the path and [`UiAction::Save`](crate::UiAction::Save) writes them back under their
+  /// own names. They are **file-level, not document-level** — the undo history snapshots bare
+  /// [`cam_model::Document`]s, so an undo cannot restore or lose them, and a drawing that was never opened
+  /// has no entries to carry.
   document_extras: BTreeMap<String, Vec<u8>>,
   /// The post-processor this window writes programs in, as its file label and its source text.
   ///
@@ -253,9 +255,10 @@ pub struct Shell {
   /// Whether the library was opened by the strategy editor while it is drafting a **new** toolpath (S10).
   ///
   /// The modal's commit writes one thing: a tool number. With a toolpath on screen that is a document edit
-  /// ([`UiAction::SetToolpathToolNumber`]); with only a draft it can only mean "this strategy will cut with
-  /// this tool", so the number lands in [`Shell::strategy`] and `Generate toolpath` is what writes it. The flag
-  /// is what tells the two apart, and it is cleared whenever the modal closes.
+  /// ([`UiAction::SetToolpathToolNumber`](crate::UiAction::SetToolpathToolNumber)); with only a draft it can
+  /// only mean "this strategy will cut with this tool", so the number lands in [`Shell::strategy`] and
+  /// `Generate toolpath` is what writes it. The flag is what tells the two apart, and it is cleared whenever
+  /// the modal closes.
   pub(crate) tool_library_for_draft: bool,
   /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
   ///
@@ -406,7 +409,8 @@ impl Shell {
   /// `Run` was drawn at (M11 T2).
   ///
   /// The modal is still the only thing that *paints* it, and the shell still owns the commit: a run
-  /// mutates a copy and the copy reaches [`AppState`] only through [`AppState::replace_document_undoable`].
+  /// mutates a copy and the copy reaches [`AppState`](cam_app::AppState) only through
+  /// [`AppState::replace_document_undoable`](cam_app::AppState::replace_document_undoable).
   /// This exists for the same reason the palette reports its chips' points — a widget a test cannot
   /// press is a widget nothing pins.
   pub fn script_panel(&mut self) -> &mut script_panel::ScriptPanel {
@@ -416,7 +420,7 @@ impl Shell {
   /// The file the drawing was opened from or last written to, once a host has opened or saved one.
   ///
   /// `None` while the frame holds a document that has no file yet, which is the state the app bar still
-  /// calls `untitled.c2d` and the state in which [`UiAction::Save`] is refused.
+  /// calls `untitled.c2d` and the state in which [`UiAction::Save`](crate::UiAction::Save) is refused.
   pub fn document_path(&self) -> Option<&Path> {
     self.document_path.as_deref()
   }
@@ -428,8 +432,8 @@ impl Shell {
   /// the same sentence. The rule is L7's: the line stamps the **document**, so it is the file's own last write
   /// ([`Self::saved_at`]) and never a build stamp; a document with no file, or a filesystem that reported no
   /// mtime, has nothing saved to name. A document with unsaved edits reads `Unsaved changes` too — the panel
-  /// asks [`AppState::is_dirty`] and draws that word itself, because dirty is the document's fact and the
-  /// stamp is the file's.
+  /// asks [`AppState::is_dirty`](cam_app::AppState::is_dirty) and draws that word itself, because dirty is the
+  /// document's fact and the stamp is the file's.
   pub fn saved_stamp(&self) -> String {
     match self.saved_at {
       Some(at) => format!("Saved {}", crate::stamp::format_stamp(at)),
@@ -466,8 +470,8 @@ impl Shell {
   /// cursor advances, whole moves are applied to the field, so the surface a viewer watches is the
   /// same simulation [`cam_sim::sweep::apply`] gives the report, cell for cell.
   ///
-  /// This method reads no document and returns no [`UiAction`], which is what keeps the preview off
-  /// the document's authoring path (M5 D-M5-9, A12): it takes a program a caller has already built.
+  /// This method reads no document and returns no [`UiAction`](crate::UiAction), which is what keeps the
+  /// preview off the document's authoring path (M5 D-M5-9, A12): it takes a program a caller has already built.
   /// `Shell::simulate` in `view3d` is that caller inside the shell (M13 S3) — it generates the open
   /// document's own toolpaths and hands the result here, so a person never leaves the window for a preview,
   /// and the preview still edits nothing.

@@ -278,7 +278,8 @@ impl Shell {
 
 /// Draw one Tools-tab command button, report where it landed, and say whether it was pressed.
 ///
-/// The palette's chips report their points for the same reason ([`DrawnState::palette_hits`]): egui offers no
+/// The palette's chips report their points for the same reason
+/// ([`DrawnState::palette_hits`](crate::DrawnState::palette_hits)): egui offers no
 /// widget-by-text lookup from outside a frame, so a test that wants to press *this* button — the second of
 /// the two routes a parameterised command is reachable by — is handed the point instead of guessing at the
 /// panel's margins.

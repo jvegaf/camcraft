@@ -17,9 +17,10 @@
 //! ([`cam_view::TARGET_GRID_PIXELS`]): one "nice number" rule for the whole view, so a ruler tick lands on a
 //! grid line instead of teaching a second set of round numbers.
 //!
-//! **Which amber.** [`Role::Cut`], because the marker is the position the tool would cut at — the same thing
-//! the cut signal means everywhere else in the frame — and not [`Role::Warn`], which is a verdict about a
-//! program. Both are amber by accident; the meaning is what chooses.
+//! **Which amber.** [`Role::Cut`](crate::theme::Role::Cut), because the marker is the position the tool
+//! would cut at — the same thing the cut signal means everywhere else in the frame — and not
+//! [`Role::Warn`](crate::theme::Role::Warn), which is a verdict about a program. Both are amber by
+//! accident; the meaning is what chooses.
 
 use cam_app::{Camera, ScreenPoint};
 use cam_geom::Point2;

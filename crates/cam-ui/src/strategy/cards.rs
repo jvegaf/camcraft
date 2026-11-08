@@ -20,8 +20,8 @@ impl Kind {
 ///
 /// Four diagrams, each painted from the operation's own semantics rather than pasted: a contour with the tool
 /// beside it, a region filled with rings, and the two clearing patterns a pocket can use. They are the shell's
-/// own art the way [`crate::tool_library`]'s scaled tool drawing is — see this module's header for what a real
-/// thumbnail would need.
+/// own art the way [`crate::tool_library`]'s scaled tool drawing is — [`crate::strategy`]'s header says what a
+/// real thumbnail would need.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Art {
   /// A vector and the tool running along its outside.

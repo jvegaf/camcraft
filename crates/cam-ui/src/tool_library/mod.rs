@@ -34,7 +34,7 @@
 //!    writing down: nothing in this modal writes before it, so there is nothing for it to undo.
 //!
 //! The drawing is a section of the tool's cutting end, in a box whose **horizontal scale is shared by every
-//! tool at once** — [`SPAN_MM`] of tool is the box's width — so two tools in the same box are comparable by
+//! tool at once** — `SPAN_MM` of tool is the box's width — so two tools in the same box are comparable by
 //! eye and a test can check the ratio. The vertical extent is the flute length when the record holds one; when
 //! it does not, the shape is drawn to the box's own height and no flute callout is painted, because the
 //! library carries no length to point at and a guessed one would be a dimension the shell does not have (the

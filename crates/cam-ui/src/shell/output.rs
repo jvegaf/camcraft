@@ -420,7 +420,8 @@ pub type PixelRect = (f32, f32, f32, f32);
 pub struct ShellOutput {
   /// Where the canvas was drawn.
   pub canvas: CanvasRect,
-  /// Actions the user triggered this frame; the caller applies them through [`handle_action`].
+  /// Actions the user triggered this frame; the caller applies them through
+  /// [`handle_action`](crate::handle_action).
   pub actions: Vec<UiAction>,
   /// What the panels displayed.
   pub drawn: DrawnState,

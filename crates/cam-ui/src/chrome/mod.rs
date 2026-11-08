@@ -23,8 +23,9 @@
 //!
 //! **The rail is not stage-scoped.** Sixty-odd commands do not fit on one screen and never did, but the
 //! reference's answer is not to hide them behind a mode: it labels them, groups them, and lets the operator
-//! collapse a group. What a command can do right now is decided by the document — the rule [`Command`] already
-//! applies when it greys a chip — and never by a mode the operator has to remember they are in.
+//! collapse a group. What a command can do right now is decided by the document — the rule
+//! [`Command`](crate::help::Command) already applies when it greys a chip — and never by a mode the
+//! operator has to remember they are in.
 //!
 //! **Counts are counted, never invented.** The frame states a number only when the document can prove it:
 //! vectors on the sheet, toolpaths in the document. A section that would otherwise invent a count shows the

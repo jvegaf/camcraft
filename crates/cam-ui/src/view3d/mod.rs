@@ -5,11 +5,12 @@
 //!
 //! The panel **shows** a program; it never authors one and never touches the document (D-M5-9). The
 //! caller hands in the stock it has not cut yet — [`cam_sim::Heightfield::new`] — and the program to cut
-//! it with, through [`Shell::set_preview`](crate::Shell::set_preview), together with the [`Job`] the stock
-//! box is built from. M13 S3 closes the loop inside the shell: `Shell::simulate` generates the
-//! document's own toolpaths in-process and hands the result in here, so the picture is the drawing's own
-//! program rather than one a terminal produced. The panel still adds no [`UiAction`](crate::UiAction) and
-//! no path from the picture back into the geometry: playing a program moves a cursor, never the document.
+//! it with, through [`Shell::set_preview`](crate::Shell::set_preview), together with the
+//! [`Job`](cam_model::Job) the stock box is built from. M13 S3 closes the loop inside the shell:
+//! `Shell::simulate` generates the document's own toolpaths in-process and hands the result in here, so
+//! the picture is the drawing's own program rather than one a terminal produced. The panel still adds no
+//! [`UiAction`](crate::UiAction) and no path from the picture back into the geometry: playing a program
+//! moves a cursor, never the document.
 //!
 //! # Playback, and why the time is injected
 //!
@@ -28,28 +29,30 @@
 //!
 //! # Colours, and where they come from
 //!
-//! The panel chooses no colour of its own: every one it paints is a [`Role`] of the current theme,
-//! or a stop on the depth ramp between two of them. The 3D view used to keep five shading literals
-//! (L7 left them there on purpose), which made it the last place in the shell painting a colour no
-//! role knew about. The mapping is a meaning, not a rename: the stock's box edges are
-//! [`Role::StockEdge`] — a silhouette, not the [`Role::Border`] hairline the 2D canvas outlines the
-//! stock with, because a block against a field with no grid needs a value that clears both the canvas
-//! and its own face; cutting moves are
-//! [`Role::Cut`], which is what the cut signal means; rapids and retracts are [`Role::TextDim`], the
-//! role the 2D canvas paints construction geometry with — present, but not the thing being shown;
-//! and the surface is [`Palette::stock_shade`], a ramp with a role at each end. The playback bar's
-//! fill is [`Role::Cut`] for the same reason the cutting moves are: it measures how much of the
-//! program has been cut, so the amber in the picture and the amber in the bar say one thing. Nothing
-//! here keeps a colour literal, and the bar's own test finds both of its rectangles by role rather
-//! than by position (`tests/view3d.rs`), because a literal would paint a bar no role test could see.
+//! The panel chooses no colour of its own: every one it paints is a [`Role`](crate::theme::Role) of the
+//! current theme, or a stop on the depth ramp between two of them. The 3D view used to keep five shading
+//! literals (L7 left them there on purpose), which made it the last place in the shell painting a colour
+//! no role knew about. The mapping is a meaning, not a rename: the stock's box edges are
+//! [`Role::StockEdge`](crate::theme::Role::StockEdge) — a silhouette, not the
+//! [`Role::Border`](crate::theme::Role::Border) hairline the 2D canvas outlines the stock with, because a
+//! block against a field with no grid needs a value that clears both the canvas and its own face; cutting
+//! moves are [`Role::Cut`](crate::theme::Role::Cut), which is what the cut signal means; rapids and
+//! retracts are [`Role::TextDim`](crate::theme::Role::TextDim), the role the 2D canvas paints construction
+//! geometry with — present, but not the thing being shown; and the surface is
+//! [`Palette::stock_shade`](crate::theme::Palette::stock_shade), a ramp with a role at each end. The
+//! playback bar's fill is [`Role::Cut`](crate::theme::Role::Cut) for the same reason the cutting moves are:
+//! it measures how much of the program has been cut, so the amber in the picture and the amber in the bar
+//! say one thing. Nothing here keeps a colour literal, and the bar's own test finds both of its rectangles
+//! by role rather than by position (`tests/view3d.rs`), because a literal would paint a bar no role test
+//! could see.
 //!
 //! # Why the geometry is not computed here
 //!
-//! The projection ([`Camera3d`]) and the surface ([`build_surface`]) are data, tested headless in
-//! `cam-view` (A9, S2). This module is the painter: it turns that data into [`egui::Mesh`] triangles
-//! and lines on the existing [`egui::Painter`], which is why the 3D view needs no new dependency
-//! (A11, D-M5-7). A `wgpu` backend would consume the same [`cam_view::SurfaceMesh`] when S12's
-//! trigger fires; nothing here would have to change to allow it.
+//! The projection ([`Camera3d`]) and the surface ([`build_surface`](cam_view::build_surface)) are data,
+//! tested headless in `cam-view` (A9, S2). This module is the painter: it turns that data into
+//! [`egui::Mesh`] triangles and lines on the existing [`egui::Painter`], which is why the 3D view needs no
+//! new dependency (A11, D-M5-7). A `wgpu` backend would consume the same [`cam_view::SurfaceMesh`] when
+//! S12's trigger fires; nothing here would have to change to allow it.
 
 use cam_move::{Move, MoveStream, Point3, ToolShape};
 use cam_sim::Heightfield;
@@ -233,7 +236,7 @@ pub struct Preview3d {
 struct Step {
   /// The movement itself.
   movement: Move,
-  /// Where the sweep starts: exactly the origin [`sweep::apply`] uses for this move.
+  /// Where the sweep starts: exactly the origin [`sweep::apply`](cam_sim::sweep::apply) uses for this move.
   sweep_from: Point3,
   /// The tool's shape, carried from the segment so the preview's own field is cut by the tool the
   /// program names rather than by a widened disc (M6 A8).

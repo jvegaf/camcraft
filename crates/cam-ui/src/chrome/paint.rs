@@ -176,7 +176,7 @@ pub(crate) fn chip(ui: &mut egui::Ui, palette: &Palette, label: &str, on: bool) 
   response
 }
 
-/// One window rectangle as the four numbers [`DrawnState`] reports its regions with.
+/// One window rectangle as the four numbers [`DrawnState`](crate::DrawnState) reports its regions with.
 pub(crate) fn rect_report(rect: egui::Rect) -> (f32, f32, f32, f32) {
   (rect.min.x, rect.min.y, rect.width(), rect.height())
 }
@@ -303,9 +303,9 @@ pub(crate) fn paint_segmented(
 /// One labelled value box: the label above, the number inside a bordered field.
 ///
 /// Read-only on purpose, and that is the one thing T12 changed about it: a job's three measurements are
-/// defined once, in [`Shell::material_dialog`], and a box in a 288 px inspector is where they are
-/// *reported* afterwards. Typing a size into two of these in place would let a job exist in a state
-/// nobody drew a plan for, so the dialog is the only writer and this box is the receipt.
+/// defined once, in [`Shell::material_dialog`](crate::Shell::material_dialog), and a box in a 288 px
+/// inspector is where they are *reported* afterwards. Typing a size into two of these in place would let a
+/// job exist in a state nobody drew a plan for, so the dialog is the only writer and this box is the receipt.
 pub(crate) fn field(ui: &mut egui::Ui, palette: &Palette, label: &str, value: &str) {
   ui.vertical(|ui| {
     ui.label(

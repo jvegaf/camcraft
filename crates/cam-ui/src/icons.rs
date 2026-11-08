@@ -1832,7 +1832,7 @@ impl Icon {
   ///
   /// Keyed on the glyph's position in [`Icon::ALL`], which is the same order the sheet draws, because
   /// seventy match arms would be seventy chances to disagree with the table next door. The order itself is
-  /// pinned by [`tests::the_families_cover_the_set_in_order`], so a reordering that moved a glyph between
+  /// pinned by `tests::the_families_cover_the_set_in_order`, so a reordering that moved a glyph between
   /// families fails a test instead of quietly mislabelling it.
   pub fn family(self) -> Family {
     match self as usize {
