@@ -39,7 +39,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | --- | --- | --- | --- | --- |
 | T1 | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T2 | ✅ **delivered** — `crates/cam-ui/tests/view3d.rs` (2,374) became a **31-line root** plus `support` and six concern modules (scene 413, playback 421, playback_bar 389, split 330, simulation 221, overlay 146); largest file **456**. 47 tests, same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T3 | `crates/cam-ui/src/view3d.rs` (2,130) splits by concern (projection and scene / chrome and layout / playback) with `impl Shell` blocks spread as needed | S3 S4 S5 | worker | — |
+| T3 | ✅ **delivered** — `crates/cam-ui/src/view3d.rs` (2,130) is now `view3d/`: `mod.rs` 328 (public paths + the five unit tests, whose names stayed `view3d::tests::*`), `scene` 443, `playback` 562, `chrome` 278, `shell` 573. Largest file **573**. Nine `pub(super)` markers, no `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T4 | `crates/cam-ui/src/chrome.rs` (2,672) splits by surface (app bar, rail, ribbon, task editor, layers) | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | The proof S3 asks for: attempt `review.start` for `0c194cb`, `c4da057` and `a078015`, record each outcome, and — where one still fails — record the file and the number that refused it | S3 | inline | — |
@@ -88,4 +88,19 @@ cost is the **files**. Read **until `## Log`** before touching code.
   S8 banner preceded a fixture instead of heading the split-chrome tests. Both now sit above what they describe,
   line for line. S6 says a moved line is a moved line; this is the one place where leaving it would have moved a
   lie, and it is recorded so the reviewer reads it as a correction rather than as a smuggling.
+- **L6 (T3 delivered; the source half of the split, and its one real cost).** `view3d.rs` 2,130 → `view3d/` with
+  five files, **largest 573**: `mod.rs` keeps every public path (`clock_text`, `seconds_for`, `bar_fill`,
+  `progress_text`, `speed_text`, `next_speed`, `vector_lines`, the four constants, `Layer`, `Layers`,
+  `Preview3d`) and deliberately keeps the module's five unit tests so their full names stay `view3d::tests::*`;
+  `scene` holds projection and painting, `playback` the state and the clock, `chrome` the marks, `shell` the
+  `impl Shell` surface whole. Proved by comparison: 102 items each verbatim in exactly one file, 0 placement
+  problems, and the multiset of 1,998 non-blank content lines identical apart from the four extra `impl`
+  wrappers and three rustfmt re-wraps whose bodies were diffed. Workspace **1607**, gate exit 0.
+  **The cost, recorded rather than glossed:** nine intra-doc links in the module header no longer resolve —
+  `Job`, `Role`, `Role::StockEdge`, `Role::Border`, `Role::Cut` twice, `Role::TextDim`,
+  `Palette::stock_shade` and `build_surface` now live in child modules, so `cargo doc` goes from 30 to 39
+  unresolved-link warnings. The wording was not touched (S4 forbids it) and a doc-only `use` is not available:
+  `unused_imports` fires on imports referenced only by doc comments, and the gate is `-D warnings`. L27 already
+  recorded rustdoc as not-a-gate with 34 such links at `2a09faa`, so this is house tolerance — but it grew, and
+  a later documentation task should re-point those links.
 
