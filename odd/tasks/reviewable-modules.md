@@ -46,8 +46,9 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
-| T8 | The 71 unresolved intra-doc links the seven slices created, plus `Art`'s sentence that points at a header its file does not have — re-pointed with `cargo doc` as the proof (count before and after), no code change | S3 | worker | — |
-| T9 | Two sentences in `chrome/job.rs` still tell the person to simulate with `cam-cli`, which M13 T2 made false: the shell simulates its own drawing now. Rewritten to name the control that exists | S4 | inline | — |
+| T8 | ✅ **delivered** — 71 → **0** unresolved links and the doc build 78 → 12 warnings; two names became code spans because a private item in a module whose header resolves at the crate root cannot be linked without code (`SPAN_MM`, `Capture`); `Group::History`, a variant that never existed, now points at `Group::File` | S3 S4 | worker | `5af825d` |
+| T8-old | The 71 unresolved intra-doc links the seven slices created, plus `Art`'s sentence that points at a header its file does not have — re-pointed with `cargo doc` as the proof (count before and after), no code change | S3 | worker | — |
+| T9 | ✅ **delivered** — the three sentences M13 made false now name what exists: the Toolpaths task authors a toolpath, the 3D half simulates the drawing's own toolpaths, and the empty half says *press Simulate in the picture*. One test assertion moved with its subject (`panels.rs:77`) | S4 | inline | — |
 | T10 | ✅ **delivered** — light `Cut` `#a86200` → **`#8b5100`**, the lightest value under the luminance cap the deepest stop imposes (0.11528; `#8c5200` breaks it at 2.99:1). Every existing ratio improved (panel 4.76→6.41, canvas 4.51→6.08, lit face 3.05→4.11, deepest stop 2.25→**3.03**), the uncovered pair became a proof that walks five depths, and the workspace went 1607 → **1608** by adding it | S4 | worker | — |
 | T11 | Two follow-ups T10 named and did not take: the light `CutSoft` wash was never the premultiplication of the signal (29% lighter even before) and is now further from it; and `design/system.html` + `design/camui-shell/04-tokens.html` were **already stale before the split** — neither carries T4's `#e8cb9d`/`#cfad7b`/`#664d2e` at all | S4 | owner | — |
 | T7 | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3 | worker | `86e9947`, `f0d74a1` |
@@ -210,5 +211,23 @@ cost is the **files**. Read **until `## Log`** before touching code.
 - **L13 (the three debts reopened as tasks rather than left as prose).** T8 is the 71 doc links, T9 the two
   `chrome/job.rs` sentences M13's own simulation made false, T10 the paper amber at 2.25:1. Each has a location and
   a number; none of them is a reason to reopen the milestone.
-
+- **L14 (T8 and T9 delivered; the debt paid, and the mechanism named).** `cargo doc --document-private-items`
+  went **71 → 0** unresolved links (build 78 → 12 warnings) over two rounds and twenty-one files, and the
+  filtered diff — every changed line that is not `///`, `//!` or `//` — is empty, which is what S4 asked of a
+  documentation task. Two links were not fixed but dissolved: `SPAN_MM` and `Capture` name items private to a
+  module whose header resolves at the crate root, so reaching them needs a visibility change, and a
+  `pub(crate) use` written so rustdoc can resolve a link is code written for documentation — refused once
+  before (L6) and refused again here. Their sentences are untouched; the names are code spans.
+  **The mechanism is the finding**: rustdoc resolves a module header in the **parent's** scope when `lib.rs`
+  puts an outer `///` on the `pub mod` declaration — the outer and inner docs merge and the header loses the
+  module's own names. That one rule is 18 of the 20 breaks, and it also corrects L6/L7/L8/L10: **20 of those 71
+  predated the milestone entirely**, in six files `git log ea58baf^..HEAD` shows untouched. A milestone that
+  claimed to have created them all would have been wrong, and the number is now separable: 51 created by the
+  splits, 20 inherited.
+  T9 then closed the second debt in four sentences and one assertion: `chrome/job.rs` said a toolpath "comes
+  from `cam-cli toolpath` and lands here finished", `ribbon.rs` said 3D "plays a program that `cam-cli`
+  produced and a host handed in", and the empty half said "no program loaded — simulate one with `cam-cli
+  simulate` and hand it in". M13 made all three false, and the fix names what now exists: the Toolpaths task,
+  the drawing's own simulation, and the `Simulate` control in the picture. `tests/shell/panels.rs:77` moved
+  with its subject, which is the only test line that changed.
 
