@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M3 (import & interchange)
+# Feature: 2.5D CAM application — Milestone M3 (import & interchange)
 
 Program plan: `odd/roadmap.md` (M3 = "Import & interchange"). This document is the executable
 specification for M3 only. Read this file until `## Log` before implementing any task.

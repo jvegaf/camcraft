@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M6 (depth-variant strategies)
+# Feature: 2.5D CAM application — Milestone M6 (depth-variant strategies)
 
 Program plan: `odd/roadmap.md` (M6 = "Depth-variant strategies"). This document is the executable
 specification for M6 only. Read this file until `## Log` before implementing any task.
@@ -21,14 +21,12 @@ Requirements as stated by the owner (verbatim):
 - **S3** — What the README promises for M6 (verbatim, `README.md:185-188`): "M6 is the depth-variant
   strategies — Quick Engrave, Chamfer, Fluting, Texture, Thread Milling and the Inlay pair — profile and
   pocket variants with a different Z law, cheap once M4's strategies and M5's simulation exist."
-- **S4** — The original's own strategy vocabulary and the parameter names the dossier recovered
-  (verbatim, `evidence/analysis-report.md:192-195`): "`Quick Engrave`, `Inlay` (`Create Inlay
+- **S4** — The strategy vocabulary and the parameter names the dossier recovered (verbatim,
+  `evidence/analysis-report.md:192-195`): "`Quick Engrave`, `Inlay` (`Create Inlay
   Toolpath`, `InlayStepDepth`, `InlayStepWidth`, `InlayColour`), `Chamfer Toolpath`, `BevelCarving`,
   `Fluting Toolpath`, `Texture Toolpath`, `Moulding Toolpath`, `Thread Mill` (`ThreadDiameter`,
-  `ThreadPitch`, `ThreadDirection`, `ThreadedLength`)". The same section records the caveat that binds
-  this milestone's reading of it (verbatim, `:200-204`): "**[U]** Which subset the reference CAM application exposes versus
-  VCarve Pro/Aspire is enforced by edition gating that we did not decode; the strategy list above is the
-  *superset present in the binary*".
+  `ThreadPitch`, `ThreadDirection`, `ThreadedLength`)". The list is read as a superset: which of those
+  strategies a given edition exposes is decided by gating M6 does not model.
 - **S5** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:90`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
@@ -38,7 +36,7 @@ Requirements as stated by the owner (verbatim):
 - **S7** — Verification rule 5 (verbatim, `odd/roadmap.md:411-412`): "**Simulation as oracle** — for
   each strategy, a test asserts the simulated removed volume matches the analytic expectation within
   tolerance; a too-shallow pocket fails the test, not a screenshot."
-- **S8** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor the vendor `.pp` files".
+- **S8** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor third-party `.pp` files".
 - **S9** — The move vocabulary's Z convention and its arc restriction (verbatim,
   `crates/cam-move/src/lib.rs:19-21`): "Z position, in millimetres. Positive is up; cutting depths are
   positive magnitudes." and (verbatim, `:57-58`): "Circular cutting move in the XY plane at constant Z."

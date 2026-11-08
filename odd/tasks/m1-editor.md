@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M1 (2D editor shell)
+# Feature: 2.5D CAM application — Milestone M1 (2D editor shell)
 
 Program plan: `odd/roadmap.md` (M1 = "2D editor shell"). This document is the executable
 specification for M1 only. Read this file until `## Evidence — commit per task
@@ -22,9 +22,9 @@ post-processor and the headless CLI. M1 adds the window — and only the window.
 
 ## Specs
 
-Owner requirements in force (verbatim, unchanged from M0):
+Owner requirements in force (verbatim, unchanged from M0; S1 restated by the name-hygiene sweep):
 
-- **S1** — "quiero crear una aplicacion similar a the reference CAM application"
+- **S1** — A desktop 2.5D CAM application (restated; the owner's wording named a third-party product).
 - **S2** — "quiero que sea cross platform Windows/Linux"
 - **S3** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)"
 - **S4** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import

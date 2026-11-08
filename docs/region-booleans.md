@@ -71,10 +71,10 @@ Consequences, in the order they matter:
   within the tolerance of any boundary, so two contours that share an edge never both claim it.
 
 Islands are **explicit in the document and never inferred** (D-RB-1). A contour drawn inside another
-may be an island or may be a separate feature, and the product's own rule for nested selections is not
-recoverable from static evidence — the same limit D-M4-5 recorded for drilling. Inferring "the inner
-contour must be a hole" would silently reverse a user's intent, so the user names the islands and the
-model refuses to guess.
+may be an island or may be a separate feature, and no rule for nested selections can be read out of
+the drawing itself — the same limit D-M4-5 recorded for drilling. Inferring "the inner contour must be
+a hole" would silently reverse a user's intent, so the user names the islands and the model refuses to
+guess.
 
 The primitives underneath are exact and arc-native (S4):
 

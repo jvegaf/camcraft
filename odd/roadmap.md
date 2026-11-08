@@ -1,8 +1,8 @@
-# Development Plan — the reference CAM application-class 2.5D CAM application (Windows + Linux)
+# Development Plan — 2.5D CAM application (Windows + Linux)
 
-Status: **executed through M13.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
-`etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M12 are delivered; §4 carries
-the evidence for each, section by section through §4.15, and §6 the risk register with the one row M7 closed. **After M10 the work did not
+Status: **executed through M13.** Each milestone's acceptance is that milestone's own measurements — its
+tests, oracles, goldens and differentials — and the roadmap is where they are carried: M0–M12 are delivered,
+§4 records the evidence for each, section by section through §4.15, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
 own documents — the advisory debt (`odd/tasks/debt-advisories.md`, which carries its own counts and the reason
 the rest cannot be recovered),
@@ -28,12 +28,12 @@ and emit machine-specific G-code through user-editable post-processors.
 
 Non-goals for this program (explicit):
 
-- Binary or project compatibility with the vendor `.crv` files (OLE2 internals are unresolved — see
+- Binary or project compatibility with `.crv` project files (OLE2 internals are unresolved — see
   analysis report §2.5, Q3).
 - 3D model machining (STL relief roughing/finishing), PhotoVCarve, sculpting.
 - Laser strategies (`Laser Cut - Fill`, `Laser Sketch Engraving`).
 - Windows-only APIs: no MFC, no GDI, no Codejock, no `WINSPOOL` printing path.
-- the vendor Lua gadget compatibility (a scripting surface is planned, not their dialect).
+- Lua gadget (plugin ABI) compatibility with any existing CAM package: a scripting surface is planned, and it will be its own dialect.
 
 ## 2. Stack decision and its justification
 
@@ -121,7 +121,7 @@ Two rules make the rest of the plan enforceable:
 | Tolerance | A single `Tolerance` value threaded through geometry ops, exposed as a job setting | The original exposes a 2D toolpath tolerance string; a global tolerance prevents contradictory results |
 | Tool/toolpath model | Tool geometry, cutting data and machine are **separate** records joined per (material, machine) | Observed SQLite schema `tool_geometry` / `tool_cutting_data` / `tool_entity` — the correct normalization, and the reason a tool library is valuable at all |
 | Post-processor | Implement a reader compatible with the observed `.pp` dialect (13 directives, 17 variables, 15 blocks, `[var|A/C|prefix|decimals]`) **plus** our own authoring format | A data-driven emitter is the difference between one machine and seventy-five; grammar recovered in analysis report §2.2 |
-| Post-processor licensing | **Do not vendor the vendor's `.pp` files.** Ship our own fixtures; support an optional user-supplied directory | Those files are third-party content; the *grammar* is what we reimplement |
+| Post-processor licensing | **Do not vendor third-party `.pp` files.** Ship our own fixtures; support an optional user-supplied directory | Those files are third-party content; the *grammar* is what we reimplement |
 | Undo/redo | Whole-document snapshots (documents are kilobytes by nature) with a bounded history and coalescing | Command inversion across geometry edits is a defect factory; snapshot + structural sharing is cheap here |
 | Parallelism | `rayon` for independent toolpaths, pass carving and simulation tiles | The original uses OpenMP (`VCOMP140.DLL`, 18 imports) with the same coarse-grained structure |
 | Text | `cosmic-text`/`ttf-parser` → outlines at authoring time, stored as curves | Complex-script shaping is a solved dependency; never reimplement it |
@@ -154,7 +154,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | --- | --- | --- | --- |
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
 | **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
-| **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | The authoring half of "similar to the reference CAM application"; all of it rides on `cam-geom`, proven headless |
+| **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | Authoring is half of what a 2.5D CAM application does; all of it rides on `cam-geom`, proven headless |
 | **M3** ✅ | Import & interchange | **Delivered.** DXF, SVG, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document, `cam-cli check` reports open, self-intersecting and degenerate vectors, and the shell imports undoably (see §4.5) | Users bring geometry; the original's own filter list is the target set |
 | **M4** ✅ | Core toolpaths | **Delivered.** Profile (inside/outside/on, tabs, passes, lead-in/out) from M0, plus offset and raster pocket with allowance, stepover and clear stepover, and drilling with peck, both retract modes and drill-bank selection; every strategy is authored through `cam-cli toolpath` and reaches G-code through `cam-cli emit` (see §4.6) | The three strategies that define 2.5D routing; they exercise every post-processor block |
 | **M5** ✅ | Simulation & 3D preview | **Delivered.** `cam-sim` sweeps the emitted `MoveStream` over a heightfield of the stock, derives the depth each cell was authorised to lose from the document alone, and reports removed volume, through-cut cells, gouge, uncut material and every crash; `cam-cli simulate` is the contract, with exit `6` for a program that gouges, leaves material standing or rams the tool; a depth-shaded 3D stock view with an animated playback is in the shell; and every strategy M4 ships has an oracle (see §4.8) | G-code without simulation is unverifiable by the user; also the only honest acceptance test for M4–M7 |
@@ -1040,9 +1040,9 @@ Per ODD, change behaviour with applicable runnable checks, test-first:
 6. **No-manual-QA rule** — nothing is "done" because it looks right in the window; the CLI proof
    comes first.
 
-Explicitly not used: comparisons against the vendor's own G-code output as an oracle. Byte-matching a
-closed-source implementation's ordering and rounding choices would turn every improvement into a
-regression, and we did not decompile their algorithms.
+Explicitly not used: another CAM package's G-code output as an oracle. Byte-matching a closed-source
+implementation's ordering and rounding choices would turn every improvement into a regression, and we
+did not decompile its algorithms.
 
 ## 6. Risks
 
@@ -1067,7 +1067,7 @@ regression, and we did not decompile their algorithms.
 | D4 | Own heuristic nesting in v1 | plan time | User choice; original uses a licensed third-party engine (analysis report §2.4) |
 | D5 | Millimetres internal, rounding only at emission | architecture | Post-processor decimal specs differ per variable in 75 shipped files |
 | D6 | Arcs first-class, no pre-tessellation | architecture | 8 arc output blocks in the recovered DSL grammar |
-| D7 | Do not vendor the vendor `.pp` files | legal/architecture | Third-party content; grammar reimplemented instead |
+| D7 | Do not vendor third-party `.pp` files | legal/architecture | Third-party content; grammar reimplemented instead |
 | D8 | `cam-cli` as the test surface | verification | Makes every milestone verifiable without the UI |
 | D-M6-12 | The sweep **interpolates Z** along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | M6, T4b | D-M5-3 removed a move's *destination* depth over its whole travel, which was conservative while every cutting move held one depth and is simply wrong for a ramp. T4's first implementation worked around it by emitting the ramp as 0.1 mm Z steps, which puts the simulator's limitation into the program the machine runs and cannot express a helix. The sampler now takes `max(2·travel/cell, 16·|Δz|/cell)` steps, so a graded floor is resolved to half the judgement; a constant-Z move's count is unchanged and its results are bit-identical (33,600 of 33,600 cell values against `a4487f0`) |
 | D-M6-14 | A thread's target is the **spiral**, not the annulus | M6, T7 | A helical descent leaves the material between revolutions standing, and that material *is* the thread. Authorising the whole annulus at `cut_depth` is an upper bound of up to one pitch, and it made `simulate` exit `6` on **every** correct thread whose pitch is coarser than `cell/8` — measured as `uncut 106.452 mm³ over 151 cells`, i.e. a gate that fails every real thread. The claim is the floor itself per cell (the deepest pass covering it), taken as the maximum over the tool's angular window because a cell is reached from angles up to `α(r)` later than its own; the tip-only form reports a correct thread as `gouge 8.697 mm³`, the same one-sided error `claim_flute` was amended for |
@@ -1082,10 +1082,10 @@ regression, and we did not decompile their algorithms.
 
 ## 8. Log
 
-- **L1 (user, verbatim):** "quiero crear una aplicacion similar a the reference CAM application, para ello necesito
-  que la analices con el mcp de REA @etc/the reference CAM applicationProTrialEdition_Setup.exe, extraigas las evidencias y
-  generemos un plan de desarrollo mediante ODD. Como extra, decirte que quiero que sea cross platform
-  Windows/Linux."
+- **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD: the request asked
+  for that plan and its milestones, with Windows/Linux support named as the extra requirement. The owner's
+  sentence also named a third-party product and the installer it was to be observed in; the repository name
+  hygiene sweep (`odd/tasks/repository-name-hygiene.md`) removed those names.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";
   "Implementar nesting heurístico propio en v1".

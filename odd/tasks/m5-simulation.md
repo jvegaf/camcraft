@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M5 (simulation & 3D preview)
+# Feature: 2.5D CAM application — Milestone M5 (simulation & 3D preview)
 
 Program plan: `odd/roadmap.md` (M5 = "Simulation & 3D preview"). This document is the executable
 specification for M5 only. Read this file until `## Log` before implementing any task.
@@ -67,7 +67,7 @@ Owner requirements still in force from earlier milestones:
 - **S15** — Cross-platform Windows/Linux (D1, owner decision at plan time).
 - **S16** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser". This bounds S4: the 3D
   here is a *preview of the stock*, not the deferred 3D machining strategies.
-- **S17** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor the vendor `.pp` files".
+- **S17** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor third-party `.pp` files".
 
 ### Derived acceptance criteria (M5)
 

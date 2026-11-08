@@ -56,6 +56,7 @@ L5). Read **until `## Log`** before touching anything.
 | ID | What | S | Route | Commit |
 | --- | --- | --- | --- | --- |
 | T1 | The prose sweep: the README's framing and its rationale table re-grounded row by row, `evidence/` deleted, and the mention removed from `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`. Rows that cannot be re-grounded are deleted and named in the log | S1–S5 S8 | worker | — |
+| T4 | The **dossier paths** the sweep revealed: `odd/` still cites `evidence/analysis-report.md`, `evidence/derived/exe_utf16_strings.txt` and `evidence/installer-extract/` as where a spec's vocabulary came from (m3 S5, m4 S4/S5, m6, m7, m0 L3, roadmap L3). Each clause either states the fact it was establishing without the citation, or goes | S1 S4 S8 | worker | — |
 | T2 | The thirteen documents renamed with every inbound link updated, `grep -ri "the vendor\|the reference CAM application"` empty over the whole tree, gate green | S2 S6 S7 | inline | — |
 | T3 | The roadmap's entry: what the tree now says, and the history note S5 owes the reader | S5 | inline | — |
 
@@ -69,3 +70,21 @@ L5). Read **until `## Log`** before touching anything.
 - **L2 (timing).** The owner said "when you finish the task", so this runs **after** M13's T5. It is recorded
   as a requirement in `m13-in-app-cycle.md` L5 the moment it arrived, so it cannot be lost if the
   session ends between the two.
+- **L3 (T1 delivered, and the two edits the parent took back).** The prose sweep landed with the gate green
+  at 1605 workspace tests: `README.md`'s opening now says what campilot *is*, its rationale table's left
+  column is a reason ("portable domain", "one geometry feeding many cuts", "the program is data", "arcs carry
+  a centre", "certificates", "the schema tag") instead of an observation, and the seventh row was deleted
+  because it restated the first. `evidence/` is gone, both `.pp` fixtures changed one comment line each with
+  their directives untouched, and `docs/format.md`, `m4`, `m7`, `region-booleans` and `parser.rs` lost the
+  mention. Two pieces fell outside the worker's surfaces and the parent took them: the module comment of
+  `crates/cam-post/src/lib.rs`, which said the dialect had been "recovered from the 75 post-processors
+  shipped with the analysed product" and pointed at the file the sweep deleted, and the four now-dead
+  `/evidence/...` lines in `.gitignore`. The comment now says what the dialect is — thirteen directives and
+  twenty output blocks, all of which the parser and the emitter know — and claims nothing about who wrote it
+  first (S8).
+- **L4 (T4, found by the final grep).** Deleting the dossier is not the same as deleting the *citation of*
+  it: `odd/` still says a spec's vocabulary was "recovered by REA (verbatim, `evidence/analysis-report.md:191`)"
+  — seven clauses across `m0`, `m3`, `m4`, `m6`, `m7` and the roadmap's L3, each quoting strings "from" a file
+  that no longer exists. They are the same claim the sweep exists to remove, one layer down, and they get their
+  own slice rather than riding along unrecorded.
+

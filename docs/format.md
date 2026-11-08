@@ -133,11 +133,11 @@ differently again on a light machine.
 
 - **Forward-only migrations.** `cam_store::tools::MIGRATIONS` is an append-only ladder; opening a
   library applies whatever is missing inside one transaction and never edits an applied entry.
-- `tool_type` is preserved as the **raw integer** found in the analysed product. Its numeric mapping is
-  not established from the artifact, so no enum pretends to know it; strategies validate the geometric
-  parameters they actually need.
+- `tool_type` is preserved as the **raw integer** a library file carries. Its numeric mapping is
+  not established anywhere this repository can check, so no enum pretends to know it; strategies
+  validate the geometric parameters they actually need.
 - Display names come from `name_format` templates: `{Tool Type} ({Diameter|F}{Units Short})`. Both
-  format spellings seen in the real library are supported: `F` (fewest decimals that keep the value
+  format spellings in use are supported: `F` (fewest decimals that keep the value
   readable) and a printf-style precision such as `.0`.
 - Stored lengths are millimetres and stored rates are millimetres per second; `units`/`rate_units`
   record what the user authored in.

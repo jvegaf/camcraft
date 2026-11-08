@@ -51,17 +51,17 @@ Every strategy produces the same move vocabulary, so every one of them reaches G
 
 ## Parameters
 
-The parameter names are the ones recovered from the product's own toolpath forms. This is where each
-one is carried:
+The parameter names are the vocabulary a toolpath form uses for these knobs, and every program spells
+them its own way. This is where each one is carried:
 
-| Recovered name | Where M4 carries it | Applies to | What it does |
+| Form name | Where M4 carries it | Applies to | What it does |
 | --- | --- | --- | --- |
 | `ProfileSide`: `Profile Inside` / `Profile Outside` / `Profile On` | `side` | profile | Which side of the vector the tool centre rides |
 | `Pass Depth`, `ProfilePass` | `pass_depth` | profile, pocket | Depth removed per pass; the last pass lands exactly on `cut_depth` |
 | `PocketAllowance` | `allowance` | profile, pocket | Material left on the vector; the tool centre rides `diameter/2 + allowance` inside the boundary |
 | `PocketDepth`, `Cut Depth` | `cut_depth` | pocket, drilling (and profile) | Total depth below the stock surface |
 | `Start Depth` | `start_depth` | profile, pocket, drilling | Depth at which cutting begins, for a part already partly machined |
-| `Pocket Pass` | `strategy` + `pass_depth` | pocket | The recovered form has one name here; M4 carries the ring/row pattern and the pass count as two fields |
+| `Pocket Pass` | `strategy` + `pass_depth` | pocket | The form has one name here; M4 carries the ring/row pattern and the pass count as two fields |
 | `stepover` | `stepover` | pocket | Ring or row spacing, as a toolpath parameter |
 | `stepover` (as a tool rate) | `tool_cutting_data.stepover` | pocket | The default for `--stepover` when the flag is omitted |
 | `clear_stepover` | `tool_cutting_data.clear_stepover` | pocket with `--clear` | The default stepover for a clearing pocket |
@@ -69,9 +69,9 @@ one is carried:
 | `Cut Rate` / `Plunge Rate` | `tool_cutting_data.feed_rate` / `plunge_rate` | every operation | The `F` values in the program |
 
 `stepover` is a toolpath field, not a tool field: the same tool pockets MDF and hardwood differently,
-and the pocket's own form is where the product puts it. The library's `stepover`, `clear_stepover` and
-`stepdown` are the **defaults** the CLI fills in when a flag is omitted (D-M4-3), which is also why no
-field was added to `ToolSpec` and no existing profile test had to move.
+and the spacing belongs to the cut rather than to the tool. The library's `stepover`,
+`clear_stepover` and `stepdown` are the **defaults** the CLI fills in when a flag is omitted (D-M4-3),
+which is also why no field was added to `ToolSpec` and no existing profile test had to move.
 
 ## Rules
 

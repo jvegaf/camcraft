@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M7 (V-Carve)
+# Feature: 2.5D CAM application — Milestone M7 (V-Carve)
 
 Program plan: `odd/roadmap.md` (M7 = "V-Carve"). This document is the executable specification for M7
 only. Read this file until `## Log` before implementing any task.

@@ -2,8 +2,9 @@
 //!
 //! # The dialect
 //!
-//! Recovered from the 75 post-processors shipped with the analysed product (see
-//! `evidence/analysis-report.md` §2.2). A post-processor is plain text:
+//! The dialect is data, not code: a `.pp` file declares thirteen directives and twenty output blocks, and both
+//! the parser and the emitter know all of them — `cam_post::parse_post` answers a summary the CLI prints and
+//! `cam_post::emit` refuses a block it cannot fill. A post-processor is plain text:
 //!
 //! ```text
 //! + a comment line

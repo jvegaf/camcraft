@@ -237,9 +237,9 @@ legitimate program.
 
 ## The tolerance, and its four declared costs
 
-`--tolerance` is the axis's **lattice step**. It is the same *kind* of knob the product calls `VCarve
-Toolpath Tolerance` — "tolerance to apply to VCarve toolpaths after calculating to reduce file size" — but
-not the same knob: the product simplifies a computed path afterwards, while M7 refines the axis to a step.
+`--tolerance` is the axis's **lattice step**. It is the same *kind* of knob as a finishing-pass
+tolerance, but not the same knob: a finishing-pass tolerance simplifies a computed path after the
+fact to shrink the file, while M7 refines the axis to a step.
 It is stored in the document (default `0.1` mm) because `emit` recomputes the axis from the document alone
 (S9, S10); a flag that was accepted and then dropped would make the program depend on a constant nobody
 named. The four costs are declared in `cam_geom::medial`'s module doc and measured, not asserted:

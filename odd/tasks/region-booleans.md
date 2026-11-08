@@ -107,10 +107,11 @@ no new scope.
 
 ### Decisions recorded for this feature
 
-- **D-RB-1 — Islands are explicit in the document, never inferred.** the reference CAM application's observable rule for
-  nested selections is not recoverable from static evidence (the same limit D-M4-5 recorded for
-  drilling), and inferring "the inner contour must be a hole" would silently reverse a user's intent
-  on a shape that is merely drawn inside another. The user names the islands.
+- **D-RB-1 — Islands are explicit in the document, never inferred.** Whether a contour drawn inside
+  another is an island or separate material is a convention of the toolpath, not a fact of the geometry
+  (the same limit D-M4-5 recorded for drilling), and inferring "the inner contour must be a hole" would
+  silently reverse a user's intent on a shape that is merely drawn inside another. The user names the
+  islands.
 - **D-RB-2 — Even-odd is the membership rule, not boundary orientation.** Orientation comes out of our
   own contour builders inconsistently enough (a reversed import, a mirrored contour) that basing
   material on winding polarity would make correctness depend on how a file happened to be written.

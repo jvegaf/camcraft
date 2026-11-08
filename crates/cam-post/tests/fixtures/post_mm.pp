@@ -1,5 +1,5 @@
 + CamPilot fixture post-processor for Mach3-compatible controllers (millimetres).
-+ Authored for this project; no the vendor post-processor is vendored.
++ Authored for this project; no third-party post-processor file is vendored.
 + Covers every directive and every output block of the dialect, the four helical
 + kinds included (M6 D-M6-8).
 POST_NAME = "CamPilot fixture Mach3 Arcs (mm) (*.nc)"

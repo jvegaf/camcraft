@@ -1,8 +1,8 @@
 # campilot
 
-A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, built as an evidence-based
-answer to a simple question: *what would the reference CAM application look like if it were designed today, in Rust,
-with the domain separated from the window?*
+A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, written in Rust with the CAM
+domain separated from the window: one document model, one set of toolpaths and one emitted program,
+whether the work is driven headlessly through `cam-cli` or from the editor.
 
 **Status: M10 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
 post-processor produce real G-code, byte for byte tested — for **profile**, **pocket** (offset rings
@@ -109,10 +109,9 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   listed with a reason and a source location — a dropped curve is never silent.
 - **Tool library** in SQLite, with tool geometry, cutting data and their join per (material, machine)
   kept as separate records.
-- **Data-driven post-processors.** The `.pp` dialect recovered from the analysed product is
-  implemented (13 directives, `VAR` formatting with the dialect's `1.4`-means-four-decimals spelling
-  and its optional scale factor, 20 output blocks — the four helical ones M6 added among them). No
-  third-party post-processor file is vendored.
+- **Data-driven post-processors.** The `.pp` dialect is implemented (13 directives, `VAR` formatting
+  with the dialect's `1.4`-means-four-decimals spelling and its optional scale factor, 20 output
+  blocks — the four helical ones M6 added among them). No third-party post-processor file is vendored.
 - **Refusal instead of guessing.** A tool that does not fit, an open contour assigned to a profile
   cut, a post that cannot express arcs, a document with an unknown schema: each fails loudly with the
   reason and a stable exit code.
@@ -257,18 +256,17 @@ on view and sim; `desktop` and `cli` on everything. Nothing below `cam-ui` knows
 
 ## Why the design looks like this
 
-The decisions come from a REA analysis of the reference CAM application
-(`evidence/analysis-report.md`), and each one is traceable to something observed in the artifact:
+Each decision below has a reason that stands on its own — in the CAM domain, or in this repository's
+own tests and measurements — and none of them rests on a preference:
 
-| Observation | Decision |
+| Reason | Decision |
 | --- | --- |
-| Only the UI shell (MFC + Codejock) and the viewport (OpenSceneGraph) are Windows-bound | Port the domain, replace the shell: Rust + `wgpu`, `egui` behind an adapter |
-| Tool library is SQLite with geometry, cutting data and (material, machine) as separate records | Same normalisation, with forward-only migrations |
-| Post-processors are data: 75 files, 13 directives, 16 blocks | Implement the dialect; never hard-code a machine |
-| Arc output exists in 8 of the 16 blocks | Arcs stay arcs through every stage; no pre-tessellation |
-| Nesting is a licensed third-party engine (298 exported functions) | Own heuristic engine, scheduled as M9 |
-| `.crv` projects are OLE2 compound documents with unknown internals | Own open format; interoperate through DXF/SVG/PDF/EPS import |
-| Only the shell and the viewport are Windows-bound; the domain is portable | Replace the shell (Rust + `egui`), keep the domain; the draw list is backend-agnostic so a `wgpu` renderer can land with the 3D view |
+| The CAM domain is portable and only the window is not: nothing below `cam-ui` knows that `egui` exists, and the draw list is backend-agnostic | Port the domain, replace the shell: Rust + `wgpu`, `egui` behind an adapter |
+| One geometry feeds many cuts: the same 6 mm end mill feeds differently in MDF and in hardwood, and differently again on a light machine, so geometry, cutting data and the (material, machine) pair change independently | Three normalised records joined per pair, with forward-only migrations |
+| A post-processor is data, never code: a `.pp` file declares thirteen directives and twenty output blocks, and the emitter reads all of them | Implement the dialect; never hard-code a machine |
+| An arc's centre is what the controller needs and the first thing a chord loses, so no stage tessellates ahead of the emitter | Arcs stay arcs through every stage; no pre-tessellation |
+| A nesting plan is worth trusting only when it states its promise as one predicate a test can check, and the repository takes no new dependency unless a task proves it necessary | Own heuristic engine, scheduled as M9 |
+| A project file must be readable, diffable and versioned by its own schema tag — `c2d/document@1` loads and saves as `@2` — and interchange belongs to published formats | Own open format; interoperate through DXF/SVG/PDF/EPS import |
 
 The program plan, milestone sequence and risk register are in [odd/roadmap.md](odd/roadmap.md).
 

@@ -1,6 +1,6 @@
 //! Behaviour tests for the post-processor parser (A5, A7).
 //!
-//! The fixture below is authored for this project: no the vendor `.pp` file is vendored (A7). It covers
+//! The fixture below is authored for this project: no third-party `.pp` file is vendored (A7). It covers
 //! all thirteen directives and all twenty output blocks — the four helical kinds M6 added included, so
 //! `every_block_is_parsed` still means what it says (D-M6-8).
 

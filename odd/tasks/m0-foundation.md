@@ -1,16 +1,16 @@
-# Feature: the reference CAM application-class CAM application — Milestone M0 (foundation + vertical slice)
+# Feature: 2.5D CAM application — Milestone M0 (foundation + vertical slice)
 
 Program plan: `odd/roadmap.md`. This document is the executable specification for M0 only.
 Read this file until `## Log` before implementing any task. Stack: Rust, no UI crate in M0.
 
 ## Specs
 
-Requirements as stated by the owner (verbatim):
+Requirements as stated by the owner (verbatim; S1 and S3 restated by the name-hygiene sweep):
 
-- **S1** — "quiero crear una aplicacion similar a the reference CAM application"
+- **S1** — A desktop 2.5D CAM application (restated; the owner's wording named a third-party product).
 - **S2** — "quiero que sea cross platform Windows/Linux"
-- **S3** — "necesito que la analices con el mcp de REA @etc/the reference CAM applicationProTrialEdition_Setup.exe, extraigas
-  las evidencias y generemos un plan de desarrollo mediante ODD"
+- **S3** — The development plan is generated through ODD: milestones, each with its own feature document
+  and its own acceptance criteria (restated; the original wording named an installer to analyse).
 - **S4** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)"
 - **S5** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser"
 - **S6** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import
@@ -44,7 +44,7 @@ against.
   in the analysis report §6). Malformed input fails with a `line:column` diagnostic, never silently.
 - **A6** — Rounding and number formatting happen **only** in the emitter, driven by the `decimals`
   field of each `VAR` declaration.
-- **A7** — No the vendor `.pp` file is committed to this repository; fixtures are authored by us.
+- **A7** — No third-party `.pp` file is committed to this repository; fixtures are authored by us.
 - **A8** — The whole M0 behaviour is reachable through `cam-cli` with a stable exit-code and stdout
   contract, so every check runs headless on Windows and Linux.
 - **A9** — Identical input produces byte-identical G-code across runs and across platforms.
@@ -171,10 +171,10 @@ record the commit holding each task. No behaviour change.
 
 ## Log
 
-- **L1 (user, verbatim):** "quiero crear una aplicacion similar a the reference CAM application, para ello necesito
-  que la analices con el mcp de REA @etc/the reference CAM applicationProTrialEdition_Setup.exe, extraigas las evidencias y
-  generemos un plan de desarrollo mediante ODD. Como extra, decirte que quiero que sea cross platform
-  Windows/Linux."
+- **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD, with
+  Windows/Linux support named as the extra requirement. The owner's sentence also named a third-party
+  product and the installer it was to be observed in; the repository name hygiene sweep
+  (`odd/tasks/repository-name-hygiene.md`) removed those names.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";
   "Implementar nesting heurístico propio en v1".

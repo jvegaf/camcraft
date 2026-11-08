@@ -1,9 +1,5 @@
-# Third-party installer payload and derived text: never committed.
+# The owner's local scratch: never committed.
 /etc/
-/evidence/installer-extract/
-/evidence/derived/
-
-# The owner's reference application, used as a design input only.
 /data/
 
 # Rust

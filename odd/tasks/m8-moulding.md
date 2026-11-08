@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M8 (Moulding / swept profile)
+# Feature: 2.5D CAM application — Milestone M8 (Moulding / swept profile)
 
 Program plan: `odd/roadmap.md` (M8 = "Moulding / swept profile"). This document is the executable specification for M8
 only. Read this file until `## Log` before implementing any task.

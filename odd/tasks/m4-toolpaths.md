@@ -1,4 +1,4 @@
-# Feature: the reference CAM application-class CAM application — Milestone M4 (core toolpaths)
+# Feature: 2.5D CAM application — Milestone M4 (core toolpaths)
 
 Program plan: `odd/roadmap.md` (M4 = "Core toolpaths"). This document is the executable specification
 for M4 only. Read this file until `## Log` before implementing any task.
@@ -15,10 +15,10 @@ Requirements as stated by the owner (verbatim):
   (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear
   stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing;
   they exercise every post-processor block".
-- **S3** — the reference CAM application parameter vocabulary recovered by REA (verbatim, `evidence/analysis-report.md:200-202`):
-  "`ProfileSide` (`Profile Inside` / `Profile Outside` / `Profile On`), `ProfilePass`, `PocketAllowance`,
-  `PocketDepth`, `Pocket Pass`, `Pass Depth`, `stepover`, `clear_stepover`, `Safe Z`, `Start Depth`, `Cut
-  Depth`, `Cut Rate`/`Plunge Rate`."
+- **S3** — The parameter vocabulary M4 implements, verbatim: "`ProfileSide` (`Profile Inside` / `Profile
+  Outside` / `Profile On`), `ProfilePass`, `PocketAllowance`, `PocketDepth`, `Pocket Pass`, `Pass Depth`,
+  `stepover`, `clear_stepover`, `Safe Z`, `Start Depth`, `Cut Depth`, `Cut Rate`/`Plunge Rate`" — the
+  fields a profile, pocket or drilling operation is addressed by, in the document and on the command line.
 - **S4** — Strategy vocabulary recovered by REA (verbatim, `evidence/analysis-report.md:191-192`):
   "`2D Profile Toolpath`, `Pocket Toolpath`, `Drilling Toolpath`, `Drill Bank Toolpath`".
 - **S5** — Tool cutting-data columns recovered by REA (verbatim, `evidence/analysis-report.md:96`):
@@ -119,9 +119,9 @@ against.
   silently skipping the toolpath. M4 therefore adds variants without touching the tag, and the rule is
   restated precisely in `crates/cam-model/src/lib.rs` and `docs/format.md`. Revisit trigger: any change
   to a field's meaning or units, which *is* a `@2`.
-- **D-M4-2 — A pocket is one region per selected contour; islands are out of scope.** the reference CAM application pockets
-  closed vectors and treats a closed vector inside another as an island, which needs boolean
-  subtraction on arc-bearing contours. `cam-geom` has offsetting, intersecting and validation but no
+- **D-M4-2 — A pocket is one region per selected contour; islands are out of scope.** Pocketing closed
+  vectors while treating a closed vector inside another as an island needs boolean subtraction on
+  arc-bearing contours. `cam-geom` has offsetting, intersecting and validation but no
   boolean ops (they are named in the roadmap's crate description, not built). Island-free pockets are
   what M4 delivers; a nested selection pockets each contour separately and the CLI says so. Recorded as
   a known limit, not a silent behaviour.
@@ -131,17 +131,17 @@ against.
   also why adding fields to `ToolSpec` — and churning every existing profile test — is avoided.
 - **D-M4-4 — `clear_stepover` is the default for a clearing pocket, not a second tool inside one
   toolpath.** In the recovered schema `clear_stepover` lives in `tool_cutting_data`, i.e. it is a
-  per-tool rate like `stepdown`, and the vendor expresses "clear with a big tool, finish with a small one"
-  as two toolpaths (`tool_entity` joins a tool to a material/machine; `PocketAllowance` is per
+  per-tool rate like `stepdown`, and "clear with a big tool, finish with a small one" is expressed as two
+  toolpaths (`tool_entity` joins a tool to a material/machine; `PocketAllowance` is per
   toolpath). `cam-cli toolpath --kind pocket --clear` therefore reads `clear_stepover` instead of
   `stepover`; no two-tool toolpath is introduced. Confirmed as the reading of S5 only; the observable
-  semantics of the reference CAM application's own "Clear stepover" field are **[U]** in the analysis report and this doc does
-  not claim otherwise.
+  semantics of that "Clear stepover" field are **[U]** and this doc does not
+  claim otherwise.
 - **D-M4-5 — Drilling accepts circles only.** A hole is the centre of a closed contour whose segments
   are all arcs about one centre, the same construction `primitive::circle` produces. Any other closed
   contour is refused by name rather than drilled at a guessed "geometric centre", because a hole in the
-  wrong place is a ruined part. the vendor's own rule for non-circular selections is not recoverable from
-  static evidence.
+  wrong place is a ruined part. A non-circular closed contour has no single centre to drill at, so
+  refusing it is a rule rather than a fallback.
 - **D-M4-6 — Linking moves stay conservative.** Between rings, rows and holes the tool retracts to
   `safe_z` and rapids. Staying down for the next ring (the usual CAM optimisation) needs gouge-free
   linking through material and belongs with M5's simulation, which can prove it. Cost recorded: more

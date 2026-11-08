@@ -13,8 +13,8 @@ the record, not the brief.
 - **S5 (roadmap M10 row, not a user string):** "Documents & scripting — HTML print sheets, CSV import for
   part lists, scripting surface (Rhai/Lua) with a UI panel — Reporting and extension points; the
   original's gadget platform is the model". S1 supersedes its "Rhai/Lua": there is **no engine**.
-- **S6 (roadmap non-goal, verbatim from §1):** "the vendor Lua gadget compatibility (a scripting surface is
-  planned, not their dialect)."
+- **S6 (roadmap non-goal, verbatim from §1):** "Lua gadget (plugin ABI) compatibility with any existing CAM
+  package: a scripting surface is planned, and it will be its own dialect."
 
 ## Invariants every task must honour
 
