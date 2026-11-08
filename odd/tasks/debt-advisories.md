@@ -1,7 +1,43 @@
-# Debt: the fourteen open review advisories
+# Debt: the review advisories M9 and M10 left open
 
 Feature document for the advisory debt recorded in `odd/tasks/m10-documents.md` L9 and in Engram
 observation #165. Read **until `## Log`** before touching code; the Log is the record, not the brief.
+
+## State of the debt
+
+**Every count below this section is historical.** The register's own totals do not reconcile: `L2` counts
+"10 of the 14" while `L3` enumerates **eleven** metadata-only advisories, and `L14`'s "six closed and
+nine not" sums to fifteen. The canonical state is therefore the **enumerated list** — counted as rows,
+not inherited as a number — and `L18` records the arithmetic and each contradiction.
+
+**Open — ten findings by enumeration, no reviewer text surviving, no closure route left.** The ledger's
+historical figure is **nine**; the difference is exactly the point `L18` cannot resolve, and the rows below
+are what the record supports:
+
+| ID | Register | Why editing cannot close it |
+| --- | --- | --- |
+| `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003` | M9's review | six metadata-only advisories; three anchors name `crates/cam-cli/src/main.rs`, a file `6cc3b2d` split down to 16 lines |
+| `1ab52143/R2-002`, `R2-003`, `R3-002` | M9's nesting review | three metadata-only advisories; `R1-STEP-DOS` from the same lineage is **closed** (the 4M anchor cap, L11) |
+| `b5fe4921/R3-001` | M10's own debt review (L9) | reliability WARNING at `crates/cam-import/src/csv.rs:180-193`, the successor inside the very block `T2` added; its wording burned with its receipt |
+
+**Closed — six:** the four advisories `T1`-`T4` closed (three with the reviewer's own words recovered, the
+fourth's subject read off the code), `12219c3f/R1-001` (`3d6589f`), and `1ab52143/R1-STEP-DOS` (the 4M
+anchor cap, `c6eb633` + `b06c004`).
+
+**Every later register is closed.** `39a6d85c`'s six (`R1-quadratic-overlap-validation` and `R4-002` by
+`review-94cfd234`, the rest by `advisory-debt-close`), `94cfd234`'s six (one BLOCKER refuted, five closed),
+`ca5c7eda`'s five (three closed, two answered), `review-2b7f8544`'s two and `85153ac6`'s one. The single
+survivor is the "non-contour entity" half of `39a6d85c/R1-nesting-footprint-bypass`, kept as the record of
+a claim `EntityKind` makes unconstructible — that is not debt.
+
+**Decided by the owner, verbatim: "aceptaremos como irrecuperable".** `b5fe4921/R3-001` is therefore
+**accepted as unclosable**, not resolved: it is not re-filed, no further work waits on it, and it stays in
+the open table above as the record of a finding whose words this project cannot recover. The nine metadata
+rows are accepted on the same terms and for the same reason — they were asked about as one decision, and
+one decision answers them. What that leaves standing is the method, not the debt: a finding's words are
+written down in the session that receives them, before any acknowledgement burns the receipt, and
+`odd/reports/review-findings-survival.md` records what the store keeps and does not. Nothing in this
+document waits on anyone now.
 
 ## Specs
 
@@ -288,6 +324,46 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   **Not fixed here, and deliberately not smuggled into a debt sweep**: the fix changes shared geometry
   with four consumers (`cam-model`'s nesting, `nest_profile`, `region_offset`, `cam-toolpath`'s inlay)
   and needs its own document and review. Flagged for the owner in the same turn.
+- **L18 (the ledger reconciled: the arithmetic, and why the answer is a list rather than a number).** An
+audit of this document could not reconcile its totals, and the reconciliation is recorded here rather
+than by rewriting the entries above. **Three contradictions, each checkable against the text.**
+  (a) `L2` says "**10 of the 14** advisories exist only as metadata", while `L3` enumerates **eleven**
+  metadata-only advisories — `bd99706d` ×6 (`R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003`),
+  `12219c3f/R1-001` and `1ab52143` ×4 — so the register enumerates **15** findings, not 14. (b) `L14`'s
+  "of the **fourteen** … **six** are closed and **nine** are not" sums to fifteen, which is only
+  consistent if the successor is counted *outside* the fourteen — the opposite of what the same entry
+  says one sentence later ("the fifteenth … was recorded nowhere in this ledger before this line").
+  (c) The section on the nine carries the parenthetical "`bd99706d` ×6, `1ab52143` ×3,
+  `b5fe4921/R3-001`", which sums to **ten** and re-includes `1ab52143/R1-STEP-DOS`, closed at L11.
+  **None of the three can be settled from the record**: two readings survive every check — the register
+  is fifteen and `L2`'s ten is off by one, or two of `L3`'s eleven are one finding filed from two lenses
+  (the shape `L6` and `L16` both met: `R1-001` + `R4-001` is one finding). Deciding between them needs
+  the findings' text, which is precisely what this document exists because nobody has. **The canonical
+  state is therefore the enumerated list** at the top of this document under `## State of the debt`:
+  nine open, six closed, every later register closed, counted as rows rather than inherited as a number.
+  That the ledger says nine and its own rows say **ten** is not a new mistake but the same one, and it is
+  left visible rather than rounded to whichever number reads better.
+  The same wrong figure is repeated in four more places — `odd/roadmap.md:1098`,
+  `odd/tasks/m10-documents.md:172`, `odd/tasks/script-panel-document.md:40` and `:174`, and
+  `odd/tasks/advisory-debt-close.md:15` (that last one inside the owner's verbatim `S4`, which is never
+  rewritten) — and **none of them is authority now**.
+  **And the determination this reconciliation asked for, on the one live finding.** `b5fe4921/R3-001`,
+  the successor `L9` names at `crates/cam-import/src/csv.rs:180-193`, is **open, not closed**: the
+  section on the nine closes its **recovery route**, not the finding. Read again, that branch — `split`'s
+  quote-before-count check — shows no defect a test or a reading establishes: the refusal names the line
+  for a quote past `FIELDS`, the message quotes the offending field, and the order `T2` established is
+  intact. That is **not** a resolution, and recording it as one would repeat the very defect this
+  document exists to document: by `S3` a finding closes when its **subject** is established, and "the
+  code looks right today" establishes nothing about what a reliability reviewer saw in it. It stays
+  open and named unrecoverable, and the owner's choice between re-filing it and accepting it is the last
+  line of `## State of the debt`.
+- **L19 (the owner's decision on the last open question).** Asked whether to re-file `b5fe4921/R3-001`
+against a fresh review of `crates/cam-import/src/csv.rs` (301 lines, which the budget that refused M9's
+8 770 and M10's 4 425 does not obviously refuse) or to accept it as unclosable, the owner answered,
+verbatim: **"aceptaremos como irrecuperable"**. So it is accepted, not resolved: no re-filing, no further
+work on it, and `## State of the debt` now carries the decision where it used to carry the question. The
+nine metadata-only advisories are covered by the same answer, and L18's arithmetic is left as it stands
+rather than tidied — the point of that entry is that the number was never the record.
 
 ## Successor advisories: the sweep's review, re-filed by its own candidate
 
@@ -332,6 +408,13 @@ therefore defensive, the guarantee is the argument, and the argument now sits in
 padding instead of claiming the tests provide it.
 
 ## The nine, closed by measurement rather than by will
+
+> **Corrected at L18.** Nine is the figure the ledger carries; **enumerated it is ten** — `bd99706d` ×6,
+> plus the three of `1ab52143`'s four that stay open (`R1-STEP-DOS` closed at L11), plus
+> `b5fe4921/R3-001`. The parenthetical in the sentence below sums to ten only by re-including the closed
+> one, which is why L18 leaves the difference visible instead of silently rounding it. What this section
+> closes is the **recovery route**, not the findings; `b5fe4921/R3-001` remains an open finding whose
+> subject the record cannot establish, and `## State of the debt` carries the rows.
 
 L14 said the nine unrecoverable advisories (`bd99706d` ×6, `1ab52143` ×3, `b5fe4921/R3-001`) could only
 be closed by a fresh review that re-files them with new words, and the owner chose "Re-filear con una
