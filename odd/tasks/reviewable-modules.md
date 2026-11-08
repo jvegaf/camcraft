@@ -17,11 +17,14 @@ cost is the **files**. Read **until `## Log`** before touching code.
   false`, no authority created. The provider's own continuation: *"split this change into a chained sequence of
   smaller reviewable commits, each under the budget"*. T1 (~14,000) and T3 (~8,800) are worse. **Splitting a
   commit does not help when the file is the cost.**
-- **S3 (the target, and it is falsifiable).** No file under `crates/cam-ui/src` or `crates/cam-ui/tests` exceeds
-  **~800 lines**, and every file a M13 candidate touches is small enough that its **cumulative** context stays
-  under the one measurement that is known to pass (~1,200 lines) with room for the diff. The proof is not a
-  number in this document: it is a **successful `review.start` for `0c194cb`, `c4da057` and `a078015`**, each of
-  which failed before.
+- **S3 (the target, restated in L8 because the first version was unachievable).** No file under
+  `crates/cam-ui/src` or `crates/cam-ui/tests` that a M13 concern touches exceeds **~800 lines**, so a **future**
+  candidate over that concern carries a few hundred lines of file context instead of thousands. Measured after
+  the five slices, in today's files: the 3D half's concern is ~1.2k (`view3d/` 573 + `tests/view3d/` 456 +
+  `lib.rs` 131), the shell's chrome ~1.5k (`chrome/` 700 + `tests/shell/` 676 + `lib.rs` 131), and T1's
+  post-and-write concern ~0.5k (`main.rs` 332 + `lib.rs` 131 + `tests/shell/` 38) — against the 8.2k and 14k
+  that refused M13's candidates. **The original wording asked for a successful `review.start` on `0c194cb`,
+  `c4da057` and `a078015`; L8 records why that cannot be the test.**
 - **S4 (behaviour is untouchable).** This milestone moves code and nothing else. No signature changes, no
   renames beyond what a move forces, no new tests, no deleted tests, no assertion edited. The gate is the proof:
   **1607 tests, the same names**, before and after every slice — and where a move needs a helper to leave a
@@ -42,7 +45,8 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T3 | ✅ **delivered** — `crates/cam-ui/src/view3d.rs` (2,130) is now `view3d/`: `mod.rs` 328 (public paths + the five unit tests, whose names stayed `view3d::tests::*`), `scene` 443, `playback` 562, `chrome` 278, `shell` 573. Largest file **573**. Nine `pub(super)` markers, no `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
-| T6 | The proof S3 asks for: attempt `review.start` for `0c194cb`, `c4da057` and `a078015`, record each outcome, and — where one still fails — record the file and the number that refused it | S3 | inline | — |
+| T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
+| T7 | The files this milestone did **not** split and a future review would still carry whole: `icons.rs` 2,135, `tests/strategy.rs` 1,285, `tool_library.rs` 1,234, `tests/tool_library.rs` 1,179, `strategy.rs` 1,137, `theme.rs` 945, `tests/input.rs` 881. Splitting them is a decision, not an oversight | S3 | owner | — |
 
 ## Log
 
@@ -120,4 +124,25 @@ cost is the **files**. Read **until `## Log`** before touching code.
   new ones are the price of the move — `[Command]` in `mod.rs`'s header (a module that holds no code cannot
   carry a doc-only `use`) and `[Shell::material_dialog]` in `paint`'s `field` doc (which does not import
   `Shell`). L6 established rustdoc as not-a-gate; a documentation task re-points them together with L6's nine.
+- **L8 (T5 delivered, and the acceptance criterion corrected by measurement).** `lib.rs` 3,738 → **131** plus
+  `shell/` (ten files, largest `mod.rs` 511) and `actions/` (two, largest `handle.rs` 609). Public paths proved
+  stable by compiling a scratch crate against the built rlib with every name the integration tests use: zero
+  errors. 296 cam-ui tests, 136 shell, 47 view3d, **1607** workspace, gate exit 0. Deviations
+  recorded: **32 markers**, fifteen of them `Shell` fields now `pub(crate)` — forced, because a private field in
+  the crate root was crate-visible by construction and seven sibling modules read those fields (87 compile
+  errors before the first one); the keyword records the reach they already had. And `cargo doc` went 45 → 69
+  unresolved intra-doc links, every one of them a link that only resolved because the root had every name in
+  scope.
+
+  **The correction, and it is the milestone's most useful output.** S3 originally demanded a successful
+  `review.start` for `0c194cb`, `c4da057` and `a078015` as the proof. That test is **unachievable**, and the
+  reason is structural: a review freezes **the candidate's own tree**, so the range `89ed3b3..c4da057` still
+  carries `view3d.rs` 2,130 and `tests/view3d.rs` 2,374 — files that exist only as history now. Splitting today
+  cannot retroactively shrink a tree that was committed yesterday, and re-running those three STARTs would fail
+  identically and cost nothing but would prove nothing either. What the five slices actually change is the
+  **forward** context, and that is measurable today: a future change to the 3D half carries ~1.2k instead of
+  8.2k, to the chrome ~1.5k instead of 14k, to the post-and-write path ~0.5k. The milestone's real proof is a
+  candidate that does not exist yet, so this document states the numbers and lets the next review be the test.
+  **And the limit**: the crate still holds seven files above ~800 lines that no task here named — T7 lists them,
+  because a promise of "every file under 800" would be false.
 
