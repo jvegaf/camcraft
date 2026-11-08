@@ -40,7 +40,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T1 | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T2 | ✅ **delivered** — `crates/cam-ui/tests/view3d.rs` (2,374) became a **31-line root** plus `support` and six concern modules (scene 413, playback 421, playback_bar 389, split 330, simulation 221, overlay 146); largest file **456**. 47 tests, same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T3 | ✅ **delivered** — `crates/cam-ui/src/view3d.rs` (2,130) is now `view3d/`: `mod.rs` 328 (public paths + the five unit tests, whose names stayed `view3d::tests::*`), `scene` 443, `playback` 562, `chrome` 278, `shell` 573. Largest file **573**. Nine `pub(super)` markers, no `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T4 | `crates/cam-ui/src/chrome.rs` (2,672) splits by surface (app bar, rail, ribbon, task editor, layers) | S3 S4 S5 | worker | — |
+| T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | The proof S3 asks for: attempt `review.start` for `0c194cb`, `c4da057` and `a078015`, record each outcome, and — where one still fails — record the file and the number that refused it | S3 | inline | — |
 
@@ -103,4 +103,21 @@ cost is the **files**. Read **until `## Log`** before touching code.
   `unused_imports` fires on imports referenced only by doc comments, and the gate is `-D warnings`. L27 already
   recorded rustdoc as not-a-gate with 34 such links at `2a09faa`, so this is house tolerance — but it grew, and
   a later documentation task should re-point those links.
+- **L7 (T4 delivered; the largest surface, split where the code already broke).** `2,672 → 2,757` across nine
+  files, **largest 700**, `mod.rs` 178 holding the header, the declarations (`Tab`, `Category`,
+  `ToolSubject`) and the re-exports with their original visibility. The boundaries are the surfaces the file
+  already had — app bar, rail and palette, ribbon and task editor, layers, job and material, overlays, and one
+  `paint` module for the widgets they share. Proved like the rest: 51 top-level items and 41 `impl Shell`
+  methods each verbatim in exactly one file, and the non-blank line multiset differs only by the six extra
+  `impl Shell {`/`}` wrappers. Six `pub(super)` markers, each required by a sibling, none reaching outside
+  `chrome`; the twelve `chrome::` call sites in `lib.rs`, `strategy.rs`, `tool_library.rs` and the two
+  integration tests resolve unchanged, which the build proves.
+  **One doc block documented two items** — `section_toggle`'s paragraph had no blank `///` before `Glyph`'s, so
+  lines 2138–2148 formed one block above `enum Glyph` while `section_toggle` carried no doc at all. The seam is
+  where the text itself breaks, and the two halves concatenate byte-for-byte back to the original: T2's L5
+  precedent again, no word changed.
+  **Debt that grew, recorded:** `cargo doc --document-private-items` goes from 43 to 45 unresolved links. Both
+  new ones are the price of the move — `[Command]` in `mod.rs`'s header (a module that holds no code cannot
+  carry a doc-only `use`) and `[Shell::material_dialog]` in `paint`'s `field` doc (which does not import
+  `Shell`). L6 established rustdoc as not-a-gate; a documentation task re-points them together with L6's nine.
 
