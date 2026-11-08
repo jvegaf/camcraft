@@ -59,7 +59,7 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
 | T1 | `Generate G-code` is real: `cam-post` reaches `cam-ui`, the action is enabled exactly by being pressable, a press posts the open document, one save dialog chooses the path, the file is written, and the status bar names it and its line count. `Post…` holds the dialect for the session, a file that is not a post-processor is refused while the held one stays, and every refusal writes nothing | S1 S2 S7 | inline | — |
 | T2 | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3 | inline | — |
 | T3 | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe | S1 S4 | inline | — |
-| T4 | The stock reads as **material**: `design/system.md` and both palettes move `StockTop`/`StockBottom`/`StockEdge` to tan values, and the four contrast proofs are re-derived with them (the 12 AA pairs, `StockEdge`'s 3:1 floor against canvas and lit face). No painting code changes: the 3D half already mixes the roles | S1 S5 | worker | — |
+| T4 | ✅ delivered in `7ed58b6` — the stock reads as **material**: dark `StockTop #705c42` / `StockBottom #453726` / `StockEdge #ddc9a3`, light `#e8cb9d` / `#cfad7b` / `#664d2e`; four stock proofs re-derived, two new (the wood band, and `Cut` on the lit face at 3:1 — a pair that had never been proved and measured 1.47:1). No painting code changed | S1 S5 | worker | `7ed58b6` |
 | T5 | The milestone's row in `odd/roadmap.md`, its §4.16 evidence section and this document's log, with the commits as evidence | — | inline | `a078015`+ |
 
 ## Slices
@@ -72,7 +72,7 @@ measured against the ~400-line guidance that protects the reviewer:
 | 1 | T1 + this document | `0c194cb` | 731 | Over the guidance, and the reason is the test file: 359 of those lines are eight behaviour tests, each asserting a refusal's *absence of effect* as well as its message. Splitting the code from its tests would have left a slice that proves nothing, and splitting the two behaviours (choose a post / write a program) would have left a commit that does not compile, because both presses live in one `with_layout` block. Recorded rather than hidden: the candidate is the whole slice. |
 | 2 | T2 | `89ed3b3` (boundary) + `c4da057` | 406 | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. Two sentences in `chrome.rs` (the RELIEF AND 3D task) still name `cam-cli`; they are outside this slice and named below. |
 | 3 | T3 | — | 585 test + ~120 source, plus the one-line door | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. The slice closed the deviation the first version left — `open_tool_library` still aimed at `toolpaths.first()` (`tool_library.rs:538`), which would have retooled a different toolpath than the card named, one press away from writing the defect this task removes from reading. |
-| 4 | T4 | — | palette only | The roles move, the shader does not: `stock_shade` already mixes `StockTop` into `StockBottom`, so the slice is two palettes, one table and the proofs that hold them. |
+| 4 | T4 | `7ed58b6` | two palettes, one table, five proofs | The roles move, the shader does not: `stock_shade` already mixed `StockTop` into `StockBottom`, so the slice is two palettes, one table and the proofs that hold them. |
 | 5 | T5 | — | docs only | Documentation only: the roadmap row, §4.16 and L7. |
 
 ## Log
@@ -141,4 +141,13 @@ measured against the ~400-line guidance that protects the reviewer:
   the provider instead of by my judgement, after I twice deferred the review instead of splitting it. The
   four candidates are `0c194cb`, `c4da057`, `a078015` and the sweep's commit, each with its parent as
   `baseRef`.
-
+- **L10 (T4 delivered: the tan is resolved, not picked, and the ramp pays for it).** `7ed58b6`. The binding
+  constraint came from a pair nobody had proved: the amber `Cut` is painted **on** the stock, and its contrast
+  against `StockTop` measured **1.47:1** in the dark set before this change. Holding it to the 3:1 a 1.6 px
+  signal needs forces a mid-value wood, so the dark stock is walnut `#705c42` (3.14:1 under the amber, 2.99:1
+  off the canvas), its shade `#453726` is the same wood 1.80:1 deeper, and the rim had to go **lighter**
+  (`#ddc9a3`, because nothing darker clears 3:1 against that face). The light set is squeezed into a
+  0.024-of-luminance window by the same two proofs: `#e8cb9d` carries `#a86200` at 3.05:1 and stands 1.48:1 off
+  the page. Two consequences are recorded rather than hidden: the dark ramp narrows from 6.33:1 to 1.80:1, and
+  the light set's amber over the *deepest* stop is 2.25:1 — under the floor, and unfixable by moving only these
+  three roles (it needs a lighter paper amber, which is its own decision and not this task's).
