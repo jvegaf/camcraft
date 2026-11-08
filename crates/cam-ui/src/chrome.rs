@@ -901,9 +901,11 @@ impl Shell {
   /// `03-27-41`'s `Novo percurso — Chanfro` flyout puts a card at the top of a toolpath form: the tool's
   /// number and name, then its type with the shape's numbers and its flute count. **Nothing else is on
   /// it** (S2): the frame shows no material, no machine and no feed, plunge or spindle rate, so the card
-  /// does not grow them. That is also what makes the card honest —
-  /// [`cam_store::tools::stored_tool_for_number`] takes no material and no machine (S3), so a rate on
-  /// this card would have to claim a material the document does not carry.
+  /// does not grow them. The reason is the card's own, not the document's: since M11 a document **does**
+  /// carry `job.material`, but [`cam_store::tools::stored_tool_for_number`] still takes no material and no
+  /// machine (S3), so the rates this card could print are the tool's own record — which is exactly the pair
+  /// a program stops using the moment a material is selected. A rate here would be a number the machine
+  /// does not run.
   ///
   /// The number resolves through the same function the emitter resolves it with, so the card cannot say
   /// "T7 is missing" beside a program that cuts with T7: the two read one rule (S3). The unresolved case
