@@ -1888,7 +1888,7 @@ fn two_placements_that_share_an_edge_are_accepted() {
 }
 
 #[test]
-fn a_pair_separated_by_less_than_the_tolerance_is_accepted_on_either_axis() {
+fn a_pair_separated_by_at_most_the_tolerance_is_accepted_on_either_axis() {
   // The prune's threshold and the relation's tolerance are one value, so a gap the relation still sees
   // is a gap the prune may not break on: inside the tolerance the relation answers `Touching`, which
   // is not an overlap unless the two bounds are equal. Both axes and both sides of the inclusive

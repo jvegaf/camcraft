@@ -1841,11 +1841,15 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
   // dropped the crowded sheet back onto the quadratic scan the index exists to avoid
   // (review-1567a12dd01c0090's `R4-001`).
   //
-  // A box wider than its sheet's cell span is kept out of the grid entirely, in a short per-sheet wide
+  // A box wider than its sheet's cell span is kept out of the grid entirely, in a per-sheet wide
   // list. Stored in every cell it covers it would make each of those cells hold O(N) occupants, and
   // every placement would iterate all of them before the visited stamp discarded them one by one —
   // O(N²·sqrt N) stamp-loop steps for a document whose pairs are Θ(N²), which is exactly N full-width
   // strips stacked in y. The wide list gives that document the optimal Θ(N²) scan with no duplication,
+  // at the price of walking the list once per placement: with W wide boxes and N narrow ones that is
+  // O(N·W) guard checks, which is quadratic when most boxes are wide — the counting is honest here
+  // because the guards are two f64 comparisons and no relation is asked, but it is quadratic, and a
+  // document of a million wide strips would feel it,
   // and costs one extra entry per query when one wide box sits beside many narrow ones
   // (review-1567a12dd01c0090's `R3-001`). This replaces a running maximum of `max.x`: that bound was
   // sound but not tight, because one box spanning the sheet held it high for every placement behind it

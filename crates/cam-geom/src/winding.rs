@@ -226,10 +226,12 @@ pub enum Relation {
 
 /// Classify how two closed contours sit relative to each other, within `tolerance` millimetres.
 ///
-/// The boundaries are intersected first — every crossing, including the overlap a shared span implies,
-/// is decided from those intersections. When the boundaries do not share a span, containment is decided
-/// from one probe — the first vertex of one contour, asked about the other. Only the shared-side guard
-/// walks every vertex, precisely because one boundary probe cannot answer for a coincident pair.
+/// The boundaries are intersected first, and every crossing *segment contact* produces is decided from
+/// those intersections — but they are never the whole answer: a shared span decides nothing on its own,
+/// which is why the same-side guard and its two-sided witness exist below. When the boundaries do not
+/// share a span, containment is decided from one probe — the first vertex of one contour, asked about
+/// the other. Only the shared-side guard walks every vertex, precisely because one boundary probe
+/// cannot answer for a coincident pair.
 /// Bounding boxes are a fast path to [`Relation::Disjoint`], never the decision: a rectangle's bounds
 /// contain a circle's bounds without containing the circle.
 ///
