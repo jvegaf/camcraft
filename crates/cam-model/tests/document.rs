@@ -2111,7 +2111,11 @@ fn an_early_overlap_ends_the_check_instead_of_scanning_every_later_placement() {
 #[test]
 fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
   // One part spans the sheet's whole x range in a y band of its own, and 20 000 small parts sit in a
-  // second band, laid out in ascending x and authored in descending order. No pair is an offence. An
+  // second band, laid out in ascending x and authored in descending order. No pair is an offence — the
+  // small parts are 10 mm wide and 11 mm apart, which is the spacing this fixture originally got wrong:
+  // at 4.5 mm the copies overlapped each other, and `winding::relation` used to call that a touch
+  // because their top and bottom edges are collinear (the same defect `odd/tasks/winding-collinear-
+  // overlap.md` fixes), so the document validated for the wrong reason. An
   // index bounded by a running maximum of `max.x` collapses here — the wide box holds the maximum high
   // for every placement behind it — so each small part walks the whole prefix and asks for relations
   // that the guards then discard (review-ca5c7eda65951600's `R4-LOAD-REGRESSION`). This is a tripwire,
@@ -2137,7 +2141,7 @@ fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
     let nesting = document.nesting.as_mut().expect("a section");
     nesting.sheets = vec![NestingSheet {
       id: "S1".to_owned(),
-      width: Length::from_mm(100_000.0),
+      width: Length::from_mm(300_000.0),
       height: Length::from_mm(100_000.0),
     }];
     nesting.parts = vec![
@@ -2157,7 +2161,7 @@ fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
       .map(|index| NestingPlacement {
         part_id: "P-small".to_owned(),
         sheet_id: "S1".to_owned(),
-        position: Point2::new(index as f64 * 4.5, 50_000.0),
+        position: Point2::new(index as f64 * 11.0, 50_000.0),
         rotation: Angle::ZERO,
       })
       .collect();
@@ -2178,6 +2182,30 @@ fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
   assert!(
     elapsed < std::time::Duration::from_secs(5),
     "a wide placement must not force a scan of the whole prefix: {elapsed:?}"
+  );
+}
+
+#[test]
+fn two_placements_that_overlap_with_collinear_edges_are_refused() {
+  // The sixteenth advisory, at the level it hurt: P1's two 100 mm squares 50 mm apart in x share their
+  // whole y extent, so their bottom and top edges coincide along a span while the interiors overlap by
+  // 5 000 mm². `winding::relation` called that a touch — a coincident edge was enough to return
+  // `Touching`, before any containment was asked — and this document loaded. The classifier now
+  // answers `Crossing` for a same-side shared span with no containment, so the refusal is the one the
+  // nesting rules always claimed (`odd/tasks/winding-collinear-overlap.md` S3).
+  let mut document = nesting_document();
+  document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(50.0, 0.0);
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingPlacementsOverlap {
+        ref first,
+        ref second,
+        ref sheet,
+      } if first == "P1" && second == "P1" && sheet == "S1"
+    ),
+    "{error:?}"
   );
 }
 
