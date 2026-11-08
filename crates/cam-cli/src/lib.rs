@@ -3003,8 +3003,14 @@ pub fn emit_args(rest: &[String]) -> Result<EmitArgs, Failure> {
         args.library = rest.get(index + 1).map(PathBuf::from);
         index += 2;
       }
+      // A selector with no name is a usage error, never "no selector": the operator asked for a material
+      // and the program would otherwise cut at a rate they did not choose (review-c54c930ddcde3f9f's
+      // R1-001, R2-001, R3-002 and R4-001). A following flag is not a name either.
       "--material" => {
-        args.material = rest.get(index + 1).cloned();
+        match rest.get(index + 1) {
+          Some(value) if !value.starts_with('-') => args.material = Some(value.clone()),
+          _ => return Err(Failure::input("emit --material needs a material name")),
+        }
         index += 2;
       }
       other if other.starts_with('-') => {

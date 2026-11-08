@@ -361,15 +361,19 @@ fn emit_cuts_as_the_material_it_is_asked_for() {
   let library = write_library_with_material_rates(&directory);
   let post = write_post(&directory);
 
-  // No selector, no document field: today's program, byte for byte.
+  // No selector, no document field: today's program, byte for byte — measured against a library shaped
+  // like the ones `tools add` writes, with one null-material record. A library carrying both a
+  // null-material row and material rows keeps the pre-existing ambiguity of which row a tool number
+  // matches first, and this milestone does not decide that (`odd/tasks/m11-feeds-speeds.md` L6).
   let plain = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let simple = write_library(&directory);
   let own = run(&[
     "emit",
     plain.to_str().expect("utf8"),
     "--post",
     post.to_str().expect("utf8"),
     "--library",
-    library.to_str().expect("utf8"),
+    simple.to_str().expect("utf8"),
   ]);
   assert_eq!(own.code, 0, "{}", own.stderr);
   assert!(own.stdout.contains("F100.0"), "{}", own.stdout);
@@ -444,6 +448,30 @@ fn emit_refuses_a_material_the_library_has_no_record_for() {
   assert!(outcome.stdout.is_empty(), "{}", outcome.stdout);
   assert!(outcome.stderr.contains("oak"), "{}", outcome.stderr);
   assert!(outcome.stderr.contains("T1"), "{}", outcome.stderr);
+
+  // A selector with no name is a usage error, not "no selector" — and a following flag is not a name.
+  for arguments in [
+    vec!["--material"],
+    vec!["--material", "--out", "elsewhere.nc"],
+  ] {
+    let mut invoked = vec![
+      "emit",
+      document.to_str().expect("utf8"),
+      "--post",
+      post.to_str().expect("utf8"),
+      "--library",
+      library.to_str().expect("utf8"),
+    ];
+    invoked.extend(arguments.iter().copied());
+    let broken = run(&invoked);
+    assert_eq!(broken.code, 2, "{:?}: {}", invoked, broken.stderr);
+    assert!(broken.stdout.is_empty(), "{}", broken.stdout);
+    assert!(
+      broken.stderr.contains("needs a material name"),
+      "{}",
+      broken.stderr
+    );
+  }
 }
 
 #[test]

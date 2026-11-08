@@ -74,19 +74,14 @@ pub fn program_for(
   let tools = program_tools(
     document,
     |number| -> Result<Option<ProgramTool>, ProgramError> {
-      let Some((geometry, matched)) = library.tool_for_number(number)? else {
+      let Some((geometry, own)) = library.tool_for_number(number)? else {
         return Ok(None);
       };
-      // With no material selected, the record a program cuts with is the one the library keys **as the
-      // tool's own** — the row whose material is null. Asking `tool_for_number` alone would answer with
-      // whichever row the tool number matched first, which is how a library that keys rates per material
-      // would cut as one of them while nobody had selected any (M11 S3).
-      let own = match material {
-        None => library
-          .cutting_data_for(&geometry.id, None, None)?
-          .unwrap_or(matched),
-        Some(_) => matched,
-      };
+      // With no material selected the record is exactly the one `tool_for_number` has always answered,
+      // unchanged: a library that carries both a null-material row and material-keyed rows still answers
+      // with whichever row the tool number matches first, which is a **pre-existing** ambiguity this
+      // milestone does not decide (recorded as a follow-up, `odd/tasks/m11-feeds-speeds.md` L6).
+      // Selecting a material is what resolves it, and that is the one thing this milestone adds.
       let in_material = match material {
         Some(material) => library.cutting_data_for(&geometry.id, Some(material), None)?,
         None => None,

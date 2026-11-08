@@ -94,3 +94,25 @@ Feature document for milestone **M11** of `odd/roadmap.md`. Read **until `## Log
   **L4.2 stays open by decision:** no shipped post block references `[FP]`, so a plunge rate cannot be seen
   through the emitter at all; it is pinned at the `cam-program` level by T2's tests, and changing a post
   contract to make it visible is not this milestone's business.
+- **L6 (the correction: one defect from four lenses, and one change of mine that was not asked for).**
+  Lineage **`review-c54c930ddcde3f9f`** (tier `high`, 667 lines, 26 paths) went `correction_required` on
+  five corroborated findings, and two things were wrong.
+  **(a) The flag's parser** — `R1-001`, `R2-001`, `R3-002` and `R4-001` are the same defect from four
+  lenses: `rest.get(index + 1).cloned()` made a trailing `--material` indistinguishable from *no*
+  selector, so `emit` exited `0` and cut at a rate the operator had explicitly asked not to use, and a
+  following flag was consumed as the name. It now refuses: a missing value, or a value that starts with
+  `-`, is `exit 2` with "emit --material needs a material name", pinned by both shapes (`--material`
+  last, and `--material --out elsewhere.nc`) in `emit_refuses_a_material_the_library_has_no_record_for`.
+  **(b) A change nobody asked for** — `R3-001`: I had made the **no-selector** path prefer the
+  null-material row, which changes what an existing library shape emits (`F60.0` → `F100.0` in my own
+  fixture) and contradicts S3. Reverted: with no material the record is exactly the one `tool_for_number`
+  has always answered, and the comment says so instead of claiming a byte-identity the code did not
+  deliver. The multi-record ambiguity — a library carrying both a null-material row and material rows
+  answers with whichever row the tool number matches first — is **pre-existing, measured, and recorded
+  here as a follow-up this milestone does not decide**: selected material is what resolves it, and that
+  is the one thing M11 adds. `emit_cuts_as_the_material_it_is_asked_for` now measures the no-selector
+  case against a library shaped like the ones `tools add` writes.
+  **Out of scope and still open** (`R4-002`, `R3-003`, the same defect twice): the shell's cutting-time
+  estimate passes no material, so a document that names one emits with that material's rates while the
+  window estimates from the tool's own record. It becomes visible when the shell gains a material
+  selector; the snapshot needs a material path `cam-store` can answer, which is a change to that crate.
