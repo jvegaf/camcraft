@@ -94,3 +94,33 @@ Feature document for milestone **M12** of `odd/roadmap.md`. Read **until `## Log
   rather than guessed from an extension, and a missing `--format` is refused rather than defaulted.
   `Format::from_name` joins the extension lookup the crate already had. `docs/format.md` gains the command
   row and the losses it carries; the roadmap gains the M12 row.
+- **L6 (the review: approved first pass, and the nine findings that were still worth fixing).** Lineage
+  **`review-a7e624d841d3d0c6`**: tier `high`, 2156 lines over 15 paths, four lenses, closure **`approved`
+  on the first admitted event** with no correction, receipt burned (`sha256:193e1fd6…`). Nine findings,
+  all **informational** by the provider's own statement, and seven of them were real defects rather than
+  taste — fixed in the same milestone because each is small and one is destructive:
+  1. `R4-SAME-PATH` and `R3-001`, the same finding twice: `export part.c2d --out part.c2d` **replaced the
+     document with DXF and reported success**. `--out` is now refused when it canonicalises to the
+     document being read, and the test asserts the document is byte-identical afterwards.
+  2. `R4-ATOMIC-OUT`: `fs::write` truncates before it completes, so an interrupted export left an empty or
+     half-written `.dxf` beside a live document. The bytes now land in a sibling temporary and are renamed;
+     the test asserts a second export over the same path succeeds and leaves no temporary behind.
+  3. `R4-STDOUT-PANIC`: `print!` panics on a closed pipe, so `export | head` exited `101` with a backtrace
+     instead of a failure a script can read. It now writes with `write_all` on the locked stdout and maps
+     the error. The closed-pipe case is the one thing this repository's harness cannot reproduce, and that
+     is recorded rather than claimed.
+  4. `R2-003` and `R3-002`, again one finding from two lenses: my round-trip comparator normalised **each
+     contour to its own bounding box**, so a writer that shifted one contour relative to another would
+     still pass — it did not prove S4 at all. Both sides are now framed by **one origin for the whole
+     side**, and the comparators take slices rather than pairs.
+  5. `R3-003`: a point-set comparison cannot see a phantom zero-length segment, so the round trip also
+     asserts vertex and segment counts for every contour — the circle being the case the SVG writer's
+     explicit closing `A` could have doubled.
+  6. `R2-002`: `export`'s doc said the writer "refuses nothing the model allows", which hid a real refusal
+     surface (DXF layer names the reader would alter, an SVG of a document with no geometry). It now names
+     them.
+  7. `R2-001`: the SVG module's identity omitted `min.y` from `Page::place`'s formula, so the sentence that
+     explains the Y reflection was false for any page not anchored at zero.
+  What the review did **not** find is as telling: neither writer lost an arc, a layer order or a closed
+  contour, and the round trip held through both formats on the first run — the byte-level tests the two
+  worker units were built against did their job.

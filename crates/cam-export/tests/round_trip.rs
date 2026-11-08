@@ -62,17 +62,29 @@ fn shapes(document: &Document) -> Vec<(String, Vec<Contour>)> {
     .collect()
 }
 
-/// A contour as points in its own frame: tessellated, then translated so its bounding box starts at the
-/// origin. The translation is the one the reader performs and the one S4 subtracts.
-fn points(contour: &Contour) -> Vec<Point2> {
-  let sampled = contour.tessellate(TOLERANCE).to_vec();
+/// Every contour of one side, sampled and placed in **one shared frame** — a single origin taken from
+/// every point of the whole side, which is the one translation the reader performs. Normalising each
+/// contour on its own would hide a writer that shifted one contour relative to another, so it would not
+/// prove S4 at all (review-a7e624d841d3d0c6's R2-003 and R3-002).
+fn framed(contours: &[Contour]) -> Vec<Vec<Point2>> {
+  let sampled: Vec<Vec<Point2>> = contours
+    .iter()
+    .map(|contour| contour.tessellate(TOLERANCE).to_vec())
+    .collect();
   let mut min = Point2::new(f64::INFINITY, f64::INFINITY);
-  for point in &sampled {
-    min = Point2::new(min.x.min(point.x), min.y.min(point.y));
+  for points in &sampled {
+    for point in points {
+      min = Point2::new(min.x.min(point.x), min.y.min(point.y));
+    }
   }
   sampled
-    .iter()
-    .map(|point| Point2::new(point.x - min.x, point.y - min.y))
+    .into_iter()
+    .map(|points| {
+      points
+        .into_iter()
+        .map(|point| Point2::new(point.x - min.x, point.y - min.y))
+        .collect()
+    })
     .collect()
 }
 
@@ -83,37 +95,60 @@ fn nearest(from: Point2, to: &[Point2]) -> f64 {
 }
 
 /// Both directions, because a subset would pass a shape that merely contains the other.
-fn assert_same_shape(written: &Contour, read: &Contour, what: &str) {
-  let written_points = points(written);
-  let read_points = points(read);
-  for point in &written_points {
-    let distance = nearest(*point, &read_points);
-    assert!(
-      distance <= TOLERANCE,
-      "{what}: a written point ({:.4}, {:.4}) is {distance:.4} mm from the read shape",
-      point.x,
-      point.y
-    );
-  }
-  for point in &read_points {
-    let distance = nearest(*point, &written_points);
-    assert!(
-      distance <= TOLERANCE,
-      "{what}: a read point ({:.4}, {:.4}) is {distance:.4} mm from the written shape",
-      point.x,
-      point.y
-    );
-  }
+fn assert_same_shape(written: &[Contour], read: &[Contour], what: &str) {
   assert_eq!(
-    written.is_closed(),
-    read.is_closed(),
-    "{what}: closedness must survive, and it is the only signal DXF carries for it"
+    written.len(),
+    read.len(),
+    "{what}: the same number of contours"
   );
+  let written_frames = framed(written);
+  let read_frames = framed(read);
+  for (index, (written_points, read_points)) in
+    written_frames.iter().zip(read_frames.iter()).enumerate()
+  {
+    for point in written_points {
+      let distance = nearest(*point, read_points);
+      assert!(
+        distance <= TOLERANCE,
+        "{what}/{index}: a written point ({:.4}, {:.4}) is {distance:.4} mm from the read shape",
+        point.x,
+        point.y
+      );
+    }
+    for point in read_points {
+      let distance = nearest(*point, written_points);
+      assert!(
+        distance <= TOLERANCE,
+        "{what}/{index}: a read point ({:.4}, {:.4}) is {distance:.4} mm from the written shape",
+        point.x,
+        point.y
+      );
+    }
+  }
+  for (index, (wrote, got)) in written.iter().zip(read.iter()).enumerate() {
+    assert_eq!(
+      wrote.is_closed(),
+      got.is_closed(),
+      "{what}/{index}: closedness must survive, and it is the only signal DXF carries for it"
+    );
+    // A point-set comparison cannot see a phantom zero-length segment or a duplicated vertex, so the
+    // counts are asserted too (R3-003).
+    assert_eq!(
+      wrote.vertices().len(),
+      got.vertices().len(),
+      "{what}/{index}: the same number of vertices"
+    );
+    assert_eq!(
+      wrote.segments().len(),
+      got.segments().len(),
+      "{what}/{index}: the same number of segments"
+    );
+  }
 }
 
 /// One contour per interesting class: an open polyline with a straight and a curved leg, a closed
-/// square, a full circle carried as two half turns, and a closed shape whose **closing** segment is an
-/// arc — the case SVG has nowhere to put a bulge for.
+/// rectangle, and a full circle carried as two half turns — the case SVG has nowhere to put a closing
+/// bulge for, and the one whose vertex count proves no phantom segment appeared.
 fn fixtures() -> Vec<(&'static str, Contour)> {
   use cam_geom::Segment;
 
@@ -177,9 +212,7 @@ fn a_document_survives_a_dxf_round_trip_with_its_layers() {
       "{}: one contour out, one contour back",
       source.0
     );
-    for (index, (read, wrote)) in layer.contours.iter().zip(source.1.iter()).enumerate() {
-      assert_same_shape(wrote, read, &format!("{}/{}", source.0, index));
-    }
+    assert_same_shape(&source.1, &layer.contours, &source.0);
   }
 }
 
@@ -216,13 +249,7 @@ fn a_document_survives_an_svg_round_trip_and_loses_its_layers() {
     contours.len(),
     "every contour crosses the page"
   );
-  for (index, (wrote, read)) in contours
-    .iter()
-    .zip(imported.layers[0].contours.iter())
-    .enumerate()
-  {
-    assert_same_shape(wrote, read, &format!("svg/{index}"));
-  }
+  assert_same_shape(&contours, &imported.layers[0].contours, "svg");
 }
 
 #[test]

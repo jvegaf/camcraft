@@ -824,6 +824,52 @@ fn export_writes_the_document_back_out_in_both_formats() {
   let missing = run(&["export", document.to_str().expect("utf8")]);
   assert_eq!(missing.code, 2, "{}", missing.stderr);
   assert!(missing.stderr.contains("--format"), "{}", missing.stderr);
+
+  // Writing over the document we just read would destroy it and report success, so it is refused
+  // (review-a7e624d841d3d0c6's R4-SAME-PATH and R3-001).
+  let before = std::fs::read(&document).expect("the document is there");
+  let over_itself = run(&[
+    "export",
+    document.to_str().expect("utf8"),
+    "--format",
+    "dxf",
+    "--out",
+    document.to_str().expect("utf8"),
+  ]);
+  assert_eq!(over_itself.code, 2, "{}", over_itself.stderr);
+  assert!(
+    over_itself.stderr.contains("must not be the document"),
+    "{}",
+    over_itself.stderr
+  );
+  assert_eq!(
+    std::fs::read(&document).expect("the document survives"),
+    before,
+    "a refused export leaves the document byte for byte as it was"
+  );
+
+  // The write lands whole: a second export over the same path replaces it, and no temporary is left
+  // behind (R4-ATOMIC-OUT).
+  let reused = directory.join("part.dxf");
+  let again = run(&[
+    "export",
+    document.to_str().expect("utf8"),
+    "--format",
+    "dxf",
+    "--out",
+    reused.to_str().expect("utf8"),
+  ]);
+  assert_eq!(again.code, 0, "{}", again.stderr);
+  let leftovers: Vec<String> = std::fs::read_dir(&directory)
+    .expect("the scratch directory")
+    .filter_map(|entry| entry.ok())
+    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+    .filter(|name| name.contains("tmp"))
+    .collect();
+  assert!(
+    leftovers.is_empty(),
+    "no temporary is left behind: {leftovers:?}"
+  );
 }
 
 #[test]

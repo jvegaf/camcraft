@@ -35,7 +35,7 @@
 //!
 //! The reader reflects the other way, about the top edge of the page it derives from that same box
 //! (`crates/cam-import/src/svg.rs:111`, `tests/svg.rs:440`): `y_out = top - y_user`, with
-//! `top = min_y + height`. Substituting the writer's `y_user = top - y_doc` gives
+//! `top = min_y + height`. Substituting the writer's `y_user = min.y + top - y_doc` gives
 //! `y_out = top - (top - y_doc) = y_doc`. The two reflections are the same reflection, so they
 //! cancel. What is left is the reader's own placement — it always translates the drawing by the
 //! `viewBox` origin — which is the translation S4 compares the round trip up to, never the writer's
