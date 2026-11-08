@@ -262,3 +262,43 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
      strict inequalities are exact "because coordinates are whole millimetres", but the real reason a
      shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (*equal* bounds only). The
      code is right and the reason is the wrong one — the comment should say which rule it relies on.
+- **L17 (the sweep's seven, and a sixteenth advisory that the sweep found).** Feature document
+  `odd/tasks/advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
+  work-unit commits: **`c16afd6`** (the contract change alone, because it refuses input that used to
+  load), **`5190f3e`** (three wording advisories and the two missing fixtures) and **`6e0b085`** (the
+  index and the early exit, 61.99 s → 0.05 s on 5 000 stacked copies). **Closed by this sweep**:
+  `94cfd234/R2-002` and `R3-PRUNE-TOLERANCE` and `R3-MULTISHEET-PRUNE`, `39a6d85c/R2-001`, `R2-002`
+  and `R4-003`, and `94cfd234/R1-001` + `R4-001`. The nine L14 called unclosable are untouched and
+  still wait on S4's fresh review.
+  **The sixteenth, and it is not one of the fourteen: `relation` calls overlapping material
+  `Touching` when two edges are collinear.** Measured, not inferred: `cam_geom::winding::relation` over
+  `[0,0]-[100,100]` and `[50,0]-[150,100]` answers `Relation::Touching`, though the two rectangles
+  share 5 000 mm² of interior. The same pair with the edges *not* collinear
+  (`[0,0]-[100,100]` against `[80,80]-[130,280]`) answers `Crossing`, which is why the workspace never
+  noticed. Cause read off `crates/cam-geom/src/winding.rs:245-280`: a coincident edge sets `touching`
+  and no segment pair contributes an interior-to-interior intersection, so the function returns
+  `Touching` before containment is ever probed — the classification never asks whether the interiors
+  overlap, which its own doc claims it is deciding ("They meet without crossing").
+  **What it costs**: `footprints_overlap` accepts `Touching` unless the two bounds are *equal*
+  (`crates/cam-model/src/lib.rs`), so two nested placements that overlap in area while sharing a
+  horizontal or vertical edge load without a refusal — the rule M8 and M9 exist to enforce;
+  `cam-geom/src/nest_profile.rs:657` asks the same predicate for `!= Disjoint`, so the profile nester's
+  own collision test inherits it. This sweep's T6 fixture was rewritten twice around it: the first
+  pair it tried, `[0..100]` and `[50..150]` on one sheet, was exactly this shape and validated `Ok`.
+  **Not fixed here, and deliberately not smuggled into a debt sweep**: the fix changes shared geometry
+  with four consumers (`cam-model`'s nesting, `nest_profile`, `region_offset`, `cam-toolpath`'s inlay)
+  and needs its own document and review. Flagged for the owner in the same turn.
+
+## Successor advisories: the sweep's review, re-filed by its own candidate
+
+Filed here as the register requires, because their words exist only in Engram observation #193 and in
+`odd/tasks/advisory-debt-close.md` L9. Lineage **`review-ca5c7eda65951600`**, closure `approved`, receipt
+burned. The provider marked all five informational against that candidate; three are open work.
+
+| ID | Lens | Severity | Subject | Status |
+| --- | --- | --- | --- | --- |
+| `ca5c7eda/R2-001` | readability | WARNING | `crates/cam-model/tests/document.rs:1891-1898` — the two prune-tolerance tests assert only that `validate` succeeds, so a prune that wrongly skipped the pair would leave both green; the first name says "less than" while the loop includes `gap == tolerance` | **open** |
+| `ca5c7eda/R3-002` | reliability | WARNING | `crates/cam-model/tests/document.rs:1913-1915` — no case asserts a **refusal** for a pair that truly overlaps by less than the tolerance, so an unsound prune is invisible (use shapes without collinear edges, or the sixteenth advisory masks it) | **open** |
+| `ca5c7eda/R2-002` | readability | SUGGESTION | `crates/cam-model/src/lib.rs:1843-1846` — the index is four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint; group it per sheet or use `Option`/`expect` | **open** |
+| `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `54a0ef1` |
+| `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `54a0ef1` |

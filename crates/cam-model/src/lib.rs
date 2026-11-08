@@ -976,8 +976,11 @@ pub struct NestingPart {
 impl NestingPart {
   /// The bounding box of every entity this part is cut from, in document coordinates.
   ///
-  /// `None` when the part names no entity or names one the document does not hold, both of which
-  /// [`Document::validate`] refuses by name before any footprint is asked for.
+  /// `None` when the part names no entity, names one the document does not hold, or names an entity
+  /// that is not a contour. [`Document::validate`] refuses the first two by name before any footprint
+  /// is asked for; the third is the `?` on [`EntityKind::as_contour`] below. It is unconstructible
+  /// while [`EntityKind`] has a single variant, and it is stated here so that a second kind cannot
+  /// arrive as a silent third meaning of `None`.
   pub fn bounds(&self, document: &Document) -> Option<Bounds> {
     let mut bounds = Bounds::empty();
     for entity_id in &self.entity_ids {
@@ -1494,9 +1497,9 @@ impl Document {
   /// never disagree (invariant 2).
   ///
   /// `None` when the part offers no footprint to measure: the document holds none of the entities it
-  /// names, or its bounds have no width or no height. Both are refused by name before a placement
-  /// reaches this function, so a `None` here is a document this build would not have accepted — and
-  /// `validate` never reads it as "nothing to check".
+  /// names, one of them is not a contour, or its bounds have no width or no height. All are refused
+  /// by name before a placement reaches this function, so a `None` here is a document this build
+  /// would not have accepted — and `validate` never reads it as "nothing to check".
   ///
   /// The position is the **placed** footprint's corner and not the part's own origin, because a
   /// quarter turn about a part's own corner sends the material to negative X: a nester that had to
@@ -1827,56 +1830,98 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
     .iter()
     .map(|(_, _, footprint)| footprint.bounds())
     .collect();
-  let mut by_sheet: std::collections::BTreeMap<&str, Vec<usize>> =
-    std::collections::BTreeMap::new();
-  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
-    by_sheet.entry(sheet_id).or_default().push(index);
-  }
-  for order in by_sheet.values_mut() {
-    order.sort_by(|left, right| boxes[*left].min.x.total_cmp(&boxes[*right].min.x));
-  }
+  // A uniform grid over x, one per sheet and keyed by the cell a box occupies, is the interval index:
+  // a candidate is reached only through a cell the placement being tested also occupies, so a box that
+  // spans the sheet is met once and a box a metre away is never looked at. The cell is wide enough that
+  // the grid has about as many columns as a row of placements has entries, which keeps insertion and
+  // query near the square root of the placement count each. This replaces a running maximum of `max.x`:
+  // that bound was sound but not tight, because one box spanning the sheet held it high for every
+  // placement behind it and forced a scan of the whole prefix, relations included
+  // (review-ca5c7eda65951600's `R4-LOAD-REGRESSION`, `R1-001` and `R3-001`).
   let tolerance = cam_geom::DEFAULT_TOLERANCE;
-  // The refusal the loop returns must be the one the document-order scan used to return: the pair with
-  // the smallest `(earlier, later)` placement indices. The sweep visits pairs in x order, so which one
-  // it meets first is an artefact of the sweep and not a property of the document — the first offence
-  // is therefore accumulated rather than returned early. The work is still the candidate pairs, only
-  // the stop is later.
-  let mut first_offence: Option<(usize, usize, &str)> = None;
-  for (sheet_id, order) in &by_sheet {
-    for (position, first_index) in order.iter().enumerate() {
-      let first_box = boxes[*first_index];
-      for second_index in &order[position + 1..] {
-        let second_box = boxes[*second_index];
-        if second_box.min.x > first_box.max.x + tolerance {
-          break;
-        }
-        if second_box.min.y > first_box.max.y + tolerance
-          || second_box.max.y < first_box.min.y - tolerance
-        {
-          continue;
-        }
-        if !footprints_overlap(&footprints[*first_index].2, &footprints[*second_index].2) {
-          continue;
-        }
-        let (earlier, later) = if first_index < second_index {
-          (*first_index, *second_index)
-        } else {
-          (*second_index, *first_index)
-        };
-        if first_offence.map_or(true, |(seen_earlier, seen_later, _)| {
-          (earlier, later) < (seen_earlier, seen_later)
-        }) {
-          first_offence = Some((earlier, later, sheet_id));
-        }
-      }
+  let mut extent = (f64::INFINITY, f64::NEG_INFINITY);
+  for bounds in &boxes {
+    extent = (extent.0.min(bounds.min.x), extent.1.max(bounds.max.x));
+  }
+  let columns = ((footprints.len() as f64).sqrt() * 2.0).max(1.0);
+  let span = if extent.1.is_finite() && extent.1 > extent.0 {
+    extent.1 - extent.0
+  } else {
+    0.0
+  };
+  let cell_width = (span / columns).max(tolerance);
+  let origin = if extent.0.is_finite() { extent.0 } else { 0.0 };
+  let cell_of = |x: f64| ((x - origin) / cell_width).floor() as i64;
+  let mut grid: std::collections::BTreeMap<(&str, i64), Vec<usize>> =
+    std::collections::BTreeMap::new();
+  let mut sheet_of = vec![""; footprints.len()];
+  for (index, (_, sheet_id, _)) in footprints.iter().enumerate() {
+    sheet_of[index] = sheet_id;
+    let bounds = boxes[index];
+    let first_cell = cell_of(bounds.min.x - tolerance);
+    let last_cell = cell_of(bounds.max.x + tolerance);
+    for cell in first_cell..=last_cell {
+      grid.entry((*sheet_id, cell)).or_default().push(index);
     }
   }
-  if let Some((earlier, later, sheet_id)) = first_offence {
-    return Err(ModelError::NestingPlacementsOverlap {
-      first: footprints[earlier].0.to_owned(),
-      second: footprints[later].0.to_owned(),
-      sheet: (*sheet_id).to_owned(),
-    });
+  // The refusal must name the pair with the smallest `(earlier, later)` placement indices, which is
+  // what a document-order scan names. Visiting pairs in that same order is what lets the first offence
+  // end the check instead of being accumulated: `earlier` climbs through the document order, so the
+  // first `earlier` that has any partner at all is the one the refusal is about, and the partner taken
+  // is the smallest `later`. A sweep in x order cannot do that — it meets pairs in an order the
+  // document does not have, which is why the earlier version had to scan them all and this one can
+  // stop (review-94cfd23437f72a47's `R1-001` and `R4-001`).
+  let mut visited = vec![0_u64; footprints.len()];
+  for earlier in 0..footprints.len() {
+    let sheet_id = sheet_of[earlier];
+    let box_earlier = boxes[earlier];
+    let mut later: Option<usize> = None;
+    let consider = |candidate: usize, later: &mut Option<usize>| {
+      // The pair is named with the smaller placement index first, so a candidate ahead of `earlier`
+      // belongs to a pair an earlier turn of the loop already judged.
+      if candidate <= earlier {
+        return;
+      }
+      let box_candidate = boxes[candidate];
+      // Both guards are cheap and both are needed: a cell is wider than a box, so sharing one is not
+      // the same as meeting.
+      if box_candidate.min.x > box_earlier.max.x + tolerance
+        || box_candidate.max.x < box_earlier.min.x - tolerance
+      {
+        return;
+      }
+      if box_candidate.min.y > box_earlier.max.y + tolerance
+        || box_candidate.max.y < box_earlier.min.y - tolerance
+      {
+        return;
+      }
+      if !footprints_overlap(&footprints[earlier].2, &footprints[candidate].2) {
+        return;
+      }
+      *later = Some(later.map_or(candidate, |seen| seen.min(candidate)));
+    };
+    // A wide box lies in every cell it spans, so the same candidate can be reached twice; the stamp
+    // makes each one be judged once per placement without a set to allocate.
+    let stamp = earlier as u64 + 1;
+    for cell in cell_of(box_earlier.min.x - tolerance)..=cell_of(box_earlier.max.x + tolerance) {
+      let Some(occupants) = grid.get(&(sheet_id, cell)) else {
+        continue;
+      };
+      for candidate in occupants {
+        if visited[*candidate] == stamp {
+          continue;
+        }
+        visited[*candidate] = stamp;
+        consider(*candidate, &mut later);
+      }
+    }
+    if let Some(later) = later {
+      return Err(ModelError::NestingPlacementsOverlap {
+        first: footprints[earlier].0.to_owned(),
+        second: footprints[later].0.to_owned(),
+        sheet: sheet_id.to_owned(),
+      });
+    }
   }
 
   // The instance counts are honoured only once the document holds a placement: parts naming instances
@@ -1907,7 +1952,12 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
 /// epsilon, so a document has one tolerance and not two. Utilisation and waste are dimensionless
 /// fractions, so this is an absolute tolerance, and the comparison is inclusive: a fraction exactly
 /// the tolerance away from the one the document derives still loads.
-const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
+///
+/// It is a **fraction** tolerance and not a sum tolerance: no rule adds the two fractions up. Each is
+/// compared with the one derivation and with its complement, so a record that agrees with both cannot
+/// fail to sum to one — the sum is implied rather than checked, which is the part of the older name
+/// the code no longer does.
+const NESTING_COST_FRACTION_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
 
 /// Check the stored cost record against the placements and sheets that produced it (S3).
 ///
@@ -1920,10 +1970,13 @@ const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
 /// 1. `sheets_used` is the number of **distinct sheets** the placements name.
 /// 2. `utilisation` and `waste` are finite fractions of the used area, so each is in `0.0..=1.0`.
 /// 3. `utilisation` is the fraction the placements cover and `waste` is its complement, both within
-///    `NESTING_COST_SUM_TOLERANCE`. Agreement with itself is not enough: a record can sum to one and
+///    `NESTING_COST_FRACTION_TOLERANCE`. Agreement with itself is not enough: a record can sum to one and
 ///    still claim an area the placements do not support, which is the record this rule exists for.
 ///    The sum rule is therefore **implied rather than checked**: both fractions are compared with the
 ///    one derivation and its complement, so a record that agrees with each cannot fail to sum to one.
+///    A document that cannot say what it used — no sheets, or nothing placed on them — has used
+///    nothing, so its derivation is utilisation zero and the whole sheet wasted, and a record that
+///    claims more is refused by this same comparison instead of being exempted from it.
 ///
 /// This never recomputes the record: validating does not fix the numbers, because a loader that
 /// quietly corrected a stale record would hide the staleness instead of reporting it. And it never
@@ -1954,21 +2007,21 @@ fn check_nesting_cost(document: &Document) -> Result<(), ModelError> {
     }
   }
 
-  // A document that cannot say what it used — no sheets, or nothing placed on them — refuses no
-  // record rather than measuring it against an invented fraction.
-  let Some(utilisation) = document.nesting_utilisation() else {
-    return Ok(());
-  };
+  // A document that cannot say what it used — no sheets, or nothing placed on them — used nothing, so
+  // the derivation is zero utilisation and the whole sheet wasted rather than an invented fraction.
+  // Only a record that agrees with that loads; one claiming a measurement no placement supports is
+  // refused by the same comparison as any other, naming the field, the record and the implication.
+  let utilisation = document.nesting_utilisation().unwrap_or(0.0);
   for (field, recorded, derived) in [
     ("utilisation", cost.utilisation, utilisation),
     ("waste", cost.waste, 1.0 - utilisation),
   ] {
-    if (recorded - derived).abs() > NESTING_COST_SUM_TOLERANCE {
+    if (recorded - derived).abs() > NESTING_COST_FRACTION_TOLERANCE {
       return Err(ModelError::NestingCostFractionMismatch {
         field,
         recorded,
         derived,
-        tolerance: NESTING_COST_SUM_TOLERANCE,
+        tolerance: NESTING_COST_FRACTION_TOLERANCE,
       });
     }
   }
