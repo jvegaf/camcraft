@@ -54,3 +54,12 @@ cost is the **files**. Read **until `## Log`** before touching code.
   — and a continuation that asks for smaller candidates. No authority was created by either refusal, so nothing
   had to be abandoned or repaired, and neither attempt cost a token: the stop happens before the lens context is
   built.
+- **L3 (the review switch stays on, and the reviews are deferred to T6 by the owner's own decision).** Receipt-driven
+  development is still enabled and the worktree keeps producing unreviewed candidates — the feature document, and
+  then each slice the worker lands. Neither is reviewed, and the disposition is S1 rather than an oversight: the
+  owner chose to **split first and review after**, so the review of this milestone's work happens once at T6, over
+  the three M13 candidates that failed, where a passing `review.start` is the milestone's acceptance criterion
+  (S3). Reviewing an intermediate slice would freeze a half-split file, which is the exact failure mode this
+  milestone exists to cure, and would spend a four-run review (measured: 144,780 tokens, US$0.235) on a tree that
+  the next slice moves again.
+
