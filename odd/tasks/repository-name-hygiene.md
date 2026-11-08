@@ -97,8 +97,8 @@ L5). Read **until `## Log`** before touching anything.
   that no longer exists. They are the same claim the sweep exists to remove, one layer down, and they get their
   own slice rather than riding along unrecorded.
 - **L5 (the two slices, and where the names ended up).** Slice 1 `54aaf25` (41 files) and slice 2 `9a7784a`
-  (12 files), gate green at 1605 tests each time. `grep -rin "the vendor\|the reference CAM application"` over the whole tree now returns
-  **three lines, all of them the owner's own message inside this document's Log** — and `grep -rn "evidence/"`
+  (12 files), gate green at 1605 tests each time. A case-insensitive search for either name over the whole tree
+  returns **three lines, all of them the owner's own message inside this document's Log** — and `grep -rn "evidence/"`
   over `odd/` and `docs/` returns this document's account of what it deleted, nothing else. The rule the
   replacements obey is S8's: a thing is described by what it is and does, no authorship is claimed for the
   `.pp` dialect, and no alias stands in for the name. "The reference app" was **kept** where it means the
