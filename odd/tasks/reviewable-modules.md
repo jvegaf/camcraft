@@ -37,7 +37,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 
 | ID | What | S | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `crates/cam-ui/tests/shell.rs` (5,894) becomes `tests/shell/` — one module per behaviour area plus a `support` module holding the helpers every test already shares — with **every test name, assertion and helper body unchanged** and the gate green at the same count | S3 S4 S5 | worker | — |
+| T1 | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T2 | `crates/cam-ui/tests/view3d.rs` (2,374) gets the same treatment (scene, chrome, playback, simulation) | S3 S4 S5 | worker | — |
 | T3 | `crates/cam-ui/src/view3d.rs` (2,130) splits by concern (projection and scene / chrome and layout / playback) with `impl Shell` blocks spread as needed | S3 S4 S5 | worker | — |
 | T4 | `crates/cam-ui/src/chrome.rs` (2,672) splits by surface (app bar, rail, ribbon, task editor, layers) | S3 S4 S5 | worker | — |
@@ -62,4 +62,19 @@ cost is the **files**. Read **until `## Log`** before touching code.
   (S3). Reviewing an intermediate slice would freeze a half-split file, which is the exact failure mode this
   milestone exists to cure, and would spend a four-run review (measured: 144,780 tokens, US$0.235) on a tree that
   the next slice moves again.
+- **L4 (T1 delivered, and the one deviation).** `5,894 → 38` lines at the root, fifteen areas (`authoring` 647,
+  `rulers` 676, `tool_library` 645, `save` 600, `files` 504, `program` 362, `palette` 330, `material` 315,
+  `panels` 287, `help` 257, `status` 250, `script` 187, `layout` 164, `view` 141, `document` 125) and a
+  `support` module of 474 lines holding the 24 helpers. **Largest file 676.** `cargo test -p cam-ui --test
+  shell` reports **136 passed** before and after, `--list` gives the same 136 names, and the workspace stays at
+  **1607**. Every original top-level item was moved with a block-level byte comparison and the multiset of the
+  5,445 non-blank lines is identical — the only textual differences are the `pub(crate)` on the shared helpers,
+  two signatures rustfmt re-wrapped (bodies diffed identical), the per-module `use` blocks, and the root's
+  declarations.
+  **The deviation, measured rather than assumed:** a crate root at `tests/shell.rs` does **not** resolve
+  `mod x;` to `tests/shell/x.rs` — rustc looks for `tests/x.rs`, which would also collide with the existing
+  `tests/palette.rs` and `tests/tool_library.rs` targets. The root therefore carries
+  `#[path = "shell/<area>.rs"]` on each declaration. The canonical alternative is a root at
+  `tests/shell/main.rs` with bare `mod` lines, which this task forbade; switching later is deleting `shell.rs`
+  and moving the same sixteen lines, with the area files untouched.
 
