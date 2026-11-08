@@ -128,3 +128,14 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   hand to both builds. The consequence is stated rather than hidden: for `winding::relation`, the only
   answers that changed are the ones five new tests pin, and any other change would have to be one that
   no existing target observes.
+- **L7 (the follow-ups, and the difference between a test that can fail and one that cannot).** The three
+  open advisories of the "acceptance-only test" family are closed by replacing the guarantee's location,
+  not its wording. Two tests: a tolerance-scale differential against an unpruned pairwise reference
+  (`the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale`, 24 seeded documents
+  with jitter at `0, 0.5t, t, 2t`) and a refusal on the far side of the boundary
+  (`an_overlap_of_twice_the_tolerance_is_refused_on_either_axis`). **Both were proved able to fail**:
+  mutating the grid query to a single cell gives `FAILED. 0 passed; 2 failed`. And the opposite
+  measurement, which is the one worth keeping: removing the tolerance padding from both cell ranges
+  makes **neither** differential fail, because an offence requires the boxes to meet and a meeting pair
+  shares a cell even unpadded. The padding is defensive; no outcome test can see it; the code comment now
+  says so instead of claiming coverage it does not have.

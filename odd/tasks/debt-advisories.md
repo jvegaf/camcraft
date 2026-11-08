@@ -314,3 +314,19 @@ is exactly the shape that proves it. Consequence, measured: `crates/cam-model`'s
 tripwire had been built on 20 000 ten-millimetre squares 4.5 mm apart, i.e. on copies that overlapped
 each other and validated only because of this defect; the fixture is now spaced 11 mm and the document
 is valid for the right reason.
+
+**The "test that cannot fail" family is closed** (`ca5c7eda/R2-001`, `ca5c7eda/R3-002` and
+`review-16ed0fdd`'s `R2-006`), and what closed it is not a better assertion but a differential that can
+actually fail. `crates/cam-model/tests/document.rs` now carries
+`the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale`: the same seeded
+differential as its whole-millimetre sibling, with every position jittered by `0, 0.5t, t, 2t`, and a
+reference that walks every pair in document order through the same predicate with **no prune and no
+cell**. Beside it, `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` pins the other side of
+the boundary, so the pair of tests is no longer acceptance-only. **The mutation evidence**: mutating the
+query to a single cell makes **both** differentials fail (`test result: FAILED. 0 passed; 2 failed`), so
+they observe keying; mutating away the tolerance padding on the insert and query ranges makes **neither**
+fail (`2 passed`), and that is not a gap in the tests — an offence requires the two boxes to meet, a
+meeting pair shares a cell even unpadded because `cell_width` is floored at the tolerance, and the pairs
+the padding adds are ones the classifier answers `Touching` for and accepts anyway. The padding is
+therefore defensive, the guarantee is the argument, and the argument now sits in the code beside the
+padding instead of claiming the tests provide it.

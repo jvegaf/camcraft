@@ -1913,11 +1913,15 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
       grid.wide.push(index);
       continue;
     }
-    // Both ends are padded by `tolerance`, exactly as the query range below is, and that padding is what
-    // makes two boxes that meet within the tolerance share a cell: the classifier accepts a pair whose
-    // gap is at most the tolerance, so the index has to reach such a pair. Deleting the padding as
-    // redundant would silently stop reporting every near-tolerance overlap. `cell_width` is floored at
-    // the tolerance for the same reason: a narrower cell would make a padded box's range more than a
+    // Both ends are padded by `tolerance`, exactly as the query range below is, so a box whose edge sits
+    // a hair inside the next cell still shares one with a neighbour it meets. Measured, and stated
+    // because the measurement is counter-intuitive: **removing this padding changes no refusal** — an
+    // offence needs the two boxes to meet at all, a pair meeting at all shares a cell even unpadded
+    // because `cell_width` is floored at the tolerance, and the pairs the padding does add are ones the
+    // classifier answers `Touching` for, which are accepted either way. So the padding is defensive and
+    // the guarantee is that argument, not a test: the two seeded differentials catch a *keying* mistake
+    // (mutating the query to one cell fails both) and cannot catch this one. `cell_width` is floored at
+    // the tolerance for a different reason: a narrower cell would make a padded box's range more than a
     // couple of cells wide and insert every box over and over.
     let first_cell = grid.cell_of(bounds.min.x - tolerance);
     let last_cell = grid.cell_of(bounds.max.x + tolerance);

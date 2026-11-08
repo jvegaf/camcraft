@@ -1780,6 +1780,153 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
 }
 
 #[test]
+fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale() {
+  // The seeded differential above draws whole millimetres, so the one tolerance the prune and the
+  // predicate share is never exercised: a 1e-6 padding is invisible at that scale, which is why a prune
+  // that dropped it would still pass it. This is the same differential with every position jittered by
+  // fractions of the tolerance, and its reference is an **unpruned** quadratic scan asking the same
+  // predicate — so the padding on the insert and query ranges is the thing under test, and a prune that
+  // skips a pair inside the tolerance cannot agree with it (`ca5c7eda/R2-001` and `R3-002`).
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  let jitters = [0.0, tolerance * 0.5, tolerance, tolerance * 2.0];
+  let mut state: u64 = 0x00DD_BA11;
+  let mut next = move || {
+    state = state
+      .wrapping_mul(6_364_136_223_846_793_005)
+      .wrapping_add(1);
+    ((state >> 33) as f64) / ((u32::MAX >> 1) as f64)
+  };
+  for _ in 0..24 {
+    let count = 2 + (next() * 6.0) as usize;
+    let mut document = Document::new(Job::default_sheet());
+    document.layers.push(Layer {
+      id: "L1".to_owned(),
+      name: "Parts".to_owned(),
+      visible: true,
+      entities: Vec::new(),
+    });
+    let mut nesting = Nesting {
+      sheets: vec![NestingSheet {
+        id: "S1".to_owned(),
+        width: Length::from_mm(600.0),
+        height: Length::from_mm(400.0),
+      }],
+      parts: Vec::new(),
+      placements: Vec::new(),
+      cost: None,
+    };
+    for index in 0..count {
+      let size = 20.0 + (next() * 40.0).floor();
+      let part = format!("P{index}");
+      let entity = format!("E{index}");
+      document.layers[0].entities.push(Entity {
+        id: entity.clone(),
+        kind: EntityKind::Contour {
+          contour: square(size),
+        },
+      });
+      nesting.parts.push(NestingPart {
+        id: part.clone(),
+        entity_ids: vec![entity],
+        instances: 1,
+      });
+      // Whole millimetres plus a jitter at the tolerance's own scale, so a pair lands on either side of
+      // it exactly as often as on it.
+      let jitter = jitters[(next() * jitters.len() as f64) as usize % jitters.len()];
+      let sign = if next() < 0.5 { -1.0 } else { 1.0 };
+      let x = (next() * 500.0).floor() + sign * jitter;
+      let y = (next() * 300.0).floor() + jitter;
+      nesting.placements.push(NestingPlacement {
+        part_id: part,
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(x, y),
+        rotation: Angle::ZERO,
+      });
+    }
+    document.nesting = Some(nesting);
+
+    // The reference: every pair, in document order, asking the same predicate the library asks, with no
+    // prune and no cell between them.
+    let mut expected: Option<(usize, usize)> = None;
+    let placements = document
+      .nesting
+      .as_ref()
+      .expect("a section")
+      .placements
+      .clone();
+    let outlines: Vec<_> = placements
+      .iter()
+      .map(|placement| {
+        document
+          .placement_footprint(placement)
+          .expect("a part with a square has a footprint")
+      })
+      .collect();
+    'scan: for first in 0..outlines.len() {
+      for second in first + 1..outlines.len() {
+        let overlaps = match cam_geom::winding::relation(
+          &outlines[first],
+          &outlines[second],
+          cam_geom::DEFAULT_TOLERANCE,
+        ) {
+          cam_geom::winding::Relation::Disjoint => false,
+          cam_geom::winding::Relation::Touching => {
+            outlines[first].bounds() == outlines[second].bounds()
+          }
+          _ => true,
+        };
+        if overlaps {
+          expected = Some((first, second));
+          break 'scan;
+        }
+      }
+    }
+    match expected {
+      Some((first, second)) => {
+        let error = document
+          .validate()
+          .expect_err("an unpruned scan found an overlap");
+        assert_eq!(
+          error,
+          ModelError::NestingPlacementsOverlap {
+            first: format!("P{first}"),
+            second: format!("P{second}"),
+            sheet: "S1".to_owned(),
+          },
+          "the prune must name the pair the unpruned scan names, at the tolerance's own scale"
+        );
+      }
+      None => document
+        .validate()
+        .expect("the unpruned scan found no overlap, so the pruned one must not either"),
+    }
+  }
+}
+
+#[test]
+fn an_overlap_of_twice_the_tolerance_is_refused_on_either_axis() {
+  // The other side of the boundary the test above pins from below: two footprints that overlap by more
+  // than the tolerance share material the predicate can see, so they are refused, and the acceptance
+  // cases beside it are not the whole story (`ca5c7eda/R2-001`).
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  for axis in 0..2 {
+    let mut document = nesting_document();
+    let overlap = tolerance * 2.0;
+    let position = if axis == 0 {
+      Point2::new(100.0 - overlap, 0.0)
+    } else {
+      Point2::new(0.0, 100.0 - overlap)
+    };
+    document.nesting.as_mut().expect("a section").placements[1].position = position;
+    let error = refusal(&document);
+    assert!(
+      matches!(error, ModelError::NestingPlacementsOverlap { .. }),
+      "an overlap wider than the tolerance is material on axis {axis}: {error:?}"
+    );
+  }
+}
+
+#[test]
 fn placements_on_one_sheet_that_share_x_but_not_y_are_accepted() {
   // The overlap check prunes a pair by bounding box before any winding relation is asked, and prunes
   // the whole rest of the bucket once a candidate starts past the box it is compared with. Both prunes
