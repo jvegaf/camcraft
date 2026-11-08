@@ -38,7 +38,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | ID | What | S | Route | Commit |
 | --- | --- | --- | --- | --- |
 | T1 | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T2 | `crates/cam-ui/tests/view3d.rs` (2,374) gets the same treatment (scene, chrome, playback, simulation) | S3 S4 S5 | worker | — |
+| T2 | ✅ **delivered** — `crates/cam-ui/tests/view3d.rs` (2,374) became a **31-line root** plus `support` and six concern modules (scene 413, playback 421, playback_bar 389, split 330, simulation 221, overlay 146); largest file **456**. 47 tests, same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T3 | `crates/cam-ui/src/view3d.rs` (2,130) splits by concern (projection and scene / chrome and layout / playback) with `impl Shell` blocks spread as needed | S3 S4 S5 | worker | — |
 | T4 | `crates/cam-ui/src/chrome.rs` (2,672) splits by surface (app bar, rail, ribbon, task editor, layers) | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
@@ -77,4 +77,15 @@ cost is the **files**. Read **until `## Log`** before touching code.
   `#[path = "shell/<area>.rs"]` on each declaration. The canonical alternative is a root at
   `tests/shell/main.rs` with bare `mod` lines, which this task forbade; switching later is deleting `shell.rs`
   and moving the same sixteen lines, with the area files untouched.
+- **L5 (T2 delivered, and the two comments that moved for a reason).** `2,374 → 31` lines at the root, `support`
+  456 plus six modules, **largest 456**. `cargo test -p cam-ui --test view3d` reports **47 passed** before and
+  after, the same 47 names once the module prefix is stripped, and the workspace stays at **1607**. Proved the
+  way T1 was: 79 non-`use` top-level items each verbatim in exactly one module (0 placement problems) and the
+  multiset of 2,183 non-blank content lines identical, with 33 `pub(crate)` lines as the only textual difference.
+  **Two comment blocks changed position rather than moving with their file**, and the reason is worth keeping: a
+  section banner and a `///` sentence sat above a test they did not document (a pre-existing mis-attribution —
+  `colours_in_the_3d_panel`'s doc described the colour audit while textually preceding the clock test), and the
+  S8 banner preceded a fixture instead of heading the split-chrome tests. Both now sit above what they describe,
+  line for line. S6 says a moved line is a moved line; this is the one place where leaving it would have moved a
+  lie, and it is recorded so the reviewer reads it as a correction rather than as a smuggling.
 
