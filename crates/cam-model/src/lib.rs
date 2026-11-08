@@ -976,8 +976,11 @@ pub struct NestingPart {
 impl NestingPart {
   /// The bounding box of every entity this part is cut from, in document coordinates.
   ///
-  /// `None` when the part names no entity or names one the document does not hold, both of which
-  /// [`Document::validate`] refuses by name before any footprint is asked for.
+  /// `None` when the part names no entity, names one the document does not hold, or names an entity
+  /// that is not a contour. [`Document::validate`] refuses the first two by name before any footprint
+  /// is asked for; the third is the `?` on [`EntityKind::as_contour`] below. It is unconstructible
+  /// while [`EntityKind`] has a single variant, and it is stated here so that a second kind cannot
+  /// arrive as a silent third meaning of `None`.
   pub fn bounds(&self, document: &Document) -> Option<Bounds> {
     let mut bounds = Bounds::empty();
     for entity_id in &self.entity_ids {
@@ -1494,9 +1497,9 @@ impl Document {
   /// never disagree (invariant 2).
   ///
   /// `None` when the part offers no footprint to measure: the document holds none of the entities it
-  /// names, or its bounds have no width or no height. Both are refused by name before a placement
-  /// reaches this function, so a `None` here is a document this build would not have accepted — and
-  /// `validate` never reads it as "nothing to check".
+  /// names, one of them is not a contour, or its bounds have no width or no height. All are refused
+  /// by name before a placement reaches this function, so a `None` here is a document this build
+  /// would not have accepted — and `validate` never reads it as "nothing to check".
   ///
   /// The position is the **placed** footprint's corner and not the part's own origin, because a
   /// quarter turn about a part's own corner sends the material to negative X: a nester that had to
@@ -1907,7 +1910,12 @@ fn check_nesting(document: &Document) -> Result<(), ModelError> {
 /// epsilon, so a document has one tolerance and not two. Utilisation and waste are dimensionless
 /// fractions, so this is an absolute tolerance, and the comparison is inclusive: a fraction exactly
 /// the tolerance away from the one the document derives still loads.
-const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
+///
+/// It is a **fraction** tolerance and not a sum tolerance: no rule adds the two fractions up. Each is
+/// compared with the one derivation and with its complement, so a record that agrees with both cannot
+/// fail to sum to one — the sum is implied rather than checked, which is the part of the older name
+/// the code no longer does.
+const NESTING_COST_FRACTION_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
 
 /// Check the stored cost record against the placements and sheets that produced it (S3).
 ///
@@ -1920,7 +1928,7 @@ const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
 /// 1. `sheets_used` is the number of **distinct sheets** the placements name.
 /// 2. `utilisation` and `waste` are finite fractions of the used area, so each is in `0.0..=1.0`.
 /// 3. `utilisation` is the fraction the placements cover and `waste` is its complement, both within
-///    `NESTING_COST_SUM_TOLERANCE`. Agreement with itself is not enough: a record can sum to one and
+///    `NESTING_COST_FRACTION_TOLERANCE`. Agreement with itself is not enough: a record can sum to one and
 ///    still claim an area the placements do not support, which is the record this rule exists for.
 ///    The sum rule is therefore **implied rather than checked**: both fractions are compared with the
 ///    one derivation and its complement, so a record that agrees with each cannot fail to sum to one.
@@ -1966,12 +1974,12 @@ fn check_nesting_cost(document: &Document) -> Result<(), ModelError> {
     ("utilisation", cost.utilisation, utilisation),
     ("waste", cost.waste, 1.0 - utilisation),
   ] {
-    if (recorded - derived).abs() > NESTING_COST_SUM_TOLERANCE {
+    if (recorded - derived).abs() > NESTING_COST_FRACTION_TOLERANCE {
       return Err(ModelError::NestingCostFractionMismatch {
         field,
         recorded,
         derived,
-        tolerance: NESTING_COST_SUM_TOLERANCE,
+        tolerance: NESTING_COST_FRACTION_TOLERANCE,
       });
     }
   }

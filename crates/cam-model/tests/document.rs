@@ -1687,8 +1687,11 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
   // bounding box, so it no longer visits N(N-1)/2 pairs. The prune has to be *exactly* equivalent: the
   // same document refused, naming the same pair in document order. This is the differential, kept in
   // the suite rather than in a scratch copy, because a one-off run proves one shape and a seeded scan
-  // proves the class. Coordinates and sizes are whole millimetres, so a shared edge is exact and the
-  // reference can use strict inequalities without a second tolerance.
+  // proves the class. The reference can use strict inequalities and no second tolerance because a
+  // shared edge is not an overlap by `footprints_overlap`'s own rule: a `Touching` pair is refused
+  // only when the two bounds are equal, which is two copies stacked on one spot, so an edge that is
+  // merely shared is accepted. Not because these coordinates are whole millimetres — that is a
+  // property of the fixture, and a rule that rested on it would break on a sub-tolerance pair.
   let mut state: u64 = 0x5DEE_CE66;
   let mut next = move || {
     state = state
@@ -1882,6 +1885,179 @@ fn two_placements_that_share_an_edge_are_accepted() {
   document
     .validate()
     .expect("two footprints that share an edge do not overlap");
+}
+
+#[test]
+fn a_pair_separated_by_less_than_the_tolerance_is_accepted_on_either_axis() {
+  // The prune's threshold and the relation's tolerance are one value, so a gap the relation still sees
+  // is a gap the prune may not break on: inside the tolerance the relation answers `Touching`, which
+  // is not an overlap unless the two bounds are equal. Both axes and both sides of the inclusive
+  // boundary are pinned here, because a prune stricter than the relation would drop a pair the
+  // relation would have judged (`94cfd234/R3-PRUNE-TOLERANCE`).
+  let tolerance = cam_geom::DEFAULT_TOLERANCE;
+  for gap in [tolerance * 0.5, tolerance] {
+    for axis in 0..2 {
+      let mut document = nesting_document();
+      let position = if axis == 0 {
+        Point2::new(100.0 + gap, 0.0)
+      } else {
+        Point2::new(0.0, 100.0 + gap)
+      };
+      document.nesting.as_mut().expect("a section").placements[1].position = position;
+      // P2 is 200 x 50 and turned a quarter turn it stands 200 mm tall from x = 0, which would meet
+      // the moved square in x. Out of the way, so the pair under test is the only pair.
+      if axis == 1 {
+        document.nesting.as_mut().expect("a section").placements[2].position =
+          Point2::new(400.0, 0.0);
+      }
+      document
+        .validate()
+        .unwrap_or_else(|error| panic!("a gap of {gap:e} on axis {axis}: {error:?}"));
+    }
+  }
+}
+
+#[test]
+fn a_pair_whose_boxes_meet_but_whose_material_only_touches_is_accepted() {
+  // The prune compares bounding boxes; whether there is an offence is the winding relation's call.
+  // This is the reachable shape where the two disagree: a 10 mm tab sitting in the notch of an
+  // L-shaped part whose box swallows it whole. The boxes overlap by 10 x 10 mm, so no prune may drop
+  // the pair, and the material shares only the notch's two edges, so the relation is `Touching` with
+  // unequal bounds and the document loads (`94cfd234/R3-PRUNE-TOLERANCE`).
+  let mut document = nesting_document();
+  document.layers[0].entities = vec![
+    Entity {
+      id: "E-notch".to_owned(),
+      kind: EntityKind::Contour {
+        contour: Contour::from_points(
+          &[
+            Point2::new(10.0, 0.0),
+            Point2::new(110.0, 0.0),
+            Point2::new(110.0, 110.0),
+            Point2::new(0.0, 110.0),
+            Point2::new(0.0, 10.0),
+            Point2::new(10.0, 10.0),
+          ],
+          true,
+        )
+        .expect("an L is a legal contour"),
+      },
+    },
+    Entity {
+      id: "E-tab".to_owned(),
+      kind: EntityKind::Contour {
+        contour: square(10.0),
+      },
+    },
+  ];
+  let nesting = document.nesting.as_mut().expect("a section");
+  nesting.parts = vec![
+    NestingPart {
+      id: "P-notch".to_owned(),
+      entity_ids: vec!["E-notch".to_owned()],
+      instances: 1,
+    },
+    NestingPart {
+      id: "P-tab".to_owned(),
+      entity_ids: vec!["E-tab".to_owned()],
+      instances: 1,
+    },
+  ];
+  nesting.placements = vec![
+    NestingPlacement {
+      part_id: "P-notch".to_owned(),
+      sheet_id: "S1".to_owned(),
+      position: Point2::new(0.0, 0.0),
+      rotation: Angle::ZERO,
+    },
+    NestingPlacement {
+      part_id: "P-tab".to_owned(),
+      sheet_id: "S1".to_owned(),
+      position: Point2::new(0.0, 0.0),
+      rotation: Angle::ZERO,
+    },
+  ];
+  nesting.cost = None;
+  document
+    .validate()
+    .expect("boxes that meet over material that only touches is not an overlap");
+}
+
+#[test]
+fn placements_on_different_sheets_are_keyed_by_sheet_and_the_named_pair_is_the_earliest_in_the_document(
+) {
+  // Two things the single-sheet fixtures cannot assert (`94cfd234/R3-MULTISHEET-PRUNE`). A pair on
+  // *different* sheets that coincides to the millimetre is not an overlap, which is the bucket key. And
+  // when more than one sheet carries an offence the refusal names the earliest pair in document order,
+  // not the earliest in the bucket the sweep happened to walk first — so the S2 pair below is the one
+  // that must be named even though S1 sorts ahead of it.
+  let mut coincident = nesting_document();
+  {
+    let nesting = coincident.nesting.as_mut().expect("a section");
+    nesting.sheets.push(NestingSheet {
+      id: "S2".to_owned(),
+      width: Length::from_mm(600.0),
+      height: Length::from_mm(400.0),
+    });
+    nesting.placements[1].sheet_id = "S2".to_owned();
+    nesting.placements[1].position = Point2::new(0.0, 0.0);
+    // The record measured one sheet; a second one with a placement on it is a different measurement, and
+    // this test is about the overlap check rather than about the cost rule.
+    nesting.cost = None;
+  }
+  coincident
+    .validate()
+    .expect("the same point on two sheets is not an overlap");
+
+  let mut document = nesting_document();
+  {
+    let nesting = document.nesting.as_mut().expect("a section");
+    nesting.sheets.push(NestingSheet {
+      id: "S2".to_owned(),
+      width: Length::from_mm(600.0),
+      height: Length::from_mm(400.0),
+    });
+    nesting.parts[1].instances = 2;
+    nesting.placements = vec![
+      NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S2".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "P1".to_owned(),
+        sheet_id: "S2".to_owned(),
+        position: Point2::new(80.0, 80.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "P2".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(0.0, 0.0),
+        rotation: Angle::ZERO,
+      },
+      NestingPlacement {
+        part_id: "P2".to_owned(),
+        sheet_id: "S1".to_owned(),
+        position: Point2::new(150.0, 30.0),
+        rotation: Angle::ZERO,
+      },
+    ];
+    nesting.cost = None;
+  }
+  let error = refusal(&document);
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingPlacementsOverlap {
+        ref first,
+        ref second,
+        ref sheet,
+      } if first == "P1" && second == "P1" && sheet == "S2"
+    ),
+    "the S2 pair is the earliest in the document, so S1's must not be named: {error:?}"
+  );
 }
 
 #[test]
