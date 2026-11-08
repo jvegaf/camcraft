@@ -528,14 +528,16 @@ fn pressable(spots: Vec<Spot>) -> Vec<(String, (f32, f32))> {
 impl Shell {
   /// Open the tool library for the toolpath the current-tool card names.
   ///
-  /// The card describes the document's **first** toolpath, so that is what this dialog retools — one rule in
-  /// one place. The selection starts on the tool that toolpath already cuts with, because the first thing an
-  /// operator wants from `Choose another tool…` is to see what the tool is now.
+  /// The card describes the **selected** toolpath, or the document's first when nothing is selected (M13 S4),
+  /// and that is what this dialog retools — one resolver, so the card and the dialog cannot disagree about
+  /// which toolpath `Choose another tool…` is about. The selection starts on the tool that toolpath already
+  /// cuts with, because the first thing an operator wants from `Choose another tool…` is to see what the tool
+  /// is now.
   ///
   /// Public for the reason [`Shell::open_material`] is: a modal whose opening cannot be driven from outside a
   /// frame is a modal only a mouse could test.
   pub fn open_tool_library(&mut self, app: &AppState) {
-    let target = app.document().toolpaths.first().map(|toolpath| {
+    let target = self.described_toolpath(app).map(|toolpath| {
       (
         toolpath.id.clone(),
         stored_tool_for_number(&self.tools, toolpath.tool_number)

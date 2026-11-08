@@ -47,7 +47,7 @@ use std::time::SystemTime;
 
 use cam_app::{AlignMode, AppState, Camera, Command, ScreenPoint, Transform, VertexEdit, Viewport};
 use cam_geom::Point2;
-use cam_model::{Job, Operation};
+use cam_model::{Job, Operation, Toolpath};
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
 use cam_store::tools::{StoredTool, ToolLibrary};
@@ -1038,6 +1038,25 @@ pub struct DrawnState {
   /// button, because the card is a reading of the tool a toolpath cuts with and the button is the way to
   /// change it.
   pub tool_card_hits: Vec<(String, (f32, f32))>,
+  /// The `TOOLPATHS` surface's list, in the order it drew it: the row's own words and whether it reads as the
+  /// selected toolpath (M13 T3, S4).
+  ///
+  /// Empty while the `TOOLPATHS` task is closed and while the document holds no toolpath, because a list of
+  /// nothing is not a list. The words are the row's, so a test reads back exactly what the operator sees.
+  pub toolpath_rows: Vec<(String, bool)>,
+  /// Where the list drew each row: the row's words and the point in the window that presses it.
+  ///
+  /// The same reason [`Self::layer_chips`] and [`Self::app_bar_hits`] report their points: egui cannot be
+  /// asked for a widget by its text from outside a frame, and a row nobody can press is the `first()` the
+  /// list replaced.
+  pub toolpath_hits: Vec<(String, (f32, f32))>,
+  /// The toolpath the shell is describing, by id: the selection when the document still holds it, and the
+  /// document's first toolpath otherwise (M13 T3, S4).
+  ///
+  /// The **resolved** answer, not the raw selection, so the list, the card and the editor cannot describe two
+  /// different toolpaths: a selection that names a toolpath the document no longer holds reads as the first
+  /// one rather than as a card nobody can act on.
+  pub toolpath_selected: Option<String>,
   /// The note the strategy editor drew under its sections, verbatim (camui-prancheta S10).
   ///
   /// Empty while the `TOOLPATHS` task is closed, because an editor nobody opened drew no note. The note is the
@@ -1331,6 +1350,15 @@ pub struct Shell {
   /// this tool", so the number lands in [`Shell::strategy`] and `Generate toolpath` is what writes it. The flag
   /// is what tells the two apart, and it is cleared whenever the modal closes.
   pub(crate) tool_library_for_draft: bool,
+  /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
+  ///
+  /// View state, like [`Self::show_3d`] or the collapsed rail groups: choosing which toolpath the card and
+  /// the editor describe is a decision about the screen, so it is neither an edit nor an undo step, and the
+  /// document is not written. `None` is not "no toolpath" — it is "no choice", which reads as the document's
+  /// first toolpath, the answer this shell gave before the list existed. A selection that outlives its
+  /// toolpath (a delete, or a document opened over it) reads the same way rather than going stale
+  /// ([`Shell::described_toolpath`]).
+  selected_toolpath: Option<String>,
   /// The strategy editor's draft: the name, the tool and the operation `Generate toolpath` writes
   /// (camui-prancheta S10).
   ///
@@ -1424,11 +1452,28 @@ impl Default for Shell {
       tool_library_target: None,
       tool_library_selected: None,
       tool_library_for_draft: false,
+      selected_toolpath: None,
       strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }
   }
+}
+
+/// The toolpath a selection names, or the document's first toolpath when it names one the document does not
+/// hold (M13 T3, S4).
+///
+/// One function and every reader — [`Shell::described_toolpath`], the `TOOLPATHS` list, the current-tool card
+/// and the strategy editor's subject — so the fallback rule has exactly one spelling: a stale selection is
+/// not a state of its own, it is the same answer as no selection at all.
+pub(crate) fn resolve_toolpath<'a>(
+  app: &'a AppState,
+  selection: Option<&str>,
+) -> Option<&'a Toolpath> {
+  let toolpaths = &app.document().toolpaths;
+  selection
+    .and_then(|id| toolpaths.iter().find(|toolpath| toolpath.id == id))
+    .or_else(|| toolpaths.first())
 }
 
 impl Shell {

@@ -32,6 +32,7 @@
 
 use cam_app::{AppState, VertexEdit};
 use cam_geom::Point2;
+use cam_model::Toolpath;
 use cam_program::program_for_snapshot;
 use cam_store::tools::{render_name, stored_tool_for_number, StoredTool, ToolGeometry};
 use cam_units::Format;
@@ -244,6 +245,33 @@ impl Shell {
   /// Whether the layers block is expanded.
   pub fn layers_open(&self) -> bool {
     self.layers_open
+  }
+
+  /// The toolpath the `TOOLPATHS` surface describes, by id, or `None` when the operator has chosen none.
+  ///
+  /// The raw selection and not [`Shell::described_toolpath`]: this is the view state itself, which is what a
+  /// test and a host set and read, and the two are deliberately not the same question.
+  pub fn toolpath_selection(&self) -> Option<&str> {
+    self.selected_toolpath.as_deref()
+  }
+
+  /// Choose the toolpath the card and the editor describe, or clear the choice with `None`.
+  ///
+  /// **Selecting is not an edit.** It changes what the screen says and nothing the document holds: no command
+  /// is run, no undo step is added and the document cannot read as modified. `None` is the answer this shell
+  /// gave before the list existed — the document's first toolpath.
+  pub fn set_toolpath_selection(&mut self, id: Option<String>) {
+    self.selected_toolpath = id;
+  }
+
+  /// The toolpath this shell describes: the selection when the document still holds it, and the document's
+  /// first toolpath otherwise.
+  ///
+  /// One answer for the list, the current-tool card and the editor, so a frame cannot show a card for one
+  /// toolpath and a form for another. A selection that outlives its toolpath — the toolpath was deleted, or a
+  /// document was opened over it — is not an error: it reads as no selection, which is the first toolpath.
+  pub fn described_toolpath<'a>(&self, app: &'a AppState) -> Option<&'a Toolpath> {
+    crate::resolve_toolpath(app, self.toolpath_selection())
   }
 
   /// Expand or collapse the layers block.
@@ -750,7 +778,10 @@ impl Shell {
           // that shows a header also shows the subject it names (L13): a header computed from last frame's seed
           // would name a toolpath the panel had already stopped editing.
           if category == Category::Toolpaths {
-            self.strategy.sync(app);
+            // The editor's subject is the selected toolpath when there is one, and the document's first
+            // otherwise; the selection is view state, so this reads it and writes nothing.
+            let selection = self.toolpath_selection().map(str::to_owned);
+            self.strategy.sync(app, selection.as_deref());
           }
           self.task_header(app, ui, &palette, category, output);
           ui.add_space(metrics.space(2));
@@ -762,6 +793,10 @@ impl Shell {
               .max_height(body)
               .show(ui, |ui| match category {
                 Category::Toolpaths => {
+                  // The list the reference has and this shell did not (M13 S4): one row per toolpath, one of
+                  // them selectable, and the selection — not `first()` — is what the editor below and the card
+                  // inside it describe.
+                  self.toolpath_list(app, ui, &palette, output);
                   // S10's editor is the card, the quick block and the sections, in one surface for creating and
                   // editing; the tool card is drawn **inside** it, from the draft while creating and from the
                   // document while editing, so there is one card and not two.
@@ -827,7 +862,9 @@ impl Shell {
     // The header names the task. For `TOOLPATHS` the task *is* a strategy, and S10 gives it its own word:
     // `New toolpath · <name>` while the editor drafts one and `Edit · <name>` while it edits the document's.
     let label = match category {
-      Category::Toolpaths => self.strategy.header(&crate::strategy::subject(app)),
+      Category::Toolpaths => self
+        .strategy
+        .header(&crate::strategy::subject(app, self.toolpath_selection())),
       other => other.label().to_owned(),
     };
     ui.horizontal(|ui| {
@@ -944,8 +981,9 @@ impl Shell {
   /// hold it, because a card that drew nothing would leave the operator guessing whether the tool is
   /// missing or the panel is.
   ///
-  /// The shell has no toolpath selection yet, so the card describes the document's **first** toolpath and
-  /// names it in the heading. When authoring lands (T3) the selection is what the heading reads from.
+  /// The shell describes the toolpath the operator selected in the `TOOLPATHS` list, and the document's **first**
+  /// one when nothing is selected — the answer this card gave before the list existed, so a one-toolpath
+  /// document reads exactly as it did ([`Shell::described_toolpath`], M13 T3, S4).
   ///
   /// Below the card's own lines sits the **estimated cutting time** — a line of its own, not a fourth
   /// field, because the card's fields are exactly the frame's (S2). Its seconds are
@@ -961,7 +999,7 @@ impl Shell {
     palette: &Palette,
     output: &mut ShellOutput,
   ) {
-    let Some(toolpath) = app.document().toolpaths.first() else {
+    let Some(toolpath) = self.described_toolpath(app) else {
       return;
     };
     let name = toolpath.name.clone();

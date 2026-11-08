@@ -109,17 +109,21 @@ toolpath`. Choosing Profile or Pocket replaces {operation}, and `Generate toolpa
 pub(crate) enum Subject {
   /// The document holds no toolpath, so the editor is drafting the first one.
   New,
-  /// The editor is editing the document's first toolpath, by id.
+  /// The toolpath the editor is editing, by id.
   ///
-  /// The **first** toolpath is the subject for the same reason the current-tool card names the first one
-  /// (camui-toolpath S2): one rule in one place, and the frame's tool card and its editor cannot describe two
-  /// different toolpaths.
+  /// The selection names it. When the operator has selected nothing — or the selection names a toolpath the
+  /// document no longer holds, which is the same answer — it is the document's **first** toolpath, the rule the
+  /// current-tool card already read (camui-toolpath S2, M13 T3/S4): one rule in one place, and the frame's tool
+  /// card and its editor cannot describe two different toolpaths.
   Edit(String),
 }
 
-/// Which toolpath the document puts the editor in front of.
-pub(crate) fn subject(app: &AppState) -> Subject {
-  match app.document().toolpaths.first() {
+/// Which toolpath the surface puts the editor in front of: the selected one, or the document's first when the
+/// selection names none the document holds.
+///
+/// The fallback is [`crate::resolve_toolpath`]'s, not this function's, because the card reads the same rule.
+pub(crate) fn subject(app: &AppState, selection: Option<&str>) -> Subject {
+  match crate::resolve_toolpath(app, selection) {
     Some(toolpath) => Subject::Edit(toolpath.id.clone()),
     None => Subject::New,
   }
@@ -167,13 +171,14 @@ impl Draft {
   /// subject it is editing (L13). A document that changed *content* — a tool chosen through the library, an
   /// undo — does not re-seed, because a draft that discarded typed numbers whenever the document moved would be
   /// a form that loses work; the two cases that do re-seed are the two the subject names: no toolpath becomes
-  /// one, and a toolpath the operator switched away from is no longer the editor's.
-  pub(crate) fn sync(&mut self, app: &AppState) {
-    let subject = subject(app);
+  /// one, and a toolpath the operator switched away from — selected another row of the list, or had the
+  /// document move under it — is no longer the editor's (M13 T3, S4).
+  pub(crate) fn sync(&mut self, app: &AppState, selection: Option<&str>) {
+    let subject = subject(app, selection);
     if self.seeded.as_ref() == Some(&subject) {
       return;
     }
-    match (app.document().toolpaths.first(), &subject) {
+    match (crate::resolve_toolpath(app, selection), &subject) {
       (Some(toolpath), Subject::Edit(_)) => {
         self.name = toolpath.name.clone();
         self.tool_number = Some(toolpath.tool_number);
@@ -552,6 +557,115 @@ enum Art {
 }
 
 impl Shell {
+  /// The `TOOLPATHS` surface's list: every toolpath in the document, in document order, one pressable row each
+  /// (M13 T3, S4).
+  ///
+  /// The gap this closes is measured in S4: the surface showed one editor for "the" toolpath and the card
+  /// described `toolpaths.first()` unconditionally, so a document with two toolpaths could only ever describe
+  /// the first. The row names what identifies its toolpath — the name, the operation and the tool number, the
+  /// three things the card and the editor already read, so the list invents no vocabulary of its own — and a
+  /// press selects it by id. That selection is view state ([`Shell::set_toolpath_selection`]): no command runs,
+  /// no undo step is added, and the document is not written.
+  ///
+  /// An empty document draws no list at all rather than a heading over nothing: the editor below is already
+  /// drafting its first toolpath and says so, and a control that cannot act is not drawn (L6, L14).
+  pub(crate) fn toolpath_list(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    output: &mut ShellOutput,
+  ) {
+    if app.document().toolpaths.is_empty() {
+      output.drawn.toolpath_rows.clear();
+      output.drawn.toolpath_hits.clear();
+      output.drawn.toolpath_selected = None;
+      return;
+    }
+    chrome::section(ui, palette, chrome::Category::Toolpaths.label());
+
+    let metrics = self.metrics();
+    // Every point this frame reports is filtered against the clip it drew in: the list lives in the inspector's
+    // scroll area, and a row painted below its viewport is a promise about a control nobody can press (L23).
+    let clip = ui.clip_rect();
+    let height = 22.0;
+    let radius = egui::CornerRadius::same(metrics.radius_control as u8);
+    ui.spacing_mut().item_spacing.y = metrics.space(1);
+
+    // The rows are painted against the answer of the *previous* frame, then a press is applied, then the
+    // report is read from the answer that is now true — the rule the kind cards follow, so the frame that
+    // selects a toolpath is the frame that reports it selected (L13).
+    let selected_before = self
+      .described_toolpath(app)
+      .map(|toolpath| toolpath.id.clone());
+    let mut rows: Vec<(String, String, egui::Rect)> = Vec::new();
+    let mut pressed: Option<String> = None;
+    for toolpath in &app.document().toolpaths {
+      let word = format!(
+        "{} · {} · T{}",
+        toolpath.name,
+        kind_word(&toolpath.operation),
+        toolpath.tool_number
+      );
+      let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
+      let selected = selected_before.as_deref() == Some(toolpath.id.as_str());
+      let fill = if selected {
+        palette.get(Role::SelSoft)
+      } else if response.hovered() {
+        palette.get(Role::Raised)
+      } else {
+        palette.get(Role::Panel)
+      };
+      ui.painter().rect_filled(rect, radius, fill);
+      ui.painter().rect_stroke(
+        rect,
+        radius,
+        egui::Stroke::new(
+          if selected { 1.5 } else { 1.0 },
+          palette.get(if selected { Role::Sel } else { Role::Border }),
+        ),
+        egui::StrokeKind::Inside,
+      );
+      ui.painter().text(
+        egui::pos2(rect.left() + 6.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        &word,
+        egui::FontId::proportional(theme::SMALL),
+        palette.get(if selected { Role::TextHi } else { Role::Text }),
+      );
+      if response.clicked() {
+        pressed = Some(toolpath.id.clone());
+      }
+      rows.push((word, toolpath.id.clone(), rect));
+    }
+
+    if let Some(id) = pressed {
+      self.set_toolpath_selection(Some(id));
+      // The draft is re-seeded here rather than at the next frame's header, so the card and the sections that
+      // follow the list in this very frame describe the toolpath the operator just chose.
+      let selection = self.toolpath_selection().map(str::to_owned);
+      self.strategy.sync(app, selection.as_deref());
+    }
+
+    let selected = self
+      .described_toolpath(app)
+      .map(|toolpath| toolpath.id.clone());
+    for (word, id, rect) in rows {
+      let chosen = selected.as_deref() == Some(id.as_str());
+      output.drawn.toolpath_rows.push((word.clone(), chosen));
+      let centre = rect.center();
+      if clip.contains(centre) {
+        output
+          .drawn
+          .toolpath_hits
+          .push((word, (centre.x, centre.y)));
+      }
+    }
+    output.drawn.toolpath_selected = selected;
+    ui.add_space(metrics.space(1));
+  }
+
   /// The strategy editor (S10): one surface for creating and editing.
   ///
   /// Called from the `TOOLPATHS` task body, which is the surface the editor has in this shell: the header above
@@ -566,7 +680,7 @@ impl Shell {
     output: &mut ShellOutput,
   ) {
     let metrics = self.metrics();
-    let subject = subject(app);
+    let subject = subject(app, self.toolpath_selection());
     // The editor is drawn inside the inspector's scroll area, and a row below its viewport is painted by egui and
     // clipped away. Reporting its centre would be a promise about a control nobody can press — the defect L23
     // found in the playback bar — so every point this frame reports is filtered against the clip it drew in.
@@ -594,16 +708,9 @@ impl Shell {
     // 2. the current-tool card, with its own opener and this frame's number. While editing, the number is the
     //    document's: the modal writes the document, so a draft copy could only disagree with the card.
     let name = self.strategy.name.clone();
-    let (number, estimate) = match &subject {
-      Subject::Edit(_) => (
-        app
-          .document()
-          .toolpaths
-          .first()
-          .map(|toolpath| toolpath.tool_number),
-        true,
-      ),
-      Subject::New => (self.strategy.tool_number, false),
+    let (number, estimate) = match self.described_toolpath(app) {
+      Some(toolpath) => (Some(toolpath.tool_number), true),
+      None => (self.strategy.tool_number, false),
     };
     self.tool_card_for(
       app,
@@ -709,13 +816,9 @@ impl Shell {
     // The rates are the tool's, not the operation's: the same rows the library's `SPEEDS` group draws, in the
     // units that library authored them in (L25). Nothing here can change them — `cam-store` owns the writer —
     // so they are drawn as readings above the sentence that says where they live.
-    let number = match subject(app) {
-      Subject::Edit(_) => app
-        .document()
-        .toolpaths
-        .first()
-        .map(|toolpath| toolpath.tool_number),
-      Subject::New => self.strategy.tool_number,
+    let number = match self.described_toolpath(app) {
+      Some(toolpath) => Some(toolpath.tool_number),
+      None => self.strategy.tool_number,
     };
     // A missing tool is said by the card above, in its own sentence: a second one here would be the same
     // fact twice, so this `if let` has no `else`.
@@ -883,14 +986,9 @@ impl Shell {
   /// which this shell chooses on the canvas, so the editor says how many vectors it holds instead of offering a
   /// choice between three pictures of one set.
   fn region_line(&self, app: &AppState, ui: &mut egui::Ui, palette: &Palette) {
-    let count = match subject(app) {
-      Subject::Edit(_) => app
-        .document()
-        .toolpaths
-        .first()
-        .map(|toolpath| toolpath.entity_ids.len())
-        .unwrap_or_default(),
-      Subject::New => app.selection().ids().count(),
+    let count = match self.described_toolpath(app) {
+      Some(toolpath) => toolpath.entity_ids.len(),
+      None => app.selection().ids().count(),
     };
     let sentence = format!(
       "{count} vector(s) form this strategy's region — the vectors are chosen on the canvas, so this shell \

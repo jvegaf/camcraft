@@ -28,10 +28,15 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
   document with two toolpaths can only ever describe the first, and `TOOLPATHS` shows one editor for
   "the" toolpath rather than a list of them. **The gap to close:** the surface lists the document's
   toolpaths, one is selectable, and the selection is what the tool card and the editor describe.
-- **S5 (the material, measured against the design authority):** `design/system.md` fixes the stock as tan
-  `#d8b48c` top and `#b8895c` edge; the delivered 3D half paints a near-white slab (owner's screenshot,
-  `2026-11-08 18-49-23.426.png`), so the picture reads as an untextured block instead of material. **The gap
-  to close:** the 3D half's stock is painted from the design system's own role, not a literal in `view3d.rs`.
+- **S5 (the material — corrected after measurement, see L6).** The owner's screenshot reads as a white slab, and
+  this spec first said the 3D half stood *against* the design system's material roles. Measured: it does not.
+  `design/system.md:53` fixes `StockTop #d6dce6` ("the lit face of the material"), `StockBottom #424c58` and
+  `StockEdge #6e7b8a`; `theme.rs:221`'s `stock_shade(t)` is the shell's only interpolation and mixes exactly
+  those two ends; the 3D half paints through them (`chrome.rs:2482`, `StockEdge` at `view3d.rs:963`), and
+  `theme.rs:692` proves their contrast in both sets. So the near-white slab **is** the system's own `StockTop`,
+  not a literal in `view3d.rs`, and there is no drift for a painting rule to fix. What differs from the
+  reference app is a **palette value**, and changing it changes `design/system.md`, both palettes and four
+  contrast proofs — a design decision that belongs to the owner, not to this milestone.
 - **S6 (out of scope, so review does not have to guess):** no new operation kinds (drilling, V-bit,
   engraving and 3D roughing stay as `crates/cam-ui/src/strategy.rs:19-25` refuses them), no import report
   dialog, no draw-tool overlay, no ribbon relabelling, no `cam-cli` flag changes. Those were the options the
@@ -52,7 +57,7 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
 | T1 | `Generate G-code` is real: `cam-post` reaches `cam-ui`, the action is enabled exactly by being pressable, a press posts the open document, one save dialog chooses the path, the file is written, and the status bar names it and its line count. `Post…` holds the dialect for the session, a file that is not a post-processor is refused while the held one stays, and every refusal writes nothing | S1 S2 S7 | inline | — |
 | T2 | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3 | inline | — |
 | T3 | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe | S1 S4 | inline | — |
-| T4 | The 3D stock is painted from `design/system.md`'s material roles, and the near-white slab is gone | S1 S5 | inline | — |
+| T4 | **A decision, not a code task** (S5 as corrected in L6): the stock's colour is `design/system.md`'s `StockTop #d6dce6`, already painted through the roles and already contrast-proved, so no rule is owed. Whether campilot's material should read as tan material instead is the owner's call, and it re-opens four contrast proofs | S1 S5 | owner | — |
 | T5 | The milestone's row in `odd/roadmap.md` and this document's log, with the commits as evidence | — | inline | — |
 
 ## Slices
@@ -63,9 +68,9 @@ measured against the ~400-line guidance that protects the reviewer:
 | Slice | Task | Commit | Authored lines | Why this boundary |
 | --- | --- | --- | --- | --- |
 | 1 | T1 + this document | `0c194cb` | 731 | Over the guidance, and the reason is the test file: 359 of those lines are eight behaviour tests, each asserting a refusal's *absence of effect* as well as its message. Splitting the code from its tests would have left a slice that proves nothing, and splitting the two behaviours (choose a post / write a program) would have left a commit that does not compile, because both presses live in one `with_layout` block. Recorded rather than hidden: the candidate is the whole slice. |
-| 2 | T2 | — | — | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. |
-| 3 | T3 | — | — | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. |
-| 4 | T4 | — | — | One painting rule, one test. |
+| 2 | T2 | `89ed3b3` (boundary) + `c4da057` | 406 | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. Two sentences in `chrome.rs` (the RELIEF AND 3D task) still name `cam-cli`; they are outside this slice and named below. |
+| 3 | T3 | — | 585 test + ~120 source, plus the one-line door | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. The slice closed the deviation the first version left — `open_tool_library` still aimed at `toolpaths.first()` (`tool_library.rs:538`), which would have retooled a different toolpath than the card named, one press away from writing the defect this task removes from reading. |
+| 4 | T4 | — | none | No code: the 3D half already paints from the material roles, and the palette value is a design decision. See L6. |
 | 5 | T5 | — | — | Documentation only. |
 
 ## Log
@@ -91,3 +96,24 @@ measured against the ~400-line guidance that protects the reviewer:
   `Post…` control that names one, held by the shell for the session. `postp` stays unread in this milestone:
   nothing writes it, and adopting a filename the document cannot be given would be a rule no screen can
   reach.
+- **L5 (a new requirement, verbatim, and why it is its own document).** "necesito que cuando finalizes
+  con la tarea, elimines del repo toda referencia a the vendor o the reference CAM application, porque otro agente me lo a avisado en
+  una revision. me puso esto: El análisis de the vendor. El README de campilot dice que las decisiones salen
+  de un análisis de ingeniería inversa de the reference CAM application, y que el dialecto .pp está “recuperado del producto
+  analizado”. Los EULA suelen prohibir eso. En la UE hay excepciones de interoperabilidad, pero conviene
+  revisarlo con un abogado antes de publicar o comercializar. No soy abogado."
+
+  The sweep is **not** a task of this milestone: it touches 32 files, renames thirteen documents and deletes
+  a dossier, and folding it in would put a provenance change inside a UI candidate. It lives in
+  `odd/tasks/repository-name-hygiene.md`, which runs after T5. What this document records is the requirement
+  and its boundary, so the milestone cannot be called closed with it unread or unstarted.
+- **L6 (T4 dissolved by measurement: the material is a palette decision, not a defect).** Before writing a
+  painting rule I read the authority S5 named. `design/system.md:53` sets `StockTop #d6dce6` and calls it "the
+  lit face of the material"; `theme.rs:221`'s `stock_shade(t)` mixes `StockTop` into `StockBottom` and is the only
+  interpolation in the shell; `view3d.rs` paints the field through those roles and outlines the sheet with
+  `StockEdge` (`:963`); `theme.rs:692` proves the contrast of both ends in both palettes. So nothing drifts: the
+  near-white slab in the owner's screenshot **is** `StockTop`, and the rule the task asked for already exists.
+  What differs from the reference app is the value itself — its stock is tan material. Changing it would edit
+  `design/system.md`, both palettes and the proofs that keep twelve pairs above AA, which is a design decision
+  with an owner and not a defect with a fix. S5 now says that, T4 is routed to the owner, and the milestone does
+  not pretend to have closed a gap it decided not to touch.
