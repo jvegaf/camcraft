@@ -124,3 +124,54 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   `check_nesting` — overlapping placements load — and `nest_profile`'s own collision test. Recorded as
   the sixteenth advisory in `odd/tasks/debt-advisories.md` L17, **not fixed**: the fix is shared
   geometry with four consumers and belongs in its own feature with its own review.
+- **L9 (T8, the review: six findings, one of them CRITICAL, and it was right).** Lineage
+  **`review-ca5c7eda65951600`** over `master` (`c20c7cf1`..`54a0ef1`), tier `high` on a
+  `process_boundary` signal, four provider-chosen lenses (risk, resilience, readability, reliability),
+  579 original changed lines, correction budget **200**, one refuter run and one targeted validator run
+  besides the four reviewers. Four reviewer runs produced **six findings, five against this sweep's own
+  new code**. Their words are in Engram observation #193, saved **before** any acknowledgement, and
+  again here because the store keeps none of them:
+  1. **`R4-LOAD-REGRESSION`** (resilience, **CRITICAL**, deterministic, `introduced`, the only one the
+     provider judged blocking): the backward half of the index was bounded by a *running maximum of
+     `max.x`*, which one wide placement holds high for every placement behind it, and `consider` did not
+     check the candidate's own `max.x`. A valid document with one wide part plus N small ones in another
+     y band therefore did **O(N²) winding relations** — the very quadrant L7 claimed to improve.
+  2. `R1-001` (risk, WARNING) and 3. `R3-001` (reliability, WARNING): the same defect from two more
+     lenses, each prescribing a per-candidate x-interval guard or an interval index.
+  4. `R2-001` (readability, WARNING): the two prune-tolerance tests only assert that `validate`
+     **succeeds**, so a prune that wrongly skipped the pair would leave both green.
+  5. `R2-002` (readability, SUGGESTION): the index is spread over four parallel arrays defaulting to `0`
+     and `""`, with nothing enforcing one assignment per footprint.
+  6. `R3-002` (reliability, WARNING): the sub-tolerance test cannot detect an unsound prune; add a pair
+     that truly overlaps by less than the tolerance and assert the refusal.
+  **The refuter corroborated** `R4-LOAD-REGRESSION` (`outcome: corroborated`) and the state went
+  `correction_required` with a budget of 200 diff lines and one finding in scope.
+- **L10 (the correction, and the two walls in front of it).** Plan declared at **161 diff lines** and
+  accepted; the correction is `54a0ef1`: the running maximum is gone, replaced by a **uniform per-sheet
+  grid over x** — a candidate is reached only through a cell the placement being tested also occupies,
+  with a `visited` stamp so a sheet-spanning box is met once per placement, and **both** cheap interval
+  guards (x and y) now run before `footprints_overlap`. Measured by mutation: the finding's own load
+  shape (one 100 000 mm part plus 20 000 small ones, authored in reverse x order) takes **9.70 s with
+  the bound collapsed and 0.36 s with the grid**, and the tripwire test asserts under 5 s. The
+  **targeted validator passed**, in its own words: "the defective prefix-max/x-sorted backward walk is
+  deleted entirely… zero winding relations are computed instead of the measured 12,495,000", plus "no
+  detection regression" (any pair whose boxes overlap in x within tolerance shares a cell, because the
+  padded insert and query ranges are both monotone in `cell_of`) and "no refusal-ordering regression"
+  (the outer loop still climbs `earlier` in document order and takes the minimum `later`). Closure
+  **`approved`**, receipt burned (`gentle-ai.review-acknowledged/v1`, consumed revision
+  `sha256:65a470aa…`).
+  **Two walls, both worth recording.** (a) The facade **rejected its own provider-issued
+  correction-plan binding** twice — `collectBinding is missing or stale for current STATUS` — while the
+  native CLI accepted the identical tokens, which is the defect `odd/tasks/debt-advisories.md` L2's
+  predecessor already recorded for M10. (b) The native CLI then answered `managed_assets_outdated`, and
+  the owner authorised `gentle-ai sync`; it took **two** syncs, the PATH binary's and then the harness's
+  own `…/gentle-pi/.gentle-ai/v4.4.0/gentle-ai sync --agent pi`, because the store had recorded the
+  first binary's asset digest and the second binary then saw itself as stale. After that the plan, the
+  validation and the acknowledgement all went through the offered routes.
+- **L11 (what the review left open, which is not a reason to re-review anything).** Five findings are
+  **informational** by the provider's own statement and none reopens the candidate:
+  `R1-001` and `R3-001` are the load regression's other two lenses and are **answered** by `54a0ef1`
+  (both called for the guard the grid now carries); `R2-001`, `R2-002` and `R3-002` are **open**, small
+  and real, and they are the sweep's own successor advisories — the tests that assert only acceptance
+  (`R2-001`, `R3-002`) and the four parallel arrays that would silently read a wrong sheet
+  (`R2-002`). They belong to a later change with its own candidate.
