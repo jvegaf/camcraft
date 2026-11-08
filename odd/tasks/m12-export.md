@@ -44,11 +44,15 @@ Feature document for milestone **M12** of `odd/roadmap.md`. Read **until `## Log
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `cam-export`: the crate, its `Format`/error/dispatch shape mirroring `cam-import`'s, and the **DXF** writer — one `LWPOLYLINE` per contour carrying each vertex's bulge verbatim, `70=1` when closed, `$INSUNITS=4`, the layer table in document order | S2 S3 S5 | worker | |
-| T2 | The **SVG** writer — one `<path>` per contour with `A` derived from the same bulges and the Y reflection the reader inverts, `viewBox` and size derived from the document's own bounds so the mm scale is 1.0 | S3 S5 | worker | |
-| T3 | Round-trip tests: export → `cam-import` → the same geometry and layer order up to the known 10 mm placement, for both formats, with the loss each format carries asserted explicitly | S4 S5 | parent | |
-| T4 | `cam-cli export --format dxf\|svg --out`, the help row, `docs/format.md`'s command and exit-code rows, and the roadmap's evidence | S6 | parent | |
-| T5 | The review of this candidate | — | parent | |
+| T1 | `cam-export`: the crate, its `Format`/error/dispatch shape mirroring `cam-import`'s, and the **DXF** writer — one `LWPOLYLINE` per contour carrying each vertex's bulge verbatim, `70=1` when closed, `$INSUNITS=4`, the layer table in document order | S2 S3 S5 | worker | `751d918` |
+| T2 | The **SVG** writer — one `<path>` per contour with `A` derived from the same bulges and the Y reflection the reader inverts, `viewBox` and size derived from the document's own bounds so the mm scale is 1.0 | S3 S5 | worker | `751d918` |
+| T3 | Round-trip tests: export → `cam-import` → the same geometry and layer order up to the known 10 mm placement, for both formats, with the loss each format carries asserted explicitly | S4 S5 | parent | `751d918`, `1b349e4` |
+| T4 | `cam-cli export --format dxf\|svg --out`, the help row, `docs/format.md`'s command and exit-code rows, and the roadmap's evidence | S6 | parent | `751d918`, `986678c` |
+| T5 | The review of this candidate | — | parent | `1b349e4` |
+
+T1 and T2 landed together in `751d918` — the crate, both writers and their three test files in one commit.
+T3's comparator was rewritten in `1b349e4`, which is the same commit as T5's seven fixes and its Log section
+(L6); T4's roadmap row arrived separately, in `986678c`.
 
 ## Log
 

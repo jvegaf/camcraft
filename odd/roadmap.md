@@ -1,10 +1,11 @@
 # Development Plan — the reference CAM application-class 2.5D CAM application (Windows + Linux)
 
-Status: **executed through M10.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
-`etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M10 are delivered; §4 carries
-the evidence for each, and §6 the risk register with the one row M7 closed. **After M10 the work did not
+Status: **executed through M12.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
+`etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M12 are delivered; §4 carries
+the evidence for each, section by section through §4.15, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
-own documents — the advisory debt (`odd/tasks/debt-advisories.md`, six advisories closed, ten unrecoverable),
+own documents — the advisory debt (`odd/tasks/debt-advisories.md`, which carries its own counts and the reason
+the rest cannot be recovered),
 the script panel's mount (`odd/tasks/script-panel-mount.md`) and the panel's document
 (`odd/tasks/script-panel-document.md`) — and the roadmap's Log in §8 names all three.
 
@@ -81,14 +82,26 @@ crates/
   cam-sim/       Material-removal simulation: heightfield (dexfuture: dexel) + per-tool removal;
                  reports gouges and uncut material
   cam-import/    DXF, SVG, PDF, EPS, raster image tracing, CSV part lists
-  cam-nest/      Sheets/parts model + heuristics (maxrects + guillotine for rectangles,
-                 no-fit-polygon for free profiles)
+  cam-export/    The reader's mirror: DXF and SVG writers. The document goes out as bytes in millimetres,
+                 nothing is written to disk here and no bulge is flattened
+  cam-move/      The machining move vocabulary (`Move`, `MoveStream`): the contract between the toolpath
+                 engine and the emitter, so neither side depends on the other
+  cam-program/   The join between a document's toolpaths and a tool library — `program_for`,
+                 `program_for_snapshot`, `program_tool`, and the material selector M11 added
   cam-app/       Application state machine: commands, undo/redo, selection, job lifecycle. No UI deps
   cam-ui/        egui shell: docks, property grid, tool database editor, toolpath forms
   cam-view/      wgpu renderer: 2D scene (arcs, curves, toolpaths, grid, snap markers) + 3D view
+  cam-desktop/   The native window binary: opens the editor with a sample document, imports a `.c2d`
+                 the user picks, plays the 3D preview. Verified by building, not by automation
   cam-cli/       Headless pipeline: `document -> toolpaths -> gcode|svg|sim-report`. The verification
                  surface; also the CI regression harness
 ```
+
+**There is no `cam-nest` crate.** This layout named one when M9 was still unplanned; the heuristic engine
+M9's row decides (D4) landed in `cam-geom::nest` and `cam-geom::nest_profile`, because a placement is
+geometry that `cam-model`'s `nesting` section carries, not a crate of its own. The four crates listed above
+that the original layout did not name — `cam-move` (M6), `cam-program`, `cam-export` (M12) and
+`cam-desktop` (M1's native window) — are the layout catching up with the delivered workspace.
 
 Two rules make the rest of the plan enforceable:
 
@@ -150,10 +163,8 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M8** ✅ | Moulding / swept profile | **Delivered.** `cam-cli toolpath --kind moulding` sweeps an authored cross-section along a rail at a stepover: the rail is the selected entity, one repeatable `--profile <lateral>:<depth>` per cross-section point and `--stepover` (or the library's), and the program is one lateral pass per stepover offset — the rail walked by arc length at that pass's own Z, one linear feed per rail sample. `simulate` authorises the cross-section swept along the rail from the document alone, and the oracle asserts both signs on a straight rail, a closed frame and a V-bit cone, with `gouge` **exactly zero** for a correct program; moulding is proved by two golden programs (a straight rail and a closed frame, each three ways), the stepover law's coverage certificate, the multi-rail case end to end, and one measured limit recorded rather than hidden (see §4.11) | The row expected M7's distance field to be the cost; it was not — the cross-section is authored data |
 | **M9** ✅ | Nesting | **Delivered.** `cam-cli nest` packs a document's authored sheets and parts — rectangles through maxrects and a guillotine pass, free profiles through a sound-but-incomplete no-fit heuristic — and stores the placements plus **one** cost record derived by `Document::nesting_utilisation`; a run that leaves an instance unplaced reports it and exits `7` writing nothing. Proved by 78 behaviour tests (31 in `cam-model`, 14 + 17 in `cam-geom`, 16 in `cam-cli`), a byte-for-byte report and document golden set, the fixture where guillotine beats maxrects, the counted cost of the profile heuristic's incompleteness, a 42-invocation differential against the milestone's cut point, and two reviewed candidates with their corrections (see §4.12) | Own heuristic engine as decided (D4); depends on stable geometry and toolpaths |
 | **M10** ✅ | Documents & scripting | **Delivered.** `cam-cli script` runs a line-oriented command language against one document — eleven words, each dispatching to the function its own subcommand calls, with `line:column` diagnostics and every mutation through `Document::validate`; `cam-cli parts` imports a four-column part list and `cam-cli cutlist` exports the placements M9 stored as seven columns, deliberately two shapes and not one schema; `cam-cli report` writes a self-contained, hand-escaped HTML print sheet; and `cam-ui`'s `ScriptPanel` runs a script through the same library, never a process. No schema bump, no external dependency, and `--help` is the only difference from the pre-M10 surface (see §4.13) | Reporting and extension points; the original's gadget platform is the model — with S1's "DSL de comandos, sin motor" deciding the engine the row left open ("Rhai/Lua") |
-
-| **M11** ✅ | Feeds & speeds | **Delivered.** The library already keys cutting data per material and per machine (`material`, `tool_entity`, `cutting_data_for(geometry, material, machine)`, proved by one tool at 120 and 60 mm/s in two materials); what is missing is the **selector**, so `emit` cuts at the tool's own record and `tools add` writes the same `100 / 30 / 18000` for every material. M11 carries `Job.material` (optional, `#[serde(default, skip_serializing_if)]`, tag stays `c2d/document@2`) plus an `emit --material` override that wins, threads it into the lookup the store already has, and leaves **`None` reproducing today's bytes exactly** — all 17 goldens keep `F100.0`. An unknown material is refused by name, never silently ignored. Deriving a rate from chipload and surface speed is **not** in this row: it would change the one number the goldens pin and put a derivation between the library and the program that nothing tests and the selector is threaded to the store's existing per-material lookup. **Evidence**: 21 golden tests untouched, 1548 workspace tests green, an unknown material refused by name, and a review that caught the flag accepting a missing name and a no-selector change nobody asked for, both corrected in 79 diff lines and validated. Two follow-ups recorded: the shell's estimate cannot honour a material until `cam-store` answers one, and `simulate` has no `--material` to reproduce a one-run override | Every strategy emits at the tool's fixed rate today, which is the most user-visible gap left: the machine is told how fast to cut by a record nobody selected |
-
-| **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable |
+| **M11** ✅ | Feeds & speeds | **Delivered.** The library already keys cutting data per material and per machine (`material`, `tool_entity`, `cutting_data_for(geometry, material, machine)`, proved by one tool at 120 and 60 mm/s in two materials); what is missing is the **selector**, so `emit` cuts at the tool's own record and `tools add` writes the same `100 / 30 / 18000` for every material. M11 carries `Job.material` (optional, `#[serde(default, skip_serializing_if)]`, tag stays `c2d/document@2`) plus an `emit --material` override that wins, threads it into the lookup the store already has, and leaves **`None` reproducing today's bytes exactly** — all 17 goldens keep `F100.0`. An unknown material is refused by name, never silently ignored. Deriving a rate from chipload and surface speed is **not** in this row: it would change the one number the goldens pin and put a derivation between the library and the program that nothing tests and the selector is threaded to the store's existing per-material lookup. **Evidence**: 21 golden tests untouched, 1548 workspace tests green, an unknown material refused by name, and a review that caught the flag accepting a missing name and a no-selector change nobody asked for, both corrected in 79 diff lines and validated. Two follow-ups recorded: the shell's estimate cannot honour a material until `cam-store` answers one, and `simulate` has no `--material` to reproduce a one-run override | Every strategy emits at the tool's fixed rate today, which is the most user-visible gap left: the machine is told how fast to cut by a record nobody selected (see §4.14) |
+| **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable (see §4.15) |
 
 Deferred / conditional, not scheduled: PDF text-to-outline fidelity beyond vector paths, EPS edge
 cases, rotary wrapping (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later
@@ -948,6 +959,63 @@ cut list back; and **`docs/format.md`'s command-line table is stale** from M9 on
 `nest` nor M10's four commands and its exit table stops at `6` while `nest` exits `7` — recorded rather
 than patched, because M10 changed no document format and the format document's own rows were not part
 of this milestone's contribution.
+
+### 4.14 M11 delivered (evidence)
+
+| Deliverable | Where | Proof |
+| --- | --- | --- |
+| `Job.material`, optional and omitted when absent, `Copy` lost and every `..Job::default_sheet()` site moved with it, the tag still `c2d/document@2` | `crates/cam-model` | a document written before M11 loads, keeps its fields and re-saves byte-identically; the round-trip and frame tests moved in the same commit rather than being relaxed |
+| The selector threaded to the lookup the store already had: `program_for`, `program_for_snapshot` and `program_tool` take `Option<&str>`, and `None` is the pre-M11 program | `crates/cam-program` | all 17 golden programs keep `F100.0` and `S18000`; the library's per-material keying was already proved before the milestone (`crates/cam-store/tests/tools.rs`: one tool at 120 mm/s in one material and 60 in another) |
+| `cam-cli emit --material`, the flag winning over the document's field, and an unknown material refused by name rather than silently cut at the tool's own rate | `crates/cam-cli` | `emit_cuts_as_the_material_it_is_asked_for` pins the four cases (no selector → `F100.0`; flag `mdf` → `F120.0` and no `F100.0`; document `mdf` → `F120.0`; flag `hardwood` over a document that says `mdf` → `F60.0`); `emit_refuses_a_material_the_library_has_no_record_for` asserts `oak`, exit `2` and the tool's name; 21 golden tests pass untouched |
+| One function answers "which material" for both `emit` and `simulate`, so the two commands cannot ask the document different questions | `selected_material` in `crates/cam-cli/src/lib.rs` | the same selector is the only caller path for both commands |
+| The review | lineage **`review-c54c930ddcde3f9f`** | tier `high`, 667 lines over 26 paths, four lenses, `correction_required` on five corroborated findings, one bounded correction of **79 diff lines** (budget 200), a targeted validator that passed quoting the frozen findings one by one, closure **`approved`**, receipt burned (`sha256:93d41308…`) |
+
+Two defects were found and fixed at the root, both of them mine. The flag's parser used
+`rest.get(index + 1).cloned()`, which made a **trailing** `--material` indistinguishable from *no* selector:
+`emit` exited `0` and cut at the rate the operator had explicitly asked not to use, and a following flag was
+swallowed as the name. It now refuses both shapes — a missing value and a value starting with `-` — with
+exit `2` and "emit --material needs a material name". The second is the more instructive: the correction had
+also made the **no-selector** path prefer the library's null-material row, which changes what an existing
+library shape emits (`F60.0` → `F100.0`) and contradicts S3; it was reverted, and the comment says what the
+code does instead of claiming a byte-identity it did not deliver. Both were invisible to a green gate, and
+the review caught them by reading the spec the tests did not.
+
+Recorded and not decided by this milestone, each a successor finding rather than a silent gap: `R4-002` and
+`R3-003` — the shell's cutting-time estimate passes no material, so a document that names one emits with
+that material's rates while the window estimates from the tool's own record; the snapshot needs a material
+path `cam-store` can answer, which is a change to that crate. `R4-003` — `simulate` has no `--material`, so
+after `emit --material <name>` the simulation rebuilds the program for the document's material and cannot
+reproduce the emitted program. And a measured limit carried in the feature document: **no shipped post block
+references `[FP]`**, so a plunge rate cannot be seen through the emitter at all; it is pinned at the
+`cam-program` level, and changing a post contract to make it visible is not this milestone's business.
+
+### 4.15 M12 delivered (evidence)
+
+| Deliverable | Where | Proof |
+| --- | --- | --- |
+| A `cam-export` crate mirroring the reader's shape: bytes in millimetres out, no filesystem, no document mutation, and the same document always exporting to the same bytes | `crates/cam-export` | the crate writes a file the caller owns, keeps every bulge verbatim so the arc the kernel holds is the arc the file carries, and its identity is `(Format, error, dispatch)` beside `cam-import`'s |
+| **DXF**: one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order | `crates/cam-export/src/dxf.rs` | `crates/cam-export/tests/dxf.rs`: layer identity survives, a closed contour closes, the unit header is written |
+| **SVG**: one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, a `viewBox` in the document's own millimetres | `crates/cam-export/src/svg.rs` | `crates/cam-export/tests/svg.rs`: a circle stays two arcs and is not doubled by the explicit closing `A`; the documented loss — SVG carries no layers — is asserted on a two-layer document rather than omitted |
+| The acceptance test is the **round trip against our own reader**, never byte equality: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs | `crates/cam-export/tests/round_trip.rs` | both sides framed by **one origin for the whole side**, the comparators taking slices rather than pairs, plus vertex and segment counts per contour so a phantom zero-length segment cannot pass |
+| `cam-cli export <document> --format dxf\|svg [--out]`, writing and announcing with `--out` and printing to stdout without it | `crates/cam-cli` | a format this build does not write is refused by name (`export writes dxf or svg, not "pdf"`, exit `2`) and a missing `--format` is refused rather than defaulted |
+| The review | lineage **`review-a7e624d841d3d0c6`** | tier `high`, 2156 lines over 15 paths, four lenses, closure **`approved` on the first admitted event** with no correction, receipt burned (`sha256:193e1fd6…`); nine findings, all informational by the provider's own statement, and seven of them real defects |
+
+The seven fixes are worth naming because each was small and one was destructive: `--out` canonicalising to
+the document being read **replaced a document with DXF and reported success** (now refused, with the document
+asserted byte-identical afterwards); `fs::write` truncating before it completes (now a sibling temporary
+renamed into place); `print!` panicking on a closed pipe, so `export | head` exited `101` with a backtrace
+(now `write_all` on the locked stdout with the error mapped — and the closed-pipe case is the one thing this
+repository's harness cannot reproduce, which is recorded rather than claimed); a round-trip comparator that
+normalised **each contour to its own bounding box**, so a writer shifting one contour relative to another
+would still pass and S4 was not proved at all; a point-set comparison blind to a phantom zero-length segment;
+`export`'s doc claiming the writer "refuses nothing the model allows", which hid a real refusal surface; and
+the SVG module's identity omitting `min.y`, which made the sentence explaining the Y reflection false for any
+page not anchored at zero.
+
+What the review did **not** find is as telling as what it did: neither writer lost an arc, a layer order or a
+closed contour, and the round trip held through both formats on the first run — the byte-level tests the two
+worker units were built against did their job. **Toolpaths are not written**: a toolpath is not geometry, and
+writing one would make "the same thing that went in" unprovable.
 
 ## 5. Verification strategy
 
