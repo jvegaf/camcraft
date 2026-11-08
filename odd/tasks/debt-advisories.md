@@ -297,8 +297,8 @@ burned. The provider marked all five informational against that candidate; three
 
 | ID | Lens | Severity | Subject | Status |
 | --- | --- | --- | --- | --- |
-| `ca5c7eda/R2-001` | readability | WARNING | `crates/cam-model/tests/document.rs:1891-1898` — the two prune-tolerance tests assert only that `validate` succeeds, so a prune that wrongly skipped the pair would leave both green; the first name says "less than" while the loop includes `gap == tolerance` | **open** |
-| `ca5c7eda/R3-002` | reliability | WARNING | `crates/cam-model/tests/document.rs:1913-1915` — no case asserts a **refusal** for a pair that truly overlaps by less than the tolerance, so an unsound prune is invisible (use shapes without collinear edges, or the sixteenth advisory masks it) | **open** |
+| `ca5c7eda/R2-001` | readability | WARNING | the two prune-tolerance tests asserted only that `validate` succeeds, so a prune that wrongly skipped the pair left both green | **closed** by `aad6a0f` — the test is renamed for the boundary it pins and the differential below can fail |
+| `ca5c7eda/R3-002` | reliability | WARNING | no case asserted a **refusal** near the tolerance, so an unsound prune was invisible | **closed** by `aad6a0f` — `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` plus the tolerance-scale differential |
 | `ca5c7eda/R2-002` | readability | SUGGESTION | the index was four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint | **closed** by `52e7f11` — per-sheet `SheetGrid`, `sheet_of` derived by an iterator |
 | `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `54a0ef1` |
 | `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `54a0ef1` |
