@@ -226,3 +226,39 @@ observation #165. Read **until `## Log`** before touching code; the Log is the r
   The method conclusion, now paid for twice: reading the state directory in the same session that receives
   the findings is the **only** thing that keeps them (L9 lost `R3-001` this way, L12 kept two, this review
   kept six). It is not optional ceremony — for this store it is the whole record.
+- **L16 (the overlap sweep reviewed: approved first pass, one BLOCKER refuted, three follow-ups worth having).**
+  Lineage **`review-94cfd23437f72a47`** over the sweep — tier `high`, 5 paths, 305 changed lines, budget
+  153, four host-relay reviewer runs plus a refuter, closure **`approved`** (`sha256:b44d3526…`) with the
+  receipt burned and **no correction required**. It **closes** `39a6d85c/R1-quadratic-overlap-validation`
+  and `39a6d85c/R4-002`: the pair loop no longer visits N(N-1)/2 pairs. The message it produces does not
+  move, and the proof is `the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would` — a seeded
+  scan whose reference walks pairs in document order, which caught the first version naming `P3/P7` where
+  the document order says `P1/P3`, because a sweep in x meets pairs in a different order. Its six
+  findings, tagged by lineage as `94cfd234/…`, captured from the store before the acknowledgement:
+  1. *readability BLOCKER* (`lib.rs:1869`, `R2-001`) — **refuted, correctly.** The claim was that
+     `sheet_id` is `&&str` (iterating `&BTreeMap<&str, _>`) while `first_offence` is
+     `Option<(usize, usize, &str)>`, "and Rust does not apply deref coercion to tuple-literal elements",
+     so the crate fails to type-check. The refuter threw it out and the build proves it: a tuple
+     expression is a coercion site, so `&&str` coerces to `&str` there — the whole workspace compiles and
+     its 1 529 tests pass.
+  2. *risk WARNING* (`lib.rs:1869`, `R1-001`) and 3. *resilience WARNING* (`lib.rs:1844-1880`,
+     `R4-001`) — **one finding, real, accepted with its trade named**: "a large invalid document with an
+     early overlap and many later placements whose x ranges meet now performs the full candidate scan
+     before refusing, whereas the baseline returned immediately on the first pair." That is exactly the
+     price of preserving the message, and it is the *failure* path: the sweep is strictly cheaper on a
+     valid document, which must visit every pair, and only the invalid-early-overlap case pays. A real
+     early exit needs a spatial index, not an accumulation — **open, and the largest of the six**.
+  4. *reliability WARNING* (`lib.rs:1850-1854`, `R3-PRUNE-TOLERANCE`) — "the soundness of the
+     optimization rests on that prune threshold matching the separation tolerance used inside
+     `footprints_overlap`/`winding::relation` … it never exercises the tolerance term and never exercises
+     a pair where the AABB predicate and the winding predicate could disagree." **Open, cheap, and the
+     one to do first**: a sub-tolerance fixture is a few lines.
+  5. *reliability SUGGESTION* (`lib.rs:1830-1834`, `R3-MULTISHEET-PRUNE`) — "every added test constructs
+     exactly one sheet. The baseline cross-sheet behaviours are therefore not asserted: two placements on
+     different sheets that coincide in coordinates must remain accepted, and when multiple sheets each
+     contain an overlap the named pair must be the globally earliest one. A mis-keyed bucket or a
+     per-bucket (rather than global) minimum would pass the added tests." Same shape: cheap, real.
+  6. *readability SUGGESTION* (`tests/document.rs:1751`, `R2-002`) — the reference's justification says
+     strict inequalities are exact "because coordinates are whole millimetres", but the real reason a
+     shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (*equal* bounds only). The
+     code is right and the reason is the wrong one — the comment should say which rule it relies on.
