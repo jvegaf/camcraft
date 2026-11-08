@@ -46,7 +46,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
-| T7 | ✅ **decided and half delivered** (L9): `strategy.rs` 1,137 + `tests/strategy.rs` 1,285 and `tool_library.rs` 1,234 + `tests/tool_library.rs` 1,179 are split, because that is the one M13 concern — the toolpath list — that still carried ~3.1k into a review. **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision**: a glyph catalogue and a palette table are read by nobody who reviews behaviour, and the debt is recorded rather than paid | S3 | worker | — |
+| T7 | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3 | worker | `86e9947`, `f0d74a1` |
 
 ## Log
 
@@ -154,4 +154,21 @@ cost is the **files**. Read **until `## Log`** before touching code.
   `theme.rs` (945) is a table of colours and the proofs that hold them — and it is already reviewed, in T4's own
   lineage, at 945 lines — and `tests/input.rs` (881) sits just over the line. A milestone that claims "every file
   under 800" would be lying; this one claims "every file a reviewer of behaviour must read".
+- **L10 (the milestone's numbers, final).** Seven slices: `tests/shell.rs` 5,894 → largest **676**;
+  `tests/view3d.rs` 2,374 → **456**; `src/view3d.rs` 2,130 → **573**; `src/chrome.rs` 2,672 → **700**;
+  `src/lib.rs` 3,738 → **131** (children ≤ 609); `src/strategy.rs` 1,137 → **532**; `src/tool_library.rs`
+  1,234 → **514**. `find crates/cam-ui -name '*.rs' | xargs wc -l` now reports exactly **three** files over
+  800 — `icons.rs` 2,135, `theme.rs` 945, `tests/input.rs` 881 — which are the three T7 and L9 decided to leave
+  whole, so the claim this document can stand behind is "every file a reviewer of behaviour must read is under
+  ~800", not "every file".
+  Every slice passed the same bar and paid the same two debts: a **move proved by comparison** (each original
+  item verbatim in exactly one new file, and the non-blank line multiset identical apart from declarations,
+  `impl` wrappers and forced visibility markers), and **`cargo doc` links that no longer resolve** — 30 at the
+  start of the milestone, **71** now, every one of them a link that resolved only because a single file held
+  every name in scope. A doc-only `use` cannot pay it (`unused_imports` under `-D warnings`), so it is one
+  documentation task's work: re-point the links, and fix `Art`'s "see this module's header", which now points at
+  a file that has none.
+  **What remains unproven is the only thing that matters**: no candidate has been reviewed since the split. The
+  measurement says the forward context dropped from 8.2k to ~1.2k for the 3D half and from 14k to ~1.5k for the
+  chrome, but a shorter list of files is not an approval, and this document does not claim one.
 
