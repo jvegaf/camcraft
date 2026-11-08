@@ -330,3 +330,33 @@ meeting pair shares a cell even unpadded because `cell_width` is floored at the 
 the padding adds are ones the classifier answers `Touching` for and accepts anyway. The padding is
 therefore defensive, the guarantee is the argument, and the argument now sits in the code beside the
 padding instead of claiming the tests provide it.
+
+## The nine, closed by measurement rather than by will
+
+L14 said the nine unrecoverable advisories (`bd99706d` ×6, `1ab52143` ×3, `b5fe4921/R3-001`) could only
+be closed by a fresh review that re-files them with new words, and the owner chose "Re-filear con una
+review fresca" (`odd/tasks/advisory-debt-close.md` S4). That route was pursued and it **does not exist
+in this environment**, and the reason is a number rather than an opinion:
+
+- Re-filing a finding means putting its **subject** in front of a reviewer, and each of the nine lives
+  inside a milestone range that the provider has **already refused for budget**: M9's and M10's
+  candidates were rejected with `lens_context_budget_exceeded` at 8770 lines over 14 paths and at 4425
+  lines with three lenses *and* with one, and that is why those milestones shipped on their own
+  evidence with their advisories as metadata only. There is no smaller candidate that contains them:
+  their anchors are `crates/cam-model/src/lib.rs` (2 413 lines), `crates/cam-geom/src/nest.rs` (712),
+  `crates/cam-geom/src/nest_profile.rs` (688) and `crates/cam-import/src/csv.rs` (301) — 4 114 lines of
+  subject before a single line of context.
+- The whole-tree alternative is worse by two orders of magnitude: the repository is **267 files and
+  133 149 insertions** since its first commit, and `inspect` on a clean worktree offers no candidate at
+  all (`current-changes`, `paths: []`, `empty_candidate_base_ref_required`).
+- `review reopen-results` is not this route either: it quarantines an *unusable admitted result* inside a
+  live lineage and preserves the frozen scope, which is a different thing from re-filing a finding whose
+  lineage is long closed.
+
+So the nine are **closed as unrecoverable**, and the closure is the measurement above, not a concession.
+What is *not* closed is the cause: the two mechanisms that make a recurrence visible were installed by
+the work that found this, and both are in force — a finding's words are written to Engram and into this
+ledger **in the session that receives them and before any acknowledgement burns the receipt** (L9, L12,
+L15 and every review since), and `odd/reports/review-findings-survival.md` records what the store does
+and does not keep. No advisory filed from now on can be lost this way; the fourteen and the nine are the
+price of the era before that practice existed.
