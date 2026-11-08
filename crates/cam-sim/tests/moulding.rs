@@ -1082,3 +1082,95 @@ fn a_v_bit_moulding_a_millimetre_deep_gouges() {
     "a deeper cone cuts more than claimed, never less"
   );
 }
+
+// --- M8 T5: the claim's polyline is the walk at the one chord tolerance --------------------------
+//
+// Every rail above is straight, or a frame of straight lines, and `Rail::samples` gives a straight
+// segment exactly one chord whatever tolerance it is handed. So `DEFAULT_CHORD_TOLERANCE` — the walk
+// `cam-sim`'s `claim_moulding` authorises against and `cam-toolpath` emits — is invisible in all of
+// them: the claim could walk at any tolerance and their numbers would not move. This block adds the one
+// rail that can tell two tolerances apart.
+
+/// The arc rail's circle: radius 50 mm about `(60, 60)`, so the fixture's five passes are the arcs of
+/// radius 50, 52, 54, 56 and 58 mm and all of them, with the bit's 0.25 mm footprint, stay inside the
+/// 120 mm stock.
+const ARC_CENTRE: f64 = 60.0;
+const ARC_RADIUS: f64 = 50.0;
+
+/// A **quarter-arc** open rail: the circle of radius [`ARC_RADIUS`] about `(60, 60)`, travelled
+/// counter-clockwise from `(110, 60)` to `(60, 110)`.
+///
+/// Lateral is to the right of travel, which on a counter-clockwise arc is outward, so the authored
+/// cross-section's passes are further arcs of the same centre — radius 50 for lateral 0 out to radius
+/// 58 for lateral 8 — and a lateral distance is a radius. It reuses [`params`] and [`moulding`], so the
+/// claim it is asked about is the file's own cross-section and not a second one written for arcs.
+fn arc_rail() -> Contour {
+  let arc = cam_geom::Arc::new(
+    Point2::new(ARC_CENTRE, ARC_CENTRE),
+    ARC_RADIUS,
+    0.0,
+    std::f64::consts::FRAC_PI_2,
+  )
+  .expect("a quarter arc");
+  Contour::from_segments(&[cam_geom::Segment::Arc(arc)], false).expect("an open arc rail")
+}
+
+fn arc_document() -> Document {
+  document(
+    &[("rail", arc_rail())],
+    vec![moulding("moulding 1", &["rail"])],
+  )
+}
+
+/// The claim's polyline is the walk at `DEFAULT_CHORD_TOLERANCE`, and this is the rail that can witness
+/// it.
+///
+/// `claim_moulding` authorises the cells the simulation answers for against
+/// `rail.samples(DEFAULT_CHORD_TOLERANCE)`, and `cam-toolpath::moulding` emits that same walk, so the
+/// claim's polyline is the program's. **A straight rail cannot test that**: a line segment samples to
+/// exactly one chord at *any* tolerance, so every other fixture in this file reports identical numbers
+/// under `.samples(0.01)` and under the constant — the tolerance is unobservable there. An arc is
+/// split into a number of chords that *is* the tolerance: 126 samples over this quarter arc at the
+/// 0.001 mm constant (0.39 mm chords) against 41 at 0.01 mm (1.26 mm chords). A chord also sags inside
+/// its arc, so the coarser walk moves each pass's polyline up to 0.01 mm towards the arc's centre, and
+/// cells that sit just outside the tool's reach of the default walk fall inside the coarse one's.
+#[test]
+fn a_mouldings_claim_on_an_arc_rail_is_the_walk_at_the_one_chord_tolerance() {
+  let target = target_of(&arc_document());
+
+  // The document's own cross-section read on the arc, pass by pass: a lateral distance is a radius
+  // here, so each cell below is a cell whose centre sits inside the 0.25 mm footprint of exactly one
+  // pass, and its authored depth is that pass's. These three are tolerance-insensitive — 0.02 to 0.04
+  // mm inside the reach — and say that the arc really is swept by the fixture's profile.
+  assert_eq!(
+    target.authorised(103, 88),
+    2.5,
+    "cell centre (103.5, 88.5) is 52.005 mm out from the arc's centre: the pass at lateral 2, 2.5 mm deep"
+  );
+  assert_eq!(
+    target.authorised(101, 94),
+    4.0,
+    "cell centre (101.5, 94.5) is 53.968 mm out: the pass at lateral 4, the cross-section's own deepest"
+  );
+  assert_eq!(
+    target.authorised(100, 101),
+    1.0,
+    "cell centre (100.5, 101.5) is 57.987 mm out: the pass at lateral 8, 1 mm deep"
+  );
+
+  // The pin, and it is the walk at `DEFAULT_CHORD_TOLERANCE` that produces these two numbers rather
+  // than geometry alone: **192 cells and 424.5 mm³**. The same claim walked at 0.01 mm instead claims
+  // 198 cells and 442.5 mm³ — six cells more, two under the 1 mm pass and four under the 4 mm one,
+  // whose centres sit 0.2542 to 0.2547 mm from their pass in the default walk and 0.2448 to 0.2461 mm
+  // from it in the coarse one. So a claim that read any other tolerance would not report these.
+  assert_eq!(
+    claimed_cells(&target),
+    192,
+    "the cells within 0.25 mm of the walk at DEFAULT_CHORD_TOLERANCE"
+  );
+  assert_eq!(
+    authorised_volume(&target),
+    424.5,
+    "192 cells of the authored 1, 2.5, 4, 2.5 and 1 mm passes, claimed against that same walk"
+  );
+}

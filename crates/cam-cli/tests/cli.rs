@@ -7,6 +7,9 @@ use std::f64::consts::{FRAC_PI_2, PI};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use cam_geom::moulding::{
+  CrossSection, CrossSectionPoint, Rail, StepoverLaw, DEFAULT_CHORD_TOLERANCE,
+};
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use cam_model::{
   ChamferParams, Document, DrillParams, Entity, EntityKind, FlutingParams, Job, Layer,
@@ -6682,6 +6685,87 @@ fn a_moulding_is_byte_identical_across_runs_and_emits_a_stable_program() {
     emit_program(&directory, &first, &library, &post),
     program,
     "the emitted program, byte for byte"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_mouldings_program_is_walked_at_the_one_chord_tolerance_the_claim_reads() {
+  // `odd/roadmap.md:709` recorded the gap in M8's own evidence table: `DEFAULT_CHORD_TOLERANCE` is a
+  // constant `cam-geom`, `cam-toolpath` and `cam-sim` all read — *which is what makes the claim's
+  // polyline the program's* — and no test pinned it. This is that test, and the rail is a **quarter
+  // arc** on purpose: on a straight rail every sample and every tolerance give the same polyline, so
+  // an assertion about it could not fail. On an arc the tolerance decides how many chords the walk is
+  // made of, which is what makes the emitted program's own length a witness for the value its caller
+  // passed.
+  assert_eq!(
+    DEFAULT_CHORD_TOLERANCE, 0.001,
+    "the value three crates share; changing it changes every curved moulding program, so the change \
+     has to be a failing test here rather than a polyline that moves quietly"
+  );
+
+  let arc = Arc::new(Point2::new(100.0, 50.0), 30.0, 0.0, FRAC_PI_2).expect("a quarter arc");
+  let rail = Contour::from_segments(&[Segment::Arc(arc)], false).expect("an open rail");
+
+  let samples = Rail::new(&rail)
+    .expect("a rail")
+    .samples(DEFAULT_CHORD_TOLERANCE)
+    .expect("a walk");
+  let coarser = Rail::new(&rail)
+    .expect("a rail")
+    .samples(DEFAULT_CHORD_TOLERANCE * 10.0)
+    .expect("a walk");
+  assert_ne!(
+    samples.len(),
+    coarser.len(),
+    "the tolerance is load-bearing, or every assertion below is vacuous: {} samples at {} against \
+     {} at the same arc sampled ten times coarser",
+    samples.len(),
+    DEFAULT_CHORD_TOLERANCE,
+    coarser.len()
+  );
+
+  let directory = scratch("moulding-chord-tolerance");
+  let document = write_vectors(&directory, "arc.c2d", vec![rail]);
+  let library = write_library(&directory);
+  let added = author_moulding(&document, &library, &["--stepover", "2"]);
+  assert_eq!(added.code, 0, "{}", added.stderr);
+
+  // The passes are the cross-section's, so the expected feed count is arithmetic over the rail's own
+  // walk rather than a number copied from a program that happened to be emitted once.
+  let cross = CrossSection::new(vec![
+    CrossSectionPoint {
+      lateral: 0.0,
+      depth: 0.0,
+    },
+    CrossSectionPoint {
+      lateral: 6.0,
+      depth: -4.0,
+    },
+    CrossSectionPoint {
+      lateral: 12.0,
+      depth: 0.0,
+    },
+  ])
+  .expect("the cross-section the flags authored");
+  let passes = StepoverLaw::new(&cross, 2.0)
+    .expect("a stepover law")
+    .passes()
+    .len();
+
+  let post = write_post(&directory);
+  let program = emit_program(&directory, &document, &library, &post);
+  let feeds = program.matches("G01X").count();
+  // The pass's first sample is reached by the rapid and the plunge there is a `Z` move, so the program
+  // carries exactly one `G01X` per **remaining** sample: `passes * (samples - 1)`. The subtraction is the
+  // strategy's stated contract, not a fudge — a tolerance that moved the walk would move this number.
+  assert_eq!(
+    feeds,
+    passes * (samples.len() - 1),
+    "one feed per further point of each pass's offset walk: {passes} pass(es) over {} samples of the \
+     rail `cam-toolpath` walks at `DEFAULT_CHORD_TOLERANCE`. A strategy that passed any other \
+     tolerance would emit a different number of feeds and fail here",
+    samples.len()
   );
   std::fs::remove_dir_all(&directory).ok();
 }
