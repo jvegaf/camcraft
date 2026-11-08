@@ -121,4 +121,24 @@ L5). Read **until `## Log`** before touching anything.
   one step of this sweep that cannot be undone from here, the harness refused it, and the owner chose the
   non-destructive route. Until they swap it, a clone of `master` still carries the old names in its history, and
   this document says so rather than claiming a purge it did not perform.
+- **L7 (the native review of the palette slice, and the ordering lesson).** Lineage
+  `review-fc5085869437174f`, `base-diff` over the T4 commit and the three documents that followed it (5 paths,
+  280 changed lines, tier `medium`, correction budget 140), lenses `review-readability` and
+  `review-reliability`. **`R3-NAME-LEAK` (CRITICAL, `introduced`)** was the sweep's own subject turning on
+  itself: a log line quoted the search pattern to report its result, which spelled the very terms the document
+  claims not to spell — the claim and the measurement contradicted each other and the measurement was the
+  false one. One bounded correction (7 of the 140 lines), then a targeted validator, then `approved` with the
+  receipt burned. **Four advisories, informational and non-blocking** — `R2-001` (`design/system.md:97`),
+  `R2-002` (`:124`), `R2-003` (this document's L5 pattern, the same subject the CRITICAL corrected), and
+  `R3-CONTRAST-DOC` (`design/system.md:99`) — recorded here because a `compact-v2` receipt keeps 259 bytes and
+  not the reviewers' prose (`odd/reports/review-findings-survival.md`).
+  **Cost, measured:** 2 reviewer runs at 50,577 and 69,165 tokens, a refuter at 17,466 and a validator at
+  7,572 — **144,780 tokens and US$0.235 for one 280-line candidate**, dominated by reasoning output rather than
+  by the diff, and heavier than the reviewer's own model choice suggests: the refuter and the validator ran on
+  a costlier model than the two lenses.
+  **The lesson is about order, not about the change.** The advisories were committed before the
+  `acknowledge-approved`, and a commit moves the candidate, so the burn no longer matched the tree it approved
+  (`native-approved-acknowledgement-not-current`) and the receipt could only be burned by returning HEAD to the
+  approved candidate first. **Findings are written into the session before the burn; the commit that records
+  them comes after it.**
 
