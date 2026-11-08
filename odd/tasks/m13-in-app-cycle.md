@@ -55,6 +55,19 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
 | T4 | The 3D stock is painted from `design/system.md`'s material roles, and the near-white slab is gone | S1 S5 | inline | — |
 | T5 | The milestone's row in `odd/roadmap.md` and this document's log, with the commits as evidence | — | inline | — |
 
+## Slices
+
+One commit per task, because each is one reviewable behaviour. Sizes are **authored** lines (lock files excluded),
+measured against the ~400-line guidance that protects the reviewer:
+
+| Slice | Task | Commit | Authored lines | Why this boundary |
+| --- | --- | --- | --- | --- |
+| 1 | T1 + this document | `0c194cb` | 731 | Over the guidance, and the reason is the test file: 359 of those lines are eight behaviour tests, each asserting a refusal's *absence of effect* as well as its message. Splitting the code from its tests would have left a slice that proves nothing, and splitting the two behaviours (choose a post / write a program) would have left a commit that does not compile, because both presses live in one `with_layout` block. Recorded rather than hidden: the candidate is the whole slice. |
+| 2 | T2 | — | — | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. |
+| 3 | T3 | — | — | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. |
+| 4 | T4 | — | — | One painting rule, one test. |
+| 5 | T5 | — | — | Documentation only. |
+
 ## Log
 
 - **L1 (the request, verbatim).** "para el proximo milestone tenemos que reducir los gaps evidenciables que
