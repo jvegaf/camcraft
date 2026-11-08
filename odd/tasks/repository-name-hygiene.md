@@ -67,7 +67,7 @@ L5). Read **until `## Log`** before touching anything.
 | T4 | The **dossier paths** the sweep revealed: `odd/` still cites `evidence/analysis-report.md`, `evidence/derived/exe_utf16_strings.txt` and `evidence/installer-extract/` as where a spec's vocabulary came from (m3 S5, m4 S4/S5, m6, m7, m0 L3, roadmap L3). Each clause either states the fact it was establishing without the citation, or goes | S1 S4 S8 | worker | — |
 | T2 | The thirteen documents renamed with every inbound link updated, the pattern `(name)|(vendor)` matching only this document's own Log quote over the whole tree, gate green | S2 S6 S7 | inline | — |
 | T5 | The **stand-ins** the names left behind: "the original", "the product", "the dossier", "the observed/recovered `.pp` dialect", the bitmap-relief strategy's product name and the closed project-file extension, each replaced by the CAM fact it stood for, or deleted where no fact survived it | S1 S3 S8 | worker | — |
-| T3 | The roadmap's entry: what the tree now says, and the history note S5 owes the reader | S5 | inline | — |
+| T3 | ✅ delivered — the roadmap's note: what the tree now says, and where the rewritten history lives (two published branches, the swap left to the owner) | S5 | inline | — |
 
 ## Log
 
@@ -104,4 +104,21 @@ L5). Read **until `## Log`** before touching anything.
   `.pp` dialect, and no alias stands in for the name. "The reference app" was **kept** where it means the
   Prancheta CNC design reference already in the repository (`design/prancheta-reference/`, the `camui-*`
   documents) — a different subject, and rewriting it would break what those documents say.
+- **L6 (the rewrite exists, and the swap is the owner's move).** The tree was already name-free; the history it
+  inherited was not. The rewrite ran in a scratch clone (`/tmp/campilot-rewrite`), never on the working tree:
+  `evidence/` removed from every commit, the fifteen milestone documents whose file names carried the product
+  word renamed in every commit, that word and the vendor's replaced in every blob and every commit message, the
+  owner's own quote summarised — because a verbatim quote is the one text that would keep the names the
+  instruction removes — and the old objects expired and pruned. Measured on the result: a case-insensitive
+  search for either name over the tree returns **0 files**, and `git log --all -S` for either name finds **0
+  commits**. This document does not spell them here either: naming them to prove they are gone would be the
+  residue it exists to remove. Then the citations: of the **251** commit hashes the documents cite that resolved
+  before, **250** resolve after the remap; the one that does not (`14a8f0e`) never resolved in a clean clone
+  either — it points at a commit that only ever existed as a dangling object, and the documents already record
+  it as "not pushed".
+  The rewrite is published as two **new** branches — `hygiene/master-rewritten` (`6cc361f`, was `cdf3a3d`) and
+  `hygiene/m13-rewritten` (`3a412a8`, was `3af8a77`) — and **`master` itself was not moved**: a force-push is the
+  one step of this sweep that cannot be undone from here, the harness refused it, and the owner chose the
+  non-destructive route. Until they swap it, a clone of `master` still carries the old names in its history, and
+  this document says so rather than claiming a purge it did not perform.
 

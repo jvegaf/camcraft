@@ -2,6 +2,14 @@
 
 Status: **executed through M13.** Each milestone's acceptance is that milestone's own measurements — its
 tests, oracles, goldens and differentials — and the roadmap is where they are carried: M0–M13 are delivered,
+
+**On the names in this history.** The tree no longer names the third-party product the plan once learned from:
+`README.md`, `docs/`, `odd/` and the evidence dossier were swept, and `grep -ri` over the current tree returns
+nothing but the record of the instruction itself. The **history** is a different thing: the rewritten commits
+are published as `hygiene/master-rewritten` and `hygiene/m13-rewritten`, and `master` was deliberately left in
+place because moving it needs a force-push. Swapping them is a one-command decision with an owner, and until it
+is taken, `git log -S` on a clone of `master` still finds the old names.
+
 §4 records the evidence for each, section by section through §4.16, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
 own documents — the advisory debt (`odd/tasks/debt-advisories.md`, which carries its own counts and the reason
