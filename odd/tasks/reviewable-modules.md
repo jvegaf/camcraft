@@ -171,4 +171,24 @@ cost is the **files**. Read **until `## Log`** before touching code.
   **What remains unproven is the only thing that matters**: no candidate has been reviewed since the split. The
   measurement says the forward context dropped from 8.2k to ~1.2k for the 3D half and from 14k to ~1.5k for the
   chrome, but a shorter list of files is not an approval, and this document does not claim one.
+- **L11 (the split landed and the review still refused — so the threshold is the finding).** After the seven
+  slices, `review.start` over the `tool_library` split alone (`baseRef 86e9947`, one commit, sixteen files,
+  **~2.5k lines of file context** across `tool_library/` 1,272 and `tests/tool_library/` 1,199) was refused at
+  `preflight` with `lens_context_budget_exceeded` again: `mutation_performed: false`, no authority, and — worth
+  saying — **zero tokens**, because the stop happens before any lens context is built. Together with T4's pass
+  that brackets the budget: **~1.2k of file context is reviewed end to end; ~2.5k is refused.**
+  Three consequences, and the third is the one that matters:
+  1. "No file over ~800" was necessary and **not sufficient**. A candidate also may not touch many files at once:
+     fourteen files of 150 lines cost the same as one of 2,100.
+  2. **A move of this size cannot be reviewed at all** — which is the paradox of this milestone: the refactor that
+     makes behaviour reviewable is itself too big to review. Its proof is not a reviewer's verdict but a
+     mechanical one, and every slice carries it: each original item verbatim in exactly one new file, the
+     non-blank line multiset identical apart from declarations and visibility markers, and the gate green at the
+     same 1607 tests.
+  3. What the budget can hold is a **change**, not a **move**: T4 (280 changed lines over 1.2k of files) is the
+     shape that fits, and that shape is what the seven slices now make possible for the shell's own surfaces.
+  The recommendation this leaves for the owner is therefore narrow and honest: keep RDD for behaviour, and treat
+  pure moves as gate-and-comparison evidence rather than review subjects — or disable it for a move with
+  `gentle-ai review mode disable --scope clone`, the provider's own `D` route, and re-enable it for the next
+  behaviour change.
 
