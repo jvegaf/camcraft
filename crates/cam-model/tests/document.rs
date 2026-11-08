@@ -1785,8 +1785,11 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
   // predicate share is never exercised: a 1e-6 padding is invisible at that scale, which is why a prune
   // that dropped it would still pass it. This is the same differential with every position jittered by
   // fractions of the tolerance, and its reference is an **unpruned** quadratic scan asking the same
-  // predicate — so the padding on the insert and query ranges is the thing under test, and a prune that
-  // skips a pair inside the tolerance cannot agree with it (`ca5c7eda/R2-001` and `R3-002`).
+  // predicate. What it observes is therefore **keying**, not the padding: mutating the query to a single
+  // cell fails this test and its whole-millimetre sibling, while removing the tolerance padding fails
+  // neither — an offence requires the boxes to meet, and a meeting pair shares a cell even unpadded. The
+  // padding is defensive and its guarantee is the argument in `check_nesting`'s comment, not this test
+  // (`ca5c7eda/R2-001`, `R3-002`, and this review's `R3-001`, which caught the comment saying otherwise).
   let tolerance = cam_geom::DEFAULT_TOLERANCE;
   let jitters = [0.0, tolerance * 0.5, tolerance, tolerance * 2.0];
   let mut state: u64 = 0x00DD_BA11;
