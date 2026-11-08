@@ -74,7 +74,7 @@ fn the_job_tab_names_the_step_the_document_is_missing() {
   shell.set_tab(Tab::Job);
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  assert!(all.contains("cam-cli toolpath"), "{all}");
+  assert!(all.contains("The Toolpaths task authors one"), "{all}");
   assert!(!all.contains("Nothing drawn yet"), "{all}");
 }
 

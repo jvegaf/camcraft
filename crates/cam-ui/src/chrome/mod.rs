@@ -52,7 +52,7 @@ pub(crate) use self::ribbon::tool_name;
 /// Which inspector tab is showing.
 ///
 /// Three tabs, and not the artboard's three: our document has no toolpath *parameters* to show yet (a
-/// toolpath is authored by `cam-cli` and arrives finished), so the middle tab holds the authoring
+/// toolpath's parameters are authored in the Toolpaths task, not here), so the middle tab holds the authoring
 /// commands that produce the numbers the Selection tab then reports.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {

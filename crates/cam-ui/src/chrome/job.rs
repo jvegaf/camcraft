@@ -25,8 +25,8 @@ fn next_step(app: &AppState) -> Option<&'static str> {
   }
   if app.document().toolpaths.is_empty() {
     return Some(
-      "Nothing to cut yet — 0 toolpaths in the document. A toolpath comes from `cam-cli toolpath` and \
-       lands here finished.",
+      "Nothing to cut yet — 0 toolpaths in the document. The Toolpaths task authors one, and the \
+       program follows from it.",
     );
   }
   None

@@ -318,7 +318,7 @@ impl Shell {
     );
     ui.label(
       RichText::new(
-        "3D plays a program that `cam-cli` produced and a host handed in. The split's overlay row, its 
+        "3D simulates the drawing's own toolpaths when you press Simulate in the picture. The split's overlay row, its 
          axis triad and its playback bar are the 3D half's own chrome (S8); nothing here authors a 
          toolpath.",
       )
@@ -339,7 +339,7 @@ impl Shell {
     let loaded = if self.preview.is_some() {
       "A program is loaded for playback."
     } else {
-      "No program loaded — simulate one with `cam-cli simulate` and hand it in."
+      "Nothing is simulated yet — press Simulate in the picture."
     };
     ui.label(
       RichText::new(loaded)
