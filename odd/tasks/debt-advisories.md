@@ -302,3 +302,15 @@ burned. The provider marked all five informational against that candidate; three
 | `ca5c7eda/R2-002` | readability | SUGGESTION | `crates/cam-model/src/lib.rs:1843-1846` — the index is four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint; group it per sheet or use `Option`/`expect` | **open** |
 | `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `54a0ef1` |
 | `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `54a0ef1` |
+
+**The sixteenth is closed** (`odd/tasks/winding-collinear-overlap.md`, S2 = "Ruta B: arreglar en la
+raíz"). `winding::relation` now escalates a shared span to `Crossing` when the two interiors lie on the
+same side of it and neither contour encloses the other, deciding the side from each segment's direction
+and each contour's own `signed_area` sign rather than assuming counter-clockwise. A bare coincident
+edge, a tangency, identical contours and a containment at a tangency stay `Touching`, and the fixtures
+that pin them are untouched. The witness is **two-sided** — a vertex of each strictly outside the other
+— because the one-sided reading escalated the flush-part fixtures, and the part flush against its board
+is exactly the shape that proves it. Consequence, measured: `crates/cam-model`'s own load-regression
+tripwire had been built on 20 000 ten-millimetre squares 4.5 mm apart, i.e. on copies that overlapped
+each other and validated only because of this defect; the fixture is now spaced 11 mm and the document
+is valid for the right reason.

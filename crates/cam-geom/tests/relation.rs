@@ -67,6 +67,23 @@ fn squares_sharing_an_edge_touch_rather_than_cross() {
 }
 
 #[test]
+fn a_partial_collinear_overlap_is_a_crossing() {
+  // The sixteenth: two rectangles that share part of their bottom and top edges but whose interiors
+  // overlap by 5 000 mm². A shared edge is not evidence on its own — here the two interiors lie on the
+  // same side of the shared line, which is what makes this an overlap and not a flush pair.
+  let first = square(Point2::new(0.0, 0.0), 100.0);
+  let second = square(Point2::new(50.0, 0.0), 100.0);
+  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Crossing);
+  assert_eq!(relation(&second, &first, 1.0e-9), Relation::Crossing);
+
+  // The side is read through each contour's own orientation, never assumed counter-clockwise: flipping
+  // one contour's direction flips its interior side with it, and the pair still overlaps in area.
+  let clockwise = second.reverse();
+  assert_eq!(relation(&first, &clockwise, 1.0e-9), Relation::Crossing);
+  assert_eq!(relation(&clockwise, &first, 1.0e-9), Relation::Crossing);
+}
+
+#[test]
 fn a_circle_tangent_to_the_inside_of_a_square_touches() {
   let inner = circle(Point2::new(10.0, 10.0), 10.0);
   let outer = square(Point2::new(0.0, 0.0), 20.0);
@@ -78,6 +95,96 @@ fn identical_contours_touch() {
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(0.0, 0.0), 10.0);
   assert_eq!(relation(&first, &second, 1.0e-9), Relation::Touching);
+}
+
+#[test]
+fn the_cases_that_merely_touch_stay_touching_in_both_orders() {
+  // The accept cases of the shared-edge rule, each read from both sides so none of them can be
+  // satisfied by an asymmetry in the classifier:
+  //  * a shared edge with the two interiors on opposite sides — the flush pair,
+  //  * identical contours, where every vertex lies on the other's boundary,
+  //  * a tangency with the inner contour's material around it — the inscribed circle.
+  // Flipping one contour of the flush pair flips its interior side with it, so that case is read twice:
+  // the sides are compared through each contour's own orientation, not assumed counter-clockwise.
+  let flush = (
+    square(Point2::new(0.0, 0.0), 10.0),
+    square(Point2::new(10.0, 0.0), 10.0),
+  );
+  let flush_one_reversed = (
+    square(Point2::new(0.0, 0.0), 10.0).reverse(),
+    square(Point2::new(10.0, 0.0), 10.0),
+  );
+  let identical = (
+    square(Point2::new(0.0, 0.0), 10.0),
+    square(Point2::new(0.0, 0.0), 10.0),
+  );
+  let inscribed = (
+    circle(Point2::new(10.0, 10.0), 10.0),
+    square(Point2::new(0.0, 0.0), 20.0),
+  );
+  for (case, (first, second)) in [
+    ("flush", flush),
+    ("flush, one contour reversed", flush_one_reversed),
+    ("identical", identical),
+    ("inscribed", inscribed),
+  ] {
+    assert_eq!(
+      relation(&first, &second, 1.0e-9),
+      Relation::Touching,
+      "{case}"
+    );
+    assert_eq!(
+      relation(&second, &first, 1.0e-9),
+      Relation::Touching,
+      "{case}, reversed"
+    );
+  }
+}
+
+#[test]
+fn equal_bounds_do_not_decide_the_relation() {
+  // Equal bounds are not evidence either way, which is why an "equal bounds" shortcut cannot stand. A
+  // diamond inscribed in a square's own box is contained in that square, so the pair keeps `Touching` —
+  // a containment at a tangency. The same diamond crosses a square that has a corner bitten out of it
+  // even though the two share the same box, because here neither contour encloses the other.
+  let diamond = Contour::from_points(
+    &[
+      Point2::new(10.0, 0.0),
+      Point2::new(20.0, 10.0),
+      Point2::new(10.0, 20.0),
+      Point2::new(0.0, 10.0),
+    ],
+    true,
+  )
+  .expect("diamond");
+  let boxed = square(Point2::new(0.0, 0.0), 20.0);
+  assert_eq!(
+    diamond.bounds(),
+    boxed.bounds(),
+    "the fixture is only a fixture at equal bounds"
+  );
+  assert_eq!(relation(&diamond, &boxed, 1.0e-9), Relation::Touching);
+  assert_eq!(relation(&boxed, &diamond, 1.0e-9), Relation::Touching);
+
+  let bitten = Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(20.0, 0.0),
+      Point2::new(20.0, 5.0),
+      Point2::new(5.0, 5.0),
+      Point2::new(5.0, 20.0),
+      Point2::new(0.0, 20.0),
+    ],
+    true,
+  )
+  .expect("corner bite");
+  assert_eq!(
+    bitten.bounds(),
+    boxed.bounds(),
+    "the crossing fixture shares the box too"
+  );
+  assert_eq!(relation(&diamond, &bitten, 1.0e-9), Relation::Crossing);
+  assert_eq!(relation(&bitten, &diamond, 1.0e-9), Relation::Crossing);
 }
 
 #[test]

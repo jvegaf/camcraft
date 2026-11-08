@@ -427,6 +427,29 @@ fn a_region_whose_boundaries_cross_is_refused() {
 }
 
 #[test]
+fn boundaries_that_share_a_span_with_material_on_the_same_side_are_refused() {
+  // Two squares whose bottom and top edges lie on the same lines across a 5 mm span, with their
+  // interiors on the same side of it: the material of one lies over the material of the other, so the
+  // two boundaries cannot both be the material boundary. This pair used to be read as a touch — a
+  // coincident edge was enough — and contributed no nesting depth, so the offset measured a region
+  // nobody had described (`odd/tasks/winding-collinear-overlap.md` S3).
+  let overlapping = region(vec![
+    square(Point2::new(0.0, 0.0), 10.0, 10.0),
+    square(Point2::new(5.0, 0.0), 10.0, 10.0),
+  ]);
+  let error = overlapping
+    .offset(1.0, TOLERANCE)
+    .expect_err("boundaries whose material coincides are refused");
+  let GeomError::EditRefused { reason } = error else {
+    panic!("refused by name, got {error:?}");
+  };
+  assert!(
+    reason.contains("normalize it first"),
+    "the reason names the fix: {reason}"
+  );
+}
+
+#[test]
 fn a_narrow_neck_flattens_the_ring_and_says_so() {
   // A U bracket: a 40 mm base with two 15 mm wide arms rising from its ends. Each arm is a narrow neck
   // of material, and shrinking by 8 mm — more than half the arm's width — makes the two offset walls of

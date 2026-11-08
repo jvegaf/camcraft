@@ -216,20 +216,26 @@ pub enum Relation {
   SecondInside,
   /// They cross: their boundaries intersect at a point that is not a tangency or an overlap.
   Crossing,
-  /// They meet without crossing: a shared edge, a tangency, or identical contours.
+  /// They meet without crossing and no interior of one lies inside the other: a shared edge with the
+  /// material on opposite sides, a tangency, identical contours, or a containment at a tangency. A
+  /// shared span with the material on the *same* side is `Crossing`, not this.
   Touching,
 }
 
 /// Classify how two closed contours sit relative to each other, within `tolerance` millimetres.
 ///
-/// The boundaries are intersected first — that is the only thing that can produce a crossing — and
-/// containment is decided afterwards by asking [`classify`] about one point of each contour. Bounding
-/// boxes are a fast path to [`Relation::Disjoint`], never the decision: a rectangle's bounds contain a
-/// circle's bounds without containing the circle.
+/// The boundaries are intersected first — every crossing, including the overlap a shared span implies,
+/// is decided from those intersections — and containment is decided afterwards by asking [`classify`]
+/// about the vertices. Bounding boxes are a fast path to [`Relation::Disjoint`], never the decision: a
+/// rectangle's bounds contain a circle's bounds without containing the circle.
 ///
-/// A contour that merely touches the other's boundary is `Touching`, not `Crossing`, because a boolean
-/// cannot cut along a shared edge without producing a doubled edge — the caller has to decide what a
-/// shared edge means before anything is subtracted.
+/// A contour that merely touches the other's boundary is [`Relation::Touching`], not
+/// [`Relation::Crossing`], because a boolean cannot cut along a shared edge without producing a
+/// doubled edge — the caller has to decide what a shared edge means before anything is subtracted.
+/// The one exception is a shared span whose two interiors lie on the *same* side of it while neither
+/// contour is inside the other: nothing crosses transversally, but the two interiors overlap in area,
+/// and that is exactly a crossing. A shared edge alone is not enough to say so — a part flush against
+/// a board shares a wall with the material on the same side and is legal.
 pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
   let first_bounds = first.bounds().expand(tolerance);
   let second_bounds = second.bounds().expand(tolerance);
@@ -241,8 +247,13 @@ pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
     return Relation::Disjoint;
   }
 
+  // Each contour's interior side of an edge follows its own orientation, so it is read once rather
+  // than per coincident pair.
+  let first_area = first.signed_area();
+  let second_area = second.signed_area();
   let mut crossing = false;
   let mut touching = false;
+  let mut shared_side_coincidence = false;
   for own in first.segments() {
     for other in second.segments() {
       match intersect(own, other, tolerance) {
@@ -267,7 +278,13 @@ pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
             touching = true;
           }
         }
-        Intersections::Tangent(_) | Intersections::Coincident => touching = true,
+        Intersections::Tangent(_) => touching = true,
+        Intersections::Coincident => {
+          touching = true;
+          if interiors_share_a_side(own, other, first_area, second_area) {
+            shared_side_coincidence = true;
+          }
+        }
       }
     }
   }
@@ -275,6 +292,12 @@ pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
     return Relation::Crossing;
   }
   if touching {
+    // A shared span with both interiors on one side is an overlap, but only the absence of containment
+    // makes it a crossing: a flush part shares a wall with the material on the same side and stays
+    // `Touching`.
+    if shared_side_coincidence && neither_encloses_the_other(first, second, tolerance) {
+      return Relation::Crossing;
+    }
     return Relation::Touching;
   }
 
@@ -295,6 +318,60 @@ pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
     return Relation::Touching;
   }
   Relation::Disjoint
+}
+
+/// Whether the two contours' interiors lie on the same side of a line their two segments share.
+///
+/// [`intersect`] reports a shared span as a unit [`Intersections::Coincident`] and discards the span,
+/// so the side is decided from the two segments at hand plus each contour's own orientation: for a
+/// contour of positive area the interior lies to the left of every directed edge, for a negative one to
+/// the right. Rotating both directions the same way preserves their dot product, so the interiors
+/// coincide exactly when the directions agree exactly when the orientations do. A contour of zero area
+/// has no interior side at all, which is not evidence of an overlap, and neither does a zero-length
+/// segment have a direction.
+fn interiors_share_a_side(own: Segment, other: Segment, own_area: f64, other_area: f64) -> bool {
+  if own_area == 0.0 || other_area == 0.0 {
+    return false;
+  }
+  let (Some(own_direction), Some(other_direction)) = (
+    (own.end_point() - own.start_point()).normalized(),
+    (other.end_point() - other.start_point()).normalized(),
+  ) else {
+    return false;
+  };
+  let orientations_agree = (own_area > 0.0) == (other_area > 0.0);
+  let directions_agree = own_direction.dot(other_direction) > 0.0;
+  orientations_agree == directions_agree
+}
+
+/// Whether two contours that meet nowhere transversally still overlap in area without either enclosing
+/// the other.
+///
+/// One probe cannot answer this: [`probe`] is a first vertex, i.e. a boundary point, so [`classify`]
+/// returns `OnBoundary` for exactly the pairs in question, and a single vertex of one contour proves
+/// nothing about the other. Every vertex is therefore walked as a witness, and the answer is decisive
+/// only when **neither** contour encloses the other, which takes an `Outside` witness on *both* sides:
+/// a vertex of the first strictly outside the second and a vertex of the second strictly outside the
+/// first. One side alone is not enough — a part flush against a board has every vertex on the board's
+/// boundary while the board's own far corners are outside the part, and that pair is legal. Anything
+/// ambiguous, such as identical contours where every vertex is `OnBoundary`, is not evidence of an
+/// overlap either.
+fn neither_encloses_the_other(first: &Contour, second: &Contour, tolerance: f64) -> bool {
+  let elsewhere = |contour: &Contour, other: &Contour| -> Option<bool> {
+    let mut outside = false;
+    for vertex in contour.vertices() {
+      match classify(other, vertex.point, tolerance) {
+        Membership::Inside => return None,
+        Membership::OnBoundary => {}
+        Membership::Outside => outside = true,
+      }
+    }
+    Some(outside)
+  };
+  matches!(
+    (elsewhere(first, second), elsewhere(second, first)),
+    (Some(true), Some(true))
+  )
 }
 
 /// Whether `point` lies on the segment away from both of its ends, within `tolerance` millimetres.
