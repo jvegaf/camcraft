@@ -1,0 +1,16 @@
+[package]
+name = "cam-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-geom.workspace = true
+cam-model.workspace = true
+
+[dev-dependencies]
+# The round trip is the only honest acceptance test a writer can have: this crate writes, `cam-import`
+# reads, and the two must agree. Test-only, so the writer keeps no production edge on the reader.
+cam-import.workspace = true

@@ -671,6 +671,7 @@ dependencies = [
 name = "cam-cli"
 version = "0.0.1"
 dependencies = [
+ "cam-export",
  "cam-geom",
  "cam-import",
  "cam-model",
@@ -699,6 +700,15 @@ dependencies = [
  "cam-view",
  "eframe",
  "rfd",
+]
+
+[[package]]
+name = "cam-export"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-import",
+ "cam-model",
 ]
 
 [[package]]

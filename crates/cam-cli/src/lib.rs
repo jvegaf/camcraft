@@ -56,6 +56,9 @@ COMMANDS:
         --invert              Trace the light regions instead of the dark ones
         --min-area <mm2>      Drop traced regions smaller than this area
         --simplify <mm>       Simplify traced contours within this distance
+    export <document>         Write the document's geometry back out as DXF or SVG
+        --format <name>       dxf or svg (required)
+        --out <path>          Write the file here instead of stdout
     check <document>          Report open and self-intersecting vectors
     toolpath <document>       Append a toolpath: --kind, --entities, --tool, [--id], [--name], [--out]
         --kind <kind>         profile, pocket, drilling, chamfer, vcarve, engrave, fluting, texture,
@@ -342,6 +345,7 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "inspect" => inspect(rest),
     "postp" => postp(rest),
     "import" => import_command(rest),
+    "export" => export_command(rest),
     "check" => check(rest),
     "toolpath" => toolpath_command(rest),
     "nest" => nest_command(rest),
@@ -517,6 +521,64 @@ pub fn check(rest: &[String]) -> Result<(), Failure> {
     "{} vector issue(s) found",
     findings.len()
   )))
+}
+
+/// Write the document's geometry back out as DXF or SVG.
+///
+/// The inverse of `import`, and deliberately as small: it reads one document, asks `cam-export` for the
+/// bytes and writes them, or prints them. It takes no layer, no tolerance and no toolpath flag, because
+/// what goes out is what the document holds — the writer refuses nothing the model allows and invents
+/// nothing it does not (M12 S2, S5). A format this build does not write is refused by name rather than
+/// guessed from the file extension.
+pub fn export_command(rest: &[String]) -> Result<(), Failure> {
+  let mut document_path: Option<PathBuf> = None;
+  let mut format: Option<cam_export::Format> = None;
+  let mut out: Option<PathBuf> = None;
+
+  let mut index = 0;
+  while index < rest.len() {
+    match rest[index].as_str() {
+      "--format" => {
+        let value = option_value(rest, index, "--format")?;
+        format = Some(
+          cam_export::Format::from_name(value)
+            .ok_or_else(|| Failure::input(format!("export writes dxf or svg, not {value:?}")))?,
+        );
+        index += 2;
+      }
+      "--out" => {
+        out = Some(PathBuf::from(option_value(rest, index, "--out")?));
+        index += 2;
+      }
+      other if other.starts_with('-') => {
+        return Err(Failure::input(format!("unknown export option {other:?}")))
+      }
+      other => {
+        if document_path.is_some() {
+          return Err(Failure::input("export takes exactly one document"));
+        }
+        document_path = Some(PathBuf::from(other));
+        index += 1;
+      }
+    }
+  }
+
+  let document_path =
+    document_path.ok_or_else(|| Failure::input("export requires a document path"))?;
+  let format = format.ok_or_else(|| Failure::input("export requires --format dxf or svg"))?;
+  let document = open(&document_path)?;
+  let bytes = cam_export::export_bytes(&document, format)
+    .map_err(|error| Failure::input(format!("{}: {error}", document_path.display())))?;
+
+  match out {
+    Some(path) => {
+      std::fs::write(&path, &bytes)
+        .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
+      eprintln!("wrote {} ({} bytes)", path.display(), bytes.len());
+    }
+    None => print!("{}", String::from_utf8_lossy(&bytes)),
+  }
+  Ok(())
 }
 
 pub fn import_command(rest: &[String]) -> Result<(), Failure> {

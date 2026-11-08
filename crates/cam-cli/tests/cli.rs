@@ -764,6 +764,69 @@ fn help_lists_every_command_option_and_exit_code() {
 }
 
 #[test]
+fn export_writes_the_document_back_out_in_both_formats() {
+  // M12's contract through the command: a document goes out as DXF or SVG, and the layer identity the
+  // document holds reaches the DXF file. The round trip itself is `cam-export`'s own test; this one pins
+  // the command's surface — exit code, the bytes on disk, the refusal for a format nobody writes.
+  let directory = scratch("export");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+
+  for (format, extension, expected) in [("dxf", "dxf", "LWPOLYLINE"), ("svg", "svg", "<path")] {
+    let out = directory.join(format!("part.{extension}"));
+    let outcome = run(&[
+      "export",
+      document.to_str().expect("utf8"),
+      "--format",
+      format,
+      "--out",
+      out.to_str().expect("utf8"),
+    ]);
+    assert_eq!(outcome.code, 0, "{format}: {}", outcome.stderr);
+    assert!(outcome.stdout.is_empty(), "{format}: {}", outcome.stdout);
+    assert!(
+      outcome.stderr.contains("wrote"),
+      "{format}: {}",
+      outcome.stderr
+    );
+    let written = std::fs::read_to_string(&out).expect("the file was written");
+    assert!(
+      written.contains(expected),
+      "{format}: the file carries {expected}: {written}"
+    );
+  }
+
+  // Without `--out` the bytes go to stdout, the way `emit` writes a program.
+  let to_stdout = run(&[
+    "export",
+    document.to_str().expect("utf8"),
+    "--format",
+    "dxf",
+  ]);
+  assert_eq!(to_stdout.code, 0, "{}", to_stdout.stderr);
+  assert!(
+    to_stdout.stdout.contains("LWPOLYLINE"),
+    "{}",
+    to_stdout.stdout
+  );
+
+  // A format this build does not write is refused by name, not guessed from an extension.
+  let refused = run(&[
+    "export",
+    document.to_str().expect("utf8"),
+    "--format",
+    "pdf",
+  ]);
+  assert_eq!(refused.code, 2, "{}", refused.stderr);
+  assert!(refused.stdout.is_empty(), "{}", refused.stdout);
+  assert!(refused.stderr.contains("pdf"), "{}", refused.stderr);
+
+  // And the format is not optional.
+  let missing = run(&["export", document.to_str().expect("utf8")]);
+  assert_eq!(missing.code, 2, "{}", missing.stderr);
+  assert!(missing.stderr.contains("--format"), "{}", missing.stderr);
+}
+
+#[test]
 fn tools_add_then_list_round_trips() {
   let directory = scratch("tools");
   let library = directory.join("tools.sqlite");

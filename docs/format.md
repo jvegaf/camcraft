@@ -222,6 +222,7 @@ nothing about them changed meaning, and a post that works today works unchanged.
 | `validate <document>` | Schema plus referential invariants |
 | `inspect <document>` | Stable summary of job, layers and toolpaths |
 | `import <input> [--out <document>] [--layer <name>]` | Import DXF, SVG, PDF, EPS or PNG into a new document and print the report; see [m3-import.md](m3-import.md) |
+| `export <document> --format dxf\|svg [--out <path>]` | Write the document's **geometry** back out. DXF keeps layer identity: one `LWPOLYLINE` per contour carrying each vertex's bulge verbatim, `70 = 1` when the contour is closed, and `$INSUNITS = 4` so the millimetre scale is 1.0, with the layer table in document order. SVG writes one `<path>` per contour with `A` commands whose `rx == ry` — the only form `import` keeps exact — a Y reflection it inverts, and a `viewBox` in the document's own millimetres, so a re-import has `unit_scale == 1.0`. **SVG carries no layers**: the reader files every SVG under one layer named `svg`, and this writer emits no layer name at all rather than pretend otherwise. What is not written: toolpaths (not geometry), blocks, text and styling, and any curve the document already holds flattened. A format this build does not write is refused by name, exit `2`. Without `--out` the bytes go to stdout |
 | `check <document>` | Vector validation report: open contours, self-intersections, degenerate segments |
 | `postp validate <file>` | Parse a post-processor and print a summary |
 | `tools list <library>` | List tools |
