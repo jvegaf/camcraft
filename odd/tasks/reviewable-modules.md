@@ -46,7 +46,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
-| T7 | The files this milestone did **not** split and a future review would still carry whole: `icons.rs` 2,135, `tests/strategy.rs` 1,285, `tool_library.rs` 1,234, `tests/tool_library.rs` 1,179, `strategy.rs` 1,137, `theme.rs` 945, `tests/input.rs` 881. Splitting them is a decision, not an oversight | S3 | owner | — |
+| T7 | ✅ **decided and half delivered** (L9): `strategy.rs` 1,137 + `tests/strategy.rs` 1,285 and `tool_library.rs` 1,234 + `tests/tool_library.rs` 1,179 are split, because that is the one M13 concern — the toolpath list — that still carried ~3.1k into a review. **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision**: a glyph catalogue and a palette table are read by nobody who reviews behaviour, and the debt is recorded rather than paid | S3 | worker | — |
 
 ## Log
 
@@ -145,4 +145,13 @@ cost is the **files**. Read **until `## Log`** before touching code.
   candidate that does not exist yet, so this document states the numbers and lets the next review be the test.
   **And the limit**: the crate still holds seven files above ~800 lines that no task here named — T7 lists them,
   because a promise of "every file under 800" would be false.
+- **L9 (T7 decided: split the one that matters, keep the three that do not).** The owner took the recommendation
+  verbatim — *"seguimos tu recomendacion"* — so the last two surfaces M13 still could not review get the same
+  treatment: `strategy.rs` (1,137) with `tests/strategy.rs` (1,285), and `tool_library.rs` (1,234) with
+  `tests/tool_library.rs` (1,179). Together that is the ~3.1k a toolpath-list candidate was still carrying, and it
+  is the one remaining M13 concern without a review path.
+  The other three stay whole **on purpose**: `icons.rs` (2,135) is a glyph catalogue whose diff is data,
+  `theme.rs` (945) is a table of colours and the proofs that hold them — and it is already reviewed, in T4's own
+  lineage, at 945 lines — and `tests/input.rs` (881) sits just over the line. A milestone that claims "every file
+  under 800" would be lying; this one claims "every file a reviewer of behaviour must read".
 
