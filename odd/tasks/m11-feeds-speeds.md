@@ -116,3 +116,22 @@ Feature document for milestone **M11** of `odd/roadmap.md`. Read **until `## Log
   estimate passes no material, so a document that names one emits with that material's rates while the
   window estimates from the tool's own record. It becomes visible when the shell gains a material
   selector; the snapshot needs a material path `cam-store` can answer, which is a change to that crate.
+- **L7 (the review, and what it was worth).** Lineage **`review-c54c930ddcde3f9f`**: tier `high`, 667 lines,
+  26 paths, four lenses, `correction_required` on five corroborated findings, one bounded correction of
+  **79 diff lines** (budget 200) and a targeted validator that **passed**, quoting the frozen findings one
+  by one; closure **`approved`**, receipt burned (`sha256:93d41308…`). Four findings stayed informational
+  and are this milestone's successors:
+  1. `R4-002` and `R3-003` — the shell's cutting-time estimate passes no material, so a document that names
+     one emits with that material's rates while the window estimates from the tool's own record. It becomes
+     visible when the shell gains a material selector; the snapshot needs a material path `cam-store` can
+     answer, which is a change to that crate (also L4.1).
+  2. `R4-003` — `simulate` has no `--material`, so after `emit --material <name>` the simulation builds the
+     program for the document's material instead and cannot reproduce the emitted program. A `simulate
+     --material` flag is the honest fix, and it is small.
+  3. `R2-002` — the `program_for` doc claimed `None` was byte-identical for every library shape; the
+     correction made it true, so this one is answered rather than open.
+  **What the review caught that the tests could not**: the flag accepting a missing name (four lenses, one
+  defect) and a preference I had added to the no-selector path that changed an existing library shape's
+  output without being asked to. Both were mine, both were invisible to a green gate, and the second one is
+  the more instructive: a green gate proves the shapes you thought of, and S3 said *don't change the
+  existing bytes* — the reviewers read S3 and I had not.
