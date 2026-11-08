@@ -2511,11 +2511,12 @@ fn a_cost_record_exactly_on_the_tolerance_against_the_derivation_still_loads() {
 }
 
 #[test]
-fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
+fn a_nesting_that_cannot_say_what_it_used_loads_only_a_record_that_used_nothing() {
   // Two ways a document cannot answer: no sheets at all, and sheets with nothing placed on them. The
-  // derivation returns `None` instead of inventing a zero, and the record is then measured against
-  // nothing rather than against an invented fraction — only its own rules (sheet count, in range)
-  // apply to it.
+  // derivation returns `None` rather than inventing a fraction, so the record is measured against the
+  // only two fractions a document that placed nothing can have used: none of the sheet, and all of it
+  // wasted. A record claiming anything else has no placement to support it, so it is refused by name
+  // instead of loading as a measurement nobody made (`39a6d85c/R4-003`, the owner's decision).
   let mut without_sheets = five_parts_on_one_sheet();
   {
     let nesting = without_sheets.nesting.as_mut().expect("a section");
@@ -2524,8 +2525,8 @@ fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
     nesting.parts[0].instances = 0;
     nesting.cost = Some(NestingCost {
       sheets_used: 0,
-      utilisation: 0.4,
-      waste: 0.6,
+      utilisation: 0.0,
+      waste: 1.0,
     });
   }
   assert_eq!(
@@ -2535,7 +2536,7 @@ fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
   );
   without_sheets
     .validate()
-    .expect("a document that cannot say refuses no record");
+    .expect("a document that used nothing may say so");
 
   let mut nothing_placed = five_parts_on_one_sheet();
   {
@@ -2544,8 +2545,8 @@ fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
     nesting.parts[0].instances = 0;
     nesting.cost = Some(NestingCost {
       sheets_used: 0,
-      utilisation: 0.4,
-      waste: 0.6,
+      utilisation: 0.0,
+      waste: 1.0,
     });
   }
   assert_eq!(
@@ -2555,5 +2556,32 @@ fn a_nesting_that_cannot_say_what_it_used_refuses_no_record() {
   );
   nothing_placed
     .validate()
-    .expect("a document that cannot say refuses no record");
+    .expect("a document that used nothing may say so");
+
+  let mut claiming = five_parts_on_one_sheet();
+  {
+    let nesting = claiming.nesting.as_mut().expect("a section");
+    nesting.placements.clear();
+    nesting.parts[0].instances = 0;
+    nesting.cost = Some(NestingCost {
+      sheets_used: 0,
+      utilisation: 0.4,
+      waste: 0.6,
+    });
+  }
+  let error = claiming
+    .validate()
+    .expect_err("a record no placement supports is refused, not loaded");
+  assert!(
+    matches!(
+      error,
+      ModelError::NestingCostFractionMismatch {
+        field: "utilisation",
+        recorded,
+        derived,
+        ..
+      } if recorded == 0.4 && derived == 0.0
+    ),
+    "{error:?}"
+  );
 }

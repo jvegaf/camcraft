@@ -1924,6 +1924,9 @@ const NESTING_COST_SUM_TOLERANCE: f64 = cam_geom::DEFAULT_TOLERANCE;
 ///    still claim an area the placements do not support, which is the record this rule exists for.
 ///    The sum rule is therefore **implied rather than checked**: both fractions are compared with the
 ///    one derivation and its complement, so a record that agrees with each cannot fail to sum to one.
+///    A document that cannot say what it used — no sheets, or nothing placed on them — has used
+///    nothing, so its derivation is utilisation zero and the whole sheet wasted, and a record that
+///    claims more is refused by this same comparison instead of being exempted from it.
 ///
 /// This never recomputes the record: validating does not fix the numbers, because a loader that
 /// quietly corrected a stale record would hide the staleness instead of reporting it. And it never
@@ -1954,11 +1957,11 @@ fn check_nesting_cost(document: &Document) -> Result<(), ModelError> {
     }
   }
 
-  // A document that cannot say what it used — no sheets, or nothing placed on them — refuses no
-  // record rather than measuring it against an invented fraction.
-  let Some(utilisation) = document.nesting_utilisation() else {
-    return Ok(());
-  };
+  // A document that cannot say what it used — no sheets, or nothing placed on them — used nothing, so
+  // the derivation is zero utilisation and the whole sheet wasted rather than an invented fraction.
+  // Only a record that agrees with that loads; one claiming a measurement no placement supports is
+  // refused by the same comparison as any other, naming the field, the record and the implication.
+  let utilisation = document.nesting_utilisation().unwrap_or(0.0);
   for (field, recorded, derived) in [
     ("utilisation", cost.utilisation, utilisation),
     ("waste", cost.waste, 1.0 - utilisation),
