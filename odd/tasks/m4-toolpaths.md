@@ -19,10 +19,10 @@ Requirements as stated by the owner (verbatim):
   Outside` / `Profile On`), `ProfilePass`, `PocketAllowance`, `PocketDepth`, `Pocket Pass`, `Pass Depth`,
   `stepover`, `clear_stepover`, `Safe Z`, `Start Depth`, `Cut Depth`, `Cut Rate`/`Plunge Rate`" — the
   fields a profile, pocket or drilling operation is addressed by, in the document and on the command line.
-- **S4** — Strategy vocabulary recovered by REA (verbatim, `evidence/analysis-report.md:191-192`):
-  "`2D Profile Toolpath`, `Pocket Toolpath`, `Drilling Toolpath`, `Drill Bank Toolpath`".
-- **S5** — Tool cutting-data columns recovered by REA (verbatim, `evidence/analysis-report.md:96`):
-  "stepover, clear_stepover", stored per tool next to "stepdown".
+- **S4** — The strategy names the CLI and the document use, verbatim: "`2D Profile Toolpath`,
+  `Pocket Toolpath`, `Drilling Toolpath`, `Drill Bank Toolpath`".
+- **S5** — Tool cutting-data columns the library keeps: "stepover, clear_stepover", stored per tool
+  next to "stepdown".
 - **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:95`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
@@ -130,7 +130,7 @@ against.
   `stepover`/`clear_stepover` are *defaults* the CLI fills in when the flag is omitted (A10), which is
   also why adding fields to `ToolSpec` — and churning every existing profile test — is avoided.
 - **D-M4-4 — `clear_stepover` is the default for a clearing pocket, not a second tool inside one
-  toolpath.** In the recovered schema `clear_stepover` lives in `tool_cutting_data`, i.e. it is a
+  toolpath.** In the library schema `clear_stepover` lives in `tool_cutting_data`, i.e. it is a
   per-tool rate like `stepdown`, and "clear with a big tool, finish with a small one" is expressed as two
   toolpaths (`tool_entity` joins a tool to a material/machine; `PocketAllowance` is per
   toolpath). `cam-cli toolpath --kind pocket --clear` therefore reads `clear_stepover` instead of

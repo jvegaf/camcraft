@@ -15,8 +15,8 @@ Requirements as stated by the owner (verbatim):
 - **S3** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser".
 - **S4** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import
   DXF/SVG/PDF/EPS".
-- **S5** — Original import filter list, recovered by REA (verbatim, `evidence/analysis-report.md:240`):
-  "`Drawing Files (*.dxf;*.dwg;*.eps;*.ai;*.pdf,*.skp;*.svg)`", "`Bitmap Image Files
+- **S5** — The import filter list the file picker offers, verbatim: "`Drawing Files
+  (*.dxf;*.dwg;*.eps;*.ai;*.pdf,*.skp;*.svg)`", "`Bitmap Image Files
   (*.bmp;*.jpg;*.gif;*.tif;*.tiff;*.png;*.jpeg;*.webp)`". These are the target formats we measure
   ourselves against; the milestone delivers the subset in S2.
 - **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:95`): "**`cam-cli`

@@ -1,8 +1,8 @@
 # Development Plan — 2.5D CAM application (Windows + Linux)
 
 Status: **executed through M13.** Each milestone's acceptance is that milestone's own measurements — its
-tests, oracles, goldens and differentials — and the roadmap is where they are carried: M0–M12 are delivered,
-§4 records the evidence for each, section by section through §4.15, and §6 the risk register with the one row M7 closed. **After M10 the work did not
+tests, oracles, goldens and differentials — and the roadmap is where they are carried: M0–M13 are delivered,
+§4 records the evidence for each, section by section through §4.16, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
 own documents — the advisory debt (`odd/tasks/debt-advisories.md`, which carries its own counts and the reason
 the rest cannot be recovered),
@@ -28,20 +28,20 @@ and emit machine-specific G-code through user-editable post-processors.
 
 Non-goals for this program (explicit):
 
-- Binary or project compatibility with `.crv` project files (OLE2 internals are unresolved — see
-  analysis report §2.5, Q3).
-- 3D model machining (STL relief roughing/finishing), PhotoVCarve, sculpting.
+- Binary or project compatibility with closed proprietary project formats: their internals are an
+  unresolved container, so interoperability goes through the interchange formats we do read.
+- 3D model machining (STL relief roughing/finishing), relief carving from a grayscale image, sculpting.
 - Laser strategies (`Laser Cut - Fill`, `Laser Sketch Engraving`).
 - Windows-only APIs: no MFC, no GDI, no Codejock, no `WINSPOOL` printing path.
 - Lua gadget (plugin ABI) compatibility with any existing CAM package: a scripting surface is planned, and it will be its own dialect.
 
 ## 2. Stack decision and its justification
 
-`Rust` + `wgpu` was chosen. The evidence supports it: every domain subsystem in the original
-(tool database, post-processor DSL and store, toolpath math, nesting API) is plain portable logic
-with no Windows dependency, while the *only* genuinely platform-bound parts are the UI shell
-(`mfc140u` + Codejock Xtreme Toolkit Pro + 1990s Win32 GDI) and the 3D viewport (OpenSceneGraph /
-OpenGL). Replacing those two is exactly what a cross-platform requirement demands.
+`Rust` + `wgpu` was chosen. The evidence supports it: every domain subsystem a 2.5D CAM application
+needs (tool database, post-processor DSL and store, toolpath math, nesting layout) is plain portable
+logic with no Windows dependency, while the *only* genuinely platform-bound parts are the UI shell
+(the windowing toolkit and the native widget set behind it) and the 3D viewport (the graphics API and
+its driver stack). Replacing those two is exactly what a cross-platform requirement demands.
 
 **UI shell sub-decision (resolved inside D1):** `egui` via `eframe` for M1, with the shell kept
 strictly behind an adapter boundary (`cam-ui` depends on `cam-app`; `cam-app` depends on nothing
@@ -52,7 +52,7 @@ switch must not touch a single toolpath or post-processor line.
 
 Why the alternatives lose on this evidence:
 
-- **C++20 + Qt 6** reproduces the original's profile but carries its cost: manual memory discipline
+- **C++20 + Qt 6** is the conventional desktop-CAM stack, and carries its cost: manual memory discipline
   across a geometry kernel and a parallel toolpath engine, and the slowest path to a first G-code.
 - **Python + PySide6** is the fastest to a UI, but the expensive operations here (repeated polygon
   offsetting, medial axis for V-Carve, per-pixel simulation) are precisely where interpreted code
@@ -115,15 +115,15 @@ Two rules make the rest of the plan enforceable:
 
 | Topic | Decision | Rationale from evidence |
 | --- | --- | --- |
-| Units | Internal geometry is `f64` **millimetres**. Document stores the user's unit preference; rounding happens **only** at post-processor emission using the `VAR ... |decimals` spec | The original carries unit pans per variable (`[X|C|X|1.4]` vs `1.3`) and mixed metric/imperial sheet libraries; rounding early would compound error across passes |
+| Units | Internal geometry is `f64` **millimetres**. Document stores the user's unit preference; rounding happens **only** at post-processor emission using the `VAR ... |decimals` spec | Post-processor variables carry their own decimal spec (`[X|C|X|1.4]` vs `1.3`) and sheet libraries mix metric and imperial; rounding early would compound error across passes |
 | Arcs | Arcs are **first-class entities**, not tessellated polylines. Polylines carry nonzero bulges | Native G2/G3 output exists in 8 of the 15 post-processor blocks; flattening at import would make arc output impossible |
 | Tessellation | Only at render and simulation time, never in the toolpath pipeline | Keeps emitted geometry equal to authored geometry |
-| Tolerance | A single `Tolerance` value threaded through geometry ops, exposed as a job setting | The original exposes a 2D toolpath tolerance string; a global tolerance prevents contradictory results |
-| Tool/toolpath model | Tool geometry, cutting data and machine are **separate** records joined per (material, machine) | Observed SQLite schema `tool_geometry` / `tool_cutting_data` / `tool_entity` — the correct normalization, and the reason a tool library is valuable at all |
-| Post-processor | Implement a reader compatible with the observed `.pp` dialect (13 directives, 17 variables, 15 blocks, `[var|A/C|prefix|decimals]`) **plus** our own authoring format | A data-driven emitter is the difference between one machine and seventy-five; grammar recovered in analysis report §2.2 |
+| Tolerance | A single `Tolerance` value threaded through geometry ops, exposed as a job setting | Tolerance is usually a per-toolpath string, so two toolpaths can disagree about the same geometry; one job setting prevents that |
+| Tool/toolpath model | Tool geometry, cutting data and machine are **separate** records joined per (material, machine) | A tool's shape is constant while its rate depends on the material and the machine, so one record per concern is the normalization that makes a library worth having |
+| Post-processor | Implement a reader for the block/directive dialect machine posts are written in (13 directives, 17 variables, 15 blocks, `[var|A/C|prefix|decimals]`) **plus** our own authoring format | A data-driven emitter is the difference between one machine and seventy-five; a block/directive grammar is what makes a post data rather than code |
 | Post-processor licensing | **Do not vendor third-party `.pp` files.** Ship our own fixtures; support an optional user-supplied directory | Those files are third-party content; the *grammar* is what we reimplement |
 | Undo/redo | Whole-document snapshots (documents are kilobytes by nature) with a bounded history and coalescing | Command inversion across geometry edits is a defect factory; snapshot + structural sharing is cheap here |
-| Parallelism | `rayon` for independent toolpaths, pass carving and simulation tiles | The original uses OpenMP (`VCOMP140.DLL`, 18 imports) with the same coarse-grained structure |
+| Parallelism | `rayon` for independent toolpaths, pass carving and simulation tiles | Toolpaths, depth passes and simulation tiles write disjoint outputs, so coarse-grained parallelism is the safe kind here |
 | Text | `cosmic-text`/`ttf-parser` → outlines at authoring time, stored as curves | Complex-script shaping is a solved dependency; never reimplement it |
 
 ### 3.2 File formats we own
@@ -143,7 +143,7 @@ Document `.c2d` (ZIP container, `document.json` at root, assets under `assets/`)
 
 Tool library `.sqlite` mirrors the decoded schema (`tool_tree_entry`, `tool_geometry`,
 `tool_cutting_data`, `tool_entity`, `material`, `machine`, `tool_name_format`) plus a
-`schema_version` table using the same forward-only migration style the original already proves.
+`schema_version` table using a forward-only migration style: a version row, applied in order, never rewritten in place.
 
 ## 4. Roadmap
 
@@ -155,14 +155,14 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M0** ✅ | Foundation + vertical slice | **Delivered.** `cam-cli emit part.c2d --post fixture.pp --library tools.sqlite` produces a byte-for-byte tested G-code program for an outside profile, with arcs preserved, tabs, pass chunking and validation on every input | Proves units, geometry, doc format, tool library, post-processor emitter end-to-end before any UI exists |
 | **M1** ✅ | 2D editor shell | **Delivered.** Viewport with pan/zoom-about-cursor/fit, grid, picking by pixel distance, marquee select, snapping, undo/redo, layer dock, properties and status bar, plus a native window | Geometry only becomes usable with a viewport; all of it rides on `cam-app`, proven headless |
 | **M2** ✅ | Vector authoring & editing | **Delivered.** Line/polyline/arc/circle/ellipse/rectangle/polygon/star, single-stroke text, node editing, join/weld/trim, offset, mirror/rotate/scale, array copy and align — as commands through `cam-app`, in the shell and in the native window | Authoring is half of what a 2.5D CAM application does; all of it rides on `cam-geom`, proven headless |
-| **M3** ✅ | Import & interchange | **Delivered.** DXF, SVG, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document, `cam-cli check` reports open, self-intersecting and degenerate vectors, and the shell imports undoably (see §4.5) | Users bring geometry; the original's own filter list is the target set |
+| **M3** ✅ | Import & interchange | **Delivered.** DXF, SVG, PDF, EPS and raster trace import with a full report; `cam-cli import` builds the document, `cam-cli check` reports open, self-intersecting and degenerate vectors, and the shell imports undoably (see §4.5) | Users bring geometry; the target set is the filter list shop drawings actually arrive in |
 | **M4** ✅ | Core toolpaths | **Delivered.** Profile (inside/outside/on, tabs, passes, lead-in/out) from M0, plus offset and raster pocket with allowance, stepover and clear stepover, and drilling with peck, both retract modes and drill-bank selection; every strategy is authored through `cam-cli toolpath` and reaches G-code through `cam-cli emit` (see §4.6) | The three strategies that define 2.5D routing; they exercise every post-processor block |
 | **M5** ✅ | Simulation & 3D preview | **Delivered.** `cam-sim` sweeps the emitted `MoveStream` over a heightfield of the stock, derives the depth each cell was authorised to lose from the document alone, and reports removed volume, through-cut cells, gouge, uncut material and every crash; `cam-cli simulate` is the contract, with exit `6` for a program that gouges, leaves material standing or rams the tool; a depth-shaded 3D stock view with an animated playback is in the shell; and every strategy M4 ships has an oracle (see §4.8) | G-code without simulation is unverifiable by the user; also the only honest acceptance test for M4–M7 |
 | **M6** ✅ | Depth-variant strategies | **Delivered.** Quick Engrave, Chamfer, Fluting, Texture, Thread Milling and the Inlay pair (female cavity + male plug from one command), each authored through `cam-cli toolpath` and each with a simulation oracle in both signs; the V-bit's cone now reaches the move vocabulary and the simulation, and the post gained a helical move so a thread is emitted as a helical arc; `c2d/document@2` unchanged and every pre-existing command byte-identical (see §4.9) | The six strategies that make it a carving machine rather than a router; they cost two prerequisites the row did not name — tool geometry and a helical move — and are cheap only after them |
 | **M7** ✅ | V-Carve | **Delivered.** `cam-cli toolpath --kind vcarve` walks the region's verified medial axis with the tip at `−d/tan(θ/2)` for each tip's own exact distance `d` to the boundary, so the toolpath is a depth **field**: the emitted program is varying-Z linear feeds and needs no post change, `simulate` authorises the distance field from the document alone, and the oracle asserts both signs with `gouge` **exactly zero**; V-carve is proved by two golden programs (a square and a disc, each three ways), the exact certificate every axis vertex carries, and a 35-invocation differential against `9ff0b8c` (see §4.10) | Research-grade geometry (medial axis of arcs); deliberately isolated so it cannot delay the rest |
 | **M8** ✅ | Moulding / swept profile | **Delivered.** `cam-cli toolpath --kind moulding` sweeps an authored cross-section along a rail at a stepover: the rail is the selected entity, one repeatable `--profile <lateral>:<depth>` per cross-section point and `--stepover` (or the library's), and the program is one lateral pass per stepover offset — the rail walked by arc length at that pass's own Z, one linear feed per rail sample. `simulate` authorises the cross-section swept along the rail from the document alone, and the oracle asserts both signs on a straight rail, a closed frame and a V-bit cone, with `gouge` **exactly zero** for a correct program; moulding is proved by two golden programs (a straight rail and a closed frame, each three ways), the stepover law's coverage certificate, the multi-rail case end to end, and one measured limit recorded rather than hidden (see §4.11) | The row expected M7's distance field to be the cost; it was not — the cross-section is authored data |
 | **M9** ✅ | Nesting | **Delivered.** `cam-cli nest` packs a document's authored sheets and parts — rectangles through maxrects and a guillotine pass, free profiles through a sound-but-incomplete no-fit heuristic — and stores the placements plus **one** cost record derived by `Document::nesting_utilisation`; a run that leaves an instance unplaced reports it and exits `7` writing nothing. Proved by 78 behaviour tests (31 in `cam-model`, 14 + 17 in `cam-geom`, 16 in `cam-cli`), a byte-for-byte report and document golden set, the fixture where guillotine beats maxrects, the counted cost of the profile heuristic's incompleteness, a 42-invocation differential against the milestone's cut point, and two reviewed candidates with their corrections (see §4.12) | Own heuristic engine as decided (D4); depends on stable geometry and toolpaths |
-| **M10** ✅ | Documents & scripting | **Delivered.** `cam-cli script` runs a line-oriented command language against one document — eleven words, each dispatching to the function its own subcommand calls, with `line:column` diagnostics and every mutation through `Document::validate`; `cam-cli parts` imports a four-column part list and `cam-cli cutlist` exports the placements M9 stored as seven columns, deliberately two shapes and not one schema; `cam-cli report` writes a self-contained, hand-escaped HTML print sheet; and `cam-ui`'s `ScriptPanel` runs a script through the same library, never a process. No schema bump, no external dependency, and `--help` is the only difference from the pre-M10 surface (see §4.13) | Reporting and extension points; the original's gadget platform is the model — with S1's "DSL de comandos, sin motor" deciding the engine the row left open ("Rhai/Lua") |
+| **M10** ✅ | Documents & scripting | **Delivered.** `cam-cli script` runs a line-oriented command language against one document — eleven words, each dispatching to the function its own subcommand calls, with `line:column` diagnostics and every mutation through `Document::validate`; `cam-cli parts` imports a four-column part list and `cam-cli cutlist` exports the placements M9 stored as seven columns, deliberately two shapes and not one schema; `cam-cli report` writes a self-contained, hand-escaped HTML print sheet; and `cam-ui`'s `ScriptPanel` runs a script through the same library, never a process. No schema bump, no external dependency, and `--help` is the only difference from the pre-M10 surface (see §4.13) | Reporting and extension points: a scripted command surface is the model — with S1's "DSL de comandos, sin motor" deciding the engine the row left open ("Rhai/Lua") |
 | **M11** ✅ | Feeds & speeds | **Delivered.** The library already keys cutting data per material and per machine (`material`, `tool_entity`, `cutting_data_for(geometry, material, machine)`, proved by one tool at 120 and 60 mm/s in two materials); what is missing is the **selector**, so `emit` cuts at the tool's own record and `tools add` writes the same `100 / 30 / 18000` for every material. M11 carries `Job.material` (optional, `#[serde(default, skip_serializing_if)]`, tag stays `c2d/document@2`) plus an `emit --material` override that wins, threads it into the lookup the store already has, and leaves **`None` reproducing today's bytes exactly** — all 17 goldens keep `F100.0`. An unknown material is refused by name, never silently ignored. Deriving a rate from chipload and surface speed is **not** in this row: it would change the one number the goldens pin and put a derivation between the library and the program that nothing tests and the selector is threaded to the store's existing per-material lookup. **Evidence**: 21 golden tests untouched, 1548 workspace tests green, an unknown material refused by name, and a review that caught the flag accepting a missing name and a no-selector change nobody asked for, both corrected in 79 diff lines and validated. Two follow-ups recorded: the shell's estimate cannot honour a material until `cam-store` answers one, and `simulate` has no `--material` to reproduce a one-run override | Every strategy emits at the tool's fixed rate today, which is the most user-visible gap left: the machine is told how fast to cut by a record nobody selected (see §4.14) |
 | **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable (see §4.15) |
 | **M13** ✅ | The cycle closes inside the app | **Delivered**, with one task routed to the owner rather than closed. Two dead ends hid behind finished chrome: the app bar's primary action was `add_enabled(false, …)` with a hover excuse (`cam-ui/src/chrome.rs:323`) and the 3D half printed *"Simulate one with `cam-cli simulate` and hand it in"* (`view3d.rs:1390`), so a window that could import, author and display a program sent the person to a terminal for the one artefact the machine runs. M13 makes the program the app's own: `GenerateGcode` posts the open document through `cam-post` inside `apply_action`, the same place `SaveFile` writes (`S7`, corrected after measurement — it had said the host would do it), `Post…` holds the dialect for the session and refuses a file that is not a post-processor while keeping the one in hand, the 3D half builds the drawing's own program with `program_for_snapshot` over a pristine `Heightfield` behind a `Simulate` chip and a `Simulate again` in the overlay row, and the toolpaths are a list whose selection — not `toolpaths.first()` — is what the card, the editor and `open_tool_library` read, with the last of those a door the first version left aiming at the first toolpath (see §4.16). **T4 dissolved on measurement**: the 3D stock already paints through `StockTop`/`StockBottom` via `stock_shade`, and `design/system.md:53`'s own value is a cool `#d6dce6`; the tan is the reference palette, so changing ours re-opens four contrast proofs and belongs to the owner | The most visible gap left after twelve milestones was not missing machinery but missing *seams*: every part worked, and the person still could not finish a job without a terminal (see §4.16) |
@@ -176,8 +176,8 @@ milestone), drill-bank hardware integration, i18n.
 V-Carve computes cut depth from the distance between a point and the nearest boundary, scaled by the
 V-bit's included angle, which means the toolpath is not a fixed-Z pass but a depth field. That
 requires a medial-axis/straight-skeleton computation on geometry containing arcs, plus corner-relief
-handling. The original's binary contains the strategy but the algorithm is not recoverable from static
-analysis — this is a genuine research task, and putting it inside M4 would have hidden a multi-week
+handling. The strategy is well defined — the depth is zero at a boundary and grows with the distance —
+but the computation is genuinely research, and putting it inside M4 would have hidden a multi-week
 unknown inside an otherwise mechanical milestone.
 
 ### 4.2 M0 delivered (evidence)
@@ -324,10 +324,10 @@ arrangement-based offsetting.
 
 Recorded deviations, each a decision in the M4 feature document: `stepover` is a toolpath parameter and the
 library's `stepover`/`clear_stepover` are the CLI's defaults (D-M4-3), because the same tool pockets MDF and
-hardwood differently and the product stores the rate per tool; `--clear` reads `clear_stepover` for one
-clearing pocket rather than introducing a two-tool toolpath (D-M4-4), with the observable semantics of the
-product's own "Clear stepover" field still unresolved in the analysis report; a pocket was one region per
-selected contour, with no islands until the kernel gained boolean subtraction (D-M4-2, retired since — see
+hardwood differently and the library keeps the rate on the tool record; `--clear` reads `clear_stepover` for
+one clearing pocket rather than introducing a two-tool toolpath (D-M4-4), with the meaning of its "Clear
+stepover" field still unresolved; a pocket was one region per selected contour, with no islands until the
+kernel gained boolean subtraction (D-M4-2, retired since — see
 §4.7); drilling accepts
 circles only (D-M4-5); linking stays conservative, retracting to safe Z between rings, rows, spans and holes
 (D-M4-6, D-M4-10); raster rows always run along X (D-M4-7); and M4 ships no toolpath UI, `cam-cli toolpath`
@@ -1061,12 +1061,12 @@ did not decompile its algorithms.
 
 | ID | Decision | Date | Basis |
 | --- | --- | --- | --- |
-| D1 | Rust + wgpu, `egui` shell behind an adapter | plan time | User choice; analysis report §1/§3 (only shell + viewport are platform-bound) |
-| D2 | All strategies except 3D and Laser | plan time | User choice; superset recovered in analysis report §2.3 |
-| D3 | Own ZIP+JSON document format, interop via import | plan time | User choice; `.crv` OLE2 internals are an unknown (analysis report §2.5) |
-| D4 | Own heuristic nesting in v1 | plan time | User choice; original uses a licensed third-party engine (analysis report §2.4) |
+| D1 | Rust + wgpu, `egui` shell behind an adapter | plan time | User choice; only the shell and the viewport are platform-bound |
+| D2 | All strategies except 3D and Laser | plan time | User choice; 3D machining and laser are different machines, not extra strategies |
+| D3 | Own ZIP+JSON document format, interop via import | plan time | User choice; closed proprietary project formats are an unresolved container, so interop goes through interchange formats |
+| D4 | Own heuristic nesting in v1 | plan time | User choice; nesting heuristics are licensed components elsewhere, and owning one keeps it testable headless |
 | D5 | Millimetres internal, rounding only at emission | architecture | Post-processor decimal specs differ per variable in 75 shipped files |
-| D6 | Arcs first-class, no pre-tessellation | architecture | 8 arc output blocks in the recovered DSL grammar |
+| D6 | Arcs first-class, no pre-tessellation | architecture | 8 arc output blocks in the dialect's block set |
 | D7 | Do not vendor third-party `.pp` files | legal/architecture | Third-party content; grammar reimplemented instead |
 | D8 | `cam-cli` as the test surface | verification | Makes every milestone verifiable without the UI |
 | D-M6-12 | The sweep **interpolates Z** along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | M6, T4b | D-M5-3 removed a move's *destination* depth over its whole travel, which was conservative while every cutting move held one depth and is simply wrong for a ramp. T4's first implementation worked around it by emitting the ramp as 0.1 mm Z steps, which puts the simulator's limitation into the program the machine runs and cannot express a helix. The sampler now takes `max(2·travel/cell, 16·|Δz|/cell)` steps, so a graded floor is resolved to half the judgement; a constant-Z move's count is unchanged and its results are bit-identical (33,600 of 33,600 cell values against `a4487f0`) |
@@ -1075,7 +1075,7 @@ did not decompile its algorithms.
 | D-M7-2 | The medial axis is the toolpath, and the **empty-ball test** is the only thing that certifies it | M7, T2 | Candidate generation is cheap and unreliable, the certificate is exact and cheap: generate, verify each candidate with the kernel's exact distance, keep only certified points, chain them, and drop whatever fails **whole** — never nudged, because a nudged tip is a lie about its own clearance. The nearest set is deduped **by point**, or every corner of every polygon would certify itself |
 | D-M7-3 | `start_depth` is deferred, so the law stays exact | M7, T5 | With `start_depth > 0` the cone's top reaches `s·tan(θ/2)` **outside** the vectors, so the authorised surface is no longer `−d/tan(θ/2)` inside the region alone and the milestone's cleanest assertion — `gouge` exactly zero — would be false for a legitimate program. `--start-depth` is refused by name rather than stored as a field that defaults to zero |
 | D-M7-4 | Arcs stay arcs: nothing is tessellated, and no chord tolerance exists anywhere — **superseded in its premise by T2** | M7, T2 | As written this decision said arcs would be tessellated for the skeleton, reasoning that every bisector involving an arc is a conic the kernel has no type for. That is right about *constructing* a bisector and wrong about *needing* one: the axis is found by bisecting the **scalar** `dist(p,i) − dist(p,j)` along a lattice edge and certifying with exact nearest points, so no bisector is built and the arc's own geometry is asked throughout. The corrected decision is the one in force; the original reasoning is kept because it is exactly why the alternative looks necessary |
-| D-M7-5 | The tolerance is the **lattice step**, and its four costs are declared — **the "no tolerance flag" half superseded by implementation** | M7, T2, T5 | The same *kind* of knob the product calls `VCarve Toolpath Tolerance`, but not the same knob: the product simplifies a computed path afterwards, M7 refines the axis to a step. This decision first said "M7 adds no tolerance flag and takes the job's existing tolerance"; the implementation made it a stored, defaulted `--tolerance` (0.1 mm), because `emit` recomputes the axis from the document alone (S9, S10) and a flag accepted and then dropped would make the program depend on a constant nobody named. The four declared costs, measured: the chording between certified vertices; a piece shorter than the step missed; the convex-corner band (`0.20` mm of missed depth at 0.5 against `0.00` at 0.1); and a curvature extremum truncating a branch (the 5 x 2 ellipse's axis reaches `±3.5` against its analytic `±4.2` at 0.5, `±4.8` at 0.1) |
+| D-M7-5 | The tolerance is the **lattice step**, and its four costs are declared — **the "no tolerance flag" half superseded by implementation** | M7, T2, T5 | The same *kind* of knob as a post-calculation toolpath tolerance, but not the same knob: that tolerance simplifies a computed path afterwards to reduce file size, M7 refines the axis to a step. This decision first said "M7 adds no tolerance flag and takes the job's existing tolerance"; the implementation made it a stored, defaulted `--tolerance` (0.1 mm), because `emit` recomputes the axis from the document alone (S9, S10) and a flag accepted and then dropped would make the program depend on a constant nobody named. The four declared costs, measured: the chording between certified vertices; a piece shorter than the step missed; the convex-corner band (`0.20` mm of missed depth at 0.5 against `0.00` at 0.1); and a curvature extremum truncating a branch (the 5 x 2 ellipse's axis reaches `±3.5` against its analytic `±4.2` at 0.5, `±4.8` at 0.1) |
 | D-M7-6 | T0 — the origin fix — is a prerequisite, not a detour | M7, T0 | M7's acceptance test is a simulation report (S11), and while `grid_for` and the sweep disagree about the origin at three of four corners an oracle can only be written at the one corner where the bug is invisible — which is precisely how it survived M5 and M6. The fix is the roadmap's own recorded next step (§6) |
 | D-M7-7 | `Move::Arc` is not extended and no helical block is reused | M7, T4 | A V-carve's constant-`d` contour is not a constant-Z curve, so an arc move cannot carry it, and `Move::Helix` is a descent at a constant radius, not a bisector. The walk emits linear feeds with per-vertex Z, which the existing post blocks and the D-M6-12 sweep already handle (S12, S13). Chording the level sets into arc blocks would trade the law's exactness for a shorter file, and M7 has no evidence that file length matters at this scale |
 | D-M7-8 | The frame is mapped where a program meets the field, not by moving the grid | M7, T0 | The §6 sketch proposed moving `grid_for`'s origin and the sweep's cell mapping together. The implementation found a cheaper and safer crossing point, and the reason is a tab: M5 places a tab by **arc length from the contour's start**, and reflecting a contour reverses its traversal, so mapping the *target's* geometry into the machine frame would move every tab to the other side at `top_left`. The field, the target and the preview stay in the document frame, and the program is read into it once, in `sweep::apply_move` |
@@ -1084,13 +1084,13 @@ did not decompile its algorithms.
 
 - **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD: the request asked
   for that plan and its milestones, with Windows/Linux support named as the extra requirement. The owner's
-  sentence also named a third-party product and the installer it was to be observed in; the repository name
-  hygiene sweep (`odd/tasks/repository-name-hygiene.md`) removed those names.
+  sentence also named a third-party product; the repository name hygiene sweep
+  (`odd/tasks/repository-name-hygiene.md`) removed that name and the words that went with it.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";
   "Implementar nesting heurístico propio en v1".
-- **L3 (analysis):** evidence dossier written to `evidence/analysis-report.md`; installer extracted to
-  `evidence/installer-extract/`; REA evidence IDs recorded in dossier §5.
+- **L3 (analysis):** the technical analysis that preceded this plan is folded into the rows above; the
+  dossier it was written to was deleted by the name-hygiene sweep, which records that in its own Log.
 - **L4 (plan):** this document. Next executable artifact is
   `odd/tasks/m0-foundation.md`.
 - **L5 (after M10, two features and no milestone).** M0–M10 were the whole plan, so the work that followed

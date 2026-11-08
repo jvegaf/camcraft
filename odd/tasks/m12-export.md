@@ -12,7 +12,7 @@ Feature document for milestone **M12** of `odd/roadmap.md`. Read **until `## Log
   (`crates/cam-store/src/document.rs:179`, `crates/cam-cli/src/lib.rs:3109`, `crates/cam-cli/src/pieces.rs:307`,
   `crates/cam-cli/src/printsheet.rs:89`). `crates/cam-import/src/lib.rs:3-5` says it plainly: "nothing is
   written to disk here". And `crates/cam-ui/src/icons.rs:1041`/`:1045` already declare `export-dxf` and
-  `export-svg` icons that no command references — the product promised the feature and never shipped it.
+  `export-svg` icons that no command references — the icons promised a feature no command shipped.
 - **S3 (what the importer can read back, so what "round trip" means):** the geometry the model holds is a
   contour of vertices carrying a **bulge** (`crates/cam-geom/src/contour.rs:13-18`, sweep `4·atan(bulge)`,
   positive counter-clockwise — the DXF convention), a full circle is **two vertices at bulge 1.0**

@@ -604,8 +604,8 @@ test per corner asserting that a correct program reports `Deviation::default()`;
 - **A cone's interior candidate is exact while the nearest point is a perpendicular foot** (L14). It is
   measured clean on every fixture; a ternary search would remove the assumption at a real per-cell cost.
 - **No 3D and no laser** (D2, S12), no `Moulding`/`Swept Profile` (M8), no `V-Carve` (M7), and no toolpath
-  form in the window for any of the six (S13). `BevelCarving` is in the dossier's vocabulary but not in
-  the roadmap's M6 row: recorded as observed-but-unscheduled rather than silently dropped.
+  form in the window for any of the six (S13). `BevelCarving` is in S4's vocabulary but not in
+  the roadmap's M6 row: recorded as named-but-unscheduled rather than silently dropped.
 
 ## `cam-cli toolpath`, for the six kinds
 

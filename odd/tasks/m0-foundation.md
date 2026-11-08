@@ -10,7 +10,7 @@ Requirements as stated by the owner (verbatim; S1 and S3 restated by the name-hy
 - **S1** — A desktop 2.5D CAM application (restated; the owner's wording named a third-party product).
 - **S2** — "quiero que sea cross platform Windows/Linux"
 - **S3** — The development plan is generated through ODD: milestones, each with its own feature document
-  and its own acceptance criteria (restated; the original wording named an installer to analyse).
+  and its own acceptance criteria.
 - **S4** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)"
 - **S5** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser"
 - **S6** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import
@@ -32,7 +32,7 @@ against.
   rejected with a message naming the found and the supported version.
 - **A4** — The tool library is SQLite with a `schema_version`/migration mechanism, and models tool
   **geometry**, tool **cutting data** and their join per (material, machine) as separate records.
-- **A5** — The post-processor engine parses the recovered `.pp` dialect: 13 directives
+- **A5** — The post-processor engine parses the `.pp` dialect: 13 directives
   (`POST_NAME`, `FILE_EXTENSION`, `UNITS`, `LINE_ENDING`, `LINE_NUMBER_START`,
   `LINE_NUMBER_INCREMENT`, `LINE_NUMBER_MAXIMUM`, `DIRECT_OUTPUT`, `SUBSTITUTE`, `ROTARY_WRAP_X`,
   `ROTARY_WRAP_Y`, `RAPID_PLUNGE_TO_STARTZ`, `PRINT_DIRECT`), `VAR <name> = [<src>|A|C|<prefix>|<decimals>]`
@@ -173,14 +173,13 @@ record the commit holding each task. No behaviour change.
 
 - **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD, with
   Windows/Linux support named as the extra requirement. The owner's sentence also named a third-party
-  product and the installer it was to be observed in; the repository name hygiene sweep
-  (`odd/tasks/repository-name-hygiene.md`) removed those names.
+  product; the repository name hygiene sweep (`odd/tasks/repository-name-hygiene.md`) removed that name
+  and the words that went with it.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";
   "Implementar nesting heurístico propio en v1".
-- **L3 (analysis):** `evidence/analysis-report.md` — REA evidence IDs for PE imports/resources, the
-  decoded SQLite tool and post-processor schemas, the exports of the nesting engine and the 3D
-  engine, and the recovered post-processor grammar (13 directives / 17 variables / 15 blocks).
+- **L3 (analysis):** the plan's technical basis, recorded: the tool and post-processor record shapes and
+  the post-processor grammar M0 implements — 13 directives / 17 variables / 15 blocks.
 - **L4 (plan):** `odd/roadmap.md` — stack justification, architecture, milestones M0–M10, risks.
 - **L5:** scope correction recorded, not silently absorbed: D2 includes V-Carve, Inlay, Moulding and
   the other depth-variant strategies, so those are scheduled as M6–M8 rather than folded into the

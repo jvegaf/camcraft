@@ -21,12 +21,12 @@ Requirements as stated by the owner (verbatim):
 - **S3** — What the README promises for M6 (verbatim, `README.md:185-188`): "M6 is the depth-variant
   strategies — Quick Engrave, Chamfer, Fluting, Texture, Thread Milling and the Inlay pair — profile and
   pocket variants with a different Z law, cheap once M4's strategies and M5's simulation exist."
-- **S4** — The strategy vocabulary and the parameter names the dossier recovered (verbatim,
-  `evidence/analysis-report.md:192-195`): "`Quick Engrave`, `Inlay` (`Create Inlay
+- **S4** — The strategy vocabulary and its parameter names — the superset M6 reads, six of which it
+  implements: "`Quick Engrave`, `Inlay` (`Create Inlay
   Toolpath`, `InlayStepDepth`, `InlayStepWidth`, `InlayColour`), `Chamfer Toolpath`, `BevelCarving`,
   `Fluting Toolpath`, `Texture Toolpath`, `Moulding Toolpath`, `Thread Mill` (`ThreadDiameter`,
-  `ThreadPitch`, `ThreadDirection`, `ThreadedLength`)". The list is read as a superset: which of those
-  strategies a given edition exposes is decided by gating M6 does not model.
+  `ThreadPitch`, `ThreadDirection`, `ThreadedLength`)". Which of those a given edition exposes is
+  decided by gating M6 does not model.
 - **S5** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:90`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
@@ -44,11 +44,10 @@ Requirements as stated by the owner (verbatim):
   "The emitter ignores it — a post-processor has no block that states a tool's diameter — but the
   simulation needs the footprint a move sweeps, and taking it from the segment keeps the tool joined to
   the moves that use it (M5 S2)."
-- **S11** — Tool geometry the original stores, which M6 must start consuming (verbatim,
-  `evidence/analysis-report.md:88-90`): "`tool_geometry(id, name_format, notes, tool_type, units,
-  diameter, included_angle, flat_diameter, num_flutes, flute_length, thread_pitch, outline BLOB,
-  tip_radius, laser_watt, custom_attributes, tooth_size, tooth_offset, neck_length, tooth_height,
-  threaded_length)`".
+- **S11** — The tool-geometry columns the library carries, which M6 must start consuming: "`tool_geometry(id,
+  name_format, notes, tool_type, units, diameter, included_angle, flat_diameter, num_flutes,
+  flute_length, thread_pitch, outline BLOB, tip_radius, laser_watt, custom_attributes, tooth_size,
+  tooth_offset, neck_length, tooth_height, threaded_length)`".
 - **S12** — Scope boundary D2 (user, verbatim option label): "Todo menos 3D y Laser". M6 adds no 3D
   machining strategy and no laser strategy; `Moulding`/`Swept Profile` stay at M8 and `V-Carve` at M7.
 - **S13** — Decision D-M4-8, still in force (verbatim, `odd/tasks/m4-toolpaths.md:163-166`):
@@ -142,12 +141,12 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   `VBit { included_angle, flat_diameter }`) and `cam-sim::sweep` grows the footprint radius with depth.
   The alternative — a cylinder at the bevel's top width — would report a correct chamfer as a gouge,
   which is exactly the failure D-M5-5 was amended to fix.
-- **D-M6-4 — Quick Engrave is the profile's `On` side with the pass law removed.** The original's
-  Quick Engrave engraves along vectors at one depth; M4's profile already knows how to walk a contour
+- **D-M6-4 — Quick Engrave is the profile's `On` side with the pass law removed.** Quick Engrave
+  engraves along vectors at one depth; M4's profile already knows how to walk a contour
   and lift for tabs, and a pass law is a liability when the feature is a single V-groove. So engrave
   reuses `walk_contour`'s machinery, refuses `cut_depth <= start_depth`, and takes no stepover.
 - **D-M6-5 — Fluting ramps linearly, and the ramp is a property of the vector, not of the depth.**
-  "Fluting" in the dossier's vocabulary is one groove per vector (S4); the ramp exists so a round-nose
+  "Fluting" in S4's vocabulary is one groove per vector; the ramp exists so a round-nose
   bit does not plunge into the end of a visible flute. A linear ramp over the first and last `ramp`
   millimetres is the honest minimum that satisfies that, and it makes the removed volume a closed form
   (A9): `2r · depth · (length − ramp)`. **Amended in L14:** a ramp cannot run along a contour that
@@ -161,10 +160,10 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   (A5). Rows come from the region's own raster spans, so the clipping into the region is M4's
   (`Region::raster_spans`), not a new intersector.
 - **D-M6-7 — Inlay from one command, in a fixed order, with the allowance as the clearance.** The
-  dossier names the pair and its two parameters (S4: `InlayStepDepth`, `InlayStepWidth`); M6 delivers
+  S4 names the pair and its two parameters — `InlayStepDepth`, `InlayStepWidth`; M6 delivers
   the pair as two pocket toolpaths that share the depth: the female is the region grown by the
   allowance, the male is the job rectangle with the region as an island (S14's conservative linking
-  unchanged). `InlayColour` is a preview property of the original's UI and is out of scope (S13).
+  unchanged). `InlayColour` is a preview property, not a toolpath parameter, and is out of scope (S13).
 - **D-M6-8 — A helical arc is a new move kind and a new post block, and absence is a refusal.** `Move::Arc`
   is documented as constant-Z (S9) and the fixture post's arc blocks carry `[X][Y][I][J]` and no `[Z]`
   (`crates/cam-post/tests/fixtures/post_mm.pp:64-73`), so a helix cannot ride on them. M6 adds
@@ -244,8 +243,8 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 
 ## Recorded out of scope
 
-- `BevelCarving` appears in the dossier's vocabulary (S4) but not in the roadmap's M6 row (S2):
-  recorded here as observed-but-unscheduled, not silently dropped.
+- `BevelCarving` appears in S4's vocabulary but not in the roadmap's M6 row (S2):
+  recorded here as named-but-unscheduled, not silently dropped.
 - `InlayColour`, `InlayStepDepth`/`InlayStepWidth` as *separate* step parameters: M6 derives the step
   from the tool library's `stepdown`/`stepover` the way profile and pocket already do (D-M6-9), so the
   pair ships with one depth and one stepover rather than two extra flags.

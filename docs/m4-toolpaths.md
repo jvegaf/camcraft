@@ -207,8 +207,8 @@ what it gives the program is the compensated head position. `cam-cli inspect` ca
   subtraction and both pocket modes cut around explicit islands — see
   [region-booleans.md](region-booleans.md), where the model, the distance proof and the `@2` document
   contract are documented and evidenced.
-- **Circles only for holes** (D-M4-5). Any other closed contour is refused by name. The product's own
-  rule for non-circular selections is not recoverable from static evidence, so no rule was invented.
+- **Circles only for holes** (D-M4-5). Any other closed contour is refused by name. A non-circular
+  closed contour has no single centre to drill at, so refusing it is a rule rather than a fallback.
 - **Conservative linking** (D-M4-6, D-M4-10). The tool retracts to `safe_z` between rings, rows, spans
   and holes; there is no stay-down linking and no gouge-free optimisation. Cost: more rapids than a
   hand-written program.

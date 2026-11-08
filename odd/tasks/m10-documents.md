@@ -11,8 +11,8 @@ the record, not the brief.
 - **S3 (user, verbatim answer to "El CSV de piezas, ¿entra, sale, o los dos?"):** "Import y export".
 - **S4 (user, verbatim answer to "¿M10 toca la UI?"):** "CLI más panel mínimo".
 - **S5 (roadmap M10 row, not a user string):** "Documents & scripting — HTML print sheets, CSV import for
-  part lists, scripting surface (Rhai/Lua) with a UI panel — Reporting and extension points; the
-  original's gadget platform is the model". S1 supersedes its "Rhai/Lua": there is **no engine**.
+  part lists, scripting surface (Rhai/Lua) with a UI panel — Reporting and extension points: a scripted
+  command surface is the model". S1 supersedes its "Rhai/Lua": there is **no engine**.
 - **S6 (roadmap non-goal, verbatim from §1):** "Lua gadget (plugin ABI) compatibility with any existing CAM
   package: a scripting surface is planned, and it will be its own dialect."
 

@@ -5,16 +5,16 @@ L5). Read **until `## Log`** before touching anything.
 
 ## Specs
 
-- **S1 (the owner, verbatim):** "necesito que cuando finalizes con la tarea, elimines del repo toda
-  referencia a the vendor o the reference CAM application, porque otro agente me lo a avisado en una revision. me puso esto: El análisis
-  de the vendor. El README de campilot dice que las decisiones salen de un análisis de ingeniería inversa de
-  the reference CAM application, y que el dialecto .pp está “recuperado del producto analizado”. Los EULA suelen prohibir eso. En
-  la UE hay excepciones de interoperabilidad, pero conviene revisarlo con un abogado antes de publicar o
-  comercializar. No soy abogado."
-- **S2 (the census, measured on `feat/m13-in-app-cycle`):** 32 files and 128 occurrences match
-  `the vendor|the reference CAM application`, case-insensitive, excluding `.git` and `target`. Of those:
-  - `README.md:4` frames the project as an answer to *"what would the reference CAM application look like if it were designed
-    today"*, and `README.md:260` says the decisions *"come from a REA analysis of the reference CAM application"*, followed by a table whose left column is an observation of that artifact;
+- **S1 (the owner's requirement; the message is quoted once, in `## Log` L1).** By the time the task
+  closes, the repository carries no reference to the product's name or its vendor. L1 holds the owner's
+  own words, including the licensing concern a reviewer raised and the interoperability caveat the owner
+  forwarded; this document does not reproduce them a second time.
+- **S2 (the census, measured on `feat/m13-in-app-cycle`):** 32 files and 128 occurrences across them
+  match the product's name or its vendor — the pattern `(name)|(vendor)` this document's own check runs,
+  case-insensitive, excluding `.git` and `target`. Of those:
+  - `README.md:4` framed the project as an answer to what that product would look like if it were designed
+    today, and `README.md:260` said the decisions came from a reverse-engineering analysis of a named
+    build, followed by a table whose left column was an observation, not a reason;
   - `evidence/` holds the dossier itself — `analysis-report.md` (323 lines: the artifact's SHA-256, its NSIS
     payload, the shell toolkits, the SQLite schema, the 75 post-processors, the nesting engine's 298
     exported functions) and `extract.sh` (34 lines that unpack the installer and run `strings` over the
@@ -57,7 +57,8 @@ L5). Read **until `## Log`** before touching anything.
 | --- | --- | --- | --- | --- |
 | T1 | The prose sweep: the README's framing and its rationale table re-grounded row by row, `evidence/` deleted, and the mention removed from `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`. Rows that cannot be re-grounded are deleted and named in the log | S1–S5 S8 | worker | — |
 | T4 | The **dossier paths** the sweep revealed: `odd/` still cites `evidence/analysis-report.md`, `evidence/derived/exe_utf16_strings.txt` and `evidence/installer-extract/` as where a spec's vocabulary came from (m3 S5, m4 S4/S5, m6, m7, m0 L3, roadmap L3). Each clause either states the fact it was establishing without the citation, or goes | S1 S4 S8 | worker | — |
-| T2 | The thirteen documents renamed with every inbound link updated, `grep -ri "the vendor\|the reference CAM application"` empty over the whole tree, gate green | S2 S6 S7 | inline | — |
+| T2 | The thirteen documents renamed with every inbound link updated, the pattern `(name)|(vendor)` matching only this document's own Log quote over the whole tree, gate green | S2 S6 S7 | inline | — |
+| T5 | The **stand-ins** the names left behind: "the original", "the product", "the dossier", "the observed/recovered `.pp` dialect", the bitmap-relief strategy's product name and the closed project-file extension, each replaced by the CAM fact it stood for, or deleted where no fact survived it | S1 S3 S8 | worker | — |
 | T3 | The roadmap's entry: what the tree now says, and the history note S5 owes the reader | S5 | inline | — |
 
 ## Log

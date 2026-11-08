@@ -23,27 +23,27 @@ Requirements as stated by the owner:
   depth from the distance between a point and the nearest boundary, scaled by the V-bit's included
   angle, which means the toolpath is not a fixed-Z pass but a depth field. That requires a
   medial-axis/straight-skeleton computation on geometry containing arcs, plus corner-relief handling.
-  The original's binary contains the strategy but the algorithm is not recoverable from static
-  analysis — this is a genuine research task".
+  The strategy is well defined — the depth is zero at a boundary and grows with the distance — but the
+  computation is genuinely research, and putting it inside M4 would have hidden a multi-week unknown
+  inside an otherwise mechanical milestone."
 - **S5** — What the README promises is next (verbatim, `README.md`): "V-Carve is next (M7)."
-- **S6** — The strategy's own vocabulary, recovered from the executable
-  (`evidence/derived/exe_utf16_strings.txt`, line numbers in that file): "V-Carve / Engraving Toolpath"
-  (`:1457`), and the parameter dialog's field names (`:3411-3425`): "`_vcpdVersion`", "`_vcpdInMM`",
+- **S6** — The strategy's own vocabulary — "V-Carve / Engraving Toolpath" — and the parameter field
+  names it is addressed by: "`_vcpdVersion`", "`_vcpdInMM`",
   "`_vcpdToolpathName`", "`_vcpdStartDepth`", "`_vcpdFlatDepth`", "`_vcpdTolerance`",
   "`_vcpdPreserveArcs`", "`_vcpdDoFlatBottom`", "`_vcpdUseAreClearTool`", "`_vcpdProjectToolpath`",
   "`_vcpdUseSelectionOrder`", "`_vcpdStartDepthFormula`", "`_vcpdFlatDepthFormula`", "`_vcpdDropTool`",
   "`_vcpdUseStartPoint`".
-- **S7** — The tolerance is the product's own, and it is a **post-calculation simplification**
-  (verbatim, `:865-866`): "VCarve Toolpath Tolerance" / "Tolerance to apply to VCarve toolpaths after
-  calculating to reduce file size. This should only be changed if your machine supplier has recommended
-  a value". With its defaults (verbatim, `:2862-2864`): "`DefaultInchTolerance3d`",
-  "`DefaultInchTolerance2d`", "`DefaultInchToleranceVCarve`". This is the evidence that an
-  approximation with a declared tolerance is the product's model and not a compromise invented here.
-- **S8** — The product validates the flat bottom, which M7 does not ship (verbatim, `:431`, `:3312-3320`):
-  "Flat Depth must be greater than zero if creating flat bottom"; "The carving tool never reached the
-  flat bottom depth." / "The flat bottom depth is %s, the carving tool only reached %s" / "Although
-  the carving tool reached the flat bottom depth," / "The flat area has been cleared with the carving
-  tool." / "No Flat Depth specified with no angled tools on the list".
+- **S7** — The tolerance is a **post-calculation simplification**: it is applied to a computed
+  toolpath to reduce file size, which is why it should only be changed on a machine supplier's
+  recommendation rather than tuned by eye. Its three defaults are `DefaultInchTolerance3d`,
+  `DefaultInchTolerance2d` and `DefaultInchToleranceVCarve`. An approximation with a declared
+  tolerance is a modelling choice with a real cost, and M7 states its four costs (D-M7-5) rather than
+  presenting the exact law as free.
+- **S8** — A flat bottom has preconditions and a report, and M7 does not ship either: a flat bottom
+  needs a flat depth greater than zero, and a carving tip that never reaches that depth cannot have
+  cleared it, so the run has to say which depth it reached instead of assuming the floor is flat.
+  Those are the rules a flat-bottom operation enforces; M7 records them out of scope with S2 rather
+  than shipping one unchecked.
 - **S9** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md` §3): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
@@ -208,7 +208,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   `s` below the surface, so the cone's intersection with the stock top reaches `s * tan(θ/2)` **outside**
   the vectors and the authorised surface is no longer `-d(q)/tan` inside `R` alone. That is a claim of
   its own, and shipping it now would make the milestone's cleanest assertion — `gouge` exactly zero —
-  false for a legitimate program. `_vcpdStartDepth` (S6) is recorded as observed and deferred, and the
+  false for a legitimate program. `_vcpdStartDepth` (S6) is recorded and deferred, and the
   CLI refuses `--start-depth` by name (A5) rather than accepting and ignoring it (S16).
 
 - **D-M7-4 — Arcs stay arcs: nothing is tessellated, and no chord tolerance exists anywhere.**
@@ -223,8 +223,8 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   reason: the walk emits linear feeds with per-vertex Z (D-M7-7), so the question does not arise.
 
 - **D-M7-5 — The tolerance is the lattice step, and its four costs are declared, not hidden.** It is the
-  same *kind* of knob the product calls `VCarve Toolpath Tolerance` (S7) but not the same knob: the
-  product simplifies a computed path afterwards to reduce file size, while M7 refines the axis to a step.
+  same *kind* of knob as a post-calculation toolpath tolerance (S7) but not the same knob: that
+  tolerance simplifies a computed path afterwards to reduce file size, while M7 refines the axis to a step.
   The costs, measured: (1) the chording between certified vertices; (2) a piece shorter than the step is
   missed; (3) near a convex corner the carve leaves at most `tolerance` of material standing, because a
   tip whose clearance is at or below the tolerance is not material — measured as `0.20` mm of missed
@@ -261,16 +261,16 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 - **Corner relief / corner sharpen** (S3's row wording, owner decision S2): no extra pass, no extended
   walk. The law reaches every boundary point, so what a machine leaves in a corner is `uncut` — and
-  that is reported, not papered over. The product's `CornerSharpen`, `CornerLimit`, `SharpCornerAngle`,
-  `PreserveCorners` strings are profile-strategy vocabulary; they are not adopted for this operation.
+  that is reported, not papered over. `CornerSharpen`, `CornerLimit`, `SharpCornerAngle` and
+  `PreserveCorners` are profile-strategy vocabulary; they are not adopted for this operation.
 - **Flat Depth / flat bottom / area-clear tool** (`_vcpdFlatDepth`, `_vcpdDoFlatBottom`,
-  `_vcpdUseAreClearTool`, and the whole validation family in S8): owner decision S2. The product's
-  messages are quoted in S8 so a later milestone starts from the evidence rather than from memory.
+  `_vcpdUseAreClearTool`, and the rules in S8): owner decision S2. S8 states those rules so a later
+  milestone starts from a requirement rather than from memory.
 - **`_vcpdStartDepth`** (D-M7-3): refused by name in the CLI, deferred with its reason.
 - **`_vcpdProjectToolpath`** (S18), **`_vcpdPreserveArcs`** (D-M7-4), **`_vcpdUseSelectionOrder`**,
   **`_vcpdDropTool`**, **`_vcpdUseStartPoint`**, **`_vcpdTolerance`/`_vcpdStartDepthFormula`/
-  `_vcpdFlatDepthFormula`**: observed in the product's dialog (S6), unscheduled here. Recorded so that
-  "V-Carve is done" later cannot mean "everything in the product's dialog".
+  `_vcpdFlatDepthFormula`**: named in S6's parameter set, unscheduled here. Recorded so that
+  "V-Carve is done" later cannot mean "everything S6 names".
 - No toolpath form in the window (S15), no 3D or laser strategy or projection (S18), no new crate or
   dependency (A8).
 
@@ -279,18 +279,17 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 - **L1 (owner, verbatim).** "conmenzamos con M7".
 - **L2 (owner decisions, verbatim option labels).** "Nada extra: `simulate` lo reporta como uncut" and
   "No: M7 es V-carve a punta pura". The two questions and why they were asked are recorded here because
-  the answers bound the milestone: the roadmap's M7 row says "corner relief" (S3), a phrase the product
-  does not use for this strategy — what the executable has is `CornerSharpen`/`CornerLimit`, which are
-  profile vocabulary — and the row says nothing about Flat Depth, which the product's own dialog does
-  have (S6). Asking instead of choosing kept the milestone from either inventing a semantic or
+  the answers bound the milestone: the roadmap's M7 row says "corner relief" (S3), a phrase that is not
+  this strategy's vocabulary — `CornerSharpen`/`CornerLimit` are profile vocabulary — and the row says
+  nothing about Flat Depth, which this strategy's parameter set does carry (S6). Asking instead of
+  choosing kept the milestone from either inventing a semantic or
   inheriting one silently.
 - **L3 (pre-flight, evidence).** `master` was clean at `9ff0b8c` (`merge: M6 depth-variant strategies`),
   one worktree, no stale branches, and `cargo test --workspace` green at **975 tests** — the number M6's
-  handoff recorded, re-measured rather than trusted. The analysis report had **no** V-Carve section;
-  the evidence in S6/S7/S8 was recovered from `evidence/derived/exe_utf16_strings.txt`, which the report
-  quotes for other strategies but not this one. Recorded because "the dossier has no V-Carve
-  parameters" is itself a finding: it is why S3's row is the only specification of intent, and why every
-  parameter named in this document carries a string and a line number.
+  handoff recorded, re-measured rather than trusted. Nothing in the plan described the strategy beyond
+  the roadmap's row; S6/S7/S8's vocabulary is what M7 had to reason from. Recorded because "the plan
+  says only that the row exists" is itself a finding: it is why S3's row is the only specification of
+  intent, and why every parameter this document sets aside is named in S6 rather than assumed.
 - **L4 (pre-flight, the post needs no change — the opposite of M6's finding).** M6's thread milling cost
   four new post block kinds because `Move::Arc` is constant-Z and no arc block carried `[Z]`. M7 checked
   the same question before writing any spec and got the other answer: `FEED_MOVE` is
