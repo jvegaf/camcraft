@@ -296,7 +296,7 @@ impl Shell {
   /// **The `2D | 3D` switch is not here.** S8 puts it at the top right of the canvas, where the reference
   /// floats it, and a segmented control in the bar and another over the drawing would be two of one control.
   /// Its one home is [`crate::Shell::view_toggle`].
-  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, _output: &mut ShellOutput) {
+  pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
     egui::Panel::top("app_bar")
@@ -317,14 +317,45 @@ impl Shell {
           );
 
           ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // The primary action, disabled on purpose: there is nothing to emit until the shell can
-            // author a toolpath, and a button that silently does nothing would be worse than one that
-            // says why.
-            ui.add_enabled(false, egui::Button::new("Generate G-code"))
-              .on_disabled_hover_text(
-                "Toolpaths are authored with `cam-cli toolpath` today; this button writes the program \
-                 once the shell can author them.",
+            // The primary action writes the program the drawing describes, and it is **not** disabled
+            // (M13 S2): it stays pressable and refuses by name from `apply_action` when it cannot — a
+            // greyed button whose reason lives in a hover is the thing this milestone removed, because a
+            // reason nobody hovers over reads as a button that does nothing.
+            let generate = ui
+              .button("Generate G-code")
+              .on_hover_text(
+                "Write the program the drawing describes to a file you name, in the post-processor this \
+                 window holds",
               );
+            if generate.clicked() {
+              output.actions.push(UiAction::RequestGenerateGcode);
+            }
+            output.drawn.app_bar_hits.push((
+              "Generate G-code".to_owned(),
+              (generate.rect.center().x, generate.rect.center().y),
+            ));
+            // The dialect is a choice, not a default: `cam-cli emit` asks for it as `--post`, and a window
+            // that picked one for the person would be choosing what their machine runs. The label names the
+            // choice once it exists, so "is a program possible yet" is answered without a hover.
+            let post = self.post_name().map(str::to_owned);
+            let post_label = match &post {
+              Some(name) => format!("Post: {name}"),
+              None => "Post…".to_owned(),
+            };
+            let choose = ui.button(post_label).on_hover_text(match &post {
+              Some(name) => format!("Every program is written in {name} — press to choose another"),
+              None => {
+                "No post-processor is chosen, so no program can be written — press to choose a `.pp`"
+                  .to_owned()
+              }
+            });
+            if choose.clicked() {
+              output.actions.push(UiAction::RequestChoosePost);
+            }
+            output.drawn.app_bar_hits.push((
+              "Post".to_owned(),
+              (choose.rect.center().x, choose.rect.center().y),
+            ));
             // Help is the `F1` panel now: the panel teaches every command, so a help button that opened
             // a list of chords instead would answer a smaller question than the one asked.
             if icon_button(

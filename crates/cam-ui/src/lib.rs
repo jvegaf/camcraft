@@ -554,6 +554,39 @@ pub enum UiAction {
   /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: the shell shows no
   /// dialog, writes no file and touches no document when it receives this.
   RequestSaveAs,
+  /// Write the program the drawing describes to `path`, in the post-processor this shell holds.
+  ///
+  /// This is the answer to [`UiAction::RequestGenerateGcode`], and it is the primary action of the whole
+  /// window: the drawing, its toolpaths and their tools become the file the machine reads. The write is the
+  /// shell's, exactly as [`UiAction::SaveFile`]'s is, so the sentence the person reads and the tests that pin
+  /// it live in one place (M13 S7).
+  ///
+  /// Two things are refused by name rather than by a greyed-out button (M13 S2): a drawing with no toolpaths
+  /// has no program to write, and a window with no post-processor holds no dialect to write it in. Either way
+  /// nothing is created and the status bar says which of the two is missing.
+  GenerateGcode {
+    /// Where to write the program.
+    path: PathBuf,
+  },
+  /// Ask the host for a path to write the program to; the host shows its save dialog and applies
+  /// [`UiAction::GenerateGcode`].
+  ///
+  /// An intent and nothing more: the shell opens no dialog and writes nothing when it receives this.
+  RequestGenerateGcode,
+  /// Hold the post-processor in `path` and write every program with it from now on.
+  ///
+  /// This is the answer to [`UiAction::RequestChoosePost`]. The file is read and parsed **before** it is
+  /// held, so a file that is not a post-processor is refused and the post-processor already in hand stays:
+  /// a choice that could not write a program is not a choice, and losing the working one to it would be a
+  /// second failure on top of the first.
+  ChoosePost {
+    /// The `.pp` file to read.
+    path: PathBuf,
+  },
+  /// Ask the host for a post-processor; the host shows its open dialog and applies [`UiAction::ChoosePost`].
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
+  RequestChoosePost,
   /// Give an existing toolpath a different tool number, leaving its geometry and operation alone.
   ///
   /// The tool library's `Use this tool` is what pushes this (camui-prancheta S9): the modal chooses a tool
@@ -646,6 +679,8 @@ impl UiAction {
       Self::OpenFile { .. } | Self::RequestOpenFile => "open file",
       Self::Save => "save document",
       Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
+      Self::GenerateGcode { .. } | Self::RequestGenerateGcode => "generate g-code",
+      Self::ChoosePost { .. } | Self::RequestChoosePost => "choose post-processor",
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
       Self::AddToolpath { .. } => "add toolpath",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
@@ -1147,6 +1182,15 @@ pub struct Shell {
   /// **file-level, not document-level** — the undo history snapshots bare [`cam_model::Document`]s, so an
   /// undo cannot restore or lose them, and a drawing that was never opened has no entries to carry.
   document_extras: BTreeMap<String, Vec<u8>>,
+  /// The post-processor this window writes programs in, as its file label and its source text.
+  ///
+  /// A program is only defined together with the dialect it is written in, and the dialect is a choice:
+  /// `cam-cli emit` takes it as `--post`. No document can carry that choice in a way a screen could reach —
+  /// `Document.postp` names a post-processor but nothing in the workspace writes it (M13 L4) — so the choice
+  /// is session state, exactly like [`Self::document_path`]: chosen once with the app bar's `Post…`, applied
+  /// to every program this window writes. `None` is not "a default post": with no post the program is
+  /// refused by name, because guessing a dialect would be writing somebody else's G-code.
+  post: Option<(String, String)>,
   /// When the file behind the drawing was last written, as the filesystem reports it.
   ///
   /// Read once per action that opens or writes a document, never per frame: the brand block's `Saved …` line
@@ -1332,6 +1376,7 @@ impl Default for Shell {
       tools: Vec::new(),
       document_path: None,
       document_extras: BTreeMap::new(),
+      post: None,
       saved_at: None,
       status: String::new(),
       cursor_world: None,
@@ -1444,14 +1489,23 @@ impl Shell {
     // archive entries this build does not interpret travel with the window, so they are handed to the one
     // handler that touches `AppState` instead of being patched back in here after the fact. That is what
     // lets an open carry its extras and a save write them back without a second copy of either.
-    let applied = handle_action_with_file(
-      app,
-      action,
-      Some(&mut DocumentFileState {
-        path: &mut self.document_path,
-        extras: &mut self.document_extras,
-      }),
-    );
+    // The two program actions are the shell's own rather than the shared handler's, for the reason
+    // `NO_SHELL_FOR_SAVE` gives in the other direction: the post-processor is window state, like the path the
+    // drawing came from, and `handle_action_with_file` is reachable without a window at all. Intercepting them
+    // here is what keeps one place holding the dialect and one place writing the file, without widening a
+    // handler whose signature every file action already shares.
+    let applied = match action {
+      UiAction::ChoosePost { path } => self.choose_post(path),
+      UiAction::GenerateGcode { path } => self.generate_gcode(app, path),
+      _ => handle_action_with_file(
+        app,
+        action,
+        Some(&mut DocumentFileState {
+          path: &mut self.document_path,
+          extras: &mut self.document_extras,
+        }),
+      ),
+    };
     // The brand block's stamp is read from the file the action just read or wrote, and only when the action
     // was one of those: a `stat` per frame would be a syscall in the paint loop, and a stamp cached from an
     // earlier action would describe a file that has since changed. `modified` answers `Err` on a filesystem
@@ -1508,6 +1562,100 @@ impl Shell {
     if let Some(note) = library_note {
       self.status.push_str(&format!(" — {note}"));
     }
+  }
+
+  /// Hand the window the post-processor it writes programs in, as the file's label and its source text.
+  ///
+  /// The label is what the app bar shows and what a refusal names, so it is the file's own name rather than a
+  /// path: a person reading `Post: grbl.pp` is reading the choice they made. Held as source text rather than as
+  /// a parsed processor because a session can outlive the file it came from — a post-processor edited on disk
+  /// mid-session is a different dialect, and re-parsing at use is what makes the program match the text in hand.
+  pub fn set_post(&mut self, name: impl Into<String>, source: impl Into<String>) {
+    self.post = Some((name.into(), source.into()));
+  }
+
+  /// Forget the held post-processor, so the next program refuses until another is chosen.
+  pub fn clear_post(&mut self) {
+    self.post = None;
+  }
+
+  /// The post-processor's file label, when the window holds one.
+  pub fn post_name(&self) -> Option<&str> {
+    self.post.as_ref().map(|(name, _)| name.as_str())
+  }
+
+  /// Hold the post-processor in `path`, refusing a file that is not one.
+  ///
+  /// The parse is the acceptance test and it happens here rather than at the first program: a file that does
+  /// not parse would otherwise be accepted now and fail once the person believes their program exists. The
+  /// previous post-processor stays on every refusal, so choosing a wrong file costs the choice and nothing
+  /// else.
+  fn choose_post(&mut self, path: &Path) -> Result<ActionReport, String> {
+    if path.as_os_str().is_empty() {
+      return Err(EMPTY_POST_PATH.to_owned());
+    }
+    let name = file_label(path);
+    let source = std::fs::read_to_string(path).map_err(|error| format!("{name}: {error}"))?;
+    cam_post::parse_post(&source).map_err(|error| format!("{name}: {error}"))?;
+    self.post = Some((name.clone(), source));
+    Ok(ActionReport {
+      label: "choose post-processor",
+      note: Some(format!("using {name}")),
+      ..ActionReport::default()
+    })
+  }
+
+  /// Post the open document and write the program to `target` (M13 S1, S2).
+  ///
+  /// The program is [`cam_program::program_for_snapshot`]'s, the same authoring the cut-time estimate in the
+  /// Toolpaths task already uses, so the sentence about how long the job takes and the file the machine runs
+  /// cannot disagree about what the toolpaths are.
+  ///
+  /// # Why the material is not passed on
+  ///
+  /// A snapshot is a list of tools with their own records, and a material is a selector *into a library* —
+  /// `program_for_snapshot` cannot answer one and refuses it by name (`crates/cam-program/src/lib.rs:95-113`),
+  /// so passing the document's material would make every drawing that names one refuse to produce a program.
+  /// `None` is what the snapshot can honestly mean, and the program therefore cuts at the tools' own rates;
+  /// the divergence from `cam-cli emit --material` is the same recorded limit the shell's estimate carries
+  /// (M11's follow-up), and it is named here rather than discovered by a person comparing two files.
+  fn generate_gcode(&self, app: &AppState, target: &Path) -> Result<ActionReport, String> {
+    if target.as_os_str().is_empty() {
+      return Err(EMPTY_PROGRAM_PATH.to_owned());
+    }
+    let Some((name, source)) = self.post.as_ref() else {
+      return Err(NO_POST.to_owned());
+    };
+    if app.document().toolpaths.is_empty() {
+      return Err(NO_TOOLPATHS.to_owned());
+    }
+    let post = cam_post::parse_post(source).map_err(|error| format!("{name}: {error}"))?;
+    let document = app.document();
+    let stream = cam_program::program_for_snapshot(document, &self.tools, None)
+      .map_err(|error| error.to_string())?;
+    let meta = cam_post::ProgramMeta {
+      file_name: target
+        .file_name()
+        .map(|file| file.to_string_lossy().into_owned())
+        .unwrap_or_default(),
+      file_path: target
+        .parent()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .unwrap_or_default(),
+    };
+    let emitted =
+      cam_post::emit(&post, &stream, &meta).map_err(|error| format!("{name}: {error}"))?;
+    std::fs::write(target, &emitted.text)
+      .map_err(|error| format!("{}: {error}", file_label(target)))?;
+    Ok(ActionReport {
+      label: "generate g-code",
+      note: Some(format!(
+        "wrote {} line(s) to {}",
+        emitted.lines,
+        file_label(target)
+      )),
+      ..ActionReport::default()
+    })
   }
 
   /// The file the drawing was opened from or last written to, once a host has opened or saved one.
@@ -2874,6 +3022,43 @@ const EMPTY_SAVE_PATH: &str =
   "a save needs a file to write, and this path is empty — use Save As to name one, and no save writes \
    into the directory the window was started from";
 
+/// What a program generation with no post-processor answers.
+///
+/// The dialect is not a default: two post-processors write two different programs from one toolpath, so a
+/// window that picked one for the person would be choosing what their machine runs. The refusal names the one
+/// control that supplies it.
+const NO_POST: &str =
+  "writing a program needs a post-processor, and none is chosen — use Post… in the app bar to name one, and \
+   every program this window writes is written in it";
+
+/// What a program generation from a drawing with no toolpaths answers.
+///
+/// A program is a sequence of moves; a drawing alone is geometry. Naming the missing half is the whole point
+/// of M13 S2, which exists because the shell used to point at a command in another window instead.
+const NO_TOOLPATHS: &str =
+  "this drawing has no toolpaths, so there is no program to write — author one in the Toolpaths task first, \
+   and the program follows from it";
+
+/// What a program generation to an empty path answers.
+///
+/// An empty path is not a file name, so the refusal comes before any filesystem call: the writer would
+/// otherwise compose its temporary sibling in the directory the window was started from.
+const EMPTY_PROGRAM_PATH: &str =
+  "a program needs a file to write, and this path is empty — use the save dialog to name one, and no program \
+   is written into the directory the window was started from";
+
+/// What a post-processor choice with an empty path answers.
+const EMPTY_POST_PATH: &str =
+  "choosing a post-processor needs a file to read, and this path is empty — use the open dialog to name one";
+
+/// What a program or a post-processor answers from an entry point that holds no shell.
+///
+/// The post-processor travels with the window, like the archive entries a save refuses to write without
+/// ([`NO_SHELL_FOR_SAVE`]): a program written from a bare handler would be written in a dialect nobody chose.
+const NO_SHELL_FOR_POST: &str =
+  "writing a program needs the post-processor the window is holding, and this entry point has no shell — \
+   choose one with Post… and apply the action through Shell::apply_action";
+
 /// The file the drawing came from, as the shell holds it: the recorded path and the archive's other
 /// entries.
 ///
@@ -3077,6 +3262,17 @@ fn handle_action_with_file(
       label: action.label(),
       ..ActionReport::default()
     }),
+    // The two program intents ask the host for something and change nothing while asking, exactly as the two
+    // file intents do.
+    UiAction::RequestGenerateGcode | UiAction::RequestChoosePost => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    // And their answers belong to the window, not to this handler: the post-processor is held by the shell,
+    // so a bare handler has no dialect to write in and says so instead of picking one.
+    UiAction::GenerateGcode { .. } | UiAction::ChoosePost { .. } => {
+      Err(NO_SHELL_FOR_POST.to_owned())
+    }
     UiAction::SetJob {
       width,
       height,
