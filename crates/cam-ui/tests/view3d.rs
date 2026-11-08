@@ -17,13 +17,14 @@
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Job, Layer};
+use cam_model::{Document, Job, Layer, Operation, ProfileParams, Toolpath};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield, Volumes};
+use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::theme::{Palette, Role, Theme};
 use cam_ui::view3d::{clock_text, seconds_for};
 use cam_ui::{Preview3d, Shell, ShellOutput};
-use cam_units::Length;
+use cam_units::{Length, UnitSystem};
 
 /// The stock the fixture simulates, in millimetres.
 const STOCK_WIDTH: f64 = 100.0;
@@ -35,6 +36,8 @@ const STOCK_THICKNESS: f64 = 18.0;
 const CELL_MM: f64 = 2.0;
 /// The cut depth the fixture's program reaches, in millimetres.
 const CUT_DEPTH: f64 = 6.0;
+/// The tool number the drawing's own toolpath cuts with (M13 S3).
+const TOOL_NUMBER: u32 = 4;
 
 fn job() -> Job {
   Job {
@@ -67,6 +70,65 @@ fn document() -> Document {
     }],
   });
   document
+}
+
+/// The fixture drawing plus one profile toolpath cutting the rectangle it already holds (M13 S3).
+///
+/// `document()` alone is geometry and no path, which is exactly the drawing the empty half must refuse: this
+/// one is the drawing that has something of its own to simulate.
+fn document_with_toolpath() -> Document {
+  let mut document = document();
+  document.toolpaths.push(Toolpath {
+    id: "P1".to_owned(),
+    name: "Profile 01".to_owned(),
+    entity_ids: vec!["E1".to_owned()],
+    island_ids: Vec::new(),
+    tool_number: TOOL_NUMBER,
+    operation: Operation::Profile(ProfileParams::default()),
+  });
+  document
+}
+
+/// One tool as a library snapshot holds it, so the drawing's own `tool_number` resolves.
+///
+/// The rates are the ones the shell's other fixtures use: a 6 mm cutter at 100 mm/s and 30 mm/s of plunge.
+fn stored_tool() -> StoredTool {
+  StoredTool {
+    geometry: ToolGeometry {
+      id: format!("G{TOOL_NUMBER}"),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: Some(Length::from_mm(6.0)),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    },
+    cutting: CuttingData {
+      id: format!("G{TOOL_NUMBER}-cut"),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: None,
+      stepover: None,
+      clear_stepover: None,
+      tool_number: Some(TOOL_NUMBER),
+      notes: None,
+    },
+  }
+}
+
+/// The program the drawing's own toolpath makes, exactly as the shell builds it for a simulation.
+///
+/// Built here rather than read off the shell, so the clock a press reports is compared with the program the
+/// document describes instead of with itself.
+fn document_program() -> MoveStream {
+  cam_program::program_for_snapshot(&document_with_toolpath(), &[stored_tool()], None)
+    .expect("the fixture's toolpath and its tool agree")
 }
 
 /// A tiny deterministic program: one pocket run at `CUT_DEPTH` with a 6 mm tool.
@@ -207,10 +269,18 @@ struct Harness {
 impl Harness {
   /// A harness with no preview at all, whose layout has settled: the M1–M3 shell exactly.
   fn bare() -> Self {
+    Self::with_document(document())
+  }
+
+  /// A harness over `document`, with no preview and its layout settled.
+  ///
+  /// The same three framing frames [`Harness::bare`] runs: a test that puts another drawing in the window
+  /// still needs the panels laid out before it presses anything (M13 S3's fixtures).
+  fn with_document(document: Document) -> Self {
     let mut harness = Self {
       ctx: egui::Context::default(),
       shell: Shell::new(),
-      app: AppState::new(document()),
+      app: AppState::new(document),
       output: ShellOutput::default(),
       mesh_vertices: Vec::new(),
       texts: Vec::new(),
@@ -1707,8 +1777,16 @@ fn the_overlay_row_names_the_four_layers_and_every_chip_hides_exactly_its_own() 
     .collect();
   assert_eq!(
     words,
-    ["Material", "Vectors", "Toolpaths", "Tool", "Centre", "?"],
-    "S8's overlay row, in its own order"
+    [
+      "Material",
+      "Vectors",
+      "Toolpaths",
+      "Tool",
+      "Simulate again",
+      "Centre",
+      "?"
+    ],
+    "S8's overlay row, in its own order, with M13 S3's `Simulate again` before `Centre`"
   );
   let showing: Vec<(String, bool)> = vec![
     ("Material".to_owned(), true),
@@ -2079,8 +2157,13 @@ fn a_split_with_no_program_draws_no_overlay_row_and_says_why() {
     harness
       .texts
       .iter()
-      .any(|text| text.contains("No program to preview")),
-    "the half says why it is empty, painted: {:?}",
+      .any(|text| text.contains("half draws")),
+    "the half says what it is for (M13 S3: it never sends the person to another program), painted: {:?}",
+    harness.texts
+  );
+  assert!(
+    !harness.texts.iter().any(|text| text.contains("cam-cli")),
+    "and it names no other program: {:?}",
     harness.texts
   );
 }
@@ -2102,5 +2185,190 @@ fn the_rulers_frame_the_drawing_half_and_stop_where_the_three_d_half_begins() {
     rulers.top_band.3 > 0.0 && !rulers.top.is_empty(),
     "the band still numbers the drawing half: {:?}",
     rulers.top_band
+  );
+}
+
+// ---- The 3D half simulates the drawing's own program (M13 S3) ------------------------------------
+
+/// The point the empty half drew its `Simulate` chip at, which is the only way a test can press it.
+fn simulate_chip(harness: &Harness) -> (f32, f32) {
+  harness
+    .output
+    .drawn
+    .simulate_chip
+    .expect("the empty half must offer `Simulate`, and report where it drew it")
+}
+
+#[test]
+fn the_empty_half_offers_simulate_and_pressing_it_draws_the_drawings_own_program() {
+  let mut harness = Harness::with_document(document_with_toolpath());
+  harness.shell.set_tools(vec![stored_tool()]);
+  harness.shell.set_view_3d(true);
+  harness.frame(Vec::new());
+
+  assert!(
+    harness.shell.preview().is_none(),
+    "nothing has been simulated yet, so the half is empty"
+  );
+  assert_eq!(
+    harness.output.drawn.painted_triangles, 0,
+    "an empty half paints no picture"
+  );
+  assert!(
+    harness.texts.iter().any(|text| text == "Simulate"),
+    "the empty half carries the control that fills it: {:?}",
+    harness.texts
+  );
+  // M13 S3: nothing in the shell may send the person out of it. The relief task's own sentence is chrome.rs'
+  // (`chrome.rs:911`, outside this task's surface) and is drawn only while that task is open, which this frame
+  // is not — what is asserted is that the half itself names no other program.
+  assert!(
+    !harness.texts.iter().any(|text| text.contains("cam-cli")),
+    "no sentence in this frame sends the person to a terminal: {:?}",
+    harness.texts
+  );
+
+  let chip = simulate_chip(&harness);
+  harness.click(chip);
+
+  assert!(
+    harness.shell.preview().is_some(),
+    "pressing `Simulate` turns the drawing's own toolpaths into the preview"
+  );
+  assert!(
+    harness.shell.view_3d(),
+    "and the picture is the view the person is looking at"
+  );
+  let expected = format!(
+    "simulate — {} of cutting, drawn in 3D",
+    clock_text(seconds_for(&document_program()))
+  );
+  assert_eq!(
+    harness.shell.status, expected,
+    "the status bar names what was simulated, in the clock's own words"
+  );
+
+  harness.frame(Vec::new());
+  assert!(
+    harness.output.drawn.painted_triangles > 0,
+    "the frame after the press draws the document's own program cutting its stock"
+  );
+}
+
+#[test]
+fn simulating_a_drawing_whose_tools_are_not_in_the_shell_refuses_by_name_and_draws_nothing() {
+  let mut harness = Harness::with_document(document_with_toolpath());
+  // No `set_tools`: the library this window was given is empty, so the toolpath's tool cannot be resolved.
+  harness.shell.set_view_3d(true);
+  harness.frame(Vec::new());
+
+  let chip = simulate_chip(&harness);
+  harness.click(chip);
+
+  assert!(
+    harness.shell.status.starts_with("refused:"),
+    "a missing tool is a refusal, not a picture: {}",
+    harness.shell.status
+  );
+  assert!(
+    harness.shell.status.contains(&format!("T{TOOL_NUMBER}")),
+    "the refusal must name the missing tool: {}",
+    harness.shell.status
+  );
+  assert!(
+    harness.shell.preview().is_none(),
+    "a refused simulation hands the half no preview"
+  );
+
+  harness.frame(Vec::new());
+  assert_eq!(
+    harness.output.drawn.painted_triangles, 0,
+    "and the half stays empty: a refusal draws nothing"
+  );
+  assert!(
+    harness.output.drawn.playback_hits.is_empty() && harness.output.drawn.layer_chips.is_empty(),
+    "no playback bar and no overlay row over a picture that does not exist"
+  );
+}
+
+#[test]
+fn simulating_a_drawing_with_no_toolpaths_refuses_by_name_and_draws_nothing() {
+  let mut harness = Harness::with_document(document());
+  harness.shell.set_tools(vec![stored_tool()]);
+  harness.shell.set_view_3d(true);
+  harness.frame(Vec::new());
+
+  let chip = simulate_chip(&harness);
+  harness.click(chip);
+
+  assert!(
+    harness.shell.status.starts_with("refused:"),
+    "a drawing with no toolpaths has nothing to simulate: {}",
+    harness.shell.status
+  );
+  assert!(
+    harness.shell.status.contains("toolpaths"),
+    "the refusal must name the missing half: {}",
+    harness.shell.status
+  );
+  assert!(
+    harness.shell.preview().is_none(),
+    "a refused simulation hands the half no preview"
+  );
+
+  harness.frame(Vec::new());
+  assert_eq!(
+    harness.output.drawn.painted_triangles, 0,
+    "and the half stays empty: a refusal draws nothing"
+  );
+}
+
+#[test]
+fn simulate_again_rebuilds_the_picture_from_the_document() {
+  let mut harness = Harness::with_document(document_with_toolpath());
+  harness.shell.set_tools(vec![stored_tool()]);
+  // A picture somebody else produced: the playback fixture, whose clock is its own and not the drawing's.
+  harness
+    .shell
+    .set_preview(untouched(), playback_program(), &job());
+  harness.frame(Vec::new());
+
+  let old = harness.preview().duration();
+  let drawing = seconds_for(&document_program());
+  assert!(
+    (old - drawing).abs() > 1.0e-9,
+    "the fixture and the drawing must be tellable apart by their clocks: {old} against {drawing}"
+  );
+
+  // Play the handed-in program out, so "back at the start" is a fact about the rebuild and not about a
+  // playhead that never moved.
+  harness.click(hit(&harness.output.drawn.playback_hits, "To the end"));
+  assert!(
+    (harness.preview().elapsed() - old).abs() < 1.0e-6,
+    "the old program has played out: {} of {old}",
+    harness.preview().elapsed()
+  );
+
+  harness.click(hit(&harness.output.drawn.layer_chips, "Simulate again"));
+
+  assert!(
+    harness.shell.status.starts_with("simulate"),
+    "the row's press reports itself in the status bar: {}",
+    harness.shell.status
+  );
+  assert!(
+    harness.preview().elapsed().abs() < 1.0e-9,
+    "the rebuilt picture starts at the beginning of its own program: {}",
+    harness.preview().elapsed()
+  );
+  assert!(
+    (harness.preview().duration() - drawing).abs() < 1.0e-9,
+    "and it lasts the drawing's own program, not the one that was handed in: {} against {drawing}",
+    harness.preview().duration()
+  );
+  assert_eq!(
+    harness.shell.status,
+    format!("simulate — {} of cutting, drawn in 3D", clock_text(drawing)),
+    "the note names the duration the rebuilt playback bar names"
   );
 }

@@ -824,6 +824,12 @@ pub struct DrawnState {
   /// widget-by-text lookup from outside a frame, so a test that has to press one of the bar's glyphs is
   /// given the point the button was drawn at instead of guessing at the bar's margins.
   pub app_bar_hits: Vec<(String, (f32, f32))>,
+  /// Where the 3D half's empty state drew its `Simulate` chip, in window pixels (M13 S3).
+  ///
+  /// `None` while the half has a picture to draw, because a control is reported only in the frame that drew it:
+  /// the chip lives in the one state that has no overlay row and no playback bar to carry it, so this is the
+  /// only way a headless test can press it instead of guessing at the half's margins.
+  pub simulate_chip: Option<(f32, f32)>,
   /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
   /// command rows, and finally the focused command's `what` and `how`.
   ///
@@ -927,11 +933,13 @@ pub struct DrawnState {
   /// `None` while 3D is off, because a split that is not open has no halves. [`ShellOutput::canvas`] is the
   /// first of the two when the split is open: the rectangle the 2D camera is told about.
   pub split: Option<(PixelRect, PixelRect)>,
-  /// The words the 3D half's overlay row drew — `Material`, `Vectors`, `Toolpaths`, `Tool`, `Centre`, `?` —
-  /// and the point that presses each (camui-prancheta S8).
+  /// The words the 3D half's overlay row drew — `Material`, `Vectors`, `Toolpaths`, `Tool`, `Simulate again`,
+  /// `Centre`, `?` — and the point that presses each (camui-prancheta S8, M13 S3).
   ///
   /// Empty while the split is closed, and empty while it is open with no program loaded: the row is drawn
-  /// only when it has something to govern, because a checkbox over nothing is a control that lies.
+  /// only when it has something to govern, because a checkbox over nothing is a control that lies. The empty
+  /// half's `Simulate` chip is not in this list — it is reported where it was drawn
+  /// ([`Self::simulate_chip`]) because it is the one control that lives outside the row.
   pub layer_chips: Vec<(String, (f32, f32))>,
   /// Which of the four scene layers the overlay row is showing, in the row's own order (camui-prancheta S8).
   ///
@@ -1712,8 +1720,10 @@ impl Shell {
   /// same simulation [`cam_sim::sweep::apply`] gives the report, cell for cell.
   ///
   /// This method reads no document and returns no [`UiAction`], which is what keeps the preview off
-  /// the document's authoring path (M5 D-M5-9, A12): the window shows the preview of a program
-  /// authored through the CLI, it never authors one.
+  /// the document's authoring path (M5 D-M5-9, A12): it takes a program a caller has already built.
+  /// `Shell::simulate` in `view3d` is that caller inside the shell (M13 S3) — it generates the open
+  /// document's own toolpaths and hands the result here, so a person never leaves the window for a preview,
+  /// and the preview still edits nothing.
   ///
   /// The panel opens with the first preview, because a caller that hands one in means to look at it;
   /// [`Shell::show_3d`] closes it again without discarding the preview or its cursor, and
