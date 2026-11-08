@@ -50,9 +50,9 @@ painted.
 | `Ok` | `#5ec27f` | a pass, a resolved tool, the `RIGHT` axis |
 | `Warn` | `#f0b429` | a number the shell will not trust |
 | `Danger` | `#f2635f` | a refusal, and the `FRONT` axis |
-| `StockTop` | `#d6dce6` | the lit face of the material |
-| `StockBottom` | `#424c58` | the shade under it |
-| `StockEdge` | `#6e7b8a` | the cut edge of the sheet |
+| `StockTop` | `#705c42` | the lit face of the material — wood tan, 34° |
+| `StockBottom` | `#453726` | the shade under it, the same wood 1.80:1 deeper |
+| `StockEdge` | `#ddc9a3` | the cut edge of the sheet — lighter than the face here, see below |
 
 ### Light — `theme.rs::Palette::light`
 
@@ -68,9 +68,9 @@ why `Sel` is `#0d7c92` here and `Cut` is `#a86200`: a cyan that reads on `#0d101
 | `Overlay` | `#ffffff` | | `Ok` | `#1f7a43` |
 | `Hairline` | `#dde3ea` | | `Warn` | `#96610a` |
 | `Border` | `#c3ccd6` | | `Danger` | `#b3342f` |
-| `TextHi` | `#12181f` | | `StockTop` | `#c6d1dd` |
-| `Text` | `#2b3440` | | `StockBottom` | `#a6b3c3` |
-| `TextDim` | `#5f6b7a` | | `StockEdge` | `#4a5563` |
+| `TextHi` | `#12181f` | | `StockTop` | `#e8cb9d` |
+| `Text` | `#2b3440` | | `StockBottom` | `#cfad7b` |
+| `TextDim` | `#5f6b7a` | | `StockEdge` | `#664d2e` |
 | `TextOff` | `#8b95a3` | | | |
 
 The two `-soft` roles are the signal **premultiplied** — the channel values `theme.rs` hands egui already carry the
@@ -82,12 +82,33 @@ and `rgb(21 138 159 / 9%)` / `rgb(217 128 0 / 8%)` in light.
 ### The one gradient — `theme.rs::Palette::stock_shade`
 
 There is exactly one interpolation in the shell and it is the material: `stock_shade(t)` mixes `StockTop` into
-`StockBottom` with `t` clamped to `0..=1` (`-1` and `2` return the ends, `NaN` returns the top). `StockEdge` is a
-role of its own rather than a darker mix, held to 3:1 against both the canvas and the stock top.
+`StockBottom` with `t` clamped to `0..=1` (`-1` and `2` return the ends, `NaN` returns the top). Both ends are the
+same wood — 34° and 33° in the dark set, 37° and 36° on paper — so depth darkens the material without sliding its
+hue, and the two ends sit 28 and 25 codes apart in the ramp's smallest channel: a step the compositor that turned
+T9's 8-code difference into 2–5 codes still draws.
+
+The three values are resolved, not picked, and what resolves them is the amber. `Cut` is painted **on** the
+material — the toolpath, the tool marker, the pocket — so the lit face is bounded from both sides: it must stay far
+enough from `Cut` for a 1.6 px signal to read (3:1, measured **3.14:1** dark and **3.05:1** on paper), and far
+enough from the canvas to read as a solid (1.45:1, measured **2.99:1** and **1.48:1**). On paper that window is
+0.024 of luminance wide: `#e6c99f` measures 2.996:1 against the amber, `#dfcfb7` 1.45:1 against the page, and
+`#e8cb9d` is the wheat between them. The dark face is a mid-value walnut for the same reason — a face light enough
+to look like pale wood is also the face the amber disappears into — and this change closes the limit T9 recorded,
+where the dark amber on the bright stock top measured 1.37:1.
+
+`StockEdge` is a role of its own rather than a darker mix, held to 3:1 against both the canvas and the stock top. In
+the dark set it is **lighter** than its face — `#ddc9a3`, **11.77:1** off the canvas and **3.93:1** off the face —
+because a face dark enough to carry the amber leaves nothing darker that still clears 3:1 against it: the silhouette
+is a lit cut edge, not a drawn one. On paper it stays darker than both, `#664d2e` at **7.46:1** and **5.05:1**, and
+1.45:1 away from `TextDim`'s rapid ink so the picture's two kinds of 1 px line are not the same colour.
+
+What the material does **not** fix, recorded: on paper the amber over the *deepest* stop measures **2.25:1**, still
+under the 3:1 stroke floor and unchanged from T9's 2.23:1 — that needs a lighter paper amber, an artboard change,
+not another value for these three roles.
 
 ### Contrast, proven not asserted
 
-`theme.rs` proves four things and fails the build on any of them:
+`theme.rs` proves these and fails the build on any of them:
 
 - **Twelve pairs the shell actually writes on** clear `AA_BODY` (4.5) or `AA_LARGE` (3.0) in **both** sets:
   `TextHi` on `App`/`Panel`, `Text` on `Panel`/`Canvas`, `TextDim` on `App`/`Panel` are body pairs; `Sel` and
@@ -96,8 +117,13 @@ role of its own rather than a darker mix, held to 3:1 against both the canvas an
   Panel`. A surface that outranks its parent stops reading as one.
 - **The two signals never share a hue**: `Sel` and `Cut` sit at least 60° apart, so an amber `Cut` can never be
   mistaken for a selected thing.
-- **The stock reads as a solid against the canvas** at 1.45:1, with `StockBottom` always darker than `StockTop`
-  and never the canvas itself.
+- **The stock reads as a solid against the canvas**: both stops clear the 1.45:1 floor — measured 2.99:1 and 1.66:1
+  dark, 1.48:1 and 2.01:1 on paper — with `StockBottom` always darker than `StockTop` and never the canvas itself.
+- **The stock is wood, and its shade is the same wood**: the lit face sits inside the 20°–45° band (34° dark, 37° on
+  paper; the blue grey it replaced was 218°), the ramp's two ends are 1° apart in hue, and they are 28 / 25 codes
+  apart in the smallest channel — under 20 and depth stops reading as depth.
+- **The cut signal reads on the lit face**: 3.14:1 dark and 3.05:1 on paper against the 3:1 stroke floor. This is
+  what pins the tan — a dark face as light as `#75603f` measures 2.96:1, and on paper `#e6c99f` measures 2.996:1.
 
 `TextOff` is deliberately outside the twelve. It is the colour of a heading and of half a count, never of a
 sentence anyone has to read.

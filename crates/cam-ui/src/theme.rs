@@ -249,17 +249,21 @@ impl Palette {
       ok: Color32::from_rgb(0x5e, 0xc2, 0x7f),
       warn: Color32::from_rgb(0xf0, 0xb4, 0x29),
       danger: Color32::from_rgb(0xf2, 0x63, 0x5f),
-      // The material, and how deep the tool has gone into it. The top is the set's brightest
-      // neutral — the picture has to land on the stock before it lands on the chrome — and the
-      // floor is a graphite that is still clearly above the canvas, so the deepest cut reads as
-      // material rather than as a hole in the screen.
-      stock_top: Color32::from_rgb(0xd6, 0xdc, 0xe6),
-      stock_bottom: Color32::from_rgb(0x42, 0x4c, 0x58),
-      // The band that clears both the canvas (4.42:1) and the stock's own top (3.13:1) at AA large
-      // text: `#8b95a3`, the set's secondary text, is 6.29:1 off the canvas but only 2.20:1 against
-      // the face it has to bound, and `#35404c`, the control border, is 1.81:1 off the canvas, which
-      // is how T9 lost the block's lower edges in the first place.
-      stock_edge: Color32::from_rgb(0x6e, 0x7b, 0x8a),
+      // The material, and how deep the tool has gone into it: wood, so the block reads as a sheet of it
+      // rather than as an untextured slab. The face is tan `#705c42`, 34° inside the wood band, and its
+      // value is resolved rather than picked: the amber has to read *on* it — `Cut` on the lit face
+      // measures 3.14:1, 3:1 being the stroke floor — so a face as light as `#75603f` (2.96:1) is out,
+      // while the face is a solid and clears the canvas at 2.99:1, which puts a face as dark as
+      // `#382e21` (1.44:1) out too. The floor is the same wood one step down, `#453726` at 33°: 1.80:1
+      // under the face, so a pocket reads as a pocket instead of as a hole, and 1.66:1 off the canvas.
+      stock_top: Color32::from_rgb(0x70, 0x5c, 0x42),
+      stock_bottom: Color32::from_rgb(0x45, 0x37, 0x26),
+      // A lit cut edge, and the one place this set stops mirroring the light one: a face dark enough to
+      // carry the amber leaves nothing darker that is still 3:1 against it *and* against the canvas, so
+      // the silhouette is pale sand `#ddc9a3` (39°) — 11.77:1 off the canvas and 3.93:1 off the face it
+      // bounds. `#c6ae80` is the step that breaks it (2.96:1 off the face), and `#8b95a3`, the ink a
+      // rapid travels in, is 1.87:1 away, so the picture's two kinds of line are not the same colour.
+      stock_edge: Color32::from_rgb(0xdd, 0xc9, 0xa3),
     }
   }
 
@@ -284,21 +288,24 @@ impl Palette {
       ok: Color32::from_rgb(0x1f, 0x7a, 0x43),
       warn: Color32::from_rgb(0x96, 0x61, 0x0a),
       danger: Color32::from_rgb(0xb3, 0x34, 0x2f),
-      // The same design on paper, and the one place the two sets are not a mirror. A dark set can put
-      // a near-white solid on a near-black canvas; paper cannot, so the material has to be *darker*
-      // than the page to read at all. `#c6d1dd` is as dark as the fill can go without losing the
-      // artboard's `#a86200` toolpath on it (3.08:1, the stroke floor this file already holds every
-      // signal to): it stands 1.47:1 off the canvas, a 37-code step that a compositor which turned an
-      // 8-code step into 2–5 codes cannot flatten. The floor is a mid grey 1.40:1 under the top, so
-      // depth still reads as value while the amber on the deepest stop measures 2.23:1 instead of the
-      // 1.57:1 the old `#8b95a3` floor gave it.
-      stock_top: Color32::from_rgb(0xc6, 0xd1, 0xdd),
-      stock_bottom: Color32::from_rgb(0xa6, 0xb3, 0xc3),
-      // 7.18:1 off the canvas and 4.90:1 against the stock's top — darker than the page and darker than
+      // The same design on paper, and the one place the two sets are not a mirror. A dark set can put a
+      // solid on a near-black canvas; paper cannot carry a near-white one, so the material has to be
+      // *darker* than the page, and it is the same wood at the other end of the day: wheat `#e8cb9d`,
+      // 37°, 1.48:1 off the canvas. Its value is pinned from both sides, which is why it looks exact: the
+      // artboard's `#a86200` toolpath needs 3:1 on it (measured 3.05), ruling out a face as dark as
+      // `#e6c99f` (2.996:1), while the solid floor rules out one as light as `#dfcfb7` (1.45:1 off the
+      // page) — a 0.024 window of luminance, and this face sits between those two values. The floor is
+      // the same wood one step down, `#cfad7b` at 36°: 1.36:1 under the face, so depth still reads as
+      // value, and the amber on it measures 2.25:1 instead of the 1.57:1 the old `#8b95a3` floor gave it —
+      // still under 3:1, for the reason T9 recorded: it needs a lighter paper amber, not another value
+      // here.
+      stock_top: Color32::from_rgb(0xe8, 0xcb, 0x9d),
+      stock_bottom: Color32::from_rgb(0xcf, 0xad, 0x7b),
+      // 7.46:1 off the canvas and 5.05:1 against the stock's top — darker than the page and darker than
       // the face it bounds, the way a drawn silhouette is. Deliberately not `text_dim`'s `#5f6b7a` in
       // this set: that is the ink a rapid travels in, and two 1 px lines in the same picture must not be
-      // the same colour, so this sits 1.40:1 below it.
-      stock_edge: Color32::from_rgb(0x4a, 0x55, 0x63),
+      // the same colour, so this warm brown sits 1.45:1 below it.
+      stock_edge: Color32::from_rgb(0x66, 0x4d, 0x2e),
     }
   }
 }
@@ -590,7 +597,7 @@ fn hue(c: Color32) -> f32 {
 #[cfg(test)]
 mod tests {
   use super::{
-    contrast_ratio, hue_degrees, luminance, Role, Theme, AA_BODY, AA_LARGE, SOLID_ON_CANVAS,
+    contrast_ratio, hue, hue_degrees, luminance, Role, Theme, AA_BODY, AA_LARGE, SOLID_ON_CANVAS,
   };
 
   /// Every pair of (foreground, background) roles the shell actually paints words on.
@@ -713,9 +720,15 @@ mod tests {
   fn the_stock_reads_as_a_solid_against_the_canvas() {
     // A solid has to be distinguishable from the surface it stands on before any of its shading means
     // anything, and the fill is the only thing that says so over the whole silhouette: an edge can
-    // outline a block, but it cannot make a white slab look loaded. This is the assertion the
-    // screenshot asked for — the light set shipped `#ffffff` on a `#f7f9fb` canvas, which is 1.06:1 and
-    // arrived on screen as a 2-to-5 code difference, so the stock disappeared into the page.
+    // outline a block, but it cannot make a slab look loaded. This is the assertion the screenshot
+    // asked for — the light set shipped `#ffffff` on a `#f7f9fb` canvas, which is 1.06:1 and arrived on
+    // screen as a 2-to-5 code difference, so the stock disappeared into the page.
+    //
+    // Measured on the tan (T4): dark face 2.99:1, dark floor 1.66:1, light face 1.48:1, light floor
+    // 2.01:1. The dark face is the tight one on the *other* side — it is pinned from above by the amber
+    // (`the_cut_signal_reads_on_the_lit_face`) and from below by this floor: a face as dark as `#382e21`
+    // measures 1.44:1 here and fails. On paper the floor is what could fail this one: a floor as light
+    // as `#dfcfb7` measures 1.45:1 off the page and stops being a solid.
     for theme in [Theme::Dark, Theme::Light] {
       let palette = theme.palette();
       // Every stop on the ramp is material, so every stop is held to the same margin: the top of the
@@ -729,9 +742,13 @@ mod tests {
            {SOLID_ON_CANVAS:.2}:1 a solid needs to read as a solid"
         );
       }
-      // The silhouette is what carries the block when the fill is a page-light grey, so it is held to
-      // the stroke floor against the field behind it *and* against the face it bounds: an edge that
-      // merges with either one is a hairline rectangle again.
+      // The silhouette is what carries the block now that the fill is a mid-value material, so it is
+      // held to the stroke floor against the field behind it *and* against the face it bounds: an edge
+      // that merges with either one is a hairline rectangle again. Measured: dark 11.77:1 off the canvas
+      // and 3.93:1 off the face — the rim is *lighter* than the face there, because a face dark enough
+      // for the amber to read on it leaves nothing darker that still clears 3:1 against it; light
+      // 7.46:1 and 5.05:1, darker than both, the way a drawn silhouette is on paper. Darkening the rim
+      // toward the material breaks the face pair: `#c6ae80` measures 2.96:1 there.
       for (label, other) in [
         ("canvas", Role::Canvas),
         ("the stock's top", Role::StockTop),
@@ -743,6 +760,84 @@ mod tests {
            silhouette needs"
         );
       }
+    }
+  }
+
+  #[test]
+  fn the_stock_is_wood_tan_and_its_shade_belongs_to_the_same_wood() {
+    // S5, and the owner's decision behind it: the material is tan, not the cool grey both sets carried.
+    // Three properties make that a material rather than a tint, and each one names the value that
+    // breaks it:
+    //
+    //   1. The lit face sits in the wood band. Measured 34° in the dark set and 37° on paper, against
+    //      20°–45°. The value that breaks it is the one this task replaced: `#d6dce6` is 218°, a blue
+    //      grey, and a neutral grey reads 0° here.
+    //   2. The shade belongs to the same wood. Measured 1° between the two ends of the ramp; the dark
+    //      floor this replaced, `#424c58`, is 179° away from a tan face, and a grey end is 0°.
+    //   3. The step between them survives being composited. Measured 28 codes (dark) and 25 (light) in
+    //      the ramp's smallest channel, against the 8-code difference T9 measured arriving as 2–5 codes
+    //      on screen: a floor within 20 codes of its face stops saying how deep the tool went.
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      let (face, shade) = (palette.get(Role::StockTop), palette.get(Role::StockBottom));
+
+      let warmth = hue(face);
+      assert!(
+        (20.0..=45.0).contains(&warmth),
+        "{theme:?}: the stock's lit face is {warmth:.0}° hue — outside the 20°–45° wood band, so the \
+         material is a tinted neutral again"
+      );
+
+      let drift = hue_degrees(face, shade);
+      assert!(
+        drift <= 12.0,
+        "{theme:?}: the ramp's two ends are {drift:.0}° apart in hue — the shade is a different \
+         material, not a darker one"
+      );
+
+      let step = [
+        (face.r(), shade.r()),
+        (face.g(), shade.g()),
+        (face.b(), shade.b()),
+      ]
+      .iter()
+      .map(|(face, shade)| face.abs_diff(*shade))
+      .min()
+      .unwrap_or(0);
+      assert!(
+        step >= 20,
+        "{theme:?}: the ramp's smallest channel step is {step} codes — under the 20 a compositor is \
+         known to leave legible, so depth stops reading as depth"
+      );
+    }
+  }
+
+  #[test]
+  fn the_cut_signal_reads_on_the_lit_face() {
+    // The pair T4 adds, because tan made it a pair the shell actually writes on: the amber toolpath
+    // (1.6 px, round cap), the tool marker and the pocket's wash are all painted *on* the stock, and the
+    // face is the stop they are at risk on in the dark set — the amber is lighter than the material
+    // there, so the lightest stop is the nearest one to `#f5a623`. AA_LARGE is the threshold for the same
+    // reason the other stroke pairs use it: 3:1 is the honest floor for a 1.6 px signal that is not text.
+    //
+    // Measured: 3.14:1 dark, where the face is the binding stop (the floor under it is 5.67:1); 3.05:1 on
+    // paper, where the amber is *darker* than both stops so the face is the easy one. The face is pinned
+    // from both sides, and that is what fixes the tan: a dark face as light as `#75603f` measures 2.96:1
+    // here, while one dark enough to escape this pair falls off the solid floor instead (`#382e21` is
+    // 1.44:1 against the canvas). On paper the window is 0.024 of luminance wide — `#e6c99f` measures
+    // 2.996:1 here and `#dfcfb7` 1.45:1 against the page — which is why the paper tan looks chosen so
+    // exactly.
+    // The light set's amber on the *deepest* stop is 2.25:1, under this floor: the limit T9 recorded (it
+    // was 2.23:1), it needs a lighter paper amber rather than these three roles, and this task does not
+    // move it.
+    for theme in [Theme::Dark, Theme::Light] {
+      let palette = theme.palette();
+      let ratio = contrast_ratio(palette.get(Role::Cut), palette.get(Role::StockTop));
+      assert!(
+        ratio >= AA_LARGE,
+        "{theme:?}: the amber on the stock's lit face is {ratio:.2}:1, under the {AA_LARGE:.1}:1 a \
+         1.6 px signal needs — the toolpath disappears into the material"
+      );
     }
   }
 
