@@ -46,6 +46,9 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
 | T5 | `crates/cam-ui/src/lib.rs` (3,738) splits into the action table, the shell state, and the frame | S3 S4 S5 | worker | — |
 | T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
+| T8 | The 71 unresolved intra-doc links the seven slices created, plus `Art`'s sentence that points at a header its file does not have — re-pointed with `cargo doc` as the proof (count before and after), no code change | S3 | worker | — |
+| T9 | Two sentences in `chrome/job.rs` still tell the person to simulate with `cam-cli`, which M13 T2 made false: the shell simulates its own drawing now. Rewritten to name the control that exists | S4 | inline | — |
+| T10 | The light palette's amber over the *deepest* stock stop measures 2.25:1, under the 3:1 stroke floor — resolvable by moving the paper amber the way T4 resolved the tan, with the proofs re-derived, never weakened | S4 | worker | — |
 | T7 | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3 | worker | `86e9947`, `f0d74a1` |
 
 ## Log
@@ -191,4 +194,19 @@ cost is the **files**. Read **until `## Log`** before touching code.
   pure moves as gate-and-comparison evidence rather than review subjects — or disable it for a move with
   `gentle-ai review mode disable --scope clone`, the provider's own `D` route, and re-enable it for the next
   behaviour change.
+- **L12 (the RDD policy for pure moves, decided).** The owner took the recommendation: **RDD stays on for behaviour
+  and is not spent on moves.** A move's truth is arithmetic — every original item verbatim in exactly one new file,
+  the non-blank line multiset identical apart from declarations and visibility markers, and the gate green at the
+  same test count — and that is stronger evidence than a reviewer's verdict on a diff nobody can hold. A move that
+  cannot fit the budget is not a reason to disable anything: it simply does not become a review candidate. When a
+  candidate *does* change behaviour, RDD applies as before, and T4 is the proof that it earns its cost (it found a
+  CRITICAL no test could see). If a future move's diff ever needs a reviewer's opinion rather than its own
+  arithmetic, the provider's `D` route (`gentle-ai review mode disable --scope clone`, then `enable`) is the
+  escape hatch — used around that move, never as a standing setting.
+  The consequence is a rule this repository now writes down instead of rediscovering: **a work unit is a candidate
+  only if it fits ~1.2k of file context; a move is proved by comparison; a behaviour change under that budget is
+  reviewed.**
+- **L13 (the three debts reopened as tasks rather than left as prose).** T8 is the 71 doc links, T9 the two
+  `chrome/job.rs` sentences M13's own simulation made false, T10 the paper amber at 2.25:1. Each has a location and
+  a number; none of them is a reason to reopen the milestone.
 
