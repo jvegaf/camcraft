@@ -68,7 +68,7 @@ CLI does not have.
 ## Log
 
 - **L1 (the request, verbatim).** *"me parece bien pushea y continua con resolver"*, after the save feature was
-  pushed at `a1069f2`.
+  pushed at `5cd16a7`.
 - **L2 (reconnaissance, before any write).** The join is `.parent().unwrap_or(".").join(reference)`, written
   three times in the CLI — `emit` (`cam-cli/src/main.rs:1828-1844`), `simulate` (`:1924-1942`) and
   `open_library_hint` (`:1634-1659`) — and the last one is the only one that guards with `path.exists()`
@@ -128,9 +128,9 @@ CLI does not have.
   warnings`, and the whole suite: **96 suites, 1 211 tests, 0 failed** (up from 1 166; `cam-store` 7 → 22 and
   `cam-ui` 186, of which `shell` 108). Before it, `pids.max` was 64 again and was raised to 4096 — the recurring
   cgroup gotcha, per-session, not durable.
-  **The commits:** `aa26315` the resolver (`cam-ui/src/lib.rs` +104, `tests/shell.rs` +260, and the host's own
-  comment, which still called resolving `tools_ref` "the next step"); `6134c1a` T2, the documents; `40625fa`
-  `open_read_only`, which closes L4's hole; `5d77d77` the S2/S3 wording and L4; `75e5174` the allowlist, where a
+  **The commits:** `f1c14bc` the resolver (`cam-ui/src/lib.rs` +104, `tests/shell.rs` +260, and the host's own
+  comment, which still called resolving `tools_ref` "the next step"); `5738784` T2, the documents; `5a3a6b8`
+  `open_read_only`, which closes L4's hole; `6cdf07e` the S2/S3 wording and L4; `e963029` the allowlist, where a
   reviewer found that `is_absolute()` plus a `ParentDir` check lets two **Windows** shapes through —
   root-relative (`\drv\file`) and drive-relative (`C:file`) are neither absolute nor carry `..` — and the rule
   became "every component is a plain name or `.`", which refuses those by construction.
@@ -141,7 +141,7 @@ CLI does not have.
   hardlink to a 0-byte file leaves 0; a missing library reached through a *directory* symlink creates nothing;
   a genuine hand-built v1 library is refused naming both versions with its bytes identical (no migration), and
   so is a v3 one. It also confirmed `open_read_only` has `SQLITE_OPEN_READ_ONLY`, no `create_dir_all`, no
-  `migrate` and a version gate (`cam-store/src/tools.rs:259-296`), and that `git diff a1069f2..HEAD -- crates/cam-cli
+  `migrate` and a version gate (`cam-store/src/tools.rs:259-296`), and that `git diff 5cd16a7..HEAD -- crates/cam-cli
   crates/cam-ui/src/chrome.rs` is **empty**, so S5's "what must not change" did not move.
   **The refinement it made to S7:** the absolute half *is* incidentally pinned — `cam-cli/tests/cli.rs:974-995`
   and `:1017-1046` set an absolute `tools_ref` and require exit 0 — so "nothing in the repository pins that
@@ -166,10 +166,10 @@ CLI does not have.
   0 → 2 GiB, pids 64 → 4096. **Never run two cargo invocations at once in this box**; the gate is parallel
   inside itself.
   **The native review of the guard is closed, and was not re-run.** `assess` over the committed candidate
-  `5d77d77..HEAD` — the allowlist alone, 1 path, 12 lines — answers `nativeRisk: high` with
+  `6cdf07e..HEAD` — the allowlist alone, 1 path, 12 lines — answers `nativeRisk: high` with
   `reviewDue: false` / `already_reviewed`, `nativeReviewOutcome: closed`, `outcome_source: derived` and
   `candidate.consumed: true`. That is the native candidate fact, not a reading of the log: the review for this
-  tree was approved and acknowledged already, and the finding it produced **is** `75e5174`. Starting a second
+  tree was approved and acknowledged already, and the finding it produced **is** `e963029`. Starting a second
   review of the same tree would have burned authority to learn what the store already records, so none was
   started. What the review's advisory list was is not recorded here, because the authority does not expose it
   after the burn; the one finding that mattered became code.
@@ -202,14 +202,14 @@ CLI does not have.
   WAL mode, so this costs nothing on our own files — but a shop library another tool left in WAL mode is
   refused by the window with a reason, while `cam-cli` keeps reading it through `open`.
 - **L7 (the native review, the blocker it rated advisory, and the fix).** **The review:** the candidate
-  `75e5174a..7578e6d` (4 paths, 274 lines) with lenses `risk` and `reliability` came back **approved**,
+  `e9630290..c08caa5` (4 paths, 274 lines) with lenses `risk` and `reliability` came back **approved**,
   lineage `review-f31fc8273fb84d31`, and its authority is **burned** (`gentle-ai.review-acknowledged/v1`).
   One advisory: **`R1-001`**, `crates/cam-store/src/tools.rs:300`, WARNING, informational — the risk lens
   pointing at the very line an independent verifier had already found a hole in. Two model runs, 32 956 and
   32 981 prompt bytes, transported by the Pi host.
   **The tier contrast, kept because it decides when a review runs at all:** `assess` over the guard alone
-  (`5d77d77..HEAD`, 1 path, 12 lines) says `nativeRisk: high`; over the same guard carrying its tests and this
-  record (`6b70d8c..HEAD`, 4 paths, 221 lines) it says **`medium` / `under_budget`, `reviewDue: false`**. A
+  (`6cdf07e..HEAD`, 1 path, 12 lines) says `nativeRisk: high`; over the same guard carrying its tests and this
+  record (`ab85076..HEAD`, 4 paths, 221 lines) it says **`medium` / `under_budget`, `reviewDue: false`**. A
   security change can fall under the budget by carrying its own tests. The provider still offered this
   candidate on the mutation reminder, and the review ran — so the two mechanisms disagreed and the offer won.
   **The blocker the review called advisory.** An independent verifier reproduced what a header refusal cannot
@@ -275,7 +275,7 @@ CLI does not have.
   target, and the same clean-symlink read at store level with `open_read_only`. They are named here instead of
   being quietly assumed to exist.
 - **L10 (the accumulated candidate, reviewed once more: approved, and two advisories about the tests
-  themselves).** The provider offered the **whole arc** (`75e5174a..b57b6fd`, 4 paths, 528 lines) rather than
+  themselves).** The provider offered the **whole arc** (`e9630290..b23b0dd`, 4 paths, 528 lines) rather than
   the last commit, so it was reviewed as a whole: **approved**, lineage `review-d5e23887f517a70b`, authority
   **burned** (`gentle-ai.review-acknowledged/v1`). Two advisories, both non-blocking and both about the
   *evidence* rather than the guard: **`R3-001`** (WARNING, `cam-ui/tests/shell.rs:4542-4546`) and **`R3-002`**

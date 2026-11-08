@@ -97,7 +97,7 @@ Five facts that the earlier evidence got wrong or never saw, and that every fram
 
 ## What Campilot has taken from it so far
 
-- **The stage bar is gone, and with it the stage.** `camui-prancheta` T1 (`c9f3c59`) removed the
+- **The stage bar is gone, and with it the stage.** `camui-prancheta` T1 (`0a4aabb`) removed the
   `Design › Edit › Relief › Toolpaths › Prove` strip, the `Stage` enum behind it, and the rail that showed only
   the current stage's commands. The rail is now the whole command table, grouped and labelled, so a drawing
   command and an edit command are reachable in the same frame. The two sentences the strip carried that were

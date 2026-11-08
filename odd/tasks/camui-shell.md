@@ -30,11 +30,11 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | ✅ delivered — `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | `3ecf6ac` |
-| T2 | ✅ delivered — `cam-ui/src/icons.rs`: the glyph set on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24. Landed at 66 glyphs, later `4cfb497` (families), `725d9fc` (keyboard), 71 today | S1 S2 S3 S6 | worker | `3ecf6ac` |
-| T3 | ✅ delivered — icon sheet as an `egui::Window` behind `F2`, so the whole set can be inspected without touching the layout | S3 S5 | inline | `3ecf6ac` |
-| T4 | ✅ delivered — theme applied at startup in `cam-desktop` and the existing `palette` routed through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | `3ecf6ac` |
-| T5 | ✅ delivered — `design/system.md` + `design/system.html` synced from `theme.rs` once it became the project's token source. Created `d8e1ff9`, re-synced in `28de0db`, `6e59b91` and `a6a2685` as the token set grew | S3 | inline | `d8e1ff9` |
+| T1 | ✅ delivered — `cam-ui/src/theme.rs`: dark + light token sets (surfaces, text, two signals, spacing, radii, control heights, type scale), `Theme`, `apply(ctx)`, AA contrast pinned by test | S1 S4 S6 S7 | inline | `db92b45` |
+| T2 | ✅ delivered — `cam-ui/src/icons.rs`: the glyph set on one 24 × 24 grid as a path DSL, `paint_icon` painter, tint from the theme, 1.6 stroke at 24. Landed at 66 glyphs, later `e48423d` (families), `8b860b7` (keyboard), 71 today | S1 S2 S3 S6 | worker | `db92b45` |
+| T3 | ✅ delivered — icon sheet as an `egui::Window` behind `F2`, so the whole set can be inspected without touching the layout | S3 S5 | inline | `db92b45` |
+| T4 | ✅ delivered — theme applied at startup in `cam-desktop` and the existing `palette` routed through it: the shell changes colour, the layout does not change | S1 S5 S7 | inline | `db92b45` |
+| T5 | ✅ delivered — `design/system.md` + `design/system.html` synced from `theme.rs` once it became the project's token source. Created `a37b5cf`, re-synced in `e72dc57`, `e2845f0` and `72bd2e3` as the token set grew | S3 | inline | `a37b5cf` |
 
 ## Log
 
@@ -51,8 +51,8 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
 - **L3 (owner decisions).** Concept accepted (*"Sí, es eso: seguí con el shell completo"*), shell language English
   (*"Inglés — \"Outside drops the part free\""*), foundations first (*"Primero los cimientos: tokens + iconos en
   egui"*).
-- **L4 (evidence, T1 and the design slice).** Branch `feat/camui-shell` from `master` `e9dcb01`. The design
-  deliverable is one commit, `d8e1ff9` (1 701 authored lines, all of them HTML artboards and the design system):
+- **L4 (evidence, T1 and the design slice).** Branch `feat/camui-shell` from `master` `f24cfc2`. The design
+  deliverable is one commit, `a37b5cf` (1 701 authored lines, all of them HTML artboards and the design system):
   artboards are read as rendered pages, so the 400-line review slice does not apply to them, and they are the
   specification the code commits answer to. `crates/cam-ui/src/theme.rs` then landed with five tests green —
   `every_pair_the_shell_writes_on_meets_aa`, `the_canvas_sits_at_the_end_of_the_luminance_ladder`,
@@ -85,7 +85,7 @@ Rebuild the desktop shell's foundations (visual tokens, icon language, staged la
   owns amber. `view3d.rs` keeps its own shading constants for now: a 3D surface ramp is not the 2D token set, and
   folding it in is its own task, not a side effect of this one.
 - **L8 (gate evidence).** `./scripts/check.sh` — fmt, clippy `-D warnings`, and the workspace suite: **1 067 tests
-  passed** across 91 suites (baseline 1 056 at `e9dcb01`, so +11: five for the tokens, six for the glyphs). The
+  passed** across 91 suites (baseline 1 056 at `f24cfc2`, so +11: five for the tokens, six for the glyphs). The
   slice is 2 588 new lines plus ~90 changed in `lib.rs`; it is one commit because the three parts are mutually
   dependent — the tokens have no meaning without the set and the routing that consumes them, and splitting them
   would either leave an undeclared module whose tests never run or a commit that does not compile.
@@ -102,12 +102,12 @@ remains of the concept, in the order the design argues for:
 
 | ID | Task | Specs |
 | --- | --- | --- |
-| T6 | ✅ delivered `7e09653` — the shell frame: app bar, stage bar, the stage-scoped rail (52 px then, the 200 px labelled palette since `28de0db`), the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented. This row used to name `4318205`, a pre-rewrite commit no branch contains | S1 S2 S3 S7 |
-| T7 | ✅ delivered `661ce1b` (T13) — the stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step. L42 closes this row onto T13; the substance is `Readiness` in `chrome.rs:184`, not a separate module | S2 S4 |
-| T8.1 | ✅ delivered `f06b43a` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
-| T8.2 | ✅ delivered `d511df8` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
-| T8.3 | ✅ delivered `99290d8` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
-| T9 | ✅ delivered `a6a2685` — `view3d.rs` paints only through the theme: the five literals and `depth_colour` are gone, replaced by `StockTop`/`StockBottom`/`StockEdge` and `Palette::stock_shade`, with a material-to-canvas invariant the suite did not have before | S1 S7 |
+| T6 | ✅ delivered `5592544` — the shell frame: app bar, stage bar, the stage-scoped rail (52 px then, the 200 px labelled palette since `e72dc57`), the 288 px collapsible inspector, the status bar. `01-shell-2d.html` implemented. This row used to name `4318205`, a pre-rewrite commit no branch contains | S1 S2 S3 S7 |
+| T7 | ✅ delivered `6014611` (T13) — the stage model: five stages with gates, the counts that make a stage done, and the strings that name the next step. L42 closes this row onto T13; the substance is `Readiness` in `chrome.rs:184`, not a separate module | S2 S4 |
+| T8.1 | ✅ delivered `c23cfac` — `help.rs`: a command identity that is *not* `UiAction` (an action carries a width), one `d`/`u` pair per command, and the `F1` help panel that renders it | S2 S4 |
+| T8.2 | ✅ delivered `c22b7e1` — the palette and the app bar read the command table; `rail_commands` is gone and the two-site *list* construction with it | S2 S4 |
+| T8.3 | ✅ delivered `3d8a620` — object context menus on the canvas: the first use of `PointerButton::Secondary` and of `Response::context_menu` here, emitting `UiAction`s only | S2 S4 |
+| T9 | ✅ delivered `72bd2e3` — `view3d.rs` paints only through the theme: the five literals and `depth_colour` are gone, replaced by `StockTop`/`StockBottom`/`StockEdge` and `Palette::stock_shade`, with a material-to-canvas invariant the suite did not have before | S1 S7 |
 
 - **L10 (owner, verbatim).** *"Implement the design artboard design/camui-shell/01-shell-2d.html … Implement it
   in the project's real stack. Use the artboard as the visual spec: map its parts to the project's existing
@@ -149,7 +149,7 @@ remains of the concept, in the order the design argues for:
   module both call, which is a refactor with no visible effect and therefore its own slice. `view3d.rs` still holds
   its own shading constants (T9). Object context menus and the per-command help pairs (T8) are untouched.
 
-- **L15 (03-iconography implemented, and the drift closed).** The glyph set itself landed in `3ecf6ac`; this pass
+- **L15 (03-iconography implemented, and the drift closed).** The glyph set itself landed in `db92b45`; this pass
   audited it against the artboard and found the only real drift: the code holds **70** glyphs and the artboard drew
   **66**, the difference being the four the app bar needs (`undo`, `redo`, `theme-light`, `theme-dark`). No glyph in
   the artboard was missing from the code — the code is an exact superset. The drawing was the authority last time,
@@ -222,7 +222,7 @@ remains of the concept, in the order the design argues for:
   Gates: fmt, clippy `-D warnings`, **1 076 tests** across 91 suites.
 
 - **L23 (owner, verbatim).** *"primero mergea la rama a master"* and, in the same breath, *"y de ahi salimos limpio"*.
-  `feat/camui-shell` merged into `master` with `--no-ff` at `c24f690`, parents `e9dcb01` + `46d73f2`: 29 files,
+  `feat/camui-shell` merged into `master` with `--no-ff` at `508d92f`, parents `f24cfc2` + `9f60dea`: 29 files,
   **+6 730 / −431**, the four artboards, `design/system.{md,html}` and this document included. Not pushed. The tree is
   clean, and the two untracked outputs were resolved by understanding them rather than by deleting them: the design
   canvas state (`design/camui-shell/comments.json`, `handoffs.json`) is now committed — it records the owner's one
@@ -235,7 +235,7 @@ remains of the concept, in the order the design argues for:
   subagent's own process tree the suspect, not the machine. Recorded because the failure mode is indistinguishable
   from a broken repository: when spawning dies, cancel the running subagent before concluding anything about the work.
 
-- **L25 (owner, verbatim).** *"seguimos con t8"* — T8 authorised on `master` `c24f690`: object context menus and the
+- **L25 (owner, verbatim).** *"seguimos con t8"* — T8 authorised on `master` `508d92f`: object context menus and the
   embedded help panel, in the teaching voice, with one `d`/`u` pair per command (S2, S4).
 
 - **L26 (review, blocked twice, and what the attempts taught).** Receipt-driven development flagged the branch as an
@@ -244,7 +244,7 @@ remains of the concept, in the order the design argues for:
   *(2)* START on the whole candidate was refused in preflight with **`lens_context_budget_exceeded`** — no authority
   created, nothing to abandon. The rule this states plainly: a review candidate is a work unit, never the accumulated
   feature branch. *(3)* The owner chose to review only the risky part, so a temporary worktree
-  (`.worktrees/camui-frame-review`, detached at `7e09653`) anchored a candidate for **tokens + frame only**; START with
+  (`.worktrees/camui-frame-review`, detached at `5592544`) anchored a candidate for **tokens + frame only**; START with
   two lenses returned `lenses-invalid`, one lens (`reliability`) was accepted, and authority
   `review-3ebc68eeba5006f5` was created (tier high, 4 640 original changed lines, correction budget 200).
   The capture forecast one host-relay model run; the run then failed with **`reviewer-config-invalid`**: *"no model is
@@ -265,8 +265,8 @@ remains of the concept, in the order the design argues for:
   `systemctl --user set-property gentle-shell-<id>.service MemoryMax=12G TasksMax=512` (runtime; the unit name carries
   a per-session hash, so a durable fix belongs in the gentle-shell launcher).
   **Resolved:** the owner raised the unit to `MemoryMax=16G` / `TasksMax=512`, and the full gate then ran clean on
-  `master` `c24f690` — fmt, clippy `-D warnings`, **1 076 tests across 91 suites**, 0 failed, exit 0, in 1 m 03 s.
-  That is the recorded baseline of `6e59b91` reached again after the merge, so the shell on `master` is verified.
+  `master` `508d92f` — fmt, clippy `-D warnings`, **1 076 tests across 91 suites**, 0 failed, exit 0, in 1 m 03 s.
+  That is the recorded baseline of `e2845f0` reached again after the merge, so the shell on `master` is verified.
 
 - **L28 (map, and the four constraints T8 inherits).** A read-only pass over the shell fixed what T8 can build on.
   *(1)* **There is no command table.** `UiAction` (`lib.rs:392`) is 17 parameterised variants — `AddRectangle{width,
@@ -319,14 +319,14 @@ remains of the concept, in the order the design argues for:
   `selected.as_slice()`. Help that describes behaviour the code does not have would be worse than no help.
 
 - **L30 (owner disposition: the T8 slices ship unreviewed, on purpose).** `inspect` offered review.start again for
-  the same accumulated candidate (29 paths, base `e9dcb01`, now past 8 000 lines), which is the shape the provider
+  the same accumulated candidate (29 paths, base `f24cfc2`, now past 8 000 lines), which is the shape the provider
   already refused with `lens_context_budget_exceeded`, and the lens that would have to run it still has no model. The
   owner chose *"Dejá T8 sin review por ahora y seguí"*. So the T8 slices carry the gate — `fmt`, `clippy
   -D warnings`, the full workspace suite — plus the parent reading the change against this document, and no native
   receipt. Two facts are recorded rather than buried: the frame lineage `review-3ebc68eeba5006f5` is still
   `reviewing` and **unburned**, waiting for a model routed to `review-reliability`; and the accumulated candidate
   cannot be started at all, because a review candidate is one work unit and never the branch. When the lenses get
-  their model, T8.1 (`f06b43a`, 918 lines) is the natural first candidate — one worktree anchor away.
+  their model, T8.1 (`c23cfac`, 918 lines) is the natural first candidate — one worktree anchor away.
 
 - **L31 (T8.2 delivered, and the differential that checked it).** `rail_commands`, `GroupedCommand`, `Stage::tools()`
   and `DESIGN_TOOLS` are gone. The palette derives every run, word, glyph and command from `Command::ALL` with
@@ -338,7 +338,7 @@ remains of the concept, in the order the design argues for:
   **1 089 tests across 91 suites** (+6), exit 0. Tooltips the rewrite made false were corrected with it: the help
   button no longer says "Shortcuts and help" now that it opens the help panel.
   Because the slice rewrites 443 lines of `chrome.rs`, the claim "same palette" was **measured, not trusted**: a probe
-  in a worktree at `f06b43a` and the same probe in the working tree printed `DrawnState.palette` for every stage, and
+  in a worktree at `c23cfac` and the same probe in the working tree printed `DrawnState.palette` for every stage, and
   the transcripts were diffed. **One difference, on all five stages: `Shortcuts` after `Help`** — the chip the brief
   asked for, so a declared change rather than a regression. The group runs, their order, the headings (`DRAW`,
   `TRANSFORM`, `VECTOR EDIT`, `VIEW`) and the other twenty labels: zero differences, and the whole-frame painted text
@@ -410,7 +410,7 @@ remains of the concept, in the order the design argues for:
   exist**; family contiguity rests only on `family()` being one ordered `match`, so the doc promises a guard the tree
   does not have. Recorded, not papered over.
 
-- **L34 (owner, verbatim).** *"t9"* — T9 authorised from `725d9fc`: `view3d.rs` shading onto the tokens. The module holds a
+- **L34 (owner, verbatim).** *"t9"* — T9 authorised from `8b860b7`: `view3d.rs` shading onto the tokens. The module holds a
   `shading` block with five own literals — `STOCK` `(88,132,178)`, `CUT` `(255,176,59)`, `TRAVEL` `(96,104,116)`,
   `SURFACE_TOP` `(214,220,230)`, `SURFACE_BOTTOM` `(38,74,122)` — plus `depth_colour`, which interpolates between the
   two surface ends by depth. `theme.rs` owns 18 roles and none of them is a ramp, which is exactly the question L7
@@ -464,18 +464,18 @@ remains of the concept, in the order the design argues for:
   `opencode-go/deepseek-v4.1-flash` with thinking `high`, the model the explorer already runs on.
   **Owner disposition:** ship T9 on the gate and the two visual passes, and release the two live lineages
   (`review-89edc321cc30ebdb` for this slice, `review-3ebc68eeba5006f5` for the frame). The natural first candidates for a
-  session that *can* review are `f06b43a`, `d511df8`, `99290d8` and this T9 commit — each one work unit under the
+  session that *can* review are `c23cfac`, `c22b7e1`, `3d8a620` and this T9 commit — each one work unit under the
   budget.
 
 - **L37 (bookkeeping closed, and the merge).** Owner: *"empieza por el primero"*. Four statements in this document
-  were false, all corrected in `c92aa90`. **T9** read "in progress from `725d9fc`" although `a6a2685` delivered it
-  (L35). **T6** named commit `4318205`, which no branch contains: it is a pre-rewrite copy of `7e09653` — same subject,
+  were false, all corrected in `1cc10b1`. **T9** read "in progress from `8b860b7`" although `72bd2e3` delivered it
+  (L35). **T6** named commit `4318205`, which no branch contains: it is a pre-rewrite copy of `5592544` — same subject,
   1 489 lines, and both `git branch -a --contains 4318205` and `git merge-base --is-ancestor 4318205 HEAD` come back
   empty, so a session following this record would have detached into a commit that is not the frame. The T1–T5 rows
   carried a dash in the Commit column and read as pending, five tasks later; the hashes were already in the log
-  (`3ecf6ac` for T1–T4, `d8e1ff9` for T5). And the heading claimed "planned, not started, not authorised" over six
+  (`db92b45` for T1–T4, `a37b5cf` for T5). And the heading claimed "planned, not started, not authorised" over six
   delivered rows.
-  Then `4a78749` merged `feat/camui-t8-context-help` into `master` with `--no-ff`. **The merge changed no content**:
+  Then `d74becc` merged `feat/camui-t8-context-help` into `master` with `--no-ff`. **The merge changed no content**:
   `git diff --stat feat/camui-t8-context-help HEAD` is empty, so `master` holds the branch's own tree and every gate and
   visual pass recorded in L31–L35 applies undiluted rather than approximately.
   Gate on `master`, `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config ./scripts/check.sh` with no pipe: exit 0, **1 107
@@ -493,9 +493,9 @@ remains of the concept, in the order the design argues for:
   timestamp instead of inferred.
   `assess` refused at first because `.atl/` is untracked: that directory is the generated skill-registry cache
   (`gentle-ai skill-registry refresh`), not part of any candidate, so the scope was declared `exclude`. `inspect` then
-  offered the **accumulated** range `c24f690..f5e8935` — 12 paths, 2 906 lines, T8.1 through T9 — which is the shape
+  offered the **accumulated** range `508d92f..cd94144` — 12 paths, 2 906 lines, T8.1 through T9 — which is the shape
   L36 already recorded as refused by `lens_context_budget_exceeded`. A review candidate is one work unit, never the
-  branch, so START was narrowed with `baseRef` at `725d9fc`. That was refused with
+  branch, so START was narrowed with `baseRef` at `8b860b7`. That was refused with
   `native-start-retained-selection-candidate-mismatch` and `mutation_performed: false`: the retained intended-untracked
   selection belongs to the candidate it was computed for, so narrowing the range invalidated it. A second `inspect`
   with the narrowed range produced a fresh target (`sha256:615a946f…`) and the right six paths, and START accepted it:
@@ -526,8 +526,8 @@ remains of the concept, in the order the design argues for:
 | T10 | Fold the seven parameterised command constructions into one module (`params.rs`): one `&Shell` + view centre → `UiAction` builder per command, with the clamp/range each number needs travelling with the builder, so `chrome::command_action` and `lib::authoring` cannot disagree | S5 S7 | worker |
 | T11 | The simulation progress bar: a real `egui::ProgressBar` with elapsed and total, read from the clock `view3d` already owns (`progress()`, `elapsed()`, `duration()`), replacing the text percentage | S2 S4 S8 | worker |
 | T12 | The material dialog: two choice cards (flat sheet / rotary) over a live annotated key plan, writing through a new `UiAction::SetJob` and its handler, and the positivity check `SetJob` does not have today while `Job::outline` panics without one | S2 S7 S8 | worker |
-| T13 | ✅ delivered `661ce1b` — Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
-| T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/camui-toolpath.md` and landed there: the card `ad2676a`, the estimate `d617648`, both merged in `master` (`d806f8d`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
+| T13 | ✅ delivered `6014611` — Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
+| T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/camui-toolpath.md` and landed there: the card `ffe4d68`, the estimate `126febc`, both merged in `master` (`abe2e7b`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
 
 - **S8 — the screenshots are the pattern authority.** Eight frames of the reference live in
   `design/Screenshots-reference/`, and `README.md` annotates each one with the pattern it settles. Where a screenshot
@@ -552,8 +552,8 @@ remains of the concept, in the order the design argues for:
   Route: four writers **sequentially**, not in parallel, because all four surfaces include
   `crates/cam-ui/src/lib.rs` and parallel writers on one file are a collision, not a speed-up.
 
-- **L41 (three of the four screenshot slices delivered, each gate re-run by the parent).** `bea3da7` (T10),
-  `25b14d3` (T11), `661ce1b` (T13). The counts below are the parent's own runs of
+- **L41 (three of the four screenshot slices delivered, each gate re-run by the parent).** `f985255` (T10),
+  `a33e45f` (T11), `6014611` (T13). The counts below are the parent's own runs of
   `XDG_CONFIG_HOME=/home/th3g3ntl3man/.config ./scripts/check.sh`, not the writers' claims: 1 109 → 1 116 → 1 123
   tests across 92 suites, exit 0 each time.
   **T10** moved the seven parameterised commands into `params.rs` with the canonical `array_grid_range()` read by both
@@ -590,7 +590,7 @@ remains of the concept, in the order the design argues for:
   things this record's briefs had wrong (the DragValue clamp, `Preview3d::progress` answering 1.0 at zero time, and the
   artboard gates being unreachable), which is the argument for stating measured facts in a brief instead of conclusions.
 
-- **L42 (T12 delivered by a writer that vanished, and this feature closed).** `74f292a`. Gate: exit 0, 92 suites,
+- **L42 (T12 delivered by a writer that vanished, and this feature closed).** `f4b96b1`. Gate: exit 0, 92 suites,
   **1 132 tests** (+9) — the parent's run, not a writer's claim, because there was no writer's claim to check.
   The Job section's numbers are editable now: a material dialog with the sheet card and the rotary one over a plan
   drawn live with the theme's painters and annotated as the numbers move, writing through `UiAction::SetJob` into
@@ -626,10 +626,10 @@ remains of the concept, in the order the design argues for:
 - **L43 (owner, verbatim: `ya he mergeado yo todo e hice limpia, por donde seguimos`. Two rows corrected; the feature is
   closed and this entry is the only thing that was open).** Nothing was rebuilt here and no code changed: the tables
   above disagreed with L42, and a stale row is what sends the next session to re-deliver something that already
-  exists. **T7 → `661ce1b`**, verified in the tree rather than in the log: `crates/cam-ui/src/chrome.rs:184` is
+  exists. **T7 → `6014611`**, verified in the tree rather than in the log: `crates/cam-ui/src/chrome.rs:184` is
   `pub fn readiness(self, app: &AppState) -> Readiness`, the five-stage gate rule and the naming strings L41/L42
   describe; the heading that called it *planned and not authorised* now says delivered. **T14 → left the feature**,
-  delivered as `camui-toolpath`'s T1 `ad2676a` and T2.1 `d617648`, merged into `master` at `d806f8d`. **What actually
+  delivered as `camui-toolpath`'s T1 `ffe4d68` and T2.1 `126febc`, merged into `master` at `abe2e7b`. **What actually
   remains, unchanged by this entry**: the four debts L42 lists (contrast, lower-bound readiness, colour-audit clip,
   three stalled lineages) and `camui-toolpath`'s own hand-off — the shell still cannot open a `.c2d`, so
   `Document.tools_ref` remains a filename only `cam-cli` resolves. `master` is 33 commits ahead of `origin/master` and

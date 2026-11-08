@@ -13,15 +13,15 @@ the document — and it answers it four times, once per owner decision, each quo
   and the panel is a **caller** of the same code, never a second implementation.
 
 What it cost is worth stating in M9's terms. It changes **no post contract** and emits no move. It bumps
-**no schema**: `git diff --name-only 955fc54..HEAD` names no file under `crates/cam-model` or
+**no schema**: `git diff --name-only 681b722..HEAD` names no file under `crates/cam-model` or
 `crates/cam-store`, so `DOCUMENT_SCHEMA` stays `c2d/document@2` and a document written before M10 is
 read and written by the same code — the differential's six documents hash identically on both sides of
 the milestone. It adds **no external dependency**: `Cargo.lock` holds **482** packages before and after,
 and its only movement is one line (L6).
 
-The milestone is **eight commits, eighteen files, 8 657 insertions and 3 037 deletions** from `955fc54`
-to `ba91f5e`, and the deletions are the milestone's most interesting number: 3 294 lines left
-`crates/cam-cli/src/main.rs` for `crates/cam-cli/src/lib.rs` in `6cc3b2d` and were not rewritten, only
+The milestone is **eight commits, eighteen files, 8 657 insertions and 3 037 deletions** from `681b722`
+to `152edd1`, and the deletions are the milestone's most interesting number: 3 294 lines left
+`crates/cam-cli/src/main.rs` for `crates/cam-cli/src/lib.rs` in `3297f4d` and were not rewritten, only
 moved (§"D-M10-1"). Of the insertions, 117 are the feature document and 749/362/623 are the command
 language, the CSV half and the print sheet.
 
@@ -341,7 +341,7 @@ across 7 paths, tier high, three lenses, and its refuter returned three findings
 `refuse_document_destination`, so `open a` followed by `nest b` nested **a**, exited 0, and a following
 `save b` overwrote **b**. That is data loss with no message, and it broke both rules the language
 documents: a script mutates the one document it opened, and an explicit argument is never silently
-dropped. Fixed in `d76b26e` — **36 lines of a 200-line budget**, one line of code plus the test — with the
+dropped. Fixed in `6471d5f` — **36 lines of a 200-line budget**, one line of code plus the test — with the
 test copying the named document first and asserting its bytes unchanged afterwards, because a silent
 success is exactly what an exit-code-only test would have let through the RED (which only became the bug
 once the fixture had a board to nest onto; before that `nest` failed earlier for an unrelated reason).
@@ -350,7 +350,7 @@ frozen scope grew from 7 paths to 9, the provider returned `action: recover` wit
 `action_disposition: scope_changed`, and the **owner authorised** the recover with the option the provider
 named (`recover-scope-changed`).
 
-**`review-bd99706da5d0c7f1` — approved, receipt burned.** It covered T1, T2a, T2b and the `d76b26e`
+**`review-bd99706da5d0c7f1` — approved, receipt burned.** It covered T1, T2a, T2b and the `6471d5f`
 correction: **3 800 lines**, tier high, three lenses (risk, readability, reliability), correction budget
 200. The refuter opened **no correction**, so the lineage ended `approved` with the receipt burned
 (`native-approved-acknowledgement-completed`, authority `burned`), and it emitted nine **advisory**
@@ -369,13 +369,13 @@ findings, informational and later work, tagged by lineage:
 | `bd99706d/R3-003` | reliability | WARNING | `crates/cam-cli/src/main.rs:3003` |
 
 Six WARNINGs and three SUGGESTIONs, none blocking, none corrected. The three `main.rs` locations are the
-frozen candidate's: `main.rs` became `src/lib.rs` at `6cc3b2d`, so the same code sits in a different file
+frozen candidate's: `main.rs` became `src/lib.rs` at `3297f4d`, so the same code sits in a different file
 and at different lines today, and `script.rs`'s own lines moved when T4b added the notice sink.
 
 **`review-12219c3f04a57822` — the T4b slice, and it found a defect the frame tests could not see.** The
-accumulated `d76b26e..HEAD` range measures `reviewDue: true` (`high_risk`, `process_boundary` on
+accumulated `6471d5f..HEAD` range measures `reviewDue: true` (`high_risk`, `process_boundary` on
 `crates/cam-ui/src/lib.rs`) at **8 770 lines across 14 paths** — past the reviewer budget, the same wall
-M7 and M9 hit — so T4b was cut as its own candidate: **781 lines** on `ff1b526..ba91f5e`, tier high, two
+M7 and M9 hit — so T4b was cut as its own candidate: **781 lines** on `bbd2fe5..152edd1`, tier high, two
 lenses (risk, reliability), correction budget 200. Its refuter returned `correction_required` on one
 **CRITICAL** finding, `R3-001` (reliability): `ScriptPanel::run` decided whether to replace the output by
 asking `!text.is_empty()`, which conflates "failed before it wrote anything" with "succeeded and printed
@@ -387,7 +387,7 @@ success replaces the output even when it printed nothing, a failure keeps the pr
 the diagnostic. Its receipt was **not** burned when this document was written.
 
 **What is not reviewed is stated as measured, not softened into "reviewed".** T3 (the print sheet), T3b
-(the crate split) and T4a (the sink) were **not** reviewed. `assess` on `d76b26e..HEAD` measured
+(the crate split) and T4a (the sink) were **not** reviewed. `assess` on `6471d5f..HEAD` measured
 `reviewDue: false` with `reviewDueReason: under_budget` at **7 774 changed lines**, and again after T4a at
 **8 015 lines**, both at risk `medium`; those measurements are the record, and no disposition was
 invented on top of them. So the print sheet rests on its 8 tests and a whole-sheet golden, the crate
@@ -405,7 +405,7 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   print sheet. Measured by reading `COMMANDS`: eleven words, and `--help` lists the same eleven.
 - **A scripted command takes no document path and no `--out`**, both refused by name, because accepting a
   destination and ignoring it would leave a `--out` that was never applied looking applied. The first
-  implementation of that rule had the defect above (`bd99706d`'s predecessor, corrected in `d76b26e`).
+  implementation of that rule had the defect above (`bd99706d`'s predecessor, corrected in `6471d5f`).
 - **`sheet` and `part` have no CLI counterpart,** so `Document::validate` is their only gate — declared
   when T1 landed, and the reason their refusal tests are about the model's own sentences.
 - **A located error from a shared parser is reconstructed from its message.** `ScriptLine::locate` takes

@@ -55,8 +55,8 @@ L5). Read **until `## Log`** before touching anything.
 
 | Slice | Task | Commit | What it holds |
 | --- | --- | --- | --- |
-| 1 | T1 + T2 | `d3c2b12` | 41 files: `evidence/` deleted, the README re-grounded row by row, the mention out of `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`, fifteen documents renamed with every inbound link, and the branch renamed. Two edits the worker could not reach — `cam-post/src/lib.rs`'s module comment and four dead `.gitignore` lines — were taken by the parent in the same commit. Gate green at 1605 tests. |
-| 2 | T4 + T5 | `af832c5` | 12 files under `odd/` and `docs/`: the dossier's citations replaced by the facts they established, the stand-ins ("the original", "their dialect", `.crv`, a second product of the same vendor) written out as properties, the milestone's duplicate of the owner's quote turned into a pointer, and the roadmap header corrected to M0-M13. |
+| 1 | T1 + T2 | `54aaf25` | 41 files: `evidence/` deleted, the README re-grounded row by row, the mention out of `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`, fifteen documents renamed with every inbound link, and the branch renamed. Two edits the worker could not reach — `cam-post/src/lib.rs`'s module comment and four dead `.gitignore` lines — were taken by the parent in the same commit. Gate green at 1605 tests. |
+| 2 | T4 + T5 | `9a7784a` | 12 files under `odd/` and `docs/`: the dossier's citations replaced by the facts they established, the stand-ins ("the original", "their dialect", `.crv`, a second product of the same vendor) written out as properties, the milestone's duplicate of the owner's quote turned into a pointer, and the roadmap header corrected to M0-M13. |
 | 3 | T3 | — | The history note this document owes the reader, and the rewrite itself if the owner's authorisation stands. |
 
 ## Tasks
@@ -96,7 +96,7 @@ L5). Read **until `## Log`** before touching anything.
   — seven clauses across `m0`, `m3`, `m4`, `m6`, `m7` and the roadmap's L3, each quoting strings "from" a file
   that no longer exists. They are the same claim the sweep exists to remove, one layer down, and they get their
   own slice rather than riding along unrecorded.
-- **L5 (the two slices, and where the names ended up).** Slice 1 `d3c2b12` (41 files) and slice 2 `af832c5`
+- **L5 (the two slices, and where the names ended up).** Slice 1 `54aaf25` (41 files) and slice 2 `9a7784a`
   (12 files), gate green at 1605 tests each time. `grep -rin "the vendor\|the reference CAM application"` over the whole tree now returns
   **three lines, all of them the owner's own message inside this document's Log** — and `grep -rn "evidence/"`
   over `odd/` and `docs/` returns this document's account of what it deleted, nothing else. The rule the

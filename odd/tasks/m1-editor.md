@@ -5,19 +5,19 @@ specification for M1 only. Read this file until `## Evidence — commit per task
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `45170b5` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
-| T2 | `38166d4` | camera; 11 tests incl. a round-trip property test |
-| T3 | `64e9701` | commands; 10 tests, every refusal named |
-| T4 | `ad82fac` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
-| T5 | `c9ec68f` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
-| T6 | `a83cf80` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
-| T7 | `c5ecf44` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
-| T8 | `8ecf315` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T1 | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
+| T2 | `a0950f4` | camera; 11 tests incl. a round-trip property test |
+| T3 | `527afc5` | commands; 10 tests, every refusal named |
+| T4 | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
+| T5 | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
+| T6 | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
+| T7 | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
+| T8 | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
 | T9 | `dabe910` | this documentation close-out |
 
 ## Log` before implementing any task.
 
-M0 (merged to `master` as `bbabbb2`) delivered the domain: geometry, document format, tool library,
+M0 (merged to `master` as `6bbc52b`) delivered the domain: geometry, document format, tool library,
 post-processor and the headless CLI. M1 adds the window — and only the window.
 
 ## Specs
@@ -151,14 +151,14 @@ marks M1 delivered with the same evidence table style as M0, and this file recor
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `45170b5` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
-| T2 | `38166d4` | camera; 11 tests incl. a round-trip property test |
-| T3 | `64e9701` | commands; 10 tests, every refusal named |
-| T4 | `ad82fac` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
-| T5 | `c9ec68f` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
-| T6 | `a83cf80` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
-| T7 | `c5ecf44` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
-| T8 | `8ecf315` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T1 | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
+| T2 | `a0950f4` | camera; 11 tests incl. a round-trip property test |
+| T3 | `527afc5` | commands; 10 tests, every refusal named |
+| T4 | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
+| T5 | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
+| T6 | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
+| T7 | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
+| T8 | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
 | T9 | `dabe910` | this documentation close-out |
 
 ## Log
@@ -170,7 +170,7 @@ marks M1 delivered with the same evidence table style as M0, and this file recor
   shell paints it with `egui`'s painter. Rationale in D-M1-2. The user's stack decision (D1) is not
   contradicted: it stays "Rust + wgpu/egui", and the wgpu backend arrives with the 3D renderer that
   needs it, consuming the same `Scene`.
-- **L3 (plan):** this document. Base: `master` at `bbabbb2` (M0 merged), branch `feat/m1-editor`.
+- **L3 (plan):** this document. Base: `master` at `6bbc52b` (M0 merged), branch `feat/m1-editor`.
 - **L4 (execution, T1–T8).** Inline by the parent: the tasks form a strict dependency chain, so no two
   are independent units of behaviour, and the writer subagent was already proven unusable in M0 rather
   than merely unexamined — retrying it was not warranted. Every task landed as its own commit with all

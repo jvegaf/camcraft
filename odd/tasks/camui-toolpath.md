@@ -76,7 +76,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   Worth remembering for this harness: **an explorer here cannot necessarily list a directory**, so any brief that
   depends on discovering a filename should either hand the exact path over or expect to do that step itself.
 
-- **L5 (T1 delivered, and the table's order changed for a real dependency).** `ad2676a`, gate **1 139 tests across
+- **L5 (T1 delivered, and the table's order changed for a real dependency).** `ffe4d68`, gate **1 139 tests across
   93 suites** by the parent's own run. The resolution rule now exists once — `stored_tool_for_number` in `cam-store`,
   with `ToolLibrary::tool_for_number` calling it — so the emitter and the card agree by construction instead of by two
   copies of a query. The card shows the toolpath's name, then the tool's number and name, then type, diameter, included
@@ -97,8 +97,8 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   for the explorer's `find` — it was never a slow machine. It was raised to 4096 for the gentle-shell service to run
   the gate; the original value is 64 and reverting it is a one-line write to that cgroup file.
 
-- **L6 (T4 delivered; the law moved instead of being copied).** `256798a` on `feat/camui-toolpath-t4`, branched
-  from `master` at `5cb0652` so the contract move has its own reviewable branch. Gate **exit 0, 94 suites, 1 142
+- **L6 (T4 delivered; the law moved instead of being copied).** `36e91cc` on `feat/camui-toolpath-t4`, branched
+  from `master` at `e48bd53` so the contract move has its own reviewable branch. Gate **exit 0, 94 suites, 1 142
   tests** (+3, +1 suite = `crates/cam-toolpath/tests/program.rs`) by the parent's own run.
   `cam-toolpath::program_for(&Document, &[ProgramTool]) -> Result<MoveStream, ToolpathError>` is
   `cam-cli::build_segment`'s body **moved, not rewritten**: the strategy dispatch, the cone-or-cylinder law and its
@@ -122,13 +122,13 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   leave a tree whose emitter builds nothing.
   **Slice-boundary note, so a number is not misread.** The harness reports this branch at 7 605 authored lines across
   23 commits against `origin/master`. That is `camui-shell`'s delivered work plus T1 accumulating on an unpushed
-  `master` (L36 of `camui-shell.md`), not one slice; T4 is the single commit `256798a`. The branch is T4's review
-  candidate, and `256798a` is the work unit inside it.
+  `master` (L36 of `camui-shell.md`), not one slice; T4 is the single commit `36e91cc`. The branch is T4's review
+  candidate, and `36e91cc` is the work unit inside it.
   **Order is now T2.** The estimate can be published and shown against a program that belongs to the document,
   which was the whole reason T4 came first (L5). T3 stays last: it needs T1's list to pick a number from.
 
 - **L7 (T4's review: approved, one lineage, three advisories, no correction).** The native review ran on the
-  work-unit candidate `256798a` alone — base `master` @ `5cb0652`, **5 paths / 1 185 lines**, tier **high**
+  work-unit candidate `36e91cc` alone — base `master` @ `e48bd53`, **5 paths / 1 185 lines**, tier **high**
   (`process_boundary` on `cam-toolpath/src/lib.rs`), four lenses (`review-risk`, `review-resilience`,
   `review-readability`, `review-reliability`), `correction_budget: 200`, forecast of 4 model runs and the owner's
   `"1"` to spend them. Lineage `review-2630423c51d0b9e1`, state **approved**, authority **burned** with
@@ -148,7 +148,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   — quoting a finding's text from memory would be inventing it.
   **What the review did NOT cover, stated so it is not assumed:** the candidate was T4's work unit, so `camui-shell`'s
   T8/T9 gap (L37 of `camui-shell.md`) is still unreviewed. And the harness separately offered to review **the whole
-  branch against `origin/master`** (`c24f6905`, 24 commits, 26 files, target `sha256:5dbb1fda…`, lineage
+  branch against `origin/master`** (`508d92f0`, 24 commits, 26 files, target `sha256:5dbb1fda…`, lineage
   `review-552701826bd439cd`). That start was **not** taken: it is the accumulated feature branch rather than a work
   unit, and it would have opened a second live lineage over the same trees as this one. It remains unstarted, not
   burned.
@@ -174,7 +174,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   still refuses `cam-store`, because the join lives one level above both. A third copy of the mapping is what the
   owner refused.
 
-- **L9 (T2.0 delivered: the join has a crate, and the binary kept its one implementation).** `ee155ff`, gate
+- **L9 (T2.0 delivered: the join has a crate, and the binary kept its one implementation).** `854dc83`, gate
   **exit 0, 96 suites, 1 147 tests** by the parent's own run (+5 tests, +2 suite lines: `cam-program`'s unit suite
   and its doc-test suite). New member `crates/cam-program` (`cam-model`, `cam-move`, `cam-store`, `cam-toolpath`,
   `cam-units`), **402 insertions against the ~400 slice** — this one lands inside the guideline, unlike T4.
@@ -204,14 +204,14 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   reviews that branch deliberately or decides to leave it.
 
 - **L10 (two reviews approved, T2.1 delivered, and a pre-existing flake found).** Both work units of this feature
-  that carry a contract now hold a native receipt. **T4** — lineage `review-2630423c51d0b9e1`, candidate `256798a`
+  that carry a contract now hold a native receipt. **T4** — lineage `review-2630423c51d0b9e1`, candidate `36e91cc`
   alone (5 paths / 1 185 lines), **approved**, authority burned, 0 blockers, 3 advisories (R2-001, R2-002
   readability, R4-001 resilience WARNING). **T2.0** — lineage `review-526430ccfe87cf3e`, candidate
-  `ad4be20..ee155ff` (7 paths / 498 lines), **approved**, burned, 0 blockers, 2 advisories (R2-001
+  `ad39225..854dc83` (7 paths / 498 lines), **approved**, burned, 0 blockers, 2 advisories (R2-001
   `cam-program/src/lib.rs:65-68`, R2-002 `cam-program/Cargo.toml:17-23`). All advisory, none opened a correction and
   none reopens anything: they are later work, listed here by id and location only, because their bodies live in the
   native receipt and would otherwise be reconstructed from memory.
-  **T2.1 delivered `d617648`** — 8 paths, 323 insertions, inside the ~400 slice. Gate **exit 0, 96 suites, 1 153
+  **T2.1 delivered `126febc`** — 8 paths, 323 insertions, inside the ~400 slice. Gate **exit 0, 96 suites, 1 153
   tests** by the parent's own run (+6), `crates/cam-cli/tests/cli.rs` still unedited at **121/0**. The estimate is
   the first thing in this feature that describes the operator's document rather than a demonstrator's sample.
   **The hole L8 did not foresee, and the fix.** `cam-program`'s T2.0 entry point takes a `&ToolLibrary`, and the
@@ -238,12 +238,12 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   turn proving it is not the current change.
   **Slice boundary, so the number is not misread.** The harness reports this branch at 8 331 authored lines across 29
   commits against `origin/master` — that is `camui-shell`'s delivered work plus T1, T4 and T2 riding on an unpushed
-  `master`, not one slice. T2.1 is `d617648`, 323 insertions.
+  `master`, not one slice. T2.1 is `126febc`, 323 insertions.
   **Next is T3**, now unblocked: T1 gave the shell a tool list to pick a number from, and the vocabulary in `cam-app`
   is the last piece. It is item 3 for the same reason T4 was, so it gets its own commit and its own candidate.
 
 - **L11 (T2.1 reviewed, and where the three lenses agreed).** Lineage `review-4bc03c52d5e44810`, candidate
-  `1c99a3b..599d897` — 9 paths / 416 lines, **approved**, authority burned, **no correction and no blocker**. Seven
+  `ff8270b..4c70387` — 9 paths / 416 lines, **approved**, authority burned, **no correction and no blocker**. Seven
   advisories came back, all `informational`:
 
   | ID | Lens | Location | Severity |
@@ -263,13 +263,13 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   a later slice should read before touching that line. Their texts live in the native receipt, not here — quoting them
   from memory would be inventing them, which is exactly the failure this rule exists to prevent.
   **Where the feature stands.** The two reference-screenshot patterns that opened this document are both covered: the
-  current-tool card (T1, `ad2676a`) and the estimated cutting time (T2.1, `d617648`, now measured over the document's
+  current-tool card (T1, `ffe4d68`) and the estimated cutting time (T2.1, `126febc`, now measured over the document's
   own toolpaths rather than a demonstrator's sample). T4 and T2.0 and T2.1 each hold an approved native receipt.
   **T3 is what remains**, and it is the only task in the table that opens new surface: the toolpath vocabulary in
   `cam-app`. Every other task either reused a rule that existed or moved one that did.
 
 - **L12 (state of this document, for whoever opens it next).** Written to be read in ten seconds instead of twenty
-  entries. **Branch** `feat/camui-toolpath-t4`, from `master` @ `5cb0652`, **unpushed** — push, PR and merge are the
+  entries. **Branch** `feat/camui-toolpath-t4`, from `master` @ `e48bd53`, **unpushed** — push, PR and merge are the
   owner's decisions and none has been taken. **Gate at the last measured run:** exit 0, 96 suites, **1 153 tests**,
   0 failed; `crates/cam-cli/tests/cli.rs` unedited at 121/0 throughout. **Three receipts burned**, one per work unit:
   T4 `review-2630423c51d0b9e1`, T2.0 `review-526430ccfe87cf3e`, T2.1 `review-4bc03c52d5e44810`. **Ten advisories**
@@ -279,7 +279,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   branch against `origin/master` on every mutation generation — five offers so far, all declined, none burned,
   because it is not a work unit. If a future session sees that offer, the answer is in this paragraph.
 
-- **L13 (T3 delivered, and the review it did not get — by the lifecycle's own rule).** `762b0d7`, 2 paths, **469
+- **L13 (T3 delivered, and the review it did not get — by the lifecycle's own rule).** `0700467`, 2 paths, **469
   insertions** against the ~400 slice, kept as one commit on purpose because `cam_app::Command` is a contract others
   consume. Gate **exit 0, 96 suites, 1 166 tests** by the parent's own run (+13); `cam-cli/tests/cli.rs` unedited at
   **121/0**; `cam-app`'s `commands` suite at **87/0** with the thirteen new cases inside it; the known `cam-geom`
@@ -309,13 +309,13 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   **L12's numbers are superseded by this entry:** the gate is 1 166 tests and the receipt count is **three**, because
   T3 never had one to burn.
 
-- **L14 (the feature closes).** Every task in the table is delivered: **T1** `ad2676a` (the current-tool card),
-  **T4** `256798a` (the emitter's law moved into `cam-toolpath`), **T2.0** `ee155ff` (the join has a crate),
-  **T2.1** `d617648` (the estimate, over the document's own toolpaths), **T3** `762b0d7` (the authoring vocabulary).
+- **L14 (the feature closes).** Every task in the table is delivered: **T1** `ffe4d68` (the current-tool card),
+  **T4** `36e91cc` (the emitter's law moved into `cam-toolpath`), **T2.0** `854dc83` (the join has a crate),
+  **T2.1** `126febc` (the estimate, over the document's own toolpaths), **T3** `0700467` (the authoring vocabulary).
   **T2 was split** by the owner's `b` (L8) and both halves landed. The two reference-screenshot patterns that opened
   this document are both taken. Three native receipts burned (T4, T2.0, T2.1); T3 owed none.
   **Where it stands, so the next session does not have to work it out.** Branch `feat/camui-toolpath-t4`, from `master`
-  @ `5cb0652`, **unpushed and unmerged** — push, PR and merge are the owner's decisions and none has been taken. The
+  @ `e48bd53`, **unpushed and unmerged** — push, PR and merge are the owner's decisions and none has been taken. The
   gate is green at 96 suites / **1 166 tests**. Ten advisory findings across the three reviewed units are carried
   forward, all non-blocking, listed by id and location only in L7, L10 and L11; the sharpest of them is the single
   line `crates/cam-ui/src/chrome.rs:804`, where three independent lenses converged (L11). Two debts belong to other
@@ -328,7 +328,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
 - **L15 (owner, verbatim: `mergea todo a master` … `y despues haz limpia`. Merged, and the record corrected).**
   **This supersedes L14's "unpushed and unmerged"** — that paragraph was true when it was written and this entry is what
   makes it false, which is the only way a record stays worth reading.
-  `d806f8d` is `git merge --no-ff` of `feat/camui-toolpath-t4` into `master`, and `--no-ff` on purpose: the feature stays
+  `abe2e7b` is `git merge --no-ff` of `feat/camui-toolpath-t4` into `master`, and `--no-ff` on purpose: the feature stays
   one readable island in the history instead of eleven anonymous commits. **The merge changed no content** —
   `git diff --stat feat/camui-toolpath-t4 HEAD` is empty — so every gate run this branch recorded applies undiluted to
   `master`. Gate re-run **on master** by the parent: exit 0, **96 suites, 1 166 tests**, 0 failed; `cam-app` 87/0,
@@ -340,7 +340,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `feat/camui-shell`, `feat/camui-t8-context-help` and `feat/camui-toolpath-t4`. `git branch --merged master` proved all
   three were fully contained in `master` before `git branch -d` ran, and `git branch --no-merged master` was empty, so
   no commit was orphaned by the deletion: this document's own branch no longer exists and that is deliberate. The
-  stale `git worktree` at `/tmp/campilot-probe-base` (detached at `f816371`, directory already gone, `prunable`) was
+  stale `git worktree` at `/tmp/campilot-probe-base` (detached at `67dc059`, directory already gone, `prunable`) was
   pruned. Eight `/tmp/gate*.log` scratch files were removed. **Nothing of the owner's was touched**: the repository has
   no untracked files at all after the merge, and no `git clean`, no `reset`, and no blanket restore was run anywhere.
   **What is deliberately still true:** `master` is **33 commits ahead of `origin/master` and not pushed**. Merging and

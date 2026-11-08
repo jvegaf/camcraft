@@ -35,15 +35,15 @@ Feature document for milestone **M11** of `odd/roadmap.md`. Read **until `## Log
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `Job.material`, optional and omitted when absent, with `Copy` lost and every site updated; a document written before this loads and re-saves byte-identically | S1 S3 S5 | worker | `c7b419a` |
-| T2 | Thread the material to the store's existing lookup: `program_for`, `program_for_snapshot` and `program_tool` take it, `None` keeps `tool_for_number`'s behaviour, and `cutting_data_for` decides when it is `Some` | S2 S3 | worker | `c7b419a` |
-| T3 | `cam-cli emit --material`, the flag winning over the document, and the refusal naming material and tool when the library has nothing; one new golden with a material, and all 17 existing ones unchanged | S4 S6 | parent | `c7b419a`, `32f9e4b` |
-| T4 | Docs: `docs/format.md`'s `emit` row, the tool-library story (a tool's card still says it shows no rates), and the roadmap row's evidence | S2 | parent | `34b9672`, `a580369` |
-| T5 | The review of this candidate | — | parent | `32f9e4b`, `8855766` |
+| T1 | `Job.material`, optional and omitted when absent, with `Copy` lost and every site updated; a document written before this loads and re-saves byte-identically | S1 S3 S5 | worker | `6a4994f` |
+| T2 | Thread the material to the store's existing lookup: `program_for`, `program_for_snapshot` and `program_tool` take it, `None` keeps `tool_for_number`'s behaviour, and `cutting_data_for` decides when it is `Some` | S2 S3 | worker | `6a4994f` |
+| T3 | `cam-cli emit --material`, the flag winning over the document, and the refusal naming material and tool when the library has nothing; one new golden with a material, and all 17 existing ones unchanged | S4 S6 | parent | `6a4994f`, `1ae65ec` |
+| T4 | Docs: `docs/format.md`'s `emit` row, the tool-library story (a tool's card still says it shows no rates), and the roadmap row's evidence | S2 | parent | `93e8e96`, `98e8e55` |
+| T5 | The review of this candidate | — | parent | `1ae65ec`, `8767a2b` |
 
-T1 and T2 landed together in `c7b419a`, which is what L4 records; T3's flag parser was corrected in
-`32f9e4b`, the same commit that carries T5's bounded correction, and `8855766` holds the review's own Log
-section (L6, L7). T4's roadmap evidence arrived separately, in `a580369`.
+T1 and T2 landed together in `6a4994f`, which is what L4 records; T3's flag parser was corrected in
+`1ae65ec`, the same commit that carries T5's bounded correction, and `8767a2b` holds the review's own Log
+section (L6, L7). T4's roadmap evidence arrived separately, in `98e8e55`.
 
 ## Log
 

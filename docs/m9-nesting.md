@@ -16,7 +16,7 @@ byte-identically and `DOCUMENT_SCHEMA` stays `c2d/document@2`), and adds **no
 crate and no dependency** (`Cargo.lock` is unchanged across the milestone). What it spent is two
 packers, a certificate each, and — the part that took two reviews — the one function that says what a
 nesting is worth. The whole milestone is seven commits, ten files, **6 606 insertions and 7 deletions**
-from `931812e` to `e3cd977`, and 124 of those insertions are the feature document.
+from `2ad152d` to `a57ae9b`, and 124 of those insertions are the feature document.
 
 The command, over a document that authors one 1000 × 600 mm board and one 600 × 400 mm panel with one
 instance, and has never been nested:
@@ -200,10 +200,10 @@ also covers a candidate wholly **outside** a non-rectangular board that shares o
 review's three CRITICAL findings were that one defect: a **50 × 50** square landed in an L board's
 **60 × 60** notch at **`(40, 40)`**, a disc tangent to a circular board from outside landed at
 **`(0, 0)`**, and `ProfileNestPlan::certifies` repeated the same test — **certifying a part outside the
-material**. The fix (`033a291`) accepts `FirstInside` outright, accepts `Touching` only when the inset
+material**. The fix (`fc73d18`) accepts `FirstInside` outright, accepts `Touching` only when the inset
 candidate is `FirstInside`, and leaves `certifies` calling the same predicate. Three REDs were observed
 before any `src/` edit, no existing test changed (85 insertions, 0 deletions), and a differential
-against `3508eb9` ran the 11 pre-existing profile tests in a `git archive` copy of the base: 11 passed
+against `df69091` ran the 11 pre-existing profile tests in a `git archive` copy of the base: 11 passed
 on both sides.
 
 ## The one arithmetic for utilisation and waste
@@ -344,8 +344,8 @@ or an open wire — naming the part. `--help` lists the command, its six flags a
 ## The differential, and what M9 did not change
 
 The milestone's differential (L11) is the measurement that says M9 touched nothing it did not own. The cut
-point is `deb8b1a` — verified as `69cef77^`, with three seam commits between it and M9's first commit
-`cc2d609` — and it was exported with `git archive` into a scratch copy built with its own
+point is `898cab6` — verified as `1060b40^`, with three seam commits between it and M9's first commit
+`a5a82fe` — and it was exported with `git archive` into a scratch copy built with its own
 `CARGO_TARGET_DIR`, then run against the work tree's binary. Each side ran **42 invocations** from
 inside its own sandbox with relative paths, so no sandbox path could reach stdout or stderr: two
 `tools add` plus `tools list`; three `import` forms (the report, `--out`, and `--out` with `--layer`
@@ -382,28 +382,28 @@ placing both instances where the base has no command at all.
 Both candidates of this milestone were reviewed at tier high and both ended `approved` with the receipt
 burned (`native-approved-acknowledgement-completed`, authority `burned`). What they cost is the record:
 
-**`review-1ab521437bba8607`** covered the committed geometry slice `cc2d609..3508eb9` — 2 801 lines,
+**`review-1ab521437bba8607`** covered the committed geometry slice `a5a82fe..df69091` — 2 801 lines,
 lenses risk + readability + reliability, correction budget 200. The **full-range** candidate
-(`deb8b1a..3508eb9`, 16 paths) was refused first in preflight with `lens_context_budget_exceeded`,
+(`898cab6..df69091`, 16 paths) was refused first in preflight with `lens_context_budget_exceeded`,
 `mutation_outcome: not_started`, no authority created and nothing to abandon; the reduced range was
 accepted. That is the same wall M7 hit at 4 425 lines, and the fact worth keeping is that the budget is
 a property of the candidate's **size** and the base ref is the lever. Three reviewers ran on the host
 relay, the provider demanded a refuter, and the refuter returned `correction_required` with three
 CRITICAL findings that were one defect — inside-ness accepting `Touching`, with `certifies` repeating
 it, so a plan could certify a part outside a non-rectangular board (§"Inside-ness" above). Fixed in
-`033a291` with **161 of the 200 authorised lines**; a targeted validator judged all three findings
+`fc73d18` with **161 of the 200 authorised lines**; a targeted validator judged all three findings
 `met` with no regressions. Four advisory findings were emitted, informational and later work, tagged by
 lineage: `1ab52143/R1-STEP-DOS` (risk, WARNING, `nest_profile.rs:521-522`), `1ab52143/R2-002`
 (readability, WARNING, `nest_profile.rs:298`), `1ab52143/R2-003` (readability, SUGGESTION, `nest.rs:348`)
 and `1ab52143/R3-002` (reliability, WARNING, `nest_profile.rs:241-246`). The review also named a gap
 this milestone owns: every new placement test asserted a refusal, so the **accept** branch of the
-fix had no positive case — closed afterwards by `03c4790`, which pins a flush part placed and certified
+fix had no positive case — closed afterwards by `91794aa`, which pins a flush part placed and certified
 on a rectangle and on an L's arm and one inset step past the edge refused. A tooling defect was recorded
 too: the facade cannot capture this lineage's correction-plan or validation slots (it renders
 `--target=b528be6e` while reporting `target_identity: 984997e0` and rejects its own binding twice), so
 both ran through the native CLI with the provider-issued tokens.
 
-**`review-33ff9cdba8c8746d`** covered `90d6a1f..55e759e` — 375 lines, lenses **risk + reliability**
+**`review-33ff9cdba8c8746d`** covered `bc22942..53934f1` — 375 lines, lenses **risk + reliability**
 (two, not three: the change is a format rule and the tests that pin it, and the docs are comments
 explaining that same rule), budget 188 of which **12** were used. The refuter returned
 `correction_required` with one finding, `R3-001` (reliability, **BLOCKER**): "the new determinism test
@@ -413,7 +413,7 @@ test never proves idempotence." **The premise was false and the substance was tr
 worth keeping: `nest` does not exit 7 there, it **opens a second sheet**, so the assertion held — and
 the reviewer could not see that because `main.rs` was outside the candidate's paths and only the tests
 were in the diff. What was true is that the fixture proved sheet growth **and** idempotence at once, so
-a failure would not have said which. The correction (`e3cd977`, 12 lines) makes the fixture fit one
+a failure would not have said which. The correction (`a57ae9b`, 12 lines) makes the fixture fit one
 sheet (two 400 × 400 on the authored 1000 × 600, rotation-invariant so rotation-off is irrelevant), says
 in a comment that it must fit one sheet and why, and adds `assert_eq!(after_first.sheets.len(), 1)` —
 the assertion that would have caught the ambiguity, because it fails if the fixture ever stops fitting.
@@ -423,10 +423,10 @@ were emitted beyond `R3-001`. The same tooling defect blocked this lineage's slo
 artifact had to bind `correction_target_identity` (the provider's `5226b038…`) rather than the plain
 `target_identity`, the transcription error that got the previous artifact refused.
 
-**Neither range contains `cc2d609`, and that is the milestone's honest gap.** The document format — the
+**Neither range contains `a5a82fe`, and that is the milestone's honest gap.** The document format — the
 `nesting` section, its refusals and the one utilisation — is the *base* of the first candidate,
 which git reads as excluded, and the full-range candidate that would have included it was the one refused
-with `lens_context_budget_exceeded`; once HEAD moved past it, that range could not be re-cut. `90d6a1f`,
+with `lens_context_budget_exceeded`; once HEAD moved past it, that range could not be re-cut. `bc22942`,
 the `nest` command itself, sits between the two ranges and is covered by neither. So **M9's document
 contract rests on its 31 tests in `crates/cam-model/tests/document.rs` and the pre-M9 byte-identical
 proof** (`a_document_written_before_nesting_loads_and_re_saves_byte_identically`, plus
@@ -487,7 +487,7 @@ pre-existing command and nothing else on that surface moving at all.
   documented here and in the feature document instead. T6's edit surfaces did not include
   `docs/format.md`, so the gap is recorded rather than closed: a reader who starts at
   [format.md](format.md#document-c2d) will not find `nesting` there.
-- **The document format's commit has no native review** (see the lineage section above): `cc2d609` is
+- **The document format's commit has no native review** (see the lineage section above): `a5a82fe` is
   in neither candidate, so M9's document contract rests on its tests and the pre-M9 byte-identical
   proof.
 

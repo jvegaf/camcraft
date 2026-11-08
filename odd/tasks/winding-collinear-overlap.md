@@ -59,7 +59,7 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
 - **L1 (user, verbatim):** "mergea primero y despues la arrancamos", and on the route: "Ruta B:
   arreglar en la raíz".
 - **L2 (the merge that preceded this, for the record).** `feat/advisory-debt-close` merged into
-  `master` as **`7717a44`** (`--no-ff`), branch deleted, post-merge gate green (`fmt`,
+  `master` as **`c8fa776`** (`--no-ff`), branch deleted, post-merge gate green (`fmt`,
   `clippy -D warnings`, whole workspace, `CHECK_EXIT=0`). **Not pushed.**
 - **L3 (reconnaissance: the naive fix was measured and is wrong).** An explorer mapped the classifier
   and its four callers. What it found, all read-only, is what S5 is built on:
@@ -114,7 +114,7 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
 - **L6 (T4, T5 and how this closes).** T4 is the `Relation::Touching` sentence, which now says what S4
   requires: "They meet without crossing and no interior of one lies inside the other… A shared span
   with the material on the *same* side is `Crossing`, not this." T5 is **not due**: `assess` over
-  `7717a44..HEAD` reports `nativeRisk: medium`, 6 paths, 378 changed lines, `reviewDue: false` on
+  `c8fa776..HEAD` reports `nativeRisk: medium`, 6 paths, 378 changed lines, `reviewDue: false` on
   `under_budget`, and a plan of writer self-verification with no independent verifier. RDD is on and
   the provider's tier decides, so this candidate gets no outside view — and the record says so instead
   of implying one.
@@ -122,7 +122,7 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   (`fmt --check`, `clippy -D warnings`, every target, `CHECK_EXIT=0`), and every test that passed
   before this change still passes: the suites are the same files on both sides, so a golden, a CLI
   output or a region/nest/inlay behaviour that moved without a new test would have failed here. What
-  was **not** run is the scratch-base differential the shared-code rule asks for — a copy of `7717a44`
+  was **not** run is the scratch-base differential the shared-code rule asks for — a copy of `c8fa776`
   built in an isolated directory and driven through `nest`, `toolpath` and `simulate` — because those
   commands take documents that the CLI's own tests author inline and no checked-in fixture exists to
   hand to both builds. The consequence is stated rather than hidden: for `winding::relation`, the only

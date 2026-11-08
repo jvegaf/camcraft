@@ -16,13 +16,13 @@ are what the record supports:
 
 | ID | Register | Why editing cannot close it |
 | --- | --- | --- |
-| `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003` | M9's review | six metadata-only advisories; three anchors name `crates/cam-cli/src/main.rs`, a file `6cc3b2d` split down to 16 lines |
+| `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003` | M9's review | six metadata-only advisories; three anchors name `crates/cam-cli/src/main.rs`, a file `3297f4d` split down to 16 lines |
 | `1ab52143/R2-002`, `R2-003`, `R3-002` | M9's nesting review | three metadata-only advisories; `R1-STEP-DOS` from the same lineage is **closed** (the 4M anchor cap, L11) |
 | `b5fe4921/R3-001` | M10's own debt review (L9) | reliability WARNING at `crates/cam-import/src/csv.rs:180-193`, the successor inside the very block `T2` added; its wording burned with its receipt |
 
 **Closed — six:** the four advisories `T1`-`T4` closed (three with the reviewer's own words recovered, the
-fourth's subject read off the code), `12219c3f/R1-001` (`3d6589f`), and `1ab52143/R1-STEP-DOS` (the 4M
-anchor cap, `c6eb633` + `b06c004`).
+fourth's subject read off the code), `12219c3f/R1-001` (`99a8b33`), and `1ab52143/R1-STEP-DOS` (the 4M
+anchor cap, `27f958e` + `bb3eead`).
 
 **Every later register is closed.** `39a6d85c`'s six (`R1-quadratic-overlap-validation` and `R4-002` by
 `review-94cfd234`, the rest by `advisory-debt-close`), `94cfd234`'s six (one BLOCKER refuted, five closed),
@@ -60,11 +60,11 @@ document waits on anyone now.
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column *inside* the token instead of one past it | S1 S3 | parent | `68adb00` |
-| T2 | The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `106ab8b` |
-| T3 | `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `68adb00` |
-| T4 | The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `3d6589f` |
-| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `c6eb633` + `b06c004` |
+| T1 | The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column *inside* the token instead of one past it | S1 S3 | parent | `a8952d6` |
+| T2 | The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `6bde4a5` |
+| T3 | `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `a8952d6` |
+| T4 | The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `99a8b33` |
+| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `27f958e` + `bb3eead` |
 
 ## Log
 
@@ -97,7 +97,7 @@ document waits on anyone now.
   `R3-003`, `12219c3f/R1-001` (identity, once T4's subject is read off the code), `1ab52143/R1-STEP-DOS`,
   `R2-002`, `R2-003`, `R3-002`: without the reviewer's text their authors' subject cannot be
   established, and three anchors are worse than stale — `crates/cam-cli/src/main.rs` was split by
-  `6cc3b2d`, so `main.rs:162-163`, `:860` and `:3003` name a file that is now 16 lines long. Two M9
+  `3297f4d`, so `main.rs:162-163`, `:860` and `:3003` name a file that is now 16 lines long. Two M9
   anchors (`cam-geom/src/nest.rs:348`, `nest_profile.rs:241-246`) land on **doc comments**, so the
   finding is a doc-versus-behaviour claim nobody can now read. Guessing a fix for those would manufacture
   a resolution the record cannot support (S3).
@@ -107,7 +107,7 @@ document waits on anyone now.
   used at `:521-522`). A floor **refuses input that used to be accepted**, which is a contract change —
   the owner's call, not a readability fix (S4).
 - **L5 (T1-T4, evidence).** **T1**: `lex` now records `end_column` as each token is pushed — the quoted branch adds its two quotes — instead of deriving it from the last token's `column + text.len()`. RED first: `sheet "100 200"` reported `line 2:14` (inside the token) where the law says `line 2:16`; after the fix `crates/cam-cli/tests/script.rs` is **21 passed**, including the pre-existing unquoted case (`sheet 100` → `line 2:10`), so the behaviour the new test does not cover is pinned and unchanged. **T2**: the quote scan moved ahead of the field-count check, with a line-level fallback when the quote lands past the last column the format has (`COLUMNS[index]` would otherwise index out of bounds on the row it is refusing). RED first: `"post, left",120,80,4` answered `expected 4 fields (found 5)` where the format's own message is the quoting refusal; after, `crates/cam-import` is **30 passed**, and the two quoting tests that predate the change (`"bracket"`, `brack"et`) still print their original message. **T3**: `const HELP` now says what the scripted `toolpath` and `nest` refuse and why, and `the_script_help_says_which_destinations_a_scripted_command_refuses` pins both claims against a whitespace-collapsed help, so the wording is asserted without coupling the test to `HELP`'s indentation. **T4**: `scratch` refuses a name that is not one path segment (`/`, `\\` or `..`), so the fixture's own `remove_dir_all` cannot be aimed outside its directory; `cam-ui`'s `script_panel` is **6 passed**.
-- **L6 (the differential, because `split` is shared code).** `cam-cli parts --csv` is a command this request never named and it reads part lists through the same `split` a scripted `parts` uses, so the previous code (`077f48e`, built from a scratch worktree) and this change both ran it over five fixtures, comparing stdout, stderr, exit code and the document each run wrote. `plain` (part authored, exit 0), `count` (3 fields, exit 2) and `quoted` (a quoted field with no separator, exit 2, field-level message) are **byte-identical**. `quoted-comma` and `past-columns` differ only in the message the fix names — the count error became the quoting refusal, exit code `2` in both. `VERDICT=no regression in a command the request did not name`. The harness lives in `/var/tmp/campilot-differential.sh`, outside the repository, and is not committed.
+- **L6 (the differential, because `split` is shared code).** `cam-cli parts --csv` is a command this request never named and it reads part lists through the same `split` a scripted `parts` uses, so the previous code (`fb50be8`, built from a scratch worktree) and this change both ran it over five fixtures, comparing stdout, stderr, exit code and the document each run wrote. `plain` (part authored, exit 0), `count` (3 fields, exit 2) and `quoted` (a quoted field with no separator, exit 2, field-level message) are **byte-identical**. `quoted-comma` and `past-columns` differ only in the message the fix names — the count error became the quoting refusal, exit code `2` in both. `VERDICT=no regression in a command the request did not name`. The harness lives in `/var/tmp/campilot-differential.sh`, outside the repository, and is not committed.
 - **L7 (the gate, and why nothing is committed).** `./scripts/check.sh` ran `fmt --check`,
   `clippy -D warnings` and the whole suite: **all gates green, `CHECK_EXIT=0`**. `cargo test --workspace
   -- --list` counts **1511 tests over 110 result lines**, up from M10's floor of 1508/110 — exactly the
@@ -120,8 +120,8 @@ document waits on anyone now.
   and none ran.
 
 - **L8 (committed, owner-authorised).** Three work-unit commits, tests alongside the behaviour:
-  **`68adb00`** (T1 + T3, the cam-cli script: the quoted-token column and the help's claim),
-  **`106ab8b`** (T2, the CSV quoting refusal) and **`3d6589f`** (T4, the fixture's path segment), with
+  **`a8952d6`** (T1 + T3, the cam-cli script: the quoted-token column and the help's claim),
+  **`6bde4a5`** (T2, the CSV quoting refusal) and **`99a8b33`** (T4, the fixture's path segment), with
   this document in `docs(odd):` on top of them. Local only — **not pushed**, and pushing stays the
   owner's decision. L7's "uncommitted" describes the moment it was written, not the tree now.
 - **L9 (the review, and the same blindness a second time).** The candidate — all four commits, 7 paths,
@@ -167,7 +167,7 @@ document waits on anyone now.
   **`review-2b7f8544a4b4dbd6`**: tier `high` — a `process_boundary` signal, not a judgement about the
   change — 159 changed lines, correction budget 80, **four** host-relay reviewer runs (risk, resilience,
   readability, reliability), closed **`approved`** on the first admitted event with no correction, receipt
-  burned (`sha256:59108c52…`). Its two advisories are defects `c6eb633` **introduced**, both
+  burned (`sha256:59108c52…`). Its two advisories are defects `27f958e` **introduced**, both
   `causal_disposition: introduced`, and **this time their words survived**: the lineage kept a state
   directory, and reading it *before* the acknowledgement is what kept them — the discipline L9 asked for,
   paying for itself one review later. **`R2-001`** (readability, `crates/cam-cli/tests/cli.rs:7678`): *"The
@@ -177,7 +177,7 @@ document waits on anyone now.
   `crates/cam-geom/src/nest_profile.rs:284`): *"The new anchor-cap check runs before the existing
   part-closed loop, so a document that is both over the anchor cap and contains an open part now reports
   SearchLatticeTooFine instead of PartNotClosed; the step error masks the geometry error that identifies
-  the offending part."* Both fixed in **`b06c004`**: the cap check moved after the part loop (RED first —
+  the offending part."* Both fixed in **`bb3eead`**: the cap check moved after the part loop (RED first —
   an open-part document at an over-cap step answered `SearchLatticeTooFine` where `PartNotClosed { part: 1
   }` is the answer), and the accepted-step branch now asserts the run ends in `0` or `7` **and** that the
   report names the step it searched with, instead of "not 2". `cam-geom`'s nest_profile target: **19
@@ -201,13 +201,13 @@ document waits on anyone now.
   **fourteen** advisories L2 counted, **six** are closed and **nine** are not, and L3's list is stale
   in one place it never revisited: it still names `1ab52143/R1-STEP-DOS` as open after L11 closed it
   under the owner's S5 (the cap, not a millimetre floor) — superseded here, not rewritten. The four
-  whose text survived are closed by T1-T4, and `12219c3f/R1-001` is closed by **`3d6589f`** with its
+  whose text survived are closed by T1-T4, and `12219c3f/R1-001` is closed by **`99a8b33`** with its
   anchor verified rather than assumed: `crates/cam-ui/tests/script_panel.rs:29-31` is still the
   `join` onto `/var/tmp`, the `remove_dir_all` and the `create_dir_all` the finding names, and T4's
   guard sits three lines above them, so the subject and its resolution are the same three lines. What
   is **not** closable is the other **nine**: `bd99706d`'s remaining readability and reliability
   advisories, `1ab52143`'s three, and the successor below — none has reviewer text that survives, and
-  three anchors name `crates/cam-cli/src/main.rs`, a file `6cc3b2d` split down to 16 lines, so they are
+  three anchors name `crates/cam-cli/src/main.rs`, a file `3297f4d` split down to 16 lines, so they are
   worse than stale. **`b5fe4921/R3-001`** (reliability, WARNING, `crates/cam-import/src/csv.rs:180-193`)
   is the fifteenth and was recorded nowhere in this ledger before this line: L9 named it as the
   successor advisory inside the very block T2 added, its wording went with its receipt, and its anchor
@@ -217,7 +217,7 @@ document waits on anyone now.
   editing code**. S3's one sanctioned route is a fresh review of the current tree, which re-files these
   findings with new words and new identities; re-file or accept is the owner's decision, and it is a
   review-mode decision, not a task.
-- **L15 (the cc2d609 review's six advisories, captured before the burn — and the method that is now proven
+- **L15 (the a5a82fe review's six advisories, captured before the burn — and the method that is now proven
   twice).** Lineage **`review-39a6d85c490202c2`** closed `approved` (see
   `odd/tasks/m9-nesting.md` L13); its receipt is burned, so these words exist only because the
   lineage kept a state directory and it was read **before** the acknowledgement. They are informational
@@ -300,8 +300,8 @@ document waits on anyone now.
      code is right and the reason is the wrong one — the comment should say which rule it relies on.
 - **L17 (the sweep's seven, and a sixteenth advisory that the sweep found).** Feature document
   `odd/tasks/advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
-  work-unit commits: **`c16afd6`** (the contract change alone, because it refuses input that used to
-  load), **`5190f3e`** (three wording advisories and the two missing fixtures) and **`6e0b085`** (the
+  work-unit commits: **`189fbe0`** (the contract change alone, because it refuses input that used to
+  load), **`5a7d770`** (three wording advisories and the two missing fixtures) and **`7ed2ef9`** (the
   index and the early exit, 61.99 s → 0.05 s on 5 000 stacked copies). **Closed by this sweep**:
   `94cfd234/R2-002` and `R3-PRUNE-TOLERANCE` and `R3-MULTISHEET-PRUNE`, `39a6d85c/R2-001`, `R2-002`
   and `R4-003`, and `94cfd234/R1-001` + `R4-001`. The nine L14 called unclosable are untouched and
@@ -373,11 +373,11 @@ burned. The provider marked all five informational against that candidate; three
 
 | ID | Lens | Severity | Subject | Status |
 | --- | --- | --- | --- | --- |
-| `ca5c7eda/R2-001` | readability | WARNING | the two prune-tolerance tests asserted only that `validate` succeeds, so a prune that wrongly skipped the pair left both green | **closed** by `aad6a0f` — the test is renamed for the boundary it pins and the differential below can fail |
-| `ca5c7eda/R3-002` | reliability | WARNING | no case asserted a **refusal** near the tolerance, so an unsound prune was invisible | **closed** by `aad6a0f` — `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` plus the tolerance-scale differential |
-| `ca5c7eda/R2-002` | readability | SUGGESTION | the index was four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint | **closed** by `52e7f11` — per-sheet `SheetGrid`, `sheet_of` derived by an iterator |
-| `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `54a0ef1` |
-| `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `54a0ef1` |
+| `ca5c7eda/R2-001` | readability | WARNING | the two prune-tolerance tests asserted only that `validate` succeeds, so a prune that wrongly skipped the pair left both green | **closed** by `b9ccdd6` — the test is renamed for the boundary it pins and the differential below can fail |
+| `ca5c7eda/R3-002` | reliability | WARNING | no case asserted a **refusal** near the tolerance, so an unsound prune was invisible | **closed** by `b9ccdd6` — `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` plus the tolerance-scale differential |
+| `ca5c7eda/R2-002` | readability | SUGGESTION | the index was four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint | **closed** by `c60dff1` — per-sheet `SheetGrid`, `sheet_of` derived by an iterator |
+| `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `5635855` |
+| `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `5635855` |
 
 **The sixteenth is closed** (`odd/tasks/winding-collinear-overlap.md`, S2 = "Ruta B: arreglar en la
 raíz"). `winding::relation` now escalates a shared span to `Crossing` when the two interiors lie on the

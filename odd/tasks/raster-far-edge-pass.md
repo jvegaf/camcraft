@@ -41,13 +41,13 @@ raster contract. The owner has now taken that decision.
 ## Tasks
 
 - T1 — RED: two pins, one for each half of S2 (a stepover that stops short gets the far-edge row; a far
-  edge already on the grid gets no duplicate). Route: parent inline. Commit: `e9c003a`.
+  edge already on the grid gets no duplicate). Route: parent inline. Commit: `cfebb08`.
 - T2 — the rule in `raster_rows` (S2) and every pin it legitimately moves, re-derived not fitted (S3, S4).
-  Route: parent inline. Commit: `e9c003a`.
+  Route: parent inline. Commit: `cfebb08`.
 - T3 — the observable effect (S2): the strip the grid stopped short of is cut, pinned cell by cell on
   the 1 mm lattice rather than through `simulate`'s volume, because that fixture's `uncut` also carries
   D-M5-11's mitered corners and mixing the two would make the number unfalsifiable. Route: parent inline.
-  Commit: `e9c003a`.
+  Commit: `cfebb08`.
 - T4 — differential over the commands the request did not name (S3, S6). **Dropped, on purpose**, and not
   to be read as done: the box cannot compile two trees, so the base-vs-new binary differential was never
   measured. What replaces it is a scope proof plus the repository's own goldens — see L5.
@@ -114,7 +114,7 @@ raster contract. The owner has now taken that decision.
   and 64 095 bytes, results 1 104 and 1 646 bytes) and the authority is **burned**
   (`gentle-ai.review-acknowledged/v1`, consumed revision `sha256:6d078d5c…`).
   **One thing to record honestly about the scope:** the provider chose the committed range from
-  `34f198bf`, so the candidate included the *previous* feature's `cam-geom` commit as well as this one's
+  `ca476b57`, so the candidate included the *previous* feature's `cam-geom` commit as well as this one's
   two. That was its projection decision and it was followed unchanged, not narrowed to the commit the
   parent would have picked — but it means this receipt covers slightly more than this document does.
   **One advisory came back, `informational`, not a correction:** `R3-001` at

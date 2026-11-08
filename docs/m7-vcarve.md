@@ -319,7 +319,7 @@ boundary — and that is what the code does.
 Measured on M6's own fixture (an 80 x 30 mm band pocketed at `y = 60 … 90` in a 200 x 100 mm sheet, a 6 mm
 tool, 1 mm cells), before and after:
 
-| Origin | Before (`9ff0b8c`) | After (`786c3d8` + `228ecc7`) |
+| Origin | Before (`e0d39a3`) | After (`d8cb895` + `4d6849e`) |
 | --- | --- | --- |
 | `bottom_left` | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells | unchanged, byte for byte |
 | `top_left` | removed 14376.000, **gouge 14376.000 over 2396 cells**, **uncut 14400.000 over 2400 cells** | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells |
@@ -356,7 +356,7 @@ test emits its program twice. No map iteration reaches an output path: the axis 
 and then by vertex sequence, the lattice walks in one direction, and the ids a command invents are the
 first free `TPn`.
 
-The pre-existing command surface was then run against `9ff0b8c` in an identical sandbox — same document,
+The pre-existing command surface was then run against `e0d39a3` in an identical sandbox — same document,
 same library, same posts, same geometry, relative paths — **35 invocations**, each from a fresh copy of the
 fixture set, comparing exit code, stdout, stderr and **every produced file** (documents as their
 `document.json` payloads, programs byte for byte, the imported document, the library): `validate` (a good
@@ -381,14 +381,14 @@ Everything else — the `--islands` refusals, the arc and helix post refusals, t
 report at three resolutions, the emitted program, the imported document and the library — is identical,
 byte for byte, and so is `validate`'s sentence for a profile toolpath carrying islands ("takes islands only
 for a pocket or an inlay"), which the CLI cannot produce but a hand-edited archive can. `Cargo.lock` is
-unchanged between `9ff0b8c` and this branch: the same **470** `[[package]]` entries.
+unchanged between `e0d39a3` and this branch: the same **470** `[[package]]` entries.
 
 ## Review
 
 **This milestone's diff has had no native outside view.** The candidate was submitted twice and both times
 was refused in preflight with `lens_context_budget_exceeded` (`mutation_performed: false`, no authority
 created, nothing abandoned, `retry_safe: true`): **4 425 inserted lines across 7 commits**, with `--base-ref`
-set to the branch's cut point `9ff0b8c` and `committed-only` on. The second attempt asked for **one** lens
+set to the branch's cut point `e0d39a3` and `committed-only` on. The second attempt asked for **one** lens
 (`risk`) instead of three and was refused identically, which is the fact worth keeping: the budget is
 bounded by the candidate's size, not by the lens count, so tuning the lens selection cannot make an
 oversized candidate fit — only smaller commits can. The owner's disposition was to disable the review switch

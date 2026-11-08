@@ -3,7 +3,7 @@
 Program plan: `odd/roadmap.md` (M4 = "Core toolpaths"). This document is the executable specification
 for M4 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; `cam-model` (parameters), `cam-toolpath` (the strategies), `cam-cli` (the
-contract). Branch: `feat/m4-toolpaths`, cut from `master` at `1bf8711`; baseline
+contract). Branch: `feat/m4-toolpaths`, cut from `master` at `802f0a3`; baseline
 `./scripts/check.sh` green with **550 tests** before the first write.
 
 ## Specs
@@ -332,28 +332,28 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
 
 | Slice | Tasks | Subject |
 | --- | --- | --- |
-| 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs — **delivered** (`61e1df5`, `a263b28`, `9eb1326`) |
-| 2 | T2, T3, T4 | The two strategies plus the drill bank, in parallel over isolated worktrees — **delivered** (`432e0d4`, `5201ab4`, `229a68d`) |
-| 3 | T5, T6 | Golden G-code, docs — **delivered** (`11ce793`, `7c61d80`), plus the closing fixes in `26b23f7` |
+| 1 | T1 | Model parameters, CLI `toolpath`, dispatch, stubs — **delivered** (`f6641f5`, `3bdec6e`, `aff108b`) |
+| 2 | T2, T3, T4 | The two strategies plus the drill bank, in parallel over isolated worktrees — **delivered** (`26c9ce9`, `d0ec2a6`, `094ca5f`) |
+| 3 | T5, T6 | Golden G-code, docs — **delivered** (`42ca6f1`, `511fd07`), plus the closing fixes in `d07ed7e` |
 
 ## Evidence — commit per task
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `a263b28`, `9eb1326` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `61e1df5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
-| T2 | `35cdf4f` (merge `432e0d4`) | 12 tests. 12 rings at insets 3, 7, … 47 and 32 rows at y = 3, 6, … 96 on a 100 mm square with a 6 mm tool; `[5, 10, 12]` pass chunking with every ring once per pass; allowance shifts every ring and row by exactly 1 mm; analytic chord widths on a circle within 1e-6; arcs kept in rings and absent from rows; tangent row emits no unpaired span; refusals by name. Four spec disagreements found and fixed in the spec rather than worked around (L8) |
-| T3 | `1382e97` (merge `5201ab4`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
-| T4 | `9fa671e` (merge `229a68d`) | 7 bank tests added, the T3 placeholder `a_drill_bank_is_ignored_in_this_task` removed because it pinned exactly what T4 reverses; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm, `bank_travel = 60 mm` against `rapid_length = 120 mm`. A differential check against the base commit showed the un-banked program byte-identical through `toolpath`, `emit` and `inspect`, with banked `emit` differing only in the compensated X |
-| T5 | `11ce793` | 5 tests: `tests/errors.rs` (exhaustive `match`, exact `Display` per variant, "no refusal says not implemented") and three whole-program goldens (as built, after a save/load round trip, and with both toolpaths authored through `cam-cli toolpath`). `NotImplemented` deleted; the M0 profile golden untouched. Its RED for A14 was observed by re-adding the variant twice — once to break exhaustiveness, once to break the message rule |
-| T6 | `7c61d80` | `docs/m4-toolpaths.md` (318 lines: operations, parameter mapping, inset/ring/raster/depth/linking rules, drilling, drill bank, six known limits with their decisions, the error table, the `toolpath` synopsis with every default's source, three worked examples); roadmap M4 row marked delivered plus §4.6 with the evidence table and the corrections; `docs/format.md`'s `References` row generalised from profile to all three cutting operations. Every CLI transcript in the doc was replayed against the real binary |
+| T1 | `3bdec6e`, `aff108b` | 23 tests (6 model, 8 `circle_centre`, 9 CLI binary). The plan is its own commit `f6641f5`, so the slice is plan + model + CLI rather than one 1750-line unit. Model: both operations round-trip, `RetractMode::Amount` serialises as `{"mode":"amount","amount":…}`, an absent bank is omitted, both new kinds refuse open geometry, an unknown `kind` still fails to load. Kernel: `circle_centre` accepts 2 and 4 arc circles either winding and refuses lines, mixed shapes, open contours and arcs with different centres; `pass_depths` extracted so the strategies share one depth rule. CLI: `toolpath` appends and reloads, ids are deterministic, every refusal exits 2 with the file byte-identical, library `stepover`/`stepdown`/`clear_stepover` supply the defaults, `--out` leaves the input alone, `inspect` names each kind and strategy |
+| T2 | `35cdf4f` (merge `26c9ce9`) | 12 tests. 12 rings at insets 3, 7, … 47 and 32 rows at y = 3, 6, … 96 on a 100 mm square with a 6 mm tool; `[5, 10, 12]` pass chunking with every ring once per pass; allowance shifts every ring and row by exactly 1 mm; analytic chord widths on a circle within 1e-6; arcs kept in rings and absent from rows; tangent row emits no unpaired span; refusals by name. Four spec disagreements found and fixed in the spec rather than worked around (L8) |
+| T3 | `1396b44` (merge `d0ec2a6`) | 13 tests. Nearest-neighbour tour with a document-space seed (lowest y, then lowest x, then id; ties within 1e-9 by id) over `Vec` scans; pecks reuse `pass_depths` so the last one lands exactly on `cut_depth`, and `peck_depth == 0` bypasses it for a single plunge; one `Retract` per peck, the last always at `safe_z`; `rapid_length` measured in machine space from `(0,0)`. Square test observed `order = [h1,h2,h3,h4]` and `rapid_length = 110.0 mm`. The T3 test list asked for a `NotACircle` refusal here, but `drill()` never sees contours — `cam-cli` resolves them through `circle_centre` first and `tests/drill_targets.rs` already covers the square — so it stays a CLI-layer error and is not duplicated |
+| T4 | `eb65f95` (merge `094ca5f`) | 7 bank tests added, the T3 placeholder `a_drill_bank_is_ignored_in_this_task` removed because it pinned exactly what T4 reverses; `drill_index = [Some(0), Some(0), Some(1), Some(2)]` for holes at x = 0, 10, 40, 100 with 3 drills at 32 mm, `bank_travel = 60 mm` against `rapid_length = 120 mm`. A differential check against the base commit showed the un-banked program byte-identical through `toolpath`, `emit` and `inspect`, with banked `emit` differing only in the compensated X |
+| T5 | `42ca6f1` | 5 tests: `tests/errors.rs` (exhaustive `match`, exact `Display` per variant, "no refusal says not implemented") and three whole-program goldens (as built, after a save/load round trip, and with both toolpaths authored through `cam-cli toolpath`). `NotImplemented` deleted; the M0 profile golden untouched. Its RED for A14 was observed by re-adding the variant twice — once to break exhaustiveness, once to break the message rule |
+| T6 | `511fd07` | `docs/m4-toolpaths.md` (318 lines: operations, parameter mapping, inset/ring/raster/depth/linking rules, drilling, drill bank, six known limits with their decisions, the error table, the `toolpath` synopsis with every default's source, three worked examples); roadmap M4 row marked delivered plus §4.6 with the evidence table and the corrections; `docs/format.md`'s `References` row generalised from profile to all three cutting operations. Every CLI transcript in the doc was replayed against the real binary |
 
 ## Log
 
 - **L1** — Owner instruction (verbatim, this session): "arranca M4". Read as: author the M4 feature
   document under ODD and start implementing it on a feature branch off `master`.
-- **L2** — Plan: 6 tasks, branch `feat/m4-toolpaths` from `master` (`1bf8711`). Baseline
-  `./scripts/check.sh` green with 550 tests before the first write. Plan commit `61e1df5`.
-- **L3** — Slice 1 evidence: T1 in `a263b28` (model + kernel spine) and `9eb1326` (CLI), 23 tests, 573
+- **L2** — Plan: 6 tasks, branch `feat/m4-toolpaths` from `master` (`802f0a3`). Baseline
+  `./scripts/check.sh` green with 550 tests before the first write. Plan commit `f6641f5`.
+- **L3** — Slice 1 evidence: T1 in `3bdec6e` (model + kernel spine) and `aff108b` (CLI), 23 tests, 573
   total, gates green. Three corrections found by the tests themselves rather than by reading:
   `RetractMode` cannot be a tagged **newtype** over `Length`, because a bare number cannot carry the
   tag — it is a struct-like variant with an `amount` field; the first `circle_centre` tests used
@@ -366,14 +366,14 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   "`pocket` exits with `NotImplemented`" test the task detail proposed. Pinning a stub is exactly the
   M3 L6 defect, and A14 already requires the placeholder to be gone by T5. The stub is covered by
   T2/T3 replacing it and by T5's golden test, and `ToolpathError::NotImplemented` is removed there.
-- **L6** — Slice 2 evidence, drilling: T3 in `1382e97`, merged `5201ab4`; 13 tests, 586 total, gates
+- **L6** — Slice 2 evidence, drilling: T3 in `1396b44`, merged `d0ec2a6`; 13 tests, 586 total, gates
   green. RED was observed for real: all 13 tests failed against the stub with "not implemented yet".
   One spec deviation kept rather than papered over: `drill()` receives `DrillHole`s, not contours, so
   the "square is refused as `NotACircle`" case cannot live in `tests/drill.rs`; it is pinned where the
   resolution actually happens, in `tests/drill_targets.rs` and the CLI layer. The tour's seed is taken
   in document space, which differs from machine space only for `TopLeft`, and only for which hole goes
   first — distances are identical under any origin transform.
-- **L7** — Slice 2 evidence, drill bank: T4 in `9fa671e`, merged `229a68d`; 7 tests, 592 total, gates
+- **L7** — Slice 2 evidence, drill bank: T4 in `eb65f95`, merged `094ca5f`; 7 tests, 592 total, gates
   green. Two spec wordings were wrong and are corrected in place rather than worked around: A9's
   "the head never moves further than `(count-1)*pitch/2` from a hole" cannot hold when the emitted
   position is `centre.x - k*pitch` with `k >= 0` (a hole 92 mm from the origin with 2×32 mm reaches the
@@ -384,7 +384,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   have made the report lie. The CLI's selection summary is best-effort by construction: it prints the
   real strategy's answer when the tool and geometry allow it and says why otherwise, while the append
   itself cannot fail on it.
-- **L8** — Slice 2 evidence, pocket: T2 in `35cdf4f`, merged `432e0d4`; 12 tests, 604 total, gates
+- **L8** — Slice 2 evidence, pocket: T2 in `35cdf4f`, merged `26c9ce9`; 12 tests, 604 total, gates
   green. RED was real (all 12 failed against the stub). Four spec defects were found by implementing
   rather than by reading, and all four are corrected above instead of quietly satisfied:
   (a) the ring stop rules were insufficient — a shrink wider than a feature returns a valid smaller
@@ -398,8 +398,8 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   fits, which is an ordinary pocket with uncleared corners. The refusal test uses a 3 mm pocket.
   Also recorded: rows sit exactly on the inset region's lower edge, so the first row is the one that
   needs the retry, and `Pocketpath.rings` counts rows that emitted at least one span.
-- **L9** — Slice 3 evidence: T5 `11ce793` (the stub deleted, the error contract, three whole-program
-  goldens: 609 tests) and T6 `7c61d80` (the guide and the roadmap evidence), both merged. The golden
+- **L9** — Slice 3 evidence: T5 `42ca6f1` (the stub deleted, the error contract, three whole-program
+  goldens: 609 tests) and T6 `511fd07` (the guide and the roadmap evidence), both merged. The golden
   program is pinned as one 42-line string asserted whole, and it was read line by line against the
   geometry before being pinned — ring insets 3 and 9, arc centres equal to the contour's, both rings at
   Z-6.0000, holes in tour order with pecks at -3 and -6.
@@ -414,7 +414,7 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   (3) The feature document's own task text still carried the two examples its criteria had corrected
   (the 4 mm tool in a 5 mm pocket, and the bank's head-to-hole bound); both now match L7 and L8.
 - **L5** — Slice 2 launched as two writers in isolated worktrees (`../campilot-m4-pocket` on
-  `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `9eb1326`), because pocket and drilling
+  `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `aff108b`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
 - **L11** — A5's lattice is superseded, by the owner's decision recorded in
   `odd/tasks/raster-far-edge-pass.md`. M5's differential found what "the last one is the last grid line

@@ -27,11 +27,11 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns | S1 S2 S4 | parent | `95e2cf1` |
-| T2 | The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified | S1 S3 | parent | `95e2cf1` |
-| T3 | The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged | S2 S3 | parent | `95e2cf1` |
-| T4 | The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it | S3 | parent | `95e2cf1` |
-| T5 | `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1 | parent | `d95445e` |
+| T1 | `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns | S1 S2 S4 | parent | `63e7aa4` |
+| T2 | The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified | S1 S3 | parent | `63e7aa4` |
+| T3 | The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged | S2 S3 | parent | `63e7aa4` |
+| T4 | The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it | S3 | parent | `63e7aa4` |
+| T5 | `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1 | parent | `5332383` |
 
 ## Log
 
@@ -111,7 +111,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   (`crates/cam-cli/tests/script_in_memory.rs`, this document). The commit message carries the evidence
   L6 measured, so the gate and the differential are readable from `git log` and not only from here.
 - **L8 (the native review: approved, receipt burned, and six advisories whose words did not survive).**
-  Lineage **`review-cf16da5a0b71e7b8`** over `f19cf4c..95e2cf1` — the commit L7 made, 9 paths, 910 changed
+  Lineage **`review-cf16da5a0b71e7b8`** over `7cb6fcd..63e7aa4` — the commit L7 made, 9 paths, 910 changed
   lines. Tier **`high`**, on a `process_boundary` signal naming `crates/cam-ui/src/lib.rs` ("code that
   starts other processes"), not a judgement about the change; correction budget **200**, of which **zero**
   was spent. Two START attempts: the first with an explicit lens selection was refused
@@ -152,29 +152,29 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   Per the provider, these are **separate later work and never a reason to re-run this candidate**. The one
   with a behavioural edge is `R4-001`: a future task that guards the commit would close it, and would need
   its own candidate and its own review.
-- **L9 (`R4-001` closed in its own candidate, and the review of that candidate was not due).** `d95445e`
+- **L9 (`R4-001` closed in its own candidate, and the review of that candidate was not due).** `5332383`
   carries T5: RED first — `a_run_that_changed_nothing_does_not_mark_the_document_modified` failed with
   `is_dirty()` true after a successful `# nothing to do` script — then the commit in `chrome.rs` became
   conditional on the document the engine produced differing from the one it was given, which is one
   comparison because `Document` derives `PartialEq`. The test asserts the run painted no diagnostic, the
   document is the one it was given, the modified state is clear **and** `undo()` answers `false`. `cam-ui`
   shell: **128 passed**; panel: **8 passed**; gate green at **1526 tests**.
-  `assess` on that commit (`baseRef: ec89684`, `committedOnly`) answers `risk: medium`, 3 paths, 60 lines,
+  `assess` on that commit (`baseRef: 451d586`, `committedOnly`) answers `risk: medium`, 3 paths, 60 lines,
   **`reviewDue: false`**, reason **`under_budget`** — so no review was started for it, which is the
   provider's own measurement rather than this session's judgement. `inspect` did offer `review.start` for
-  the **accumulated** diff against `f19cf4c` (target `sha256:5eaf9283…`, lineage `review-fa34607b7e771994`),
-  and starting that would have re-reviewed `95e2cf1`, whose receipt is already burned — exactly what L8's
+  the **accumulated** diff against `7cb6fcd` (target `sha256:5eaf9283…`, lineage `review-fa34607b7e771994`),
+  and starting that would have re-reviewed `63e7aa4`, whose receipt is already burned — exactly what L8's
   closure forbids. Nothing was started, so that lineage does not exist and there is no authority to abandon.
 - **L10 (the floor state for the next session).** The feature is **closed**. The last **executable** commit is
-  `d95445e`, with this record's own `docs(odd):` commit on top of it; the tree is clean, and four commits
-  sit local and unpushed: `95e2cf1` (the change), `ec89684` (its review), `d95445e` (`R4-001`) and the sync
+  `5332383`, with this record's own `docs(odd):` commit on top of it; the tree is clean, and four commits
+  sit local and unpushed: `63e7aa4` (the change), `451d586` (its review), `5332383` (`R4-001`) and the sync
   that carries this paragraph. The review lineage `review-cf16da5a0b71e7b8` is approved with its
   receipt burned (`sha256:506f7b2a…`); no authority is open for this feature. What a later session
   inherits: five advisories from L8 that were left open (`R2-001`, `R2-002`, `R2-003`, `R3-001`, `R4-002`,
   all `informational`), the ten unrecoverable advisories named in `odd/tasks/debt-advisories.md`, and the
   store blindness that cost L8's six findings their wording — the one method rule this feature proved
   twice, on its own receipts.
-- **L11 (delivered).** The owner pushed. `origin/master` is `5bed8e1` and the branch is level with it —
+- **L11 (delivered).** The owner pushed. `origin/master` is `098b2e9` and the branch is level with it —
   nothing ahead, nothing behind — so L10's "local and unpushed" describes the state before this entry, the
   way L11 of `odd/tasks/script-panel-mount.md` supersedes its own L6. The delivery that this repository
   leaves to its owner was taken: the four commits are on the remote, this documentation entry is the only

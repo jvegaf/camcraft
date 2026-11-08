@@ -4,7 +4,7 @@ Program plan: `odd/roadmap.md` (M7 = "V-Carve"). This document is the executable
 only. Read this file until `## Log` before implementing any task.
 Stack: the existing Rust workspace (`cam-geom`, `cam-model`, `cam-toolpath`, `cam-move`, `cam-sim`,
 `cam-cli`); no new crate and no new dependency. Branch: `feat/m7-vcarve`, cut from `master` at
-`9ff0b8c`; baseline `cargo test --workspace` green with **975 tests** before the first write.
+`e0d39a3`; baseline `cargo test --workspace` green with **975 tests** before the first write.
 
 ## Specs
 
@@ -181,7 +181,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 - **A8 — Determinism, no new dependency, and the old bytes (S10).** Two runs of every new subcommand
   print and emit identical bytes, the branch order is asserted equal across runs, and a differential
-  over the pre-existing command surface against `9ff0b8c` reports differences only in `--help`, the
+  over the pre-existing command surface against `e0d39a3` reports differences only in `--help`, the
   unknown-`--kind` sentence and the added commands. `Cargo.lock` gains no `[[package]]`. The 975
   pre-existing tests keep passing unmodified except where A7 moves an expectation, and each such move
   is re-derived, never fitted.
@@ -248,14 +248,14 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | `786c3d8` + `228ecc7` |
+| T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | `d8cb895` + `4d6849e` |
 | T1 | `cam-geom`: the exact distance from a point to a region's boundary, over every boundary segment, arcs native; property-checked against a sampled lower bound | A1, D-M7-2 | inline, test-first | |
-| T2 | `cam-geom::medial`: the verified medial axis — nearest-feature lattice, exact bisection, the empty-ball certificate (contacts deduped by point), a stitch pass over refused crossings, deterministic branch order, and the monotonicity property that a finer tolerance never returns more branches | A2, D-M7-2, D-M7-4, D-M7-5 | delegated, test-first (the milestone's research unit, three rounds: T2, T2b, T2c) | `eb989ab` |
+| T2 | `cam-geom::medial`: the verified medial axis — nearest-feature lattice, exact bisection, the empty-ball certificate (contacts deduped by point), a stitch pass over refused crossings, deterministic branch order, and the monotonicity property that a finer tolerance never returns more branches | A2, D-M7-2, D-M7-4, D-M7-5 | delegated, test-first (the milestone's research unit, three rounds: T2, T2b, T2c) | `1e5ce35` |
 | T3 | `cam-model`: `Operation::VCarve` + the parameter record, one shared law beside the tool, refusals at load, `@2` round trip | A1, A4 | inline, test-first | |
 | T4 | `cam-toolpath::vcarve`: walk the branches at `-d/tan(θ/2)`, per-vertex Z feeds, retract between branches, flat-tip and unangled-bit refusals | A3, D-M7-7, S14 | delegated, test-first | |
 | T5 | `cam-cli toolpath --kind vcarve`, the named refusals for every flag it does not have, `inspect`, `--start-depth` refused | A5, D-M7-3, S16 | inline, test-first | |
 | T6 | `cam-sim`: the distance-field claim for a V-carve, `simulate` integration, and the oracle in both signs (square, circle, island; thinned skeleton; too-deep path) | A6, S11 | delegated, test-first | |
-| T7 | Closing evidence: golden programs for a square and a circle region, `docs/m7-vcarve.md`, README status, roadmap §4.10 + M7 ✅ + §6 risk closure, `docs/format.md`, the `9ff0b8c` differential, `./scripts/check.sh` | A1–A8 | delegated | |
+| T7 | Closing evidence: golden programs for a square and a circle region, `docs/m7-vcarve.md`, README status, roadmap §4.10 + M7 ✅ + §6 risk closure, `docs/format.md`, the `e0d39a3` differential, `./scripts/check.sh` | A1–A8 | delegated | |
 
 ## Recorded out of scope
 
@@ -284,7 +284,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   nothing about Flat Depth, which this strategy's parameter set does carry (S6). Asking instead of
   choosing kept the milestone from either inventing a semantic or
   inheriting one silently.
-- **L3 (pre-flight, evidence).** `master` was clean at `9ff0b8c` (`merge: M6 depth-variant strategies`),
+- **L3 (pre-flight, evidence).** `master` was clean at `e0d39a3` (`merge: M6 depth-variant strategies`),
   one worktree, no stale branches, and `cargo test --workspace` green at **975 tests** — the number M6's
   handoff recorded, re-measured rather than trusted. Nothing in the plan described the strategy beyond
   the roadmap's row; S6/S7/S8's vocabulary is what M7 had to reason from. Recorded because "the plan
@@ -327,20 +327,20 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   are byte-identical after all of it: five `emit` fixtures compared with `cmp` and the thread's own
   move dump, 22 `G02`/`G03` lines among them, no difference.
 - **L8 (process, T0's slice and a warning that measures the wrong range).** T0 landed as two commits —
-  `786c3d8` (the `Frame`, the field's mapping, 1044 lines of code and tests plus this document) and
-  `228ecc7` (the program's handedness, 476 lines) — because a new `Frame` with no caller is dead code and
+  `d8cb895` (the `Frame`, the field's mapping, 1044 lines of code and tests plus this document) and
+  `4d6849e` (the program's handedness, 476 lines) — because a new `Frame` with no caller is dead code and
   the handedness fix cannot be separated from the map it uses, while the two are still reviewable alone
   and each passes the suite on its own. Both are past the ~400-line guideline and that is deliberate:
   splitting by layer would leave one commit uncompilable. The commit-slice warning reports "19 commits
   since `origin/master`", which is M6's 17 unpushed commits plus these two — the range it measures is not
-  this branch's work. `git log --oneline 9ff0b8c..HEAD` is the honest count.
-- **L9 (execution, the suite's numbers).** The workspace stood at 975 tests at `9ff0b8c`; T0 added 13
+  this branch's work. `git log --oneline e0d39a3..HEAD` is the honest count.
+- **L9 (execution, the suite's numbers).** The workspace stood at 975 tests at `e0d39a3`; T0 added 13
   (2 `cam-sim/tests/origin.rs`, 4 `cam-model/tests/frame.rs`, 3 `cam-sim/tests/frame.rs`, 3
   `cam-toolpath/tests/frame.rs`, 1 in `cam-cli/tests/cli.rs`) for **988**, green under
   `./scripts/check.sh` with `fmt` and `clippy -D warnings` clean. No pre-existing expectation was moved:
   every change here was additive at `bottom_left`, which is why the differentials could be byte-level.
 - **L10 (execution, T2, the research unit, and the three things measurement decided that this document
-  could not).** `eb989ab` is 2454 authored lines — `cam_geom::medial` (758), its two test files (1112) and
+  could not).** `1e5ce35` is 2454 authored lines — `cam_geom::medial` (758), its two test files (1112) and
   the exact `nearest_point` additions to `Segment` and `Arc` (103). One commit, past the slice guideline
   on purpose: the module, its certificate and its tests are one indivisible claim, and the kernel
   additions exist only to answer "which point" for that certificate. Three rounds of measurement changed
@@ -378,9 +378,9 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   twice and both times blocked in preflight with `lens_context_budget_exceeded`, `mutation_performed:
   false` — no authority was created, nothing was abandoned, and `retry_safe` was true. Two facts are
   worth keeping. *(1) The base the provider picks is the push base, not the branch's own cut point.*
-  `inspect` reported `--base-ref=179d6b3 ... --committed-only=true`, which would have made the candidate
+  `inspect` reported `--base-ref=8a953ba ... --committed-only=true`, which would have made the candidate
   M6's 16 255 unreviewed lines plus M7's — the same whole-branch candidate M6's own review had refused.
-  START was therefore given an explicit `baseRef` of `9ff0b8c` (the `master` tip this branch was cut
+  START was therefore given an explicit `baseRef` of `e0d39a3` (the `master` tip this branch was cut
   from) with `committedOnly: true`, which is the "reduce the candidate scope" the provider's own cause
   text asks for, and which reviews exactly this milestone's work. Even so it refused: **4 425 inserted
   lines across 7 commits**. *(2) The budget is bounded by the candidate's size, not by the lens count.*

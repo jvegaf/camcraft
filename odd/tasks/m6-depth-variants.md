@@ -4,8 +4,8 @@ Program plan: `odd/roadmap.md` (M6 = "Depth-variant strategies"). This document 
 specification for M6 only. Read this file until `## Log` before implementing any task.
 Stack: the existing Rust workspace (`cam-model`, `cam-toolpath`, `cam-move`, `cam-post`, `cam-sim`,
 `cam-cli`, `cam-store`); no new crate and no new dependency. Branch: `feat/m6-depth-variants`,
-cut from `master` at `179d6b3`; baseline `./scripts/check.sh` green with **795 tests** before the first
-write. `feat/m5-simulation` (merged, `697e3b2`) was deleted as part of the same instruction.
+cut from `master` at `8a953ba`; baseline `./scripts/check.sh` green with **795 tests** before the first
+write. `feat/m5-simulation` (merged, `1b42e20`) was deleted as part of the same instruction.
 
 ## Specs
 
@@ -108,7 +108,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   rectangle whose cut edge lies on the stock's low edge and whose other three edges lie outside the
   sheet, so the grid clips exactly the flank that would fall on air.
 - **A10 — Determinism and the old bytes (S6).** Two runs of every new subcommand print and emit
-  identical bytes; the pre-existing subcommand differential still holds against `179d6b3` except for
+  identical bytes; the pre-existing subcommand differential still holds against `8a953ba` except for
   `--help`, the unknown-`--kind` sentence, the new commands themselves, and one error sentence an inlay
   made false. (A10 said "twelve"; M5's own count was twelve *invocations* of ten subcommands — the
   wording is corrected here and the differential is reported by invocation, per L18.)
@@ -231,15 +231,15 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim | A8, S9, S10, D-M6-3 | inline, test-first | `b9b29d9` |
-| T2 | Chamfer: `Operation::Chamfer`, `ToolSpec.included_angle`, `cam-toolpath::chamfer`, CLI `--kind chamfer --chamfer-width`, sim arm, oracle, golden | A2, A8, A9, D-M6-2, D-M6-9, D-M6-10 | delegated (context backstop), test-first | `c9249d6` |
-| T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4, D-M6-11 | delegated, test-first | `5c55544` |
-| T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `76eb4e1` |
-| T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `76eb4e1` |
-| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `6a6676a` |
-| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `6167f37` |
-| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | `45f5f14` |
-| T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | delegated | `fc6de8f` |
+| T1 | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim | A8, S9, S10, D-M6-3 | inline, test-first | `ae44528` |
+| T2 | Chamfer: `Operation::Chamfer`, `ToolSpec.included_angle`, `cam-toolpath::chamfer`, CLI `--kind chamfer --chamfer-width`, sim arm, oracle, golden | A2, A8, A9, D-M6-2, D-M6-9, D-M6-10 | delegated (context backstop), test-first | `93795ee` |
+| T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4, D-M6-11 | delegated, test-first | `63694c0` |
+| T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `93935c3` |
+| T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `93935c3` |
+| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `8487140` |
+| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `330309d` |
+| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | `7063fb3` |
+| T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | delegated | `b7153fb` |
 
 ## Recorded out of scope
 
@@ -256,7 +256,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   choosing: "Limpieza de rama mergeada y después M6" — "Borrar feat/m5-simulation y arrancar M6
   sobre master limpio."
 - **L2 (execution, pre-flight, not a task).** The merged branch `feat/m5-simulation` was deleted
-  (`git branch -d`, was `697e3b2`); the repository was clean at `master` `179d6b3`, in sync with
+  (`git branch -d`, was `1b42e20`); the repository was clean at `master` `8a953ba`, in sync with
   `origin/master`, and M5's handoff said "nothing pushed" — the merge and the push had happened after
   that summary was written, so the summary's next step 1 was already done. Recorded because a stale
   handoff is exactly what a resume must not trust blind.
@@ -273,7 +273,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 - **L4 (execution, T1).** `cam_move::ToolShape` replaced the bare `tool_diameter` on `Segment`:
   `Cylinder { diameter }` and `VBit { included_angle, flat_diameter }`, with `radius_at(depth)` and
   `rise_at_radius(radius)`. The refactor itself was behaviour-neutral and was checked as such before any
-  cone test existed: **795 tests** green, the same number the branch cut from `179d6b3`. The emitter still
+  cone test existed: **795 tests** green, the same number the branch cut from `8a953ba`. The emitter still
   reads no geometry, `cam-cli` builds every segment as `ToolShape::cylinder` from the library's diameter,
   and `cam-ui`'s preview carries the shape so its own field is cut by the tool the program names.
 - **L5 (execution, T1, and a sign error caught before it became a test that agreed with it).** The first
@@ -373,7 +373,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   judgement to the document's steepest grade would license 3 mm of deviation anywhere in a document that
   contains one steep ramp. Rejected; the sampler now takes `max(2·travel/cell, 16·|Δz|/cell)` steps so the
   residual is half the judgement by construction, and the constant-Z count is bit-identical (33,600 of
-  33,600 cell values against `a4487f0`). *(d) The chorded arc ramp.* A ramp across a contour arc was emitted
+  33,600 cell values against `9205816`). *(d) The chorded arc ramp.* A ramp across a contour arc was emitted
   as a straight chord: `gouge 33.228 mm³ over 22 cells` at r = 20. Rejected; refused by name instead, with
   `ramp = 0` on the same contour still emitting arcs, and T7 lifting the refusal when the helix exists. The
   claim's vertex gap the writer found on its own (`gouge 5.750 mm³ over 6 cells` for a correct flute, because
@@ -432,7 +432,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   origin-corner defect as a defect rather than a paragraph, and D-M6-12 / D-M6-14 in §7.
   `ModelError::IslandsRequirePocket` became `IslandsRequirePocketOrInlay` with its sentence and
   `docs/region-booleans.md` updated, because an inlay male carries islands and the old message said only
-  a pocket could. The closing differential against `179d6b3` ran 29 invocations over ten subcommands in an
+  a pocket could. The closing differential against `8a953ba` ran 29 invocations over ten subcommands in an
   identical sandbox, comparing exit code, stdout, stderr and every produced file: **two** deliberate
   differences (`--help` listing nine kinds and the new flags, and the unknown-`--kind` sentence) plus one
   outside that sandbox — the islands refusal, which the CLI cannot author and which this task made false.
@@ -450,7 +450,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   subcommands, as L18's differential reports. Neither changes a decision.
 - **L20 (delivery, the native review this milestone could not have).** The owner-owned review switch is
   on, so the candidate was submitted: `inspect` reported the whole branch ready (46 paths, `workspace`
-  against `master` `179d6b3`), and `start` with all four lenses was refused with
+  against `master` `8a953ba`), and `start` with all four lenses was refused with
   `lens_context_budget_exceeded` — no lineage was created and nothing was mutated, so there was nothing to
   abandon or repair, and the provider states that retrying that exact candidate cannot succeed. The
   candidate is ~16.3k authored lines; the per-commit sizes are 819 (T1), 1777 (T2), 1119 (T3), 3269
@@ -458,7 +458,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   L8 and L10 record: a new `Operation` variant breaks the exhaustive matches of four crates and
   `Move::Helix` breaks the workspace's, so slicing them by layer would leave the tree uncompilable. The
   owner's decision was to merge M6 on its own evidence — **975 tests**, the gate green, and a
-  differential of 29 invocations against `179d6b3` identical in exit code, stdout, stderr and every
+  differential of 29 invocations against `8a953ba` identical in exit code, stdout, stderr and every
   produced file but three deliberate differences — and to carry the native review into M7, whose slices
   are additive over what this milestone landed. Recorded because "merged without a review" and "merged
   after a review the tooling refused" are not the same fact, and the next reader deserves the second one.

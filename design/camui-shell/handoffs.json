@@ -8,7 +8,7 @@
       "sentAt": "2026-11-01T01:37:09.094Z",
       "startedAt": "2026-11-01T01:37:26.020Z",
       "implementedAt": "2026-11-01T01:55:37.583Z",
-      "note": "Implemented in cam-ui (7e09653): app bar, stage bar, stage-scoped 52px rail, 288px collapsible inspector, status bar. Native egui window, so no HTTP preview URL; a screenshot was captured on the machine's display for comparison."
+      "note": "Implemented in cam-ui (5592544): app bar, stage bar, stage-scoped 52px rail, 288px collapsible inspector, status bar. Native egui window, so no HTTP preview URL; a screenshot was captured on the machine's display for comparison."
     },
     "03-iconography.html": {
       "status": "implemented",

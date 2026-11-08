@@ -1,7 +1,7 @@
 # camui-prancheta — the shell redrawn from full-resolution reference frames
 
 Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. T0-T4 landed on
-`feat/camui-prancheta` from `master` @ `a7a701e`, merged into `master` when T4 closed; **from T5 on, each task
+`feat/camui-prancheta` from `master` @ `c0d20bd`, merged into `master` when T4 closed; **from T5 on, each task
 gets its own branch from `master`** (L18). T0-T4 routed inline because no subagents were configured here; that
 premise expired (L19), so T5 on routes to a configured worker.
 
@@ -61,19 +61,19 @@ words: *"design/prancheta-reference/ + README"*.
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T0 | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame | S11 | inline | `a265633` |
-| T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `c9f3c59` |
-| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `fa179ab` |
-| T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `c22f57a` |
-| T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `8a386f2` |
-| T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `38ea6dd` |
-| T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `482625b` |
-| T5 | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20) | S5 | worker | `7cb26ae` |
-| T6 | ✅ delivered — `2D \| 3D` as a mode that splits the canvas, with the overlay row of four checkboxes plus `Centre` and `?`, the home button, the `TOP`/`FRONT`/`RIGHT` triad and the playback bar. Merged into `master` as `c176c62`; the refuter's two defects corrected in `ad0eaaa` (L23) | S8 | inline | `2630feb` |
-| T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `c5f4d78`; the units finding corrected in `620330c` (L25) | S9 | inline | `7df91c9` |
-| T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `42edaab`; two CRITICAL findings corrected in `a282a50` (L27) | S10 | inline | `5140c13` |
-| T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `223e876`, reviewed and approved on the first pass (L29) | S10 | worker | `884732e` |
-| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `00e3e45` (system) `89fa0c1` (01) `4765acd` (02) `dc46eaf` (04) `7c54886` (03 + manifest), all on `feat/camui-prancheta-t9`, **not merged and not pushed** (L31) | S1 | inline | `00e3e45..7c54886` |
+| T0 | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame | S11 | inline | `c38e3d0` |
+| T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `0a4aabb` |
+| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `15c3a61` |
+| T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `7d264df` |
+| T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `7bb59f4` |
+| T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `91cb573` |
+| T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `a9e3ed3` |
+| T5 | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20) | S5 | worker | `e1a68ce` |
+| T6 | ✅ delivered — `2D \| 3D` as a mode that splits the canvas, with the overlay row of four checkboxes plus `Centre` and `?`, the home button, the `TOP`/`FRONT`/`RIGHT` triad and the playback bar. Merged into `master` as `5ebdb79`; the refuter's two defects corrected in `6a669e7` (L23) | S8 | inline | `be33e3f` |
+| T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `26c4e1c`; the units finding corrected in `dc95de0` (L25) | S9 | inline | `475c341` |
+| T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `5e3cc1c`; two CRITICAL findings corrected in `a48e43d` (L27) | S10 | inline | `0e7d25b` |
+| T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `c92e9dd`, reviewed and approved on the first pass (L29) | S10 | worker | `1241963` |
+| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `d9fa59a` (system) `5824453` (01) `2532e05` (02) `86a6e47` (04) `4684ec8` (03 + manifest), all on `feat/camui-prancheta-t9`, **not merged and not pushed** (L31) | S1 | inline | `d9fa59a..4684ec8` |
 
 ## Backlog
 
@@ -85,7 +85,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
 | `chrome.rs` frame diagram | the module doc still draws `│ 52 │` for the rail while `palette_width` is 200 and `chrome.rs:414` applies it — a comment that disagrees with the code it heads, outside a design task's surfaces | `chrome.rs:12`, `theme.rs:373` |
 | Advisories ×44 | `informational` findings from this feature's review receipts, none of them blocking. The count is the one the last review states it is owed | the `Advisories` paragraph of each review entry in `## Log` |
 | `PASSES` unit bug | the readout prints `Length` in mm whatever `rate_units` says — a true sentence about the wrong unit | L25 |
-| Dead `segmented` wrapper | left behind by `ad0eaaa`; no live caller | the entry that records `ad0eaaa` |
+| Dead `segmented` wrapper | left behind by `6a669e7`; no live caller | the entry that records `6a669e7` |
 
 ## Log
 
@@ -93,7 +93,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   implementar asi la ui"
 - **L2.** Owner's three decisions, verbatim: *"Inglés (mantener lo actual)"*, *"Sacarla, modelo Prancheta puro"*,
   *"design/prancheta-reference/ + README"*. Recorded as S3, S2 and S11.
-- **L3 (T1: the stage bar and the stage are gone).** `c9f3c59`, 1210 tests pass. What went: the `Stage` enum,
+- **L3 (T1: the stage bar and the stage are gone).** `0a4aabb`, 1210 tests pass. What went: the `Stage` enum,
   `Readiness`, `counted`, `Stage::{ALL,label,note,readiness,count,hover,runs}`, `Shell::stage`,
   `Shell::set_stage`, `Shell::stage_bar`, `DrawnState::stage`. What replaced the one thing the strip did that
   was worth keeping: `next_step(app)` — the same two facts (no vectors on the sheet, no toolpaths in the
@@ -109,7 +109,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   repository, so the evidence-budget rule, the writer rule and the context backstop have no configured target.
   Every task below routes inline and the fallback is recorded here rather than silently taken.
 - **L5 (the first review: approved, and four advisories that are all about the evidence).** Candidate
-  `a7a701e..30e130d` (T0+T1, 22 paths, 1115 lines), lineage `review-d5ba49d2146ee31a`, tier **high**, three
+  `c0d20bd..e02c44d` (T0+T1, 22 paths, 1115 lines), lineage `review-d5ba49d2146ee31a`, tier **high**, three
   lenses (`risk`, `readability`, `reliability`), authority **burned** (`gentle-ai.review-acknowledged/v1`).
   Cost: 3 model runs, ~99.7 kB of prompt each. **Approved with no blocking finding.**
   The tier was high for two reasons the provider named itself, and one of them is a defect I introduced:
@@ -209,13 +209,13 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   `opening_and_saving_stamp_the_brand_block_with_the_files_own_write` (open a real `.c2d`, check the stamp is
   the file's mtime, edit, check `Unsaved changes`, save, check the stamp followed the write).
 - **L11 (the slice boundaries, and what delivery is not).** The branch now holds four slices, each one a commit
-  boundary and a review unit: `a7a701e..30e130d` (T0+T1, already reviewed and approved — L5, lineage
-  `review-d5ba49d2146ee31a`), `fa179ab` (T2a), `c22f57a` (T2b-i) and `8a386f2` (T2b-ii). 2 125 authored lines
+  boundary and a review unit: `c0d20bd..e02c44d` (T0+T1, already reviewed and approved — L5, lineage
+  `review-d5ba49d2146ee31a`), `15c3a61` (T2a), `7d264df` (T2b-i) and `7bb59f4` (T2b-ii). 2 125 authored lines
   over `origin/master` in eight commits, against the ~400-line guidance per slice: the boundaries above are the
   answer to that, not one diff to review in a sitting, and the delivery shape (chained PRs, one per slice) is
   the owner's decision. Nothing is pushed and nothing is merged from here.
 - **L12 (the second review: approved, authority burned, and the sandbox that nearly stopped it).** Candidate
-  `a7a701e..e305ce5d` (25 paths, 2 154 lines, T0 through T2b-ii), lineage `review-c38fa3367409c3bb`, tier
+  `c0d20bd..e305ce5d` (25 paths, 2 154 lines, T0 through T2b-ii), lineage `review-c38fa3367409c3bb`, tier
   **high** for `process_boundary` (`crates/cam-ui/src/lib.rs` starts subprocesses), three lenses (`risk`,
   `readability`, `reliability`), correction budget 200 — **unused, no correction was required**. Three reviewer
   runs over the pi host relay (169.7 kB of prompt each), **approved on the last admitted event**, authority
@@ -236,7 +236,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   to 512 for that one cgroup, and the same START then succeeded on the first attempt. **The linker workaround in
   L9 is therefore a symptom of the same limit, not a property of the toolchain**, and a session that starts with
   `pids.max` back at 64 will see both failures again.
-- **L13 (T3: the ribbon, the task editor, and four things the panel had to decide).** `38ea6dd`, 110 shell tests
+- **L13 (T3: the ribbon, the task editor, and four things the panel had to decide).** `91cb573`, 110 shell tests
   and the whole workspace green. The tab row is gone: `TOOLPATHS`, `RELIEF AND 3D PART` and `MACHINE AND OUTPUT`
   are glyph rows (the profile toolpath, the relief, the post-processor — three glyphs the set already had, and no
   new symbol drawn for a row nobody has seen), and opening one puts a task editor over the body with a header
@@ -293,7 +293,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   **One process note for the next session:** the whole-branch projection means every review re-reads T0
   onwards, and a 3-lens pass over 2 839 lines costs roughly 600 kB of prompt. The slices in L11 are the answer;
   until delivery splits them, each new work unit pays that bill.
-- **L16 (T4: the three zones, and the two things that left the bar to make room).** `482625b`, **1226 tests
+- **L16 (T4: the three zones, and the two things that left the bar to make room).** `a9e3ed3`, **1226 tests
   pass workspace-wide** (114 of them in the shell target). The bar is the reference's three zones: `X … Y …`
   on the left with the zoom and the steps available in each direction, the five chips in the middle, and the
   sentence the last action produced at the right end.
@@ -324,7 +324,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      tested.
   **Slice:** 253 authored lines across two files, under the ~400-line guidance, and one commit because the two
   report fields, the paint and the tests describe one rule. It is the seventh slice on this branch (T0+T1,
-  T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `a7a701e`,
+  T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `c0d20bd`,
   and splitting the delivery into chained PRs remains the owner's decision (L11).
 - **L17 (the T4 review: two harness failures, then a narrowed candidate and an approval).** Lineage
   `review-ba4913842ce49c58`, tier **high** (`process_boundary` — `crates/cam-ui/src/lib.rs` starts
@@ -342,7 +342,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   (`origin/master..HEAD`: 25 paths, ~3 200 lines) came back `lens_context_budget_exceeded` in **preflight** —
   no authority created, nothing to repair. This is L15's process note turning into a hard stop: past roughly
   this size the candidate is **no longer reviewable at all**, whatever the lens count. The contract's own
-  remedy is to reduce the scope, so the third attempt named the candidate explicitly — `baseRef 523edd9`,
+  remedy is to reduce the scope, so the third attempt named the candidate explicitly — `baseRef 46a0204`,
   `committedOnly: true`, i.e. **T4 and its doc and nothing else**, the delta no earlier receipt covers (T0+T1 is
   L5, through T2b-ii is L12, T3 is L15). It created the lineage on the first try.
   **Consequence for delivery, and it is no longer advisory:** from here on a receipt is only obtainable per
@@ -353,12 +353,12 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   this feature already owes.
   **Two of them were the same defect and it was mine, so it was taken immediately:** inserting `grid_chip`
   anchored on `fn apply_command` split that function's doc comment in two, leaving `apply_command`
-  undocumented and the grid chip wearing both contracts. `9d7bc11` moves the doc block back. A function whose
-  documentation describes another function is worse than an unreviewed follow-up — but **`9d7bc11` is not
+  undocumented and the grid chip wearing both contracts. `33f78f0` moves the doc block back. A function whose
+  documentation describes another function is worse than an unreviewed follow-up — but **`33f78f0` is not
   covered by this receipt**, and it is written down here so the next candidate knows it.
 - **L18 (the owner's delivery decision: one branch per task).** The owner's exact words: *"mergea, limpia y
   arrancamos una rama por task"*. That settles the question L11, L16 and L17 kept handing back: the merged unit
-  is T0-T4 (18 commits, `a7a701e..c7b30d3`) into `master`, **locally — `origin/master` is untouched, and a push
+  is T0-T4 (18 commits, `c0d20bd..e29dcd6`) into `master`, **locally — `origin/master` is untouched, and a push
   stays the owner's decision**; the feature branch is deleted with the merge, because a merged branch is not a
   place to keep working; and from T5 on every task gets its own branch cut from `master`.
   **What this buys, measured rather than hoped:** each task's review candidate becomes `master..HEAD` at the end
@@ -370,7 +370,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   returned an empty list. The record is corrected rather than quietly rewritten: **T0-T4 did route inline and
   that was true when it was written**, and **T5 on routes to the configured worker**, with the parent keeping
   the feature document, the commits and the review candidates.
-- **L20 (T5: the two rulers, and the three things an independent read caught).** `7cb26ae` (code) and this
+- **L20 (T5: the two rulers, and the three things an independent read caught).** `e1a68ce` (code) and this
   slice's correction, workspace green at **1239 tests**. `crates/cam-ui/src/ruler.rs` (new) draws the two 22 px
   bands from three palette roles — `Panel` for the band, `TextDim` for the ink, `Cut` for the marker — stepping
   by `cam_view::nice_spacing` at the grid's own target and numbering the world coordinate the camera puts
@@ -380,7 +380,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   handoff named the document, the task and S5 rather than restating them.
   **The independent verify could not run a single test.** Its cgroup sat at 63/64 PIDs and 3.0/3.2 GiB, so
   `rustc` died with `install_ctrlc_handler: WouldBlock` before building a crate; every verdict it returned was
-  static, and it said so. The executed evidence is the parent's: 1238 tests at `7cb26ae`, 1239 after the
+  static, and it said so. The executed evidence is the parent's: 1238 tests at `e1a68ce`, 1239 after the
   correction. What the static read was worth: three findings, none cosmetic, all taken.
   1. **One new test could not fail.** `the_drawing_is_still_framed_inside_the_rulers` checked the document's
      corners against a rect derived from `output.canvas`, and the fit's 32 px padding is wider than the 22 px
@@ -407,7 +407,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   `reliability`), 5 paths, 1 080 changed lines, correction budget 200 — **unused, nothing to correct**. Three
   reviewer runs over the pi host relay (62.2 kB of prompt each), **approved**, authority **burned**
   (`gentle-ai.review-acknowledged/v1`, revision `sha256:e40de020…`). Delivery stays ordinary repository policy.
-  **The narrowing paid off exactly as L18 predicted:** the candidate was `4c619e1..HEAD` — five paths, this
+  **The narrowing paid off exactly as L18 predicted:** the candidate was `79f40a4..HEAD` — five paths, this
   branch and nothing else — against the 26-path whole-branch projection that had died on
   `lens_context_budget_exceeded` in T4. One branch per task turned a hard stop into a normal review.
   **Two START attempts died before the provider.** Both `pre_native`, both `git_command_failed`,
@@ -418,7 +418,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   time; the rule is now explicit rather than re-derived per session.
   **Three advisories, all `informational`, none blocking:** `R2-001` (`lib.rs:1938-1948`), `R2-002`
   (`ruler.rs:112-132`, a suggestion), `R3-001` (`lib.rs:1940-1948`). They join the twenty-four this feature
-  already owes. Note what the candidate *already* contained when the reviewers saw it: `b349d28`, the two test
+  already owes. Note what the candidate *already* contained when the reviewers saw it: `b0c732d`, the two test
   corrections and the wheel test that the independent read demanded. The review judged the corrected tree, not
   the first delivery.
 - **L22 (T6: the split, and six existing tests that had to change).** `2D | 3D` moved out of the app bar and
@@ -491,12 +491,12 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   fresh idempotency key, accepted); the targeted-validator binding was rejected twice — once because it was
   reconstructed **without** `validationRequest`, and `gentle_review_capture` refuses to run from `codemode` —
   and only the provider's **whole** object, passed as a direct call, was accepted. The candidate itself was
-  committed as `2630feb` + `86ebe33` and corrected by `ad0eaaa`; the workspace has **1 256 tests, exit 0** after
+  committed as `be33e3f` + `2acfdb4` and corrected by `6a669e7`; the workspace has **1 256 tests, exit 0** after
   the correction.
   **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
   `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
 - **L24 (T7: the tool library, and the formatting debt paid before it).** Two commits, in this order and on
-  purpose: `aa6393a` formats the crate, `7df91c9` is T7. **L22 assumed the formatting debt was one file; it was
+  purpose: `14890ec` formats the crate, `475c341` is T7. **L22 assumed the formatting debt was one file; it was
   four** — `ruler.rs`, `view3d.rs`, `tests/shell.rs` and `tests/view3d.rs` were all dirty against the
   repository's own `rustfmt.toml` (`tab_spaces = 2`), verified by reformatting each `master` version and
   comparing byte for byte. The sweep is exactly that reformatting, nothing else, and `cargo fmt --check` now
@@ -533,7 +533,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   bugs in its first cut (the modal reported the *previous* selection for one frame, which is L13's defect one
   layer down), which is why the tree is drawn first and the detail resolved between the columns.
   **Workspace: 1 273 tests, exit 0** (baseline 1 256; cam-ui 228 → 245). **One loose end, not T7's:** `segmented`
-  is now dead code — `ad0eaaa` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
+  is now dead code — `6a669e7` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
   without a caller, so the crate carries a `never used` warning that pre-dates this task. It gets its own commit,
   outside any review candidate, rather than riding in T7's diff.
 - **L25 (the T7 review: one finding, and it was about units).** Lineage `review-e4268ddae85fe9c0`, tier
@@ -547,7 +547,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   carrying two units, which is the one thing a rate cannot do.
   **It was not a label bug, and treating it as one would have been worse.** `cam-store` documents the field as
   *"Units the rates were authored in. Stored rates are millimetres per second."* Renaming the suffix would have
-  left a millimetre-per-second number wearing an inch label. `620330c` therefore **converts** the stored value
+  left a millimetre-per-second number wearing an inch label. `dc95de0` therefore **converts** the stored value
   into the authored unit (`/ MM_PER_INCH`) and labels it with that unit, so the two rows agree and the number is
   the one the operator typed. `a_rate_is_shown_in_the_units_the_library_authored_it_in` pins the inch path
   (`3.94 in/s`, `Rates in/s`) **and** the millimetre path (`100.00 mm/s`) so the fix cannot move a number a
@@ -559,11 +559,11 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   **Seven advisories, all `informational`:** `R2-001` (`tool_library.rs:310`), `R2-002` (`:38-40`), `R2-003`
   (`:129`), `R2-004` (`tests/tool_library.rs:884-889`), `R3-002` (`:216`), `R3-003` (`:1046`) and `R3-004`
   (`:1067-1073`). They join the twenty-nine this feature already owes.
-  **One process note, applied rather than re-learned:** the candidate was `aa6393a..HEAD`, so the formatting
+  **One process note, applied rather than re-learned:** the candidate was `14890ec..HEAD`, so the formatting
   sweep stayed out of the reviewers' diff, and the targeted-validator binding went in **whole** — with its
   `validationRequest` — on the first attempt, which is L23's lesson used instead of paid for again.
-- **L26 (T8: one surface, a draft, and the one place the spec could not be followed).** `5140c13` (code) on top
-  of `d142371` (the formatting debt my own L25 correction left in `tests/tool_library.rs` — one long
+- **L26 (T8: one surface, a draft, and the one place the spec could not be followed).** `0e7d25b` (code) on top
+  of `de79460` (the formatting debt my own L25 correction left in `tests/tool_library.rs` — one long
   `assert_eq!`, paid in a commit of its own so it is not in the candidate). `crates/cam-ui/src/strategy.rs`
   (~1 000 lines) makes the TOOLPATHS body the strategy editor: the **document decides the subject**, so no
   toolpath opens `New toolpath · <name>` and one opens `Edit · <name>`, both on the same surface with the name,
@@ -614,7 +614,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   every number typed into `CUT` and the quick block, and the pocket's clearing pattern — then `Generate` wrote
   those defaults into the document. **`R2-001`:** while editing, pressing `Pocket` rewrote the draft's name to
   `Pocket 1` even though `Generate` emits only `SetToolpathOperation` and cannot rename, so the header read
-  `Edit · Pocket 1` over a document still called `Profile 1`. **`a282a50` (92 diff lines)** makes `choose_kind`
+  `Edit · Pocket 1` over a document still called `Profile 1`. **`a48e43d` (92 diff lines)** makes `choose_kind`
   return when the kind is unchanged, and leave the name alone while editing — the name is the document's reading
   and nothing on that surface can change it.
   **The lesson is about my own test, and it is worth more than the fix.** I wrote the R2-001 test, reversed the
@@ -625,8 +625,8 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   try, which is exactly what made the first one's silence suspicious. Both are now RED-verified.
   **Four advisories, all `informational`:** `R2-002` (`strategy.rs:181`), `R2-003` (`:183`), `R2-004`
   (`:802-840`) and `R3-002` (`:225-226`). They join the thirty-six this feature already owes.
-- **L28 (the rename command the editor was missing).** `884732e` on `feat/camui-toolpath-rename`, cut from
-  `42edaab`: `cam_app::Command::SetToolpathName { toolpath_id, name }` with its own label, its dispatch through
+- **L28 (the rename command the editor was missing).** `1241963` on `feat/camui-toolpath-rename`, cut from
+  `5e3cc1c`: `cam_app::Command::SetToolpathName { toolpath_id, name }` with its own label, its dispatch through
   `toolpath_index`, and a new `CommandError::EmptyToolpathName`. The refusal needed its own variant rather than
   `EmptyText`, which is about drawn text: reusing it would have been a true sentence about the wrong thing.
   The assignment happens **after** the checks, so a refusal writes nothing. `cam_ui::UiAction::SetToolpathName`
@@ -662,27 +662,27 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   (`:479-482`) and `R3-003` (`tests/strategy.rs:625-628`). They join the forty this feature already owes. None
   of them is a reason to re-review this candidate; its receipt stands.
 - **L30 (the ODD record brought back in line with `master`, on the owner's word).** Owner: "sanea primero".
-  The task table had stopped telling the truth: **T6, T7 and T8 were merged** (`c176c62`, `c5f4d78`, `42edaab`)
+  The task table had stopped telling the truth: **T6, T7 and T8 were merged** (`5ebdb79`, `26c4e1c`, `5e3cc1c`)
   and their rows still read a bare description with no tick and no commit — the shape of a task nobody
   delivered. Three rows now carry what each one actually landed, its merge commit and its **feat** commit — the
-  column's existing convention, which `482625b` on T4 settles: the commit that landed the behaviour, not the
+  column's existing convention, which `a9e3ed3` on T4 settles: the commit that landed the behaviour, not the
   branch tip and not the entry that documents it — plus the commit that corrected it. A **fourth delivered task
-  was missing from the table entirely**: the rename (`884732e`, merged `223e876`) exists in the Log as L28/L29
+  was missing from the table entirely**: the rename (`1241963`, merged `c92e9dd`) exists in the Log as L28/L29
   but was never a row, so it is now T8b under S10 — the spec that asked for the name field in the first place,
   and L28 already says a worker delivered it, which is why its `Route` cell can be filled and its older
   siblings' cannot. The debt this feature owes was also only legible by
   reading twelve review entries in order; it is now a `## Backlog` table that names the four items and points
   at the entry that holds each one, so nothing is restated (a restated inventory goes stale, and that is the
-  defect this entry repairs). **No code touched, no test changed**: the workspace is `master` @ `223e876`,
+  defect this entry repairs). **No code touched, no test changed**: the workspace is `master` @ `c92e9dd`,
   1 295 tests green, tree clean. **One cell left as it was, because I could not verify it rather than guess:**
   T6, T7 and T8 read `inline` in the `Route` column while L19 says every task from T5 on routes to a worker, and
   T5's own row says `worker`. The commit history cannot tell an inline delivery from a delegated one, so the
   contradiction is recorded here instead of being papered over.
 - **L31 (T9: the design artefacts re-synced to the delivered shell, and the four lies my own brief carried).**
-  Branch `feat/camui-prancheta-t9` cut from `master` @ `2e52952`. Five commits, one per argument, because the
-  whole task is 2 283 changed lines and a single commit would be unreviewable: **`00e3e45`** the authority
-  (`design/system.md` + `system.html`), **`89fa0c1`** the 2D shell, **`4765acd`** the workflow board,
-  **`dc46eaf`** the token board, **`7c54886`** the icon board and the manifest. **Not merged, not pushed** —
+  Branch `feat/camui-prancheta-t9` cut from `master` @ `6310702`. Five commits, one per argument, because the
+  whole task is 2 283 changed lines and a single commit would be unreviewable: **`d9fa59a`** the authority
+  (`design/system.md` + `system.html`), **`5824453`** the 2D shell, **`2532e05`** the workflow board,
+  **`86a6e47`** the token board, **`4684ec8`** the icon board and the manifest. **Not merged, not pushed** —
   delivery is the owner's decision, and the slice boundaries are those five commits, in that order.
   **What was wrong, measured against the code rather than against the old board.** `system.md` documented a shell
   from before this feature: a stage bar, an `Inspector` with `Selection`/`Toolpath`/`Material` tabs, a "52 px rail"
@@ -737,7 +737,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   branch as a single candidate was **refused by the provider**, not by me: `lens_context_budget_exceeded` — 8 paths
   and ~2 300 lines of HTML exceed the reviewer's evidence budget, `mutation_outcome: none`, no authority created,
   nothing burned, and the cause says retrying that exact candidate cannot succeed. The fix the cause names is a
-  chained sequence of smaller candidates, so the branch was re-cut as six branches off `2e52952`, each containing
+  chained sequence of smaller candidates, so the branch was re-cut as six branches off `6310702`, each containing
   only its own slice's paths (`review/t9-1` … `review/t9-6`, kept as the exact reviewed trees).
   **Five candidates now carry a burned receipt, all approved, none corrected:**
   `review-5b02c33628496345` (`system.md` + `system.html`, tier medium, one `review-reliability` run,
@@ -757,7 +757,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   counts as an *executable change* (`risk_reasons: executable_change`), so the design boards are reviewed as
   software, not as prose. That is why each slice cost one real reviewer run instead of closing instantly like the
   documentation-only candidate in L30 did.
-  **Delivery state, and it is the owner's:** `feat/camui-prancheta-t9` @ `3a14cc7` holds the seven commits, all five
+  **Delivery state, and it is the owner's:** `feat/camui-prancheta-t9` @ `4d17aca` holds the seven commits, all five
   artefact slices carry burned receipts, the branch is **not merged into `master` and not pushed**, and `master`
-  stayed at `2e52952` throughout. The review lifecycle stops at acknowledgement; commit, push and merge follow
+  stayed at `6310702` throughout. The review lifecycle stops at acknowledgement; commit, push and merge follow
   ordinary repository policy.

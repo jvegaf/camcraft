@@ -40,13 +40,13 @@ This feature connects the three.
 ## Tasks
 
 - T1 — the capability in `cam-ui` (S2, S3, S4): the action, the load, the three resets, the name in the
-  bar, and its tests. Route: delegated worker. Commit: `c70c1c4`.
+  bar, and its tests. Route: delegated worker. Commit: `085ddea`.
 - T2 — the host's dialog (S1, S2, S5): `rfd` in `cam-desktop`, the Open intent answered with a path.
-  Route: parent inline. Commit: `c70c1c4`.
+  Route: parent inline. Commit: `085ddea`.
 - T3 — the documents (S1, S2, S5): `README.md`, the two shell records, and `docs/` — which turned out to
   need nothing, because nothing in it was stale about this (checked, not assumed). Route: delegated
   worker. Commit: the commit that carries this line.
-- T4 — gate, commits, native review (S6). Route: parent. Commit: `c70c1c4` plus the record commits.
+- T4 — gate, commits, native review (S6). Route: parent. Commit: `085ddea` plus the record commits.
 
 ## Log
 

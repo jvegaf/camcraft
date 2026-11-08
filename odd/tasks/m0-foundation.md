@@ -53,17 +53,17 @@ against.
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `9405bb8` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0 |
-| T2 | `3a0aaae` | `cam-units`; 10 tests green, incl. 3 property tests |
-| T3 | `7ffbd98` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
-| T4 | `6b15cad` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
-| T5 | `3d298f6` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected |
-| T6 | `3e0758c` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite |
+| T1 | `1d11e99` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0 |
+| T2 | `16d98dd` | `cam-units`; 10 tests green, incl. 3 property tests |
+| T3 | `f33f630` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
+| T4 | `efebf40` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
+| T5 | `0d552ab` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected |
+| T6 | `8d780dc` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite |
 | T7 | `62fd277` | SQLite tool library; 7 tests green, incl. a real v1→v2 migration of a hand-built legacy file |
-| T8 | `83dead6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line |
-| T9 | `a3cb385` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal |
-| T10 | `1621854` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping) |
-| T11 | `78ad9e9` | CLI + end-to-end golden program through the real binary; 12 tests green |
+| T8 | `4ee3ab6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line |
+| T9 | `b0f1d68` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal |
+| T10 | `3a48ef6` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping) |
+| T11 | `5f86271` | CLI + end-to-end golden program through the real binary; 12 tests green |
 | T12 | `HEAD` | `README.md`, `docs/format.md`, roadmap status, corrected evidence |
 
 ## Tasks

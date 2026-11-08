@@ -43,7 +43,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   (0 / 1) pasa". `94cfd234/R1-001` + `R4-001`: "Sí, índice + salida temprana". The nine unrecoverable
   advisories (`bd99706d` ×6, `1ab52143` ×3, `b5fe4921/R3-001`): "Re-filear con una review fresca".
 - **L3 (reconnaissance: all seven are still open on the current tree).** Verified read-only at HEAD
-  `20c7cf1`; every advisory's subject still exists, and two of its line numbers moved.
+  `70c5004`; every advisory's subject still exists, and two of its line numbers moved.
   (a) `NESTING_COST_SUM_TOLERANCE` is `crates/cam-model/src/lib.rs:1910`, used only at `:1966` and
   `:1971`; the doc `:1903-1909` already says absolute and inclusive, and the sum rule is gone, so
   only the name is stale. (b) `NestingPart::bounds` doc `:977-980` claims two `None` cases while
@@ -112,7 +112,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   `fmt --check`, `clippy -D warnings` and the whole workspace: **all gates green, `CHECK_EXIT=0`**,
   `crates/cam-model`'s document target at **96 passed** (92 before this work, plus T4's rewritten test
   and T5/T6's three and T7's tripwire). Delivered in three commits on `feat/advisory-debt-close`:
-  `c16afd6` (T4 alone), `5190f3e` (T1-T3, T5, T6) and `6e0b085` (T7) — **427 authored changed lines**,
+  `189fbe0` (T4 alone), `5a7d770` (T1-T3, T5, T6) and `7ed2ef9` (T7) — **427 authored changed lines**,
   so the slice boundary is here and the documentation rides on top of it rather than inside any of them.
   **And one finding none of the seven predicted.** While building T6's fixture, the honest shape for
   "two placements overlapping on one sheet" — `[0..100]` and `[50..150]` in x, same y extent —
@@ -125,7 +125,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   the sixteenth advisory in `odd/tasks/debt-advisories.md` L17, **not fixed**: the fix is shared
   geometry with four consumers and belongs in its own feature with its own review.
 - **L9 (T8, the review: six findings, one of them CRITICAL, and it was right).** Lineage
-  **`review-ca5c7eda65951600`** over `master` (`c20c7cf1`..`54a0ef1`), tier `high` on a
+  **`review-ca5c7eda65951600`** over `master` (`c20c7cf1`..`5635855`), tier `high` on a
   `process_boundary` signal, four provider-chosen lenses (risk, resilience, readability, reliability),
   579 original changed lines, correction budget **200**, one refuter run and one targeted validator run
   besides the four reviewers. Four reviewer runs produced **six findings, five against this sweep's own
@@ -147,7 +147,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   **The refuter corroborated** `R4-LOAD-REGRESSION` (`outcome: corroborated`) and the state went
   `correction_required` with a budget of 200 diff lines and one finding in scope.
 - **L10 (the correction, and the two walls in front of it).** Plan declared at **161 diff lines** and
-  accepted; the correction is `54a0ef1`: the running maximum is gone, replaced by a **uniform per-sheet
+  accepted; the correction is `5635855`: the running maximum is gone, replaced by a **uniform per-sheet
   grid over x** — a candidate is reached only through a cell the placement being tested also occupies,
   with a `visited` stamp so a sheet-spanning box is met once per placement, and **both** cheap interval
   guards (x and y) now run before `footprints_overlap`. Measured by mutation: the finding's own load
@@ -170,7 +170,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   validation and the acknowledgement all went through the offered routes.
 - **L11 (what the review left open, which is not a reason to re-review anything).** Five findings are
   **informational** by the provider's own statement and none reopens the candidate:
-  `R1-001` and `R3-001` are the load regression's other two lenses and are **answered** by `54a0ef1`
+  `R1-001` and `R3-001` are the load regression's other two lenses and are **answered** by `5635855`
   (both called for the guard the grid now carries); `R2-001`, `R2-002` and `R3-002` are **open**, small
   and real, and they are the sweep's own successor advisories — the tests that assert only acceptance
   (`R2-001`, `R3-002`) and the four parallel arrays that would silently read a wrong sheet

@@ -62,7 +62,7 @@ The decisions are D-M6-1 … D-M6-14 and the log is L1 … L17 in the
 document — `inlay` appends two. The schema stays `c2d/document@2`: the variants are additive under the
 existing `kind` tag, an unknown `kind` is still a hard load error, and every document written before M6
 still loads and re-saves byte-identically. That is not decoration — it is the property the closing
-differential measured against `179d6b3` (see [Determinism](#determinism-and-the-old-bytes)).
+differential measured against `8a953ba` (see [Determinism](#determinism-and-the-old-bytes)).
 
 | Kind | In the document | Passes | The Z law | Cuts from |
 | --- | --- | --- | --- | --- |
@@ -498,7 +498,7 @@ and of every other new kind are asserted byte-for-byte, from the document on dis
 No map iteration reaches an output path: the pattern is a `Vec`, the lattice is walked in one direction,
 and the ids a command invents are the first free `TPn`.
 
-The pre-existing command surface was then run against `master`'s tip `179d6b3` in an identical
+The pre-existing command surface was then run against `master`'s tip `8a953ba` in an identical
 sandbox — same document, same library, same post, same geometry, relative paths, 29 invocations covering
 `validate`, `inspect`, `toolpath` (profile, pocket offset, pocket raster with an island, drilling with a
 bank), `emit`, `check`, `postp validate`, `tools list`, `tools add`, `import` (both forms, one writing a

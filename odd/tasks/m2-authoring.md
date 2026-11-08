@@ -214,20 +214,20 @@ context across a slice:
 | 3 | T8–T10 | Document commands: draw, transform, edit |
 | 4 | T11–T13 | Text, shell wiring, docs |
 
-Slice boundaries are recorded here as they close, per the review-workload rule: `2a11db6` + `e59f484`
-(plan + T1, 778 lines), `2a0bc5d` (T2, 325), `74b55a6` (T3, 486), `96138d9` (T4, 603), `8697242` (T5, 400), `bea2ed6` (T6, 350), T7 (~470).
-Slice 1 closed with T1–T3; slice 2 with T4–T7 (`8cddcc2`); slice 3 with T8–T10
-(`3f490fc`…`c2d301c`); slice 4 with T11–T13. The branch overtook the ~400-line review unit
+Slice boundaries are recorded here as they close, per the review-workload rule: `072b95c` + `8e5a727`
+(plan + T1, 778 lines), `ad5cd64` (T2, 325), `64f2f29` (T3, 486), `41910a5` (T4, 603), `3e881ae` (T5, 400), `6feaaf5` (T6, 350), T7 (~470).
+Slice 1 closed with T1–T3; slice 2 with T4–T7 (`44a831b`); slice 3 with T8–T10
+(`0b032d5`…`2c54c4c`); slice 4 with T11–T13. The branch overtook the ~400-line review unit
 deliberately: each task is its own commit with its own tests, and the four PR slices above are how it
-is meant to be reviewed. Merges to `master`: `5da0d3b` (T1–T8, the owner's decision) and the closing
+is meant to be reviewed. Merges to `master`: `c8d016f` (T1–T8, the owner's decision) and the closing
 merge for T9–T13.
 
 ## Evidence — commit per task
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `e59f484` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
-| T2 | `2a0bc5d` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
+| T1 | `8e5a727` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
+| T2 | `ad5cd64` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
 | T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
 | T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
 | T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
@@ -235,8 +235,8 @@ merge for T9–T13.
 | T7 | `HEAD` | 7 tests; arcs split exactly; four refusal classes by name |
 | T8 | `HEAD` | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome` |
 | T9 | `HEAD` | 18 tests (36 → 54); `lost_arcs` aggregated from the kernel; array copies are full-duplicate per cell |
-| T10 | `HEAD` | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `4fc6940` |
-| T11 | `d053640` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
+| T10 | `HEAD` | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `31e0fc4` |
+| T11 | `2223928` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
 | T12 | `HEAD` | 18 tests (14 input + 35 shell in total); every command reachable, drag draws one command per gesture |
 | T13 | `HEAD` | `docs/m2-authoring.md`, roadmap row and §4.4 evidence, M2 defects recorded |
 
@@ -250,8 +250,8 @@ merge for T9–T13.
 - **L3** — Owner decision on non-uniform scale with arcs (verbatim option label): "Teselar
   automáticamente con tolerancia declarada". Recorded as D-M2-2 (S5).
 - **L4** — Plan: 13 tasks, dependency chain, all inline, branch `feat/m2-authoring` off `master`
-  (`4578cdc`). Baseline suite: see `scripts/check.sh`.
-- **L5** — T1 evidence. `2a11db6` holds the plan (228 lines); `e59f484` holds T1 (530 authored
+  (`02a0dd6`). Baseline suite: see `scripts/check.sh`.
+- **L5** — T1 evidence. `072b95c` holds the plan (228 lines); `8e5a727` holds T1 (530 authored
   lines). Slice boundary recorded per the review-workload rule: the slab is above ~400 lines because
   the plan and the first task are separate units and the task's tests are half of it. A real defect
   surfaced while writing T1's round-trip property test: `serde_json`'s default float parsing returns
@@ -259,7 +259,7 @@ merge for T9–T13.
   `float_roundtrip` in the workspace dependency; the whole suite, every M0 golden G-code program
   included, is green with and without it.
 - **L6** — Owner instruction (verbatim, this session): "mergea" — resolved by asking which scope, and
-  the owner chose T1–T8 to `master` now with the rest in a second merge. Executed as `5da0d3b` in a
+  the owner chose T1–T8 to `master` now with the rest in a second merge. Executed as `c8d016f` in a
   temporary worktree so the in-flight worker was not disturbed.
 - **L7** — Owner instruction (verbatim, this session): "podrias cambiarme el keybind de subagents que
   esta ahora en alt-a en otro? es que alt-a le tengo como prefix de herdr". The binding is not Pi's:
@@ -269,7 +269,7 @@ merge for T9–T13.
 - **L8** — Defects found during M2 that were fixed at the root: `serde_json` float parsing was one ULP
   lossy, so the documented lossless round trip of `c2d/document@1` did not hold (`float_roundtrip`);
   `offset_contour` reported an open-contour precondition as `OffsetCollapsed` and the guard had no
-  test at all (`4fc6940`); and `cam-desktop` bypassed `Shell::apply_action`, so created counts, ellipse
+  test at all (`31e0fc4`); and `cam-desktop` bypassed `Shell::apply_action`, so created counts, ellipse
   radial error and lost-arc counts never reached the user outside the tests. Follow-ups recorded, not
   done: `Contour::bounds()` still samples arcs through tessellation; `OffsetContour` exposes no
   tolerance or flattening warning; the shell tops up the id counter by count instead of

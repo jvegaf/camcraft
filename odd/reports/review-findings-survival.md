@@ -88,7 +88,7 @@ Binding on every session that starts a native review here:
    `review-state.json` in quarantine; that is the one case where the prose outlives the transaction, and it
    is worth checking before declaring a finding unreadable.
 5. **Do not assess a documentation-only candidate.** The provider classifies one as `passive` /
-   `non_executable_only` every time — measured four times in a row on `1ad99e8`→`53886ba` — so the measurement
+   `non_executable_only` every time — measured four times in a row on `1ad99e8`→`ca24f9e` — so the measurement
    is a turn spent learning what is already known. This is the owner's standing instruction (2026-11-05): a
    commit that touches no executable file is left unreviewed without asking, and the disposition is stated in
    the reply rather than re-derived. Any candidate that does touch executable code is assessed as usual.

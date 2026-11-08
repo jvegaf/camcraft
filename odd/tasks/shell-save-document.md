@@ -50,16 +50,16 @@ model. This feature closes them, and it is the one where a mistake reaches the u
 
 - T1 — `cam-ui` (S2, S3, S4, S5): `UiAction::{Save, SaveFile{path}, RequestSaveAs}`, extras carried on the
   shell, the write, the dirty rules, the bar's Save/Save As, and the tests. Route: delegated worker.
-  Commit: `7629832`.
+  Commit: `c053705`.
 - T1b — a requirement added after reading the worker's report, not in the original spec: a bare
   `handle_action` must not reach the writer, because it has no shell and therefore no extras. Closed by type
   rather than by comment — the private handler takes `Option<&mut DocumentFileState>` — with a test that
-  fails if the write happens. Route: delegated worker. Commit: `7629832`.
+  fails if the write happens. Route: delegated worker. Commit: `c053705`.
 - T2 — the host (S2, S6): `rfd`'s `save_file()` answering `RequestSaveAs`, seeded with the current name.
-  Route: parent inline. Commit: `7629832`.
+  Route: parent inline. Commit: `c053705`.
 - T3 — the documents (S1, S2, S7): README, `camui-shell.md` L45, and `odd/roadmap.md` — which needed
   nothing, checked row by row. Route: delegated worker. Commit: the commit that carries this line.
-- T4 — gate, commits, independent verification, native review (S8). Route: parent. Commit: `7629832` plus
+- T4 — gate, commits, independent verification, native review (S8). Route: parent. Commit: `c053705` plus
   the record commits.
 
 ## Log

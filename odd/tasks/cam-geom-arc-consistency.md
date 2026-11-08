@@ -48,16 +48,16 @@ and stop the gate from writing a seed into a tracked file on a case that should 
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Pin the defect with a RED test: two disjoint quarters of one radius-5 circle are `√50` apart and do not meet. Both assertions in one case, so the two functions are compared and not each trusted alone | S2 S3 | inline | `e12dc61` |
-| T2 | Fix `intersect::arc_arc`'s concentric branch to decide by sweeps, reusing the angular-coverage rule this module already owns (`intersect.rs:277-283`) instead of copying `distance`'s | S3 S4 | inline | `e12dc61` |
-| T3 | Preservation, not hope: full circles still `Coincident`, partially overlapping quarters of one circle still `Coincident`, radius mismatch still `None` | S4 | inline | `e12dc61` |
-| T4 | Correct the proptest's false premise and give the tracked seed an argued fate, measured by running it | S5 S6 | inline | `e12dc61` |
-| T5 | Re-read the six in-crate `Coincident` consumers against the new answer; run the gate; record the evidence | S4 S7 | inline | `e12dc61` |
+| T1 | Pin the defect with a RED test: two disjoint quarters of one radius-5 circle are `√50` apart and do not meet. Both assertions in one case, so the two functions are compared and not each trusted alone | S2 S3 | inline | `f109d86` |
+| T2 | Fix `intersect::arc_arc`'s concentric branch to decide by sweeps, reusing the angular-coverage rule this module already owns (`intersect.rs:277-283`) instead of copying `distance`'s | S3 S4 | inline | `f109d86` |
+| T3 | Preservation, not hope: full circles still `Coincident`, partially overlapping quarters of one circle still `Coincident`, radius mismatch still `None` | S4 | inline | `f109d86` |
+| T4 | Correct the proptest's false premise and give the tracked seed an argued fate, measured by running it | S5 S6 | inline | `f109d86` |
+| T5 | Re-read the six in-crate `Coincident` consumers against the new answer; run the gate; record the evidence | S4 S7 | inline | `f109d86` |
 
 ## Log
 
 - **L1 (owner, verbatim).** *"ya he mergeado yo todo e hice limpia, por donde seguimos"* → the choice *"El defecto
-  del kernel (recomendado)"*. After the merge of `camui-toolpath` into `master` (`d806f8d`) and the branch cleanup,
+  del kernel (recomendado)"*. After the merge of `camui-toolpath` into `master` (`abe2e7b`) and the branch cleanup,
   the next feature opened here is the kernel discrepancy the previous feature had to record as somebody else's debt.
 - **L2 (the diagnosis, before any code).** A read-only exploration measured the disagreement in the tree, and every
   claim below is `path:line` in this document rather than an inference. **The two decisions**: `intersect::arc_arc`
@@ -144,7 +144,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   **One incident belongs to the repository and not to this fix.** `cargo fmt --check` failed on a **pristine
   `git archive HEAD` tree** with 2 909 diffs and the repository has no `rustfmt.toml`: every crate is two-space and
   rustfmt wanted four. With `tab_spaces = 2` the entire tree is clean, so the config was simply never versioned and
-  the gate could not have passed for anyone. The owner chose to restore it, and that is `4ddbb72` — a separate
+  the gate could not have passed for anyone. The owner chose to restore it, and that is `ccc5ebb` — a separate
   commit, because it is repository hygiene and not this defect.
   **Not claimed here:** the gate was run with a different `RUSTFLAGS` than the 1 166 run, so it proves the tests,
   not that a bare `scripts/check.sh` passes in an unconstrained shell.
@@ -184,7 +184,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   bare `scripts/check.sh` stays exactly as it is.
 
 - **L7 (the oracle becomes a test, and this entry corrects the size this document first claimed for it).** The
-  verifier's grid was scratch; the rule deserves a committed one. `546220f` appends two oracle helpers and three
+  verifier's grid was scratch; the rule deserves a committed one. `8bb02a7` appends two oracle helpers and three
   tests to `tests/intersect.rs`: **190 arcs** (19 start angles — `k·π/8` for `k` in `0..16`, plus `-π`, `-TAU` and
   `TAU + π/8` — crossed with 10 sweeps from `π/8` to `-TAU`), **36 100 ordered pairs**, asserting per pair that the
   answer matches the midpoint-measure oracle, that it is the `Coincident`/`Point`/`None` the oracle classifies, and
@@ -203,9 +203,9 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   **The gate, re-run after these tests:** exit 0, **96 suites, 1 174 passed, 0 failed, 0 ignored** — the 1 171 of L5
   plus exactly the three added. Same `RUSTFLAGS="-C link-arg=-Wl,--threads=1"` caveat as L5, and for the same
   measured reason: the session's cgroup still caps tasks at 64.
-  **Slice boundary, so the size is not misread.** Five commits on `fix/cam-geom-arc-consistency`: `e12dc61` (the fix
-  and its five tests, 215 authored lines) and `546220f` (the oracle, 159) are the **work unit**, 374 lines together;
-  `4ddbb72` (`rustfmt.toml`) is repository hygiene that this defect needed in order to be gated; `da5e978` and the
+  **Slice boundary, so the size is not misread.** Five commits on `fix/cam-geom-arc-consistency`: `f109d86` (the fix
+  and its five tests, 215 authored lines) and `8bb02a7` (the oracle, 159) are the **work unit**, 374 lines together;
+  `ccc5ebb` (`rustfmt.toml`) is repository hygiene that this defect needed in order to be gated; `fe6c82e` and the
   commit carrying this entry are the record. Nothing in the work unit can be split further without leaving a commit
   whose tests do not run.
 

@@ -3,7 +3,7 @@
 Program plan: `odd/roadmap.md` (M3 = "Import & interchange"). This document is the executable
 specification for M3 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; new crate `cam-import` (geometry in, report out), then `cam-cli`, then `cam-ui`.
-Branch: `feat/m3-import`, cut from `master` at `2371204`.
+Branch: `feat/m3-import`, cut from `master` at `0e12edc`.
 
 ## Specs
 
@@ -291,13 +291,13 @@ with the evidence table and the deviations.
 | 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered in this session; T4 delivered in a later one (L12)** |
 | 3 | T8–T10 | `check`, shell import, docs — **delivered** |
 
-Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `22c255f`, 1705 authored lines across
-three commits (plan `2bd7440`, `1d46e51`, `22c255f`). Like M2 the milestone overtakes the ~400-line review
+Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `c1a9ac2`, 1705 authored lines across
+three commits (plan `86b0e79`, `163a3b7`, `c1a9ac2`). Like M2 the milestone overtakes the ~400-line review
 unit deliberately: the plan and the two foundation tasks are separate units, and each later task is its own
 commit with its own tests, to be reviewed per slice.
 
 Slice 2 keeps that boundary for the same reason, which is scope and independence, not line count: T3
-`655ead6` (1660 lines), T5 `48cab49` (2137), T6 `546374e` (1809), T7 `984bd61` (1539) and T4 `d197c80`
+`cd5b3ba` (1660 lines), T5 `6f8ae3c` (2137), T6 `3c24394` (1809), T7 `ecd2b50` (1539) and T4 `cf8cd07`
 (2517) are five different formats over five disjoint module + test surfaces, so the review unit is one
 format at a time, and no reader has to hold two grammars in their head to review either.
 
@@ -305,37 +305,37 @@ format at a time, and no reader has to hold two grammars in their head to review
 
 | Task | Commit | Notes |
 | --- | --- | --- |
-| T1 | `1d46e51` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
-| T2 | `22c255f` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
-| T3 | `655ead6` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
-| T4 | `d197c80` | 30 tests; XML reader with located errors, the full path grammar, every shape element, inherited transforms, `viewBox` with `xMidYMid meet`, exact circular arcs. The parked work's three root defects fixed (non-advancing path cursor, unitless attribute read as px, contradictory tag-location tests) and the owner's Y convention applied as a reflection in the root mapping (D-M3-10). See L11, L12 |
-| T5 | `48cab49` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
-| T6 | `546374e` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`d93fd01`) |
-| T7 | `984bd61` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
-| T8 | `f95af8f`-series | 5 CLI tests; deterministic ordering, exit `5`, `all vectors valid` on a clean document |
-| T9 | `de54dce` | 5 tests (2 cam-app, 3 cam-ui); undoable replacement, reseeded id counter, exact status sentence, failed import leaves document and history untouched |
+| T1 | `163a3b7` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
+| T2 | `c1a9ac2` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
+| T3 | `cd5b3ba` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
+| T4 | `cf8cd07` | 30 tests; XML reader with located errors, the full path grammar, every shape element, inherited transforms, `viewBox` with `xMidYMid meet`, exact circular arcs. The parked work's three root defects fixed (non-advancing path cursor, unitless attribute read as px, contradictory tag-location tests) and the owner's Y convention applied as a reflection in the root mapping (D-M3-10). See L11, L12 |
+| T5 | `6f8ae3c` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
+| T6 | `3c24394` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`ebb9e1d`) |
+| T7 | `ecd2b50` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
+| T8 | `86fc659`-series | 5 CLI tests; deterministic ordering, exit `5`, `all vectors valid` on a clean document |
+| T9 | `041ee97` | 5 tests (2 cam-app, 3 cam-ui); undoable replacement, reseeded id counter, exact status sentence, failed import leaves document and history untouched |
 | T10 | this commit | `docs/m3-import.md`, `docs/format.md` contract rows, roadmap M3 evidence |
 
 ## Log
 
 - **L1** — Owner instruction (verbatim, this session): "continua con M3". Read as: author the M3
   feature document under ODD and start implementing it, on a feature branch off `master`.
-- **L2** — Plan: 10 tasks, branch `feat/m3-import` from `master` (`2371204`), baseline suite
+- **L2** — Plan: 10 tasks, branch `feat/m3-import` from `master` (`0e12edc`), baseline suite
   recorded from `scripts/check.sh` before the first write.
-- **L3** — Slice 1 evidence: T1 `1d46e51` (crate, detection, report, `import` CLI), T2 `22c255f`
+- **L3** — Slice 1 evidence: T1 `163a3b7` (crate, detection, report, `import` CLI), T2 `c1a9ac2`
   (`cam_geom::validate`). Gates green after both (`./scripts/check.sh`). One correction found by the
   second gate run: `assert!(len >= 1)` fails clippy's `len_zero`, so the degenerate-contour test asserts
   `!is_empty()`.
 - **L4** — Slice 2 evidence: five importers were launched as writers over disjoint surfaces (`src/<fmt>.rs`,
   `tests/<fmt>.rs`, `tests/fixtures/<fmt>/`) in five isolated worktrees, so no two could compile each other's
-  half-written module. T3, T5, T6 and T7 landed and merged; T4 (SVG) did not (L7). Merges are `5a0d0a1`
-  (DXF), `4686e39` (PDF), `7ae22a9` (EPS), `0264ac0` (raster).
+  half-written module. T3, T5, T6 and T7 landed and merged; T4 (SVG) did not (L7). Merges are `e459251`
+  (DXF), `8fb4fd4` (PDF), `7e02978` (EPS), `fa99180` (raster).
 - **L5** — Slice 3 evidence: `check` (T8), the shell import action (T9) and the docs (T10). T9 also added
   `AppState::replace_document_undoable`, because `replace_document` is the open-a-file path and clears the
   history: an import the user did not ask for must be one undo away, not a lost drawing.
 - **L6** — Contract defect found while reviewing the EPS delivery: `eps::import` had grown its own parse
   error for "a file that names no path", because the T1 spine test only accepted `Refused` or `Parse`. That
-  was the test pinning a stub, not the contract. Fixed in `d93fd01`: every importer returns an empty layer
+  was the test pinning a stub, not the contract. Fixed in `ebb9e1d`: every importer returns an empty layer
   set and the spine turns it into `NothingImported` with one message.
 - **L7** — T4 (SVG) blocked, recorded honestly rather than merged. Its worker vanished mid-flight; the work
   on branch `import/svg` (1940 lines of `svg.rs`, 552 of tests) leaves 14 of 29 tests failing on assertions
@@ -356,7 +356,7 @@ format at a time, and no reader has to hold two grammars in their head to review
 - **L11** — Owner instruction (verbatim, this session): "vamos terminar de completar m3". Read as: finish the
   one task M3 still owes — T4, the SVG importer — on `feat/m3-import`, starting from the work parked on
   branch `import/svg`.
-- **L12** — T4 evidence: `d197c80`. The parked branch was rebased onto the current tip by copying its two
+- **L12** — T4 evidence: `cf8cd07`. The parked branch was rebased onto the current tip by copying its two
   files (`src/svg.rs`, `tests/svg.rs`) into a fresh worktree; of its 29 tests, 5 passed, 14 failed and 10
   hung. Reproduced each hang under a debugger: `PathReader::point` scanned both coordinates into a local copy
   of the cursor, so the run loop never advanced — the scanner's own, not the parser's, defect. Fixed, then
