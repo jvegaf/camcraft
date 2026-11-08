@@ -1,6 +1,6 @@
 # Development Plan — the reference CAM application-class 2.5D CAM application (Windows + Linux)
 
-Status: **executed through M12.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
+Status: **executed through M13.** The plan was derived from `evidence/analysis-report.md` (REA evidence on
 `etc/the reference CAM applicationProTrialEdition_Setup.exe`, the reference CAM application) and M0–M12 are delivered; §4 carries
 the evidence for each, section by section through §4.15, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
@@ -165,6 +165,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M10** ✅ | Documents & scripting | **Delivered.** `cam-cli script` runs a line-oriented command language against one document — eleven words, each dispatching to the function its own subcommand calls, with `line:column` diagnostics and every mutation through `Document::validate`; `cam-cli parts` imports a four-column part list and `cam-cli cutlist` exports the placements M9 stored as seven columns, deliberately two shapes and not one schema; `cam-cli report` writes a self-contained, hand-escaped HTML print sheet; and `cam-ui`'s `ScriptPanel` runs a script through the same library, never a process. No schema bump, no external dependency, and `--help` is the only difference from the pre-M10 surface (see §4.13) | Reporting and extension points; the original's gadget platform is the model — with S1's "DSL de comandos, sin motor" deciding the engine the row left open ("Rhai/Lua") |
 | **M11** ✅ | Feeds & speeds | **Delivered.** The library already keys cutting data per material and per machine (`material`, `tool_entity`, `cutting_data_for(geometry, material, machine)`, proved by one tool at 120 and 60 mm/s in two materials); what is missing is the **selector**, so `emit` cuts at the tool's own record and `tools add` writes the same `100 / 30 / 18000` for every material. M11 carries `Job.material` (optional, `#[serde(default, skip_serializing_if)]`, tag stays `c2d/document@2`) plus an `emit --material` override that wins, threads it into the lookup the store already has, and leaves **`None` reproducing today's bytes exactly** — all 17 goldens keep `F100.0`. An unknown material is refused by name, never silently ignored. Deriving a rate from chipload and surface speed is **not** in this row: it would change the one number the goldens pin and put a derivation between the library and the program that nothing tests and the selector is threaded to the store's existing per-material lookup. **Evidence**: 21 golden tests untouched, 1548 workspace tests green, an unknown material refused by name, and a review that caught the flag accepting a missing name and a no-selector change nobody asked for, both corrected in 79 diff lines and validated. Two follow-ups recorded: the shell's estimate cannot honour a material until `cam-store` answers one, and `simulate` has no `--material` to reproduce a one-run override | Every strategy emits at the tool's fixed rate today, which is the most user-visible gap left: the machine is told how fast to cut by a record nobody selected (see §4.14) |
 | **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable (see §4.15) |
+| **M13** ✅ | The cycle closes inside the app | **Delivered**, with one task routed to the owner rather than closed. Two dead ends hid behind finished chrome: the app bar's primary action was `add_enabled(false, …)` with a hover excuse (`cam-ui/src/chrome.rs:323`) and the 3D half printed *"Simulate one with `cam-cli simulate` and hand it in"* (`view3d.rs:1390`), so a window that could import, author and display a program sent the person to a terminal for the one artefact the machine runs. M13 makes the program the app's own: `GenerateGcode` posts the open document through `cam-post` inside `apply_action`, the same place `SaveFile` writes (`S7`, corrected after measurement — it had said the host would do it), `Post…` holds the dialect for the session and refuses a file that is not a post-processor while keeping the one in hand, the 3D half builds the drawing's own program with `program_for_snapshot` over a pristine `Heightfield` behind a `Simulate` chip and a `Simulate again` in the overlay row, and the toolpaths are a list whose selection — not `toolpaths.first()` — is what the card, the editor and `open_tool_library` read, with the last of those a door the first version left aiming at the first toolpath (see §4.16). **T4 dissolved on measurement**: the 3D stock already paints through `StockTop`/`StockBottom` via `stock_shade`, and `design/system.md:53`'s own value is a cool `#d6dce6`; the tan is the reference palette, so changing ours re-opens four contrast proofs and belongs to the owner | The most visible gap left after twelve milestones was not missing machinery but missing *seams*: every part worked, and the person still could not finish a job without a terminal (see §4.16) |
 
 Deferred / conditional, not scheduled: PDF text-to-outline fidelity beyond vector paths, EPS edge
 cases, rotary wrapping (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later
@@ -1138,3 +1139,38 @@ regression, and we did not decompile their algorithms.
   findings are written down in the session that receives them **before** the receipt is burned, an inferred
   subject is marked as an inference, no finding is closed by a plausible-looking edit, and the quarantine
   residue is read before any finding is declared unreadable.
+
+### 4.16 M13 delivered (evidence)
+
+The four gaps M13 named were all in the **seams**, not in the machinery, which is why they survived twelve
+milestones of green gates. Measured before writing anything: the primary action could not run
+(`crates/cam-ui/src/chrome.rs:323` registers `Generate G-code` as `add_enabled(false, …)`), the 3D half would
+not simulate (`crates/cam-ui/src/view3d.rs:1390` prints a sentence naming `cam-cli`), the shell had no
+toolpath selection at all (`chrome.rs:850-855` described `toolpaths.first()` unconditionally), and the disused
+`Document.postp` ("resolved by the store", `cam-model/src/lib.rs:909-911`) has no reader in the workspace, so
+nothing in the app could name the dialect a program is written in.
+
+What was delivered, in four commits: `0c194cb` (the program, and the `Post…` control that supplies the
+dialect), `89ed3b3` (the slice boundary, recorded rather than inferred), `c4da057` (simulation in the shell,
+with `Simulate` on the empty half and `Simulate again` in the overlay row) and `a078015` (the toolpath list,
+the one resolver the card, the editor and the tool-library modal now share, and the stale-`first()` door that
+slice closed). Ten behaviour tests, gate green at **1604** workspace tests across 117 targets.
+
+Three limits are recorded instead of discovered later:
+
+- **A snapshot cannot select a material.** `program_for_snapshot` refuses one by name
+  (`crates/cam-program/src/lib.rs:95-113`), so the shell's program cuts at the tools' own rates and diverges
+  from `cam-cli emit --material` exactly as the shell's cut-time estimate already does (M11's follow-up).
+  Passing the document's material would have made every drawing that names one refuse to produce a program;
+  a test pins that a named material still writes.
+- **Two sentences still name `cam-cli`**, both in `chrome.rs` and both drawn only while the RELIEF AND 3D
+  task is open (`chrome.rs:890`, `:911`). They are outside every slice's surfaces and need their own task.
+- **The launch demonstrator stays.** `cam-desktop` still hands the shell a sample pocket, because the sample
+  document holds no toolpaths of its own; its test pins M5's field/sweep identity, and replacing it is a
+  separate decision about what the first frame should demonstrate.
+
+`T4` became a decision rather than a fix: the 3D stock **already** paints from the design system's roles
+(`theme.rs:221`'s `stock_shade` mixing `StockTop` into `StockBottom`, `view3d.rs:963`'s `StockEdge` outline),
+and the near-white slab in the owner's screenshot is `StockTop #d6dce6` itself — the reference app's tan is
+its own palette. Changing ours would edit `design/system.md`, both palettes and the four contrast proofs that
+keep twelve pairs above AA, so it waits for the owner and the milestone says so rather than closing it.

@@ -58,7 +58,7 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
 | T2 | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3 | inline | — |
 | T3 | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe | S1 S4 | inline | — |
 | T4 | **A decision, not a code task** (S5 as corrected in L6): the stock's colour is `design/system.md`'s `StockTop #d6dce6`, already painted through the roles and already contrast-proved, so no rule is owed. Whether campilot's material should read as tan material instead is the owner's call, and it re-opens four contrast proofs | S1 S5 | owner | — |
-| T5 | The milestone's row in `odd/roadmap.md` and this document's log, with the commits as evidence | — | inline | — |
+| T5 | The milestone's row in `odd/roadmap.md`, its §4.16 evidence section and this document's log, with the commits as evidence | — | inline | `a078015`+ |
 
 ## Slices
 
@@ -71,7 +71,7 @@ measured against the ~400-line guidance that protects the reviewer:
 | 2 | T2 | `89ed3b3` (boundary) + `c4da057` | 406 | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. Two sentences in `chrome.rs` (the RELIEF AND 3D task) still name `cam-cli`; they are outside this slice and named below. |
 | 3 | T3 | — | 585 test + ~120 source, plus the one-line door | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. The slice closed the deviation the first version left — `open_tool_library` still aimed at `toolpaths.first()` (`tool_library.rs:538`), which would have retooled a different toolpath than the card named, one press away from writing the defect this task removes from reading. |
 | 4 | T4 | — | none | No code: the 3D half already paints from the material roles, and the palette value is a design decision. See L6. |
-| 5 | T5 | — | — | Documentation only. |
+| 5 | T5 | — | docs only | Documentation only: the roadmap row, §4.16 and L7. |
 
 ## Log
 
@@ -117,3 +117,12 @@ measured against the ~400-line guidance that protects the reviewer:
   `design/system.md`, both palettes and the proofs that keep twelve pairs above AA, which is a design decision
   with an owner and not a defect with a fix. S5 now says that, T4 is routed to the owner, and the milestone does
   not pretend to have closed a gap it decided not to touch.
+- **L7 (the milestone closed, and what it leaves).** Delivered in four commits: `0c194cb` (the program and the
+  `Post…` control), `89ed3b3` (the slice boundary), `c4da057` (simulation in the shell) and `a078015` (the
+  toolpath list and the one resolver). Ten behaviour tests; gate green at 1604 workspace tests across 117
+  targets. The roadmap carries the row and §4.16 carries the evidence; the three limits recorded there are (a)
+  a tool snapshot cannot select a material, so the shell's program cuts at the tools' own rates exactly as its
+  estimate does; (b) two `chrome.rs` sentences still name `cam-cli` and need their own task; (c) the launch
+  demonstrator stays, because the sample document holds no toolpaths of its own. **One task is open by
+  design**: T4 is the owner's palette decision (L6), not an unfinished code path. The requirement recorded in
+  L5 — the reference sweep — is next, in `odd/tasks/repository-name-hygiene.md`.
