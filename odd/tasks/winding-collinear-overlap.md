@@ -48,11 +48,11 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The classifier: a same-side coincidence plus a decisive `Outside` witness is `Crossing`; direction compared through each contour's own orientation sign, never assumed counter-clockwise | S3 S4 S5 | parent | |
-| T2 | The unit tests the class lacked: the partial collinear overlap (S3), the flush part (must stay `Touching`), identical contours, the inscribed tangency, and two different contours sharing bounds | S3 S4 S6 | parent | |
-| T3 | The consumers, each with its own test: `footprints_overlap` refuses the S3 pair; `cam-model`'s island rules still refuse what they refuse today; `nest_profile::inside_sheet` still accepts the flush part; `region_offset::nesting_depths` still refuses only a true crossing | S4 S6 | parent | |
-| T4 | The docs: `Relation::Touching`'s own sentence states S4, and the ledger records the sixteenth closed | S4 | parent | |
-| T5 | The review of this candidate | S1 | parent | |
+| T1 | ✅ delivered `360936f` — same-side coincidence + two-sided `Outside` witness | S3 S4 S5 | parent | `360936f` |
+| T2 | ✅ delivered `360936f` — five cases pinned, 12→14 relation tests | S3 S4 S6 | parent | `360936f` |
+| T3 | ✅ delivered `360936f` — two consumer tests; flush fixtures untouched | S4 S6 | parent | `360936f` |
+| T4 | ✅ delivered `85abd7b` — `Touching` sentence + ledger entry | S4 | parent | `85abd7b` |
+| T5 | ✅ delivered — `assess` reported `reviewDue: false` (medium, under budget); no outside view | S1 | parent | `85abd7b` |
 
 ## Log
 
