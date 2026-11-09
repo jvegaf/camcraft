@@ -217,6 +217,28 @@ pub struct Shell {
   /// nothing. Public and flat the way every other parameter of this shell is ([`Self::rectangle_size`]),
   /// because a dialog whose numbers could not be set is a dialog that cannot be tested.
   pub material_size: (f64, f64, f64),
+  /// Whether the import modal is open (shell-file-operations S3).
+  ///
+  /// View state: reading the file and showing what it holds is not an edit, and `Cancel` costs nothing, so
+  /// `Esc` closes the modal and leaves the drawing exactly as it was. Only `Import` writes, and it writes the
+  /// parse the modal described instead of reading the file a second time.
+  pub show_import: bool,
+  /// The file the import modal is describing, as the host named it.
+  ///
+  /// Held beside [`Self::import_parsed`] rather than inside it because the title names the file and
+  /// [`Self::confirm_import`] names it in the sentence the status bar shows: the modal reports one file, and
+  /// the import is that file's parse.
+  pub import_path: Option<PathBuf>,
+  /// What [`cam_import::import_path`] found in [`Self::import_path`], kept while the modal is open.
+  ///
+  /// `Some` is what makes the modal a report rather than a question: the counts it draws are this parse's own,
+  /// so `Import` cannot import a file that changed on disk after the operator was shown what it held.
+  pub import_parsed: Option<cam_import::Imported>,
+  /// Why the last `Import` press could not write the document, while the modal stays open.
+  ///
+  /// `None` while there is nothing to say. A refusal is drawn inside the modal beside the report it is about,
+  /// because closing on a failure would lose the file the operator chose and the counts they were reading.
+  pub import_error: Option<String>,
   /// Whether the tool-library modal is open (camui-prancheta S9).
   ///
   /// View state: opening the modal, searching it and cancelling out of it are not edits, and only
@@ -346,6 +368,12 @@ impl Default for Shell {
       // is how it opens (L108's lesson: a temporary default nobody meant to ship).
       show_material: false,
       material_size: default_material_size(),
+      // Closed at birth for the material dialog's reason: a modal that opened by itself would swallow the
+      // first click on the canvas, and only an `ImportFile` action opens this one.
+      show_import: false,
+      import_path: None,
+      import_parsed: None,
+      import_error: None,
       show_tool_library: false,
       show_script: false,
       script: script_panel::ScriptPanel::new(),

@@ -1,4 +1,4 @@
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use cam_app::AppState;
 use cam_store::tools::{StoredTool, ToolLibrary};
@@ -43,6 +43,11 @@ impl Shell {
       }
       UiAction::ChoosePost { path } => self.choose_post(path),
       UiAction::GenerateGcode { path } => self.generate_gcode(app, path),
+      // `ImportFile` no longer imports: it parses the file and opens the modal that reports what it found
+      // (shell-file-operations S3), so nothing replaces the drawing until the operator presses `Import`.
+      // `handle_action_with_file` keeps the immediate import for callers with no window at all, which is why
+      // this interception lives in the shell and not in the shared handler.
+      UiAction::ImportFile { path } => self.open_import(path),
       _ => handle_action_with_file(
         app,
         action,
@@ -108,6 +113,66 @@ impl Shell {
     if let Some(note) = library_note {
       self.status.push_str(&format!(" — {note}"));
     }
+  }
+
+  /// The modal's `Import`: write the parse the modal reported into the document (shell-file-operations S3).
+  ///
+  /// It is public because a modal is painted inside a frame and a headless test has no frame to press: without
+  /// this, the only way to complete an import in a test would be to click a point, and the point would be a
+  /// promise about the dialog's layout rather than about the import.
+  ///
+  /// The document comes from [`Self::import_parsed`], never from a second read of the file: the counts the
+  /// modal drew and the geometry that replaces the drawing are then the same parse by construction. A refusal
+  /// (`into_document` failing on a parse that produced no bounds) stays in the modal — [`Self::import_error`]
+  /// carries the sentence — because closing it would lose the file and the report the operator was reading.
+  pub fn confirm_import(&mut self, app: &mut AppState) -> Result<ActionReport, String> {
+    let Some(parsed) = self.import_parsed.clone() else {
+      return Err(NO_IMPORT_PENDING.to_owned());
+    };
+    match import_into_document(app, &parsed, self.import_path.as_deref()) {
+      Ok(report) => {
+        self.status = report.message();
+        self.close_import();
+        Ok(report)
+      }
+      Err(message) => {
+        self.status = format!("refused: {message}");
+        self.import_error = Some(message.clone());
+        Err(message)
+      }
+    }
+  }
+
+  /// The modal's `Cancel`, and the `Esc` that means the same thing: forget the parse and write nothing.
+  ///
+  /// Public for the reason [`Self::confirm_import`] is: the state a cancelled modal leaves behind — no open
+  /// flag, no path, no parse and no refusal — is a claim a headless test has to be able to make.
+  pub fn close_import(&mut self) {
+    self.show_import = false;
+    self.import_path = None;
+    self.import_parsed = None;
+    self.import_error = None;
+  }
+
+  /// Parse `path` and open the import modal, replacing nothing yet (shell-file-operations S3).
+  ///
+  /// A parse that fails is refused here and never reaches the modal: a dialog whose only content is the reason
+  /// a file could not be read would ask the operator to press `Import` on nothing. The status bar carries the
+  /// refusal, the same way it carries a refused open, and the drawing is untouched because nothing has been read
+  /// into it.
+  fn open_import(&mut self, path: &str) -> Result<ActionReport, String> {
+    let path = PathBuf::from(path);
+    let parsed = cam_import::import_path(&path, &cam_import::ImportOptions::default())
+      .map_err(|error| error.to_string())?;
+    self.import_path = Some(path);
+    self.import_parsed = Some(parsed);
+    self.import_error = None;
+    self.show_import = true;
+    Ok(ActionReport {
+      label: "import file",
+      note: Some("import pending".to_owned()),
+      ..ActionReport::default()
+    })
   }
 
   /// Hand the window the post-processor it writes programs in, as the file's label and its source text.
@@ -203,6 +268,52 @@ impl Shell {
       ..ActionReport::default()
     })
   }
+}
+
+/// The sentence a shell with no parse to import answers with.
+///
+/// `confirm_import` is public so a headless test can finish an import, and a test — or a host that missed the
+/// flag — asking it to write nothing gets a refusal that names the missing step instead of a silent `Ok`.
+const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import first";
+
+/// Write one parse into `app` as an undoable replacement, and report what arrived.
+///
+/// This is [`handle_action`](crate::handle_action)'s `ImportFile` branch without the read: the command layer
+/// takes a path and imports it immediately, which is what a caller with no window needs, and the modal has
+/// already paid for the parse it showed. The note is the same sentence, word for word, so the status bar cannot
+/// describe the same file two ways depending on which route imported it.
+fn import_into_document(
+  app: &mut AppState,
+  parsed: &cam_import::Imported,
+  path: Option<&Path>,
+) -> Result<ActionReport, String> {
+  let document = cam_import::into_document(parsed, None).map_err(|error| error.to_string())?;
+  let created_entities: Vec<String> = document
+    .entities()
+    .map(|entity| entity.id.clone())
+    .collect();
+  let file_name = path
+    .and_then(|path| path.file_name())
+    .map(|name| name.to_string_lossy().into_owned())
+    .or_else(|| path.map(|path| path.display().to_string()))
+    .unwrap_or_default();
+  let note = format!(
+    "{} contour(s) from {file_name}, {} curve(s) flattened, {} skipped",
+    parsed.report.contours,
+    parsed.report.flattened_curves,
+    parsed.report.skipped_count()
+  );
+  // One undo step, the same one the immediate import records: an import replaces the drawing, and one undo
+  // brings back the drawing it replaced.
+  app.replace_document_undoable(document);
+  app.select(created_entities.clone());
+  Ok(ActionReport {
+    label: "import file",
+    created: created_entities.len(),
+    created_entities,
+    note: Some(note),
+    ..ActionReport::default()
+  })
 }
 
 /// The tools an opened document names, read from the directory that document was opened from.

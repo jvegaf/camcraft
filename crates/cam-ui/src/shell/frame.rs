@@ -168,6 +168,15 @@ impl Shell {
     if self.show_script {
       self.script_dialog(&ctx, app);
     }
+    // The import modal is the shell's fourth (shell-file-operations S3), and `Esc` leaves it without writing for
+    // the reason the other three close: the file has only been read, so cancelling costs the parse and nothing
+    // else — and the `Import` button is the only thing that replaces the drawing.
+    if self.show_import && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.close_import();
+    }
+    if self.show_import {
+      self.import_dialog(&ctx, app, &mut output);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -175,7 +184,7 @@ impl Shell {
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
     // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
-    if !self.show_material && !self.show_tool_library && !self.show_script {
+    if !self.show_material && !self.show_tool_library && !self.show_script && !self.show_import {
       self.track_pointer(app, &ctx);
     }
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,

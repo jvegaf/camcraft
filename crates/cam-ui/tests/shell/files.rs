@@ -77,10 +77,11 @@ fn write_dxf(directory: &std::path::Path) -> std::path::PathBuf {
 }
 
 #[test]
-fn importing_a_file_replaces_the_drawing_and_says_what_arrived() {
+fn importing_a_file_reports_what_it_found_before_replacing_the_drawing() {
   let directory = scratch("import");
   let path = write_dxf(&directory);
   let mut app = AppState::new(document_with_rectangle());
+  let before = app.document_json();
   let mut shell = Shell::new();
 
   shell.apply_action(
@@ -90,7 +91,57 @@ fn importing_a_file_replaces_the_drawing_and_says_what_arrived() {
     },
   );
 
+  // The action parses the file and opens the modal (shell-file-operations S3): nothing replaces the drawing
+  // until the operator has read what was found and pressed `Import`.
+  assert!(
+    shell.show_import,
+    "the import modal must open on the file that was just read"
+  );
+  assert_eq!(shell.status, "import file — import pending");
+  assert_eq!(
+    app.document_json(),
+    before,
+    "an unconfirmed import leaves the drawing it was offered over"
+  );
+  assert_eq!(
+    app.history_depth(),
+    0,
+    "an unconfirmed import records no step"
+  );
+  assert!(!app.is_dirty(), "an unconfirmed import edits nothing");
+
+  // The dialog paints the parse's own report: the file's name in the title, then the format and the three
+  // counts. An egui modal positions itself on a sizing pass, so the paint is read from the second frame — and a
+  // frame of the open modal must not import by itself either.
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  assert!(
+    all.contains("Import part.dxf"),
+    "the title must name the file that was read: {all}"
+  );
+  assert!(
+    all.contains("format dxf · 2 contour(s) found, 0 curve(s) flattened, 0 skipped"),
+    "the dialog must report what the parse found: {all}"
+  );
+  assert_eq!(
+    app.document_json(),
+    before,
+    "a frame of the open modal imports nothing"
+  );
+
+  let report = shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+  assert_eq!(report.created, 2);
+  assert!(!shell.show_import, "a completed import closes the modal");
   assert_eq!(app.document().entities().count(), 2);
+  assert_eq!(
+    app.selection().len(),
+    2,
+    "the imported contours are what the shell selected"
+  );
   assert_eq!(
     shell.status,
     "import file — 2 entities created, 2 contour(s) from part.dxf, 0 curve(s) flattened, 0 skipped"
@@ -114,12 +165,50 @@ fn a_failed_import_leaves_the_drawing_untouched() {
   assert_eq!(app.document_json(), before);
   assert_eq!(app.history_depth(), 0);
   assert!(!app.is_dirty());
+  assert!(
+    !shell.show_import,
+    "a file that could not be read must not open a report about it"
+  );
   assert!(shell.status.starts_with("refused: "), "{}", shell.status);
   assert!(
     shell.status.contains("/nonexistent/part.dxf"),
     "{}",
     shell.status
   );
+}
+
+#[test]
+fn escape_closes_the_import_modal_and_imports_nothing() {
+  let directory = scratch("import-esc");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let before = app.document_json();
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  assert!(shell.show_import);
+
+  // One frame first, so the modal is on screen when the key is read; `Esc` is then the Cancel the footer offers.
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let _ = press(&ctx, &mut shell, &mut app, egui::Key::Escape);
+
+  assert!(!shell.show_import, "Esc must close the import modal");
+  assert!(
+    shell.import_path.is_none() && shell.import_parsed.is_none(),
+    "a cancelled import forgets the file it was describing"
+  );
+  assert_eq!(
+    app.document_json(),
+    before,
+    "a cancelled import leaves the drawing alone"
+  );
+  assert_eq!(app.history_depth(), 0, "a cancelled import records no step");
+  std::fs::remove_dir_all(&directory).ok();
 }
 
 #[test]
@@ -136,6 +225,9 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
       path: path.display().to_string(),
     },
   );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
   assert_eq!(app.document().entities().count(), 2);
 
   shell.apply_action(&mut app, &UiAction::Undo);

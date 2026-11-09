@@ -8,6 +8,23 @@ use crate::{Shell, ShellOutput};
 
 use super::paint::{chip, section};
 
+/// The import modal's title prefix, and the two words on its footer.
+///
+/// English, like every other word in the shell: the reference frame is pt-BR and what we take from it is the
+/// shape of the dialog, never its strings.
+const IMPORT_TITLE: &str = "Import";
+/// The sentence under the report, so the dialog says what pressing the button will cost.
+const IMPORT_LEDE: &str =
+  "The file has only been read. The drawing is replaced when you press Import.";
+const IMPORT_CANCEL: &str = "Cancel";
+const IMPORT_COMMIT: &str = "Import";
+
+/// The width the import modal draws at.
+///
+/// Wide enough for the report sentence on one line at [`theme::BODY`], and narrower than the tool library: this
+/// dialog holds one sentence and two buttons, so it must not grow into the surface it is interrupting.
+const IMPORT_WIDTH: f32 = 460.0;
+
 impl Shell {
   /// The script modal (M10 T4b, S4): the panel's own row and its report, over the canvas.
   ///
@@ -52,6 +69,129 @@ impl Shell {
       if &document != app.document() {
         app.replace_document_undoable(document);
       }
+    }
+  }
+
+  /// The import modal (shell-file-operations S3): what the chosen file holds, before any of it is written.
+  ///
+  /// The reference frame (`Screenshot 2026-11-03 032022.png`) settles the shape: the file's own name as the
+  /// title, one block saying what the importer found, and a `Cancel`/`Import` footer. What it deliberately does
+  /// not carry yet is the options column under that block — joining, tolerance, smoothing, position — because
+  /// none of those reaches `cam_import` today, and a control that wrote nothing would be the dead button S7 and
+  /// S9 both forbid. The report is the part this milestone can honour: every number is the parse's own, and
+  /// `Import` writes that parse instead of reading the file again.
+  pub(crate) fn import_dialog(
+    &mut self,
+    ctx: &egui::Context,
+    app: &mut AppState,
+    _output: &mut ShellOutput,
+  ) {
+    let palette = self.palette();
+    let metrics = self.metrics();
+    // A flag with no parse has nothing to report, so it is closed instead of drawn empty: the two are set
+    // together by [`crate::Shell::open_import`], and this is the honest repair of a half state.
+    let Some(parsed) = self.import_parsed.clone() else {
+      self.show_import = false;
+      return;
+    };
+    let name = self
+      .import_path
+      .as_deref()
+      .and_then(|path| path.file_name())
+      .map(|name| name.to_string_lossy().into_owned())
+      .unwrap_or_else(|| self.document_name());
+    // One sentence for the whole report, so the numbers a test reads back are the numbers the dialog drew: the
+    // same rule the material dialog's plan annotations follow.
+    let report = format!(
+      "format {} · {} contour(s) found, {} curve(s) flattened, {} skipped",
+      parsed.report.format,
+      parsed.report.contours,
+      parsed.report.flattened_curves,
+      parsed.report.skipped_count()
+    );
+    // Cloned before the closure: the refusal is read here and written by [`crate::Shell::confirm_import`] after
+    // the frame, and borrowing `self` twice is what the clone avoids.
+    let refusal = self.import_error.clone();
+    let mut cancel = false;
+    let mut commit = false;
+
+    egui::Modal::new(egui::Id::unique("campilot-import"))
+      .frame(
+        egui::Frame::NONE
+          .fill(palette.get(Role::Overlay))
+          .stroke(egui::Stroke::new(
+            metrics.hairline,
+            palette.get(Role::Border),
+          ))
+          .corner_radius(egui::CornerRadius::same(metrics.radius_dialog as u8))
+          .inner_margin(egui::Margin::same(metrics.space(5) as i8)),
+      )
+      .show(ctx, |ui| {
+        ui.set_max_width(IMPORT_WIDTH);
+        ui.label(
+          RichText::new(format!("{IMPORT_TITLE} {name}"))
+            .size(theme::TITLE)
+            .color(palette.get(Role::TextHi)),
+        );
+        ui.add_space(metrics.space(2));
+        // The report sits on a raised surface, the way the reference draws it: the reading a person makes before
+        // pressing `Import` is a block of its own and not a paragraph between two others.
+        egui::Frame::NONE
+          .fill(palette.get(Role::Raised))
+          .corner_radius(egui::CornerRadius::same(4))
+          .inner_margin(egui::Margin::symmetric(
+            metrics.space(2) as i8,
+            metrics.space(1) as i8,
+          ))
+          .show(ui, |ui| {
+            ui.set_max_width(IMPORT_WIDTH);
+            ui.label(
+              RichText::new(&report)
+                .size(theme::BODY)
+                .color(palette.get(Role::Text)),
+            );
+          });
+        ui.add_space(metrics.space(1));
+        ui.label(
+          RichText::new(IMPORT_LEDE)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        // A refused `Import` says why here and keeps the dialog open: the file is the operator's choice, and the
+        // report above is what they were reading when they made it.
+        if let Some(sentence) = &refusal {
+          ui.add_space(metrics.space(2));
+          ui.label(
+            RichText::new(sentence)
+              .size(theme::CAPTION)
+              .color(palette.get(Role::Danger)),
+          );
+        }
+        ui.add_space(metrics.space(4));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+          // The primary action is the filled one, the way the reference's `Importar` is: the modal exists to be
+          // confirmed or left, and two plain buttons would make the two look alike.
+          let go = ui.add(
+            egui::Button::new(
+              RichText::new(IMPORT_COMMIT)
+                .size(theme::SMALL)
+                .color(palette.get(Role::TextHi)),
+            )
+            .fill(palette.get(Role::Sel)),
+          );
+          commit = go.clicked();
+          let back = ui.button(RichText::new(IMPORT_CANCEL).size(theme::SMALL));
+          cancel = back.clicked();
+        });
+      });
+
+    if cancel {
+      self.close_import();
+    }
+    if commit {
+      // Through the method a headless test calls, so the button and the test cannot disagree about what
+      // `Import` does. A refusal sets `import_error` and leaves the modal drawing it.
+      let _ = self.confirm_import(app);
     }
   }
 
