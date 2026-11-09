@@ -65,7 +65,7 @@ amber that clears 3:1 on a white panel at `#a86200` still disappears into the sh
 | `App` | `#eef1f5` | | `Sel` | `#0d7c92` |
 | `Canvas` | `#f7f9fb` | | `SelSoft` | `rgba_premultiplied(0x02,0x0d,0x0f,0x18)` |
 | `Panel` | `#ffffff` | | `Cut` | `#8b5100` |
-| `Raised` | `#f2f5f8` | | `CutSoft` | `rgba_premultiplied(0x11,0x0a,0x00,0x14)` |
+| `Raised` | `#f2f5f8` | | `CutSoft` | `rgba_premultiplied(0x0b,0x06,0x00,0x14)` |
 | `Overlay` | `#ffffff` | | `Ok` | `#1f7a43` |
 | `Hairline` | `#dde3ea` | | `Warn` | `#96610a` |
 | `Border` | `#c3ccd6` | | `Danger` | `#b3342f` |
@@ -78,7 +78,7 @@ The two `-soft` roles are the signal **premultiplied** — the channel values `t
 alpha, which is why `SelSoft` reads `0x0e,0x1b,0x1e` at `0x22` and not `0x6f,0xd3,0xe8`. Divide the channels by the
 alpha before writing a CSS `rgba()`, or the wash gets darkened twice and a 13 % tint looks like a 1.7 % one. Undone,
 they land on the signal itself: `SelSoft` ≈ `rgb(105 202 225 / 13%)`, `CutSoft` ≈ `rgb(240 165 30 / 13%)` in dark,
-and `rgb(21 138 159 / 9%)` / `rgb(217 128 0 / 8%)` in light.
+and `rgb(21 138 159 / 9%)` / `rgb(139 76 0 / 8%)` in light.
 
 ### The one gradient — `theme.rs::Palette::stock_shade`
 

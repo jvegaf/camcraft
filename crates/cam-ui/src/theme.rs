@@ -293,7 +293,7 @@ impl Palette {
       // 6.08:1 off the canvas, 6.41:1 on the panel, so every pair it already had is stronger rather than
       // weaker. The value that breaks it is the next step up the same ray: `#8c5200` measures 2.99:1.
       cut: Color32::from_rgb(0x8b, 0x51, 0x00),
-      cut_soft: Color32::from_rgba_premultiplied(0x11, 0x0a, 0x00, 0x14),
+      cut_soft: Color32::from_rgba_premultiplied(0x0b, 0x06, 0x00, 0x14),
       ok: Color32::from_rgb(0x1f, 0x7a, 0x43),
       warn: Color32::from_rgb(0x96, 0x61, 0x0a),
       danger: Color32::from_rgb(0xb3, 0x34, 0x2f),
