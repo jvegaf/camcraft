@@ -899,6 +899,29 @@ impl ToolLibrary {
       reason: source.to_string(),
     }
   }
+  /// The store's error for one of this library's own paths, for [`crate::tool_edit`] to raise.
+  ///
+  /// The writer lives in its own module so the validation rules are reviewable apart from the SQL, and it
+  /// has to be able to say which library refused a write. Taking `&self` rather than a path string is what
+  /// keeps one sentence per failure: two spellings of "this library refused" would be two.
+  pub(crate) fn failure(&self, source: rusqlite::Error) -> StoreError {
+    self.error(source)
+  }
+
+  /// Open a transaction, naming what it is for.
+  ///
+  /// `unchecked_transaction` and not `transaction`, because the writer takes `&self`: every write in this
+  /// module is a single statement SQLite has already made atomic, and the three-row writes in
+  /// [`crate::tool_edit`] are the first that need more than that.
+  pub(crate) fn begin(&self, what: &str) -> Result<rusqlite::Transaction<'_>, StoreError> {
+    self
+      .connection
+      .unchecked_transaction()
+      .map_err(|source| StoreError::ToolLibrary {
+        path: self.path.clone(),
+        reason: format!("could not {what}: {source}"),
+      })
+  }
 }
 
 /// The tool a program number names, read from a snapshot of the library.
