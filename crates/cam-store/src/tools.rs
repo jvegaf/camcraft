@@ -234,6 +234,27 @@ impl ToolKind {
     }
   }
 
+  /// The name this kind is written under in a tool-library file.
+  ///
+  /// A slug and not [`ToolKind::label`], and not [`ToolKind::raw`] either: the label is prose that may be
+  /// reworded, the integer is a storage detail of one schema, and a file another build reads has to be
+  /// neither. The slug is the part that must not move.
+  pub fn slug(self) -> &'static str {
+    match self {
+      ToolKind::FlatEndMill => "flat-end-mill",
+      ToolKind::BallNose => "ball-nose",
+      ToolKind::CornerRadius => "corner-radius",
+      ToolKind::VBit => "v-bit",
+      ToolKind::Engraving => "engraving",
+      ToolKind::Drill => "drill",
+    }
+  }
+
+  /// The kind a file's slug names, or `None` for a slug this build does not know.
+  pub fn from_slug(slug: &str) -> Option<ToolKind> {
+    ToolKind::ALL.into_iter().find(|kind| kind.slug() == slug)
+  }
+
   /// Whether this kind's tip is described by an included angle.
   pub fn has_included_angle(self) -> bool {
     matches!(self, ToolKind::VBit | ToolKind::Drill)

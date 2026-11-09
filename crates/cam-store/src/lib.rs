@@ -12,6 +12,7 @@
 
 pub mod document;
 pub mod tool_edit;
+pub mod tool_file;
 pub mod tools;
 
 use cam_model::ModelError;
