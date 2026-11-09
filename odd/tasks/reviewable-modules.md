@@ -48,7 +48,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
 | T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
 | T8 | ✅ **delivered** — 71 → **0** unresolved links and the doc build 78 → 12 warnings; two names became code spans because a private item in a module whose header resolves at the crate root cannot be linked without code (`SPAN_MM`, `Capture`); `Group::History`, a variant that never existed, now points at `Group::File` | S3 S4 | worker | `5af825d` |
 | T8-old | The 71 unresolved intra-doc links the seven slices created, plus `Art`'s sentence that points at a header its file does not have — re-pointed with `cargo doc` as the proof (count before and after), no code change | S3 | worker | — |
-| T9 | ✅ **delivered** — the three sentences M13 made false now name what exists: the Toolpaths task authors a toolpath, the 3D half simulates the drawing's own toolpaths, and the empty half says *press Simulate in the picture*. One test assertion moved with its subject (`panels.rs:77`) | S4 | inline | — |
+| T9 | ✅ **delivered** — the three sentences M13 made false now name what exists: the Toolpaths task authors a toolpath, the 3D half simulates the drawing's own toolpaths, and the empty half says *press Simulate in the picture*. One test assertion moved with its subject (`panels.rs:77`) | S4 | inline | `ca75966` |
 | T10 | ✅ **delivered** — light `Cut` `#a86200` → **`#8b5100`**, the lightest value under the luminance cap the deepest stop imposes (0.11528; `#8c5200` breaks it at 2.99:1). Every existing ratio improved (panel 4.76→6.41, canvas 4.51→6.08, lit face 3.05→4.11, deepest stop 2.25→**3.03**), the uncovered pair became a proof that walks five depths, and the workspace went 1607 → **1608** by adding it | S4 | worker | — |
 | T11 | Two follow-ups T10 named and did not take: the light `CutSoft` wash was never the premultiplication of the signal (29% lighter even before) and is now further from it; and `design/system.html` + `design/camui-shell/04-tokens.html` were **already stale before the split** — neither carries T4's `#e8cb9d`/`#cfad7b`/`#664d2e` at all | S4 | owner | — |
 | T7 | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3 | worker | `86e9947`, `f0d74a1` |
@@ -230,4 +230,18 @@ cost is the **files**. Read **until `## Log`** before touching code.
   simulate` and hand it in". M13 made all three false, and the fix names what now exists: the Toolpaths task,
   the drawing's own simulation, and the `Simulate` control in the picture. `tests/shell/panels.rs:77` moved
   with its subject, which is the only test line that changed.
+- **L15 (the milestone's own acceptance, finally measured: a behaviour candidate was reviewed and burned).**
+  T9 was the first candidate to test S3's replacement criterion — not a historical range, which L8 proved
+  impossible, but a **behaviour change small enough to fit**. `review.start` over `935e61b..ca75966` was
+  **accepted** on the first attempt: 4 files, **12 changed lines**, tier `medium`, correction budget 6, lenses
+  `readability` and `reliability`. That is the outcome the seven slices existed for — the same kind of candidate
+  was refused before with `lens_context_budget_exceeded`, and `f0d74a1`'s own move (2.5k of context) was refused
+  after them.
+  Both reviewers ran and **approved on the first pass**, with no finding of any severity: readability in 11.7 s
+  and reliability in 75 s. The provider's own accounting, which is the datapoint worth keeping:
+  **15,862 tokens and US$0.0052 for the pair** (5,432 + 10,430), against **144,780 tokens and US$0.235** for T4's
+  280-line candidate — a **9× cut in tokens and 45× in money**, entirely from the candidate fitting rather than
+  from any change of model or lens. Receipt burned (`gentle-ai.review-acknowledged/v1`), authority consumed, and
+  the discipline held: the review ran *after* the commit and the burn came first, so nothing had to be reset this
+  time.
 
