@@ -1,5 +1,48 @@
+
+fn base_tool(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool {
+  StoredTool {
+    geometry: ToolGeometry {
+      id: id.to_owned(),
+      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
+      tool_type: 0,
+      units: UnitSystem::Mm,
+      diameter: diameter.map(Length::from_mm),
+      included_angle: None,
+      flat_diameter: None,
+      num_flutes: Some(2),
+      flute_length: None,
+      tip_radius: None,
+      custom_attributes: None,
+    },
+    cutting: CuttingData {
+      id: format!("{id}-cut"),
+      rate_units: UnitSystem::Mm,
+      feed_rate: Some(100.0),
+      plunge_rate: Some(30.0),
+      spindle_speed: Some(18_000),
+      stepdown: None,
+      stepover: None,
+      clear_stepover: None,
+      tool_number: number,
+      notes: None,
+    },
+  }
+}
+
+fn default_tools() -> Vec<StoredTool> {
+  let mut g1 = base_tool("G1", Some(1), Some(6.0));
+  let mut g5 = base_tool("G5", Some(5), Some(3.175));
+  let mut g2 = base_tool("G2", Some(2), Some(6.0));
+  g2.geometry.tip_radius = Some(Length::from_mm(3.0));
+  let mut g3 = base_tool("G3", Some(3), Some(12.7));
+  g3.geometry.included_angle = Some(Angle::from_degrees(90.0));
+  g3.geometry.flat_diameter = Some(Length::from_mm(0.2));
+  vec![g1, g5, g2, g3]
+}
+
 use cam_app::AppState;
-use cam_store::tools::stored_tool_for_number;
+use cam_store::tools::{stored_tool_for_number, CuttingData, StoredTool, ToolGeometry};
+use cam_units::{Angle, Length, UnitSystem};
 use egui::RichText;
 
 use crate::theme;
@@ -17,6 +60,9 @@ impl Shell {
   /// Public for the reason [`Shell::open_material`] is: a modal whose opening cannot be driven from outside a
   /// frame is a modal only a mouse could test.
   pub fn open_tool_library(&mut self, app: &AppState) {
+    if self.tools.is_empty() {
+      self.tools = default_tools();
+    }
     let target = self.described_toolpath(app).map(|toolpath| {
       (
         toolpath.id.clone(),

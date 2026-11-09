@@ -306,3 +306,9 @@ pub(crate) fn group_labels(drawn: &ShellOutput) -> Vec<String> {
 pub(crate) fn joined(texts: &[String]) -> String {
   texts.join(" | ")
 }
+
+
+/// Default library for the app.
+pub(crate) fn default_library() -> Vec<cam_store::tools::StoredTool> {
+  library()
+}
