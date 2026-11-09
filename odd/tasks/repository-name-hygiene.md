@@ -63,10 +63,10 @@ L5). Read **until `## Log`** before touching anything.
 
 | ID | What | S | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The prose sweep: the README's framing and its rationale table re-grounded row by row, `evidence/` deleted, and the mention removed from `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`. Rows that cannot be re-grounded are deleted and named in the log | S1–S5 S8 | worker | — |
-| T4 | The **dossier paths** the sweep revealed: `odd/` still cites `evidence/analysis-report.md`, `evidence/derived/exe_utf16_strings.txt` and `evidence/installer-extract/` as where a spec's vocabulary came from (m3 S5, m4 S4/S5, m6, m7, m0 L3, roadmap L3). Each clause either states the fact it was establishing without the citation, or goes | S1 S4 S8 | worker | — |
-| T2 | The thirteen documents renamed with every inbound link updated, the pattern `(name)|(vendor)` matching only this document's own Log quote over the whole tree, gate green | S2 S6 S7 | inline | — |
-| T5 | The **stand-ins** the names left behind: "the original", "the product", "the dossier", "the observed/recovered `.pp` dialect", the bitmap-relief strategy's product name and the closed project-file extension, each replaced by the CAM fact it stood for, or deleted where no fact survived it | S1 S3 S8 | worker | — |
+| T1 | ✅ delivered `54aaf25` — prose sweep, evidence deleted | S1–S5 S8 | worker | `54aaf25` |
+| T4 | ✅ delivered `9a7784a` — dossier citations replaced | S1 S4 S8 | worker | `9a7784a` |
+| T2 | ✅ delivered `54aaf25` — 13 docs renamed, links updated | S2 S6 S7 | inline | `54aaf25` |
+| T5 | ✅ delivered `9a7784a` — stand-ins replaced | S1 S3 S8 | worker | `9a7784a` |
 | T3 | ✅ delivered — the roadmap's note: what the tree now says, and where the rewritten history lives (two published branches, the swap left to the owner) | S5 | inline | — |
 
 ## Log
