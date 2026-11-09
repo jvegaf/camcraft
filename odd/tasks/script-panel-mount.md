@@ -28,9 +28,9 @@ before touching code; the Log is the record, not the brief.
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The panel's body becomes bounded and scrollable, so a window can hold it: output that grows without limit cannot be a modal's content | S1 S4 | parent | working tree |
-| T2 | The shell grows one field, one entry point and one window: the panel opens from the palette, draws over the canvas, and leaves `output.canvas` untouched | S1 S2 | parent | working tree |
-| T3 | The record: `docs/m10-documents.md`'s known limit stops saying "not mounted", and this document says what the artboards do **not** draw | S3 | parent | working tree |
+| T1 | ✅ delivered (working tree) — The panel's body becomes bounded and scrollable, so a window can hold it: output that grows without limit cannot be a modal's content | S1 S4 | parent | working tree |
+| T2 | ✅ delivered (working tree) — The shell grows one field, one entry point and one window: the panel opens from the palette, draws over the canvas, and leaves `output.canvas` untouched | S1 S2 | parent | working tree |
+| T3 | ✅ delivered (working tree) — The record: `docs/m10-documents.md`'s known limit stops saying "not mounted", and this document says what the artboards do **not** draw | S3 | parent | working tree |
 
 ## Log
 

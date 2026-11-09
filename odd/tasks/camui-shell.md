@@ -523,9 +523,9 @@ remains of the concept, in the order the design argues for:
 
 | ID | Task | Specs | Route |
 | --- | --- | --- | --- |
-| T10 | Fold the seven parameterised command constructions into one module (`params.rs`): one `&Shell` + view centre → `UiAction` builder per command, with the clamp/range each number needs travelling with the builder, so `chrome::command_action` and `lib::authoring` cannot disagree | S5 S7 | worker |
-| T11 | The simulation progress bar: a real `egui::ProgressBar` with elapsed and total, read from the clock `view3d` already owns (`progress()`, `elapsed()`, `duration()`), replacing the text percentage | S2 S4 S8 | worker |
-| T12 | The material dialog: two choice cards (flat sheet / rotary) over a live annotated key plan, writing through a new `UiAction::SetJob` and its handler, and the positivity check `SetJob` does not have today while `Job::outline` panics without one | S2 S7 S8 | worker |
+| T10 | ✅ delivered `f985255` — params.rs fold | S5 S7 | worker | `f985255` |
+| T11 | ✅ delivered `a33e45f` — ProgressBar from view3d clock | S2 S4 S8 | worker | `a33e45f` |
+| T12 | ✅ delivered `f4b96b1` — material dialog + SetJob positivity | S2 S7 S8 | worker | `f4b96b1` |
 | T13 | ✅ delivered `6014611` — Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
 | T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/camui-toolpath.md` and landed there: the card `ffe4d68`, the estimate `126febc`, both merged in `master` (`abe2e7b`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
 

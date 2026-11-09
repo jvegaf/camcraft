@@ -60,11 +60,11 @@ document waits on anyone now.
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column *inside* the token instead of one past it | S1 S3 | parent | `a8952d6` |
-| T2 | The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `6bde4a5` |
-| T3 | `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `a8952d6` |
-| T4 | The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `99a8b33` |
-| T5 | The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `27f958e` + `bb3eead` |
+| T1 | ✅ delivered `a8952d6` — The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column *inside* the token instead of one past it | S1 S3 | parent | `a8952d6` |
+| T2 | ✅ delivered `6bde4a5` — The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `6bde4a5` |
+| T3 | ✅ delivered `a8952d6` — `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `a8952d6` |
+| T4 | ✅ delivered `99a8b33` — The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `99a8b33` |
+| T5 | ✅ delivered `27f958e` — The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `27f958e` + `bb3eead` |
 
 ## Log
 

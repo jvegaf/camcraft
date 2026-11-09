@@ -27,11 +27,11 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns | S1 S2 S4 | parent | `63e7aa4` |
-| T2 | The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified | S1 S3 | parent | `63e7aa4` |
-| T3 | The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged | S2 S3 | parent | `63e7aa4` |
-| T4 | The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it | S3 | parent | `63e7aa4` |
-| T5 | `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1 | parent | `5332383` |
+| T1 | ✅ delivered `63e7aa4` — `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns | S1 S2 S4 | parent | `63e7aa4` |
+| T2 | ✅ delivered `63e7aa4` — The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified | S1 S3 | parent | `63e7aa4` |
+| T3 | ✅ delivered `63e7aa4` — The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged | S2 S3 | parent | `63e7aa4` |
+| T4 | ✅ delivered `63e7aa4` — The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it | S3 | parent | `63e7aa4` |
+| T5 | ✅ delivered `5332383` — `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1 | parent | `5332383` |
 
 ## Log
 
