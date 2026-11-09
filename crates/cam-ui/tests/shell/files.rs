@@ -236,7 +236,7 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
-// ---- The two import options the importer can honour (shell-file-operations S3) -----------------
+// ---- The import options the modal offers (shell-file-operations S3) ----------------------------
 
 /// A one-curve SVG: a cubic Bézier, so the flattening tolerance changes the polyline it becomes.
 fn write_curved_svg(directory: &std::path::Path) -> std::path::PathBuf {
@@ -245,6 +245,59 @@ fn write_curved_svg(directory: &std::path::Path) -> std::path::PathBuf {
   let path = directory.join("curve.svg");
   std::fs::write(&path, svg).expect("svg written");
   path
+}
+
+/// An open LWPOLYLINE drifting 0.001 mm off the line it draws: Douglas–Peucker at the default
+/// flattening tolerance drops the interior vertices, a finer tolerance keeps them.
+fn write_wavy_dxf(directory: &std::path::Path) -> std::path::PathBuf {
+  let dxf = "0\nSECTION\n2\nENTITIES\n\
+0\nLWPOLYLINE\n8\n0\n90\n5\n70\n0\n\
+10\n0.0\n20\n0.0\n\
+10\n10.0\n20\n0.001\n\
+10\n20.0\n20\n0.0\n\
+10\n30.0\n20\n0.001\n\
+10\n40.0\n20\n0.0\n\
+0\nENDSEC\n0\nEOF\n";
+  let path = directory.join("wavy.dxf");
+  std::fs::write(&path, dxf).expect("dxf written");
+  path
+}
+
+/// A two-line DXF whose lines share no endpoint, so no chain can be formed.
+fn write_parallel_dxf(directory: &std::path::Path) -> std::path::PathBuf {
+  let dxf = "0\nSECTION\n2\nENTITIES\n\
+0\nLINE\n8\n0\n10\n0.0\n20\n0.0\n11\n100.0\n21\n0.0\n\
+0\nLINE\n8\n0\n10\n0.0\n20\n50.0\n11\n100.0\n21\n50.0\n\
+0\nENDSEC\n0\nEOF\n";
+  let path = directory.join("parallel.dxf");
+  std::fs::write(&path, dxf).expect("dxf written");
+  path
+}
+
+/// A closed LWPOLYLINE with one collinear vertex, so smoothing can drop it without opening the ring.
+fn write_closed_polyline_dxf(directory: &std::path::Path) -> std::path::PathBuf {
+  let dxf = "0\nSECTION\n2\nENTITIES\n\
+0\nLWPOLYLINE\n8\n0\n90\n5\n70\n1\n\
+10\n0.0\n20\n0.0\n\
+10\n50.0\n20\n0.0\n\
+10\n100.0\n20\n0.0\n\
+10\n100.0\n20\n60.0\n\
+10\n0.0\n20\n60.0\n\
+0\nENDSEC\n0\nEOF\n";
+  let path = directory.join("closed.dxf");
+  std::fs::write(&path, dxf).expect("dxf written");
+  path
+}
+
+/// The bounds of every contour the document holds.
+fn document_bounds(app: &AppState) -> cam_geom::Bounds {
+  let mut bounds = cam_geom::Bounds::empty();
+  for entity in app.document().entities() {
+    if let Some(contour) = entity.kind.as_contour() {
+      bounds = bounds.union(contour.bounds());
+    }
+  }
+  bounds
 }
 
 /// How many vertices the modal's parse holds for its one contour.
@@ -328,6 +381,9 @@ fn changing_the_flattening_tolerance_re_parses_the_file() {
   for drawn in [
     "Flattening tolerance",
     "1.000",
+    "Join open vectors",
+    "Smooth (Douglas-Peucker)",
+    "Center on material",
     "Adjust material size to drawing",
     "format svg · 1 contour(s) found, 1 curve(s) flattened, 0 skipped",
   ] {
@@ -404,6 +460,232 @@ fn a_failed_re_parse_keeps_the_report_and_says_why() {
     joined(&texts)
   );
   assert_eq!(app.history_depth(), 0);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn joining_open_vectors_chains_a_layer_into_one_cut_path() {
+  let directory = scratch("import-join");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  assert!(!shell.import_join, "joining is opt-in");
+
+  shell.import_join = true;
+  let report = shell
+    .confirm_import(&mut app)
+    .expect("the joined file imports");
+
+  assert_eq!(report.created, 1, "the two lines become one entity");
+  assert_eq!(app.document().entities().count(), 1);
+  let contour = app
+    .document()
+    .entities()
+    .next()
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("the layer holds one contour");
+  assert!(
+    !contour.is_closed(),
+    "the fixture's two lines form an open chain"
+  );
+  assert_eq!(
+    contour.len(),
+    3,
+    "the join keeps the shared endpoint and both free ends"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_layer_that_cannot_join_keeps_its_contours() {
+  let directory = scratch("import-join-refused");
+  let path = write_parallel_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell.import_join = true;
+
+  let report = shell
+    .confirm_import(&mut app)
+    .expect("a layer that cannot be joined still imports");
+
+  assert_eq!(report.created, 2, "the unjoinable layer keeps both lines");
+  assert_eq!(app.document().entities().count(), 2);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn smoothing_drops_vertices_within_the_flattening_tolerance() {
+  let directory = scratch("import-smooth");
+  let path = write_wavy_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  assert!(!shell.import_smooth, "smoothing is opt-in");
+  assert_eq!(parsed_vertices(&shell), 5, "the parse keeps every vertex");
+
+  shell.import_smooth = true;
+  shell
+    .confirm_import(&mut app)
+    .expect("the smoothed file imports");
+
+  let contour = app
+    .document()
+    .entities()
+    .next()
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("the file holds one contour");
+  assert_eq!(
+    contour.len(),
+    2,
+    "every interior vertex is within the flattening tolerance of the line that replaces it"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_finer_flattening_tolerance_keeps_the_vertices_smoothing_would_drop() {
+  let directory = scratch("import-smooth-fine");
+  let path = write_wavy_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .set_import_tolerance(0.0001)
+    .expect("a finer tolerance re-parses the same file");
+  shell.import_smooth = true;
+  shell
+    .confirm_import(&mut app)
+    .expect("the finely smoothed file imports");
+
+  let contour = app
+    .document()
+    .entities()
+    .next()
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("the file holds one contour");
+  assert_eq!(
+    contour.len(),
+    5,
+    "the 0.001 mm drift is above a 0.0001 mm tolerance, so nothing is dropped"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn smoothing_keeps_a_closed_contour_closed_and_drops_collinear_vertices() {
+  let directory = scratch("import-smooth-closed");
+  let path = write_closed_polyline_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell.import_smooth = true;
+  shell
+    .confirm_import(&mut app)
+    .expect("the smoothed closed file imports");
+
+  let contour = app
+    .document()
+    .entities()
+    .next()
+    .and_then(|entity| entity.kind.as_contour())
+    .expect("the file holds one contour");
+  assert!(contour.is_closed(), "smoothing must not open a closed ring");
+  assert_eq!(
+    contour.len(),
+    4,
+    "only the collinear vertex is dropped, so the rectangle keeps its corners"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn centering_the_drawing_places_it_in_the_middle_of_the_existing_sheet() {
+  let directory = scratch("import-center");
+  let path = write_dxf(&directory);
+  let sheet = Job::default_sheet();
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  assert!(shell.import_center, "centering is the default position");
+  shell.import_adjust_material = false;
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+
+  assert_eq!(
+    app.document().job,
+    sheet,
+    "the material the operator already had is kept"
+  );
+  let bounds = document_bounds(&app);
+  let expected = Point2::new(
+    (sheet.width.mm() - bounds.width()) * 0.5,
+    (sheet.height.mm() - bounds.height()) * 0.5,
+  );
+  assert!(
+    bounds.min.is_near(expected, 1.0e-9),
+    "the drawing must sit in the middle of the sheet: {:?} vs {expected:?}",
+    bounds.min
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn keeping_the_original_position_leaves_the_import_at_the_importer_margin() {
+  let directory = scratch("import-original-position");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.import_adjust_material = false;
+  shell.import_center = false;
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+
+  let bounds = document_bounds(&app);
+  assert!(
+    bounds.min.is_near(Point2::new(10.0, 10.0), 1.0e-9),
+    "unchecked, the geometry keeps the importer's bottom-left margin: {:?}",
+    bounds.min
+  );
   std::fs::remove_dir_all(&directory).ok();
 }
 
@@ -505,6 +787,9 @@ fn an_import_at_the_default_options_still_writes_what_the_importer_laid_out() {
 
   assert_eq!(shell.import_tolerance, cam_import::DEFAULT_TOLERANCE);
   assert!(shell.import_adjust_material);
+  assert!(!shell.import_join);
+  assert!(!shell.import_smooth);
+  assert!(shell.import_center);
   assert_eq!(app.document().job, laid_out);
   assert_eq!(
     shell.status,

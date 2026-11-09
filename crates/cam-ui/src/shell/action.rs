@@ -1,6 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use cam_app::AppState;
+use cam_geom::{Contour, Point2, Vec2};
 use cam_model::Job;
 use cam_store::tools::{StoredTool, ToolLibrary};
 use cam_units::Length;
@@ -124,15 +125,23 @@ impl Shell {
   /// promise about the dialog's layout rather than about the import.
   ///
   /// The document comes from [`Self::import_parsed`], never from a second read of the file: the counts the
-  /// modal drew and the geometry that replaces the drawing are then the same parse by construction. A refusal
-  /// (`into_document` failing on a parse that produced no bounds) stays in the modal — [`Self::import_error`]
-  /// carries the sentence — because closing it would lose the file and the report the operator was reading.
+  /// modal drew and the geometry that replaces the drawing are then the same parse by construction. The
+  /// modal's options are applied to that parse by [`import_into_document`], which is the only place they reach
+  /// the drawing. A refusal (`into_document` failing on a parse that produced no bounds) stays in the modal —
+  /// [`Self::import_error`] carries the sentence — because closing it would lose the file and the report the
+  /// operator was reading.
   pub fn confirm_import(&mut self, app: &mut AppState) -> Result<ActionReport, String> {
     let Some(parsed) = self.import_parsed.clone() else {
       return Err(NO_IMPORT_PENDING.to_owned());
     };
-    let adjust_material = self.import_adjust_material;
-    match import_into_document(app, &parsed, self.import_path.as_deref(), adjust_material) {
+    let settings = ImportSettings {
+      join: self.import_join,
+      smooth: self.import_smooth,
+      center: self.import_center,
+      tolerance: self.import_tolerance,
+      adjust_material: self.import_adjust_material,
+    };
+    match import_into_document(app, &parsed, self.import_path.as_deref(), settings) {
       Ok(report) => {
         self.status = report.message();
         self.close_import();
@@ -342,25 +351,34 @@ const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import f
 /// already paid for the parse it showed. The note is the same sentence, word for word, so the status bar cannot
 /// describe the same file two ways depending on which route imported it.
 ///
-/// `adjust_material` is the modal's "Adjust material size to drawing" option, and it is the one thing this
-/// function does beyond `cam_import::into_document`: checked, the stock is re-derived as the imported contours'
-/// bounding box plus [`cam_import::PLACEMENT_MARGIN`] on every side, which is where the importer placed the
-/// geometry, so it lands with that margin on all four sides and the thickness is left alone. Unchecked, the
-/// stock is the material the drawing being replaced already had — the sheet this operator set up — and the
-/// geometry keeps the placement the importer gave it.
+/// The modal's options are post-processing of the parse, because [`cam_import`] has no such options: join and
+/// smooth rewrite the contours before `into_document`, and position moves the finished geometry inside the
+/// stock. `adjust_material` is checked after that geometry exists: the stock is then re-derived as the imported
+/// contours' bounding box plus [`cam_import::PLACEMENT_MARGIN`] on every side, which is where the importer placed
+/// the geometry, so it lands with that margin on all four sides and the thickness is left alone. Unchecked, the
+/// stock is the material the drawing being replaced already had — the sheet this operator set up.
 fn import_into_document(
   app: &mut AppState,
   parsed: &cam_import::Imported,
   path: Option<&Path>,
-  adjust_material: bool,
+  settings: ImportSettings,
 ) -> Result<ActionReport, String> {
   let previous_job = app.document().job.clone();
-  let mut document = cam_import::into_document(parsed, None).map_err(|error| error.to_string())?;
-  document.job = if adjust_material {
+  let processed = process_import(parsed, settings);
+  let mut document =
+    cam_import::into_document(&processed, None).map_err(|error| error.to_string())?;
+  let job = if settings.adjust_material {
     stock_for_drawing(&document)
   } else {
     previous_job
   };
+  // Centering happens against the job the import will keep, so the option means the same thing whether the
+  // stock is fitted to the drawing or is the sheet the operator already had. Fitting makes the two placements
+  // coincide — the stock is the drawing plus the same margin on every side — so the default is unchanged.
+  if settings.center {
+    center_drawing(&mut document, &job);
+  }
+  document.job = job;
   let created_entities: Vec<String> = document
     .entities()
     .map(|entity| entity.id.clone())
@@ -387,6 +405,202 @@ fn import_into_document(
     note: Some(note),
     ..ActionReport::default()
   })
+}
+
+/// The modal's options, gathered once so the write path cannot read one of them halfway through.
+#[derive(Clone, Copy)]
+struct ImportSettings {
+  join: bool,
+  smooth: bool,
+  center: bool,
+  tolerance: f64,
+  adjust_material: bool,
+}
+
+/// Rewrite the parse's contours with the modal's join and smooth options.
+///
+/// Both are post-processing rather than import options because [`cam_import`] has none: the report above the
+/// fields keeps describing what the file held, while `Import` writes the geometry these two rules made of it.
+fn process_import(parsed: &cam_import::Imported, settings: ImportSettings) -> cam_import::Imported {
+  if !settings.join && !settings.smooth {
+    return parsed.clone();
+  }
+  let mut processed = parsed.clone();
+  for layer in &mut processed.layers {
+    if settings.join {
+      // A layer that is not exactly one chain is left as it arrived: the joiner refuses rather than picking
+      // between two continuations, and a wrong chain is a cut path nobody asked for.
+      if let Ok(joined) = cam_geom::join::join(&layer.contours, settings.tolerance) {
+        layer.contours = vec![joined];
+      }
+    }
+    if settings.smooth {
+      layer.contours = layer
+        .contours
+        .iter()
+        .map(|contour| simplify_contour(contour, settings.tolerance))
+        .collect();
+    }
+  }
+  processed
+}
+
+/// Center every contour on the job the import will keep.
+///
+/// The two placements coincide when the stock is fitted to the drawing, because that stock is the drawing plus
+/// [`cam_import::PLACEMENT_MARGIN`] on every side; the option is visible on a sheet the operator already had.
+fn center_drawing(document: &mut cam_model::Document, job: &Job) {
+  let mut bounds = cam_geom::Bounds::empty();
+  for entity in document.entities() {
+    if let Some(contour) = entity.kind.as_contour() {
+      bounds = bounds.union(contour.bounds());
+    }
+  }
+  if bounds.is_empty() {
+    return;
+  }
+  let target = Point2::new(
+    (job.width.mm() - bounds.width()) * 0.5,
+    (job.height.mm() - bounds.height()) * 0.5,
+  );
+  let delta = Vec2::new(target.x - bounds.min.x, target.y - bounds.min.y);
+  if delta.x.abs() <= f64::EPSILON && delta.y.abs() <= f64::EPSILON {
+    return;
+  }
+  for layer in &mut document.layers {
+    for entity in &mut layer.entities {
+      let cam_model::EntityKind::Contour { contour } = &mut entity.kind;
+      if let Ok(moved) = cam_geom::transform::translate(contour, delta) {
+        *contour = moved;
+      }
+    }
+  }
+}
+
+/// Simplify one contour, keeping its arcs exactly when it has them.
+fn simplify_contour(contour: &Contour, tolerance: f64) -> Contour {
+  if contour.has_arcs() || contour.len() <= 2 || tolerance <= 0.0 {
+    return contour.clone();
+  }
+  let points: Vec<Point2> = contour
+    .vertices()
+    .iter()
+    .map(|vertex| vertex.point)
+    .collect();
+  let simplified = if contour.is_closed() {
+    simplify_closed(&points, tolerance)
+  } else {
+    simplify_open(&points, tolerance)
+  };
+  if simplified.len() == points.len() {
+    return contour.clone();
+  }
+  Contour::from_points(&simplified, contour.is_closed()).unwrap_or_else(|_| contour.clone())
+}
+
+/// Douglas–Peucker on a **closed** ring, keeping at least three vertices.
+///
+/// The ring is cut at vertex 0 and at the vertex farthest from it, the two open chains between them are
+/// simplified, and the results are joined back together. Every kept vertex is an original vertex, so
+/// simplification never moves anything: it only drops vertices, each within `tolerance` of the polyline that
+/// replaced it.
+fn simplify_closed(points: &[Point2], tolerance: f64) -> Vec<Point2> {
+  if tolerance <= 0.0 || points.len() <= 3 {
+    return points.to_vec();
+  }
+
+  let anchor = points[0];
+  let mut far = 0;
+  let mut far_distance = -1.0;
+  for (index, point) in points.iter().enumerate() {
+    let distance = point.distance_to(anchor);
+    if distance > far_distance {
+      far_distance = distance;
+      far = index;
+    }
+  }
+  if far == 0 || far + 1 == points.len() {
+    return points.to_vec();
+  }
+
+  let mut kept = simplify_open(&points[..=far], tolerance);
+  let mut second = points[far..].to_vec();
+  second.push(anchor);
+  let reduced = simplify_open(&second, tolerance);
+  // The first vertex of the second chain (`far`) and its last (`points[0]`) are already kept.
+  kept.extend(
+    reduced
+      .iter()
+      .skip(1)
+      .take(reduced.len().saturating_sub(2))
+      .copied(),
+  );
+
+  if kept.len() >= 3 {
+    return kept;
+  }
+
+  // A tolerance large enough to flatten the whole ring leaves two vertices; keep the three most
+  // spread out original vertices instead of a contour the kernel would refuse.
+  let mut third = 0;
+  let mut third_distance = -1.0;
+  for (index, point) in points.iter().enumerate() {
+    let distance = distance_to_segment(*point, anchor, points[far]);
+    if distance > third_distance {
+      third_distance = distance;
+      third = index;
+    }
+  }
+  let mut indices = [0, far, third];
+  indices.sort_unstable();
+  indices.iter().map(|&index| points[index]).collect()
+}
+
+/// Douglas–Peucker on an open chain, endpoints kept.
+fn simplify_open(points: &[Point2], tolerance: f64) -> Vec<Point2> {
+  let count = points.len();
+  if count <= 2 {
+    return points.to_vec();
+  }
+  let mut keep = vec![false; count];
+  keep[0] = true;
+  keep[count - 1] = true;
+  let mut pending = vec![(0usize, count - 1)];
+  while let Some((start, end)) = pending.pop() {
+    if end <= start + 1 {
+      continue;
+    }
+    let mut farthest = start;
+    let mut farthest_distance = -1.0;
+    for (index, point) in points.iter().enumerate().take(end).skip(start + 1) {
+      let distance = distance_to_segment(*point, points[start], points[end]);
+      if distance > farthest_distance {
+        farthest_distance = distance;
+        farthest = index;
+      }
+    }
+    if farthest_distance > tolerance {
+      keep[farthest] = true;
+      pending.push((start, farthest));
+      pending.push((farthest, end));
+    }
+  }
+  points
+    .iter()
+    .zip(keep.iter().copied())
+    .filter_map(|(point, kept)| kept.then_some(*point))
+    .collect()
+}
+
+/// Distance from `point` to the segment `start`–`end`.
+fn distance_to_segment(point: Point2, start: Point2, end: Point2) -> f64 {
+  let span = end - start;
+  let length_squared = span.length_squared();
+  if length_squared <= f64::EPSILON {
+    return point.distance_to(start);
+  }
+  let t = ((point - start).dot(span) / length_squared).clamp(0.0, 1.0);
+  point.distance_to(start.lerp(end, t))
 }
 
 /// The stock an import writes when it is asked to fit the material to the drawing.

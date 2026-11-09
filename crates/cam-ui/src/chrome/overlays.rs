@@ -25,12 +25,21 @@ const IMPORT_COMMIT: &str = "Import";
 /// dialog holds one sentence and two buttons, so it must not grow into the surface it is interrupting.
 const IMPORT_WIDTH: f32 = 460.0;
 
-/// The tolerance field's label, the checkbox under it, and the sentence that says what the checkbox does.
+/// The labels and notes of the options column.
 ///
-/// The options the reference's dialog carries that this build still does not — join open vectors, smooth, and
-/// position — are **absent on purpose** rather than drawn dead: [`cam_import`] has no such options (the rest of
-/// S3's follow-up), and a control that wrote nothing is the dead button S7 and S9 both forbid.
+/// Every one of them reaches the drawing through [`crate::Shell::confirm_import`]: join and smooth rewrite the
+/// parse's contours, position moves the finished geometry in the stock, and material size chooses the stock
+/// itself. None is drawn dead — a control that wrote nothing is the dead button S7 and S9 both forbid.
 const IMPORT_TOLERANCE_LABEL: &str = "Flattening tolerance";
+const IMPORT_JOIN_LABEL: &str = "Join open vectors";
+const IMPORT_JOIN_NOTE: &str =
+  "Chains each layer's open contours into one cut path. A layer that cannot form one chain is left as it is.";
+const IMPORT_SMOOTH_LABEL: &str = "Smooth (Douglas-Peucker)";
+const IMPORT_SMOOTH_NOTE: &str =
+  "Drops vertices within the flattening tolerance of the line that replaces them. Contours with arcs are kept exactly.";
+const IMPORT_CENTER_LABEL: &str = "Center on material";
+const IMPORT_CENTER_NOTE: &str =
+  "Centers the drawing on the stock. Unchecked, it keeps the importer's bottom-left placement.";
 const IMPORT_ADJUST_MATERIAL_LABEL: &str = "Adjust material size to drawing";
 const IMPORT_ADJUST_MATERIAL_NOTE: &str =
   "Fits the stock to the drawing plus 10 mm on every side. Unchecked, the material you already have is kept.";
@@ -94,12 +103,11 @@ impl Shell {
   /// title, one block saying what the importer found, the options that report can honour, and a `Cancel`/`Import`
   /// footer.
   ///
-  /// Two of the reference's options are here because [`cam_import`] can honour them today: the flattening
-  /// tolerance the file is parsed at — changing it re-parses the file, so the report above the field is always
-  /// the parse `Import` will write ([`crate::Shell::set_import_tolerance`]) — and whether the import fits the
-  /// stock to the drawing. The rest of the reference's column — join open vectors, smooth, position — stays
-  /// absent rather than dead: the importer has no such options (the remaining follow-up of S3), and a dialog
-  /// must not promise a control that writes nothing.
+  /// Every option in the reference's column is here: the flattening tolerance the file is parsed at — changing
+  /// it re-parses the file, so the report above the field is always the parse `Import` will write
+  /// ([`crate::Shell::set_import_tolerance`]) — join open vectors, smooth, position, and whether the import fits
+  /// the stock to the drawing. Only the last four are drafts: they are post-processing of the parse that
+  /// `Import` applies, because [`cam_import`] has no options for them.
   pub(crate) fn import_dialog(
     &mut self,
     ctx: &egui::Context,
@@ -132,9 +140,12 @@ impl Shell {
     // Cloned before the closure: the refusal is read here and written by [`crate::Shell::confirm_import`] after
     // the frame, and borrowing `self` twice is what the clone avoids.
     let refusal = self.import_error.clone();
-    // The two options' drafts, for the same reason: the closure edits these values and the shell writes back
-    // only what it can honour — the flag itself for the checkbox, and an accepted re-parse for the tolerance.
+    // The options' drafts, for the same reason: the closure edits these values and the shell writes back
+    // only after the frame — the flag itself for each checkbox, and an accepted re-parse for the tolerance.
     let mut tolerance = self.import_tolerance;
+    let mut join = self.import_join;
+    let mut smooth = self.import_smooth;
+    let mut center = self.import_center;
     let mut adjust_material = self.import_adjust_material;
     let mut retolerance: Option<f64> = None;
     let mut cancel = false;
@@ -206,6 +217,36 @@ impl Shell {
         });
         ui.add_space(metrics.space(1));
         ui.checkbox(
+          &mut join,
+          RichText::new(IMPORT_JOIN_LABEL).size(theme::SMALL),
+        );
+        ui.label(
+          RichText::new(IMPORT_JOIN_NOTE)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.add_space(metrics.space(1));
+        ui.checkbox(
+          &mut smooth,
+          RichText::new(IMPORT_SMOOTH_LABEL).size(theme::SMALL),
+        );
+        ui.label(
+          RichText::new(IMPORT_SMOOTH_NOTE)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.add_space(metrics.space(1));
+        ui.checkbox(
+          &mut center,
+          RichText::new(IMPORT_CENTER_LABEL).size(theme::SMALL),
+        );
+        ui.label(
+          RichText::new(IMPORT_CENTER_NOTE)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
+        ui.add_space(metrics.space(1));
+        ui.checkbox(
           &mut adjust_material,
           RichText::new(IMPORT_ADJUST_MATERIAL_LABEL).size(theme::SMALL),
         );
@@ -242,9 +283,12 @@ impl Shell {
         });
       });
 
-    // The checkbox is a draft until `Import` writes it, so ticking it needs no report of its own — and it is
+    // Every checkbox is a draft until `Import` writes it, so ticking one needs no report of its own — and it is
     // held for the session, like the tolerance, because a shop that imports onto its own sheets says so once
     // rather than once per file.
+    self.import_join = join;
+    self.import_smooth = smooth;
+    self.import_center = center;
     self.import_adjust_material = adjust_material;
     if cancel {
       self.close_import();

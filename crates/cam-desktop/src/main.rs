@@ -101,7 +101,9 @@ impl eframe::App for Editor {
           .add_filter("vector or image", &["dxf", "svg", "pdf", "eps", "png"])
           .pick_file()
         {
-          Some(path) => UiAction::ImportFile { path: path.to_string_lossy().into_owned() },
+          Some(path) => UiAction::ImportFile {
+            path: path.to_string_lossy().into_owned(),
+          },
           None => continue,
         },
         // Save As asks the same question in the other direction: the shell names the file it currently has so

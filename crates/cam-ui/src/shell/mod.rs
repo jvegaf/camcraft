@@ -261,6 +261,31 @@ pub struct Shell {
   /// A draft until `Import` is pressed, like [`Self::material_size`]: ticking it in the modal writes nothing and
   /// `Cancel` costs nothing. Sticky for the session too, so a shop that imports onto its own sheets says so once.
   pub import_adjust_material: bool,
+  /// Whether `Import` joins each layer's open contours into one cut path (shell-file-operations S3).
+  ///
+  /// The join is [`cam_geom::join::join`] with [`Self::import_tolerance`]. A layer whose open contours do not
+  /// form exactly one chain — or that holds a closed contour — is imported unchanged: the joiner refuses rather
+  /// than guessing, and a guessed chain is a cut path nobody asked for. Opt-in, because joining is a change to
+  /// the drawing rather than a reading of it.
+  ///
+  /// A draft until `Import` is pressed, like [`Self::import_adjust_material`], and sticky for the session.
+  pub import_join: bool,
+  /// Whether `Import` smooths each contour with Douglas–Peucker at [`Self::import_tolerance`]
+  /// (shell-file-operations S3).
+  ///
+  /// Only polyline contours are simplified: a contour that still carries arcs is kept exactly, because dropping
+  /// vertices from it would also drop the arcs, and smoothing must not change the shape it cannot measure.
+  /// Opt-in and sticky, for the reason [`Self::import_join`] is.
+  pub import_smooth: bool,
+  /// Whether `Import` centers the drawing on the material (shell-file-operations S3).
+  ///
+  /// `true` by default. When the stock is fitted to the drawing this is exactly where the importer already put
+  /// it — the stock is the drawing plus [`cam_import::PLACEMENT_MARGIN`] on every side — so the default import
+  /// is unchanged. On a sheet the operator already has, it centers the drawing on that sheet instead of leaving
+  /// it at the importer's bottom-left margin. Unchecked, the geometry keeps that bottom-left placement.
+  ///
+  /// A draft until `Import` is pressed, and sticky, like the other options.
+  pub import_center: bool,
   /// Whether the tool-library modal is open (camui-prancheta S9).
   ///
   /// View state: opening the modal, searching it and cancelling out of it are not edits, and only
@@ -398,6 +423,9 @@ impl Default for Shell {
       import_error: None,
       import_tolerance: cam_import::DEFAULT_TOLERANCE,
       import_adjust_material: true,
+      import_join: false,
+      import_smooth: false,
+      import_center: true,
       show_tool_library: false,
       show_script: false,
       script: script_panel::ScriptPanel::new(),
