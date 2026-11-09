@@ -30,6 +30,17 @@ impl Shell {
     // here is what keeps one place holding the dialect and one place writing the file, without widening a
     // handler whose signature every file action already shares.
     let applied = match action {
+      UiAction::NewProject => {
+        app.replace_document(cam_model::Document::new(cam_model::Job::default_sheet()));
+        self.open_material(app);
+        self.material_size = default_material_size();
+        self.clear_preview();
+        self.auto_frame = true;
+        Ok(ActionReport {
+          label: action.label(),
+          ..ActionReport::default()
+        })
+      }
       UiAction::ChoosePost { path } => self.choose_post(path),
       UiAction::GenerateGcode { path } => self.generate_gcode(app, path),
       _ => handle_action_with_file(

@@ -97,6 +97,13 @@ impl eframe::App for Editor {
           // Cancelled: no action, no message, nothing touched.
           None => continue,
         },
+        UiAction::RequestImportFile => match rfd::FileDialog::new()
+          .add_filter("vector or image", &["dxf", "svg", "pdf", "eps", "png"])
+          .pick_file()
+        {
+          Some(path) => UiAction::ImportFile { path: path.to_string_lossy().into_owned() },
+          None => continue,
+        },
         // Save As asks the same question in the other direction: the shell names the file it currently has so
         // the dialog opens near it, and the answer re-enters the shell as the path to write (shell-save-document
         // S2). Everything after the path — the extras, the dirty flag, the recorded name — stays in

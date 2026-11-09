@@ -80,6 +80,7 @@ fn the_palette_draws_its_golden_in_order() {
   assert_eq!(
     palette(),
     words(&[
+      "New",
       "Open",
       "Save",
       "Save as",

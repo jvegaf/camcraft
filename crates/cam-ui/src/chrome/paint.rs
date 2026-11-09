@@ -48,10 +48,12 @@ pub(super) fn command_icon(command: Command) -> Icon {
     Command::Script => Icon::Gcode,
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
+    Command::NewProject => Icon::New,
     Command::Open => Icon::Open,
     Command::Save => Icon::Save,
     Command::SaveAs => Icon::SaveAs,
     Command::FitJob => Icon::ZoomFit,
+    Command::Import => Icon::ImportVectors,
     // The rest are not drawn as glyphs anywhere in the frame: they are labelled buttons in the Tools tab
     // or reached by a key, so this arm is the honest "no symbol of its own" answer rather than a new
     // symbol nobody has ever seen.

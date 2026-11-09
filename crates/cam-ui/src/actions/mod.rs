@@ -180,6 +180,17 @@ pub enum UiAction {
   /// An intent and nothing more: the shell does not open a dialog, read a path or touch the document when
   /// it receives this, which is what keeps `cam-ui` free of a dialog crate and testable without a display.
   RequestOpenFile,
+
+  /// Start a fresh document and open the material dialog, so the first thing defined is the stock.
+  ///
+  /// An in-shell action: no host dialog is involved, because the dialog the reference shows is the shell's
+  /// own (`Novo trabalho — defina o material`), not the platform's file picker.
+  NewProject,
+  /// Ask the host for a file to import (DXF, SVG, PDF, EPS or PNG); the host shows its picker and applies
+  /// [`UiAction::ImportFile`] with the path it returned.
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
+  RequestImportFile,
   /// Write the drawing back to the file the shell recorded.
   ///
   /// The write is [`cam_store::document::DocumentFile::save`], carrying the archive entries this build does
@@ -324,8 +335,9 @@ impl UiAction {
       Self::DeleteSelection => "delete selection",
       Self::SetSelection(_) => "select",
       Self::ToggleLayerVisible { .. } => "layer visibility",
-      Self::ImportFile { .. } => "import file",
+      Self::ImportFile { .. } | Self::RequestImportFile => "import file",
       Self::OpenFile { .. } | Self::RequestOpenFile => "open file",
+      Self::NewProject => "new project",
       Self::Save => "save document",
       Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
       Self::GenerateGcode { .. } | Self::RequestGenerateGcode => "generate g-code",

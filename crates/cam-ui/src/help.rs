@@ -182,6 +182,8 @@ pub enum Command {
   AddRectangle,
   /// Replace the drawing with the vectors in a file.
   Import,
+  /// Start a fresh document and define its material.
+  NewProject,
   /// Replace the drawing with a saved document, chosen in the system's file dialog.
   Open,
   /// Write the drawing back to the file the app bar names.
@@ -259,6 +261,7 @@ impl Command {
   /// group's heading twice, which is why the blocks are commented.
   pub const ALL: &'static [Command] = &[
     // FILE
+    Command::NewProject,
     Command::Open,
     Command::Save,
     Command::SaveAs,
@@ -321,6 +324,7 @@ impl Command {
       Self::AddText => "Add text",
       Self::AddRectangle => "Add rectangle",
       Self::Import => "Import",
+      Self::NewProject => "New",
       Self::Open => "Open",
       Self::Save => "Save",
       Self::SaveAs => "Save as",
@@ -352,7 +356,8 @@ impl Command {
   /// The palette run, or app-bar run, this command belongs to.
   pub fn group(self) -> Group {
     match self {
-      Self::Open
+      Self::NewProject
+      | Self::Open
       | Self::Save
       | Self::SaveAs
       | Self::Import
@@ -427,7 +432,8 @@ impl Command {
     self.tool().is_some()
       || matches!(
         self,
-        Self::Open
+        Self::NewProject
+          | Self::Open
           | Self::Save
           | Self::SaveAs
           | Self::FitJob
@@ -461,7 +467,9 @@ impl Command {
       Self::Join => Some(UiAction::Join),
       Self::DeleteSelection => Some(UiAction::DeleteSelection),
       Self::FitJob => Some(UiAction::ZoomToFit),
+      Self::NewProject => Some(UiAction::NewProject),
       Self::Open => Some(UiAction::RequestOpenFile),
+      Self::Import => Some(UiAction::RequestImportFile),
       Self::Save => Some(UiAction::Save),
       Self::SaveAs => Some(UiAction::RequestSaveAs),
       _ => None,
@@ -547,6 +555,11 @@ impl Command {
               so a host still opens the file by path. The status bar then names \
               the file, its contour count and how many curves were skipped.",
         related: &[Command::Select, Command::Undo, Command::FitJob],
+      },
+      Self::NewProject => Help {
+        what: "Starts a fresh drawing and opens the material dialog, so the first thing defined is the stock.",
+        how: "Press New. The drawing resets and the material dialog asks for flat sheet or rotary, its size and where the machine origin sits.",
+        related: &[Command::Open, Command::SaveAs, Command::FitJob],
       },
       Self::Open => Help {
         what: "Replaces the drawing with a `.c2d` you chose, and it is refused while the drawing has unsaved changes, so nothing is lost to it.",

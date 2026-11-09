@@ -217,6 +217,14 @@ pub(crate) fn handle_action_with_file(
       label: action.label(),
       ..ActionReport::default()
     }),
+    UiAction::NewProject => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    UiAction::RequestImportFile => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
     UiAction::Save => {
       // The shell will not invent a path: a save with nowhere to go would write into whatever directory the
       // window was started from, or pick a name the operator never chose, so it is refused and points at the
