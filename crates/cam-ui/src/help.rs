@@ -436,6 +436,7 @@ impl Command {
           | Self::Open
           | Self::Save
           | Self::SaveAs
+          | Self::Import
           | Self::FitJob
           | Self::Undo
           | Self::Redo
