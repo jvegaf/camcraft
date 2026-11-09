@@ -38,10 +38,10 @@ access to the cutting tool library, and `cam-app` has no vocabulary for a toolpa
 
 | ID | Task | Specs | Route | Risk note |
 | --- | --- | --- | --- | --- |
-| T1 | A pure `stored_tool_for_number(&[StoredTool], u32) -> Option<&StoredTool>` in `cam-store`, used by `ToolLibrary::tool_for_number` and by the shell so the two cannot disagree; `cam-ui` gains the `cam-store` edge; `Shell::set_tools(Vec<StoredTool>)`; the current-tool card in the inspector, showing exactly S2's fields plus an explicit "T7 is not in the library" state | S1 S2 S3 S4 S6 | worker | — |
-| T2 | Publish the seconds: a `pub fn seconds_for(program: &MoveStream) -> f64` lifted out of `move_seconds`/`steps_for`, and the estimated cutting time beside the card, formatted by the `clock_text` T11 added | S1 S5 | worker | — |
-| T3 | The toolpath vocabulary in `cam-app`: `AddToolpath`, `SetToolpathToolNumber`, `SetToolpathOperation`, `DeleteToolpath`, each with a refusal that names the number or the entity, plus the `next_toolpath` counter if paid for | S7 | worker | **item 3** — `cam_app::Command` is a contract others consume; its own commit and its own review candidate |
-| T4 | `cam-toolpath::program_for(&Document, &[ToolSpec]) -> Result<MoveStream, _>`, the body moved out of `cam-cli::build_segment` so the estimate describes the document's toolpaths and the preview stops being `cam-desktop`'s sample | S5 S6 S7 | worker | **item 3** — the emitter's law moves crates; differential against the CLI's own output |
+| T1 | ✅ delivered `ffe4d68` — `stored_tool_for_number` in `cam-store`; `cam-ui` gains `cam-store` edge; current-tool card | S1 S2 S3 S4 S6 | worker | `ffe4d68` |
+| T2 | ✅ delivered `126febc` — `seconds_for` published; estimated cutting time in the shell | S1 S5 | worker | `126febc` |
+| T3 | ✅ delivered `0700467` — `AddToolpath`, `SetToolpathToolNumber`, `SetToolpathOperation`, `DeleteToolpath` | S7 | worker | `0700467` |
+| T4 | ✅ delivered `36e91cc` — `cam-toolpath::program_for` moved from `cam-cli::build_segment` | S5 S6 S7 | worker | `36e91cc` |
 
 T1 and T2 are independent and can land in either order. T3 needs T1's list to pick a number from. T4 is what makes
 T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-coded `sample_tool()`.
