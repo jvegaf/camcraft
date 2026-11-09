@@ -27,14 +27,14 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | `94cfd234/R2-002`: the reference's justification says strict inequalities are exact "because coordinates are whole millimetres"; the real reason a shared edge is not an overlap is `footprints_overlap`'s `Touching` rule | S5 | parent | |
-| T2 | `39a6d85c/R2-002`: `NESTING_COST_SUM_TOLERANCE` no longer governs any sum — it is the absolute tolerance of a fraction against its derivation; rename it and align the doc | S5 | parent | |
-| T3 | `39a6d85c/R2-001`: `NestingPart::bounds` and `Document::placement_footprint` enumerate two `None` cases each while the implementation has a third (`as_contour()?`) | S5 | parent | |
-| T4 | `39a6d85c/R4-003`: a cost record with no placements to support it survives validation; only the identity record may, by S2 | S2 S5 | parent | |
-| T5 | `94cfd234/R3-PRUNE-TOLERANCE`: no test exercises the prune's tolerance term or a pair where the box predicate and the winding predicate could disagree | S6 | parent | |
-| T6 | `94cfd234/R3-MULTISHEET-PRUNE`: every test of the pruned check builds one sheet, so bucket keying and the global-minimum pair are unasserted | S6 | parent | |
-| T7 | `94cfd234/R1-001` + `R4-001`: the failure path pays the full candidate scan before refusing; an index over placements plus an early exit at the first offending `earlier` index, with the named pair unchanged | S3 S6 | parent | |
-| T8 | S4's fresh review: a committed candidate of the current tree, its findings written into this Log **before** the acknowledgement burns the receipt | S4 | parent | |
+| T1 | ✅ delivered `5a7d770` — justification now names `footprints_overlap`'s `Touching` rule | S5 | parent | `5a7d770` |
+| T2 | ✅ delivered `5a7d770` — renamed to `NESTING_COST_FRACTION_TOLERANCE` | S5 | parent | `5a7d770` |
+| T3 | ✅ delivered `5a7d770` — all three `None` cases named | S5 | parent | `5a7d770` |
+| T4 | ✅ delivered `189fbe0` — only identity record passes with zero placements | S2 S5 | parent | `189fbe0` |
+| T5 | ✅ delivered `5a7d770` — three tests + mutation argument in comment | S6 | parent | `5a7d770` |
+| T6 | ✅ delivered `5a7d770` — two-sheet test; global-min pair named | S6 | parent | `5a7d770` |
+| T7 | ✅ delivered `7ed2ef9` + correction `5635855` — grid index + early exit; review approved | S3 S6 | parent | `5635855` |
+| T8 | ✅ delivered — lineage `review-ca5c7eda65951600` approved, receipt burned | S4 | parent | `5635855` |
 
 ## Log
 
