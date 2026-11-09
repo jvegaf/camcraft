@@ -8,9 +8,12 @@
 //! and in hardwood, and differently again on a light hobby machine. Copying the shape is a deliberate
 //! decision recorded in the roadmap (analysis report §2.1).
 //!
-//! `tool_type` is preserved as the raw integer found in the analysed schema. Its numeric mapping is
-//! **not** established from the artifact, so no enum pretends to know it; each toolpath strategy
-//! instead validates the geometric parameters it actually needs.
+//! `tool_type` is preserved as the raw integer found in the analysed schema, whose numeric mapping the
+//! artifact did not establish. This build now **writes** that integer itself, so it has to say what its
+//! own numbers mean: [`ToolKind`] is that vocabulary, and [`ToolKind::of`] reads a row by its stored kind
+//! when the row carries one and falls back to the shape the geometry proves when it does not. Zero is
+//! reserved for "the writer did not say" — `cam-cli tools add` has always written it — so a library
+//! written before this vocabulary existed still reads as the tool it geometrically is.
 
 use std::ffi::OsString;
 use std::io::Read;
@@ -111,6 +114,14 @@ pub const MIGRATIONS: &[Migration] = &[
         ON tool_entity (tool_geometry_id, material_id, machine_id);
     ",
   },
+  Migration {
+    version: 3,
+    name: "shank diameter and overall length",
+    sql: "
+      ALTER TABLE tool_geometry ADD COLUMN shank_diameter REAL;
+      ALTER TABLE tool_geometry ADD COLUMN overall_length REAL;
+    ",
+  },
 ];
 
 /// The schema version this build writes.
@@ -122,6 +133,113 @@ pub fn head_version() -> u32 {
     .unwrap_or(0)
 }
 
+/// The kind of cutting tool a library row describes.
+///
+/// The reference screen offers six kinds and this is that list, in its order. It has to be *stored*
+/// rather than derived, for one reason worth writing down: a drill and a V-bit are both described by an
+/// included angle, so no rule over the geometry can tell a 118° drill point from a 90° V. The shape
+/// families (the drawing still derives those) say how a tool is *drawn*; this says what the operator
+/// *called* it.
+///
+/// The stored code is [`ToolKind::raw`], and [`ToolKind::of`] is the only reader: a row whose code is
+/// [`ToolKind::LEGACY_RAW`] — every row `cam-cli tools add` has ever written — is read as the shape its
+/// geometry proves, so no library has to be migrated to gain a name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ToolKind {
+  /// A straight cutter with a square end.
+  FlatEndMill,
+  /// A hemisphere for a tip.
+  BallNose,
+  /// A square corner with a radius on it.
+  CornerRadius,
+  /// A cone ending in a flat or a point.
+  VBit,
+  /// A flat-ended cutter for engraving.
+  Engraving,
+  /// A pointed drill.
+  Drill,
+}
+
+impl ToolKind {
+  /// The code that means "the writer did not say", which is what a pre-vocabulary row carries.
+  ///
+  /// Zero and not a kind, deliberately: `cam-cli tools add` has always written `0`, so giving `0` to a
+  /// real kind would relabel every library that already exists.
+  pub const LEGACY_RAW: u8 = 0;
+
+  /// Every kind, in the order the form's combo offers them.
+  pub const ALL: [ToolKind; 6] = [
+    ToolKind::FlatEndMill,
+    ToolKind::BallNose,
+    ToolKind::CornerRadius,
+    ToolKind::VBit,
+    ToolKind::Engraving,
+    ToolKind::Drill,
+  ];
+
+  /// The stored code: `1` to `6`, in [`ToolKind::ALL`]'s order. Never [`ToolKind::LEGACY_RAW`].
+  pub fn raw(self) -> u8 {
+    match self {
+      ToolKind::FlatEndMill => 1,
+      ToolKind::BallNose => 2,
+      ToolKind::CornerRadius => 3,
+      ToolKind::VBit => 4,
+      ToolKind::Engraving => 5,
+      ToolKind::Drill => 6,
+    }
+  }
+
+  /// The kind a stored code names, or `None` for a code this build does not know.
+  pub fn from_raw(raw: u8) -> Option<ToolKind> {
+    ToolKind::ALL.into_iter().find(|kind| kind.raw() == raw)
+  }
+
+  /// The kind a tool is, read from its own record.
+  ///
+  /// The stored code decides when it names a kind; otherwise the shape decides, which is the whole of
+  /// the backwards compatibility argument in this type's header.
+  pub fn of(geometry: &ToolGeometry) -> ToolKind {
+    ToolKind::from_raw(geometry.tool_type).unwrap_or_else(|| ToolKind::from_shape(geometry))
+  }
+
+  /// The kind a tool's geometry proves, for a row that carries no kind of its own.
+  ///
+  /// A shape cannot prove `Drill` or `Engraving` — a drill's included angle reads exactly like a V's,
+  /// and an engraving cutter's flat end reads exactly like an end mill's — so those two are reachable
+  /// only by a stored code. The four that *are* provable are read the way the drawing reads them: an
+  /// included angle makes a V, a tip radius of exactly half the diameter makes a ball, any other tip
+  /// radius makes a corner radius, and no radius at all makes a flat end mill.
+  pub fn from_shape(geometry: &ToolGeometry) -> ToolKind {
+    if geometry.included_angle.is_some() {
+      return ToolKind::VBit;
+    }
+    match (geometry.diameter, geometry.tip_radius) {
+      (Some(diameter), Some(radius)) if (radius.mm() * 2.0 - diameter.mm()).abs() <= 1.0e-6 => {
+        ToolKind::BallNose
+      }
+      (_, Some(_)) => ToolKind::CornerRadius,
+      _ => ToolKind::FlatEndMill,
+    }
+  }
+
+  /// The word the combo and the tree's heading carry.
+  pub fn label(self) -> &'static str {
+    match self {
+      ToolKind::FlatEndMill => "Flat end mill",
+      ToolKind::BallNose => "Ball nose",
+      ToolKind::CornerRadius => "Corner radius",
+      ToolKind::VBit => "V-bit",
+      ToolKind::Engraving => "Engraving",
+      ToolKind::Drill => "Drill",
+    }
+  }
+
+  /// Whether this kind's tip is described by an included angle.
+  pub fn has_included_angle(self) -> bool {
+    matches!(self, ToolKind::VBit | ToolKind::Drill)
+  }
+}
+
 /// A tool's geometric definition.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolGeometry {
@@ -129,7 +247,8 @@ pub struct ToolGeometry {
   pub id: String,
   /// Display-name template, e.g. `{Tool Type} ({Diameter|F}{Units Short})`.
   pub name_format: String,
-  /// Raw `tool_type` value from the source schema.
+  /// Raw `tool_type` value: [`ToolKind::raw`], or [`ToolKind::LEGACY_RAW`] for a row written before
+  /// this build named its kinds. Read it through [`ToolKind::of`] and never directly.
   pub tool_type: u8,
   /// Units the geometry was authored in. Stored lengths are always millimetres.
   pub units: UnitSystem,
@@ -145,6 +264,13 @@ pub struct ToolGeometry {
   pub flute_length: Option<Length>,
   /// Tip radius of a ball-nose or bull-nose tool.
   pub tip_radius: Option<Length>,
+  /// Diameter of the shank the cutter is held by, when the record carries one.
+  ///
+  /// A separate number from [`ToolGeometry::diameter`] on purpose: a tool can cut wider than its
+  /// shank, and which end is which is the one thing a drawing of a shank has to get right.
+  pub shank_diameter: Option<Length>,
+  /// The whole tool's length, shank included, when the record carries one.
+  pub overall_length: Option<Length>,
   /// Free-form extra attributes, reserved for callers.
   pub custom_attributes: Option<String>,
 }
@@ -505,14 +631,16 @@ impl ToolLibrary {
       .execute(
         "INSERT INTO tool_geometry
            (id, name_format, notes, tool_type, units, diameter, included_angle, flat_diameter,
-            num_flutes, flute_length, tip_radius, custom_attributes)
-         VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            num_flutes, flute_length, tip_radius, shank_diameter, overall_length, custom_attributes)
+         VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
            name_format = excluded.name_format, tool_type = excluded.tool_type,
            units = excluded.units, diameter = excluded.diameter,
            included_angle = excluded.included_angle, flat_diameter = excluded.flat_diameter,
            num_flutes = excluded.num_flutes, flute_length = excluded.flute_length,
-           tip_radius = excluded.tip_radius, custom_attributes = excluded.custom_attributes",
+           tip_radius = excluded.tip_radius, shank_diameter = excluded.shank_diameter,
+           overall_length = excluded.overall_length,
+           custom_attributes = excluded.custom_attributes",
         params![
           geometry.id,
           geometry.name_format,
@@ -524,6 +652,8 @@ impl ToolLibrary {
           geometry.num_flutes,
           geometry.flute_length.map(Length::mm),
           geometry.tip_radius.map(Length::mm),
+          geometry.shank_diameter.map(Length::mm),
+          geometry.overall_length.map(Length::mm),
           geometry.custom_attributes,
         ],
       )
@@ -537,7 +667,8 @@ impl ToolLibrary {
       .connection
       .query_row(
         "SELECT id, name_format, tool_type, units, diameter, included_angle, flat_diameter,
-                num_flutes, flute_length, tip_radius, custom_attributes
+                num_flutes, flute_length, tip_radius, shank_diameter, overall_length,
+                custom_attributes
          FROM tool_geometry WHERE id = ?1",
         params![id],
         |row| {
@@ -552,7 +683,9 @@ impl ToolLibrary {
             num_flutes: row.get(7)?,
             flute_length: row.get::<_, Option<f64>>(8)?.map(Length::from_mm),
             tip_radius: row.get::<_, Option<f64>>(9)?.map(Length::from_mm),
-            custom_attributes: row.get(10)?,
+            shank_diameter: row.get::<_, Option<f64>>(10)?.map(Length::from_mm),
+            overall_length: row.get::<_, Option<f64>>(11)?.map(Length::from_mm),
+            custom_attributes: row.get(12)?,
           })
         },
       )
@@ -759,6 +892,7 @@ impl ToolLibrary {
     Ok(())
   }
 
+  /// The store's error for one of this library's own paths.
   fn error(&self, source: rusqlite::Error) -> StoreError {
     StoreError::ToolLibrary {
       path: self.path.clone(),
@@ -900,7 +1034,7 @@ fn checksum(sql: &str) -> String {
   format!("{hash:016x}")
 }
 
-fn encode_units(units: UnitSystem) -> i64 {
+pub(crate) fn encode_units(units: UnitSystem) -> i64 {
   match units {
     UnitSystem::Mm => 0,
     UnitSystem::Inch => 1,
@@ -934,6 +1068,8 @@ mod tests {
         num_flutes: Some(2),
         flute_length: None,
         tip_radius: None,
+        shank_diameter: None,
+        overall_length: None,
         custom_attributes: None,
       },
       cutting: CuttingData {

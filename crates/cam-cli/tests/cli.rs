@@ -109,6 +109,8 @@ fn write_library(directory: &Path) -> PathBuf {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -309,6 +311,8 @@ fn write_library_with_material_rates(directory: &Path) -> PathBuf {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -665,6 +669,8 @@ fn emit_refuses_a_document_it_cannot_cut_and_writes_nothing() {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -1140,6 +1146,8 @@ fn write_library_with_pocket_rates(directory: &Path) -> PathBuf {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -2944,6 +2952,8 @@ fn write_chamfer_library_at(directory: &Path, name: &str, degrees: f64, flat: f6
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -3426,6 +3436,8 @@ fn emit_refuses_a_chamfer_whose_tool_has_a_flat_tip_naming_the_tool() {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -4558,6 +4570,8 @@ fn write_small_tool_library(directory: &Path) -> PathBuf {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");
@@ -7227,6 +7241,8 @@ fn write_moulding_library(directory: &Path) -> PathBuf {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     })
     .expect("geometry");

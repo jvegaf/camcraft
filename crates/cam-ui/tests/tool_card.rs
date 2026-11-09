@@ -73,6 +73,8 @@ fn stored_tool(
       num_flutes,
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     },
     cutting: CuttingData {

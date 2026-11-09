@@ -1,4 +1,3 @@
-
 fn base_tool(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool {
   StoredTool {
     geometry: ToolGeometry {
@@ -12,6 +11,8 @@ fn base_tool(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     },
     cutting: CuttingData {
@@ -30,8 +31,8 @@ fn base_tool(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool
 }
 
 fn default_tools() -> Vec<StoredTool> {
-  let mut g1 = base_tool("G1", Some(1), Some(6.0));
-  let mut g5 = base_tool("G5", Some(5), Some(3.175));
+  let g1 = base_tool("G1", Some(1), Some(6.0));
+  let g5 = base_tool("G5", Some(5), Some(3.175));
   let mut g2 = base_tool("G2", Some(2), Some(6.0));
   g2.geometry.tip_radius = Some(Length::from_mm(3.0));
   let mut g3 = base_tool("G3", Some(3), Some(12.7));

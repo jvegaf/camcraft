@@ -394,6 +394,8 @@ pub(crate) fn stored_tool(tool_number: u32) -> StoredTool {
       num_flutes: Some(2),
       flute_length: None,
       tip_radius: None,
+      shank_diameter: None,
+      overall_length: None,
       custom_attributes: None,
     },
     cutting: CuttingData {

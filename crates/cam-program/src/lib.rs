@@ -290,6 +290,8 @@ mod tests {
         num_flutes: Some(2),
         flute_length: None,
         tip_radius: None,
+        shank_diameter: None,
+        overall_length: None,
         custom_attributes: None,
       })
       .expect("geometry");
@@ -419,6 +421,8 @@ mod tests {
         num_flutes: None,
         flute_length: None,
         tip_radius: None,
+        shank_diameter: None,
+        overall_length: None,
         custom_attributes: None,
       })
       .expect("geometry");
@@ -501,6 +505,8 @@ mod tests {
         num_flutes: Some(2),
         flute_length: None,
         tip_radius: None,
+        shank_diameter: None,
+        overall_length: None,
         custom_attributes: None,
       })
       .expect("geometry");

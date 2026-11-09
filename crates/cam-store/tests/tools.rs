@@ -18,6 +18,8 @@ fn end_mill() -> ToolGeometry {
     num_flutes: Some(2),
     flute_length: Some(Length::from_mm(20.0)),
     tip_radius: None,
+    shank_diameter: None,
+    overall_length: None,
     custom_attributes: None,
   }
 }
