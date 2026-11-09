@@ -236,6 +236,283 @@ fn one_undo_after_an_import_brings_the_previous_drawing_back() {
   std::fs::remove_dir_all(&directory).ok();
 }
 
+// ---- The two import options the importer can honour (shell-file-operations S3) -----------------
+
+/// A one-curve SVG: a cubic Bézier, so the flattening tolerance changes the polyline it becomes.
+fn write_curved_svg(directory: &std::path::Path) -> std::path::PathBuf {
+  let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">\
+<path d="M 0 0 C 0 40 40 40 40 0"/></svg>"#;
+  let path = directory.join("curve.svg");
+  std::fs::write(&path, svg).expect("svg written");
+  path
+}
+
+/// How many vertices the modal's parse holds for its one contour.
+fn parsed_vertices(shell: &Shell) -> usize {
+  shell
+    .import_parsed
+    .as_ref()
+    .expect("the modal is showing a parse")
+    .layers
+    .first()
+    .and_then(|layer| layer.contours.first())
+    .expect("the file held one contour")
+    .len()
+}
+
+#[test]
+fn changing_the_flattening_tolerance_re_parses_the_file() {
+  let directory = scratch("import-tolerance");
+  let path = write_curved_svg(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let before = app.document_json();
+  let mut shell = Shell::new();
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+
+  // The field opens at the importer's own default, and the report echoes the number the parse used.
+  assert_eq!(shell.import_tolerance, cam_import::DEFAULT_TOLERANCE);
+  assert_eq!(
+    shell
+      .import_parsed
+      .as_ref()
+      .expect("the modal is showing a parse")
+      .report
+      .tolerance,
+    cam_import::DEFAULT_TOLERANCE
+  );
+  let fine = parsed_vertices(&shell);
+
+  let report = shell
+    .set_import_tolerance(1.0)
+    .expect("a coarser tolerance re-parses the same file");
+
+  // The re-parse is a real one: the report echoes the new option and the curve is flattened to fewer points.
+  assert_eq!(shell.import_tolerance, 1.0);
+  assert_eq!(
+    shell
+      .import_parsed
+      .as_ref()
+      .expect("the modal is showing a parse")
+      .report
+      .tolerance,
+    1.0,
+    "the report must echo the tolerance the re-parse used"
+  );
+  let coarse = parsed_vertices(&shell);
+  assert!(
+    coarse < fine,
+    "a coarser tolerance flattens the curve to fewer points: {coarse} vs {fine}"
+  );
+  assert_eq!(report.label, "import file");
+  assert_eq!(
+    shell.status,
+    "import file — tolerance 1 mm · 1 contour(s) found, 1 curve(s) flattened, 0 skipped"
+  );
+  assert!(shell.show_import, "changing an option keeps the modal open");
+  // A re-parse is a read, not an edit: the drawing the modal was opened over is untouched.
+  assert_eq!(app.document_json(), before);
+  assert_eq!(app.history_depth(), 0);
+  assert!(!app.is_dirty());
+
+  // The dialog draws both options and the number the parse used.
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
+  for drawn in [
+    "Flattening tolerance",
+    "1.000",
+    "Adjust material size to drawing",
+    "format svg · 1 contour(s) found, 1 curve(s) flattened, 0 skipped",
+  ] {
+    assert!(
+      all.contains(drawn),
+      "the dialog never drew {drawn:?}: {all}"
+    );
+  }
+
+  // And `Import` writes the parse the re-parse produced, not the one the modal opened with.
+  shell
+    .confirm_import(&mut app)
+    .expect("the re-parsed file imports");
+  assert_eq!(
+    app.document().entities().count(),
+    1,
+    "the imported drawing is the one contour the re-parse last described"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn a_failed_re_parse_keeps_the_report_and_says_why() {
+  let directory = scratch("import-tolerance-refused");
+  let path = write_curved_svg(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  let seeded = shell.import_tolerance;
+  let fine = parsed_vertices(&shell);
+
+  // A number that is not a usable distance is refused before the file is read.
+  let refusal = shell
+    .set_import_tolerance(0.0)
+    .expect_err("zero is not a flattening tolerance");
+  assert!(refusal.contains("tolerance"), "{refusal}");
+  assert_eq!(
+    shell.import_tolerance, seeded,
+    "the field keeps the number the report was parsed at"
+  );
+  assert_eq!(parsed_vertices(&shell), fine);
+  assert_eq!(shell.import_error.as_deref(), Some(refusal.as_str()));
+  assert_eq!(shell.status, format!("refused: {refusal}"));
+
+  // A file that went away after the modal opened is the same kind of refusal, and the report the operator was
+  // reading survives it: `Import` would still import exactly what that report describes.
+  std::fs::remove_file(&path).expect("the scratch file is removed");
+  let refusal = shell
+    .set_import_tolerance(0.5)
+    .expect_err("a file that is gone cannot be re-parsed");
+  assert!(
+    refusal.contains("curve.svg"),
+    "the refusal must name the file: {refusal}"
+  );
+  assert_eq!(shell.import_tolerance, seeded);
+  assert_eq!(
+    parsed_vertices(&shell),
+    fine,
+    "the parse the modal was showing survives the refusal"
+  );
+  assert!(shell.show_import, "a refusal keeps the modal open");
+
+  let ctx = egui::Context::default();
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
+  assert!(
+    joined(&texts).contains(&refusal),
+    "the refusal must be drawn in the modal: {}",
+    joined(&texts)
+  );
+  assert_eq!(app.history_depth(), 0);
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn adjusting_the_material_sizes_the_stock_to_the_imported_drawing() {
+  let directory = scratch("import-material");
+  // `write_dxf` draws a 100 x 60 part, so its stock is 10 mm larger on every side.
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+  assert!(
+    shell.import_adjust_material,
+    "an import brings its own stock unless the operator says otherwise"
+  );
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+
+  let job = app.document().job.clone();
+  assert_eq!(job.width.mm(), 120.0, "100 mm of drawing plus 10 mm a side");
+  assert_eq!(job.height.mm(), 80.0, "60 mm of drawing plus 10 mm a side");
+  assert_eq!(
+    job.thickness.mm(),
+    18.0,
+    "adjusting the material never changes how thick it is"
+  );
+  assert_eq!(
+    job.origin,
+    cam_model::OriginCorner::BottomLeft,
+    "the stock is measured from its bottom-left corner"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn without_adjusting_the_material_the_import_keeps_the_sheet_it_replaces() {
+  let directory = scratch("import-material-off");
+  let path = write_dxf(&directory);
+  let mut app = AppState::new(document_with_rectangle());
+  // The sheet the operator already had: the default 1219 x 2438 sheet of the drawing being replaced.
+  let sheet = app.document().job.clone();
+  let mut shell = Shell::new();
+  shell.import_adjust_material = false;
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+
+  assert_eq!(
+    app.document().job,
+    sheet,
+    "unchecked, the import keeps the material it was offered over"
+  );
+  assert_eq!(
+    app.document().entities().count(),
+    2,
+    "unchecked, the geometry still arrives"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn an_import_at_the_default_options_still_writes_what_the_importer_laid_out() {
+  // PRESERVE (shell-file-operations S3): before the options column existed, `Import` wrote
+  // `cam_import::into_document`'s own document, stock included. Both options default to exactly that, so a
+  // caller that never touches them sees the sentence and the stock it saw before.
+  let directory = scratch("import-default-options");
+  let path = write_dxf(&directory);
+  let parsed = cam_import::import_path(&path, &cam_import::ImportOptions::default())
+    .expect("the fixture parses");
+  let laid_out = cam_import::into_document(&parsed, None)
+    .expect("the fixture becomes a document")
+    .job;
+  let mut app = AppState::new(document_with_rectangle());
+  let mut shell = Shell::new();
+
+  shell.apply_action(
+    &mut app,
+    &UiAction::ImportFile {
+      path: path.display().to_string(),
+    },
+  );
+  shell
+    .confirm_import(&mut app)
+    .expect("the parsed file imports");
+
+  assert_eq!(shell.import_tolerance, cam_import::DEFAULT_TOLERANCE);
+  assert!(shell.import_adjust_material);
+  assert_eq!(app.document().job, laid_out);
+  assert_eq!(
+    shell.status,
+    "import file — 2 entities created, 2 contour(s) from part.dxf, 0 curve(s) flattened, 0 skipped"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 // ---- Opening a document chosen at runtime ------------------------------------------------------
 
 #[test]

@@ -239,6 +239,28 @@ pub struct Shell {
   /// `None` while there is nothing to say. A refusal is drawn inside the modal beside the report it is about,
   /// because closing on a failure would lose the file the operator chose and the counts they were reading.
   pub import_error: Option<String>,
+  /// The flattening tolerance the import modal parses at, in millimetres (shell-file-operations S3).
+  ///
+  /// Seeded with [`cam_import::DEFAULT_TOLERANCE`], which is what [`cam_import::ImportOptions::default`] would
+  /// have used, and **sticky for the session** like [`Self::post`]: changing it re-parses the file the modal is
+  /// showing ([`Self::set_import_tolerance`]) and the next file opens at the same tolerance, because it is the
+  /// operator's reading of how close a flattened curve has to be, not a fact about one file. Only an accepted
+  /// re-parse writes it back — a refusal leaves the field on the number the report above it was parsed at.
+  ///
+  /// Public and flat the way every other parameter of this shell is, because a `DragValue` can only be edited
+  /// from inside a frame and a field no test can set is a field nothing pins.
+  pub import_tolerance: f64,
+  /// Whether `Import` resizes the stock to the drawing it is importing (shell-file-operations S3).
+  ///
+  /// `true` by default, which is what the importer already did before the option existed: the job becomes the
+  /// imported contours' bounding box plus [`cam_import::PLACEMENT_MARGIN`] on every side, the margin the
+  /// importer places the geometry at, with the thickness left alone. `false` keeps the material the drawing
+  /// being replaced already had — the sheet an operator set up for this job — and leaves the geometry where the
+  /// importer put it.
+  ///
+  /// A draft until `Import` is pressed, like [`Self::material_size`]: ticking it in the modal writes nothing and
+  /// `Cancel` costs nothing. Sticky for the session too, so a shop that imports onto its own sheets says so once.
+  pub import_adjust_material: bool,
   /// Whether the tool-library modal is open (camui-prancheta S9).
   ///
   /// View state: opening the modal, searching it and cancelling out of it are not edits, and only
@@ -374,6 +396,8 @@ impl Default for Shell {
       import_path: None,
       import_parsed: None,
       import_error: None,
+      import_tolerance: cam_import::DEFAULT_TOLERANCE,
+      import_adjust_material: true,
       show_tool_library: false,
       show_script: false,
       script: script_panel::ScriptPanel::new(),

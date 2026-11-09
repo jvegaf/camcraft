@@ -25,6 +25,22 @@ const IMPORT_COMMIT: &str = "Import";
 /// dialog holds one sentence and two buttons, so it must not grow into the surface it is interrupting.
 const IMPORT_WIDTH: f32 = 460.0;
 
+/// The tolerance field's label, the checkbox under it, and the sentence that says what the checkbox does.
+///
+/// The options the reference's dialog carries that this build still does not — join open vectors, smooth, and
+/// position — are **absent on purpose** rather than drawn dead: [`cam_import`] has no such options (the rest of
+/// S3's follow-up), and a control that wrote nothing is the dead button S7 and S9 both forbid.
+const IMPORT_TOLERANCE_LABEL: &str = "Flattening tolerance";
+const IMPORT_ADJUST_MATERIAL_LABEL: &str = "Adjust material size to drawing";
+const IMPORT_ADJUST_MATERIAL_NOTE: &str =
+  "Fits the stock to the drawing plus 10 mm on every side. Unchecked, the material you already have is kept.";
+/// The bounds the tolerance field accepts, in millimetres.
+///
+/// The importer falls back to its own default for a distance it cannot use, and the shell refuses one here
+/// before the file is read ([`crate::Shell::set_import_tolerance`]): a number the parse cannot honour is not an
+/// option, it is a stale report.
+const IMPORT_TOLERANCE_RANGE: std::ops::RangeInclusive<f64> = 0.001..=10.0;
+
 impl Shell {
   /// The script modal (M10 T4b, S4): the panel's own row and its report, over the canvas.
   ///
@@ -75,11 +91,15 @@ impl Shell {
   /// The import modal (shell-file-operations S3): what the chosen file holds, before any of it is written.
   ///
   /// The reference frame (`Screenshot 2026-11-03 032022.png`) settles the shape: the file's own name as the
-  /// title, one block saying what the importer found, and a `Cancel`/`Import` footer. What it deliberately does
-  /// not carry yet is the options column under that block — joining, tolerance, smoothing, position — because
-  /// none of those reaches `cam_import` today, and a control that wrote nothing would be the dead button S7 and
-  /// S9 both forbid. The report is the part this milestone can honour: every number is the parse's own, and
-  /// `Import` writes that parse instead of reading the file again.
+  /// title, one block saying what the importer found, the options that report can honour, and a `Cancel`/`Import`
+  /// footer.
+  ///
+  /// Two of the reference's options are here because [`cam_import`] can honour them today: the flattening
+  /// tolerance the file is parsed at — changing it re-parses the file, so the report above the field is always
+  /// the parse `Import` will write ([`crate::Shell::set_import_tolerance`]) — and whether the import fits the
+  /// stock to the drawing. The rest of the reference's column — join open vectors, smooth, position — stays
+  /// absent rather than dead: the importer has no such options (the remaining follow-up of S3), and a dialog
+  /// must not promise a control that writes nothing.
   pub(crate) fn import_dialog(
     &mut self,
     ctx: &egui::Context,
@@ -112,6 +132,11 @@ impl Shell {
     // Cloned before the closure: the refusal is read here and written by [`crate::Shell::confirm_import`] after
     // the frame, and borrowing `self` twice is what the clone avoids.
     let refusal = self.import_error.clone();
+    // The two options' drafts, for the same reason: the closure edits these values and the shell writes back
+    // only what it can honour — the flag itself for the checkbox, and an accepted re-parse for the tolerance.
+    let mut tolerance = self.import_tolerance;
+    let mut adjust_material = self.import_adjust_material;
+    let mut retolerance: Option<f64> = None;
     let mut cancel = false;
     let mut commit = false;
 
@@ -157,6 +182,38 @@ impl Shell {
             .size(theme::CAPTION)
             .color(palette.get(Role::TextDim)),
         );
+        ui.add_space(metrics.space(3));
+        // The tolerance: `mm` on the number, the way every measurement in this shell carries its unit, and the
+        // change is held until after the frame so the re-parse cannot mutate the shell mid-paint.
+        ui.horizontal(|ui| {
+          ui.label(
+            RichText::new(IMPORT_TOLERANCE_LABEL)
+              .size(theme::CAPTION)
+              .color(palette.get(Role::TextDim)),
+          );
+          let changed = ui
+            .add(
+              egui::DragValue::new(&mut tolerance)
+                .speed(0.005)
+                .range(IMPORT_TOLERANCE_RANGE)
+                .suffix(" mm")
+                .fixed_decimals(3),
+            )
+            .changed();
+          if changed {
+            retolerance = Some(tolerance);
+          }
+        });
+        ui.add_space(metrics.space(1));
+        ui.checkbox(
+          &mut adjust_material,
+          RichText::new(IMPORT_ADJUST_MATERIAL_LABEL).size(theme::SMALL),
+        );
+        ui.label(
+          RichText::new(IMPORT_ADJUST_MATERIAL_NOTE)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
         // A refused `Import` says why here and keeps the dialog open: the file is the operator's choice, and the
         // report above is what they were reading when they made it.
         if let Some(sentence) = &refusal {
@@ -185,8 +242,18 @@ impl Shell {
         });
       });
 
+    // The checkbox is a draft until `Import` writes it, so ticking it needs no report of its own — and it is
+    // held for the session, like the tolerance, because a shop that imports onto its own sheets says so once
+    // rather than once per file.
+    self.import_adjust_material = adjust_material;
     if cancel {
       self.close_import();
+    } else if let Some(tolerance) = retolerance {
+      // The tolerance is not a draft: the report above it has to describe what `Import` will write, so a
+      // changed number re-parses the file here, and a refusal (`Err`) leaves the field on the number that
+      // report used. Skipped on the `Cancel` frame, so leaving the modal never reports a re-parse of a file
+      // nobody is describing any more.
+      let _ = self.set_import_tolerance(tolerance);
     }
     if commit {
       // Through the method a headless test calls, so the button and the test cannot disagree about what

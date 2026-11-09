@@ -1,7 +1,9 @@
 use std::path::{Component, Path, PathBuf};
 
 use cam_app::AppState;
+use cam_model::Job;
 use cam_store::tools::{StoredTool, ToolLibrary};
+use cam_units::Length;
 
 use crate::actions::{
   file_label, handle_action_with_file, DocumentFileState, EMPTY_POST_PATH, EMPTY_PROGRAM_PATH,
@@ -129,7 +131,8 @@ impl Shell {
     let Some(parsed) = self.import_parsed.clone() else {
       return Err(NO_IMPORT_PENDING.to_owned());
     };
-    match import_into_document(app, &parsed, self.import_path.as_deref()) {
+    let adjust_material = self.import_adjust_material;
+    match import_into_document(app, &parsed, self.import_path.as_deref(), adjust_material) {
       Ok(report) => {
         self.status = report.message();
         self.close_import();
@@ -141,6 +144,59 @@ impl Shell {
         Err(message)
       }
     }
+  }
+
+  /// Re-parse the file the import modal is showing at a new flattening tolerance (shell-file-operations S3).
+  ///
+  /// This is the modal's tolerance field's change handler, and it is public for the reason
+  /// [`Self::confirm_import`] is: a `DragValue` is edited inside a frame, and without this the only way to
+  /// prove the field re-parses would be to guess at the dialog's layout and drag a point.
+  ///
+  /// The parse is the same file read again with `ImportOptions { tolerance, ..default }`, so the report above
+  /// the field, the geometry `Import` will write and the number beside it are one parse by construction. A
+  /// refusal — a number that is not a usable distance, or a file that has gone away since the modal opened —
+  /// leaves [`Self::import_tolerance`] and [`Self::import_parsed`] exactly as they were, so the modal goes on
+  /// describing something `Import` can still write, and [`Self::import_error`] carries the sentence.
+  pub fn set_import_tolerance(&mut self, tolerance: f64) -> Result<ActionReport, String> {
+    if !(tolerance.is_finite() && tolerance > 0.0) {
+      return Err(self.import_refused(format!(
+        "flattening tolerance must be a positive number of millimetres, got {tolerance} mm"
+      )));
+    }
+    let Some(path) = self.import_path.clone() else {
+      return Err(self.import_refused(NO_IMPORT_PENDING.to_owned()));
+    };
+    let options = cam_import::ImportOptions {
+      tolerance,
+      ..cam_import::ImportOptions::default()
+    };
+    let parsed = cam_import::import_path(&path, &options)
+      .map_err(|error| self.import_refused(error.to_string()))?;
+    self.import_tolerance = tolerance;
+    self.import_parsed = Some(parsed.clone());
+    self.import_error = None;
+    let report = ActionReport {
+      label: "import file",
+      note: Some(format!(
+        "tolerance {tolerance} mm · {} contour(s) found, {} curve(s) flattened, {} skipped",
+        parsed.report.contours,
+        parsed.report.flattened_curves,
+        parsed.report.skipped_count()
+      )),
+      ..ActionReport::default()
+    };
+    self.status = report.message();
+    Ok(report)
+  }
+
+  /// Record a refusal of one of the modal's options, and keep the report it is showing.
+  ///
+  /// Returns the sentence so the caller can hand it to its own `Err`: the status bar and the dialog must say
+  /// the same words ([`Self::set_import_tolerance`] is the only caller, and its `Err` is that sentence).
+  fn import_refused(&mut self, message: String) -> String {
+    self.status = format!("refused: {message}");
+    self.import_error = Some(message.clone());
+    message
   }
 
   /// The modal's `Cancel`, and the `Esc` that means the same thing: forget the parse and write nothing.
@@ -162,8 +218,11 @@ impl Shell {
   /// into it.
   fn open_import(&mut self, path: &str) -> Result<ActionReport, String> {
     let path = PathBuf::from(path);
-    let parsed = cam_import::import_path(&path, &cam_import::ImportOptions::default())
-      .map_err(|error| error.to_string())?;
+    let options = cam_import::ImportOptions {
+      tolerance: self.import_tolerance,
+      ..cam_import::ImportOptions::default()
+    };
+    let parsed = cam_import::import_path(&path, &options).map_err(|error| error.to_string())?;
     self.import_path = Some(path);
     self.import_parsed = Some(parsed);
     self.import_error = None;
@@ -282,12 +341,26 @@ const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import f
 /// takes a path and imports it immediately, which is what a caller with no window needs, and the modal has
 /// already paid for the parse it showed. The note is the same sentence, word for word, so the status bar cannot
 /// describe the same file two ways depending on which route imported it.
+///
+/// `adjust_material` is the modal's "Adjust material size to drawing" option, and it is the one thing this
+/// function does beyond `cam_import::into_document`: checked, the stock is re-derived as the imported contours'
+/// bounding box plus [`cam_import::PLACEMENT_MARGIN`] on every side, which is where the importer placed the
+/// geometry, so it lands with that margin on all four sides and the thickness is left alone. Unchecked, the
+/// stock is the material the drawing being replaced already had — the sheet this operator set up — and the
+/// geometry keeps the placement the importer gave it.
 fn import_into_document(
   app: &mut AppState,
   parsed: &cam_import::Imported,
   path: Option<&Path>,
+  adjust_material: bool,
 ) -> Result<ActionReport, String> {
-  let document = cam_import::into_document(parsed, None).map_err(|error| error.to_string())?;
+  let previous_job = app.document().job.clone();
+  let mut document = cam_import::into_document(parsed, None).map_err(|error| error.to_string())?;
+  document.job = if adjust_material {
+    stock_for_drawing(&document)
+  } else {
+    previous_job
+  };
   let created_entities: Vec<String> = document
     .entities()
     .map(|entity| entity.id.clone())
@@ -314,6 +387,27 @@ fn import_into_document(
     note: Some(note),
     ..ActionReport::default()
   })
+}
+
+/// The stock an import writes when it is asked to fit the material to the drawing.
+///
+/// The job is the imported contours' bounding box plus [`cam_import::PLACEMENT_MARGIN`] on every side, which is
+/// the margin the importer placed the geometry at — so the drawing lands in the stock with that margin on all
+/// four sides. Everything else about the job is kept: the thickness is how thick the material is, not a fact
+/// about the drawing, and the origin is the imported document's own bottom-left corner, measured the same way
+/// the geometry was placed.
+fn stock_for_drawing(document: &cam_model::Document) -> Job {
+  let margin = cam_import::PLACEMENT_MARGIN;
+  let mut bounds = cam_geom::Bounds::empty();
+  for entity in document.entities() {
+    if let Some(contour) = entity.kind.as_contour() {
+      bounds = bounds.union(contour.bounds());
+    }
+  }
+  let mut job = document.job.clone();
+  job.width = Length::from_mm(bounds.width() + 2.0 * margin);
+  job.height = Length::from_mm(bounds.height() + 2.0 * margin);
+  job
 }
 
 /// The tools an opened document names, read from the directory that document was opened from.
