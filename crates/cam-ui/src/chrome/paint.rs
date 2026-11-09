@@ -46,6 +46,7 @@ pub(super) fn command_icon(command: Command) -> Icon {
     // A script is a program file the engine reads line by line, which is the one glyph in the set that
     // draws a program file; the fallback `Select` would say a script is a click on the sheet.
     Command::Script => Icon::Gcode,
+    Command::ToolLibrary => Icon::ToolLibrary,
     Command::Undo => Icon::Undo,
     Command::Redo => Icon::Redo,
     Command::NewProject => Icon::New,

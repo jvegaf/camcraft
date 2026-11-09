@@ -110,6 +110,7 @@ fn the_palette_draws_its_golden_in_order() {
       "Help",
       "Shortcuts",
       "Script",
+      "Tool library",
     ]),
     "the palette must be the table's own run, in its order, FILE first"
   );

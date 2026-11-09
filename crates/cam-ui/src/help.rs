@@ -232,6 +232,8 @@ pub enum Command {
   Shortcuts,
   /// Open the script panel.
   Script,
+  /// Open the tool library.
+  ToolLibrary,
   /// Frame everything drawn in the window.
   FitJob,
 }
@@ -303,6 +305,7 @@ impl Command {
     Command::IconSet,
     Command::Shortcuts,
     Command::Script,
+    Command::ToolLibrary,
   ];
 
   /// The word the frame already shows for this command.
@@ -349,6 +352,7 @@ impl Command {
       Self::IconSet => "Icon set",
       Self::Shortcuts => "Shortcuts",
       Self::Script => "Script",
+      Self::ToolLibrary => "Tool library",
       Self::FitJob => "Fit the job",
     }
   }
@@ -388,7 +392,8 @@ impl Command {
       | Self::Theme
       | Self::IconSet
       | Self::Shortcuts
-      | Self::Script => Group::ShowAndSelect,
+      | Self::Script
+      | Self::ToolLibrary => Group::ShowAndSelect,
     }
   }
 
@@ -453,6 +458,7 @@ impl Command {
           | Self::Help
           | Self::Shortcuts
           | Self::Script
+          | Self::ToolLibrary
       )
   }
 
@@ -710,6 +716,11 @@ impl Command {
               engine the command line uses, against the file the script names, so the drawing this \
               window holds does not change. Esc closes the panel.",
         related: &[Command::Open, Command::Save, Command::Help],
+      },
+      Self::ToolLibrary => Help {
+        what: "Opens the tool library to choose a cutting tool.",
+        how: "Press Tool library to browse tools and apply one to the current toolpath.",
+        related: &[Command::Script],
       },
       Self::FitJob => Help {
         what: "Frames everything drawn in the window, so a part drawn at 1219 mm still reads at one glance.",
