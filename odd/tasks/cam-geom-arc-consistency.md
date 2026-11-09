@@ -48,11 +48,11 @@ and stop the gate from writing a seed into a tracked file on a case that should 
 
 | ID | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Pin the defect with a RED test: two disjoint quarters of one radius-5 circle are `√50` apart and do not meet. Both assertions in one case, so the two functions are compared and not each trusted alone | S2 S3 | inline | `f109d86` |
-| T2 | Fix `intersect::arc_arc`'s concentric branch to decide by sweeps, reusing the angular-coverage rule this module already owns (`intersect.rs:277-283`) instead of copying `distance`'s | S3 S4 | inline | `f109d86` |
-| T3 | Preservation, not hope: full circles still `Coincident`, partially overlapping quarters of one circle still `Coincident`, radius mismatch still `None` | S4 | inline | `f109d86` |
-| T4 | Correct the proptest's false premise and give the tracked seed an argued fate, measured by running it | S5 S6 | inline | `f109d86` |
-| T5 | Re-read the six in-crate `Coincident` consumers against the new answer; run the gate; record the evidence | S4 S7 | inline | `f109d86` |
+| T1 | ✅ Pin the defect with a RED test: two disjoint quarters of one radius-5 circle are `√50` apart and do not meet. Both assertions in one case, so the two functions are compared and not each trusted alone | S2 S3 | inline | `f109d86` |
+| T2 | ✅ Fix `intersect::arc_arc`'s concentric branch to decide by sweeps, reusing the angular-coverage rule this module already owns (`intersect.rs:277-283`) instead of copying `distance`'s | S3 S4 | inline | `f109d86` |
+| T3 | ✅ Preservation, not hope: full circles still `Coincident`, partially overlapping quarters of one circle still `Coincident`, radius mismatch still `None` | S4 | inline | `f109d86` |
+| T4 | ✅ Correct the proptest's false premise and give the tracked seed an argued fate, measured by running it | S5 S6 | inline | `f109d86` |
+| T5 | ✅ Re-read the six in-crate `Coincident` consumers against the new answer; run the gate; record the evidence | S4 S7 | inline | `f109d86` |
 
 ## Log
 
