@@ -5,6 +5,12 @@ and library actions those screenshots show: a three-column master-detail editor 
 
 Supersedes the read-only framing of `camui-prancheta` S9 (see L2, L3).
 
+**Superseded in part by `odd/tasks/tool-library-app.md` (M15).** S10 of this document — the library is
+written beside the drawing, and the six action rows are disabled when the drawing names no library file — is
+replaced by that document's S1: the library belongs to the **application**, and a drawing neither owns nor
+resolves one. Everything else here still stands, including S14's rule that these behaviours are pinned by the
+report and not by pixels.
+
 ## Specs
 
 **S1 — Header bar.** The modal has a header bar across the top with a lighter fill than the body, the

@@ -76,8 +76,11 @@ cannot use changes nothing and says why. When the file is valid the app asks, in
 `Replace all` makes the file's tools the library (today's behaviour: file first, snapshot second).
 `Add` compares each tool in the file against every tool already in the library and skips it as a duplicate
 when it shares that tool's **id**, its **name** (trimmed, case-insensitive), or its **tool number**;
-everything else is appended. Nothing is written when every tool was skipped. `Cancel` and Escape close the
-question and write nothing at all.
+everything else is appended, and the note this window reports afterwards is
+`{added} tool(s) added, {skipped} already in the library.` Nothing is written when every tool was skipped:
+the question closes and says `Nothing was added: every tool in <file> is already in the library.` `Cancel`
+and Escape close the question and write nothing at all, and the tool-library modal behind it is still open
+with the library it had.
 
 **S6 — Export is unchanged.** `Export…` writes the `campilot-tool-library` version 1 JSON that
 `crates/cam-store/src/tool_file.rs` already defines: one object per tool, lengths in millimetres in fields
@@ -111,20 +114,24 @@ report's geometry, not from a captured image.
 **The slice strategy for this branch, recorded before the third commit.** The work splits into the five rows
 above, one commit each, in this order: `T1` (the catalogue — large by nature, because 22 tools are 22 rows of
 shape data, not a design choice), `T2` (the ownership change, whose diff is mostly the deletion of the old
-per-document resolver and its suite), `T3` (the import question), `T4` (the proportions), `T5` (the record).
-Nothing is pushed and no pull request is opened until the owner asks for one: the branch is where the feature
-is reviewed, and `T1`/`T2` together are the reason the slice sizes are named here rather than measured against
-400 lines each.
+per-document resolver and its 650-line suite), `T3` (the import question), `T4` (the proportions), `T5` (the
+record). Nothing is pushed and no pull request is opened until the owner asks for one: the branch is where the
+feature is reviewed, and the slice sizes are named here because two of them are measured in table rows and
+deleted lines rather than in design.
+
+Delivered as planned, with one extra commit: `49f99a7` (T1), `0b410ea` (T2), `a975f46` (the document and this
+strategy), `6c0a060` (T3), `4a78ec0` (T4), and the record commit that carries this table. 2411 authored changed
+lines across the branch, 1679 tests green in the workspace.
 
 ## Tasks
 
 | # | Task | Specs | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | The factory catalogue: 22 tools, six families, one derived speeds rule | S3, S4 | worker (`cam-store`) | `feat(store): the reference's 22-tool factory library` |
-| T2 | The app owns the library: data directory, first-launch creation, no `tools_ref` on open, the actions' gate | S1, S2, S8, S9 | parent inline | `feat(ui): the tool library belongs to the application` |
-| T3 | Import asks replace or add; add skips duplicates by id, name or number | S5, S6 | parent inline | `feat(ui): importing a tool library asks replace or add` |
-| T4 | The reference's proportions and the light preview card | S7 | parent inline | `feat(ui): the library dialog at the reference's proportions` |
-| T5 | Close: roadmap M15 row, the editor document's superseded notes, whole suite | S10 | parent inline | `docs(odd): record M15` |
+| T1 ✅ | The factory catalogue: 22 tools, six families, one derived speeds rule | S3, S4 | worker (`cam-store`) | `49f99a7` |
+| T2 ✅ | The app owns the library: data directory, first-launch creation, no `tools_ref` on open, the actions' gate | S1, S2, S8, S9 | parent inline | `0b410ea` |
+| T3 ✅ | Import asks replace or add; add skips duplicates by id, name or number | S5, S6 | worker (`cam-ui`) | `6c0a060` |
+| T4 ✅ | The reference's proportions and the light preview card | S7 | worker (`cam-ui`) | `4a78ec0` |
+| T5 ✅ | Close: roadmap M15 row and §4.18, the editor document's superseded note, README, whole suite | S10 | parent inline | the record commit |
 
 ## Log
 
@@ -152,3 +159,13 @@ document") and the sentence that carried it.
 
 **D2** (owner answer): the factory catalogue is the reference's 22 tools, with speeds and feeds derived from
 the four existing ones and accepted as starting values, not as a machine's numbers.
+
+**E2** (delivery). T3 took three rounds for one reason worth recording: its first version proved the question's
+buttons by calling the shell's answer methods, which is a test skipping the control it claims to test. Pressing
+the reported rectangle exposed the real constraint — an egui modal is placed on its first pass and settled on the
+second, so the rectangles reported in the frame the question appears are not the ones a person clicks. The second
+round answered that by remembering the first frame's rectangles and resolving clicks against those, which would
+have shipped a control that answers where the dialog used to be; the third round reports the frame that was
+drawn and lets the test settle one frame before reading it. Two exploration subagents and one writer launch also
+timed out before this task began, which is why the evidence gathering for T2 was done inline.
+

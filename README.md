@@ -175,18 +175,23 @@ it, and opening a document over unsaved changes is **refused** with a sentence t
 where it used to discard the edits with undo as the only way back. A failed save changes nothing — the flag and
 the recorded path stay as they were and the status line says `refused: …`, naming the file it could not write.
 
-Opening also resolves the tool library the document names, so the card has something to resolve against.
-`tools_ref` is a reference **relative to the document's own directory** — what [docs/format.md](docs/format.md)
-already says the field means — so an open joins it that way, loads it through
-`cam_store::tools::ToolLibrary::open` and hands the entries to the current-tool card and the cutting-time
-estimate; a document with no `tools_ref` opens in exactly the sentence it printed before, with an empty
-snapshot. A library that is missing, unreadable or not a library **does not cost the drawing**: it still opens,
-the card goes on saying the number it was asked for is not in the library it was given, and the status line
-appends the library and the reason to the open's own sentence. A reference that is **absolute, or that carries
-a `..`**, is refused before anything is read — the window reads nothing outside the document's directory and
-creates nothing anywhere, which is what makes the guard load-bearing: `ToolLibrary::open` creates the parent
-directory and the file it is pointed at. `cam-cli` joins the same way without that guard, so a document's
-`tools_ref` may still be absolute or climb out of the directory when the CLI reads it.
+**The tool library belongs to the application, not to a drawing.** There is one library — `tools.sqlite` in
+the application's data directory (`$CAM_PILOT_DATA_DIR` when it is set, otherwise the platform's per-user data
+directory: `$XDG_DATA_HOME/campilot` or `~/.local/share/campilot` on Linux, `%APPDATA%\campilot` on Windows) —
+and it is the same library for every document the window opens. On first launch the window creates the file and
+writes the **factory catalogue**: 22 tools across the six kinds, T1 to T22, with speeds and feeds derived by one
+rule rather than hand-tuned per tool (feed 100 mm/min, plunge 30, spindle 18000 rpm, depth of cut half the
+diameter capped at 3 mm, stepover 40 % of it) — starting values, not a machine's numbers. A library you empty
+stays empty: seeding is a first-launch answer, and `Restore defaults` is the one press that puts the catalogue
+back. Opening a document therefore changes nothing about the library, and the current-tool card and the
+cutting-time estimate resolve against that one file.
+
+`tools_ref` is still a document field and `cam-cli` still honours it — a reference **relative to the document's
+own directory**, which is what [docs/format.md](docs/format.md) says it means — so a document may name a library
+for the command line. The **window** does not read it: a drawing owning a library is exactly what the
+application-level rule rules out. From the command line the field is joined without a containment guard, so it
+may be absolute or climb out of the directory; the CLI creates the parent directory and the file it is pointed
+at when it means to write, which is why the shell has no such path to guard any more.
 
 What is not there yet: **toolpath forms** (M4's and M6's strategies are still authored through
 `cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`

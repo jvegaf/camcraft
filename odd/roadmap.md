@@ -1,6 +1,6 @@
 # Development Plan — 2.5D CAM application (Windows + Linux)
 
-Status: **executed through M14.** Each milestone's acceptance is that milestone's own measurements — its
+Status: **executed through M15.** Each milestone's acceptance is that milestone's own measurements — its
 tests, oracles, goldens and differentials — and the roadmap is where they are carried: M0–M13 are delivered,
 
 **On the names in this history.** The tree no longer names the third-party product the plan once learned from:
@@ -175,6 +175,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable (see §4.15) |
 | **M13** ✅ | The cycle closes inside the app | **Delivered**, with one task routed to the owner rather than closed. Two dead ends hid behind finished chrome: the app bar's primary action was `add_enabled(false, …)` with a hover excuse (`cam-ui/src/chrome.rs:323`) and the 3D half printed *"Simulate one with `cam-cli simulate` and hand it in"* (`view3d.rs:1390`), so a window that could import, author and display a program sent the person to a terminal for the one artefact the machine runs. M13 makes the program the app's own: `GenerateGcode` posts the open document through `cam-post` inside `apply_action`, the same place `SaveFile` writes (`S7`, corrected after measurement — it had said the host would do it), `Post…` holds the dialect for the session and refuses a file that is not a post-processor while keeping the one in hand, the 3D half builds the drawing's own program with `program_for_snapshot` over a pristine `Heightfield` behind a `Simulate` chip and a `Simulate again` in the overlay row, and the toolpaths are a list whose selection — not `toolpaths.first()` — is what the card, the editor and `open_tool_library` read, with the last of those a door the first version left aiming at the first toolpath (see §4.16). **T4, decided by the owner and delivered in `18ded99`**: the 3D stock paints through `StockTop`/`StockBottom` via `stock_shade` and the system's own value was a cool `#d6dce6` — the tan is the reference palette, so the change is a palette decision, and the owner took it. Resolving the values found a proof nobody had written: the amber `Cut` is painted **on** the stock, and it measured 1.47:1 there before this change; holding it to 3:1 pins the dark stock to a mid-value walnut and narrows its depth ramp from 6.33:1 to 1.80:1 (see §4.16) | The most visible gap left after twelve milestones was not missing machinery but missing *seams*: every part worked, and the person still could not finish a job without a terminal (see §4.16) |
 | **M14** ✅ | The tool library as an editor | **Delivered.** The library modal was a read-only snapshot with one sentence where the reference screen draws six buttons: `New, Duplicate, Delete, Import… and Export… are not here` — true, and a dead end. M14 makes it the screen: a header band with a close that writes nothing, three columns (master 300 / detail 424 / preview 200), a tree grouped by the tool's **kind** with folding headings that carry their count, an editor whose every number is a box with its unit outside it, the tool drawn vertically in a dark card with its length and diameter called out, and the footer sentence above `Cancel` / `Use this tool`. Two things had to become true in the store first: the six kinds are now **stored** in `tool_type` rather than guessed (a drill and a V-bit both carry an included angle, so no rule over the geometry tells a 118° point from a 90° V — zero stays reserved for "the writer did not say", which is what `cam-cli tools add` has always written, so no existing library is relabelled), and `validate_tool` + `save_tool`/`remove_tool`/`replace_tools` exist at all, because `put_geometry` accepted any row it was handed. Editing is a **draft**: nothing is written until `Use this tool`, and the sentence that replaces that button when a draft cannot commit is `validate_tool`'s own, so the two cannot drift. Every library write happens **file first, snapshot second** — a failure mutates nothing and keeps the window open, because a snapshot that changed beside a file that did not is the one outcome nobody can see. Found by the suite's own rewrite and fixed here: `close_tool_library` promised in its doc that the drafts went with it and left one behind, so a cancelled visit's typed diameter came back | A window that can import, author, post and simulate still sent the person to `cam-cli tools add` to fill its own tool library; the reference screen had the button row, and the shell had a paragraph explaining why it did not (see §4.17) |
+| **M15** ✅ | The tool library the application owns | **Delivered.** M14 made the screen and left it unreachable: `writes` was `tool_library_path.is_some()`, only an opened `.c2d` naming an existing `tools.sqlite` could set that path, and nothing in the app created the file or wrote `tools_ref` — so the six write actions were permanently dark and the populated screen could only be reached by hand-building a SQLite file and editing a document's JSON. The library is now the **application's** (the owner's decision, recorded verbatim in `odd/tasks/tool-library-app.md`, D1): one `tools.sqlite` in the app's data directory (`CAM_PILOT_DATA_DIR` as the only override), opened and seeded with the factory catalogue at launch, and opening a document no longer reads a library at all — `tools_ref` stays in the model and `cam-cli` keeps honouring it, because the field is a CLI contract and the ownership rule is the app's. The factory set went from four tools to the reference's **22 across its six families** (T1–T22), with speeds and feeds derived by one rule rather than hand-tuned per tool: feed 100 mm/min, plunge 30, spindle 18000, stepdown half the diameter capped at 3 mm, stepover 40 % of it. `Import…` now **asks** before it writes — `Replace all`, `Add`, `Cancel` — and `Add` skips a tool the library already holds by id, by trimmed case-insensitive name, or by tool number, so importing the same file twice is a no-op that says so. The dialog itself takes the reference's proportions (columns 700 tall rather than 372, a 330-tall preview card drawn light with a dark tool and blue callouts) so the whole form fits without scrolling, as the reference's does. | The screen was finished and unusable, which is the worst of both: the milestone that delivered §4.17 delivered a modal nobody could fill, because the library it edits is not a drawing's property (see §4.18) |
 
 Deferred / conditional, not scheduled: PDF text-to-outline fidelity beyond vector paths, EPS edge
 cases, rotary wrapping (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later
@@ -1219,3 +1220,49 @@ The suite was rewritten as behaviour over the report rather than shapes over a p
 Two defects it found are worth naming because they were invisible from outside: a `decimal` call handed an
 `f64` where a `Length` was expected, and a seeding guard that never fired, which made `Use this tool`
 unreachable for *every* tool.
+
+### 4.18 M15 delivered (evidence)
+
+The screen was finished and unreachable, which is the worst of both: §4.17 measured the layout, the tree, the
+form and the preview card, and none of it could ever be filled. `writes` in the modal was
+`tool_library_path.is_some()` (`crates/cam-ui/src/tool_library/dialog.rs`), and the only thing that set that path
+was `Shell::set_tools_from` when an opened `.c2d` named a `tools_ref` whose `tools.sqlite` already existed. No
+code in the window created that file and no code wrote `tools_ref` into a document, so the six action rows were
+permanently dark and the populated screen was reachable only by hand-building a SQLite file with `cam-cli tools
+add` and editing a document's JSON to point at it.
+
+**The library is the application's** (`odd/tasks/tool-library-app.md`, S1; the owner's words, D1). One
+`tools.sqlite` in the data directory — `$CAM_PILOT_DATA_DIR` as the only override, else
+`$XDG_DATA_HOME/campilot` / `~/.local/share/campilot` on Linux and `%APPDATA%\campilot` on Windows — opened and
+seeded at launch, so a fresh install starts with a catalogue instead of an empty screen, and a library a person
+emptied stays empty because seeding is a first-launch answer and not a repair. Opening a document no longer
+resolves anything: `tools_ref` stays in the model and `cam-cli` keeps honouring it, because the field is a CLI
+contract and the ownership rule is the window's. That deleted `tools_beside_document` and the whole ladder that
+came with it — lexical containment, the symlink case, the WAL companion refusal, ten tests in
+`crates/cam-ui/tests/shell/tool_library.rs` — and replaced it with four tests about ownership, one of which is
+the one that used to be impossible to write: an application whose library loads keeps it across an open.
+
+**The catalogue went from four tools to the reference's 22** (S3), T1 to T22 across the six kinds, each number
+used once. Speeds and feeds are derived by one rule instead of hand-tuned per tool (S4): feed 100 mm/min, plunge
+30, spindle 18000, depth of cut half the diameter capped at 3 mm, stepover 40 % of it. The three tapered ball
+tools keep their taper angle in the name only, because the store's corner-radius shape has no taper field —
+recorded rather than faked, and the one place the catalogue is less than the reference.
+
+**Import asks before it writes** (S5, the owner's requirement): the file is read and validated first, so a file
+this build cannot use still asks nothing and says why; then `Replace all`, `Add` or `Cancel`. `Add` skips a tool
+the library already holds by id, by trimmed case-insensitive name, or by tool number — a pure function in
+`cam-store` with one test per key — so importing the same file twice is a no-op that says so.
+
+**The dialog took the reference's proportions** (S7): columns 700 tall rather than 372, and the preview card
+330 rather than 172, so the tallest family's form ends inside its column and the fit is pinned per kind rather
+than eyeballed. The card is painted the way the reference paints it — light, with the tool in dark grey and the
+callouts in the accent blue — through three palette roles defined in both themes.
+
+Two defects the work itself produced, both found before the commit that carried them. The import question's
+buttons were first proved by calling the shell's answer methods, which is a test skipping the control it claims
+to test; pressing the reported rectangle showed why it had been tempting — an egui modal is placed on its first
+pass and settled on the second, so the rectangles reported in the frame the question appears are not the ones a
+person clicks. The fix is the one this module already keeps: report the frame that was drawn, let the test
+settle a frame before it reads the rectangle. The follow-up that fixed it had first tried the opposite — keep
+the first frame's rectangles and resolve clicks against those — which would have shipped a control that answers
+where it used to be.
