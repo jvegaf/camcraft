@@ -192,15 +192,89 @@ fn replacing_the_library_is_all_or_nothing() {
 #[test]
 fn replacing_the_library_installs_exactly_the_factory_set() {
   let library = ToolLibrary::open_in_memory().expect("opens");
-  library.save_tool(&sound(9)).expect("saves");
+  library.save_tool(&sound(99)).expect("saves");
   library.replace_tools(&factory_tools()).expect("restores");
   let tools = library.tools().expect("lists");
   assert_eq!(tools.len(), factory_tools().len());
   assert!(
-    tools.iter().all(|tool| tool.cutting.tool_number != Some(9)),
+    tools
+      .iter()
+      .all(|tool| tool.cutting.tool_number != Some(99)),
     "the tool the library held before is gone, because a restore is a replacement"
   );
+}
+
+#[test]
+fn the_factory_catalogue_is_the_reference_table_in_order() {
+  let tools = factory_tools();
+  let expected: Vec<(u32, &str)> = vec![
+    (1, "Flat end mill · 6 mm"),
+    (2, "Flat end mill · 3.175 mm (1/8\")"),
+    (3, "Ball nose · 6 mm"),
+    (4, "V-bit · 90° · 12.7 mm"),
+    (5, "V-bit · 60° · 12.7 mm"),
+    (6, "Drill · 5 mm"),
+    (7, "Flat end mill · 8 mm"),
+    (8, "Flat end mill · 12 mm (roughing)"),
+    (9, "Ball nose · 3.175 mm"),
+    (10, "Ball nose · 1.5 mm (detail)"),
+    (11, "V-bit · 30° · 3.175 mm"),
+    (12, "Drill · 8 mm"),
+    (13, "Single flute · 3.175 mm"),
+    (14, "Single flute · 4 mm"),
+    (15, "Compression · 6 mm"),
+    (16, "Surfacing · 25 mm"),
+    (17, "Engraving · 30° · 0.3 mm tip"),
+    (18, "V-bit · 120° · 32 mm"),
+    (19, "Tapered ball · R0.25 · 3.6° per side"),
+    (20, "Tapered ball · R0.5 · 4.76° per side"),
+    (21, "Tapered ball · R0.75 · 6.42° per side"),
+    (22, "Flat end mill · 1 mm · 3.175 shank"),
+  ];
+  assert_eq!(tools.len(), 22, "the whole table, T1..T22");
+  let actual: Vec<(u32, &str)> = tools
+    .iter()
+    .map(|tool| {
+      (
+        tool
+          .cutting
+          .tool_number
+          .expect("factory tools are numbered"),
+        tool.geometry.name_format.as_str(),
+      )
+    })
+    .collect();
+  assert_eq!(actual, expected);
+}
+
+#[test]
+fn the_factory_catalogue_declares_each_kind_and_every_tool_is_valid() {
+  let tools = factory_tools();
+  let count = |kind: ToolKind| {
+    tools
+      .iter()
+      .filter(|tool| ToolKind::of(&tool.geometry) == kind)
+      .count()
+  };
+  assert_eq!(count(ToolKind::FlatEndMill), 9);
+  assert_eq!(count(ToolKind::BallNose), 3);
+  assert_eq!(count(ToolKind::CornerRadius), 3);
+  assert_eq!(count(ToolKind::VBit), 4);
+  assert_eq!(count(ToolKind::Engraving), 1);
+  assert_eq!(count(ToolKind::Drill), 2);
   for tool in &tools {
+    assert_ne!(
+      tool.geometry.tool_type,
+      ToolKind::LEGACY_RAW,
+      "{} must declare its kind, never the legacy 0",
+      tool.geometry.id
+    );
+    assert_eq!(
+      tool.geometry.tool_type,
+      ToolKind::of(&tool.geometry).raw(),
+      "{} stores the kind it declares",
+      tool.geometry.id
+    );
     assert_eq!(
       validate_tool(tool),
       Ok(()),
@@ -211,14 +285,32 @@ fn replacing_the_library_installs_exactly_the_factory_set() {
 }
 
 #[test]
-fn the_factory_set_covers_the_shapes_the_drawing_knows() {
-  let kinds: Vec<ToolKind> = factory_tools()
-    .iter()
-    .map(|tool| ToolKind::of(&tool.geometry))
-    .collect();
-  assert!(kinds.contains(&ToolKind::FlatEndMill));
-  assert!(kinds.contains(&ToolKind::BallNose));
-  assert!(kinds.contains(&ToolKind::VBit));
+fn the_factory_speeds_and_feeds_follow_one_derived_rule() {
+  let tools = factory_tools();
+  let by_number = |n: u32| {
+    tools
+      .iter()
+      .find(|tool| tool.cutting.tool_number == Some(n))
+      .expect("tool number present")
+  };
+  let t1 = by_number(1);
+  assert_eq!(t1.cutting.feed_rate, Some(100.0));
+  assert_eq!(t1.cutting.plunge_rate, Some(30.0));
+  assert_eq!(t1.cutting.spindle_speed, Some(18_000));
+  assert_eq!(
+    t1.cutting.stepdown,
+    Some(Length::from_mm(3.0)),
+    "T1 stepdown capped at 3.0"
+  );
+  assert_eq!(t1.cutting.stepover, Some(Length::from_mm(2.4)));
+
+  let t22 = by_number(22);
+  assert_eq!(t22.cutting.stepdown, Some(Length::from_mm(0.5)));
+  assert_eq!(t22.cutting.stepover, Some(Length::from_mm(0.4)));
+
+  let t19 = by_number(19);
+  assert_eq!(t19.cutting.stepdown, Some(Length::from_mm(1.59)));
+  assert_eq!(t19.cutting.stepover, Some(Length::from_mm(1.27)));
 }
 
 #[test]

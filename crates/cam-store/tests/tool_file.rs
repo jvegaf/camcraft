@@ -124,7 +124,7 @@ fn a_kind_this_build_does_not_know_is_refused_and_named() {
 fn a_file_holding_one_impossible_tool_is_refused_whole() {
   let mut good = factory_tools()[0].clone();
   good.cutting.tool_number = Some(1);
-  let mut bad = factory_tools()[1].clone();
+  let mut bad = factory_tools()[2].clone();
   bad.cutting.tool_number = Some(2);
   bad.cutting.stepover = Some(Length::from_mm(99.0));
   let text = to_json(&[good, bad]).expect("writes");

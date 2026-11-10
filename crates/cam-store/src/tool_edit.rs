@@ -427,11 +427,21 @@ pub fn new_tool(id: &str, name: &str, tool_number: u32) -> StoredTool {
   }
 }
 
+fn round_mm_2(value: f64) -> f64 {
+  (value * 100.0).round() / 100.0
+}
+
+fn derived_stepdown_mm(diameter_mm: f64) -> f64 {
+  round_mm_2((diameter_mm / 2.0).min(3.0))
+}
+
+fn derived_stepover_mm(diameter_mm: f64) -> f64 {
+  round_mm_2(diameter_mm * 0.4)
+}
+
 /// The factory set `Restore defaults` writes, in tool-number order.
 ///
-/// Four tools that between them cover the shapes the drawing knows and both ends of the size range a
-/// hobby machine uses, with kinds declared rather than derived so the tree's headings and the form's combo
-/// agree about what each one is.
+/// The reference's 22 tools in its six families, with speeds and feeds derived by one rule.
 pub fn factory_tools() -> Vec<StoredTool> {
   let mut tools = vec![
     factory(
@@ -439,34 +449,243 @@ pub fn factory_tools() -> Vec<StoredTool> {
       "Flat end mill · 6 mm",
       ToolKind::FlatEndMill,
       1,
-      |geometry| geometry.diameter = Some(Length::from_mm(6.0)),
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(6.0));
+        geometry.num_flutes = Some(2);
+      },
     ),
     factory(
       "factory-flat-3-175",
-      "Flat end mill · 3.175 mm",
+      "Flat end mill · 3.175 mm (1/8\")",
       ToolKind::FlatEndMill,
-      5,
-      |geometry| geometry.diameter = Some(Length::from_mm(3.175)),
+      2,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.num_flutes = Some(2);
+      },
     ),
     factory(
       "factory-ball-6",
       "Ball nose · 6 mm",
       ToolKind::BallNose,
-      2,
+      3,
       |geometry| {
         geometry.diameter = Some(Length::from_mm(6.0));
         geometry.tip_radius = Some(Length::from_mm(3.0));
+        geometry.num_flutes = Some(2);
       },
     ),
     factory(
-      "factory-vbit-90",
+      "factory-vbit-90-12-7",
       "V-bit · 90° · 12.7 mm",
       ToolKind::VBit,
-      3,
+      4,
       |geometry| {
         geometry.diameter = Some(Length::from_mm(12.7));
         geometry.included_angle = Some(Angle::from_degrees(90.0));
         geometry.flat_diameter = Some(Length::from_mm(0.2));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-vbit-60-12-7",
+      "V-bit · 60° · 12.7 mm",
+      ToolKind::VBit,
+      5,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(12.7));
+        geometry.included_angle = Some(Angle::from_degrees(60.0));
+        geometry.flat_diameter = Some(Length::from_mm(0.2));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-drill-5",
+      "Drill · 5 mm",
+      ToolKind::Drill,
+      6,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(5.0));
+        geometry.included_angle = Some(Angle::from_degrees(118.0));
+        geometry.num_flutes = Some(2);
+        geometry.shank_diameter = Some(Length::from_mm(5.0));
+        geometry.flute_length = Some(Length::from_mm(30.0));
+        geometry.overall_length = Some(Length::from_mm(60.0));
+      },
+    ),
+    factory(
+      "factory-flat-8",
+      "Flat end mill · 8 mm",
+      ToolKind::FlatEndMill,
+      7,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(8.0));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-flat-12-roughing",
+      "Flat end mill · 12 mm (roughing)",
+      ToolKind::FlatEndMill,
+      8,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(12.0));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-ball-3-175",
+      "Ball nose · 3.175 mm",
+      ToolKind::BallNose,
+      9,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.tip_radius = Some(Length::from_mm(1.5875));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-ball-1-5-detail",
+      "Ball nose · 1.5 mm (detail)",
+      ToolKind::BallNose,
+      10,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(1.5));
+        geometry.tip_radius = Some(Length::from_mm(0.75));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-vbit-30-3-175",
+      "V-bit · 30° · 3.175 mm",
+      ToolKind::VBit,
+      11,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.included_angle = Some(Angle::from_degrees(30.0));
+        geometry.flat_diameter = Some(Length::from_mm(0.1));
+        geometry.num_flutes = Some(1);
+        geometry.flute_length = Some(Length::from_mm(7.7));
+        geometry.overall_length = Some(Length::from_mm(38.0));
+      },
+    ),
+    factory(
+      "factory-drill-8",
+      "Drill · 8 mm",
+      ToolKind::Drill,
+      12,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(8.0));
+        geometry.included_angle = Some(Angle::from_degrees(118.0));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-flat-3-175-single",
+      "Single flute · 3.175 mm",
+      ToolKind::FlatEndMill,
+      13,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.num_flutes = Some(1);
+      },
+    ),
+    factory(
+      "factory-flat-4-single",
+      "Single flute · 4 mm",
+      ToolKind::FlatEndMill,
+      14,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(4.0));
+        geometry.num_flutes = Some(1);
+      },
+    ),
+    factory(
+      "factory-flat-6-compression",
+      "Compression · 6 mm",
+      ToolKind::FlatEndMill,
+      15,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(6.0));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-flat-25-surfacing",
+      "Surfacing · 25 mm",
+      ToolKind::FlatEndMill,
+      16,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(25.0));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-engraving-30-0-3",
+      "Engraving · 30° · 0.3 mm tip",
+      ToolKind::Engraving,
+      17,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.included_angle = Some(Angle::from_degrees(30.0));
+        geometry.flat_diameter = Some(Length::from_mm(0.3));
+        geometry.num_flutes = Some(1);
+      },
+    ),
+    factory(
+      "factory-vbit-120-32",
+      "V-bit · 120° · 32 mm",
+      ToolKind::VBit,
+      18,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(32.0));
+        geometry.included_angle = Some(Angle::from_degrees(120.0));
+        geometry.flat_diameter = Some(Length::from_mm(0.2));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-tapered-ball-r0-25",
+      "Tapered ball · R0.25 · 3.6° per side",
+      ToolKind::CornerRadius,
+      19,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(3.175));
+        geometry.tip_radius = Some(Length::from_mm(0.25));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-tapered-ball-r0-5",
+      "Tapered ball · R0.5 · 4.76° per side",
+      ToolKind::CornerRadius,
+      20,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(6.0));
+        geometry.tip_radius = Some(Length::from_mm(0.5));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-tapered-ball-r0-75",
+      "Tapered ball · R0.75 · 6.42° per side",
+      ToolKind::CornerRadius,
+      21,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(6.0));
+        geometry.tip_radius = Some(Length::from_mm(0.75));
+        geometry.num_flutes = Some(2);
+      },
+    ),
+    factory(
+      "factory-flat-1-3-175-shank",
+      "Flat end mill · 1 mm · 3.175 shank",
+      ToolKind::FlatEndMill,
+      22,
+      |geometry| {
+        geometry.diameter = Some(Length::from_mm(1.0));
+        geometry.shank_diameter = Some(Length::from_mm(3.175));
+        geometry.num_flutes = Some(1);
       },
     ),
   ];
@@ -488,6 +707,11 @@ fn factory(
   tool.cutting.feed_rate = Some(100.0);
   tool.cutting.plunge_rate = Some(30.0);
   tool.cutting.spindle_speed = Some(18_000);
+  if let Some(diameter) = tool.geometry.diameter {
+    let diameter_mm = diameter.mm();
+    tool.cutting.stepdown = Some(Length::from_mm(derived_stepdown_mm(diameter_mm)));
+    tool.cutting.stepover = Some(Length::from_mm(derived_stepover_mm(diameter_mm)));
+  }
   tool
 }
 
