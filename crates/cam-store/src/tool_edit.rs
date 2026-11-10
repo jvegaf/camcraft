@@ -370,11 +370,15 @@ fn write_tool(
     ],
   )?;
   transaction.execute(
+    // The link is upserted by the id this writer derived, and the conflict arm deliberately does **not**
+    // touch `material_id` or `machine_id`. A library keeps one row per (tool, material, machine) because the
+    // same cutter feeds differently in MDF and in hardwood, and `StoredTool` carries neither: an arm that
+    // wrote `excluded.material_id` would set both to NULL and silently discard an association this API
+    // cannot even express, while reporting the write as successful (review R4-001).
     "INSERT INTO tool_entity
          (id, material_id, machine_id, tool_geometry_id, tool_cutting_data_id)
        VALUES (?1, NULL, NULL, ?2, ?3)
        ON CONFLICT(id) DO UPDATE SET
-         material_id = excluded.material_id, machine_id = excluded.machine_id,
          tool_geometry_id = excluded.tool_geometry_id,
          tool_cutting_data_id = excluded.tool_cutting_data_id",
     rusqlite::params![link_id(&geometry.id), geometry.id, cutting.id,],

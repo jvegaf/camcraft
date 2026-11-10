@@ -265,3 +265,33 @@ fn a_templated_name_still_renders_and_a_plain_one_is_itself() {
   assert_eq!(rendered_name(&templated), "Flat end mill (6mm)");
   assert_eq!(rendered_name(&sound(2)), "Flat end mill · 2");
 }
+
+#[test]
+fn saving_a_tool_keeps_the_material_its_link_already_names() {
+  // A library keeps one link per (tool, material, machine) — the normalisation is the reason the library is
+  // worth having, since the same cutter feeds differently in MDF and in hardwood. `StoredTool` carries
+  // neither column, so a writer that overwrote them would discard an association it cannot even express,
+  // and would report the write as successful while doing it (review R4-001).
+  let library = ToolLibrary::open_in_memory().expect("opens");
+  library.save_tool(&sound(1)).expect("saves");
+  library
+    .link("G1-link", "G1", "G1-cut", Some("MDF"), None)
+    .expect("links the tool to a material");
+  assert!(
+    library
+      .cutting_data_for("G1", Some("MDF"), None)
+      .expect("reads")
+      .is_some(),
+    "the fixture's own association has to exist before a save can be blamed for losing it"
+  );
+
+  library.save_tool(&sound(1)).expect("saves again");
+
+  assert!(
+    library
+      .cutting_data_for("G1", Some("MDF"), None)
+      .expect("reads")
+      .is_some(),
+    "saving a tool must not drop the material association its link already named"
+  );
+}
