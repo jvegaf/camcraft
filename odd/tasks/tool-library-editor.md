@@ -228,3 +228,19 @@ fine on `opencode-go/iceman-contributor-free`. The owner authorised changing
 `~/.pi/agent/settings.json` to `defaultProvider: opencode-go` / `defaultModel: iceman-contributor-free`;
 the previous file is at `~/.pi/agent/settings.json.bak-before-refuter`. The change reaches the whole Pi
 installation, not only the refuter.
+
+**L12** — the third slice (`edec330`, the JSON file format, widened by the provider to `a21b56a..edec330`)
+closed **approved** after one correction. `R3-stepdown-unvalidated` (CRITICAL, reliability): `validate_tool`
+checked `stepover` and never `stepdown`, so a negative, zero, NaN or infinite depth of cut walked through the
+gate that **both** `save_tool` and `tool_file::from_json` rely on — the one guarantee this branch makes about a
+written or imported tool. Fixed in `292d21b` (37 of the 200-line budget), verified RED first (`-1` answered
+`Ok(())`). One advisory left, informational: `R4-001` (WARNING).
+
+So the two defects this review has found are both of the same shape, and neither was catchable by the gate: a
+writer that discarded a column it could not express, and a validator that checked one of two sibling numbers.
+The fixtures never carried a non-null material or a negative stepdown, which is exactly why a gate that only
+runs the fixtures cannot find either. The second rebase replayed the five later commits again; the branch is
+now ten commits and `./scripts/check.sh` is green.
+
+Remaining: `b4e60cb` (the unit correction), `52b9c6c` (the modal), `41adc2a` (library actions),
+`5d4ee13` (roadmap) and this document's own commits.
