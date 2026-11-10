@@ -346,6 +346,22 @@ pub struct DrawnState {
   /// clipped away, and reporting its centre would be a promise about a control nobody can see (the defect
   /// the T6 review found in the playback bar, L23).
   pub tool_library_hits: Vec<(String, (f32, f32))>,
+  /// The title of the tool-library import question, when the modal is asking (tool-library-app S5).
+  ///
+  /// `None` while no question is open.
+  pub tool_import_question_title: Option<String>,
+  /// The sentence the tool-library import question asks with (tool-library-app S5).
+  ///
+  /// `None` while no question is open.
+  pub tool_import_question_sentence: Option<String>,
+  /// The buttons the tool-library import question drew, in the order drawn (tool-library-app S5).
+  pub tool_import_question_buttons: Vec<String>,
+  /// Where the tool-library import question drew each pressable button: its word and the point that presses it.
+  pub tool_import_question_hits: Vec<(String, (f32, f32))>,
+  /// The note the last answered tool-library import reported (tool-library-app S5).
+  ///
+  /// `None` until an import is answered in a way that reports a note.
+  pub tool_import_note: Option<String>,
   /// The family tree the modal drew: each family's own name and the number of rows drawn under it.
   ///
   /// The count is the number of rows that follow the heading in the tree, not the number of tools the

@@ -438,17 +438,38 @@ fn export_writes_a_file_the_store_reads_back() {
 }
 
 #[test]
-fn import_replaces_the_snapshot_with_the_files_tools() {
-  let scratch = Scratch::new("import");
+fn import_asks_and_replace_all_replaces_the_library() {
+  let scratch = Scratch::new("import-replace");
   let ctx = egui::Context::default();
   let (mut app, mut shell, opened, library_path) = opened_library_document(&ctx, &scratch);
   assert_eq!(opened.drawn.tool_rows.len(), library().len());
   let incoming = vec![flat_mill("X1", Some(1), 3.0), measured("X2", Some(2))];
   let file = scratch.path().join("incoming.json");
   let json = cam_store::tool_file::to_json(&incoming).expect("the fixture is a library");
-  std::fs::write(&file, json).expect("the file is written");
+  std::fs::write(&file, &json).expect("the file is written");
+  let before = ids(&tools_in(&library_path));
 
-  shell.apply_action(&mut app, &cam_ui::UiAction::ImportTools { path: file });
+  shell.apply_action(
+    &mut app,
+    &cam_ui::UiAction::ImportTools { path: file.clone() },
+  );
+
+  // A valid file stages the question and changes nothing yet (tool-library-app S5).
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (settled, _) = frame_with(&ctx, &mut shell, &mut app);
+  assert_eq!(ids(&tools_in(&library_path)), before);
+  assert_eq!(
+    settled.drawn.tool_import_question_title.as_deref(),
+    Some("Import tool library")
+  );
+  let at = settled
+    .drawn
+    .tool_import_question_hits
+    .iter()
+    .find(|(word, _)| word == "Replace all")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("Replace all is pressable");
+  click_at(&ctx, &mut shell, &mut app, at);
 
   // The library file beside the document is what changed, and the whole of it.
   let written = tools_in(&library_path);

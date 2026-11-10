@@ -80,6 +80,15 @@ const EXPORT: &str = "Export…";
 const IMPORT: &str = "Import…";
 const RESTORE: &str = "Restore defaults";
 
+/// The title and buttons of the tool-library import question (tool-library-app S5).
+const IMPORT_QUESTION_TITLE: &str = "Import tool library";
+const IMPORT_REPLACE_ALL: &str = "Replace all";
+const IMPORT_ADD: &str = "Add";
+const IMPORT_CANCEL: &str = "Cancel";
+
+/// The width the import question draws at, in the style of the shell's import modal.
+const IMPORT_QUESTION_WIDTH: f32 = 460.0;
+
 /// A pressable thing the modal drew, with the rectangle it occupied and the area it was clipped to.
 ///
 /// The clip is kept per control, and for one reason: a row scrolled out of the master list still produces a
@@ -859,7 +868,12 @@ impl Shell {
     output.drawn.tool_computed = computed;
     // `Export…` and `Import…` are answered by the host between two frames, so their write is reported here,
     // where a write the modal itself made this frame reports itself too.
-    output.drawn.tool_saved = std::mem::take(&mut self.tool_saved_pending);
+    if output.drawn.tool_saved.is_empty() {
+      output.drawn.tool_saved = std::mem::take(&mut self.tool_saved_pending);
+    }
+    if output.drawn.tool_import_note.is_none() {
+      output.drawn.tool_import_note = std::mem::take(&mut self.tool_import_note_pending);
+    }
     if let Some((rect, width)) = drawing {
       output.drawn.tool_drawing = Some(crate::chrome::rect_report(rect));
       output.drawn.tool_width_px = width;
@@ -881,6 +895,116 @@ impl Shell {
     }
     output.drawn.tool_selected = self.tool_library_selected.clone();
     output.drawn.tool_error = self.tool_error.clone();
+  }
+
+  /// The question a valid tool-library import asks before it changes anything (tool-library-app S5).
+  ///
+  /// Drawn over the tool library while the library behind it stays open. `Replace all`, `Add` and `Cancel`
+  /// answer it; `Esc` means `Cancel`.
+  pub(crate) fn tool_import_question_dialog(
+    &mut self,
+    ctx: &egui::Context,
+    output: &mut ShellOutput,
+  ) {
+    let Some(pending) = self.pending_tool_import.clone() else {
+      return;
+    };
+    let palette = self.palette();
+    let metrics = self.metrics();
+    let sentence = format!(
+      "{} tool(s) in {}. Replace the library, or add only the tools it does not already hold?",
+      pending.tools.len(),
+      pending.file
+    );
+    let mut cancel = false;
+    let mut replace = false;
+    let mut add = false;
+    let mut hits: Vec<(String, (f32, f32))> = Vec::new();
+    let buttons = vec![
+      IMPORT_REPLACE_ALL.to_owned(),
+      IMPORT_ADD.to_owned(),
+      IMPORT_CANCEL.to_owned(),
+    ];
+
+    #[allow(deprecated)]
+    let modal_id = egui::Id::new("campilot-tool-import-question");
+    egui::Modal::new(modal_id)
+      .frame(
+        egui::Frame::NONE
+          .fill(palette.get(Role::Overlay))
+          .stroke(egui::Stroke::new(
+            metrics.hairline,
+            palette.get(Role::Border),
+          ))
+          .corner_radius(egui::CornerRadius::same(metrics.radius_dialog as u8))
+          .inner_margin(egui::Margin::same(metrics.space(5) as i8)),
+      )
+      .show(ctx, |ui| {
+        ui.set_max_width(IMPORT_QUESTION_WIDTH);
+        ui.label(
+          RichText::new(IMPORT_QUESTION_TITLE)
+            .size(theme::TITLE)
+            .color(palette.get(Role::TextHi)),
+        );
+        ui.add_space(metrics.space(2));
+        ui.label(
+          RichText::new(&sentence)
+            .size(theme::BODY)
+            .color(palette.get(Role::Text)),
+        );
+        ui.add_space(metrics.space(4));
+        ui.horizontal(|ui| {
+          let replace_button = ui.button(RichText::new(IMPORT_REPLACE_ALL).size(theme::SMALL));
+          if replace_button.clicked() {
+            replace = true;
+          }
+          let add_button = ui.button(RichText::new(IMPORT_ADD).size(theme::SMALL));
+          if add_button.clicked() {
+            add = true;
+          }
+          let cancel_button = ui.button(RichText::new(IMPORT_CANCEL).size(theme::SMALL));
+          if cancel_button.clicked() {
+            cancel = true;
+          }
+          let centre = |rect: egui::Rect| {
+            let c = rect.center();
+            (c.x, c.y)
+          };
+          hits.push((IMPORT_REPLACE_ALL.to_owned(), centre(replace_button.rect)));
+          hits.push((IMPORT_ADD.to_owned(), centre(add_button.rect)));
+          hits.push((IMPORT_CANCEL.to_owned(), centre(cancel_button.rect)));
+        });
+      });
+
+    output.drawn.tool_import_question_title = Some(IMPORT_QUESTION_TITLE.to_owned());
+    output.drawn.tool_import_question_sentence = Some(sentence);
+    output.drawn.tool_import_question_buttons = buttons;
+    output.drawn.tool_import_question_hits = hits;
+
+    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      cancel = true;
+    }
+    if cancel {
+      self.cancel_tool_import();
+    } else if replace {
+      let _ = self.replace_imported_tools();
+    } else if add {
+      let _ = self.add_imported_tools();
+    }
+
+    if self.pending_tool_import.is_none() {
+      // The question was answered this frame; report its result the way the library modal would.
+      if output.drawn.tool_import_note.is_none() {
+        output.drawn.tool_import_note = self.tool_import_note_pending.clone();
+      }
+      if output.drawn.tool_saved.is_empty() {
+        output.drawn.tool_saved = self.tool_saved_pending.clone();
+      }
+      output.drawn.tool_import_question_title = None;
+      output.drawn.tool_import_question_sentence = None;
+      output.drawn.tool_import_question_buttons.clear();
+      output.drawn.tool_import_question_hits.clear();
+    }
   }
 
   /// Write the draft's tool, then do what the commit means.

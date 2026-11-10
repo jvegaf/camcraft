@@ -18,6 +18,19 @@ use crate::tool_library::ToolDraft;
 use crate::view3d;
 use crate::{Category, Preview3d, Tab};
 
+/// A validated tool-library import waiting for the operator's answer (tool-library-app S5).
+///
+/// The file has been read and every tool in it has been validated before this exists, so nothing in it can
+/// make the question ask about a file this build cannot use. The tools stay here until `Replace all`, `Add`
+/// or `Cancel` decides what becomes of them.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingToolImport {
+  /// The file the tools were read from, as the operator named it.
+  pub file: String,
+  /// The tools in that file, in the file's own order.
+  pub tools: Vec<StoredTool>,
+}
+
 mod action;
 mod canvas;
 mod frame;
@@ -370,6 +383,14 @@ pub struct Shell {
   /// ([`crate::tool_library::dialog`], where a write the modal made itself reports itself too). A write the
   /// modal's own rows make reports straight into the frame and never touches this.
   pub(crate) tool_saved_pending: Vec<String>,
+  /// A validated tool-library import waiting for the operator's answer (tool-library-app S5).
+  ///
+  /// `Some` while the question modal is open. A bad file never becomes one of these.
+  pub(crate) pending_tool_import: Option<PendingToolImport>,
+  /// The note the last answered tool-library import reported (tool-library-app S5).
+  ///
+  /// Held until the next frame that draws the modal reports it, the way `tool_saved_pending` is.
+  pub(crate) tool_import_note_pending: Option<String>,
   /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
   ///
   /// View state, like [`Self::show_3d`] or the collapsed rail groups: choosing which toolpath the card and
@@ -480,6 +501,8 @@ impl Default for Shell {
       tool_library_error: None,
       tool_error: None,
       tool_saved_pending: Vec::new(),
+      pending_tool_import: None,
+      tool_import_note_pending: None,
       selected_toolpath: None,
       strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],

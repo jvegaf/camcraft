@@ -411,3 +411,68 @@ fn a_depth_per_pass_that_is_not_a_pass_is_refused() {
     "and so does a tool with no pass at all"
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Import duplicates (tool-library-app S5): `Add` skips by id, by name, or by tool number
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn an_import_is_a_duplicate_when_it_shares_the_id() {
+  let existing = vec![sound(1)];
+  let mut candidate = sound(2);
+  candidate.geometry.id = "G1".to_owned(); // the id, not the number
+  candidate.geometry.name_format = "A different name".to_owned();
+  candidate.cutting.tool_number = Some(9);
+  assert!(
+    cam_store::tool_edit::is_duplicate_import(&candidate, &existing),
+    "the same geometry id is the same tool"
+  );
+}
+
+#[test]
+fn an_import_is_a_duplicate_when_it_shares_the_name_trimmed_and_case_insensitively() {
+  let existing = vec![sound(1)];
+  let mut candidate = sound(2);
+  candidate.geometry.id = "other".to_owned();
+  candidate.geometry.name_format = format!("  {}  ", rendered_name(&existing[0]).to_uppercase());
+  candidate.cutting.tool_number = Some(9);
+  assert!(
+    cam_store::tool_edit::is_duplicate_import(&candidate, &existing),
+    "a name that differs only by space or case names the same tool"
+  );
+}
+
+#[test]
+fn an_import_is_a_duplicate_when_it_shares_the_tool_number() {
+  let existing = vec![sound(1)];
+  let mut candidate = sound(2);
+  candidate.geometry.id = "other".to_owned();
+  candidate.geometry.name_format = "Another name".to_owned();
+  candidate.cutting.tool_number = Some(1); // the number T1
+  assert!(
+    cam_store::tool_edit::is_duplicate_import(&candidate, &existing),
+    "the same tool number is the same slot in the library"
+  );
+}
+
+#[test]
+fn partitioning_an_import_keeps_only_what_is_not_a_duplicate_in_order() {
+  let existing = vec![sound(1)];
+  let fresh = {
+    let mut tool = sound(2);
+    tool.geometry.id = "G2".to_owned();
+    tool.geometry.name_format = "Brand new".to_owned();
+    tool
+  };
+  let dup = {
+    let mut tool = sound(3);
+    tool.cutting.tool_number = Some(1); // duplicate by number
+    tool.geometry.id = "G3".to_owned();
+    tool.geometry.name_format = "Clash".to_owned();
+    tool
+  };
+  let (added, skipped) = cam_store::tool_edit::partition_import(&[fresh.clone(), dup], &existing);
+  assert_eq!(skipped, 1);
+  assert_eq!(added.len(), 1);
+  assert_eq!(added[0].geometry.id, fresh.geometry.id);
+}

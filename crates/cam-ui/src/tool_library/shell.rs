@@ -179,12 +179,11 @@ impl Shell {
     }
   }
 
-  /// `Import…`: read `path` and make its tools this window's library (S11).
+  /// `Import…`: read `path`, and ask before changing the library (tool-library-app S5).
   ///
-  /// The file is read and validated by [`cam_store::tool_file::from_json`] **before** anything is written, so a
-  /// file this build cannot use changes neither the library file nor the snapshot. On success the library file
-  /// beside the document is replaced first and the snapshot second, the order every write in this module
-  /// follows, and with no library file the snapshot is simply replaced.
+  /// The file is read and validated by [`cam_store::tool_file::from_json`] **before** anything is written or
+  /// asked, so a file this build cannot use changes nothing and says why. A valid file stages its tools and
+  /// opens the question modal; the library changes only when the operator answers `Replace all` or `Add`.
   pub(crate) fn import_tools(
     &mut self,
     label: &'static str,
@@ -200,6 +199,23 @@ impl Shell {
         return Err(sentence);
       }
     };
+    let file = file_label(path);
+    self.tool_error = None;
+    self.pending_tool_import = Some(crate::shell::PendingToolImport { file, tools });
+    Ok(ActionReport {
+      label,
+      note: Some("import pending".to_owned()),
+      ..ActionReport::default()
+    })
+  }
+
+  /// Answer the import question with `Replace all`: make the file's tools the library (S5).
+  pub fn replace_imported_tools(&mut self) -> Result<ActionReport, String> {
+    let Some(pending) = self.pending_tool_import.take() else {
+      return Ok(ActionReport::default());
+    };
+    let tools = pending.tools;
+    let file = pending.file;
     let installed = match self.tool_library_path.clone() {
       Some(library_path) => ToolLibrary::open(&library_path)
         .map_err(|error| error.to_string())
@@ -222,14 +238,12 @@ impl Shell {
           .map(|tool| tool.geometry.id.clone())
           .collect();
         self.tool_error = None;
-        self.tool_saved_pending = ids.clone();
+        self.tool_library_selected = None;
+        self.tool_draft = None;
+        self.tool_saved_pending = ids;
         Ok(ActionReport {
-          label,
-          note: Some(format!(
-            "{} tool(s) read from {}",
-            ids.len(),
-            file_label(path)
-          )),
+          label: "import tools",
+          note: Some(format!("{} tool(s) read from {file}", self.tools.len())),
           ..ActionReport::default()
         })
       }
@@ -238,6 +252,66 @@ impl Shell {
         Err(sentence)
       }
     }
+  }
+
+  /// Answer the import question with `Add`: append only the tools the library does not already hold (S5).
+  pub fn add_imported_tools(&mut self) -> Result<ActionReport, String> {
+    let Some(pending) = self.pending_tool_import.take() else {
+      return Ok(ActionReport::default());
+    };
+    let file = pending.file;
+    let (added, skipped) = cam_store::tool_edit::partition_import(&pending.tools, &self.tools);
+    if added.is_empty() {
+      let note = format!("Nothing was added: every tool in {file} is already in the library.");
+      self.tool_error = None;
+      self.tool_import_note_pending = Some(note.clone());
+      return Ok(ActionReport {
+        label: "import tools",
+        note: Some(note),
+        ..ActionReport::default()
+      });
+    }
+    let installed = match self.tool_library_path.clone() {
+      Some(library_path) => ToolLibrary::open(&library_path)
+        .map_err(|error| error.to_string())
+        .and_then(|library| {
+          for tool in &added {
+            library.save_tool(tool).map_err(|error| error.to_string())?;
+          }
+          Ok(())
+        })
+        .map(|()| self.tools.extend(added.iter().cloned())),
+      None => {
+        self.tools.extend(added.iter().cloned());
+        Ok(())
+      }
+    };
+    match installed {
+      Ok(()) => {
+        let ids: Vec<String> = added.iter().map(|tool| tool.geometry.id.clone()).collect();
+        let note = format!(
+          "{added_count} tool(s) added, {skipped} already in the library.",
+          added_count = ids.len()
+        );
+        self.tool_error = None;
+        self.tool_saved_pending = ids;
+        self.tool_import_note_pending = Some(note.clone());
+        Ok(ActionReport {
+          label: "import tools",
+          note: Some(note),
+          ..ActionReport::default()
+        })
+      }
+      Err(sentence) => {
+        self.tool_error = Some(sentence.clone());
+        Err(sentence)
+      }
+    }
+  }
+
+  /// Answer the import question with `Cancel`: drop the staged tools and change nothing (S5).
+  pub fn cancel_tool_import(&mut self) {
+    self.pending_tool_import = None;
   }
 
   /// Open the tool library for the toolpath the current-tool card names.

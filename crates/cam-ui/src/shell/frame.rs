@@ -153,10 +153,20 @@ impl Shell {
     }
     // The tool library is the shell's second modal (camui-prancheta S9), and `Esc` leaves it without writing
     // for the reason the material dialog's does: the choice is a draft until `Use this tool` says otherwise.
-    if self.show_tool_library && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+    // An import question laid over it answers `Esc` itself (tool-library-app S5): the question closes and the
+    // library behind it stays open.
+    let import_question_open = self.pending_tool_import.is_some();
+    if import_question_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.cancel_tool_import();
+    } else if self.show_tool_library && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
       self.close_tool_library();
     }
-    if self.show_tool_library {
+    if self.pending_tool_import.is_some() {
+      self.tool_import_question_dialog(&ctx, &mut output);
+      if self.pending_tool_import.is_none() && self.show_tool_library {
+        self.tool_library_dialog(&ctx, app, &mut output);
+      }
+    } else if self.show_tool_library {
       self.tool_library_dialog(&ctx, app, &mut output);
     }
     // The script panel is the shell's third modal (M10 T4b, S4), and `Esc` closes it for the reason the
@@ -184,7 +194,12 @@ impl Shell {
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
     // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
-    if !self.show_material && !self.show_tool_library && !self.show_script && !self.show_import {
+    if !self.show_material
+      && !self.show_tool_library
+      && !self.show_script
+      && !self.show_import
+      && self.pending_tool_import.is_none()
+    {
       self.track_pointer(app, &ctx);
     }
     // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,

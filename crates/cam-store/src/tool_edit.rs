@@ -783,3 +783,40 @@ pub fn rendered_name(tool: &StoredTool) -> String {
   )
   .unwrap_or_else(|_| tool.geometry.name_format.clone())
 }
+
+/// Whether `candidate` is already in `existing`, so importing it with `Add` would duplicate it.
+///
+/// Three keys, each compared against every tool already in the library (tool-library-app S5): the tool's own
+/// **id**, its **name** compared trimmed and case-insensitively, and its **tool number**. A match on any one
+/// of these is a duplicate; this is a pure comparison and writes nothing.
+pub fn is_duplicate_import(candidate: &StoredTool, existing: &[StoredTool]) -> bool {
+  let name = rendered_name(candidate).trim().to_lowercase();
+  let number = candidate.cutting.tool_number;
+  existing.iter().any(|tool| {
+    tool.geometry.id == candidate.geometry.id
+      || rendered_name(tool).trim().to_lowercase() == name
+      || (number.is_some() && tool.cutting.tool_number == number)
+  })
+}
+
+/// Split an import into the tools `Add` would append and the ones it would skip as duplicates.
+///
+/// The order of `incoming` is preserved among the tools that are kept: a file is read as a list, and what is
+/// added is added in that list's order (tool-library-app S5).
+pub fn partition_import(
+  incoming: &[StoredTool],
+  existing: &[StoredTool],
+) -> (Vec<StoredTool>, usize) {
+  let mut known = existing.to_vec();
+  let mut added = Vec::new();
+  let mut skipped = 0;
+  for tool in incoming {
+    if is_duplicate_import(tool, &known) {
+      skipped += 1;
+    } else {
+      known.push(tool.clone());
+      added.push(tool.clone());
+    }
+  }
+  (added, skipped)
+}
