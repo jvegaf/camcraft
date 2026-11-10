@@ -295,3 +295,27 @@ fn saving_a_tool_keeps_the_material_its_link_already_names() {
     "saving a tool must not drop the material association its link already named"
   );
 }
+
+#[test]
+fn a_depth_per_pass_that_is_not_a_pass_is_refused() {
+  // `stepover` was checked from the first version and `stepdown` was not, so a negative, zero or NaN depth
+  // of cut walked straight through the gate that `save_tool` and `from_json` both rely on (review
+  // R3-stepdown-unvalidated).
+  for impossible in [-1.0, 0.0, f64::NAN, f64::INFINITY] {
+    let mut broken = sound(1);
+    broken.cutting.stepdown = Some(Length::from_mm(impossible));
+    match validate_tool(&broken) {
+      Err(ToolProblem::StepdownNotPositive(_)) => {}
+      other => panic!("a stepdown of {impossible} must be refused, got {other:?}"),
+    }
+  }
+  let mut fine = sound(1);
+  fine.cutting.stepdown = Some(Length::from_mm(1.5));
+  assert_eq!(validate_tool(&fine), Ok(()), "and a real pass still passes");
+  fine.cutting.stepdown = None;
+  assert_eq!(
+    validate_tool(&fine),
+    Ok(()),
+    "and so does a tool with no pass at all"
+  );
+}

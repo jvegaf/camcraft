@@ -44,6 +44,8 @@ pub enum ToolProblem {
     /// The flute length it was asked to contain.
     flute: f64,
   },
+  /// The stepdown is zero or negative, or not a number at all.
+  StepdownNotPositive(f64),
   /// The stepover is zero or negative.
   StepoverNotPositive(f64),
   /// The stepover is wider than the tool, so a pass would leave uncut material between passes.
@@ -86,6 +88,9 @@ impl ToolProblem {
       ToolProblem::OverallShorterThanFlute { overall, flute } => format!(
         "The overall length ({overall} mm) cannot be shorter than the flute length ({flute} mm) it contains."
       ),
+      ToolProblem::StepdownNotPositive(stepdown) => {
+        format!("A depth per pass has to be greater than zero, and this one is {stepdown} mm.")
+      }
       ToolProblem::StepoverNotPositive(stepover) => {
         format!("A stepover has to be greater than zero, and this one is {stepover} mm.")
       }
@@ -177,6 +182,14 @@ pub fn validate_tool(tool: &StoredTool) -> Result<(), ToolProblem> {
         overall: overall.mm(),
         flute: flute.mm(),
       });
+    }
+  }
+  if let Some(stepdown) = cutting.stepdown {
+    // The same door the stepover gets, and it was missing: a negative, zero, NaN or infinite depth of cut
+    // is not a pass, and `save_tool` and `from_json` both relied on this gate to keep one out of a library
+    // (review R3-stepdown-unvalidated).
+    if !positive(stepdown.mm()) {
+      return Err(ToolProblem::StepdownNotPositive(stepdown.mm()));
     }
   }
   if let Some(stepover) = cutting.stepover {
