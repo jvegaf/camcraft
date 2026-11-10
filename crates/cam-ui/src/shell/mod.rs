@@ -357,6 +357,14 @@ pub struct Shell {
   /// for the reason [`Self::import_error`] is: closing on a failure would lose the form the operator was
   /// editing, and the next opening clears it.
   pub(crate) tool_error: Option<String>,
+  /// The geometry ids a library write recorded since the last frame reported one.
+  ///
+  /// `Export…` and `Import…` are answered by the host **between** two frames — the dialog returns a path and
+  /// [`Shell::apply_action`] writes it, with no [`ShellOutput`] to report into — so the ids wait here and the
+  /// next frame that draws the modal moves them into `drawn.tool_saved` and empties this
+  /// ([`crate::tool_library::dialog`], where a write the modal made itself reports itself too). A write the
+  /// modal's own rows make reports straight into the frame and never touches this.
+  pub(crate) tool_saved_pending: Vec<String>,
   /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
   ///
   /// View state, like [`Self::show_3d`] or the collapsed rail groups: choosing which toolpath the card and
@@ -465,6 +473,7 @@ impl Default for Shell {
       tool_library_for_draft: false,
       tool_library_path: None,
       tool_error: None,
+      tool_saved_pending: Vec::new(),
       selected_toolpath: None,
       strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],

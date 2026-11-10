@@ -1,6 +1,6 @@
 use cam_app::AppState;
 use cam_store::tools::ToolLibrary;
-use cam_ui::{Shell, ShellOutput};
+use cam_ui::Shell;
 
 use super::support::*;
 
@@ -8,32 +8,11 @@ use super::support::*;
 // S10: `Use this tool` writes through the library file beside the document
 // ---------------------------------------------------------------------------------------------
 
-/// A document and the library beside it, opened the way an operator opens them.
-///
-/// The write path is the *open handler's*: a library reaches the shell together with the path it was read from,
-/// and `set_tools_from` is the crate-private half of that one call, so the test opens a real `.c2d` that names a
-/// real `tools.sqlite` instead of handing the window a snapshot with no file behind it.
-fn opened_document(
-  ctx: &egui::Context,
-  scratch: &Scratch,
-) -> (AppState, Shell, ShellOutput, std::path::PathBuf) {
-  let library_path = write_library(scratch.path(), "tools.sqlite", &library());
-  let mut document = document_with_toolpath(1);
-  document.tools_ref = Some("tools.sqlite".to_owned());
-  let path = write_document(scratch.path(), "part.c2d", &document);
-
-  let mut app = AppState::new(document_with_toolpath(1));
-  let mut shell = Shell::new();
-  shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
-  let opened = open_library(ctx, &mut shell, &mut app);
-  (app, shell, opened, library_path)
-}
-
 #[test]
 fn use_this_tool_writes_the_edited_tool_through_the_library_file() {
   let scratch = Scratch::new("write");
   let ctx = egui::Context::default();
-  let (mut app, mut shell, opened, library_path) = opened_document(&ctx, &scratch);
+  let (mut app, mut shell, opened, library_path) = opened_library_document(&ctx, &scratch);
   // The modal opens on the tool the opened document's toolpath cuts with, out of the file it named.
   assert_eq!(opened.drawn.tool_selected.as_deref(), Some("G1"));
   assert_eq!(opened.drawn.tool_rows.len(), library().len());

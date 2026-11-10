@@ -31,6 +31,19 @@
 //!    by the sentence that says so. `Cancel` is always honourable for one reason worth writing down: nothing in
 //!    this modal writes before it, so there is nothing for it to undo.
 //!
+//! The master column ends in S3's three rows of library actions — `+ New`, `Duplicate`, `Delete`; `Export…`,
+//! `Import…`; `Restore defaults` — and they are the one place in this modal where a control is drawn while it
+//! cannot be honoured. S3 asks for the rows to exist and S10 asks them to be disabled when the window knows no
+//! library file, so the rule above is kept by the report and by one sentence rather than by absence: a dark row
+//! reports no point in [`crate::DrawnState::tool_library_hits`], and a sentence under the rows names the file it
+//! would take. `Export…` and `Import…` are never dark, because they need a file dialog and not a library, and
+//! their write happens when the dialog's path comes back as a [`crate::UiAction`].
+//!
+//! **Every library write is the file first and the window's snapshot second.** The two can then never disagree in
+//! the direction that matters — a library that refused a tool is never described by a tree that lists it — and a
+//! refusal stays in this modal ([`Shell::tool_error`]) with the snapshot untouched, which is what makes
+//! `New`, `Duplicate`, `Delete`, `Restore defaults` and `Use this tool` one rule instead of five.
+//!
 //! The preview is the tool's cutting end drawn vertically inside its own card, and its **horizontal scale is
 //! shared by every tool at once** — [`preview::SPAN_MM`] of tool is the card's inner width — so two tools in it
 //! are comparable by eye. The length and the diameter are painted as dimension callouts only when the record

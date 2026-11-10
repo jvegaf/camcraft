@@ -64,6 +64,15 @@ const NO_SHELL_FOR_POST: &str =
   "writing a program needs the post-processor the window is holding, and this entry point has no shell — \
    choose one with Post… and apply the action through Shell::apply_action";
 
+/// What an export or an import of the tool library answers from an entry point that holds no shell.
+///
+/// The library travels with the window for the same reason the post-processor does: a bare handler holds no
+/// tools to export and no snapshot an imported file could replace, so it names what is missing instead of
+/// writing an empty library over the operator's file.
+const NO_SHELL_FOR_TOOLS: &str =
+  "a tool library export or import needs the tools the window is holding, and this entry point has no \
+   shell — open the library and apply the action through Shell::apply_action";
+
 /// The file the drawing came from, as the shell holds it: the recorded path and the archive's other
 /// entries.
 ///
@@ -275,6 +284,17 @@ pub(crate) fn handle_action_with_file(
       label: action.label(),
       ..ActionReport::default()
     }),
+    // The tool library's two file intents are the same question in the library's own format: they ask the host
+    // for a path and change nothing while asking (S11).
+    UiAction::RequestExportTools | UiAction::RequestImportTools => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    // And their answers belong to the window, not to this handler: the library is shell state, so a bare
+    // handler has no tools to write out and no snapshot to replace, and says so rather than writing nothing.
+    UiAction::ExportTools { .. } | UiAction::ImportTools { .. } => {
+      Err(NO_SHELL_FOR_TOOLS.to_owned())
+    }
     // The two program intents ask the host for something and change nothing while asking, exactly as the two
     // file intents do.
     UiAction::RequestGenerateGcode | UiAction::RequestChoosePost => Ok(ActionReport {

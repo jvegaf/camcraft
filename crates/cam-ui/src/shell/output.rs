@@ -310,22 +310,25 @@ pub struct DrawnState {
   /// percentage and the chipload — and the chipload is the one S6 requires to be arithmetic over the rows above
   /// it, so this is how "computed, never typed" is checked rather than asserted.
   pub tool_computed: Vec<(String, String)>,
-  /// The library action rows the master column drew, in the order drawn.
+  /// The library action rows the master column drew, in the order drawn: `+ New`, `Duplicate`, `Delete`,
+  /// `Export…`, `Import…`, `Restore defaults` (S3).
   ///
-  /// Declared now and filled by the slice that adds `New`, `Duplicate`, `Delete`, `Export…`, `Import…` and
-  /// `Restore defaults` (S3, S10, S11): an empty list is this frame's honest answer, and a test that reads it
-  /// cannot mistake a planned row for a drawn one.
+  /// Every row is named here whether or not it is pressable, because a row that cannot be honoured is still
+  /// drawn and still teaches what a library file would enable; [`Self::tool_library_hits`] is what says which of
+  /// them the frame made pressable. Empty while the modal is closed, because a modal nobody opened drew no row.
   pub tool_actions: Vec<String>,
-  /// The geometry ids this frame wrote to a tool library file, in the order it wrote them.
+  /// The geometry ids a library write recorded, in the order it wrote them.
   ///
-  /// Empty when `Use this tool` wrote nothing — no library file is known, the press was refused, or the write
-  /// failed — so a test can tell "the library was updated" from "the window's own snapshot was".
+  /// Empty when nothing was written — no library file is known, the press was refused, or the write failed — so a
+  /// test can tell "the library was updated" from "the window's own snapshot was". The modal's own rows report
+  /// the frame that wrote them; `Export…` and `Import…` are answered by the host between two frames, so their ids
+  /// reach the next frame that draws the modal.
   pub tool_saved: Vec<String>,
-  /// The sentence the modal is showing because writing the library failed.
+  /// The sentence the modal is showing because reading or writing the library failed.
   ///
-  /// `None` while there is nothing to say. A refusal is drawn inside the modal beside the form it is about,
-  /// because closing on a failure would lose the boxes the operator was editing — the rule the import modal
-  /// already follows about its own refusal.
+  /// `None` while there is nothing to say. A refusal — a tool the store would not write, a library file that
+  /// could not be opened, a JSON file that is not a library — is drawn inside the modal beside the rows it is
+  /// about, because closing on a failure would lose the tree the operator was working in.
   pub tool_error: Option<String>,
   /// The words the tool-library modal drew, in the order it drew them (camui-prancheta S9).
   ///

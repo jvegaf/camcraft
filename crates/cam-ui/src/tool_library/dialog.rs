@@ -11,6 +11,8 @@
 //! therefore has nothing to undo beyond the visit itself, and `Use this tool` is the only press in this modal
 //! that writes.
 
+use std::path::Path;
+
 use cam_app::AppState;
 use cam_store::tools::{StoredTool, ToolKind, ToolLibrary};
 use cam_units::UnitSystem;
@@ -22,6 +24,7 @@ use crate::{Shell, ShellOutput, UiAction};
 use super::draft::ToolDraft;
 use super::form::{form_rows, FormField};
 use super::preview::{paint_preview, PREVIEW_HEIGHT, PREVIEW_WIDTH};
+use super::shell::ToolLibraryRequest;
 use super::tree::{row_matches, tool_title, tool_with, tree_rows, Row};
 
 /// The master column's width: wide enough for a tool title and its `Ø6 · 2 cut(s)` line.
@@ -67,6 +70,35 @@ const EMPTY_LIBRARY: &str =
   "The library this window was given holds no tool, so there is nothing to list or to use.";
 const NO_TARGET: &str =
   "This window was opened without a toolpath, so there is no toolpath for a choice to apply to.";
+
+/// The words on the master column's three rows of library actions, in S3's order and grouping.
+///
+/// Constants because the same word is both painted and reported: the report a test reads and the button the
+/// operator presses cannot drift apart.
+const NEW: &str = "+ New";
+const DUPLICATE: &str = "Duplicate";
+const DELETE: &str = "Delete";
+const EXPORT: &str = "Export…";
+const IMPORT: &str = "Import…";
+const RESTORE: &str = "Restore defaults";
+
+/// Why the four rows that write a library are dark when this window knows no library file (S3, S10).
+///
+/// The module's oldest rule is that a control which cannot do what it says is not pressable, and a dark row on
+/// its own is a mystery. The sentence therefore names the two things an operator needs to make the rows live:
+/// the directory the file would sit in — the drawing's own — and the file it would have to be.
+fn no_library_sentence(document_path: Option<&Path>) -> String {
+  match document_path.and_then(Path::parent) {
+    Some(directory) => format!(
+      "New, Duplicate, Delete and Restore defaults write the tool library beside this drawing, and {} holds \
+       no tools.sqlite to write.",
+      directory.display()
+    ),
+    None => "New, Duplicate, Delete and Restore defaults write the tool library beside this drawing, and this \
+             drawing has no file yet, so no directory holds a tools.sqlite to write."
+      .to_owned(),
+  }
+}
 
 /// A pressable thing the modal drew, with the rectangle it occupied and the area it was clipped to.
 ///
@@ -196,6 +228,60 @@ fn field_row(
   text
 }
 
+/// What pressing one of the master column's rows asks for (S3).
+///
+/// The two file rows are apart from [`ToolLibraryRequest`] because their answer is a path only the host's dialog
+/// can return: the modal asks, and the window's own write happens when that path comes back as a
+/// [`UiAction`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum RowRequest {
+  /// A write this window can make itself (S10).
+  Library(ToolLibraryRequest),
+  /// Ask the host for a path to export the library to (S11).
+  Export,
+  /// Ask the host for a library file to import (S11).
+  Import,
+}
+
+/// One row of the master column's library actions (S3).
+///
+/// Each button is an ordinary [`egui::Button`] at [`theme::SMALL`], laid out left to right inside the master
+/// column's [`MASTER_WIDTH`]. A row that cannot be honoured is drawn with [`egui::Ui::add_enabled`] and reports
+/// no point: visible, so the operator learns the action exists, and unpressed, because a press would emit
+/// nothing (L14). The row is reported as a row of words either way, which is what makes "drawn but dark" a
+/// reportable state instead of an absence.
+///
+/// The request is returned so the caller applies it after the frame: nothing in this modal writes while a
+/// widget is being drawn.
+fn action_row(
+  ui: &mut egui::Ui,
+  row: &[(&'static str, bool, RowRequest)],
+  spots: &mut Vec<Spot>,
+  words: &mut Vec<String>,
+  actions: &mut Vec<String>,
+) -> Option<RowRequest> {
+  let mut pressed = None;
+  ui.horizontal(|ui| {
+    for (word, enabled, request) in row {
+      let button = egui::Button::new(RichText::new(*word).size(theme::SMALL));
+      let response = if *enabled {
+        ui.add(button)
+      } else {
+        ui.add_enabled(false, button)
+      };
+      words.push((*word).to_owned());
+      actions.push((*word).to_owned());
+      if *enabled {
+        spots.push(Spot::in_ui((*word).to_owned(), response.rect, ui));
+        if response.clicked() {
+          pressed = Some(*request);
+        }
+      }
+    }
+  });
+  pressed
+}
+
 impl Shell {
   /// Why `Use this tool` cannot be honoured right now, or `None` when it can.
   ///
@@ -303,6 +389,7 @@ impl Shell {
     let width = columns.iter().sum::<f32>() + 2.0 * metrics.space(3) + 2.0 * margin;
 
     let mut words: Vec<String> = Vec::new();
+    let mut actions: Vec<String> = Vec::new();
     let mut spots: Vec<Spot> = Vec::new();
     let mut families: Vec<(String, usize)> = Vec::new();
     let mut rows: Vec<(String, String, String)> = Vec::new();
@@ -314,6 +401,7 @@ impl Shell {
     let mut drawing: Option<(egui::Rect, f32)> = None;
     let mut cancel = false;
     let mut commit: Option<StoredTool> = None;
+    let mut request: Option<RowRequest> = None;
 
     egui::Modal::new(egui::Id::unique("campilot-tool-library"))
       .frame(
@@ -497,6 +585,55 @@ impl Shell {
                     }
                     ui.add_space(metrics.space(2));
                   });
+
+                // ---- the library action rows: S3's three groups at the foot of the master column ----
+                //
+                // The four rows that write a library share one condition — a library file this window may
+                // write — and `Duplicate` and `Delete` need a tool to act on besides. The two file dialogs
+                // need neither: a dialog returns a path and the shell writes it, so they are always live
+                // (S11). A dark row is drawn and reported and is not a hit, which is the only shape the
+                // module's first rule allows.
+                ui.add_space(metrics.space(2));
+                let writes = self.tool_library_path.is_some();
+                let has_tool = selected.is_some();
+                for row in [
+                  vec![
+                    (NEW, writes, RowRequest::Library(ToolLibraryRequest::New)),
+                    (
+                      DUPLICATE,
+                      writes && has_tool,
+                      RowRequest::Library(ToolLibraryRequest::Duplicate),
+                    ),
+                    (
+                      DELETE,
+                      writes && has_tool,
+                      RowRequest::Library(ToolLibraryRequest::Delete),
+                    ),
+                  ],
+                  vec![
+                    (EXPORT, true, RowRequest::Export),
+                    (IMPORT, true, RowRequest::Import),
+                  ],
+                  vec![(
+                    RESTORE,
+                    writes,
+                    RowRequest::Library(ToolLibraryRequest::RestoreDefaults),
+                  )],
+                ] {
+                  if let Some(pressed) = action_row(ui, &row, &mut spots, &mut words, &mut actions)
+                  {
+                    request = Some(pressed);
+                  }
+                }
+                if !writes {
+                  let sentence = no_library_sentence(self.document_path.as_deref());
+                  ui.label(
+                    RichText::new(&sentence)
+                      .size(theme::CAPTION)
+                      .color(palette.get(Role::TextDim)),
+                  );
+                  words.push(sentence);
+                }
               });
 
               // Read between the columns: this is the selection the tree has just made, and the draft that
@@ -724,15 +861,18 @@ impl Shell {
     self.tool_groups_closed = closed;
     output.drawn.tool_library = words;
     output.drawn.tool_library_hits = pressable(spots);
+    output.drawn.tool_actions = actions;
     output.drawn.tool_families = families;
     output.drawn.tool_rows = rows;
-    output.drawn.tool_selected = self.tool_library_selected.clone();
     output.drawn.tool_groups = groups;
     output.drawn.tool_callouts = callouts;
     output.drawn.tool_header = Some(header);
     output.drawn.tool_columns = columns.to_vec();
     output.drawn.tool_preview_caption = caption;
     output.drawn.tool_computed = computed;
+    // `Export…` and `Import…` are answered by the host between two frames, so their write is reported here,
+    // where a write the modal itself made this frame reports itself too.
+    output.drawn.tool_saved = std::mem::take(&mut self.tool_saved_pending);
     if let Some((rect, width)) = drawing {
       output.drawn.tool_drawing = Some(crate::chrome::rect_report(rect));
       output.drawn.tool_width_px = width;
@@ -743,6 +883,16 @@ impl Shell {
     if let Some(tool) = commit {
       self.commit_tool_draft(tool, output);
     }
+    // Applied last, after the frame's own drafts are written back, so an action's own selection and draft
+    // are the ones the next frame seeds itself from rather than the ones this frame started with.
+    if let Some(request) = request {
+      match request {
+        RowRequest::Library(request) => self.apply_tool_library_request(request, output),
+        RowRequest::Export => output.actions.push(UiAction::RequestExportTools),
+        RowRequest::Import => output.actions.push(UiAction::RequestImportTools),
+      }
+    }
+    output.drawn.tool_selected = self.tool_library_selected.clone();
     output.drawn.tool_error = self.tool_error.clone();
   }
 

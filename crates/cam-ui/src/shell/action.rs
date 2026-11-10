@@ -51,6 +51,10 @@ impl Shell {
       // `handle_action_with_file` keeps the immediate import for callers with no window at all, which is why
       // this interception lives in the shell and not in the shared handler.
       UiAction::ImportFile { path } => self.open_import(path),
+      // The tool library's two file actions are the window's for the same reason: the tools are shell state, so
+      // the shared handler has none to write out and no snapshot to replace (S11).
+      UiAction::ExportTools { path } => self.export_tools(action.label(), path),
+      UiAction::ImportTools { path } => self.import_tools(action.label(), path),
       _ => handle_action_with_file(
         app,
         action,

@@ -138,6 +138,27 @@ impl eframe::App for Editor {
           Some(path) => UiAction::ChoosePost { path },
           None => continue,
         },
+        // The tool library's export is a save dialog in the format the store writes, and it starts from
+        // `tools.json` because that is the name a library file keeps wherever it is put down. Everything after
+        // the path — the JSON, the refusal, the report — stays in `apply_action` (tool-library-editor S11).
+        UiAction::RequestExportTools => match rfd::FileDialog::new()
+          .add_filter("tool library", &["json"])
+          .set_file_name("tools.json")
+          .save_file()
+        {
+          Some(path) => UiAction::ExportTools { path },
+          None => continue,
+        },
+        // And the import is the same question in the other direction, starting from this drawing's own name so a
+        // library exported beside it is the file the dialog opens on.
+        UiAction::RequestImportTools => match rfd::FileDialog::new()
+          .add_filter("tool library", &["json"])
+          .set_file_name(library_file_name(&self.shell))
+          .pick_file()
+        {
+          Some(path) => UiAction::ImportTools { path },
+          None => continue,
+        },
         other => other,
       };
       // Through the shell, not the bare handler: the shell turns the command's outcome into the
@@ -156,6 +177,18 @@ impl eframe::App for Editor {
 fn program_file_name(shell: &Shell) -> String {
   std::path::Path::new(&shell.document_name())
     .with_extension("nc")
+    .to_string_lossy()
+    .into_owned()
+}
+
+/// The name the tool library's import dialog starts from: the document's own name, in the library's extension.
+///
+/// The same suggestion `program_file_name` makes and for the same reason: a library exported beside a drawing is
+/// found by that drawing's name, and `part.c2d` therefore opens on `part.json`. The name is the dialog's
+/// suggestion and not a rule — `tools.json` in the same folder is accepted just as readily (S11).
+fn library_file_name(shell: &Shell) -> String {
+  std::path::Path::new(&shell.document_name())
+    .with_extension("json")
     .to_string_lossy()
     .into_owned()
 }

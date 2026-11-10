@@ -303,6 +303,35 @@ pub enum UiAction {
     /// The new display name.
     name: String,
   },
+  /// Write the tool library to `path` as the file format's JSON (tool-library-editor S11).
+  ///
+  /// This is the answer to [`UiAction::RequestExportTools`], exactly as [`UiAction::SaveFile`] answers
+  /// [`UiAction::RequestSaveAs`]: the host asks the platform's save dialog and applies this with the path it
+  /// returned. The window's own library is what is written — the tools the tree lists — and nothing else is
+  /// read or written, so a cancelled dialog writes no file at all.
+  ExportTools {
+    /// Where to write the library file.
+    path: PathBuf,
+  },
+  /// Ask the host for a path to export the tool library to; the host shows its save dialog and applies
+  /// [`UiAction::ExportTools`].
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
+  RequestExportTools,
+  /// Read the tool library in `path` and replace this window's library with it (tool-library-editor S11).
+  ///
+  /// This is the answer to [`UiAction::RequestImportTools`]. The file is validated before anything is written,
+  /// so a file this build cannot use changes neither the library file beside the document nor the window's
+  /// snapshot; on success the library file is replaced and the snapshot follows it.
+  ImportTools {
+    /// The library file to read.
+    path: PathBuf,
+  },
+  /// Ask the host for a tool library file to import; the host shows its open dialog and applies
+  /// [`UiAction::ImportTools`].
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
+  RequestImportTools,
 }
 
 impl UiAction {
@@ -346,6 +375,8 @@ impl UiAction {
       Self::AddToolpath { .. } => "add toolpath",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
       Self::SetToolpathName { .. } => "set toolpath name",
+      Self::ExportTools { .. } | Self::RequestExportTools => "export tools",
+      Self::ImportTools { .. } | Self::RequestImportTools => "import tools",
     }
   }
 }

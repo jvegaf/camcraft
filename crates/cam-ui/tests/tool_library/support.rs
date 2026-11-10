@@ -223,6 +223,35 @@ pub(crate) fn write_library(directory: &Path, name: &str, tools: &[StoredTool]) 
   path
 }
 
+/// A document and the library beside it, opened the way an operator opens them.
+///
+/// The write path is the *open handler's*: a library reaches the shell together with the path it was read from,
+/// and `set_tools_from` is the crate-private half of that one call, so the test opens a real `.c2d` that names a
+/// real `tools.sqlite` instead of handing the window a snapshot with no file behind it.
+pub(crate) fn opened_library_document(
+  ctx: &egui::Context,
+  scratch: &Scratch,
+) -> (AppState, Shell, ShellOutput, PathBuf) {
+  let library_path = write_library(scratch.path(), "tools.sqlite", &library());
+  let mut document = document_with_toolpath(1);
+  document.tools_ref = Some("tools.sqlite".to_owned());
+  let path = write_document(scratch.path(), "part.c2d", &document);
+
+  let mut app = AppState::new(document_with_toolpath(1));
+  let mut shell = Shell::new();
+  shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
+  let opened = open_library(ctx, &mut shell, &mut app);
+  (app, shell, opened, library_path)
+}
+
+/// The tools one library file holds, read back with the store's own reader.
+pub(crate) fn tools_in(path: &Path) -> Vec<StoredTool> {
+  ToolLibrary::open_read_only(path)
+    .expect("the library is readable")
+    .tools()
+    .expect("the library lists its tools")
+}
+
 // ---------------------------------------------------------------------------------------------
 // Frames
 // ---------------------------------------------------------------------------------------------

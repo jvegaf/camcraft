@@ -72,12 +72,14 @@ its report, not by pixels.
 
 | ID | Specs | Route | State |
 | --- | --- | --- | --- |
-| T1 | S4, S5, S10 | inline | done — `a21b56a` (schema, kinds), `6b84b31` (validation and the three writers) |
-| T2 | S1, S2, S3, S4, S5, S6, S7, S8, S12 | inline | the three-column layout and header |
-| T3 | S9, S6 | inline | editable drafts, validation and the computed chipload |
-| T4 | S10 | inline | library actions and the writable path |
-| T5 | S11 | inline | done (store half) — `c760cf8`; the file dialogs wait on T4 |
-| T6 | S13, S14 | inline | retire the fabricated library; pin every claim |
+| T1 | S4, S5, S10 | inline | done — `a21b56a` (kinds, migration v3), `6b84b31` (validation, three writers) |
+| T2 | S1, S2, S4-S9, S12 | worker | done — `d04d8c6` (header, three columns, editor, preview, footer) |
+| T3 | S9, S6 | worker | done — `d04d8c6` (drafts, combo, validation, computed chipload) |
+| T4 | S1, S2, S14 | worker | done — `d04d8c6` (the suite rewritten as behaviour over the report) |
+| T5 | S11 | inline + worker | store half done — `c760cf8`; the file dialogs are in the last slice |
+| T6 | S13, S14 | worker | done — `d04d8c6` (`default_tools()` retired, no fabricated library) |
+| T7 | S3, S10, S11 | worker | the library action rows and the import/export dialogs |
+| T8 | — | inline | docs, `odd/roadmap.md` row, full gate |
 
 ## Log
 
@@ -156,3 +158,30 @@ per MINUTE, and the CLI's goldens read `feed_rate: 100.0` as `F100.0`. Both cons
 unit is declared, one of them was 60× wrong. Declaring mm/min keeps the emitter, the posts and every golden
 where they are and makes the estimate honest: the fixture that read `Estimated cutting time · 0:13` now reads
 `13:42`. Four documents were corrected rather than the code being bent to match them.
+
+**L8** — the unit decision's fallout, recorded because it was larger than the question suggested.
+
+Declaring millimetres per minute (`02ea9ef`) moved three things nobody had counted: the cutting-time model
+(`crates/cam-ui/src/view3d/playback.rs`), every `view3d` fixture whose rates were chosen so a duration would
+come out whole — restated as the same physical speed in mm/min so those durations stay what they were, rather
+than rewriting a page of expectations — and `tests/tool_card.rs`, where `Estimated cutting time · 0:13`
+became `13:42`. The lesson worth keeping: a unit is not a comment. Four documents and a timing model said one
+thing, two behavioural consumers said the other, and both had tests.
+
+Also closed here, found by the suite's own rewrite: `close_tool_library` promised in its doc that "the drafts
+go with it" and left `tool_draft` behind, so a cancelled visit's typed diameter came back on the next one.
+One line, now pinned by `editing::cancel_discards_the_draft_…`.
+
+**L9** — delivery. One branch, and the commits are the review units:
+
+| commit | lines | what a reviewer reads |
+| --- | --- | --- |
+| `a21b56a` | 331 | the schema and the six kinds |
+| `6b84b31` | ~830 | the validation rules and the three writers |
+| `c760cf8` | ~300 | the file format |
+| `02ea9ef` | ~120 | the unit correction |
+| `d04d8c6` | ~1500 | the modal itself, and its suite |
+
+The modal commit is far past the 400-line slice and cannot be cut smaller without a commit that does not
+compile: `form.rs` is a new file, and the unit correction surfaces through it. If the owner wants chained
+pull requests, the seams are exactly those five commits.
