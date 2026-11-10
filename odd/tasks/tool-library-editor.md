@@ -244,3 +244,21 @@ now ten commits and `./scripts/check.sh` is green.
 
 Remaining: `b4e60cb` (the unit correction), `52b9c6c` (the modal), `41adc2a` (library actions),
 `5d4ee13` (roadmap) and this document's own commits.
+
+**L13** — where the review stops, and why it cannot continue as the branch stands.
+
+`52b9c6c` (the modal) was refused in preflight with `lens_context_budget_exceeded` and no authority created. The
+reason is structural, not about this commit: **the provider derives `base-ref = a21b56a` for every checkout of
+this branch**, so each commit is reviewed as "everything since `a21b56a`". The first two slices fitted (331 and
+1,269 lines); every commit after them carries the accumulated range and does not. The modal alone is 3,382 lines
+across 34 files, half of it the rewritten suite; `41adc2a`, `b4e60cb` and the docs commits inherit that weight.
+
+Splitting the modal is the only route the provider offers, and it is not clean: the rewritten suite and the new
+module are one change. The old tests call `form_groups` and `ToolFamily::of(&geometry)`, which stop existing in
+the code half, so a code-then-tests split leaves an intermediate commit that **does not compile** — against the
+project's promise that every commit passes `./scripts/check.sh`. A green split would have to cut along a seam
+inside a single egui module, which is a redesign, not a rebase.
+
+So the branch is delivered with three of eleven commits reviewed and two CRITICAL defects fixed (`7479367`,
+`292d21b`), and the rest covered by the gate alone. The two findings are the strongest argument for finishing:
+both were invisible to every test, because the fixtures never carried a non-null material or a negative stepdown.
