@@ -25,7 +25,9 @@ cam-units.workspace = true
 cam-view.workspace = true
 
 [dev-dependencies]
-egui.workspace = true
+egui = { workspace = true, features = ["default_fonts"] }
+egui_kittest = { version = "0.37", features = ["wgpu"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 cam-geom.workspace = true
 cam-import.workspace = true
 cam-model.workspace = true
