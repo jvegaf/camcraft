@@ -196,3 +196,35 @@ One thing left as it is, deliberately: `write_tool_library` is a no-op when the 
 the modal — the four writers are drawn disabled with a sentence in that state, which
 `with_no_library_file_the_four_writers_are_disabled_one_sentence_says_why` pins — and the guard belongs in the
 dialog rather than in a second place that could disagree with it.
+
+**L11** — the native review of this branch, slice by slice. The provider refused the whole candidate with
+`lens_context_budget_exceeded` (no authority created, `mutation_outcome: not_started`), and its own
+continuation is to split it. The seven commits were already the seams, so each slice was reviewed from a
+detached checkout at its own commit against its own parent.
+
+| slice | lineage | outcome |
+| --- | --- | --- |
+| `a21b56a` | `review-cc568f2c1444c30f` | **approved**, receipt burned |
+| `6b84b31` | `review-fc3de7e877f7f52d` | **approved after one correction**, receipt burned — see below |
+| `edec330`, `f49cfc9`, `50a72c9`, `389785e`, `a980b9c` | — | not started |
+
+**The correction was a real defect of mine, and it is the reason this round was worth the money.** `R4-001`
+(CRITICAL, resilience): `write_tool`'s `ON CONFLICT` arm assigned `excluded.material_id` and
+`excluded.machine_id`, and `excluded` is NULL there, so every `save_tool` on an existing tool silently erased
+the material and machine its link named. The schema keeps one link per (tool, material, machine) because the
+same cutter feeds differently in MDF and in hardwood — that normalisation is why a tool library is worth
+having — and `StoredTool` carries neither column, so the writer could not even express the association it was
+destroying. Fixed in `7479367`: the conflict arm now updates only the geometry and cutting ids. The test that
+pins it was verified **RED against the reviewed code** before the fix landed, so it is not one of the tests
+that would have passed forever. The four later commits were rebased onto the correction; their hashes moved
+(`c760cf8`→`edec330`, `02ea9ef`→`f49cfc9`, `d04d8c6`→`50a72c9`, `ac09d07`→`389785e`, `c653b08`→`a980b9c`).
+Two advisory findings remain, both informational: `R3-rate-nan-message` (SUGGESTION) and `R3-validation-gaps`
+(WARNING), both against `crates/cam-store/src/tool_edit.rs`.
+
+**Environment fact that cost this round and will cost it again**: the refuter role has no agent definition and
+falls back to Pi's `defaultModel`, which was `qwen2.5-coder-32k` on the `ollama` provider — a local endpoint
+that was not running, so the refuter died in 7 ms with `Connection error` while all four lens reviewers ran
+fine on `opencode-go/iceman-contributor-free`. The owner authorised changing
+`~/.pi/agent/settings.json` to `defaultProvider: opencode-go` / `defaultModel: iceman-contributor-free`;
+the previous file is at `~/.pi/agent/settings.json.bak-before-refuter`. The change reaches the whole Pi
+installation, not only the refuter.
