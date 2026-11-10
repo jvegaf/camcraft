@@ -81,9 +81,9 @@ pub const MAX_LATTICE: usize = 200;
 
 /// How many seconds of the program's own time one second of wall clock consumes by default.
 ///
-/// A 6 mm tool cutting at 100 mm/s takes about seven minutes over a 40 m pocket: a correct program
-/// and an unwatchable preview. Sixty makes that a seven second animation, and
-/// [`Preview3d::set_speed`] is how a caller retells it.
+/// A 6 mm tool cutting at 100 mm/min takes about seven hours over a 40 m pocket: a correct program and an
+/// unwatchable preview. Sixty makes that a seven minute animation, and [`Preview3d::set_speed`] is how a
+/// caller retells it.
 pub const DEFAULT_SPEED: f64 = 60.0;
 
 /// The speeds the speed chip steps through, in program seconds per second of wall clock.

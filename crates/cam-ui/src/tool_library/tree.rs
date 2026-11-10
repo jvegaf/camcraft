@@ -1,14 +1,10 @@
-use cam_store::tools::StoredTool;
+use cam_store::tool_edit::rendered_name;
+use cam_store::tools::{StoredTool, ToolKind};
 use cam_units::Format;
 
-use super::family::ToolFamily;
-
-/// A tool's title: `T4 - Tool (12.7mm)`, or the name alone when the record has no number.
-///
-/// The card's own format ([`crate::chrome`]`::tool_card`), because a tree row and the card that opens it are
-/// naming the same tool and a second spelling would read as a second tool.
+/// A tool's title: `T4 - Flat end mill · 6 mm`, or the name alone when the record has no number.
 pub fn tool_title(tool: &StoredTool) -> String {
-  let name = crate::chrome::tool_name(&tool.geometry);
+  let name = rendered_name(tool);
   match tool.cutting.tool_number {
     Some(number) => format!("T{number} - {name}"),
     None => name,
@@ -18,8 +14,8 @@ pub fn tool_title(tool: &StoredTool) -> String {
 /// The row's dim second line: `Ø6 · 2 cut(s)`.
 ///
 /// The two numbers the reference's row carries, and nothing else: the diameter without its unit, because the
-/// row is a list and the form below it is where a number is written with its unit, and the flute count, which
-/// the reference calls the number of cuts. A number the library does not hold is a dash, never a zero.
+/// row is a list and the form is where a number is written with its unit, and the flute count, which the
+/// reference calls the number of cuts. A number the library does not hold is a dash, never a zero.
 pub fn cut_line(tool: &StoredTool) -> String {
   let diameter = match tool.geometry.diameter {
     Some(diameter) => trim_mm(diameter.mm()),
@@ -54,13 +50,13 @@ pub(super) struct Row {
   pub(super) id: String,
 }
 
-/// The tree's rows for a library snapshot, in the library's own order.
-pub(super) fn tree_rows(tools: &[StoredTool]) -> Vec<(ToolFamily, Row)> {
+/// The tree's rows for a library snapshot, in the library's own order, each with the kind it groups under.
+pub(super) fn tree_rows(tools: &[StoredTool]) -> Vec<(ToolKind, Row)> {
   tools
     .iter()
     .map(|tool| {
       (
-        ToolFamily::of(&tool.geometry),
+        ToolKind::of(&tool.geometry),
         Row {
           title: tool_title(tool),
           cut: cut_line(tool),
@@ -79,10 +75,10 @@ pub(super) fn tool_with<'a>(tools: &'a [StoredTool], id: Option<&str>) -> Option
 
 /// Whether one row survives the search field.
 ///
-/// The title, the id, the family's own word and the cut line are all searched, because they are all on
-/// screen: an operator who reads `Ball nose (2)` and types `ball` is asking for the rows under it, and one who
-/// types `Ø6` is asking for the tools that width. Case is folded, because nobody types a capital to find one.
-pub(super) fn row_matches(row: &Row, family: ToolFamily, needle: &str) -> bool {
+/// The title, the id, the kind's own word and the cut line are all searched, because they are all on screen: an
+/// operator who reads `Ball nose (3)` and types `ball` is asking for the rows under it, and one who types `Ø6`
+/// is asking for the tools that width. Case is folded, because nobody types a capital to find one.
+pub(super) fn row_matches(row: &Row, kind: ToolKind, needle: &str) -> bool {
   let needle = needle.trim().to_lowercase();
   if needle.is_empty() {
     return true;
@@ -90,5 +86,5 @@ pub(super) fn row_matches(row: &Row, family: ToolFamily, needle: &str) -> bool {
   row.title.to_lowercase().contains(&needle)
     || row.id.to_lowercase().contains(&needle)
     || row.cut.to_lowercase().contains(&needle)
-    || family.label().to_lowercase().contains(&needle)
+    || kind.label().to_lowercase().contains(&needle)
 }

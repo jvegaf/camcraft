@@ -7,13 +7,14 @@ use cam_geom::Point2;
 use cam_model::Job;
 use cam_move::MoveStream;
 use cam_sim::Heightfield;
-use cam_store::tools::StoredTool;
+use cam_store::tools::{StoredTool, ToolKind};
 use cam_view::SnapKind;
 
 use crate::default_material_size;
 use crate::script_panel;
 use crate::strategy;
 use crate::theme::{self, Palette, Theme};
+use crate::tool_library::ToolDraft;
 use crate::view3d;
 use crate::{Category, Preview3d, Tab};
 
@@ -321,6 +322,19 @@ pub struct Shell {
   /// A draft too: choosing a row changes what the form and the drawing describe, and nothing else. Only
   /// `Use this tool` turns the choice into an action.
   pub(crate) tool_library_selected: Option<String>,
+  /// The draft the modal's detail column is editing, and the text of every box it draws.
+  ///
+  /// One draft at a time, seeded from the row the tree selected ([`crate::tool_library::dialog`] holds the rule
+  /// and the reason a draft for a row the operator leaves is thrown away). Public and flat the way every other
+  /// draft of this shell is ([`Self::material_size`]), because a form only a keyboard could fill is a form no
+  /// test can pin: `Use this tool` writes the draft and `Cancel` discards it, and nothing else reaches it.
+  pub tool_draft: Option<ToolDraft>,
+  /// The tree's kind headings the operator has folded shut, by kind.
+  ///
+  /// View state, like [`Self::collapsed_groups`]: folding a heading changes what the column shows and nothing
+  /// else, so it is not an edit and not an undo step. Every heading starts open, and the list is cleared when
+  /// the modal closes so the next visit does not inherit a fold nobody made in it.
+  pub tool_groups_closed: Vec<ToolKind>,
   /// Whether the library was opened by the strategy editor while it is drafting a **new** toolpath (S10).
   ///
   /// The modal's commit writes one thing: a tool number. With a toolpath on screen that is a document edit
@@ -329,6 +343,20 @@ pub struct Shell {
   /// `Generate toolpath` is what writes it. The flag is what tells the two apart, and it is cleared whenever
   /// the modal closes.
   pub(crate) tool_library_for_draft: bool,
+  /// The library file this window reads and writes, when the document named one.
+  ///
+  /// `None` while the snapshot came from a host ([`Shell::set_tools`]) rather than from a file beside an opened
+  /// document: a window that does not know where a library lives cannot write one, so `Use this tool` updates
+  /// the snapshot and says nothing about a file. An open that resolves a library fills it
+  /// ([`Shell::set_tools_from`]), and [`Shell::set_tools`] clears it, because a snapshot handed in has no file
+  /// behind it to write.
+  pub(crate) tool_library_path: Option<PathBuf>,
+  /// Why the last `Use this tool` could not write the library, while the modal stays open.
+  ///
+  /// `None` while there is nothing to say. The sentence is drawn inside the modal instead of the status bar,
+  /// for the reason [`Self::import_error`] is: closing on a failure would lose the form the operator was
+  /// editing, and the next opening clears it.
+  pub(crate) tool_error: Option<String>,
   /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
   ///
   /// View state, like [`Self::show_3d`] or the collapsed rail groups: choosing which toolpath the card and
@@ -432,7 +460,11 @@ impl Default for Shell {
       tool_search: String::new(),
       tool_library_target: None,
       tool_library_selected: None,
+      tool_draft: None,
+      tool_groups_closed: Vec::new(),
       tool_library_for_draft: false,
+      tool_library_path: None,
+      tool_error: None,
       selected_toolpath: None,
       strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],
@@ -581,6 +613,19 @@ impl Shell {
   /// instead of drawing a blank tool.
   pub fn set_tools(&mut self, tools: Vec<StoredTool>) {
     self.tools = tools;
+    // A snapshot handed in is not a file: the shell must not go on writing the library the previous drawing
+    // named, so the path goes with it (see [`Self::tool_library_path`]).
+    self.tool_library_path = None;
+  }
+
+  /// Hand the shell the library an opened document named, together with the file it was read from.
+  ///
+  /// The same snapshot as [`Self::set_tools`] with the one difference a write needs: the path. It is
+  /// `pub(crate)` because only the open handler resolves a library from beside a document (shell-tools-ref S2),
+  /// and a host that hands in a library of its own has no file for this window to write.
+  pub(crate) fn set_tools_from(&mut self, path: PathBuf, tools: Vec<StoredTool>) {
+    self.tools = tools;
+    self.tool_library_path = Some(path);
   }
 
   /// The preview the 3D panel draws, when a caller has handed one in.

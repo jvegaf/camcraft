@@ -77,7 +77,9 @@ pub(crate) fn document_with_toolpath() -> Document {
 
 /// One tool as a library snapshot holds it, so the drawing's own `tool_number` resolves.
 ///
-/// The rates are the ones the shell's other fixtures use: a 6 mm cutter at 100 mm/s and 30 mm/s of plunge.
+/// The rates are the ones the shell's other fixtures use: a 6 mm cutter at 6000 mm/min and 1800 mm/min of
+/// plunge — the same physical speeds the fixtures stated in millimetres per second before the library and the
+/// clock were both settled on millimetres per minute.
 pub(crate) fn stored_tool() -> StoredTool {
   StoredTool {
     geometry: ToolGeometry {
@@ -98,8 +100,8 @@ pub(crate) fn stored_tool() -> StoredTool {
     cutting: CuttingData {
       id: format!("G{TOOL_NUMBER}-cut"),
       rate_units: UnitSystem::Mm,
-      feed_rate: Some(100.0),
-      plunge_rate: Some(30.0),
+      feed_rate: Some(6000.0),
+      plunge_rate: Some(1800.0),
       spindle_speed: Some(18_000),
       stepdown: None,
       stepover: None,
@@ -126,8 +128,8 @@ pub(crate) fn program() -> MoveStream {
     name: "pocket 1".to_owned(),
     tool_number: 1,
     tool: ToolShape::cylinder(Length::from_mm(6.0)),
-    feed_rate: 100.0,
-    plunge_rate: 30.0,
+    feed_rate: 6000.0,
+    plunge_rate: 1800.0,
     spindle_speed: 18_000,
     moves: vec![
       Move::Rapid {
@@ -174,8 +176,8 @@ pub(crate) fn whole_program_field() -> Heightfield {
 /// A playback fixture whose four moves last exactly two, two, five and one tenths of a second.
 ///
 /// The numbers are chosen so the closed form is arithmetic a reader can do in their head: a rapid of
-/// 20 mm at 100 mm/s, a plunge of 10 mm at 50 mm/s, a feed of 50 mm at 100 mm/s and a retract of
-/// 10 mm at 100 mm/s. `MoveStream::new` places the machine at `(10, 0, safe_z)` before the first move,
+/// 20 mm at 6000 mm/min, a plunge of 10 mm at 3000 mm/min, a feed of 50 mm at 6000 mm/min and a retract of
+/// 10 mm at 6000 mm/min. `MoveStream::new` places the machine at `(10, 0, safe_z)` before the first move,
 /// so the rapid's length is the 20 mm the numbers state. The plunge cuts a disc and the feed cuts a
 /// capsule, so the removed volume changes when the cursor reaches the third move, not before.
 pub(crate) fn playback_program() -> MoveStream {
@@ -184,8 +186,8 @@ pub(crate) fn playback_program() -> MoveStream {
     name: "playback".to_owned(),
     tool_number: 1,
     tool: ToolShape::cylinder(Length::from_mm(6.0)),
-    feed_rate: 100.0,
-    plunge_rate: 50.0,
+    feed_rate: 6000.0,
+    plunge_rate: 3000.0,
     spindle_speed: 18_000,
     moves: vec![
       Move::Rapid {
@@ -344,7 +346,7 @@ impl Harness {
 
 /// A program that quotes the reference frame's own playback readout: `T22 · Drilling 1 · Z 5.000`.
 ///
-/// One segment, one rapid: 500 mm at the segment's 100 mm/s feed is exactly five seconds, and the move
+/// One segment, one rapid: 500 mm at the segment's 6000 mm/min feed is exactly five seconds, and the move
 /// arrives at `Z 5.000`, which is the line S8 writes down. Nothing is cut — the point of this fixture is the
 /// clock and the name of the move, not the surface.
 fn drilling_program() -> MoveStream {
@@ -353,8 +355,8 @@ fn drilling_program() -> MoveStream {
     name: "Drilling 1".to_owned(),
     tool_number: 22,
     tool: ToolShape::cylinder(Length::from_mm(5.0)),
-    feed_rate: 100.0,
-    plunge_rate: 50.0,
+    feed_rate: 6000.0,
+    plunge_rate: 3000.0,
     spindle_speed: 12_000,
     moves: vec![Move::Rapid {
       to: Point3::new(500.0, 0.0, 5.0),

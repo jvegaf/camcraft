@@ -235,9 +235,10 @@ fn the_estimate_beside_the_card_is_the_documents_own_cutting_time() {
       clock_text(seconds_for(&program))
     )
   );
-  // And not an empty program wearing a clock: the fixture's own profile is 13 whole seconds of
-  // cutting at 100 mm/s, written the way the playback bar writes a moment.
-  assert_eq!(output.drawn.cutting_time, "Estimated cutting time · 0:13");
+  // And not an empty program wearing a clock: the fixture's own profile is 13 minutes and 42 seconds of
+  // cutting at 100 mm/min, written the way the playback bar writes a moment. It read 0:13 while the clock
+  // divided a length by a per-minute rate and called the answer seconds.
+  assert_eq!(output.drawn.cutting_time, "Estimated cutting time · 13:42");
 }
 
 #[test]

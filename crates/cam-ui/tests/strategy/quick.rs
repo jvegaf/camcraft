@@ -76,7 +76,7 @@ fn the_quick_edit_duplicates_the_sections_numbers_and_folds_on_its_own() {
     _again.drawn.strategy_quick_fields, quick,
     "and the same numbers come back"
   );
-  for word in ["Feed", "100.00 mm/s", "Plunge", "Spindle"] {
+  for word in ["Feed", "100 mm/min", "Plunge", "30 mm/min", "Spindle"] {
     assert!(
       painted.iter().any(|text| text == word),
       "the quick block must show the tool's {word:?}: {painted:?}"

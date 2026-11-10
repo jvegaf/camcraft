@@ -289,6 +289,44 @@ pub struct DrawnState {
   pub painted_program_lines: usize,
   /// The tool marker's edges, `0` when `Tool` is hidden, the split is closed, or no program is loaded.
   pub painted_tool_lines: usize,
+  /// The modal's header title, exactly as the band across its top paints it.
+  ///
+  /// `Choose tool` while the tree holds no selection, and `Choose tool — T4 - Flat end mill · 6 mm` once a row
+  /// is chosen, so a test reads the sentence the band really shows instead of rebuilding it from the selection.
+  /// `None` while the modal is closed, because a band nobody drew has no title.
+  pub tool_header: Option<String>,
+  /// The three columns' widths, in the order they are drawn: master, detail, preview.
+  ///
+  /// The numbers the frame laid out with, so S2's three columns are a claim about the picture rather than about
+  /// a constant a test would have to import: a column that moved is a difference here.
+  pub tool_columns: Vec<f32>,
+  /// The word under the preview card: the kind's own name (`Flat end mill`).
+  ///
+  /// `None` while nothing is drawn, because a caption under no card would be a label for nothing.
+  pub tool_preview_caption: Option<String>,
+  /// The rows the form draws as readings rather than boxes, in the order drawn: the row's word and its text.
+  ///
+  /// Empty while the modal is closed. These are the two numbers the operator cannot type — the stepover as a
+  /// percentage and the chipload — and the chipload is the one S6 requires to be arithmetic over the rows above
+  /// it, so this is how "computed, never typed" is checked rather than asserted.
+  pub tool_computed: Vec<(String, String)>,
+  /// The library action rows the master column drew, in the order drawn.
+  ///
+  /// Declared now and filled by the slice that adds `New`, `Duplicate`, `Delete`, `Export…`, `Import…` and
+  /// `Restore defaults` (S3, S10, S11): an empty list is this frame's honest answer, and a test that reads it
+  /// cannot mistake a planned row for a drawn one.
+  pub tool_actions: Vec<String>,
+  /// The geometry ids this frame wrote to a tool library file, in the order it wrote them.
+  ///
+  /// Empty when `Use this tool` wrote nothing — no library file is known, the press was refused, or the write
+  /// failed — so a test can tell "the library was updated" from "the window's own snapshot was".
+  pub tool_saved: Vec<String>,
+  /// The sentence the modal is showing because writing the library failed.
+  ///
+  /// `None` while there is nothing to say. A refusal is drawn inside the modal beside the form it is about,
+  /// because closing on a failure would lose the boxes the operator was editing — the rule the import modal
+  /// already follows about its own refusal.
+  pub tool_error: Option<String>,
   /// The words the tool-library modal drew, in the order it drew them (camui-prancheta S9).
   ///
   /// Empty while the modal is closed, because a modal nobody opened drew nothing. The modal is the one

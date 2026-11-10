@@ -1,49 +1,5 @@
-fn base_tool(id: &str, number: Option<u32>, diameter: Option<f64>) -> StoredTool {
-  StoredTool {
-    geometry: ToolGeometry {
-      id: id.to_owned(),
-      name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
-      tool_type: 0,
-      units: UnitSystem::Mm,
-      diameter: diameter.map(Length::from_mm),
-      included_angle: None,
-      flat_diameter: None,
-      num_flutes: Some(2),
-      flute_length: None,
-      tip_radius: None,
-      shank_diameter: None,
-      overall_length: None,
-      custom_attributes: None,
-    },
-    cutting: CuttingData {
-      id: format!("{id}-cut"),
-      rate_units: UnitSystem::Mm,
-      feed_rate: Some(100.0),
-      plunge_rate: Some(30.0),
-      spindle_speed: Some(18_000),
-      stepdown: None,
-      stepover: None,
-      clear_stepover: None,
-      tool_number: number,
-      notes: None,
-    },
-  }
-}
-
-fn default_tools() -> Vec<StoredTool> {
-  let g1 = base_tool("G1", Some(1), Some(6.0));
-  let g5 = base_tool("G5", Some(5), Some(3.175));
-  let mut g2 = base_tool("G2", Some(2), Some(6.0));
-  g2.geometry.tip_radius = Some(Length::from_mm(3.0));
-  let mut g3 = base_tool("G3", Some(3), Some(12.7));
-  g3.geometry.included_angle = Some(Angle::from_degrees(90.0));
-  g3.geometry.flat_diameter = Some(Length::from_mm(0.2));
-  vec![g1, g5, g2, g3]
-}
-
 use cam_app::AppState;
-use cam_store::tools::{stored_tool_for_number, CuttingData, StoredTool, ToolGeometry};
-use cam_units::{Angle, Length, UnitSystem};
+use cam_store::tools::stored_tool_for_number;
 use egui::RichText;
 
 use crate::theme;
@@ -61,9 +17,6 @@ impl Shell {
   /// Public for the reason [`Shell::open_material`] is: a modal whose opening cannot be driven from outside a
   /// frame is a modal only a mouse could test.
   pub fn open_tool_library(&mut self, app: &AppState) {
-    if self.tools.is_empty() {
-      self.tools = default_tools();
-    }
     let target = self.described_toolpath(app).map(|toolpath| {
       (
         toolpath.id.clone(),
@@ -74,6 +27,7 @@ impl Shell {
     self.tool_library_target = target.as_ref().map(|(id, _)| id.clone());
     self.tool_library_selected = target.and_then(|(_, selected)| selected);
     self.tool_search.clear();
+    self.tool_error = None;
     self.show_tool_library = true;
   }
 
@@ -81,12 +35,21 @@ impl Shell {
   ///
   /// The drafts go with it: a search left behind would filter the next opening for a reason the operator has
   /// already forgotten, and a selection left behind would be a choice nobody made in this visit.
+  /// Leave the library without writing anything.
+  ///
+  /// The drafts go with it: a search left behind would filter the next opening for a reason the operator
+  /// has already forgotten, a selection left behind would be a choice nobody made in this visit, and an
+  /// uncommitted tool draft left behind would be a form describing a tool nobody is editing with numbers
+  /// nobody confirmed — the next opening seeds a fresh draft from whatever the tree selects.
   pub fn close_tool_library(&mut self) {
     self.show_tool_library = false;
     self.tool_library_target = None;
     self.tool_library_selected = None;
     self.tool_library_for_draft = false;
     self.tool_search.clear();
+    self.tool_draft = None;
+    self.tool_groups_closed.clear();
+    self.tool_error = None;
   }
 
   /// Open the library to choose the tool a **new** strategy will cut with (camui-prancheta S10).
@@ -102,6 +65,7 @@ impl Shell {
     });
     self.tool_library_for_draft = true;
     self.tool_search.clear();
+    self.tool_error = None;
     self.show_tool_library = true;
   }
 

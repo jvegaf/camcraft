@@ -96,7 +96,7 @@ impl Shell {
           .map(|reference| tools_beside_document(document_path, reference))
       });
       match resolved {
-        Some(Ok(tools)) => self.set_tools(tools),
+        Some(Ok((path, tools))) => self.set_tools_from(path, tools),
         Some(Err(reason)) => {
           self.set_tools(Vec::new());
           library_note = Some(reason);
@@ -644,7 +644,15 @@ fn stock_for_drawing(document: &cam_model::Document) -> Job {
 /// A reference that stays inside the directory and names nothing is not a refused open: the drawing is
 /// the user's and the library is an accessory, so the answer is the empty snapshot plus the sentence that
 /// says which library could not be used and why (S4).
-fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<StoredTool>, String> {
+///
+/// The answer carries the **path it read**, not only the rows: `Use this tool` writes a tool back to the
+/// library the document named ([`ToolLibrary::open`]), and the one place that resolves a library is the one
+/// place that knows which file it came from. Reading stays [`ToolLibrary::open_read_only`], so the window
+/// still never creates a library by looking at one.
+fn tools_beside_document(
+  document_path: &Path,
+  reference: &str,
+) -> Result<(PathBuf, Vec<StoredTool>), String> {
   let named = Path::new(reference);
   // Every component must be a plain name. Naming what is *allowed* rather than what is refused is what
   // keeps this rule total: refusing `..` and anything `is_absolute()` missed the two Windows shapes that
@@ -679,5 +687,6 @@ fn tools_beside_document(document_path: &Path, reference: &str) -> Result<Vec<St
   // (a file that was never initialised, or one left at an older schema version) is refused with the
   // store's own reason, and that refusal is soft (S4).
   let library = ToolLibrary::open_read_only(&path).map_err(|error| error.to_string())?;
-  library.tools().map_err(|error| error.to_string())
+  let tools = library.tools().map_err(|error| error.to_string())?;
+  Ok((path, tools))
 }

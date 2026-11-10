@@ -487,7 +487,10 @@ fn move_seconds(departure: Point3, movement: Move, feed_rate: f64, plunge_rate: 
   if !length.is_finite() || length <= 0.0 || !rate.is_finite() || rate <= 0.0 {
     return 0.0;
   }
-  length / rate
+  // A rate is millimetres per minute and a duration is wanted in seconds, so the division has to become a
+  // multiplication by sixty. This used to return `length / rate`, which read the rate as per-second and
+  // made every estimate sixty times shorter than the program it described.
+  length / rate * 60.0
 }
 
 /// The straight-line distance between two machine positions, in millimetres.

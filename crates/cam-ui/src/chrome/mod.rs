@@ -43,11 +43,10 @@ mod ribbon;
 mod status;
 
 pub(crate) use self::paint::{
-  chip, dimension_line, field, paint_segmented, rect_report, section, section_toggle,
+  chip, dimension_line, paint_segmented, rect_report, section, section_toggle,
 };
 pub use self::palette::palette_tooltip;
 pub(crate) use self::palette::trim_action;
-pub(crate) use self::ribbon::tool_name;
 
 /// Which inspector tab is showing.
 ///

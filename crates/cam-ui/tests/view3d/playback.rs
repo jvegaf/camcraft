@@ -337,17 +337,17 @@ fn the_panel_reports_playback_progress_from_the_start_to_the_end() {
 fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
   // The preview's clock is a story about progress, and a helix travels the hypotenuse of a turn rather
   // than the turn itself: one full revolution of radius 10 descending 2 mm is
-  // `sqrt((2π·10)² + 2²) = 62.8638` mm, which at the segment's 100 mm/s feed is 0.628638 s — where an
+  // `sqrt((2π·10)² + 2²) = 62.8638` mm, which at the segment's 6000 mm/min feed is 0.628638 s — where an
   // arc's own timing, the turn alone, would say 0.628319. The fixture's four moves are therefore a
-  // rapid of 20 mm (0.2 s), a plunge of 10 mm at 50 mm/s (0.2 s), the helix, and a retract of 12 mm
+  // rapid of 20 mm (0.2 s), a plunge of 10 mm at 3000 mm/min (0.2 s), the helix, and a retract of 12 mm
   // (0.12 s): `1.148638` s in all, and the program must reach its end.
   let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(10.0, 0.0));
   stream.segments.push(Segment {
     name: "thread".to_owned(),
     tool_number: 1,
     tool: ToolShape::cylinder(Length::from_mm(4.0)),
-    feed_rate: 100.0,
-    plunge_rate: 50.0,
+    feed_rate: 6000.0,
+    plunge_rate: 3000.0,
     spindle_speed: 18_000,
     moves: vec![
       Move::Rapid {
@@ -368,7 +368,8 @@ fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
   });
 
   let spiral = ((std::f64::consts::TAU * 10.0_f64).powi(2) + 4.0).sqrt();
-  let expected = 0.2 + 0.2 + spiral / 100.0 + 12.0 / 100.0;
+  // A rate is millimetres per minute and a duration is seconds, so each length is scaled by sixty.
+  let expected = 0.2 + 0.2 + spiral * 60.0 / 6000.0 + 12.0 * 60.0 / 6000.0;
 
   let mut preview = Preview3d::new(untouched(), stream, &job());
   preview.set_speed(1.0);
@@ -389,8 +390,8 @@ fn a_helical_move_is_timed_along_its_own_spiral_and_played_to_the_end() {
 
 #[test]
 fn seconds_for_is_the_time_laws_total_and_not_a_second_opinion() {
-  // `playback_program`'s four moves are 20 mm at 100 mm/s, a 10 mm plunge at 50 mm/s, a 50 mm feed at
-  // 100 mm/s and a 10 mm retract at 100 mm/s: one second, exactly what the clock's own arithmetic
+  // `playback_program`'s four moves are 20 mm at 6000 mm/min, a 10 mm plunge at 3000 mm/min, a 50 mm feed at
+  // 6000 mm/min and a 10 mm retract at 6000 mm/min: one second, exactly what the clock's own arithmetic
   // answers. The plunge is the case a second formula gets wrong — it is timed at the *plunge* rate.
   let seconds = seconds_for(&playback_program());
   assert!(

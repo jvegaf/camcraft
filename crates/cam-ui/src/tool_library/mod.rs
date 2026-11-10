@@ -1,52 +1,76 @@
-//! The tool library as a master-detail modal (camui-prancheta S9).
+//! The tool library as a master-detail modal (tool-library-editor S1-S14).
 //!
-//! S9 asks for one screen: a search field; a tree grouped by tool family with a count and one row per tool
-//! (mini tool glyph, name, the dim `Ø6 · 2 cut(s)` line); a detail form whose fields change with the family,
-//! grouped under `GEOMETRY` / `PASSES` / `SPEEDS` / `MACHINE`; the tool drawn to scale with dimension
-//! callouts; and a footer of library actions above `Cancel` / `Use this tool`.
+//! One screen, in three columns and a band: a header carrying the dialog's title and a close cross; a master
+//! column of a search field over a tree grouped by the tool's kind, each heading carrying its count and folding
+//! with a caret; a detail column of the editable form; a preview column of the tool drawn to scale inside a dark
+//! card; and a footer of one sentence above `Cancel` and `Use this tool` (S1, S2, S8).
 //!
 //! Four decisions this module makes, each of them because the alternative would be a control that lies
 //! (the rule L6, L14 and L22 established and the T6 review enforced, L23):
 //!
-//! 1. **The family is derived from the geometry, never from `tool_type`.** The library keeps the tool's type
-//!    as a raw integer and says in its own header that the numeric mapping is not established from the
-//!    artifact ([`cam_store::tools`]), which is why the current-tool card already refuses to name it and
-//!    writes `Tool` where its type would go (the crate's `TOOL_TYPE_LABEL`). A tree grouped by a code nobody
-//!    can read would be a heading over a number. What *is*
-//!    proved by the record is its shape — an included angle makes a V, a tip radius half the diameter makes a
-//!    ball, any other tip radius makes a corner radius, and no radius at all makes a flat end mill — so that
-//!    is the family, and [`ToolFamily::of`] is the one rule that decides it.
-//! 2. **A group is drawn only when the record can fill it.** `PASSES` is the three numbers that describe a
-//!    pass and `SPEEDS` the three that describe a rate; a tool whose cutting data holds neither has no pass
-//!    and no speed to report, and a heading over nothing is the L6 lie. `GEOMETRY` is always drawn — the
-//!    shape is what a tool is, and a record that has none is a fact the form has to say out loud — and so is
-//!    `MACHINE`, because every record carries the units its rates were authored in.
-//! 3. **The library actions in the footer are the ones this shell can really perform.** It can perform
-//!    none: the shell holds a read-only snapshot of the library ([`Shell::set_tools`]), `cam-store` owns the
-//!    only writer, and `cam-cli tools add` is the route that exists today. So the footer's action row carries
-//!    one sentence naming the five the reference draws and why they are not here, instead of five buttons
-//!    that would emit nothing — L14's correction, applied before it could be found again.
+//! 1. **A row is grouped by the kind the record stores, and drawn by the shape its geometry proves.** The two
+//!    vocabularies are deliberately separate: [`cam_store::tools::ToolKind`] is what the operator called the
+//!    tool and what the library keeps, and [`ToolFamily`] is what can be painted. Six kinds collapse to four
+//!    shapes because two pairs paint identically — an engraving cutter ends flat like an end mill, and a drill
+//!    ends in a cone to a point like a V-bit whose flat is zero — and the tree groups by the kind, because the
+//!    kind is what the operator typed in the combo and expects to find the tool under.
+//! 2. **Every group of the form is drawn, whether or not the record fills it.** That reverses an earlier rule,
+//!    and the reversal is the point of this screen: a box is not a claim about a tool, it is a question, and a
+//!    tool with no feeds is exactly the tool an operator opens this form to give feeds to.
+//! 3. **Every keystroke edits a draft, and only `Use this tool` edits the library.** The boxes pass through
+//!    states that are not tools — `6.` on the way to `6.35` — so a form that wrote as it was typed would refuse
+//!    a tool mid-word. [`ToolDraft`] holds the text and [`ToolDraft::commit`] turns it back into a `StoredTool`
+//!    through the store's own validator, which is why the sentence a disabled button shows and the sentence the
+//!    store would refuse with cannot drift apart. A draft belongs to the row it was seeded from, so leaving that
+//!    row discards it.
 //! 4. **`Use this tool` is drawn only when it can be honoured, and the reason is drawn when it cannot.** The
-//!    modal writes one thing: the number the toolpath that opened it cuts with
-//!    ([`crate::UiAction::SetToolpathToolNumber`]). A tool the library gives no number, a toolpath that has
-//!    left the document, and an empty library are all states in which that write has no meaning, so the
-//!    button is replaced by the sentence that says so. `Cancel` is always honourable for one reason worth
-//!    writing down: nothing in this modal writes before it, so there is nothing for it to undo.
+//!    modal writes one tool and one number: the tool into the library file beside the document, and the number
+//!    into the toolpath that opened the dialog (or into the strategy draft, when it was opened for one). A tool
+//!    the library gives no number, a toolpath that has left the document, an empty library and a draft whose
+//!    boxes do not describe a tool are all states in which that write has no meaning, so the button is replaced
+//!    by the sentence that says so. `Cancel` is always honourable for one reason worth writing down: nothing in
+//!    this modal writes before it, so there is nothing for it to undo.
 //!
-//! The drawing is a section of the tool's cutting end, in a box whose **horizontal scale is shared by every
-//! tool at once** — `SPAN_MM` of tool is the box's width — so two tools in the same box are comparable by
-//! eye and a test can check the ratio. The vertical extent is the flute length when the record holds one; when
-//! it does not, the shape is drawn to the box's own height and no flute callout is painted, because the
-//! library carries no length to point at and a guessed one would be a dimension the shell does not have (the
-//! same rule `view3d::paint_tool` follows about the spindle).
+//! The preview is the tool's cutting end drawn vertically inside its own card, and its **horizontal scale is
+//! shared by every tool at once** — [`preview::SPAN_MM`] of tool is the card's inner width — so two tools in it
+//! are comparable by eye. The length and the diameter are painted as dimension callouts only when the record
+//! holds them, because a dimension the library does not have is a dimension the shell invented.
+
+use cam_store::tools::StoredTool;
 
 mod dialog;
-mod drawing;
+mod draft;
 mod family;
 mod form;
+mod preview;
 mod shell;
 mod tree;
 
+pub use draft::ToolDraft;
 pub use family::{ShapeField, ToolFamily};
-pub use form::{form_fields, form_groups, ToolFormGroup};
+pub use form::{form_rows, FormField, ToolFormGroup};
 pub use tree::{cut_line, tool_title};
+
+/// One group's rows for a tool, as `(label, text)` pairs.
+///
+/// The reading the strategy editor's quick block takes of the library's own rates, and kept beside
+/// [`form_rows`] because the two are the same rows in two shapes: the block wants one group's labels and values
+/// and nothing about boxes, while the modal wants every group with the fields it has to draw. Written over
+/// [`form_rows`] rather than over the record, so the block and the form cannot list different rows for one tool,
+/// and the unit is appended because the block's own note promises the rates are shown in the units the library
+/// authored them in.
+pub fn form_fields(group: ToolFormGroup, tool: &StoredTool) -> Vec<(String, String)> {
+  form_rows(tool)
+    .into_iter()
+    .filter(|(name, _)| *name == group)
+    .flat_map(|(_, fields)| fields)
+    .map(|field| {
+      let text = field.value(tool);
+      let shown = match field.unit(tool.cutting.rate_units) {
+        Some(unit) if !text.is_empty() => format!("{text} {unit}"),
+        _ => text,
+      };
+      (field.label().to_owned(), shown)
+    })
+    .collect()
+}

@@ -1,177 +1,229 @@
 use cam_app::AppState;
-use cam_ui::tool_library::{form_fields, form_groups, ToolFormGroup};
+use cam_store::tools::{StoredTool, ToolKind};
+use cam_ui::tool_library::{FormField, ShapeField, ToolFormGroup};
 use cam_ui::Shell;
-use cam_units::{Length, UnitSystem};
 
 use super::support::*;
 
 // ---------------------------------------------------------------------------------------------
-// The detail side: the fields the family has, and the groups the tool has
+// S4, S5 and S7: the name, the kind, the geometry rows and the machine number
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn choosing_a_row_describes_that_tool_and_its_family_alone() {
+fn the_type_combo_offers_the_six_kinds_in_s4s_order_and_a_choice_reaches_the_draft() {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
   shell.set_tools(library());
   let opened = open_library(&ctx, &mut shell, &mut app);
 
-  // The flat end mill has three shape fields, and no included angle to show: showing one as `—` would
-  // describe a shape it is not.
-  let (flat, flat_texts) = click_word(&ctx, &mut shell, &mut app, &opened, "T1 - Tool (6mm)");
+  // S4's list, read from the one place it is written down.
+  let labels: Vec<&str> = ToolKind::ALL.iter().map(|kind| kind.label()).collect();
+  assert_eq!(
+    labels,
+    vec![
+      "Flat end mill",
+      "Ball nose",
+      "Corner radius",
+      "V-bit",
+      "Engraving",
+      "Drill",
+    ],
+    "S4 fixes these six kinds in this order, and ToolKind::ALL is what the combo iterates"
+  );
+
+  // The combo is a row labelled `Type` whose box opens the list, so the list that is offered is read from the
+  // frame that drew it, under that row and inside the detail column.
+  let (_, runs) = frame_with_runs(&ctx, &mut shell, &mut app);
+  let at = box_point(&runs, "Type");
+  let card = opened
+    .drawn
+    .tool_drawing
+    .expect("the preview drew no card")
+    .0;
+  let (_, _) = click_at(&ctx, &mut shell, &mut app, at);
+  let (_, runs) = frame_with_runs(&ctx, &mut shell, &mut app);
+  let offered: Vec<String> = runs
+    .iter()
+    .filter(|(text, point, _)| point.x < card && point.y > at.y && labels.contains(&text.as_str()))
+    .map(|(text, _, _)| text.clone())
+    .collect();
+  assert_eq!(
+    offered, labels,
+    "the combo offers {:?} rather than S4's six kinds in S4's order",
+    offered
+  );
+
+  // Choosing one is a choice about the draft, and the preview's caption follows it in the same frame.
+  let drill = runs
+    .iter()
+    .find(|(text, point, _)| text == "Drill" && point.x < card && point.y > at.y)
+    .map(|(_, point, size)| egui::pos2(point.x + size.x / 2.0, point.y + size.y / 2.0))
+    .expect("the combo drew no Drill");
+  let (chosen, texts) = click_at(&ctx, &mut shell, &mut app, drill);
+  let draft = shell
+    .tool_draft
+    .as_ref()
+    .expect("the draft survives the choice");
+  assert_eq!(
+    draft.kind,
+    ToolKind::Drill,
+    "choosing Drill left the draft describing a {}",
+    draft.kind.label()
+  );
+  assert_eq!(
+    chosen.drawn.tool_preview_caption.as_deref(),
+    Some("Drill"),
+    "the preview is captioned with the kind the form no longer shows"
+  );
+  assert!(
+    joined(&texts).contains("Drill"),
+    "the caption was reported and never painted: {}",
+    joined(&texts)
+  );
+  // A drill's tip is a cone, so the angle row appears with the choice (S5).
+  assert!(fields_of(&chosen, "GEOMETRY").contains(&"Included angle".to_owned()));
+}
+
+#[test]
+fn the_geometry_rows_follow_the_kind_and_keep_s5s_order() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(2));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  // A flat end mill: S5's five rows, and no angle to describe a square end.
+  let (flat, flat_texts) = click_word(
+    &ctx,
+    &mut shell,
+    &mut app,
+    &opened,
+    "T1 - Flat end mill (6mm)",
+  );
   assert_eq!(flat.drawn.tool_selected.as_deref(), Some("G1"));
   assert_eq!(
     fields_of(&flat, "GEOMETRY"),
-    vec!["Diameter", "Flute length", "Flutes"],
-    "the flat end mill's GEOMETRY is not the flat end mill's"
+    vec![
+      "Diameter",
+      "Flute length",
+      "Shank diameter",
+      "Overall length",
+      "Number of cuts",
+    ],
+    "the flat end mill's GEOMETRY is not S5's rows in S5's order"
   );
   assert!(
     !joined(&flat_texts).contains("Included angle"),
     "a flat end mill drew an included angle: {}",
     joined(&flat_texts)
   );
+  assert!(
+    !fields_of(&flat, "GEOMETRY").contains(&"Corner radius".to_owned()),
+    "a flat end mill drew a corner radius"
+  );
 
-  // The V-bit has five, and the two the cone adds are on its own face with their own numbers.
-  let (vbit, vbit_texts) = click_word(&ctx, &mut shell, &mut app, &flat, "T3 - Tool (12.7mm)");
-  assert_eq!(vbit.drawn.tool_selected.as_deref(), Some("G3"));
+  // A V-bit: the angle sits where S5 puts it, second, and carries the tool's own number.
+  let (vbit, vbit_texts) = click_word(&ctx, &mut shell, &mut app, &flat, "T4 - V-bit (12.7mm)");
   assert_eq!(
     fields_of(&vbit, "GEOMETRY"),
     vec![
       "Diameter",
       "Included angle",
-      "Flat tip",
       "Flute length",
-      "Flutes"
+      "Shank diameter",
+      "Overall length",
+      "Number of cuts",
     ]
   );
+  assert_eq!(value_of(&vbit, "GEOMETRY", "Included angle"), "90");
+  assert_eq!(value_of(&vbit, "GEOMETRY", "Diameter"), "12.7");
   assert!(
-    joined(&vbit_texts).contains("Included angle") && joined(&vbit_texts).contains("90.0°"),
-    "the V-bit did not draw its own angle: {}",
-    joined(&vbit_texts)
-  );
-  assert!(
-    joined(&vbit_texts).contains("Ø 12.70 mm"),
-    "a value is written without its unit: {}",
+    joined(&vbit_texts).contains("Included angle"),
+    "the V-bit did not paint its own angle: {}",
     joined(&vbit_texts)
   );
 
-  // A corner radius keeps its radius and calls it what it is.
-  let mut with_corner = Shell::new();
-  with_corner.set_tools(vec![corner_radius("G4", Some(2), 12.0, 2.0)]);
-  with_corner.open_tool_library(&app);
-  let (cornered, _) = frame_with(&ctx, &mut with_corner, &mut app);
-  assert_eq!(
-    fields_of(&cornered, "GEOMETRY"),
-    vec!["Diameter", "Corner radius", "Flute length", "Flutes"]
+  // A corner radius: the radius its name comes from, in the angle's own place (the deviation L5 records).
+  let (corner, _) = click_word(
+    &ctx,
+    &mut shell,
+    &mut app,
+    &vbit,
+    "T3 - Corner radius (12mm)",
   );
-  // And the same radius on a ball nose is a ball radius, because half the diameter is what makes a ball.
-  let mut with_ball = Shell::new();
-  with_ball.set_tools(vec![ball_nose("G2", Some(2), 6.0)]);
-  with_ball.open_tool_library(&app);
-  let (balled, _) = frame_with(&ctx, &mut with_ball, &mut app);
-  assert!(fields_of(&balled, "GEOMETRY").contains(&"Ball radius".to_owned()));
-  assert!(!fields_of(&balled, "GEOMETRY").contains(&"Corner radius".to_owned()));
+  assert_eq!(
+    fields_of(&corner, "GEOMETRY"),
+    vec![
+      "Diameter",
+      "Corner radius",
+      "Flute length",
+      "Shank diameter",
+      "Overall length",
+      "Number of cuts",
+    ]
+  );
+  assert_eq!(value_of(&corner, "GEOMETRY", "Corner radius"), "2");
+  assert!(!fields_of(&corner, "GEOMETRY").contains(&"Included angle".to_owned()));
 }
 
 #[test]
-fn the_form_draws_only_the_groups_the_tool_has_numbers_for() {
+fn the_machine_group_carries_the_tool_number() {
   let ctx = egui::Context::default();
-  let mut app = AppState::new(document_with_toolpath(7));
+  let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
-  // A tool the library only half describes: no pass and no rate.
-  let mut bare = flat_mill("G7", Some(7), 6.0);
-  bare.cutting.feed_rate = None;
-  bare.cutting.plunge_rate = None;
-  bare.cutting.spindle_speed = None;
-  shell.set_tools(vec![bare]);
-  shell.open_tool_library(&app);
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+  let (chosen, texts) = click_word(&ctx, &mut shell, &mut app, &opened, "T4 - V-bit (12.7mm)");
 
-  let (drawn, texts) = frame_with(&ctx, &mut shell, &mut app);
-  assert_eq!(
-    group_labels(&drawn),
-    vec!["GEOMETRY".to_owned(), "MACHINE".to_owned()],
-    "a heading over nothing is a claim about a tool nobody measured"
-  );
-  for absent in ["PASSES", "SPEEDS", "Stepdown", "Feed"] {
-    assert!(
-      !joined(&texts).contains(absent),
-      "the form drew {absent:?} for a tool that has no such number"
-    );
-  }
-  // `MACHINE` is always there: every record carries the units its rates were written in, and the number the
-  // program names the tool by when there is one.
-  assert_eq!(
-    drawn
-      .drawn
-      .tool_groups
-      .iter()
-      .find(|(label, _)| label == "MACHINE")
-      .map(|(_, fields)| fields.clone()),
-    Some(vec![
-      ("Tool number".to_owned(), "T7".to_owned()),
-      ("Rates".to_owned(), "mm/s".to_owned()),
-    ])
-  );
+  assert_eq!(fields_of(&chosen, "MACHINE"), vec!["Tool number"]);
+  assert_eq!(value_of(&chosen, "MACHINE", "Tool number"), "4");
+  assert!(joined(&texts).contains("Tool number"));
+  // S7 draws it as `T` followed by the number's box, and the label the form uses is the group's own.
+  assert_eq!(FormField::ToolNumber.label(), "Tool number");
+  assert_eq!(FormField::ToolNumber.group(), ToolFormGroup::Machine);
+  assert!(FormField::ToolNumber.editable());
+  assert_eq!(FormField::ToolNumber.unit(cam_units::UnitSystem::Mm), None);
+}
 
-  // A tool with all six numbers draws all four groups, in S9's own order.
-  let mut full = flat_mill("G8", Some(7), 6.0);
-  full.cutting.stepdown = Some(Length::from_mm(2.0));
-  full.cutting.stepover = Some(Length::from_mm(3.0));
-  full.cutting.clear_stepover = Some(Length::from_mm(5.0));
-  let mut other = Shell::new();
-  other.set_tools(vec![full]);
-  other.open_tool_library(&app);
-  let (whole, _) = frame_with(&ctx, &mut other, &mut app);
+#[test]
+fn the_form_rows_of_a_record_are_the_kinds_rows_and_then_the_three_fixed_groups() {
+  // The API the form and the strategy editor's quick block share: one tool's rows, grouped, in draw order.
+  let tool: StoredTool = flat_mill("G1", Some(1), 6.0);
+  let rows = cam_ui::tool_library::form_rows(&tool);
   assert_eq!(
-    group_labels(&whole),
-    vec![
-      "GEOMETRY".to_owned(),
-      "PASSES".to_owned(),
-      "SPEEDS".to_owned(),
-      "MACHINE".to_owned()
-    ],
-    "the four groups S9 names must come in S9's order"
-  );
-  assert_eq!(
-    form_groups(&flat_mill("G1", Some(1), 6.0)),
+    rows.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
     vec![
       ToolFormGroup::Geometry,
+      ToolFormGroup::Passes,
       ToolFormGroup::Speeds,
-      ToolFormGroup::Machine
+      ToolFormGroup::Machine,
     ]
   );
-}
-
-#[test]
-fn a_rate_is_shown_in_the_units_the_library_authored_it_in() {
-  // R3-001 in this task's review: stored rates are millimetres per second, but `rate_units` records the units
-  // the library's author typed them in and `MACHINE` names that unit — so one number was carrying two units at
-  // once (`Feed 100.00 mm/s` beside `Rates in/s`). Converted to the authored unit, both rows agree.
-  let mut inch = flat_mill("T1", Some(1), 6.0);
-  inch.cutting.rate_units = UnitSystem::Inch;
-  let feed = form_fields(ToolFormGroup::Speeds, &inch)
-    .into_iter()
-    .find(|(label, _)| label == "Feed")
-    .expect("the speeds group offers a feed")
-    .1;
   assert_eq!(
-    feed, "3.94 in/s",
-    "an inch library's feed reads in its own units"
+    rows[0].1,
+    ShapeField::of(ToolKind::FlatEndMill)
+      .iter()
+      .map(|field| FormField::Shape(*field))
+      .collect::<Vec<_>>(),
+    "the GEOMETRY rows are not the kind's own shape rows"
   );
-  let rates = form_fields(ToolFormGroup::Machine, &inch)
-    .into_iter()
-    .find(|(label, _)| label == "Rates")
-    .expect("the machine group names the rates")
-    .1;
-  assert_eq!(rates, "in/s", "and the machine row it is compared against");
-
-  // The millimetre path is what it was: this fix must not move the number a mm library reads.
-  let mm = flat_mill("T2", Some(2), 6.0);
-  let feed = form_fields(ToolFormGroup::Speeds, &mm)
-    .into_iter()
-    .find(|(label, _)| label == "Feed")
-    .expect("the speeds group offers a feed")
-    .1;
-  assert_eq!(feed, "100.00 mm/s");
+  assert_eq!(
+    rows[1].1,
+    vec![
+      FormField::Stepdown,
+      FormField::Stepover,
+      FormField::StepoverPercent,
+    ]
+  );
+  assert_eq!(
+    rows[2].1,
+    vec![
+      FormField::Spindle,
+      FormField::Feed,
+      FormField::Plunge,
+      FormField::Chipload,
+    ]
+  );
+  assert_eq!(rows[3].1, vec![FormField::ToolNumber]);
 }

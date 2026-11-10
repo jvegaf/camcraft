@@ -72,11 +72,11 @@ its report, not by pixels.
 
 | ID | Specs | Route | State |
 | --- | --- | --- | --- |
-| T1 | S4, S5, S10 | inline | schema, kind vocabulary and library writer |
+| T1 | S4, S5, S10 | inline | done — `a21b56a` (schema, kinds), `6b84b31` (validation and the three writers) |
 | T2 | S1, S2, S3, S4, S5, S6, S7, S8, S12 | inline | the three-column layout and header |
 | T3 | S9, S6 | inline | editable drafts, validation and the computed chipload |
 | T4 | S10 | inline | library actions and the writable path |
-| T5 | S11 | inline | JSON import and export |
+| T5 | S11 | inline | done (store half) — `c760cf8`; the file dialogs wait on T4 |
 | T6 | S13, S14 | inline | retire the fabricated library; pin every claim |
 
 ## Log
@@ -120,3 +120,39 @@ Answer:   Paridad total: edición + botones
 - `ToolGeometry` has no shank diameter and no overall length, which S5 draws. Two nullable columns.
 - `open_tool_library` fabricates four tools when the snapshot is empty
   (`crates/cam-ui/src/tool_library/shell.rs:82-84`), which S13 removes.
+
+**L5** — slice boundaries, and the one deviation from S5.
+
+Slice 1 landed as two commits so the gate could be green at each: `a21b56a` is the schema and the kind
+vocabulary (331 lines), `6b84b31` is the validation and the three writers with their sixteen tests
+(~830 lines — over the 400-line slice, because a new module and the tests that pin it are one unit and
+`clippy -D warnings` has to pass at every commit). Slice 2 stays inside the modal and splits at the
+form's inputs.
+
+Deviation: S5 lists six geometry rows and gives `Included angle` to the pointed kinds, but the
+`Corner radius` kind needs the radius its name comes from, and none of the three screenshots selects that
+kind — so the spec could not have shown it. The form draws `Corner radius` for that kind and keeps S5's
+six rows in S5's order for the rest.
+
+**L6** — T5's store half landed first because it is independent of the modal: `crates/cam-store/src/tool_file.rs`
+writes and reads the JSON library, with two refusals instead of two guesses (an unknown kind slug, and any tool
+that fails `validate_tool`). The four fields a form writes and a file normalises are worth one sentence: the store
+keeps millimetres per second, a feed is quoted in millimetres per minute, `rate_units` records what the operator
+typed rather than rescaling the number, and the file says which unit it means in each field's own name.
+
+**L7** — `feed_rate` was two units at once, and the owner settled which one (verbatim answers, after the first
+question was re-asked because its price had been mis-stated):
+
+```
+Question: ¿Cuál es la unidad real de `feed_rate`? De esto depende si el modal muestra 100 o 6000, y si hay un
+defecto de 60× esperando en el G-code.
+Answer:   La práctica manda: mm/min   (corrected to:)   mm/min, y arreglar el tiempo de la simulación
+```
+
+The evidence, because it is not a detail: `cam-store`'s `CuttingData`, `cam-move`'s `Segment` and
+`docs/format.md` all said millimetres per SECOND, and the cutting-time model divided a length by the rate and
+called the answer seconds. The emitter handed the same number to the program's `F` word, which is millimetres
+per MINUTE, and the CLI's goldens read `feed_rate: 100.0` as `F100.0`. Both consumers had a test, so whichever
+unit is declared, one of them was 60× wrong. Declaring mm/min keeps the emitter, the posts and every golden
+where they are and makes the estimate honest: the fixture that read `Estimated cutting time · 0:13` now reads
+`13:42`. Four documents were corrected rather than the code being bent to match them.

@@ -1,73 +1,75 @@
 use cam_app::AppState;
+use cam_store::tools::ToolKind;
 use cam_ui::Shell;
 
 use super::support::*;
 
 // ---------------------------------------------------------------------------------------------
-// The master side: the opener, the search field and the tree
+// S2: three columns, and the master column's tree
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_cards_own_row_opens_the_library_on_the_tool_the_toolpath_cuts_with() {
+fn the_modal_lays_out_a_master_a_detail_and_a_preview_column_left_to_right() {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
   shell.set_tools(library());
-
   let opened = open_library(&ctx, &mut shell, &mut app);
 
-  assert!(
-    shell.show_tool_library,
-    "the card offered a row that did not open the library"
-  );
-  // The selection is the tool the toolpath already cuts with: the first thing an operator wants from
-  // `Choose another tool…` is to see what the tool is now.
-  assert_eq!(opened.drawn.tool_selected.as_deref(), Some("G2"));
-  let words = opened.drawn.tool_library.join(" | ");
-  assert!(
-    words.contains("Choose tool — T2 - Tool (6mm)"),
-    "the dialog's title does not name the chosen tool: {words}"
-  );
-  // Every tool in the library is a row, and the commit pair is there because this state can be honoured.
   assert_eq!(
-    opened.drawn.tool_rows.len(),
-    4,
-    "{:?}",
-    opened.drawn.tool_rows
+    opened.drawn.tool_columns,
+    vec![300.0, 424.0, 200.0],
+    "S2's three columns are mastered, detailed and previewed in that order and those widths"
   );
-  for word in ["Cancel", "Use this tool"] {
-    assert!(
-      opened
-        .drawn
-        .tool_library_hits
-        .iter()
-        .any(|(name, _)| name == word),
-      "nothing to press called {word:?}: {:?}",
-      opened.drawn.tool_library_hits
-    );
-  }
+
+  // The widths are a claim about the picture, so the picture is asked where it put each column: the tree's
+  // rows, the form's boxes and the preview's card, left to right.
+  let (_, runs) = frame_with_runs(&ctx, &mut shell, &mut app);
+  let row = opened
+    .drawn
+    .tool_library_hits
+    .iter()
+    .find(|(word, _)| word == "T2 - Ball nose (6mm)")
+    .map(|(_, point)| point.0)
+    .expect("the tree drew no row to read the master column from");
+  let box_left = box_point(&runs, "Diameter").x;
+  let card_left = opened
+    .drawn
+    .tool_drawing
+    .expect("the preview drew no card")
+    .0;
+  assert!(
+    row < box_left && box_left < card_left,
+    "the three columns are not the master, the detail and the preview in that order: tree at {row}, \
+     form at {box_left}, card at {card_left}"
+  );
 }
 
 #[test]
-fn the_tree_groups_the_library_by_family_and_counts_what_it_drew() {
+fn the_tree_groups_the_library_by_kind_and_puts_the_count_in_the_heading() {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
-  shell.set_tools(library());
-
+  let mut tools = library();
+  // A second flat end mill, so one count is a number other than one.
+  tools.push(flat_mill("G7", Some(7), 3.175));
+  shell.set_tools(tools);
   let opened = open_library(&ctx, &mut shell, &mut app);
 
+  // One heading per kind the library holds, in the combo's own order, each with what sits under it.
   assert_eq!(
     opened.drawn.tool_families,
     vec![
       ("Flat end mill".to_owned(), 2),
       ("Ball nose".to_owned(), 1),
+      ("Corner radius".to_owned(), 1),
       ("V-bit".to_owned(), 1),
+      ("Engraving".to_owned(), 1),
+      ("Drill".to_owned(), 1),
     ],
-    "the tree must group by family, in one order, and skip a family with no tool"
+    "the tree does not group by kind, in one order, skipping the kinds it has no tool for"
   );
-  // A tree is a claim about *which* rows sit together, which a list of counts cannot make: the two flat mills
-  // are the first two rows and they say so.
+  // A list of counts cannot say *which* rows sit together, so the rows are read too.
   let families: Vec<&str> = opened
     .drawn
     .tool_rows
@@ -76,20 +78,112 @@ fn the_tree_groups_the_library_by_family_and_counts_what_it_drew() {
     .collect();
   assert_eq!(
     families,
-    vec!["Flat end mill", "Flat end mill", "Ball nose", "V-bit"]
+    vec![
+      "Flat end mill",
+      "Flat end mill",
+      "Ball nose",
+      "Corner radius",
+      "V-bit",
+      "Engraving",
+      "Drill",
+    ]
   );
-  let words = opened.drawn.tool_library.join(" | ");
+  let words = joined(&opened.drawn.tool_library);
   for heading in [
     "Flat end mill (2)",
     "Ball nose (1)",
-    "V-bit (1)",
-    "Ø6 · 2 cut(s)",
+    "Drill (1)",
+    "Ø3.175 · 2 cut(s)",
   ] {
     assert!(
       words.contains(heading),
       "the tree never drew {heading:?}: {words}"
     );
   }
+  // And the headings are the thing that folds the group, so they are pressable.
+  for kind in ToolKind::ALL {
+    let heading = format!("{} (", kind.label());
+    assert!(
+      hits(&opened).iter().any(|word| word.starts_with(&heading)),
+      "the {heading} heading is not pressable, so its group cannot fold: {:?}",
+      hits(&opened)
+    );
+  }
+}
+
+#[test]
+fn a_heading_folds_and_unfolds_and_its_rows_and_their_hits_go_with_it() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(2));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  let (folded, _) = click_word(&ctx, &mut shell, &mut app, &opened, "Flat end mill (1)");
+  assert_eq!(shell.tool_groups_closed, vec![ToolKind::FlatEndMill]);
+  assert_eq!(
+    folded.drawn.tool_rows.len(),
+    5,
+    "a folded heading still lists its rows: {:?}",
+    folded.drawn.tool_rows
+  );
+  assert!(
+    !folded
+      .drawn
+      .tool_rows
+      .iter()
+      .any(|(family, title, _)| family == "Flat end mill" && title.contains("T1")),
+    "the folded group's row is still in the tree: {:?}",
+    folded.drawn.tool_rows
+  );
+  // The row and its hit go together: a row folded away that is still pressable would be a control nobody can
+  // see with a live hit area, which is the defect L23 names.
+  assert!(
+    !hits(&folded).contains(&"T1 - Flat end mill (6mm)"),
+    "a folded row is still reported as pressable: {:?}",
+    hits(&folded)
+  );
+  // The heading itself stays, so there is a way back.
+  assert!(hits(&folded).contains(&"Flat end mill (1)"));
+
+  let (unfolded, _) = click_word(&ctx, &mut shell, &mut app, &folded, "Flat end mill (1)");
+  assert!(shell.tool_groups_closed.is_empty());
+  assert_eq!(unfolded.drawn.tool_rows.len(), 6);
+  assert!(hits(&unfolded).contains(&"T1 - Flat end mill (6mm)"));
+}
+
+#[test]
+fn the_selected_row_is_the_one_the_report_names() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(2));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  // The document's toolpath cuts with T2, so that is the row the modal opens on.
+  assert_eq!(opened.drawn.tool_selected.as_deref(), Some("G2"));
+
+  let (chosen, _) = click_word(&ctx, &mut shell, &mut app, &opened, "T4 - V-bit (12.7mm)");
+  assert_eq!(
+    chosen.drawn.tool_selected.as_deref(),
+    Some("G4"),
+    "the row the operator pressed is not the tool the modal says it chose"
+  );
+  assert_eq!(
+    chosen
+      .drawn
+      .tool_rows
+      .iter()
+      .find(|(_, title, _)| title == "T4 - V-bit (12.7mm)")
+      .map(|(family, _, _)| family.as_str()),
+    Some("V-bit"),
+    "the chosen tool is not the one under the V-bit heading"
+  );
+  assert!(
+    shell.tool_library_selection() == Some("G4"),
+    "the shell's own selection disagrees with the report: {:?}",
+    shell.tool_library_selection()
+  );
 }
 
 #[test]
@@ -100,7 +194,7 @@ fn the_search_field_filters_the_tree_and_the_counts_name_what_is_left() {
   shell.set_tools(library());
   let _ = open_library(&ctx, &mut shell, &mut app);
 
-  // A family's own word: an operator who reads `Ball nose (1)` and types `ball` is asking for its rows.
+  // A kind's own word: an operator who reads `Ball nose (1)` and types `ball` is asking for its rows.
   shell.tool_search = "ball".to_owned();
   let (filtered, _) = frame_with(&ctx, &mut shell, &mut app);
   assert_eq!(
@@ -110,8 +204,7 @@ fn the_search_field_filters_the_tree_and_the_counts_name_what_is_left() {
     filtered.drawn.tool_rows
   );
   assert_eq!(filtered.drawn.tool_selected.as_deref(), Some("G2"));
-  // The count is the number of rows drawn, not the number the library holds: a heading that said `(2)` over
-  // one visible row would be a number nobody can check against the screen.
+  // The count is the number of rows drawn, not the number the library holds.
   assert_eq!(
     filtered.drawn.tool_families,
     vec![("Ball nose".to_owned(), 1)]
@@ -124,7 +217,7 @@ fn the_search_field_filters_the_tree_and_the_counts_name_what_is_left() {
     by_width.drawn.tool_rows,
     vec![(
       "V-bit".to_owned(),
-      "T3 - Tool (12.7mm)".to_owned(),
+      "T4 - V-bit (12.7mm)".to_owned(),
       "Ø12.7 · 2 cut(s)".to_owned()
     )],
     "the search never looked at the row's own cut line"
@@ -134,29 +227,70 @@ fn the_search_field_filters_the_tree_and_the_counts_name_what_is_left() {
   shell.tool_search = "spiral flute".to_owned();
   let (none, texts) = frame_with(&ctx, &mut shell, &mut app);
   assert!(none.drawn.tool_rows.is_empty());
-  assert!(
-    none
-      .drawn
-      .tool_library
-      .iter()
-      .any(|word| word.contains("No tool matches")),
-    "an empty tree said nothing: {:?}",
-    none.drawn.tool_library
-  );
+  assert!(none
+    .drawn
+    .tool_library
+    .iter()
+    .any(|word| word.contains("No tool matches")));
   assert!(joined(&texts).contains("No tool matches"));
+}
 
-  // The chip the field grows while it holds text is how the filter is cleared — a filter with no way out but
-  // selecting the text is a trap.
-  assert!(
-    none
-      .drawn
-      .tool_library_hits
-      .iter()
-      .any(|(name, _)| name == "Clear"),
-    "the search field offers no way back: {:?}",
-    none.drawn.tool_library_hits
+#[test]
+fn a_row_the_scroll_area_hides_is_not_reported_as_pressable() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(1));
+  let mut shell = Shell::new();
+  // More tools than the master column has room for: the ones below the fold are drawn by egui and clipped
+  // away, and reporting their centres would be a promise about a control nobody can see — the defect the T6
+  // review found in an invisible playback bar with live hit areas (L23).
+  shell.set_tools(
+    (1..=24)
+      .map(|index| flat_mill(&format!("G{index}"), Some(index), 6.0))
+      .collect(),
   );
-  let (cleared, _) = click_word(&ctx, &mut shell, &mut app, &none, "Clear");
-  assert_eq!(shell.tool_search, "");
-  assert_eq!(cleared.drawn.tool_rows.len(), 4);
+  shell.open_tool_library(&app);
+  let _ = frame_with(&ctx, &mut shell, &mut app);
+  let (output, _) = frame_with(&ctx, &mut shell, &mut app);
+
+  let rows: Vec<&str> = output
+    .drawn
+    .tool_rows
+    .iter()
+    .map(|(_, title, _)| title.as_str())
+    .collect();
+  assert_eq!(rows.len(), 24, "the tree lists every tool it was given");
+  let pressable: Vec<&str> = hits(&output)
+    .into_iter()
+    .filter(|name| rows.contains(name))
+    .collect();
+  assert!(
+    pressable.len() < rows.len(),
+    "every row is reported as pressable, so nothing was clipped: {pressable:?}"
+  );
+  // What it reports is a prefix of the tree — the rows it drew inside the fold, in the tree's own order — and
+  // the last tool is not among them.
+  assert_eq!(
+    pressable,
+    rows[..pressable.len()],
+    "the reported rows are not the ones at the top of the tree"
+  );
+  assert!(
+    !pressable.contains(&"T24 - Flat end mill (6mm)"),
+    "a row below the fold was reported as pressable"
+  );
+  // And the report is actionable: the last row it names really does select its tool.
+  let last = *pressable.last().expect("some row is visible");
+  let at = output
+    .drawn
+    .tool_library_hits
+    .iter()
+    .find(|(name, _)| name == last)
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("the point it reported");
+  click_at(&ctx, &mut shell, &mut app, at);
+  assert!(
+    shell.tool_library_selection().is_some_and(|id| id != "G1"),
+    "the last reported row did not select its tool: {:?}",
+    shell.tool_library_selection()
+  );
 }
