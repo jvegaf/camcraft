@@ -50,13 +50,35 @@ fn the_geometry_rows_are_the_kinds_own_in_s5s_order() {
       ShapeField::Flutes,
     ]
   );
+  // An engraving cutter is a flat end that ends in a flat of its own: the tip width is the one row it adds,
+  // right under the diameter (S12).
   assert_eq!(
     ShapeField::of(ToolKind::Engraving),
-    ShapeField::of(ToolKind::FlatEndMill),
-    "an engraving cutter is a flat end with a name"
+    &[
+      ShapeField::Diameter,
+      ShapeField::TipWidth,
+      ShapeField::FluteLength,
+      ShapeField::ShankDiameter,
+      ShapeField::OverallLength,
+      ShapeField::Flutes,
+    ]
   );
-  // A pointed tip: the angle sits second, where S5 puts it.
-  for pointed in [ToolKind::VBit, ToolKind::Drill] {
+  // A V-bit: the angle sits second and the tip width third, where the reference's own form asks them.
+  assert_eq!(
+    ShapeField::of(ToolKind::VBit),
+    &[
+      ShapeField::Diameter,
+      ShapeField::IncludedAngle,
+      ShapeField::TipWidth,
+      ShapeField::FluteLength,
+      ShapeField::ShankDiameter,
+      ShapeField::OverallLength,
+      ShapeField::Flutes,
+    ]
+  );
+  // A drill's tip is a point, so it carries no tip width — the angle is all it has.
+  {
+    let pointed = ToolKind::Drill;
     assert_eq!(
       ShapeField::of(pointed),
       &[

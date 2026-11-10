@@ -403,6 +403,25 @@ pub struct DrawnState {
   /// drawn wider is not the same reading, and a rectangle tells a test nothing about how many millimetres
   /// wide it is.
   pub tool_width_px: f32,
+  /// The tree's visible tool rows as geometry: `(row, glyph, title, subtitle)` rectangles in window pixels.
+  ///
+  /// Reported so the row height, glyph slot and text positions can be pinned without reading the image.
+  pub tool_tree_rows: Vec<(PixelRect, PixelRect, PixelRect, PixelRect)>,
+  /// Whether the tool tree drew a scrollbar because the list overflowed.
+  pub tool_tree_scrollbar: bool,
+  /// The preview's dimensions: `(label, line, label box)` rectangles in window pixels, in drawn order.
+  ///
+  /// Reported so the rule S13 keeps can be asserted rather than admired: a label sits eight pixels clear of its
+  /// own line, and touches neither the tool's body nor another label.
+  pub tool_preview_dimensions: Vec<(String, PixelRect, PixelRect)>,
+  /// Where the tool is drawn inside its card: its shank, its cutting section and its amber tip.
+  pub tool_preview_body: Vec<PixelRect>,
+  /// A cone's `(top width, tip width, height)` in pixels, when the selected kind draws one.
+  pub tool_preview_cone: Option<(f32, f32, f32)>,
+  /// The form's box column, per drawn row: `(group, label, left, right)` in window pixels.
+  ///
+  /// Reported so every row of every kind can be shown to share one box column.
+  pub tool_form_box_edges: Vec<(String, String, f32, f32)>,
   /// Where the current-tool card drew `Choose another tool…`: its word and the point that presses it.
   ///
   /// Empty while no card is drawn. The card's own words stay in [`Self::tool_card`] and did not grow this

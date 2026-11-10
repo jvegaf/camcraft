@@ -32,8 +32,7 @@ fn the_footer_paints_its_sentence_and_puts_cancel_before_use_this_tool() {
     joined(&texts)
   );
 
-  // The row is laid out right to left, so the order the hits were reported in *is* the order on the screen:
-  // `Cancel` first, then the primary `Use this tool`.
+  // `Cancel` first (left) and the primary action rightmost.
   let cancel = hit_position(&opened, "Cancel").expect("the footer drew no Cancel");
   let use_it = hit_position(&opened, "Use this tool").expect("the footer drew no Use this tool");
   assert!(
@@ -41,7 +40,6 @@ fn the_footer_paints_its_sentence_and_puts_cancel_before_use_this_tool() {
     "`Cancel` must be drawn before `Use this tool`: {:?}",
     hits(&opened)
   );
-  // And `Cancel` really is the rightmost of the pair, which is what right-aligned means.
   let x = |word: &str| {
     opened
       .drawn
@@ -52,8 +50,10 @@ fn the_footer_paints_its_sentence_and_puts_cancel_before_use_this_tool() {
       .expect("the word the previous assertion found")
   };
   assert!(
-    x("Cancel") > x("Use this tool"),
-    "`Cancel` is drawn left of `Use this tool`, so the pair is not right-aligned"
+    x("Use this tool") > x("Cancel"),
+    "`Use this tool` must be rightmost: cancel x={}, use x={}",
+    x("Cancel"),
+    x("Use this tool")
   );
 }
 
@@ -163,7 +163,7 @@ fn escape_leaves_the_library_without_writing_and_the_modal_owns_the_pointer() {
     .drawn
     .tool_library
     .iter()
-    .any(|word| word == "Choose tool — T2 - Ball nose (6mm)"));
+    .any(|word| word == "Choose tool"));
 
   let (left, _) = press(&ctx, &mut shell, &mut app, egui::Key::Escape);
   assert!(

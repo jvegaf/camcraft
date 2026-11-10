@@ -33,13 +33,13 @@ const MASTER_WIDTH: f32 = 300.0;
 const DETAIL_WIDTH: f32 = 424.0;
 
 /// How tall the master list is, so the modal does not grow and shrink with the tree.
-const COLUMN_HEIGHT: f32 = 700.0;
+const COLUMN_HEIGHT: f32 = 420.0;
 
 /// The header band's height: the title's own line plus the padding that keeps it off the edges.
 const HEADER_HEIGHT: f32 = 34.0;
 
 /// The width of one editable box.
-const BOX_WIDTH: f32 = 96.0;
+const BOX_WIDTH: f32 = 150.0;
 
 /// The slot the unit suffix occupies, fixed so the boxes line up down the column.
 ///
@@ -48,7 +48,11 @@ const BOX_WIDTH: f32 = 96.0;
 const UNIT_SLOT: f32 = 44.0;
 
 /// The mini tool glyph a tree row carries.
-const ROW_GLYPH: f32 = 20.0;
+const ROW_GLYPH: f32 = 24.0;
+
+/// One tool row's height and the gap between rows.
+const TREE_ROW_HEIGHT: f32 = 46.0;
+const TREE_ROW_GAP: f32 = 2.0;
 
 /// The words the modal says about itself.
 ///
@@ -132,11 +136,9 @@ fn pressable(spots: Vec<Spot>) -> Vec<(String, (f32, f32))> {
 
 /// One row of the form: its word at the left, and at the right its box and the unit outside it.
 ///
-/// The text is handed in rather than read here, because the two kinds of row get theirs from different places:
-/// an editable row shows what the operator typed, and a computed one shows what the boxes above it add up to.
-/// Only the editable row writes back, and only when it changed, so a frame that drew the form cannot rewrite
-/// the draft with the text it was given. The caller reports the row, because the words a row draws are the
-/// caller's list.
+/// Every row shares one box column: the box's right edge is the row's right edge minus `UNIT_SLOT`, its left
+/// edge that minus `BOX_WIDTH`, and the unit sits in the slot beside it. Values are right-aligned inside the
+/// box (while editing too). Returns `(text, box_left, box_right)`.
 fn field_row(
   ui: &mut egui::Ui,
   palette: &Palette,
@@ -145,76 +147,89 @@ fn field_row(
   field: FormField,
   text: String,
   units: UnitSystem,
-) -> String {
+) -> (String, f32, f32) {
   let mut text = text;
-  ui.horizontal(|ui| {
-    let gap = ui.spacing().item_spacing.x;
-    let label_width = (ui.available_width() - BOX_WIDTH - UNIT_SLOT - 2.0 * gap).max(80.0);
-    ui.allocate_ui_with_layout(
-      egui::vec2(label_width, metrics.control_height),
-      Layout::left_to_right(Align::Center),
-      |ui| {
-        ui.label(
-          RichText::new(field.label())
-            .size(theme::SMALL)
-            .color(palette.get(Role::Text)),
-        );
-      },
-    );
+  let row_width = ui.available_width();
+  let (row_rect, _) = ui.allocate_exact_size(
+    egui::vec2(row_width, metrics.control_height),
+    Sense::hover(),
+  );
+  let right = row_rect.right();
+  let box_right = right - UNIT_SLOT;
+  let box_left = box_right - BOX_WIDTH;
+  let box_rect = egui::Rect::from_min_max(
+    egui::pos2(box_left, row_rect.top()),
+    egui::pos2(box_right, row_rect.bottom()),
+  );
+  let unit_rect = egui::Rect::from_min_max(
+    egui::pos2(box_right, row_rect.top()),
+    egui::pos2(right, row_rect.bottom()),
+  );
 
-    if field.editable() {
-      let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(BOX_WIDTH));
-      if response.changed() {
-        draft.set_text(field, text.clone());
-      }
-    } else {
-      // A reading, not a box: the rect is drawn so the row still lines up with the ones above it, and the text
-      // is painted rather than typed into. `Chipload` is the one number on the form that is arithmetic on the
-      // others, which is why it is the one drawn in the warning colour (S6).
-      let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(BOX_WIDTH, metrics.control_height),
-        Sense::hover(),
-      );
-      let radius = egui::CornerRadius::same(4);
-      ui.painter()
-        .rect_filled(rect, radius, palette.get(Role::Raised));
-      ui.painter().rect_stroke(
-        rect,
-        radius,
-        egui::Stroke::new(metrics.hairline, palette.get(Role::Border)),
-        egui::StrokeKind::Inside,
-      );
-      let ink = if field == FormField::Chipload {
-        palette.get(Role::Warn)
-      } else {
-        palette.get(Role::TextHi)
-      };
-      ui.painter().text(
-        rect.right_center() - egui::vec2(8.0, 0.0),
-        egui::Align2::RIGHT_CENTER,
-        &text,
-        egui::FontId::monospace(theme::SMALL),
-        ink,
-      );
-    }
+  // Label on the left; it may ellipsize rather than push the box column.
+  let label_max = (box_left - row_rect.left() - metrics.space(2)).max(0.0);
+  let galley = ui.painter().layout(
+    field.label().to_owned(),
+    egui::FontId::proportional(theme::SMALL),
+    palette.get(Role::Text),
+    label_max,
+  );
+  ui.painter().galley(
+    egui::pos2(row_rect.left(), row_rect.center().y - galley.size().y / 2.0),
+    galley,
+    palette.get(Role::Text),
+  );
 
-    // The suffix's own slot, outside the box and immediately right of it, so every box in the column ends at the
-    // same place whatever unit follows it.
-    let (slot, _) = ui.allocate_exact_size(
-      egui::vec2(UNIT_SLOT, metrics.control_height),
-      Sense::hover(),
+  if field.editable() {
+    #[allow(deprecated)]
+    let response = ui.put(
+      box_rect,
+      egui::TextEdit::singleline(&mut text)
+        .desired_width(BOX_WIDTH)
+        .horizontal_align(egui::Align::Max)
+        .margin(egui::Margin::symmetric(8, 0)),
     );
-    if let Some(unit) = field.unit(units) {
-      ui.painter().text(
-        slot.left_center() + egui::vec2(6.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        unit,
-        egui::FontId::proportional(theme::CAPTION),
-        palette.get(Role::TextDim),
-      );
+    if response.changed() {
+      draft.set_text(field, text.clone());
     }
-  });
-  text
+  } else if field == FormField::Chipload {
+    // Emphasis text in the box column: no box stroke and no warning colour.
+    ui.painter().text(
+      box_rect.right_center() - egui::vec2(8.0, 0.0),
+      egui::Align2::RIGHT_CENTER,
+      &text,
+      egui::FontId::monospace(theme::SMALL),
+      palette.get(Role::TextHi),
+    );
+  } else {
+    let radius = egui::CornerRadius::same(4);
+    ui.painter()
+      .rect_filled(box_rect, radius, palette.get(Role::Raised));
+    ui.painter().rect_stroke(
+      box_rect,
+      radius,
+      egui::Stroke::new(metrics.hairline, palette.get(Role::Border)),
+      egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+      box_rect.right_center() - egui::vec2(8.0, 0.0),
+      egui::Align2::RIGHT_CENTER,
+      &text,
+      egui::FontId::monospace(theme::SMALL),
+      palette.get(Role::TextHi),
+    );
+  }
+
+  if let Some(unit) = field.unit(units) {
+    ui.painter().text(
+      unit_rect.left_center() + egui::vec2(6.0, 0.0),
+      egui::Align2::LEFT_CENTER,
+      unit,
+      egui::FontId::proportional(theme::CAPTION),
+      palette.get(Role::TextDim),
+    );
+  }
+  (text, box_left, box_right)
 }
 
 /// What pressing one of the master column's rows asks for (S3).
@@ -385,12 +400,24 @@ impl Shell {
     let mut groups: Vec<(String, Vec<(String, String)>)> = Vec::new();
     let mut computed: Vec<(String, String)> = Vec::new();
     let mut callouts: Vec<String> = Vec::new();
+    let mut preview_dimensions: Vec<super::preview::Dimension> = Vec::new();
+    let mut preview_body: Vec<egui::Rect> = Vec::new();
+    let mut preview_cone: Option<(f32, f32, f32)> = None;
     let mut caption: Option<String> = None;
     let mut header = String::new();
     let mut drawing: Option<(egui::Rect, f32)> = None;
     let mut cancel = false;
     let mut commit: Option<StoredTool> = None;
     let mut request: Option<RowRequest> = None;
+    type RowGeom = (
+      (f32, f32, f32, f32),
+      (f32, f32, f32, f32),
+      (f32, f32, f32, f32),
+      (f32, f32, f32, f32),
+    );
+    let mut tree_row_geometry: Vec<RowGeom> = Vec::new();
+    let mut tree_scrollbar = false;
+    let mut form_box_edges: Vec<(String, String, f32, f32)> = Vec::new();
 
     egui::Modal::new(egui::Id::unique("campilot-tool-library"))
       .frame(
@@ -468,112 +495,141 @@ impl Shell {
                     .desired_width(MASTER_WIDTH),
                 );
                 ui.add_space(metrics.space(2));
-                egui::ScrollArea::vertical()
-                  .id_salt("tool_tree")
-                  .max_height(COLUMN_HEIGHT)
-                  .show(ui, |ui| {
-                    // Every row reports the clip of the scroll area it was drawn in (see `Spot`), so a row the
-                    // fold hides is drawn by egui and is not reported as pressable.
-                    let mut shown = 0;
-                    for kind in ToolKind::ALL {
-                      let group: Vec<&Row> = tree
-                        .iter()
-                        .filter(|entry| entry.0 == kind && row_matches(&entry.1, kind, &search))
-                        .map(|entry| &entry.1)
-                        .collect();
-                      if group.is_empty() {
-                        continue;
-                      }
-                      shown += group.len();
-                      let heading = format!("{} ({})", kind.label(), group.len());
-                      let open = !closed.contains(&kind);
-                      let toggle = crate::chrome::section_toggle(ui, &palette, &heading, open);
-                      spots.push(Spot::in_ui(heading.clone(), toggle.rect, ui));
-                      words.push(heading);
-                      families.push((kind.label().to_owned(), group.len()));
-                      if toggle.clicked() {
-                        if open {
-                          closed.push(kind);
-                        } else {
-                          closed.retain(|folded| *folded != kind);
+                let panel = egui::Frame::NONE
+                  .fill(palette.get(Role::Panel))
+                  .stroke(egui::Stroke::new(
+                    metrics.hairline,
+                    palette.get(Role::Border),
+                  ))
+                  .corner_radius(egui::CornerRadius::same(6))
+                  .inner_margin(egui::Margin::same(4));
+                panel.show(ui, |ui| {
+                  let scroll = egui::ScrollArea::vertical()
+                    .id_salt("tool_tree")
+                    .max_height(COLUMN_HEIGHT)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                      ui.spacing_mut().item_spacing.y = 0.0;
+                      let mut shown = 0;
+                      for kind in ToolKind::ALL {
+                        let group: Vec<&Row> = tree
+                          .iter()
+                          .filter(|entry| entry.0 == kind && row_matches(&entry.1, kind, &search))
+                          .map(|entry| &entry.1)
+                          .collect();
+                        if group.is_empty() {
+                          continue;
                         }
-                      }
-                      // Read again after the click, so folding a heading hides its rows in the same frame.
-                      if closed.contains(&kind) {
-                        continue;
-                      }
-                      for row in group {
-                        let on = selected.as_deref() == Some(row.id.as_str());
-                        let (rect, response) = ui.allocate_exact_size(
-                          egui::vec2(ui.available_width(), metrics.row_height),
-                          Sense::click(),
-                        );
-                        let radius = egui::CornerRadius::same(4);
-                        if on {
-                          ui.painter()
-                            .rect_filled(rect, radius, palette.get(Role::SelSoft));
-                          ui.painter().rect_stroke(
-                            rect,
-                            radius,
-                            egui::Stroke::new(1.0, palette.get(Role::Sel)),
-                            egui::StrokeKind::Inside,
+                        shown += group.len();
+                        let heading = format!("{} ({})", kind.label(), group.len());
+                        let open = !closed.contains(&kind);
+                        let toggle = crate::chrome::section_toggle(ui, &palette, &heading, open);
+                        spots.push(Spot::in_ui(heading.clone(), toggle.rect, ui));
+                        words.push(heading);
+                        families.push((kind.label().to_owned(), group.len()));
+                        if toggle.clicked() {
+                          if open {
+                            closed.push(kind);
+                          } else {
+                            closed.retain(|folded| *folded != kind);
+                          }
+                        }
+                        if closed.contains(&kind) {
+                          continue;
+                        }
+                        for row in group {
+                          let on = selected.as_deref() == Some(row.id.as_str());
+                          let (rect, response) = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), TREE_ROW_HEIGHT),
+                            Sense::click(),
                           );
-                        } else if response.hovered() {
-                          ui.painter()
-                            .rect_filled(rect, radius, palette.get(Role::Raised));
+                          let radius = egui::CornerRadius::same(4);
+                          if on {
+                            ui.painter()
+                              .rect_filled(rect, radius, palette.get(Role::SelSoft));
+                            ui.painter().rect_stroke(
+                              rect,
+                              radius,
+                              egui::Stroke::new(1.0, palette.get(Role::Sel)),
+                              egui::StrokeKind::Inside,
+                            );
+                          } else if response.hovered() {
+                            ui.painter()
+                              .rect_filled(rect, radius, palette.get(Role::Raised));
+                          }
+                          let glyph = egui::Rect::from_min_size(
+                            egui::pos2(rect.left() + 6.0, rect.center().y - ROW_GLYPH / 2.0),
+                            egui::vec2(ROW_GLYPH, ROW_GLYPH),
+                          );
+                          crate::icons::paint(
+                            ui.painter(),
+                            glyph,
+                            crate::icons::Icon::ToolLibrary,
+                            palette.get(if on { Role::Sel } else { Role::Text }),
+                            theme::ICON_STROKE * glyph.width() / theme::ICON_SIZE,
+                          );
+                          let text_left = rect.left() + 34.0;
+                          let title_pos = egui::pos2(text_left, rect.top() + 6.0);
+                          let title_galley = ui.painter().layout_no_wrap(
+                            row.title.clone(),
+                            egui::FontId::proportional(theme::SMALL),
+                            palette.get(if on { Role::TextHi } else { Role::Text }),
+                          );
+                          let title_rect =
+                            egui::Rect::from_min_size(title_pos, title_galley.size());
+                          ui.painter().galley(
+                            title_pos,
+                            title_galley,
+                            palette.get(if on { Role::TextHi } else { Role::Text }),
+                          );
+                          let subtitle_pos = egui::pos2(text_left, rect.top() + 24.0);
+                          let subtitle_galley = ui.painter().layout_no_wrap(
+                            row.cut.clone(),
+                            egui::FontId::proportional(theme::CAPTION),
+                            palette.get(Role::TextDim),
+                          );
+                          let subtitle_rect =
+                            egui::Rect::from_min_size(subtitle_pos, subtitle_galley.size());
+                          ui.painter().galley(
+                            subtitle_pos,
+                            subtitle_galley,
+                            palette.get(Role::TextDim),
+                          );
+
+                          if response.clicked() {
+                            selected = Some(row.id.clone());
+                          }
+                          spots.push(Spot::in_ui(row.title.clone(), rect, ui));
+                          words.push(row.title.clone());
+                          words.push(row.cut.clone());
+                          rows.push((kind.label().to_owned(), row.title.clone(), row.cut.clone()));
+                          tree_row_geometry.push((
+                            crate::chrome::rect_report(rect),
+                            crate::chrome::rect_report(glyph),
+                            crate::chrome::rect_report(title_rect),
+                            crate::chrome::rect_report(subtitle_rect),
+                          ));
+                          ui.add_space(TREE_ROW_GAP);
                         }
-                        // The mini tool glyph: the set's own router bit, at the row's size.
-                        let glyph = egui::Rect::from_min_size(
-                          egui::pos2(rect.left() + 4.0, rect.top() + 3.0),
-                          egui::vec2(ROW_GLYPH, ROW_GLYPH),
-                        );
-                        crate::icons::paint(
-                          ui.painter(),
-                          glyph,
-                          crate::icons::Icon::ToolLibrary,
-                          palette.get(if on { Role::Sel } else { Role::Text }),
-                          theme::ICON_STROKE * glyph.width() / theme::ICON_SIZE,
-                        );
-                        let text_left = glyph.right() + 6.0;
-                        ui.painter().text(
-                          egui::pos2(text_left, rect.top() + 3.0),
-                          egui::Align2::LEFT_TOP,
-                          &row.title,
-                          egui::FontId::proportional(theme::SMALL),
-                          palette.get(if on { Role::TextHi } else { Role::Text }),
-                        );
-                        ui.painter().text(
-                          egui::pos2(text_left, rect.bottom() - 3.0),
-                          egui::Align2::LEFT_BOTTOM,
-                          &row.cut,
-                          egui::FontId::proportional(theme::CAPTION),
-                          palette.get(Role::TextDim),
-                        );
-                        if response.clicked() {
-                          selected = Some(row.id.clone());
-                        }
-                        spots.push(Spot::in_ui(row.title.clone(), rect, ui));
-                        words.push(row.title.clone());
-                        words.push(row.cut.clone());
-                        rows.push((kind.label().to_owned(), row.title.clone(), row.cut.clone()));
                       }
-                    }
-                    if shown == 0 {
-                      let sentence = if self.tools.is_empty() {
-                        EMPTY_LIBRARY
-                      } else {
-                        NO_MATCH
-                      };
+                      if shown == 0 {
+                        let sentence = if self.tools.is_empty() {
+                          EMPTY_LIBRARY
+                        } else {
+                          NO_MATCH
+                        };
+                        ui.add_space(metrics.space(2));
+                        ui.label(
+                          RichText::new(sentence)
+                            .size(theme::CAPTION)
+                            .color(palette.get(Role::TextDim)),
+                        );
+                        words.push(sentence.to_owned());
+                      }
                       ui.add_space(metrics.space(2));
-                      ui.label(
-                        RichText::new(sentence)
-                          .size(theme::CAPTION)
-                          .color(palette.get(Role::TextDim)),
-                      );
-                      words.push(sentence.to_owned());
-                    }
-                    ui.add_space(metrics.space(2));
-                  });
+                    });
+                  tree_scrollbar = scroll.content_size.y > scroll.inner_rect.height() + 0.5;
+                });
 
                 // ---- the library action rows: S3's three groups at the foot of the master column ----
                 //
@@ -668,32 +724,58 @@ impl Shell {
                 }
                 words.push(draft.name.clone());
 
-                ui.horizontal(|ui| {
-                  ui.label(
-                    RichText::new(TYPE_LABEL)
-                      .size(theme::SMALL)
-                      .color(palette.get(Role::Text)),
-                  );
-                  words.push(TYPE_LABEL.to_owned());
-                  ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let mut kind = draft.kind;
-                    egui::ComboBox::from_id_salt("tool_kind")
-                      .selected_text(kind.label())
-                      .show_ui(ui, |ui| {
-                        for option in ToolKind::ALL {
-                          ui.selectable_value(&mut kind, option, option.label());
-                        }
-                      });
-                    if kind != draft.kind {
-                      draft.set_kind(kind);
-                    }
-                  });
+                // Type row: label left, combo right-aligned to the same box column.
+                let row_width = ui.available_width();
+                let (type_rect, _) = ui.allocate_exact_size(
+                  egui::vec2(row_width, metrics.control_height),
+                  Sense::hover(),
+                );
+                let right = type_rect.right();
+                let box_right = right - UNIT_SLOT;
+                let box_left = box_right - BOX_WIDTH;
+                let box_rect = egui::Rect::from_min_max(
+                  egui::pos2(box_left, type_rect.top()),
+                  egui::pos2(box_right, type_rect.bottom()),
+                );
+                let label_max = (box_left - type_rect.left() - metrics.space(2)).max(0.0);
+                let galley = ui.painter().layout(
+                  TYPE_LABEL.to_owned(),
+                  egui::FontId::proportional(theme::SMALL),
+                  palette.get(Role::Text),
+                  label_max,
+                );
+                ui.painter().galley(
+                  egui::pos2(
+                    type_rect.left(),
+                    type_rect.center().y - galley.size().y / 2.0,
+                  ),
+                  galley,
+                  palette.get(Role::Text),
+                );
+                words.push(TYPE_LABEL.to_owned());
+                let mut kind = draft.kind;
+                ui.scope_builder(egui::UiBuilder::new().max_rect(box_rect), |ui| {
+                  egui::ComboBox::from_id_salt("tool_kind")
+                    .selected_text(kind.label())
+                    .width(BOX_WIDTH)
+                    .show_ui(ui, |ui| {
+                      for option in ToolKind::ALL {
+                        ui.selectable_value(&mut kind, option, option.label());
+                      }
+                    });
                 });
+                if kind != draft.kind {
+                  draft.set_kind(kind);
+                }
                 words.push(draft.kind.label().to_owned());
+                form_box_edges.push((
+                  "TYPE".to_owned(),
+                  TYPE_LABEL.to_owned(),
+                  box_left,
+                  box_right,
+                ));
 
-                // The rows follow the kind the combo shows, not the one the library still holds: choosing
-                // `V-bit` has to reveal the angle box in the same frame, and the kind is what decides which
-                // shape rows a tool has (`ShapeField::of`).
+                // The rows follow the kind the combo shows, not the one the library still holds.
                 let mut probe = tool.clone();
                 probe.geometry.tool_type = draft.kind.raw();
                 let units = tool.cutting.rate_units;
@@ -702,8 +784,6 @@ impl Shell {
                   words.push(group.label().to_owned());
                   let mut reported: Vec<(String, String)> = Vec::new();
                   for field in fields {
-                    // An editable row shows what was typed; a computed one shows what the boxes above it add
-                    // up to *now*, which is why it is asked for at the moment the row is drawn.
                     let text = if field.editable() {
                       draft.text(field).to_owned()
                     } else {
@@ -713,7 +793,14 @@ impl Shell {
                         .map(|committed| field.value(&committed))
                         .unwrap_or_else(|| field.value(tool))
                     };
-                    let text = field_row(ui, &palette, &metrics, draft, field, text, units);
+                    let (text, left, right_edge) =
+                      field_row(ui, &palette, &metrics, draft, field, text, units);
+                    form_box_edges.push((
+                      group.label().to_owned(),
+                      field.label().to_owned(),
+                      left,
+                      right_edge,
+                    ));
                     words.push(field.label().to_owned());
                     words.push(text.clone());
                     if let Some(unit) = field.unit(units) {
@@ -746,7 +833,7 @@ impl Shell {
                 let kind = draft.kind;
                 let (rect, _) =
                   ui.allocate_exact_size(egui::vec2(PREVIEW_WIDTH, PREVIEW_HEIGHT), Sense::hover());
-                let width = paint_preview(
+                let painted = paint_preview(
                   ui.painter(),
                   rect,
                   &palette,
@@ -755,6 +842,10 @@ impl Shell {
                   kind,
                   &mut callouts,
                 );
+                let width = painted.cutting_width;
+                preview_dimensions = painted.dimensions.clone();
+                preview_body = painted.body.clone();
+                preview_cone = painted.cone;
                 drawing = Some((rect, width));
                 words.extend(callouts.iter().cloned());
                 ui.label(
@@ -796,18 +887,17 @@ impl Shell {
             let refusal = self
               .refusal_for(app, tool_with(&self.tools, selected.as_deref()))
               .or_else(|| draft.as_ref().and_then(ToolDraft::problem));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-              // `Cancel` is always drawn, and it is added first so it is the rightmost of the pair: nothing in
-              // this modal has written anything before it, so it can always be honoured. `Use this tool` is
-              // drawn only when the write it names has a meaning — otherwise the sentence that says why is
-              // drawn in its place (L6).
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+              // `Cancel` is always drawn and comes first (left); the primary action is rightmost.
+              // `Use this tool` is drawn only when the write it names has a meaning — otherwise the
+              // sentence that says why is drawn in its place (L6).
               let back = ui.add(egui::Button::new(RichText::new(CANCEL).size(theme::SMALL)));
               spots.push(Spot::in_ui(CANCEL.to_owned(), back.rect, ui));
               words.push(CANCEL.to_owned());
               if back.clicked() {
                 cancel = true;
               }
-              match &refusal {
+              ui.with_layout(Layout::right_to_left(Align::Center), |ui| match &refusal {
                 Some(sentence) => {
                   ui.label(
                     RichText::new(sentence)
@@ -831,15 +921,12 @@ impl Shell {
                     commit = draft.as_ref().and_then(|draft| draft.commit().ok());
                   }
                 }
-              }
+              });
             });
           });
 
-        // The title, with the tool this frame selected in it (see this method's own note).
-        let title = match tool_with(&self.tools, selected.as_deref()) {
-          Some(tool) => format!("{TITLE} — {}", tool_title(tool)),
-          None => TITLE.to_owned(),
-        };
+        // The title is the dialog's own: the chosen tool is named in the field below it.
+        let title = TITLE.to_owned();
         ui.painter().text(
           band.center(),
           egui::Align2::CENTER_CENTER,
@@ -866,6 +953,9 @@ impl Shell {
     output.drawn.tool_columns = columns.to_vec();
     output.drawn.tool_preview_caption = caption;
     output.drawn.tool_computed = computed;
+    output.drawn.tool_tree_rows = tree_row_geometry;
+    output.drawn.tool_tree_scrollbar = tree_scrollbar;
+    output.drawn.tool_form_box_edges = form_box_edges;
     // `Export…` and `Import…` are answered by the host between two frames, so their write is reported here,
     // where a write the modal itself made this frame reports itself too.
     if output.drawn.tool_saved.is_empty() {
@@ -877,6 +967,18 @@ impl Shell {
     if let Some((rect, width)) = drawing {
       output.drawn.tool_drawing = Some(crate::chrome::rect_report(rect));
       output.drawn.tool_width_px = width;
+      for dimension in &preview_dimensions {
+        output.drawn.tool_preview_dimensions.push((
+          dimension.label.clone(),
+          crate::chrome::rect_report(dimension.line),
+          crate::chrome::rect_report(dimension.label_rect),
+        ));
+      }
+      output.drawn.tool_preview_body = preview_body
+        .iter()
+        .map(|rect| crate::chrome::rect_report(*rect))
+        .collect();
+      output.drawn.tool_preview_cone = preview_cone;
     }
     if cancel {
       self.close_tool_library();

@@ -686,6 +686,10 @@ pub fn factory_tools() -> Vec<StoredTool> {
         geometry.diameter = Some(Length::from_mm(1.0));
         geometry.shank_diameter = Some(Length::from_mm(3.175));
         geometry.num_flutes = Some(1);
+        // The reference states both of these for this tool, and the preview draws a dimension only when the
+        // record holds one — so the numbers are here because the frame shows `38` and `8`, not to fill a row.
+        geometry.flute_length = Some(Length::from_mm(8.0));
+        geometry.overall_length = Some(Length::from_mm(38.0));
       },
     ),
   ];

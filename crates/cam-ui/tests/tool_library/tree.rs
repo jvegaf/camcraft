@@ -241,8 +241,7 @@ fn a_row_the_scroll_area_hides_is_not_reported_as_pressable() {
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
   // More tools than the master column has room for: the ones below the fold are drawn by egui and clipped
-  // away, and reporting their centres would be a promise about a control nobody can see — the defect the T6
-  // review found in an invisible playback bar with live hit areas (L23).
+  // away, and reporting their centres would be a promise about a control nobody can see.
   shell.set_tools(
     (1..=24)
       .map(|index| flat_mill(&format!("G{index}"), Some(index), 6.0))
@@ -267,8 +266,6 @@ fn a_row_the_scroll_area_hides_is_not_reported_as_pressable() {
     pressable.len() < rows.len(),
     "every row is reported as pressable, so nothing was clipped: {pressable:?}"
   );
-  // What it reports is a prefix of the tree — the rows it drew inside the fold, in the tree's own order — and
-  // the last tool is not among them.
   assert_eq!(
     pressable,
     rows[..pressable.len()],
@@ -278,7 +275,10 @@ fn a_row_the_scroll_area_hides_is_not_reported_as_pressable() {
     !pressable.contains(&"T24 - Flat end mill (6mm)"),
     "a row below the fold was reported as pressable"
   );
-  // And the report is actionable: the last row it names really does select its tool.
+  assert!(
+    output.drawn.tool_tree_scrollbar,
+    "an overflowing tree must report a scrollbar"
+  );
   let last = *pressable.last().expect("some row is visible");
   let at = output
     .drawn
@@ -293,4 +293,71 @@ fn a_row_the_scroll_area_hides_is_not_reported_as_pressable() {
     "the last reported row did not select its tool: {:?}",
     shell.tool_library_selection()
   );
+}
+
+#[test]
+fn the_tree_rows_are_46_px_tall_with_non_intersecting_glyph_title_and_subtitle() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(1));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  assert!(
+    !opened.drawn.tool_tree_rows.is_empty(),
+    "the tree reported no row geometry: {:?}",
+    opened.drawn.tool_rows
+  );
+  for (index, (row, glyph, title, subtitle)) in opened.drawn.tool_tree_rows.iter().enumerate() {
+    let (rx, ry, _rw, rh) = *row;
+    let (gx, gy, gw, gh) = *glyph;
+    let (tx, ty, tw, th) = *title;
+    let (sx, sy, sw, sh) = *subtitle;
+    assert!(
+      (rh - 46.0).abs() < 0.5,
+      "row {index} height is {rh}, expected 46"
+    );
+    if index + 1 < opened.drawn.tool_tree_rows.len() {
+      let (nrx, nry, _, _) = opened.drawn.tool_tree_rows[index + 1].0;
+      if (nrx - rx).abs() < 0.5 {
+        let gap = nry - (ry + rh);
+        // Adjacent rows in the same group are 48 px apart (46 px row + 2 px gap).
+        if gap < 20.0 {
+          assert!(
+            (gap - 2.0).abs() < 0.5,
+            "row {index} gap to next is {gap}, expected 2"
+          );
+        }
+      }
+    }
+    assert!(
+      (gx - (rx + 6.0)).abs() < 0.5 && (gw - 24.0).abs() < 0.5 && (gh - 24.0).abs() < 0.5,
+      "row {index} glyph slot wrong: glyph={glyph:?} row={row:?}"
+    );
+    let glyph_cy = gy + gh / 2.0;
+    let row_cy = ry + rh / 2.0;
+    assert!(
+      (glyph_cy - row_cy).abs() < 1.0,
+      "row {index} glyph not vertically centred: glyph cy {glyph_cy} row cy {row_cy}"
+    );
+    assert!(
+      (tx - (rx + 34.0)).abs() < 0.5 && (ty - (ry + 6.0)).abs() < 0.5,
+      "row {index} title position wrong: title={title:?} row={row:?}"
+    );
+    assert!(
+      (sx - (rx + 34.0)).abs() < 0.5 && (sy - (ry + 24.0)).abs() < 0.5,
+      "row {index} subtitle position wrong: subtitle={subtitle:?} row={row:?}"
+    );
+    let title_r = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tw, th));
+    let sub_r = egui::Rect::from_min_size(egui::pos2(sx, sy), egui::vec2(sw, sh));
+    let glyph_r = egui::Rect::from_min_size(egui::pos2(gx, gy), egui::vec2(gw, gh));
+    assert!(
+      !title_r.intersects(sub_r),
+      "row {index} title and subtitle intersect: {title_r:?} vs {sub_r:?}"
+    );
+    assert!(
+      !glyph_r.intersects(title_r),
+      "row {index} glyph and title intersect: {glyph_r:?} vs {title_r:?}"
+    );
+  }
 }

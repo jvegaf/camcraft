@@ -50,7 +50,7 @@ used once, and this table is the whole set (Ø is the tool's diameter, `n` its f
 | T19 | Tapered ball · R0.25 · 3.6° per side | CornerRadius | 3.175 | 2 | tip radius 0.25 |
 | T20 | Tapered ball · R0.5 · 4.76° per side | CornerRadius | 6 | 2 | tip radius 0.5 |
 | T21 | Tapered ball · R0.75 · 6.42° per side | CornerRadius | 6 | 2 | tip radius 0.75 |
-| T22 | Flat end mill · 1 mm · 3.175 shank | FlatEndMill | 1 | 1 | shank 3.175 |
+| T22 | Flat end mill · 1 mm · 3.175 shank | FlatEndMill | 1 | 1 | shank 3.175, flute 8, overall 38 |
 
 The taper angle of `T19`–`T21` lives in the name only: the store's corner-radius shape has no taper field,
 and adding one is not this feature. Every tool is stored with its declared kind (S4 of the editor document),
@@ -109,6 +109,63 @@ first and snapshot second, so a failure mutates nothing and keeps the window ope
 shell and reads its report, as the editor document's S14 established. Heights and widths are read from the
 report's geometry, not from a captured image.
 
+**S11 — The tree's rows are two clean lines inside a panel.** One row is 46 px tall with a 2 px gap: a 24 px glyph
+slot 6 px in from the row's left edge and vertically centred, the title at `row.left + 34`, `row.top + 6`, and its
+`Ø6 · 2 cut(s)` subtitle at `row.top + 24`. The title's and subtitle's rectangles never intersect, and neither
+does the glyph's. The tree sits inside an inset card — rounded, `Role::Panel`, a hairline `Role::Border`, 4 px of
+padding — with a scrollbar when the list overflows. *(M15 follow-up: the first delivery painted the title and the
+subtitle on top of each other in a 29 px row with the glyph over the title, and drew no panel at all.)*
+
+**S12 — The form is one column of boxes.** `BOX_WIDTH` is 150 and every row's box shares its left and its right
+edge: right edge = the column body's right edge − `UNIT_SLOT`, left edge = that − `BOX_WIDTH`, the unit in the slot
+beside it. The value is right-aligned inside its box, while editing included, and a label ellipsizes rather than
+pushing the box. The `Type` row is one line, label left and combo right-aligned to the same column. The computed
+chipload is emphasis text in that column, with no box stroke and no warning colour: the reference draws a number,
+not a field.
+
+A kind whose geometry the reference describes with a tip width draws that row too: `Tip width` in `GEOMETRY`,
+in millimetres, after the included angle for a V-bit and after the diameter for an engraving cutter, reading
+`flat_diameter`. The reference's V-bit form asks `Diâmetro maior`, `Ângulo incluído`, `Largura da ponta`, and this
+build stored the third without ever drawing it.
+
+**S13 — The preview draws the tool the reference draws, with its four dimensions.** The card stays light and
+330 tall, with 16 px margins. Inside it, the tool is drawn as the reference draws it, from the top down:
+a **shank** (a solid body at a fixed 0.16 × the card's inner width, outlined in `#43474e`, filled
+`Role::PreviewTool`); below it a **cutting section** whose width is the shank's scaled by
+`diameter / shank_diameter` with a 6 px floor (equal to the shank when the record has no shank diameter), whose
+height follows the flute length (or 30 % of the drawn length when the record has none); and an **amber tip** on the
+last 6 px of the cutting section, as the reference paints the edge that cuts. The drawing leaves a gutter on its
+left and its right for dimensions and a strip under the tip.
+
+Four **dimensions**, every one of them a 1 px line in `Role::PreviewDimension` with an arrowhead at both ends and a
+rotated (−90°) label for the vertical ones:
+
+| dimension | where | label |
+| --- | --- | --- |
+| overall length | vertical, in the left gutter, spanning shank top to cutting bottom | the overall length in mm, bare |
+| flute length | vertical, in the right gutter, spanning the cutting section | the flute length in mm, bare, drawn only when the record has one |
+| cutting diameter | horizontal, just under the tip | `Ø<diameter>` |
+| shank diameter | horizontal, just above the shank's top | `Ø<shank>`, drawn only when the record has one |
+
+A dimension the record does not hold is not drawn — the rule this module has kept since M14. Nothing is painted
+outside the card, and the drawing keeps its proportions when the tool is 1 mm in a 3.175 mm shank (a narrow cutting
+section on a solid body), which is the case the first delivery got wrong by drawing a hairline.
+
+**A V-bit and a drill are drawn as their cone**, not as a second rectangle: the included angle decides it, so the
+section below the shank tapers from the shank's width to the tip's (`flat_diameter`, or a point when it is absent
+or zero) over a height that follows `half_width / tan(angle / 2)`, and the drawing carries the angle as a fifth
+dimension — `<degrees>°` beside the cone — because the angle is what makes the two kinds different from every other
+one. An engraving cutter keeps a flat tip and no angle, since its cone is not what the record stores.
+
+Every dimension's **label is offset 8 px from its own line**, perpendicular to it, and clamped inside the card: a
+label never sits on its line, on the tool's body, or on another label. That is the defect the first S13 render
+showed — the `Ø` labels lay along their own arrows — and it is asserted, not eyeballed: each reported label
+rectangle intersects neither its line, nor the body, nor the other labels.
+
+**S14 — The header and the footer are the reference's.** The title is `Choose tool` and nothing else; the chosen
+tool is in the name field below it. The footer row is `Cancel` first and the primary action rightmost — `Use this
+tool`, or the refusal sentence in its place.
+
 ## Delivery
 
 **The slice strategy for this branch, recorded before the third commit.** The work splits into the five rows
@@ -118,6 +175,12 @@ per-document resolver and its 650-line suite), `T3` (the import question), `T4` 
 record). Nothing is pushed and no pull request is opened until the owner asks for one: the branch is where the
 feature is reviewed, and the slice sizes are named here because two of them are measured in table rows and
 deleted lines rather than in design.
+
+The follow-up (T6-T14) is a second delivery of the same feature: looking at the render showed the geometry the
+tests pinned did not add up to the screen the reference draws, so the screen itself became the requirement. Three
+slices carry it — the render harness, the paint fixes, and this record — and the rows above name which. The
+first slice took a worker; T9, T12, T13 and T14 were done inline after two worker launches timed out without
+writing anything.
 
 Delivered as planned, with one extra commit: `49f99a7` (T1), `0b410ea` (T2), `a975f46` (the document and this
 strategy), `6c0a060` (T3), `4a78ec0` (T4), and the record commit that carries this table. 2411 authored changed
@@ -132,6 +195,14 @@ lines across the branch, 1679 tests green in the workspace.
 | T3 ✅ | Import asks replace or add; add skips duplicates by id, name or number | S5, S6 | worker (`cam-ui`) | `6c0a060` |
 | T4 ✅ | The reference's proportions and the light preview card | S7 | worker (`cam-ui`) | `4a78ec0` |
 | T5 ✅ | Close: roadmap M15 row and §4.18, the editor document's superseded note, README, whole suite | S10 | parent inline | the record commit |
+| T6 ✅ | An offscreen render of the modal, so the screen can be compared with the reference frame and not only measured | E3 | worker (`cam-ui`) | `b2fba96` |
+| T7 ✅ | Tree rows 46 px with a glyph slot and no overprinting; an inset panel with a scrollbar | S11 | worker (`cam-ui`) | the follow-up commit |
+| T8 ✅ | One column of 150 px boxes, values right-aligned, `Type` on one line, chipload as text | S12 | worker (`cam-ui`) | the follow-up commit |
+| T9 ✅ | The preview draws a solid shank, a proportional cutting section, an amber tip and four dimensions | S13 | parent inline | the follow-up commit |
+| T10 ✅ | Title `Choose tool`, footer `Cancel` before the primary | S14 | worker (`cam-ui`) | the follow-up commit |
+| T12 ✅ | `Tip width` — `flat_diameter` was stored and never drawn | S12 | parent inline | the follow-up commit |
+| T13 ✅ | A V-bit and a drill drawn as their cone, with the angle; no label on its own line | S13 | parent inline | the follow-up commit |
+| T14 ✅ | T22's flute and overall lengths, the numbers the reference states for it | S3 | parent inline | the follow-up commit |
 
 ## Log
 
@@ -168,4 +239,19 @@ round answered that by remembering the first frame's rectangles and resolving cl
 have shipped a control that answers where the dialog used to be; the third round reports the frame that was
 drawn and lets the test settle one frame before reading it. Two exploration subagents and one writer launch also
 timed out before this task began, which is why the evidence gathering for T2 was done inline.
+
+**L3** (user, verbatim, with two screenshots at `/home/th3g3ntl3man/Pictures/Screenshots/Screenshot_2026-11-10
+21-08-22.png` — the app as delivered — and `…21-16-43.png` — the reference frame): `todavia falta que lo arregles,
+aqui tienes las diferencias … asegurate mediante screenshots`.
+
+**E3** (evidence, and how it was checked). The two frames settled S11-S14: the delivered dialog painted the tree's
+title and subtitle into a 29 px row so they overprinted each other and the glyph landed on the title, had no panel
+or scrollbar, started every value box wherever its label ended, drew the 1 mm cutter in the preview as a hairline
+with its callouts at the card's bottom edge, repeated the tool's name in the title, put the `Type` combo on its own
+line, drew the computed chipload as an amber outlined box, and ordered the footer primary-before-`Cancel`.
+Verification is a **render**, not a report: `cargo test -p cam-ui --test ui_snapshot -- --ignored --nocapture`
+writes `target/ui-snapshots/tool-library-{t22,vbit,import-question}.png` at 1240×1000 through
+`egui_kittest`/wgpu, which is the same size the reference frame was captured at and the only way this work was
+compared to it. The report-driven tests still pin the geometry S10 asks for; the PNGs are how a person checks that
+the geometry adds up to the screen.
 

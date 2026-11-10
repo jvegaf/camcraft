@@ -154,6 +154,7 @@ impl ToolDraft {
       match field {
         ShapeField::Diameter => geometry.diameter = Some(Length::from_mm(number)),
         ShapeField::IncludedAngle => geometry.included_angle = Some(Angle::from_degrees(number)),
+        ShapeField::TipWidth => geometry.flat_diameter = Some(Length::from_mm(number)),
         ShapeField::CornerRadius => geometry.tip_radius = Some(Length::from_mm(number)),
         ShapeField::FluteLength => geometry.flute_length = Some(Length::from_mm(number)),
         ShapeField::ShankDiameter => geometry.shank_diameter = Some(Length::from_mm(number)),

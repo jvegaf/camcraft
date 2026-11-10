@@ -232,6 +232,20 @@ fn the_factory_catalogue_is_the_reference_table_in_order() {
     (22, "Flat end mill · 1 mm · 3.175 shank"),
   ];
   assert_eq!(tools.len(), 22, "the whole table, T1..T22");
+  // T22's two lengths are the reference's own numbers for that tool (`38` and `8` in the frame), and the preview
+  // refuses to draw a dimension the record does not hold — so their absence is a missing drawing, not a blank box.
+  let t22 = tools
+    .iter()
+    .find(|tool| tool.cutting.tool_number == Some(22))
+    .expect("T22 is the one the reference selects");
+  assert_eq!(
+    t22.geometry.flute_length.map(|length| length.mm()),
+    Some(8.0)
+  );
+  assert_eq!(
+    t22.geometry.overall_length.map(|length| length.mm()),
+    Some(38.0)
+  );
   let actual: Vec<(u32, &str)> = tools
     .iter()
     .map(|tool| {

@@ -123,13 +123,14 @@ fn the_geometry_rows_follow_the_kind_and_keep_s5s_order() {
     "a flat end mill drew a corner radius"
   );
 
-  // A V-bit: the angle sits where S5 puts it, second, and carries the tool's own number.
+  // A V-bit: the angle sits where S5 puts it, second, its tip width third, and both carry the tool's numbers.
   let (vbit, vbit_texts) = click_word(&ctx, &mut shell, &mut app, &flat, "T4 - V-bit (12.7mm)");
   assert_eq!(
     fields_of(&vbit, "GEOMETRY"),
     vec![
       "Diameter",
       "Included angle",
+      "Tip width",
       "Flute length",
       "Shank diameter",
       "Overall length",
@@ -137,6 +138,11 @@ fn the_geometry_rows_follow_the_kind_and_keep_s5s_order() {
     ]
   );
   assert_eq!(value_of(&vbit, "GEOMETRY", "Included angle"), "90");
+  assert_eq!(
+    value_of(&vbit, "GEOMETRY", "Tip width"),
+    "0.2",
+    "the V-bit's flat is stored and was never drawn before S12"
+  );
   assert_eq!(value_of(&vbit, "GEOMETRY", "Diameter"), "12.7");
   assert!(
     joined(&vbit_texts).contains("Included angle"),
@@ -278,6 +284,74 @@ fn the_tallest_form_fits_its_column_for_every_kind() {
       worst.is_none(),
       "the form for {title:?} does not fit the column (bottom {column_bottom}): {:?}",
       worst
+    );
+    frame = chosen;
+  }
+}
+
+#[test]
+fn every_form_row_of_every_kind_shares_one_box_column_and_type_is_one_line() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(2));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  let cases = [
+    "T1 - Flat end mill (6mm)",
+    "T2 - Ball nose (6mm)",
+    "T3 - Corner radius (12mm)",
+    "T4 - V-bit (12.7mm)",
+    "T5 - Engraving (3.175mm)",
+    "T6 - Drill (5mm)",
+  ];
+  let mut frame = opened;
+  for title in cases {
+    let (chosen, _) = click_word(&ctx, &mut shell, &mut app, &frame, title);
+    assert!(
+      !chosen.drawn.tool_form_box_edges.is_empty(),
+      "no form box edges reported for {title}"
+    );
+    let (left0, right0) = {
+      let e = &chosen.drawn.tool_form_box_edges[0];
+      (e.2, e.3)
+    };
+    for (group, label, left, right) in &chosen.drawn.tool_form_box_edges {
+      assert!(
+        (*left - left0).abs() < 0.5 && (*right - right0).abs() < 0.5,
+        "box column differs for {title} row {group}/{label}: ({left},{right}) vs ({left0},{right0})"
+      );
+      assert!(
+        (*right - *left - 150.0).abs() < 0.5,
+        "box width not 150 for {title} row {group}/{label}: {}",
+        *right - *left
+      );
+    }
+    assert!(
+      chosen
+        .drawn
+        .tool_form_box_edges
+        .iter()
+        .any(|(g, l, _, _)| g == "TYPE" && l == "Type"),
+      "Type row box edge not reported for {title}: {:?}",
+      chosen.drawn.tool_form_box_edges
+    );
+    // Chipload is emphasis text in the box column (reported as computed and as a form row/edge) with no warning colour.
+    assert!(
+      chosen
+        .drawn
+        .tool_computed
+        .iter()
+        .any(|(l, _)| l == "Chipload"),
+      "Chipload not reported as computed for {title}"
+    );
+    assert!(
+      chosen
+        .drawn
+        .tool_form_box_edges
+        .iter()
+        .any(|(_, l, _, _)| l == "Chipload"),
+      "Chipload box edge not reported for {title}"
     );
     frame = chosen;
   }

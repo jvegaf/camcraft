@@ -38,8 +38,9 @@ impl ToolFamily {
 
 /// One row of the `GEOMETRY` group.
 ///
-/// [S5] fixes the order and the membership: a diameter every tool has, the one shape number its kind
-/// needs, the flute length, the shank, the overall length and the cuts. A field a kind does not have is
+/// [S5] fixes the order and the membership: a diameter every tool has, the shape numbers its kind needs —
+/// one for most kinds, two for a V-bit (angle and tip width) and for a bull nose's radius — the flute length,
+/// the shank, the overall length and the cuts. A field a kind does not have is
 /// not drawn as a dash — it is not drawn at all, because a row saying `—` describes a shape the tool is
 /// not.
 ///
@@ -50,6 +51,8 @@ pub enum ShapeField {
   Diameter,
   /// A pointed tip's included angle: a V-bit's or a drill's.
   IncludedAngle,
+  /// The flat at the end of a cone: a V-bit's or an engraving cutter's.
+  TipWidth,
   /// A bull-nose's corner radius.
   CornerRadius,
   /// The usable length of the flutes.
@@ -66,8 +69,18 @@ impl ShapeField {
   /// The `GEOMETRY` rows one kind draws, in S5's order.
   pub fn of(kind: ToolKind) -> &'static [ShapeField] {
     match kind {
-      ToolKind::FlatEndMill | ToolKind::Engraving => &[
+      ToolKind::FlatEndMill => &[
         ShapeField::Diameter,
+        ShapeField::FluteLength,
+        ShapeField::ShankDiameter,
+        ShapeField::OverallLength,
+        ShapeField::Flutes,
+      ],
+      // An engraving cutter's cone ends flat, and the reference asks for that flat: the same row a V-bit has,
+      // in the place its own frame puts it — right under the diameter.
+      ToolKind::Engraving => &[
+        ShapeField::Diameter,
+        ShapeField::TipWidth,
         ShapeField::FluteLength,
         ShapeField::ShankDiameter,
         ShapeField::OverallLength,
@@ -88,7 +101,17 @@ impl ShapeField {
         ShapeField::OverallLength,
         ShapeField::Flutes,
       ],
-      ToolKind::VBit | ToolKind::Drill => &[
+      // A drill's tip is a point by definition, so it carries no tip width; a V-bit's does.
+      ToolKind::VBit => &[
+        ShapeField::Diameter,
+        ShapeField::IncludedAngle,
+        ShapeField::TipWidth,
+        ShapeField::FluteLength,
+        ShapeField::ShankDiameter,
+        ShapeField::OverallLength,
+        ShapeField::Flutes,
+      ],
+      ToolKind::Drill => &[
         ShapeField::Diameter,
         ShapeField::IncludedAngle,
         ShapeField::FluteLength,
@@ -104,6 +127,7 @@ impl ShapeField {
     match self {
       Self::Diameter => "Diameter",
       Self::IncludedAngle => "Included angle",
+      Self::TipWidth => "Tip width",
       Self::CornerRadius => "Corner radius",
       Self::FluteLength => "Flute length",
       Self::ShankDiameter => "Shank diameter",
@@ -116,6 +140,7 @@ impl ShapeField {
   pub fn unit(self) -> Option<&'static str> {
     match self {
       Self::Diameter
+      | Self::TipWidth
       | Self::FluteLength
       | Self::ShankDiameter
       | Self::OverallLength
@@ -141,6 +166,7 @@ impl ShapeField {
         }
       }),
       Self::CornerRadius => geometry.tip_radius.map(decimal),
+      Self::TipWidth => geometry.flat_diameter.map(decimal),
       Self::FluteLength => geometry.flute_length.map(decimal),
       Self::ShankDiameter => geometry.shank_diameter.map(decimal),
       Self::OverallLength => geometry.overall_length.map(decimal),

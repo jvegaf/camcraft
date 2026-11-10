@@ -1,5 +1,4 @@
 use cam_app::AppState;
-use cam_ui::tool_library::tool_title;
 use cam_ui::Shell;
 
 use super::support::*;
@@ -9,12 +8,11 @@ use super::support::*;
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_header_band_names_the_dialog_and_then_the_tool_the_tree_chose() {
+fn the_header_band_is_always_choose_tool() {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
-  // A library the toolpath's own number is not in: the tree selects nothing, so the band carries the
-  // dialog's title and nothing else.
+  // A library the toolpath's own number is not in: the tree selects nothing.
   shell.set_tools(vec![flat_mill("G1", Some(1), 6.0)]);
   let opened = open_library(&ctx, &mut shell, &mut app);
 
@@ -31,32 +29,36 @@ fn the_header_band_names_the_dialog_and_then_the_tool_the_tree_chose() {
     joined(&texts)
   );
 
-  // Once a row is chosen the title is the tool's own: a title one frame behind the form is a reporting
-  // defect, so the click's own frame carries the new sentence.
-  let (chosen, texts) = click_word(
-    &ctx,
-    &mut shell,
-    &mut app,
-    &opened,
-    "T1 - Flat end mill (6mm)",
-  );
-  assert_eq!(chosen.drawn.tool_selected.as_deref(), Some("G1"));
-  let title = chosen
+  // Once a row is chosen the title stays `Choose tool`: the chosen tool is already in the name field.
+  let (fresh, _) = frame_with(&ctx, &mut shell, &mut app);
+  let at = fresh
     .drawn
-    .tool_header
-    .clone()
-    .expect("an open modal always carries a title");
+    .tool_library_hits
+    .iter()
+    .find(|(word, _)| word == "T1 - Flat end mill (6mm)")
+    .map(|(_, point)| egui::pos2(point.0, point.1))
+    .expect("row hit");
+  click_at(&ctx, &mut shell, &mut app, at);
+  let (chosen, texts) = frame_with(&ctx, &mut shell, &mut app);
   assert_eq!(
-    title,
-    format!(
-      "Choose tool — {}",
-      tool_title(&flat_mill("G1", Some(1), 6.0))
-    ),
-    "the band does not name the tool the tree just chose"
+    chosen.drawn.tool_selected.as_deref(),
+    Some("G1"),
+    "row click did not select: hit={at:?} hits={:?}",
+    fresh.drawn.tool_library_hits
+  );
+  assert_eq!(
+    chosen.drawn.tool_header.as_deref(),
+    Some("Choose tool"),
+    "the band must be exactly `Choose tool` even with a tool selected"
   );
   assert!(
-    joined(&texts).contains(&title),
-    "the chosen tool's title was reported and never painted: {}",
+    joined(&texts).contains("Choose tool"),
+    "the title was reported and never painted: {}",
+    joined(&texts)
+  );
+  assert!(
+    !joined(&texts).contains("Choose tool —"),
+    "the header must not repeat the chosen tool's name: {}",
     joined(&texts)
   );
 }
