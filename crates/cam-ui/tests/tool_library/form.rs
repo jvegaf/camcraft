@@ -227,3 +227,58 @@ fn the_form_rows_of_a_record_are_the_kinds_rows_and_then_the_three_fixed_groups(
   );
   assert_eq!(rows[3].1, vec![FormField::ToolNumber]);
 }
+
+#[test]
+fn the_tallest_form_fits_its_column_for_every_kind() {
+  let ctx = egui::Context::default();
+  let mut app = AppState::new(document_with_toolpath(2));
+  let mut shell = Shell::new();
+  shell.set_tools(library());
+  let opened = open_library(&ctx, &mut shell, &mut app);
+
+  let cases = [
+    "T1 - Flat end mill (6mm)",
+    "T2 - Ball nose (6mm)",
+    "T3 - Corner radius (12mm)",
+    "T4 - V-bit (12.7mm)",
+    "T5 - Engraving (3.175mm)",
+    "T6 - Drill (5mm)",
+  ];
+  let mut frame = opened;
+  for title in cases {
+    let (chosen, _) = click_word(&ctx, &mut shell, &mut app, &frame, title);
+    let (_, runs) = frame_with_runs(&ctx, &mut shell, &mut app);
+    let drawing = chosen.drawn.tool_drawing.expect("the preview drew no card");
+    let column_top = drawing.1;
+    let column_bottom = column_top + 700.0;
+    let card_left = drawing.0;
+    let mut worst: Option<(String, f32)> = None;
+    for (group, fields) in &chosen.drawn.tool_groups {
+      for (label, value) in fields {
+        for needle in [label.as_str(), value.as_str()] {
+          if needle.is_empty() {
+            continue;
+          }
+          for (text, point, size) in &runs {
+            if text == needle && point.x > 300.0 && point.x < card_left {
+              let bottom = point.y + size.y;
+              if bottom > column_bottom + 0.5 {
+                let name = format!("{group}/{label}:{needle}");
+                match &worst {
+                  Some((_, b)) if *b >= bottom => {}
+                  _ => worst = Some((name, bottom)),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    assert!(
+      worst.is_none(),
+      "the form for {title:?} does not fit the column (bottom {column_bottom}): {:?}",
+      worst
+    );
+    frame = chosen;
+  }
+}

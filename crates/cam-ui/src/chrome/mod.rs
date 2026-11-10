@@ -42,9 +42,7 @@ mod palette;
 mod ribbon;
 mod status;
 
-pub(crate) use self::paint::{
-  chip, dimension_line, paint_segmented, rect_report, section, section_toggle,
-};
+pub(crate) use self::paint::{chip, paint_segmented, rect_report, section, section_toggle};
 pub use self::palette::palette_tooltip;
 pub(crate) use self::palette::trim_action;
 

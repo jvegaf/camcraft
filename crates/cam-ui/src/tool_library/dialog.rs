@@ -33,7 +33,7 @@ const MASTER_WIDTH: f32 = 300.0;
 const DETAIL_WIDTH: f32 = 424.0;
 
 /// How tall the master list is, so the modal does not grow and shrink with the tree.
-const COLUMN_HEIGHT: f32 = 372.0;
+const COLUMN_HEIGHT: f32 = 700.0;
 
 /// The header band's height: the title's own line plus the padding that keeps it off the edges.
 const HEADER_HEIGHT: f32 = 34.0;

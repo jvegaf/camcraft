@@ -39,7 +39,7 @@ fn the_preview_card_is_the_preview_column_drawn_to_one_shared_scale() {
   // The card is the preview column: as tall and as wide as the column it was given.
   assert_eq!(
     (small_card.2, small_card.3),
-    (columns[2], 172.0),
+    (columns[2], 330.0),
     "the preview card is not the preview column's own rectangle"
   );
 

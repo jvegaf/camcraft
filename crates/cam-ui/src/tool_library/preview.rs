@@ -26,7 +26,7 @@ const SPAN_MM: f32 = 40.0;
 pub(super) const PREVIEW_WIDTH: f32 = 200.0;
 
 /// The card's height: the drawing, its `Ø` dimension line and the room the label under it needs.
-pub(super) const PREVIEW_HEIGHT: f32 = 172.0;
+pub(super) const PREVIEW_HEIGHT: f32 = 330.0;
 
 /// Draw one tool inside its card and answer the width its cutting diameter was drawn at.
 ///
@@ -41,11 +41,13 @@ pub(super) fn paint_preview(
   callouts: &mut Vec<String>,
 ) -> f32 {
   let radius = egui::CornerRadius::same(6);
-  painter.rect_filled(rect, radius, palette.get(Role::Panel));
+  let card_border = egui::Color32::from_rgb(0xb9, 0xbc, 0xc0);
+  let tool_outline = egui::Color32::from_rgb(0x43, 0x47, 0x4e);
+  painter.rect_filled(rect, radius, palette.get(Role::PreviewCard));
   painter.rect_stroke(
     rect,
     radius,
-    egui::Stroke::new(metrics.hairline, palette.get(Role::Border)),
+    egui::Stroke::new(metrics.hairline, card_border),
     egui::StrokeKind::Inside,
   );
 
@@ -80,7 +82,8 @@ pub(super) fn paint_preview(
   };
   let shoulder = inner.bottom() - inner.height() * shaft_share;
 
-  let shank_stroke = egui::Stroke::new(1.0, palette.get(Role::TextDim));
+  let body = palette.get(Role::PreviewTool);
+  let outline = egui::Stroke::new(1.0, tool_outline);
   // The shank: filled, because the reference's card is a picture of a tool and a tool has a body.
   painter.rect_filled(
     egui::Rect::from_min_max(
@@ -88,21 +91,21 @@ pub(super) fn paint_preview(
       egui::pos2(centre + half, shoulder),
     ),
     0.0,
-    palette.get(Role::Raised),
+    body,
   );
   painter.line_segment(
     [
       egui::pos2(centre - half, inner.top()),
       egui::pos2(centre - half, shoulder),
     ],
-    shank_stroke,
+    outline,
   );
   painter.line_segment(
     [
       egui::pos2(centre + half, inner.top()),
       egui::pos2(centre + half, shoulder),
     ],
-    shank_stroke,
+    outline,
   );
 
   // The cutting end: the same tone as the shank with its flutes hatched across it, which is what makes the
@@ -111,8 +114,8 @@ pub(super) fn paint_preview(
     egui::pos2(centre - half, shoulder),
     egui::pos2(centre + half, inner.bottom()),
   );
-  painter.rect_filled(cutting, 0.0, palette.get(Role::Panel));
-  let hatch = egui::Stroke::new(0.8, palette.get(Role::TextDim));
+  painter.rect_filled(cutting, 0.0, body);
+  let hatch = egui::Stroke::new(0.8, tool_outline);
   let mut offset = 3.0;
   while offset < cutting.height() {
     let y = shoulder + offset;
@@ -122,7 +125,7 @@ pub(super) fn paint_preview(
     );
     offset += 4.0;
   }
-  let ink = egui::Stroke::new(1.6, palette.get(Role::TextHi));
+  let ink = egui::Stroke::new(1.6, tool_outline);
   painter.line_segment(
     [
       egui::pos2(centre - half, shoulder),
@@ -148,12 +151,13 @@ pub(super) fn paint_preview(
     ink,
   );
 
+  let dim = palette.get(Role::PreviewDimension);
   // The length, down the left side, when the record holds one.
   if let Some(overall) = geometry.overall_length {
     let label = decimal(overall);
-    crate::chrome::dimension_line(
+    preview_dimension_line(
       painter,
-      palette,
+      dim,
       egui::pos2(rect.left() + 16.0, inner.top()),
       egui::pos2(rect.left() + 16.0, inner.bottom()),
       &label,
@@ -166,9 +170,9 @@ pub(super) fn paint_preview(
   // The diameter, across the tip, which every tool has.
   let line_y = inner.bottom() + metrics.space(2);
   let label = format!("Ø{}", decimal(cam_units::Length::from_mm(diameter)));
-  crate::chrome::dimension_line(
+  preview_dimension_line(
     painter,
-    palette,
+    dim,
     egui::pos2(centre - half, line_y),
     egui::pos2(centre + half, line_y),
     &label,
@@ -191,6 +195,31 @@ pub(super) fn paint_preview(
   }
 
   width
+}
+
+/// One dimension line on the preview card: its two end ticks, the line between them, and its number.
+fn preview_dimension_line(
+  painter: &egui::Painter,
+  colour: egui::Color32,
+  from: egui::Pos2,
+  to: egui::Pos2,
+  label: &str,
+  label_offset: egui::Vec2,
+  align: egui::Align2,
+) {
+  let stroke = egui::Stroke::new(1.0, colour);
+  painter.line_segment([from, to], stroke);
+  let tick = (to - from).normalized().rot90() * 3.5;
+  painter.line_segment([from - tick, from + tick], stroke);
+  painter.line_segment([to - tick, to + tick], stroke);
+  let mid = from + (to - from) / 2.0 + label_offset;
+  painter.text(
+    mid,
+    align,
+    label,
+    egui::FontId::monospace(crate::theme::CAPTION),
+    colour,
+  );
 }
 
 /// The tip profile, on the bottom edge of the cutting portion.

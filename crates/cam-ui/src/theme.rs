@@ -123,6 +123,12 @@ pub enum Role {
   /// canvas behind it and the face it bounds. Only a value in a narrow band does both (see the ramp's
   /// values in `dark()` and `light()`), which is why this is a role and not a reuse.
   StockEdge,
+  /// The tool library's preview card: a light surface the tool is drawn on.
+  PreviewCard,
+  /// The tool body drawn inside the preview card.
+  PreviewTool,
+  /// Dimension lines and labels drawn over the preview card.
+  PreviewDimension,
 }
 
 impl Role {
@@ -132,7 +138,7 @@ impl Role {
   /// stock's ramp. A test that
   /// asserts "no widget paints a colour no role owns" needs the whole set, and a hand-written copy
   /// of it would grow a hole the day a role is added.
-  pub const ALL: [Role; 21] = [
+  pub const ALL: [Role; 24] = [
     Role::App,
     Role::Canvas,
     Role::Panel,
@@ -154,6 +160,9 @@ impl Role {
     Role::StockTop,
     Role::StockBottom,
     Role::StockEdge,
+    Role::PreviewCard,
+    Role::PreviewTool,
+    Role::PreviewDimension,
   ];
 }
 
@@ -181,6 +190,9 @@ pub struct Palette {
   stock_top: Color32,
   stock_bottom: Color32,
   stock_edge: Color32,
+  preview_card: Color32,
+  preview_tool: Color32,
+  preview_dimension: Color32,
 }
 
 impl Palette {
@@ -208,6 +220,9 @@ impl Palette {
       Role::StockTop => self.stock_top,
       Role::StockBottom => self.stock_bottom,
       Role::StockEdge => self.stock_edge,
+      Role::PreviewCard => self.preview_card,
+      Role::PreviewTool => self.preview_tool,
+      Role::PreviewDimension => self.preview_dimension,
     }
   }
 
@@ -265,6 +280,10 @@ impl Palette {
       // bounds. `#c6ae80` is the step that breaks it (2.96:1 off the face), and `#8b95a3`, the ink a
       // rapid travels in, is 1.87:1 away, so the picture's two kinds of line are not the same colour.
       stock_edge: Color32::from_rgb(0xdd, 0xc9, 0xa3),
+      // The tool library's preview: a light card the reference draws the same way in both themes.
+      preview_card: Color32::from_rgb(0xcc, 0xce, 0xd1),
+      preview_tool: Color32::from_rgb(0x8b, 0x8d, 0x90),
+      preview_dimension: Color32::from_rgb(0x4f, 0x7f, 0xe8),
     }
   }
 
@@ -316,6 +335,10 @@ impl Palette {
       // this set: that is the ink a rapid travels in, and two 1 px lines in the same picture must not be
       // the same colour, so this warm brown sits 1.45:1 below it.
       stock_edge: Color32::from_rgb(0x66, 0x4d, 0x2e),
+      // The tool library's preview: a light card the reference draws the same way in both themes.
+      preview_card: Color32::from_rgb(0xcc, 0xce, 0xd1),
+      preview_tool: Color32::from_rgb(0x8b, 0x8d, 0x90),
+      preview_dimension: Color32::from_rgb(0x4f, 0x7f, 0xe8),
     }
   }
 }
