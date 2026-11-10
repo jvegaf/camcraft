@@ -76,10 +76,10 @@ its report, not by pixels.
 | T2 | S1, S2, S4-S9, S12 | worker | done — `d04d8c6` (header, three columns, editor, preview, footer) |
 | T3 | S9, S6 | worker | done — `d04d8c6` (drafts, combo, validation, computed chipload) |
 | T4 | S1, S2, S14 | worker | done — `d04d8c6` (the suite rewritten as behaviour over the report) |
-| T5 | S11 | inline + worker | store half done — `c760cf8`; the file dialogs are in the last slice |
+| T5 | S11 | inline + worker | done — `c760cf8` (format), `ac09d07` (dialogs) |
 | T6 | S13, S14 | worker | done — `d04d8c6` (`default_tools()` retired, no fabricated library) |
-| T7 | S3, S10, S11 | worker | the library action rows and the import/export dialogs |
-| T8 | — | inline | docs, `odd/roadmap.md` row, full gate |
+| T7 | S3, S10, S11 | worker | done — `ac09d07` (three rows, four writers, two dialogs) |
+| T8 | — | inline | done — M14 row and §4.17 in `odd/roadmap.md`, gate green |
 
 ## Log
 
@@ -185,3 +185,14 @@ One line, now pinned by `editing::cancel_discards_the_draft_…`.
 The modal commit is far past the 400-line slice and cannot be cut smaller without a commit that does not
 compile: `form.rs` is a new file, and the unit correction surfaces through it. If the owner wants chained
 pull requests, the seams are exactly those five commits.
+
+**L10** — closed. `master` is untouched: everything lives on `feat/tool-library-editor`, six commits,
+`./scripts/check.sh` green. Two defects the suite found are recorded above because they were invisible from
+outside the window: `decimal` handed an `f64` where a `Length` was expected, and a seeding guard that never
+fired, which made `Use this tool` unreachable for every tool.
+
+One thing left as it is, deliberately: `write_tool_library` is a no-op when the shell holds no library path, so
+`library_action` would mutate the snapshot without writing if it were called directly. It is unreachable from
+the modal — the four writers are drawn disabled with a sentence in that state, which
+`with_no_library_file_the_four_writers_are_disabled_one_sentence_says_why` pins — and the guard belongs in the
+dialog rather than in a second place that could disagree with it.
