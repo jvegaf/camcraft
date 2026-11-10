@@ -4,8 +4,8 @@
 //! normalisation is what makes a tool feed differently in MDF and in hardwood. A *file* is a different
 //! question: `Export…` has to hand a person something they can keep, diff and mail, and `Import…` has to
 //! read one back. JSON, one tool per object, every length in millimetres with the unit in the field's own
-//! name (`diameter_mm`), and every rate in millimetres per minute — the unit a feed is quoted in, which is
-//! not the unit the store keeps (it stores millimetres per second and says so).
+//! name (`diameter_mm`), and every rate in millimetres per minute — which is the unit the store keeps too,
+//! so a file and a library agree about a feed without a conversion in between.
 //!
 //! Two rules this format keeps, both of them about not guessing:
 //!
@@ -175,8 +175,8 @@ fn entry_of(tool: &StoredTool) -> ToolEntry {
     tip_radius_mm: geometry.tip_radius.map(|value| value.mm()),
     shank_diameter_mm: geometry.shank_diameter.map(|value| value.mm()),
     overall_length_mm: geometry.overall_length.map(|value| value.mm()),
-    feed_mm_per_min: cutting.feed_rate.map(millimetres_per_minute),
-    plunge_mm_per_min: cutting.plunge_rate.map(millimetres_per_minute),
+    feed_mm_per_min: cutting.feed_rate,
+    plunge_mm_per_min: cutting.plunge_rate,
     spindle_rpm: cutting.spindle_speed,
     stepdown_mm: cutting.stepdown.map(|value| value.mm()),
     stepover_mm: cutting.stepover.map(|value| value.mm()),
@@ -186,9 +186,6 @@ fn entry_of(tool: &StoredTool) -> ToolEntry {
 
 /// The stored tool one file entry becomes.
 fn tool_of(entry: &ToolEntry, kind: ToolKind) -> StoredTool {
-  // The file's rates are millimetres per minute and the store's are millimetres per second; the library an
-  // import lands in is therefore a millimetre library, which is what the file declared.
-  let per_second = |rate: Option<f64>| rate.map(|value| value / 60.0);
   StoredTool {
     geometry: ToolGeometry {
       id: entry.id.clone(),
@@ -208,8 +205,8 @@ fn tool_of(entry: &ToolEntry, kind: ToolKind) -> StoredTool {
     cutting: CuttingData {
       id: format!("{}-cut", entry.id),
       rate_units: UnitSystem::Mm,
-      feed_rate: per_second(entry.feed_mm_per_min),
-      plunge_rate: per_second(entry.plunge_mm_per_min),
+      feed_rate: entry.feed_mm_per_min,
+      plunge_rate: entry.plunge_mm_per_min,
       spindle_speed: entry.spindle_rpm,
       stepdown: entry.stepdown_mm.map(Length::from_mm),
       stepover: entry.stepover_mm.map(Length::from_mm),
@@ -218,13 +215,4 @@ fn tool_of(entry: &ToolEntry, kind: ToolKind) -> StoredTool {
       notes: None,
     },
   }
-}
-
-/// A stored rate, which is always millimetres per second, in the file's own unit.
-///
-/// `rate_units` is deliberately not consulted: it says which unit the operator *typed* the number in, so
-/// that a box can show it back the way it was written, and it is not a second scale for the stored number.
-/// A file, unlike a form, has one unit per field and says it in the field's name.
-fn millimetres_per_minute(millimetres_per_second: f64) -> f64 {
-  millimetres_per_second * 60.0
 }

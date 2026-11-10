@@ -139,8 +139,8 @@ differently again on a light machine.
 - Display names come from `name_format` templates: `{Tool Type} ({Diameter|F}{Units Short})`. Both
   format spellings in use are supported: `F` (fewest decimals that keep the value
   readable) and a printf-style precision such as `.0`.
-- Stored lengths are millimetres and stored rates are millimetres per second; `units`/`rate_units`
-  record what the user authored in.
+- Stored lengths are millimetres and stored rates are millimetres per minute; `units`/`rate_units`
+  record what the user authored in, so a form can show a number back the way it was typed.
 
 ## Post-processor
 

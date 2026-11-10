@@ -301,11 +301,20 @@ pub struct ToolGeometry {
 pub struct CuttingData {
   /// Stable identifier.
   pub id: String,
-  /// Units the rates were authored in. Stored rates are millimetres per second.
+  /// Units the rates were authored in, so a form can show a number back the way it was typed.
+  ///
+  /// It is *not* a second scale for the stored number: stored rates are always millimetres per minute,
+  /// whatever this says. See [`CuttingData::feed_rate`].
   pub rate_units: UnitSystem,
-  /// Feed rate along the cut.
+  /// Feed rate along the cut, in millimetres per minute — the unit a feed is quoted in, and the unit the
+  /// program's `F` word carries.
+  ///
+  /// This was documented as millimetres per second, and that sentence was wrong: the emitter hands this
+  /// number straight to `F` (`cam-post`), the CLI's own goldens read `feed_rate: 100.0` as `F100.0`, and
+  /// the simulated cutting time divides a length by it expecting a per-minute rate. The two remaining
+  /// per-second spellings — this header and `cam_move::Segment` — were the outliers, not the rule.
   pub feed_rate: Option<f64>,
-  /// Plunge rate.
+  /// Plunge rate, in millimetres per minute.
   pub plunge_rate: Option<f64>,
   /// Spindle speed in rpm.
   pub spindle_speed: Option<u32>,

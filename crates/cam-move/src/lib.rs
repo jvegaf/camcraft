@@ -212,9 +212,9 @@ pub struct Segment {
   /// simulation needs the footprint a move sweeps, and taking it from the segment keeps the tool
   /// joined to the moves that use it (M5 S2). It was a bare diameter until M6 needed a V-bit's cone.
   pub tool: ToolShape,
-  /// Cutting feed rate in millimetres per second.
+  /// Cutting feed rate in millimetres per minute: the unit the program's `F` word carries.
   pub feed_rate: f64,
-  /// Plunge feed rate in millimetres per second.
+  /// Plunge feed rate in millimetres per minute.
   pub plunge_rate: f64,
   /// Spindle speed in rpm.
   pub spindle_speed: u32,

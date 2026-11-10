@@ -63,24 +63,24 @@ fn a_library_round_trips_through_a_file() {
 }
 
 #[test]
-fn the_file_writes_rates_in_the_unit_it_names_and_reads_them_back() {
+fn a_rate_crosses_the_file_without_a_conversion() {
   let text = to_json(&[inch_library_tool()]).expect("writes");
-  // The store keeps millimetres per second whatever unit the author typed, so 1 comes out as 60 mm/min and
-  // the field's own name says which unit that is.
+  // The library keeps millimetres per minute and so does the file, so the number crosses unchanged. The
+  // field's own name is what says which unit it is.
   assert!(
-    text.contains("\"feed_mm_per_min\": 60.0"),
-    "the exported feed is millimetres per minute: {text}"
+    text.contains("\"feed_mm_per_min\": 1.0"),
+    "the exported feed is the stored number: {text}"
   );
   let read = from_json(&text).expect("reads");
-  let feed = read[0].cutting.feed_rate.expect("feed");
-  assert!(
-    (feed - 1.0).abs() < 1e-9,
-    "60 mm/min comes back as the one millimetre per second the store keeps: {feed}"
+  assert_eq!(
+    read[0].cutting.feed_rate,
+    Some(1.0),
+    "a feed crosses a file as the same millimetres per minute the library keeps"
   );
   assert_eq!(
     read[0].cutting.rate_units,
     UnitSystem::Mm,
-    "a file is millimetres, so a library authored in inches reads back in millimetres"
+    "the authored unit is a display preference and not part of what a file stores"
   );
 }
 
