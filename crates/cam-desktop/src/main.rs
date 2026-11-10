@@ -65,12 +65,15 @@ impl Editor {
       // start state is the same on every launch, so the animation is as deterministic as the moves.
       preview.set_playing(true);
     }
-    // The tool library the inspector's tool card resolves a toolpath's number against. At launch it is empty
-    // on purpose: the sample document is not a file and names no library, so there is nothing to resolve and
-    // inventing one would make the card describe somebody's library instead of this job's. Once a document is
-    // opened, the **shell** fills this from that document's `tools_ref` — resolved against the document's own
-    // directory and contained to it — so the host never has to know the rule.
-    shell.set_tools(Vec::new());
+    // The tool library the inspector's tool card resolves a toolpath's number against, and the one the
+    // library modal lists, edits and writes. It belongs to the **application** and not to any drawing
+    // (tool-library-app S1): one file in the application's data directory, the same for every document this
+    // window opens. A fresh install gets the factory catalogue written there, so the modal is never born
+    // empty; a library a person emptied stays empty, because seeding is a first-launch answer and not a
+    // repair. Opening a document no longer touches it: a document's `tools_ref` is `cam-cli`'s to honour.
+    if let Err(sentence) = shell.open_app_library() {
+      shell.status = sentence;
+    }
     // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
     // outcome of the last command, and on a fresh window there is no command yet.
     shell.status.clear();

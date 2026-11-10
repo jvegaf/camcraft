@@ -1,9 +1,8 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2, Vec2};
 use cam_model::Job;
-use cam_store::tools::{StoredTool, ToolLibrary};
 use cam_units::Length;
 
 use crate::actions::{
@@ -84,30 +83,14 @@ impl Shell {
     // None of these three is in the undo history — the preview is a picture of a program, the tool
     // snapshot belongs to the drawing that was showing, and the drafts are numbers the dialog has not
     // written yet — so a bare swap would leave the 3D panel playing the old drawing's program and the
-    // dialog holding the old stock. The snapshot is not simply emptied: the opened document names the
-    // library it was written against, so that library is resolved from beside it (S2), and a library that
-    // is missing or unusable costs the drawing nothing (S4) — the open's sentence stays and says why the
-    // library could not be used. The view is handed back to the shell for the same reason: the new drawing
-    // is framed, because the old drawing's zoom was never a choice about this one.
-    let mut library_note: Option<String> = None;
+    // dialog holding the old stock. The snapshot of **tools** is deliberately not part of this: the tool
+    // library belongs to the application and not to any drawing (tool-library-app S1), so opening a
+    // document neither reads nor replaces it, and a document whose `tools_ref` names a library keeps that
+    // reference for `cam-cli` without this window honouring it. The view is handed back to the shell for
+    // the same reason: the new drawing is framed, because the old drawing's zoom was never a choice about
+    // this one.
     if applied.is_ok() && matches!(action, UiAction::OpenFile { .. }) {
       self.clear_preview();
-      let resolved = self.document_path.as_deref().and_then(|document_path| {
-        app
-          .document()
-          .tools_ref
-          .as_deref()
-          .map(|reference| tools_beside_document(document_path, reference))
-      });
-      match resolved {
-        Some(Ok((path, tools))) => self.set_tools_from(path, tools),
-        Some(Err(reason)) => {
-          self.set_tools(Vec::new());
-          library_note = Some(reason);
-        }
-        // No `tools_ref`: today's empty snapshot and today's sentence, unchanged (S2).
-        None => self.set_tools(Vec::new()),
-      }
       self.material_size = default_material_size();
       self.auto_frame = true;
     }
@@ -115,11 +98,6 @@ impl Shell {
       Ok(report) => report.message(),
       Err(message) => format!("refused: {message}"),
     };
-    // Added after the open's own sentence rather than folded into it, so a document with no `tools_ref`
-    // prints exactly what it printed before this resolution existed.
-    if let Some(note) = library_note {
-      self.status.push_str(&format!(" — {note}"));
-    }
   }
 
   /// The modal's `Import`: write the parse the modal reported into the document (shell-file-operations S3).
@@ -626,71 +604,4 @@ fn stock_for_drawing(document: &cam_model::Document) -> Job {
   job.width = Length::from_mm(bounds.width() + 2.0 * margin);
   job.height = Length::from_mm(bounds.height() + 2.0 * margin);
   job
-}
-
-/// The tools an opened document names, read from the directory that document was opened from.
-///
-/// `tools_ref` is relative to the document's own directory (`docs/format.md`), which is the whole of the
-/// rule the join below implements: an absolute reference, or one that leaves the directory through `..`,
-/// is **refused before the filesystem is touched**, because it is not a reference relative to that
-/// directory at all. This is the one place the window is stricter than `cam-cli` (S3, S7), and the reason
-/// is the write half of the same rule: a document names a file the window reads, so the window opens it
-/// with [`ToolLibrary::open_read_only`], which never creates a file, never creates its directory and never
-/// migrates — a hostile document therefore has nothing to point the window's writer at.
-///
-/// The rule is checked on the reference rather than decided by canonicalising both sides. `..` is refused
-/// by name wherever it appears, even in `sub/../tools.sqlite`, which would land back inside the
-/// directory: a canonicalised comparison needs both ends to exist, so it would turn "the library is
-/// missing" — the ordinary, soft failure S4 is about — into a containment verdict, and answering a
-/// question about the path would read the filesystem before the guard did. A path with a `..` in it is
-/// not a path relative to the document's directory, and refusing it costs the user one field.
-///
-/// A reference that stays inside the directory and names nothing is not a refused open: the drawing is
-/// the user's and the library is an accessory, so the answer is the empty snapshot plus the sentence that
-/// says which library could not be used and why (S4).
-///
-/// The answer carries the **path it read**, not only the rows: `Use this tool` writes a tool back to the
-/// library the document named ([`ToolLibrary::open`]), and the one place that resolves a library is the one
-/// place that knows which file it came from. Reading stays [`ToolLibrary::open_read_only`], so the window
-/// still never creates a library by looking at one.
-fn tools_beside_document(
-  document_path: &Path,
-  reference: &str,
-) -> Result<(PathBuf, Vec<StoredTool>), String> {
-  let named = Path::new(reference);
-  // Every component must be a plain name. Naming what is *allowed* rather than what is refused is what
-  // keeps this rule total: refusing `..` and anything `is_absolute()` missed the two Windows shapes that
-  // are neither — a root-relative `\drv\file` (a `RootDir` with no prefix) and a drive-relative
-  // `C:file` (a `Prefix` with no root) — and `join` resolves both outside the document's directory. A
-  // list of refusals is a list to forget something on; this one has nothing left to forget.
-  if named
-    .components()
-    .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
-  {
-    return Err(format!(
-      "the tool library {reference} could not be used: it is not inside the document's directory"
-    ));
-  }
-  let directory = document_path.parent().unwrap_or_else(|| Path::new("."));
-  let path = directory.join(named);
-  // Checked before the library is opened, because the sentence a missing library deserves is the one that
-  // names the reference the user wrote and the directory that holds no such file, rather than SQLite's
-  // description of a path it could not open (S4). The read-only open below creates nothing either way, so
-  // this is the message and not the write surface. `try_exists` rather than `exists` so a directory the
-  // process may not read is reported as the error it is instead of being told the file is missing.
-  let present = path
-    .try_exists()
-    .map_err(|error| format!("the tool library {reference} could not be used: {error}"))?;
-  if !present {
-    return Err(format!(
-      "the tool library {reference} could not be used: the document's directory holds no such file"
-    ));
-  }
-  // Read-only, so the window reads a library and can never write one — not even through a symlink beside
-  // the document that points at a file outside it (S3). A library this build cannot read without writing
-  // (a file that was never initialised, or one left at an older schema version) is refused with the
-  // store's own reason, and that refusal is soft (S4).
-  let library = ToolLibrary::open_read_only(&path).map_err(|error| error.to_string())?;
-  let tools = library.tools().map_err(|error| error.to_string())?;
-  Ok((path, tools))
 }

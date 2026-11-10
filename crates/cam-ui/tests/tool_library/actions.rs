@@ -87,18 +87,18 @@ fn the_master_column_ends_in_three_rows_of_library_actions() {
 }
 
 #[test]
-fn with_no_library_file_the_four_writers_are_disabled_and_one_sentence_says_why() {
+fn with_no_library_at_all_the_four_writers_are_disabled_and_one_sentence_says_why() {
   let scratch = Scratch::new("rows-no-library");
   let ctx = egui::Context::default();
-  // A real document that names no library: the window knows the directory the file would have to sit in,
-  // and no file to write. The rows are drawn — they are what teaches the operator the action exists — and
-  // four of them are dark.
+  // A window that was handed a snapshot and never opened a library: the application's library is the only one
+  // the six rows can write (tool-library-app S1), so a bare snapshot leaves them nothing to write through. The
+  // rows are drawn — they are what teaches the operator the action exists — and four of them are dark.
   let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
   // The snapshot still lists the six tools, so the tree has a selection: the reason the four are dark is the
-  // missing file and nothing else (S10).
+  // missing library and nothing else (S10).
   shell.set_tools(library());
   let opened = open_library(&ctx, &mut shell, &mut app);
 
@@ -121,14 +121,13 @@ fn with_no_library_file_the_four_writers_are_disabled_and_one_sentence_says_why(
     );
   }
 
-  // One dim sentence, under the rows, naming the directory the library would have to sit in and the file it
-  // would have to be.
-  let directory = scratch.path().display().to_string();
+  // One dim sentence, under the rows: the application's own words about a library it could not open. No
+  // directory is named, because no drawing owns the library any more, so there is no drawing's directory to name.
   let sentence = opened
     .drawn
     .tool_library
     .iter()
-    .find(|word| word.contains("tools.sqlite"))
+    .find(|word| word.contains("could not open its tool library"))
     .unwrap_or_else(|| {
       panic!(
         "nothing explains why the four rows are dark: {:?}",
@@ -136,10 +135,6 @@ fn with_no_library_file_the_four_writers_are_disabled_and_one_sentence_says_why(
       )
     })
     .clone();
-  assert!(
-    sentence.contains(&directory),
-    "the sentence does not name the document's directory ({directory}): {sentence:?}"
-  );
   let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
   assert!(
     joined(&texts).contains(&sentence),
@@ -166,11 +161,12 @@ fn new_appends_a_tool_with_the_lowest_free_number_and_writes_it() {
   let mut tools = library();
   tools.push(flat_mill("tool-1", Some(9), 3.0));
   let library_path = write_library(scratch.path(), "tools.sqlite", &tools);
-  let mut document = document_with_toolpath(1);
-  document.tools_ref = Some("tools.sqlite".to_owned());
-  let path = write_document(scratch.path(), "part.c2d", &document);
+  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
+  shell
+    .open_library_at(scratch.path())
+    .expect("the application's library opens");
   shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
   let opened = open_library(&ctx, &mut shell, &mut app);
   assert_eq!(opened.drawn.tool_selected.as_deref(), Some("G1"));

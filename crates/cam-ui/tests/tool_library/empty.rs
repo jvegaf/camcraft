@@ -28,8 +28,7 @@ fn an_empty_library_lists_nothing_and_says_so() {
   assert_eq!(output.drawn.tool_header.as_deref(), Some("Choose tool"));
 
   // And it says so, in the sentence it is given rather than in a blank column.
-  let sentence =
-    "The library this window was given holds no tool, so there is nothing to list or to use.";
+  let sentence = "The library holds no tool, so there is nothing to list or to use.";
   assert!(
     output
       .drawn

@@ -67,12 +67,13 @@ fn a_library_that_cannot_be_opened_is_a_sentence_that_writes_nothing() {
   let scratch = Scratch::new("unwritable");
   let ctx = egui::Context::default();
   let library_path = write_library(scratch.path(), "tools.sqlite", &library());
-  let mut document = document_with_toolpath(1);
-  document.tools_ref = Some("tools.sqlite".to_owned());
-  let path = write_document(scratch.path(), "part.c2d", &document);
+  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
 
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
+  shell
+    .open_library_at(scratch.path())
+    .expect("the application's library opens");
   shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
   let opened = open_library(&ctx, &mut shell, &mut app);
 

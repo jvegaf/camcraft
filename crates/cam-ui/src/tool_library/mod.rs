@@ -24,7 +24,7 @@
 //!    store would refuse with cannot drift apart. A draft belongs to the row it was seeded from, so leaving that
 //!    row discards it.
 //! 4. **`Use this tool` is drawn only when it can be honoured, and the reason is drawn when it cannot.** The
-//!    modal writes one tool and one number: the tool into the library file beside the document, and the number
+//!    modal writes one tool and one number: the tool into the **application's** library file, and the number
 //!    into the toolpath that opened the dialog (or into the strategy draft, when it was opened for one). A tool
 //!    the library gives no number, a toolpath that has left the document, an empty library and a draft whose
 //!    boxes do not describe a tool are all states in which that write has no meaning, so the button is replaced
@@ -33,11 +33,12 @@
 //!
 //! The master column ends in S3's three rows of library actions — `+ New`, `Duplicate`, `Delete`; `Export…`,
 //! `Import…`; `Restore defaults` — and they are the one place in this modal where a control is drawn while it
-//! cannot be honoured. S3 asks for the rows to exist and S10 asks them to be disabled when the window knows no
-//! library file, so the rule above is kept by the report and by one sentence rather than by absence: a dark row
-//! reports no point in [`crate::DrawnState::tool_library_hits`], and a sentence under the rows names the file it
-//! would take. `Export…` and `Import…` are never dark, because they need a file dialog and not a library, and
-//! their write happens when the dialog's path comes back as a [`crate::UiAction`].
+//! cannot be honoured. The library is the **application's** ([`library::app_data_dir`], tool-library-app S1), so
+//! the only state that darkens the four rows which write is a library the application could not open; the rule
+//! above is then kept by the report and by one sentence rather than by absence: a dark row reports no point in
+//! [`crate::DrawnState::tool_library_hits`], and the sentence under the rows is the failure's own words.
+//! `Export…` and `Import…` are never dark, because they need a file dialog and not a library, and their write
+//! happens when the dialog's path comes back as a [`crate::UiAction`].
 //!
 //! **Every library write is the file first and the window's snapshot second.** The two can then never disagree in
 //! the direction that matters — a library that refused a tool is never described by a tree that lists it — and a
@@ -55,6 +56,7 @@ mod dialog;
 mod draft;
 mod family;
 mod form;
+mod library;
 mod preview;
 mod shell;
 mod tree;
@@ -62,6 +64,7 @@ mod tree;
 pub use draft::ToolDraft;
 pub use family::{ShapeField, ToolFamily};
 pub use form::{form_rows, FormField, ToolFormGroup};
+pub use library::{app_data_dir, library_path_in, LIBRARY_FILE};
 pub use tree::{cut_line, tool_title};
 
 /// One group's rows for a tool, as `(label, text)` pairs.

@@ -223,22 +223,24 @@ pub(crate) fn write_library(directory: &Path, name: &str, tools: &[StoredTool]) 
   path
 }
 
-/// A document and the library beside it, opened the way an operator opens them.
+/// A document and the **application's** library, opened the way the window opens them.
 ///
-/// The write path is the *open handler's*: a library reaches the shell together with the path it was read from,
-/// and `set_tools_from` is the crate-private half of that one call, so the test opens a real `.c2d` that names a
-/// real `tools.sqlite` instead of handing the window a snapshot with no file behind it.
+/// The library is the application's and not the drawing's (tool-library-app S1): the test writes a real
+/// `tools.sqlite` into the scratch directory the window treats as its data directory, opens it through
+/// [`Shell::open_library_at`] — the same call the desktop host makes at launch — and only then opens a `.c2d`.
+/// The drawing names no library at all, and a drawing that did name one would change nothing here.
 pub(crate) fn opened_library_document(
   ctx: &egui::Context,
   scratch: &Scratch,
 ) -> (AppState, Shell, ShellOutput, PathBuf) {
   let library_path = write_library(scratch.path(), "tools.sqlite", &library());
-  let mut document = document_with_toolpath(1);
-  document.tools_ref = Some("tools.sqlite".to_owned());
-  let path = write_document(scratch.path(), "part.c2d", &document);
+  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
 
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
+  shell
+    .open_library_at(scratch.path())
+    .expect("the application's library opens");
   shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
   let opened = open_library(ctx, &mut shell, &mut app);
   (app, shell, opened, library_path)

@@ -11,8 +11,6 @@
 //! therefore has nothing to undo beyond the visit itself, and `Use this tool` is the only press in this modal
 //! that writes.
 
-use std::path::Path;
-
 use cam_app::AppState;
 use cam_store::tools::{StoredTool, ToolKind, ToolLibrary};
 use cam_units::UnitSystem;
@@ -23,6 +21,7 @@ use crate::{Shell, ShellOutput, UiAction};
 
 use super::draft::ToolDraft;
 use super::form::{form_rows, FormField};
+use super::library::NO_LIBRARY;
 use super::preview::{paint_preview, PREVIEW_HEIGHT, PREVIEW_WIDTH};
 use super::shell::ToolLibraryRequest;
 use super::tree::{row_matches, tool_title, tool_with, tree_rows, Row};
@@ -66,8 +65,7 @@ const FOOTER_NOTE: &str =
   "Changes apply to new toolpaths; each toolpath keeps its own copy of the tool.";
 const NO_TOOL: &str = "Choose a tool in the tree and the form will describe it.";
 const NO_MATCH: &str = "No tool matches that search.";
-const EMPTY_LIBRARY: &str =
-  "The library this window was given holds no tool, so there is nothing to list or to use.";
+const EMPTY_LIBRARY: &str = "The library holds no tool, so there is nothing to list or to use.";
 const NO_TARGET: &str =
   "This window was opened without a toolpath, so there is no toolpath for a choice to apply to.";
 
@@ -81,24 +79,6 @@ const DELETE: &str = "Delete";
 const EXPORT: &str = "Export…";
 const IMPORT: &str = "Import…";
 const RESTORE: &str = "Restore defaults";
-
-/// Why the four rows that write a library are dark when this window knows no library file (S3, S10).
-///
-/// The module's oldest rule is that a control which cannot do what it says is not pressable, and a dark row on
-/// its own is a mystery. The sentence therefore names the two things an operator needs to make the rows live:
-/// the directory the file would sit in — the drawing's own — and the file it would have to be.
-fn no_library_sentence(document_path: Option<&Path>) -> String {
-  match document_path.and_then(Path::parent) {
-    Some(directory) => format!(
-      "New, Duplicate, Delete and Restore defaults write the tool library beside this drawing, and {} holds \
-       no tools.sqlite to write.",
-      directory.display()
-    ),
-    None => "New, Duplicate, Delete and Restore defaults write the tool library beside this drawing, and this \
-             drawing has no file yet, so no directory holds a tools.sqlite to write."
-      .to_owned(),
-  }
-}
 
 /// A pressable thing the modal drew, with the rectangle it occupied and the area it was clipped to.
 ///
@@ -626,7 +606,14 @@ impl Shell {
                   }
                 }
                 if !writes {
-                  let sentence = no_library_sentence(self.document_path.as_deref());
+                  // The six rows write the application's own library (tool-library-app S1), so the only state
+                  // that darkens the four that write is a library the application could not open — and the
+                  // sentence is the failure's own, kept by `Shell::open_app_library`, rather than a guess
+                  // about where a file should have been.
+                  let sentence = self
+                    .tool_library_error
+                    .clone()
+                    .unwrap_or_else(|| NO_LIBRARY.to_owned());
                   ui.label(
                     RichText::new(&sentence)
                       .size(theme::CAPTION)

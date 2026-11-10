@@ -343,14 +343,19 @@ pub struct Shell {
   /// `Generate toolpath` is what writes it. The flag is what tells the two apart, and it is cleared whenever
   /// the modal closes.
   pub(crate) tool_library_for_draft: bool,
-  /// The library file this window reads and writes, when the document named one.
+  /// The library file this window reads and writes: the **application's** own, not a drawing's.
   ///
-  /// `None` while the snapshot came from a host ([`Shell::set_tools`]) rather than from a file beside an opened
-  /// document: a window that does not know where a library lives cannot write one, so `Use this tool` updates
-  /// the snapshot and says nothing about a file. An open that resolves a library fills it
-  /// ([`Shell::set_tools_from`]), and [`Shell::set_tools`] clears it, because a snapshot handed in has no file
-  /// behind it to write.
+  /// One file for the whole application ([`crate::tool_library::app_data_dir`]), the same for every document
+  /// the window opens and still there after the document is closed (tool-library-app S1). `None` while the
+  /// window has no library it may write: a host that hands in a bare snapshot ([`Shell::set_tools`]) leaves
+  /// nothing to write through, and an application whose library could not be opened leaves the six action rows
+  /// dark with the reason in [`Shell::tool_library_error`].
   pub(crate) tool_library_path: Option<PathBuf>,
+  /// Why the application's library could not be opened, while the modal goes on saying so.
+  ///
+  /// `None` while the library opened. The sentence is drawn inside the modal under the six action rows and not
+  /// in the status bar: those rows are what its failure disables, so the reason belongs beside them.
+  pub(crate) tool_library_error: Option<String>,
   /// Why the last `Use this tool` could not write the library, while the modal stays open.
   ///
   /// `None` while there is nothing to say. The sentence is drawn inside the modal instead of the status bar,
@@ -472,6 +477,7 @@ impl Default for Shell {
       tool_groups_closed: Vec::new(),
       tool_library_for_draft: false,
       tool_library_path: None,
+      tool_library_error: None,
       tool_error: None,
       tool_saved_pending: Vec::new(),
       selected_toolpath: None,
@@ -611,27 +617,45 @@ impl Shell {
     self.show_3d = false;
   }
 
+  /// The tools the application's library holds, as the window last read them.
+  ///
+  /// The snapshot itself, for a caller that reads the library rather than pressing in it: the current-tool card
+  /// resolves a toolpath's number against it, and a test reads what an opening left behind through it. It is
+  /// borrowed and not owned, because the one writer is [`Shell::open_library_at`] and the modal's own commit.
+  pub fn tools(&self) -> &[StoredTool] {
+    &self.tools
+  }
+
+  /// The file the window's library lives in, when it opened one.
+  ///
+  /// Read-only, and read by two kinds of caller only: the host that wants to say where the library is, and a
+  /// test proving that opening a drawing leaves the application's own file in place. Writing is not exposed,
+  /// because the one writer is [`Shell::open_library_at`] and the modal's own commit.
+  pub fn tool_library_path(&self) -> Option<&Path> {
+    self.tool_library_path.as_deref()
+  }
+
   /// Hand the shell the tool library as a snapshot, for the current-tool card to resolve numbers with.
   ///
-  /// A snapshot rather than a library because [`cam_store::tools::ToolLibrary`] owns a connection: the
-  /// host decides where the library comes from and when it is read, and the shell only resolves the
-  /// numbers the document's toolpaths name. An open is the one exception, and it is not a second rule:
-  /// it resolves the library the loaded document names from beside that document (shell-tools-ref S2)
-  /// and calls this with the entries. Replacing the snapshot replaces what the card can describe, and an
-  /// empty one is legal — it makes every number unresolved, which is the state the card says out loud
-  /// instead of drawing a blank tool.
+  /// A snapshot rather than a library because [`cam_store::tools::ToolLibrary`] owns a connection: the host
+  /// decides where the library comes from and when it is read, and the shell only resolves the numbers the
+  /// document's toolpaths name. [`Shell::open_library_at`] is the one caller that reads it from a file, and it
+  /// is not a second rule: it opens the **application's** library and calls this with the entries
+  /// (tool-library-app S1). Replacing the snapshot replaces what the card can describe, and an empty one is
+  /// legal — it makes every number unresolved, which is the state the card says out loud instead of drawing a
+  /// blank tool.
   pub fn set_tools(&mut self, tools: Vec<StoredTool>) {
     self.tools = tools;
-    // A snapshot handed in is not a file: the shell must not go on writing the library the previous drawing
-    // named, so the path goes with it (see [`Self::tool_library_path`]).
+    // A snapshot handed in is not a file: the shell must not go on writing a library it did not open, so the
+    // path goes with it (see [`Self::tool_library_path`]).
     self.tool_library_path = None;
   }
 
-  /// Hand the shell the library an opened document named, together with the file it was read from.
+  /// Hand the shell the library it opened, together with the file it was read from.
   ///
-  /// The same snapshot as [`Self::set_tools`] with the one difference a write needs: the path. It is
-  /// `pub(crate)` because only the open handler resolves a library from beside a document (shell-tools-ref S2),
-  /// and a host that hands in a library of its own has no file for this window to write.
+  /// The same snapshot as [`Self::set_tools`] with the one difference a write needs: the path.
+  /// `pub(crate)` because [`Shell::open_library_at`] is the only reader, so no host can point this window at a
+  /// library without going through the one function that opens and seeds it.
   pub(crate) fn set_tools_from(&mut self, path: PathBuf, tools: Vec<StoredTool>) {
     self.tools = tools;
     self.tool_library_path = Some(path);

@@ -911,7 +911,7 @@ fn a_refused_open_changes_nothing_and_says_why() {
 }
 
 #[test]
-fn opening_a_file_clears_the_preview_the_tool_snapshot_and_the_material_drafts() {
+fn opening_a_file_clears_the_preview_and_the_material_drafts_and_keeps_the_library() {
   let directory = scratch("open-stale");
   let path = write_c2d(&directory, "cut.c2d", &document_with_toolpath(2, 4));
   let mut app = AppState::new(document_with_toolpath(1, 4));
@@ -958,8 +958,8 @@ fn opening_a_file_clears_the_preview_the_tool_snapshot_and_the_material_drafts()
       .drawn
       .tool_card
       .iter()
-      .any(|line| line.contains("T4 is not in the tool library")),
-    "the tool snapshot belonged to the previous window: {:?}",
+      .any(|line| line.starts_with("T4 - ")),
+    "the tool library belongs to the application, so opening a drawing must not empty it: {:?}",
     output.drawn.tool_card
   );
   std::fs::remove_dir_all(&directory).ok();
