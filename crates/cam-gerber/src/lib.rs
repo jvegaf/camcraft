@@ -464,23 +464,117 @@ fn stroke_of(
   index: usize,
 ) -> Result<Region, GerberError> {
   let template = aperture.template.as_str();
-  if template != "C" {
-    return Err(GerberError::Unsupported {
+  match template {
+    "C" => {
+      let diameter = aperture
+        .parameters
+        .first()
+        .copied()
+        .ok_or_else(|| GerberError::Unsupported {
+          line: 0,
+          what: format!("command {index}: a draw with aperture {code} template C without a diameter"),
+        })?;
+      capsule(from, to, diameter, tolerance, index)
+    }
+    "R" => {
+      let size = |position: usize| -> Result<f64, GerberError> {
+        aperture
+          .parameters
+          .get(position)
+          .copied()
+          .ok_or_else(|| GerberError::Unsupported {
+            line: 0,
+            what: format!(
+              "command {index}: a draw with aperture {code} template R without width and height"
+            ),
+          })
+      };
+      swept_rectangle(from, to, size(0)?, size(1)?, tolerance, index)
+    }
+    other => Err(GerberError::Unsupported {
       line: 0,
       what: format!(
-        "command {index}: a draw with aperture {code} template {template} is not a stroke this reader builds"
+        "command {index}: a draw with aperture {code} template {other} is not a stroke this reader builds"
       ),
-    });
+    }),
   }
-  let diameter = aperture
-    .parameters
-    .first()
-    .copied()
-    .ok_or_else(|| GerberError::Unsupported {
+}
+
+/// The rectangle of `width` by `height` centred on `at`, as a region.
+fn rectangle_region(
+  at: Point2,
+  width: f64,
+  height: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  // primitive::rectangle takes the lower-left corner; a Gerber aperture is centred on the point.
+  let corner = Point2::new(at.x - width / 2.0, at.y - height / 2.0);
+  let contour =
+    primitive::rectangle(corner, width, height).map_err(|error| GerberError::Invalid {
       line: 0,
-      what: format!("command {index}: a draw with aperture {code} template C without a diameter"),
+      what: format!("command {index}: the body of a stroke is not a valid rectangle: {error}"),
     })?;
-  capsule(from, to, diameter, tolerance, index)
+  Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+    line: 0,
+    what: format!("command {index}: the body of a stroke is not a valid region: {error}"),
+  })
+}
+
+/// A rectangular aperture dragged from `from` to `to`.
+///
+/// That is the Minkowski sum of the aperture and the segment, which for a convex aperture is the
+/// aperture at both ends plus each of its four edges swept along the segment. Stating it as a
+/// union means no hull has to be computed and nothing is approximated; an edge parallel to the
+/// segment sweeps to nothing and is skipped.
+fn swept_rectangle(
+  from: Point2,
+  to: Point2,
+  width: f64,
+  height: f64,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let corners = |at: Point2| {
+    [
+      Point2::new(at.x - width / 2.0, at.y - height / 2.0),
+      Point2::new(at.x + width / 2.0, at.y - height / 2.0),
+      Point2::new(at.x + width / 2.0, at.y + height / 2.0),
+      Point2::new(at.x - width / 2.0, at.y + height / 2.0),
+    ]
+  };
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  let start = corners(from);
+  let end = corners(to);
+
+  let mut stroke = rectangle_region(from, width, height, index)?;
+  stroke = union_of(
+    stroke,
+    rectangle_region(to, width, height, index)?,
+    tolerance,
+    index,
+  )?;
+  for edge in 0..4 {
+    let next = (edge + 1) % 4;
+    let (ax, ay) = (start[edge].x, start[edge].y);
+    let (bx, by) = (start[next].x, start[next].y);
+    // An edge along the segment sweeps to a sliver of no material; adding it would only ask the
+    // arrangement to chain four collinear points.
+    if ((bx - ax) * dy - (by - ay) * dx).abs() <= tolerance {
+      continue;
+    }
+    let quad = vec![start[edge], start[next], end[next], end[edge]];
+    let contour = Contour::from_points(&quad, true).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a swept edge is not a valid contour: {error}"),
+    })?;
+    let swept = Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a swept edge is not a valid region: {error}"),
+    })?;
+    stroke = union_of(stroke, swept, tolerance, index)?;
+  }
+  Ok(stroke)
 }
 
 /// The aperture of diameter `d` swept from `from` to `to`.

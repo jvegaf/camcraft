@@ -756,20 +756,114 @@ fn a_clear_draw_cuts_a_track_out_of_a_dark_region() {
   );
 }
 
+/// How many distinct directions a shape's straight sides point in.
+fn line_directions(image: &cam_geom::region::Region) -> usize {
+  let mut directions: Vec<(i64, i64)> = image
+    .boundaries
+    .iter()
+    .flat_map(|contour| contour.segments())
+    .filter(|segment| matches!(segment, cam_geom::Segment::Line(_)))
+    .map(|segment| (segment.start_point(), segment.end_point()))
+    .filter_map(|(start, end)| {
+      let (dx, dy) = (end.x - start.x, end.y - start.y);
+      let length = (dx * dx + dy * dy).sqrt();
+      if length <= 0.0 {
+        return None;
+      }
+      let unit = (
+        (dx / length * 1.0e6).round() as i64,
+        (dy / length * 1.0e6).round() as i64,
+      );
+      // An edge and its reverse are one direction.
+      Some(if unit < (0, 0) {
+        (-unit.0, -unit.1)
+      } else {
+        unit
+      })
+    })
+    .collect();
+  directions.sort_unstable();
+  directions.dedup();
+  directions.len()
+}
+
+/// The box a shape's straight sides span, in micrometres.
+fn line_bounds(image: &cam_geom::region::Region) -> (i64, i64, i64, i64) {
+  let ends = line_ends(image);
+  ends.iter().fold(
+    (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
+    |(min_x, min_y, max_x, max_y), (x, y)| {
+      (min_x.min(*x), min_y.min(*y), max_x.max(*x), max_y.max(*y))
+    },
+  )
+}
+
 #[test]
-fn a_rectangular_aperture_draw_is_refused_naming_the_aperture() {
-  // S6: a rectangular aperture sweeps into a Minkowski sum, which is a different shape. Refusing
-  // it by name beats reusing the circular path and calling the result a track.
-  let error = parse(
+fn a_rectangular_draw_sweeps_the_aperture_into_a_rectangle() {
+  // S6: 2 by 4 from (0,0) to (10,0) is the Minkowski sum of the aperture and the segment: the
+  // aperture at each end plus the swept sides, which here is the 12 by 4 rectangle. No arcs.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10R,2.0X4.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert!(
+    caps(&image).is_empty(),
+    "a rectangular sweep has straight sides only"
+  );
+  // The arrangement splits a side wherever a seam lands on it, so assert the shape, not the pieces.
+  assert_eq!(
+    line_bounds(&image),
+    (-1_000_000, -2_000_000, 11_000_000, 2_000_000),
+    "two wide plus ten long, four tall, centred on the segment"
+  );
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "one rectangle, however it is cut"
+  );
+}
+
+#[test]
+fn a_rectangular_draw_at_an_angle_is_a_hexagon_not_a_rotated_rectangle() {
+  // The same aperture swept at an angle cannot be a rotated rectangle: the sum is a hexagon.
+  // Asserting only the bounds would pass for a rotated rectangle too, so the corner count is
+  // what tells them apart.
+  let gerber = parse(
     "%FSLAX36Y36*%\n%MOMM*%\n%ADD10R,2.0X2.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX006000000Y008000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert!(caps(&image).is_empty(), "no arcs: this is a polygon");
+  assert_eq!(
+    line_bounds(&image),
+    (-1_000_000, -1_000_000, 7_000_000, 9_000_000)
+  );
+  // A rectangle has two side directions; a hexagon has three. Bounds alone would pass for a
+  // rotated rectangle, so this is what tells them apart.
+  let directions = line_directions(&image);
+  assert!(
+    directions >= 3,
+    "a swept square is a hexagon, so its sides point three ways, got {directions}"
+  );
+}
+
+#[test]
+fn an_obround_aperture_draw_is_refused_naming_the_template() {
+  // S6: an O aperture is a capsule already, so sweeping it is a different construction. Refusing
+  // it by name beats pretending the rectangular path covers it.
+  let error = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X4.0*%\nD10*\n\
      X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
   )
   .expect("fixture parses")
   .image(TOLERANCE)
-  .expect_err("a rectangular stroke is not built yet");
+  .expect_err("an obround stroke is not built yet");
   let text = format!("{error}");
   assert!(
-    text.contains("command") && text.contains("template R"),
-    "the refusal names the command and the template: {text}"
+    text.contains("template O"),
+    "the refusal names the template: {text}"
   );
 }

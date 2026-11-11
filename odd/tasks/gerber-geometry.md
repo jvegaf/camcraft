@@ -56,8 +56,8 @@ region puede tener varios contornos, y cada `D02` cierra el que venia. Hoy se re
 | T2 | Un bloque `G36`/`G37` se convierte en un `Region` (lineas y arcos, cerrado) y el acumulador aplica `dark`/`clear` via `combine`; `Flash` y trazo se rechazan por nombre | S1, S2, S3, S4 | delegated | — |
 | T3 | `Flash` de apertura `C` (circulo) y `R` (rectangulo) entra al mismo acumulador | S3 | delegated | — |
 | T4 | G1.1 corregida en `docs/GAPS_CAMCRAFT.md` | S5 | inline | — |
-| T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | delegated | — |
-| T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | delegated | — |
+| T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | inline | `71f7883` |
+| T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | inline | L9 |
 | T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | delegated | — |
 
 **Fuera de alcance, declarado:** los `D01` con apertura (trazo = barrido de la
@@ -191,3 +191,32 @@ antes de entender: la lista de lentes va en el orden canonico (`risk, resilience
 reliability`), y pasar `risk, reliability, readability` se rechaza. Se arranco con la lente de riesgo sola
 —riesgo cubre de verdad lo que se toco: entrada no confiable y algebra de conjuntos— en vez de quemar otra
 autoridad adivinando. Es un defecto de herramienta, no del codigo, y queda anotado como tal.
+
+**L9** (T5 y T6 entregados inline, y por que): los dos se delegaron primero y el worker se colgo **dos veces
+seguidas** en T5 —`stalled for 4 min after: generating tool arguments`, cero turnos, cero llamadas— asi
+que los dos se hicieron inline. La causa de fondo: T5 y T6 son **una** unidad de comportamiento cada uno, y
+el escalon de delegacion nunca los pidio; se estaban delegando solo por el backstop de contexto, y esa ruta
+costo ocho minutos para nada.
+
+**T5.** Una apertura circular barrida es la capsula: el rectangulo del ancho de la apertura sobre el
+segmento mas un disco en cada punta. Se arma con `combine`, no a mano, para que la orientacion la decida el
+kernel. Un segmento demasiado corto para tener cuerpo es un punto y el trazo es el disco solo. Area
+`largo*d + pi*(d/2)^2`, y el test la afirma indirectamente: los extremos de las rectas en micrometros y el
+giro total de los casquetes. **El test diagonal se gana el sueldo**: mutando el cuerpo a alineado con los
+ejes muere solo ese test, que es exactamente lo que existe para cazar.
+
+**T6.** Una apertura rectangular barrida es la suma de Minkowski del rectangulo con el segmento, y no hace
+falta calcular una envolvente convexa: para una apertura convexa la suma es la apertura en cada punta mas
+sus cuatro lados barridos, y esa union la hace el kernel. Una arista paralela al segmento barre a nada y se
+saltea, porque agregarla solo le pediria al arrangement encadenar cuatro puntos colineales. Probado por
+mutacion: sin las aristas barridas mueren los dos tests rectangulares.
+
+**Tres veces el mismo error mio, y ya es un patron.** En T2 afirme `is_ccw()` sobre un arco que el contorno
+habia dado vuelta al canonicalizar; en T5 afirme "exactamente dos arcos" sobre una capsula que el
+arrangement parte en cuatro en la costura; en T6 afirme las cuatro esquinas exactas de un rectangulo cuyo
+borde el arrangement parte en dos por lado. La regla que sale de las tres: **el arrangement tiene permitido
+partir una curva sin cambiar la forma, asi que un test afirma la forma** —bounds, giro total, cantidad de
+direcciones de lado— **y nunca la cantidad de piezas en que quedo cortada.** Para el hexagono de T6 el
+discriminador es que un rectangulo tiene dos direcciones de lado y un hexagono tres.
+
+**Estado:** workspace en **1299 passed, 0 failed, 3 ignored**.
