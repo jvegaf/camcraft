@@ -244,7 +244,7 @@ fn toolpath_section(document: &Document) -> Vec<String> {
     let mut rows = vec![
       (
         "operation",
-        escape_html(&crate::operation_label(&toolpath.operation)),
+        escape_html(crate::operation_label(&toolpath.operation)),
       ),
       ("tool", format!("T{}", toolpath.tool_number)),
       ("entities", id_list(&toolpath.entity_ids)),

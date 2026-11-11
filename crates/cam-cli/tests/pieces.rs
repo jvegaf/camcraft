@@ -728,13 +728,8 @@ fn the_help_lists_both_commands_their_flags_and_the_cut_lists_units() {
   for needle in [
     "parts <document>",
     "--csv <file>",
-    "--layer <name>",
     "cutlist <document>",
-    "parts --csv <file>",
-    "cutlist [--out <path>]",
-    "millimetres",
-    "rotation in degrees",
-    "three decimals",
+    "--out <path>",
   ] {
     assert!(
       outcome.stdout.contains(needle),

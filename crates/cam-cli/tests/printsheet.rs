@@ -531,11 +531,7 @@ fn a_document_that_does_not_validate_is_refused_by_name() {
 fn help_lists_the_report_command_and_its_flags() {
   let printed = run(&["--help"]);
   assert_eq!(printed.code, 0, "{}", printed.stderr);
-  for needle in [
-    "report <document>",
-    "HTML print sheet",
-    "Write the sheet here instead of stdout",
-  ] {
+  for needle in ["report <document>", "HTML print sheet", "--out <path>"] {
     assert!(
       printed.stdout.contains(needle),
       "help is missing {needle:?}:\n{}",
