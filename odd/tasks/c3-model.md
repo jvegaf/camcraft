@@ -151,3 +151,16 @@ vocabularios con una frontera.
 **Consecuencia para planificar:** el techo ronda las 5.000 lineas y este proyecto produce cambios de ese
 tamano por naturaleza. M4, C4 y C5 van a chocar igual, asi que conviene plantear cada tarea en cortes de
 ~2.000 lineas desde el principio en vez de descubrirlo al final.
+
+**L10** (provider, evidencia — S1 aprobado, y dos cosas operativas que cuestan tiempo si se redescubren):
+`81ce8e7` (cam-ops, 141 lineas) cerro **approved** con los cuatro lentes y **sin un solo hallazgo**;
+lineage `review-1a4ea5cb2a426e2f`, acknowledgement quemado.
+
+1. **Para revisar un commit del medio de la cadena hay que pararse en el.** La proyeccion calcula
+   `base → HEAD`, no `base → commit`, asi que con el arbol en `dev` cualquier `baseRef` arrastraba las
+   5.468 lineas de M2 y rebotaba. Se resolvio con `git switch --detach 81ce8e7`, revisar, y volver.
+2. **El tier `high` de S1 lo disparo otra vez la senal `process_boundary` sobre `crates/cam-ops/src/lib.rs`**,
+   que son catorce lineas de declaraciones de modulo y re-exports: sin proceso, sin shell, sin `std::fs`,
+   sin `std::env`. Es la cuarta vez en el proyecto. Consecuencia practica: un movimiento de siete tipos
+   costo cuatro corridas de modelo. La senal es del proveedor y no se discute, pero conviene tenerla
+   presente al estimar el costo de revisar cambios chicos en `cam-ops`.
