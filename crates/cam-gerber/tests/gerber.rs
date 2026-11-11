@@ -301,3 +301,200 @@ fn a_file_that_ends_inside_an_extended_block_is_refused() {
   assert!(matches!(error, GerberError::Invalid { .. }), "{error:?}");
   assert!(error.to_string().contains("never closed"), "{error}");
 }
+
+const TOLERANCE: f64 = 1.0e-6;
+
+#[test]
+fn a_region_square_becomes_one_closed_boundary_of_four_lines_with_expected_bounds() {
+  // A G36/G37 square drawn as four D01 lines is one boundary, closed, and line-only.
+  // FSLAX36Y36 => 3 integer and 6 decimal digits, so 10.0 mm is 010000000.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG36*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\n\
+     G37*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one boundary");
+  let boundary = &image.boundaries[0];
+  assert!(boundary.is_closed(), "the boundary is closed");
+  let segments = boundary.segments();
+  assert_eq!(segments.len(), 4, "four segments");
+  assert!(
+    segments
+      .iter()
+      .all(|segment| matches!(segment, cam_geom::Segment::Line(_))),
+    "every segment is a line: {segments:?}"
+  );
+  let bounds = boundary.bounds();
+  assert!((bounds.min.x - 0.0).abs() < 1.0e-9, "min x {:?}", bounds);
+  assert!((bounds.min.y - 0.0).abs() < 1.0e-9, "min y {:?}", bounds);
+  assert!((bounds.max.x - 10.0).abs() < 1.0e-9, "max x {:?}", bounds);
+  assert!((bounds.max.y - 10.0).abs() < 1.0e-9, "max y {:?}", bounds);
+}
+
+#[test]
+fn a_dark_square_minus_a_smaller_clear_square_yields_outer_and_inner_hole_boundaries() {
+  // Polarity is applied at RegionEnd: dark unions material, clear subtracts it, leaving a hole.
+  // FSLAX36Y36 => 3 integer and 6 decimal digits.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     %LPD*%\nX000000000Y000000000D02*\nG36*\n\
+     X020000000Y000000000D01*\nX020000000Y020000000D01*\n\
+     X000000000Y020000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     %LPC*%\nX005000000Y005000000D02*\nG36*\n\
+     X015000000Y005000000D01*\nX015000000Y015000000D01*\n\
+     X005000000Y015000000D01*\nX005000000Y005000000D01*\nG37*\n\
+     M02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    2,
+    "the outer boundary plus the inner hole: {:?}",
+    image.boundaries
+  );
+  let outer = image
+    .boundaries
+    .iter()
+    .find(|boundary| (boundary.bounds().max.x - 20.0).abs() < 1.0e-9)
+    .expect("outer boundary present");
+  let hole = image
+    .boundaries
+    .iter()
+    .find(|boundary| (boundary.bounds().max.x - 15.0).abs() < 1.0e-9)
+    .expect("inner hole boundary present");
+  let hole_bounds = hole.bounds();
+  assert!((hole_bounds.min.x - 5.0).abs() < 1.0e-9, "hole min x");
+  assert!((hole_bounds.min.y - 5.0).abs() < 1.0e-9, "hole min y");
+  assert!((hole_bounds.max.y - 15.0).abs() < 1.0e-9, "hole max y");
+  assert!(
+    !image.contains(cam_geom::Point2::new(10.0, 10.0), TOLERANCE),
+    "the centre of the clear window is not material"
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(2.0, 10.0), TOLERANCE),
+    "a point inside the outer ring is material"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(25.0, 10.0), TOLERANCE),
+    "outside the outer boundary is not material"
+  );
+  let _ = outer;
+}
+
+#[test]
+fn a_region_arc_is_kept_as_a_segment_arc_not_flattened() {
+  // S4: an arc of Gerber enters the region as an arc, never sampled into lines.
+  // A quarter circle: centre (0,0), radius 10, from (10,0) to (0,10) counter-clockwise (G03).
+  // I,J are offsets from start to centre: (-10, 0). FSLAX36Y36 => 10.0 mm is 010000000.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     X010000000Y000000000D02*\nG36*\n\
+     G03*\nX000000000Y010000000I-010000000J000000000D01*\n\
+     G01*\nX000000000Y000000000D01*\nX010000000Y000000000D01*\n\
+     G37*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1);
+  let segments = image.boundaries[0].segments();
+  let arcs: Vec<_> = segments
+    .iter()
+    .filter_map(|segment| match segment {
+      cam_geom::Segment::Arc(arc) => Some(*arc),
+      _ => None,
+    })
+    .collect();
+  assert_eq!(
+    arcs.len(),
+    1,
+    "exactly one arc segment survives: {segments:?}"
+  );
+  let arc = arcs[0];
+  assert!(
+    (arc.radius() - 10.0).abs() < 1.0e-6,
+    "radius {:?}",
+    arc.radius()
+  );
+  assert!(
+    (arc.sweep().abs() - std::f64::consts::FRAC_PI_2).abs() < 1.0e-6,
+    "quarter-turn sweep {:?}",
+    arc.sweep()
+  );
+  assert!(
+    arc.is_ccw(),
+    "counter-clockwise arc, got sweep {:?}",
+    arc.sweep()
+  );
+}
+
+#[test]
+fn a_multi_quadrant_arc_sweeps_the_long_way_round() {
+  // The dialect is G75 multi-quadrant: the arc travels in the commanded direction,
+  // so it may sweep more than half a turn. Centre (0,0), radius 10, from (0,10)
+  // clockwise to (-10,0) covers 270 degrees. A reader that took the shorter way
+  // between the same endpoints would produce 90 and still look plausible.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     X000000000Y010000000D02*\nG36*\n\
+     G02*\nX-010000000Y000000000I000000000J-010000000D01*\n\
+     G01*\nX000000000Y000000000D01*\nX000000000Y010000000D01*\n\
+     G37*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  let segments = image.boundaries[0].segments();
+  let arcs: Vec<_> = segments
+    .iter()
+    .filter_map(|segment| match segment {
+      cam_geom::Segment::Arc(arc) => Some(*arc),
+      _ => None,
+    })
+    .collect();
+  assert_eq!(arcs.len(), 1, "one arc segment: {segments:?}");
+  let arc = arcs[0];
+  let three_quarters = 3.0 * std::f64::consts::FRAC_PI_2;
+  assert!(
+    (arc.sweep().abs() - three_quarters).abs() < 1.0e-6,
+    "a 270 degree sweep, not the 90 degree shortcut: {:?}",
+    arc.sweep()
+  );
+  // The contour is canonicalised to a counter-clockwise outer boundary, so the stored arc
+  // runs the other way round: assert the curve, not the direction flag. A 90 degree
+  // shortcut would keep the same endpoints and put the midpoint on the opposite side.
+  let midpoint = arc.point_at_fraction(0.5);
+  let diagonal = 10.0 / std::f64::consts::SQRT_2;
+  assert!(
+    (midpoint.x - diagonal).abs() < 1.0e-6 && (midpoint.y + diagonal).abs() < 1.0e-6,
+    "the arc rounds the far side through (7.07, -7.07), not the near side: {midpoint:?}"
+  );
+}
+
+#[test]
+fn a_flash_is_refused_naming_the_command_index_and_the_aperture_code() {
+  // A flash cannot be built by this pass: refuse it by name, with its command index and aperture.
+  // Command stream: [SelectAperture(10)=0, Flash=1] (no polarity stated, no move needed here).
+  let gerber = parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\nX000000Y000000D03*\nM02*\n")
+    .expect("fixture parses");
+  let error = gerber
+    .image(TOLERANCE)
+    .expect_err("a flash is not supported");
+  assert!(
+    matches!(error, GerberError::Unsupported { line: 0, .. }),
+    "refused as unsupported at line 0: {error:?}"
+  );
+  let message = error.to_string();
+  assert!(
+    message.contains("command 1"),
+    "names the command index: {message}"
+  );
+  assert!(
+    message.contains("aperture 10"),
+    "names the aperture code: {message}"
+  );
+  assert!(message.contains("flash"), "names the flash: {message}");
+}

@@ -93,3 +93,42 @@ que valia la pena: el fixture que escribi para el test de polaridad clara traia
 `X0Y0D02*`, un `D02` sin apertura seleccionada, que el lector rechazaba con
 `NoApertureSelected { line: 4 }`. El test habria estado midiendo otra cosa. La linea se
 saco del fixture; el lector tenia razon y el fixture no.
+
+**L6** (T2 entregado, con una verificacion independiente que corrigio dos cosas): `image(&self,
+tolerance) -> Result<Region, GerberError>` recorre el flujo de comandos, arranca en `dark` cuando el
+archivo no declara polaridad, junta los segmentos de `G36`/`G37` en un contorno cerrado
+(`Contour::from_segments(.., true)`), conserva los arcos como `Segment::Arc` y aplica la polaridad en
+`RegionEnd` con `combine` (`dark` → `Union`, `clear` → `Difference`). `Combined::Empty` se vuelve una
+imagen vacia y no un error. Lo que no sabe construir se rechaza con `Unsupported { line: 0, what:
+"command <index>: …" }`, porque `Command` nunca llevo numero de linea y no se inventa uno.
+
+**Lo que la verificacion encontro.** Tres cosas, en orden de utilidad:
+
+1. **El conteo agregado del workspace si era producible**: **1287 passed, 0 failed, 3 ignored**. El
+   worker habia dicho que cargo no lo emitia en una sola linea. Era falso: hay 107 suites y el total se
+   cuenta sumando. Un conteo que no esta no se aprueba, se mide.
+2. **La regla del arco estaba bien implementada y sin probar.** `arc_from_gerber` usa
+   `(start_angle - end_angle).rem_euclid(TAU)`, o sea el recorrido **en la direccion mandada**, que en
+   multi-cuadrante llega a 270 grados. Pero el unico test de arco usaba un cuarto de circulo de 90
+   grados: una implementacion que tomara el camino corto pasaba igual. Se agrego
+   `a_multi_quadrant_arc_sweeps_the_long_way_round`: centro (0,0), radio 10, de (0,10) a (-10,0) en
+   sentido horario, o sea 270 grados. Probado por mutacion: intercambiando las dos ramas de direccion
+   el test muere con `-1.5707` (90 grados) contra los 270 esperados.
+3. **Tres mutaciones mas, todas muertas**: clear aplicando `Union` en vez de `Difference` (la mata el
+   test del hueco), arcos aplanados a rectas (los mata el test de `Segment::Arc`), y polaridad por
+   defecto `Clear` (la matan los dos tests que no declaran `LPD`).
+
+**Un error mio, cazado por una sonda.** La primera version del test de 270 grados afirmaba
+`!arc.is_ccw()` y fallo. La sonda mostro por que: el arco guardado era `start (-10,0) → end (0,10)`,
+`sweep +3π/2`, `ccw true`. Es el mismo arco recorrido al reves, porque `Contour::from_segments`
+**canonicaliza el contorno externo a antihorario** e invierte cada segmento. El codigo estaba bien y mi
+afirmacion era la que estaba mal: la orientacion de un contorno es canonica y no dice nada sobre la
+direccion que mando el archivo. El test ahora afirma la **curva**: |sweep| = 3π/2 y el punto medio en
+(7.07, -7.07), que un atajo de 90 grados pondria en el lado contrario.
+
+**Limitacion declarada:** un `Move` (D02) adentro de un `G36`/`G37` se rechaza, pero en Gerber un D02
+adentro de una region **empieza otro contorno de la misma region**. El archivo real medido pasa (un solo
+contorno continuo de 1673 `D01`), pero un bloque con dos contornos se rechaza hoy. Levantarlo es trabajo
+aparte y se anota como tal, no se disimula.
+
+**Estado:** workspace en **1288 passed, 0 failed, 3 ignored**; `fmt` y `clippy -D warnings` limpios.

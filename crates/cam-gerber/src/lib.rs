@@ -5,7 +5,10 @@
 
 #![warn(missing_docs)]
 
-use cam_geom::Point2;
+use cam_geom::boolean::{combine, BooleanOp, Combined};
+use cam_geom::region::Region;
+use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
+use std::f64::consts::TAU;
 
 /// Why a Gerber file could not be read.
 #[derive(Debug, thiserror::Error)]
@@ -172,6 +175,191 @@ enum Interpolation {
   Linear,
   Clockwise,
   CounterClockwise,
+}
+
+impl Gerber {
+  /// Evaluate the parsed command stream into one image region.
+  ///
+  /// Dark material is unioned in and clear material is subtracted, in command order. A file that
+  /// yields no material returns an empty [`Region`] (`Region::new(Vec::new())` is valid).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`GerberError::Unsupported`] naming the command index for any construct this pass
+  /// cannot build yet (`Flash`, a draw outside a region, an arc whose centre cannot be derived, or
+  /// a region with fewer than three segments). `Command` carries no source line number, so the
+  /// refusal reports the command index in `what` and uses `0` for `line`.
+  pub fn image(&self, tolerance: f64) -> Result<Region, GerberError> {
+    let mut current: Option<Point2> = None;
+    let mut polarity = Polarity::Dark;
+    let mut selected_aperture: Option<u32> = None;
+    // Start empty: no boundaries means no material (membership is vacuously outside).
+    let mut image = Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command 0: could not build an empty image: {error}"),
+    })?;
+
+    let mut in_region = false;
+    let mut region_segments: Vec<Segment> = Vec::new();
+
+    for (index, command) in self.commands.iter().copied().enumerate() {
+      match command {
+        Command::Polarity(next) => {
+          polarity = next;
+        }
+        Command::SelectAperture(code) => {
+          selected_aperture = Some(code);
+        }
+        Command::Move { to } => {
+          if in_region {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: a move inside a region"),
+            });
+          }
+          current = Some(to);
+        }
+        Command::RegionBegin => {
+          if in_region {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: a region begins inside a region"),
+            });
+          }
+          in_region = true;
+          region_segments.clear();
+        }
+        Command::RegionEnd => {
+          if !in_region {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: a region ends outside a region"),
+            });
+          }
+          if region_segments.len() < 3 {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!(
+                "command {index}: a region closes with fewer than three segments ({})",
+                region_segments.len()
+              ),
+            });
+          }
+          let contour = Contour::from_segments(&region_segments, true).map_err(|error| {
+            GerberError::Invalid {
+              line: 0,
+              what: format!("command {index}: the region boundary is not valid: {error}"),
+            }
+          })?;
+          let region = Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+            line: 0,
+            what: format!("command {index}: the region is not valid: {error}"),
+          })?;
+          let op = match polarity {
+            Polarity::Dark => BooleanOp::Union,
+            Polarity::Clear => BooleanOp::Difference,
+          };
+          // `combine` may legitimately return `Combined::Empty` (an answer, not an error).
+          image = match combine(&image, &region, op, tolerance) {
+            Ok(Combined::Empty) => {
+              Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+                line: 0,
+                what: format!("command {index}: could not represent an empty image: {error}"),
+              })?
+            }
+            Ok(Combined::Region { region, .. }) => region,
+            Err(error) => {
+              return Err(GerberError::Invalid {
+                line: 0,
+                what: format!("command {index}: polarity could not be applied: {error}"),
+              })
+            }
+          };
+          in_region = false;
+          region_segments.clear();
+        }
+        Command::Line { to } => {
+          if !in_region {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: a line outside a region"),
+            });
+          }
+          let from = current.ok_or(GerberError::Unsupported {
+            line: 0,
+            what: format!("command {index}: a line without a current point"),
+          })?;
+          if from.is_near(to, 0.0) {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: a zero-length line in a region"),
+            });
+          }
+          region_segments.push(Segment::Line(LineSeg::new(from, to)));
+          current = Some(to);
+        }
+        Command::Arc {
+          to,
+          offset,
+          clockwise,
+        } => {
+          if !in_region {
+            return Err(GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: an arc outside a region"),
+            });
+          }
+          let from = current.ok_or(GerberError::Unsupported {
+            line: 0,
+            what: format!("command {index}: an arc without a current point"),
+          })?;
+          let arc = arc_from_gerber(from, to, offset, clockwise).map_err(|reason| {
+            GerberError::Unsupported {
+              line: 0,
+              what: format!("command {index}: {reason}"),
+            }
+          })?;
+          region_segments.push(Segment::Arc(arc));
+          current = Some(to);
+        }
+        Command::Flash { at } => {
+          let _ = at;
+          let aperture = selected_aperture
+            .map(|code| format!("aperture {code}"))
+            .unwrap_or_else(|| "no aperture".to_owned());
+          return Err(GerberError::Unsupported {
+            line: 0,
+            what: format!("command {index}: a flash of {aperture}"),
+          });
+        }
+      }
+    }
+
+    Ok(image)
+  }
+}
+
+fn arc_from_gerber(
+  start: Point2,
+  end: Point2,
+  offset: (f64, f64),
+  clockwise: bool,
+) -> Result<Arc, &'static str> {
+  let center = Point2::new(start.x + offset.0, start.y + offset.1);
+  let radius = (offset.0 * offset.0 + offset.1 * offset.1).sqrt();
+  if !radius.is_finite() || radius <= 0.0 {
+    return Err("an arc whose centre cannot be derived");
+  }
+  let start_angle = (start - center).angle();
+  let end_angle = (end - center).angle();
+  let delta = if clockwise {
+    (start_angle - end_angle).rem_euclid(TAU)
+  } else {
+    (end_angle - start_angle).rem_euclid(TAU)
+  };
+  let delta = if delta.abs() < 1.0e-12 { TAU } else { delta };
+  let sweep = if clockwise { -delta } else { delta };
+  Arc::new(center, radius, start_angle, sweep).map_err(|_| "an arc whose centre cannot be derived")
 }
 
 /// Parse a Gerber RS-274X file.
