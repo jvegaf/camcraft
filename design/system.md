@@ -167,7 +167,7 @@ it never carries a sentence.
 | `spacing` | `2, 4, 6, 8, 12, 16, 24, 32` | eight steps, every one on the 2 px grid, strictly increasing |
 | `radius_control` | 4 | buttons, fields, chips |
 | `radius_panel` | 6 | a card, the rail's rows block, the modal's columns |
-| `radius_dialog` | 10 | the tool library only |
+| `radius_dialog` | 10 | a modal: the tool library and the start screen |
 | `control_height` | 24 | one row a control sits in |
 | `row_height` | 26 | one row of a list |
 | `app_bar_height` | 40 | |
@@ -236,6 +236,22 @@ end mill`, `Ball nose`, `Corner radius`, `V-bit` — each heading carrying its c
 a mini tool glyph, `T22 - 6 mm flat` and the dim second line `Ø6 · 2 cut(s)`. The detail column groups its fields
 under `GEOMETRY`, `PASSES`, `SPEEDS`, `MACHINE` and draws the tool to scale with callouts (`Ø 6 mm`, `Flute length
 18 mm`). The footer is a sentence saying what the library cannot do from here, then `Use this tool` and `Cancel`.
+
+**The start screen is a modal, and it is the first frame.** `Overlay` with a `Border` edge and `radius_dialog`, two
+columns: a 232 px `Panel` side behind a hairline holding the wordmark, the `START` heading, the two acts and two
+lines of `Small` in `TextDim`, and a 456 px list column headed `RECENT PROJECTS` in `TextOff` with a drawn `✕` at its
+right. `New project` is the primary act — `CutSoft` wash, `Cut` edge and glyph — and `Open project…` is a `Panel`
+tile with a `Border` edge; both carry two lines (a `BODY` 600 name over a `SMALL` `TextDim` sentence) after an 18 px
+glyph. A recent row is a `BODY` 600 name over a `SMALL` monospace path with its stamp right-aligned in `SMALL`
+`TextDim`, separated by hairlines rather than boxed, and hover is the `SelSoft` wash a selected row already gets.
+Hover and focus on a tile are one 1 px `Sel` step drawn inside it, never a resize. The list states which of three
+things it is: `No projects opened on this machine yet.` with the sentence offering the two acts, `The recent list
+could not be read, so it is not shown.` with `Try again`, or the rows. With no project open the canvas holds
+`No project open` over one `Small` sentence and nothing else — no stock, no grid, no ruler origin, no `2D | 3D`
+toggle — the status bar's left zone reads `Nothing open`, the app bar's `No project open` is the button that brings
+this modal back, and `Esc` leaves the empty workspace. A command that needs a project is refused in the status bar
+(`refused: no project open: start a new project or open one first`), never silently applied to a document nobody
+opened.
 
 **A strategy's editor is one surface for both modes.** The header reads `New toolpath · Profile 1` or `Edit ·
 Profile 1`. The body: the `Name` field, the current-tool card (`TOOL — 6 mm flat`, then `Choose another tool…`),

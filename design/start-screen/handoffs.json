@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "chosen": "03-split-workbench.html",
+  "handoffs": {
+    "03-split-workbench.html": {
+      "status": "in_progress",
+      "queued": false,
+      "sentAt": "2026-11-10T23:59:01.856Z",
+      "startedAt": "2026-11-11T00:17:27.373Z",
+      "implementedAt": null,
+      "feature": "odd/tasks/start-screen.md",
+      "note": "Shell side written: no-project state, start modal, recents list, guards. Finishing the desktop launch path and tests."
+    }
+  }
+}

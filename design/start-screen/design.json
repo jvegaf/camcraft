@@ -1,0 +1,28 @@
+{
+  "title": "Start screen — new, open, recent projects",
+  "brief": "The startup surface for the campilot desktop app: after launch the editor holds no project and this modal offers New project, Open project, and the projects opened last, so the demo drawing and the playing 3D preview no longer greet the operator.",
+  "feature": "odd/tasks/start-screen.md",
+  "artboards": [
+    {
+      "file": "01-command-board.html",
+      "title": "Command board",
+      "tradeoff": "Every choice in one block at a glance; the recent list pushes the two actions up and makes the dialog tall.",
+      "width": 1440,
+      "height": 964
+    },
+    {
+      "file": "02-recent-first.html",
+      "title": "Recent first",
+      "tradeoff": "Leads with the work you already have and makes resuming one row; a first-time user meets an empty table while the two actions shrink into the header.",
+      "width": 1440,
+      "height": 964
+    },
+    {
+      "file": "03-split-workbench.html",
+      "title": "Split workbench",
+      "tradeoff": "The two acts and the list never compete and the primary action is unmistakable; a two-tone split is heavier chrome than a start screen usually needs.",
+      "width": 1440,
+      "height": 964
+    }
+  ]
+}
