@@ -867,3 +867,45 @@ fn an_obround_aperture_draw_is_refused_naming_the_template() {
     "the refusal names the template: {text}"
   );
 }
+
+#[test]
+fn a_move_inside_a_region_starts_another_contour() {
+  // S7: a D02 between G36 and G37 closes the contour drawn so far and starts another one of the
+  // same region. Two separate squares are two boundaries, and both are dark.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nD10*\nG36*\n\
+     X000000000Y000000000D02*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\n\
+     X020000000Y000000000D02*\n\
+     X030000000Y000000000D01*\nX030000000Y010000000D01*\n\
+     X020000000Y010000000D01*\nX020000000Y000000000D01*\n\
+     G37*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    2,
+    "the move closed one square and opened the next"
+  );
+}
+
+#[test]
+fn a_contour_with_fewer_than_three_segments_is_refused() {
+  // A move one segment into a contour cannot close a shape, so it is refused by name rather than
+  // handed to the kernel to fail in its own words.
+  let error = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nD10*\nG36*\n\
+     X000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X000000000Y010000000D02*\nG37*\nM02*\n",
+  )
+  .expect("fixture parses")
+  .image(TOLERANCE)
+  .expect_err("a one-segment contour cannot close");
+  let text = format!("{error}");
+  assert!(
+    text.contains("fewer than three"),
+    "the refusal says why: {text}"
+  );
+}

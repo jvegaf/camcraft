@@ -202,6 +202,7 @@ impl Gerber {
 
     let mut in_region = false;
     let mut region_segments: Vec<Segment> = Vec::new();
+    let mut region_boundaries: Vec<Contour> = Vec::new();
 
     for (index, command) in self.commands.iter().copied().enumerate() {
       match command {
@@ -213,10 +214,10 @@ impl Gerber {
         }
         Command::Move { to } => {
           if in_region {
-            return Err(GerberError::Unsupported {
-              line: 0,
-              what: format!("command {index}: a move inside a region"),
-            });
+            // A move inside a region closes the contour drawn so far and starts another one of the
+            // same region: that is what a D02 between G36 and G37 means, and a region may have as
+            // many contours as it likes.
+            close_boundary(&mut region_segments, &mut region_boundaries, index)?;
           }
           current = Some(to);
         }
@@ -229,6 +230,7 @@ impl Gerber {
           }
           in_region = true;
           region_segments.clear();
+          region_boundaries.clear();
         }
         Command::RegionEnd => {
           if !in_region {
@@ -237,28 +239,22 @@ impl Gerber {
               what: format!("command {index}: a region ends outside a region"),
             });
           }
-          if region_segments.len() < 3 {
+          close_boundary(&mut region_segments, &mut region_boundaries, index)?;
+          if region_boundaries.is_empty() {
             return Err(GerberError::Unsupported {
               line: 0,
-              what: format!(
-                "command {index}: a region closes with fewer than three segments ({})",
-                region_segments.len()
-              ),
+              what: format!("command {index}: a region closes with no contour"),
             });
           }
-          let contour = Contour::from_segments(&region_segments, true).map_err(|error| {
-            GerberError::Invalid {
+          let region =
+            Region::new(region_boundaries.clone()).map_err(|error| GerberError::Invalid {
               line: 0,
-              what: format!("command {index}: the region boundary is not valid: {error}"),
-            }
-          })?;
-          let region = Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
-            line: 0,
-            what: format!("command {index}: the region is not valid: {error}"),
-          })?;
+              what: format!("command {index}: the region is not valid: {error}"),
+            })?;
           image = apply_region(image, &region, polarity, tolerance, index)?;
           in_region = false;
           region_segments.clear();
+          region_boundaries.clear();
         }
         Command::Line { to } => {
           let from = current.ok_or(GerberError::Unsupported {
@@ -447,6 +443,37 @@ fn arc_from_gerber(
   let delta = if delta.abs() < 1.0e-12 { TAU } else { delta };
   let sweep = if clockwise { -delta } else { delta };
   Arc::new(center, radius, start_angle, sweep).map_err(|_| "an arc whose centre cannot be derived")
+}
+
+/// Close the contour being drawn and keep it as one boundary of the region in progress.
+///
+/// A contour with no segments is what an immediate move at the start of a region leaves behind,
+/// and it is not an error; a contour with one or two segments cannot close a shape, so it is
+/// refused rather than handed to the kernel to fail in its own words.
+fn close_boundary(
+  segments: &mut Vec<Segment>,
+  boundaries: &mut Vec<Contour>,
+  index: usize,
+) -> Result<(), GerberError> {
+  if segments.is_empty() {
+    return Ok(());
+  }
+  if segments.len() < 3 {
+    return Err(GerberError::Unsupported {
+      line: 0,
+      what: format!(
+        "command {index}: a contour closes with fewer than three segments ({})",
+        segments.len()
+      ),
+    });
+  }
+  let contour = Contour::from_segments(segments, true).map_err(|error| GerberError::Invalid {
+    line: 0,
+    what: format!("command {index}: a contour of the region is not valid: {error}"),
+  })?;
+  boundaries.push(contour);
+  segments.clear();
+  Ok(())
 }
 
 /// The shape a draw of `aperture` leaves between two points.

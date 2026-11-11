@@ -58,7 +58,7 @@ region puede tener varios contornos, y cada `D02` cierra el que venia. Hoy se re
 | T4 | G1.1 corregida en `docs/GAPS_CAMCRAFT.md` | S5 | inline | — |
 | T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | inline | `71f7883` |
 | T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | inline | L9 |
-| T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | delegated | — |
+| T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | inline | L10 |
 
 **Fuera de alcance, declarado:** los `D01` con apertura (trazo = barrido de la
 apertura a lo largo del segmento) son el caso dificil y van aparte; `O`/`RoundRect`
@@ -220,3 +220,20 @@ direcciones de lado— **y nunca la cantidad de piezas en que quedo cortada.** P
 discriminador es que un rectangulo tiene dos direcciones de lado y un hexagono tres.
 
 **Estado:** workspace en **1299 passed, 0 failed, 3 ignored**.
+
+**L10** (T7 entregado): un `D02` entre `G36` y `G37` cierra el contorno que se venia dibujando y abre
+otro de la misma region. El acumulador de una region pasa de `Vec<Segment>` a `Vec<Contour>`: cada cierre
+empuja un contorno y `RegionEnd` arma la region con todos. Un `D02` como primera sentencia de la region
+—que es el idioma normal de Gerber— deja cero segmentos y no es error; un contorno de una o dos
+segmentos no puede cerrar una forma y se rechaza por nombre en vez de mandarselo al kernel para que falle
+con sus propias palabras. Probado por mutacion: sin el cierre, los dos cuadrados dejan de ser dos y muere
+solo `a_move_inside_a_region_starts_another_contour`.
+
+**Una consecuencia que conviene tener escrita:** con varios contornos en una region, quien decide que es
+material es la paridad del `Region`, no el orden. Dos contornos disjuntos son dos piezas; un contorno
+adentro de otro es un hueco. Eso es lo que hace que el idioma de Gerber funcione sin polaridad, y tambien
+lo que hace que un archivo con contornos que se tocan necesite cuidado: la paridad no perdona un borde
+compartido de mas.
+
+**Estado:** workspace en **1301 passed, 0 failed, 3 ignored**. Con esto se cierra el orden aceptado:
+T5 (trazo circular), T6 (trazo rectangular) y T7 (varios contornos por region).
