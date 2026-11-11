@@ -429,6 +429,32 @@ de aplicación guarda `Arc<DisplayMesh>`, no geometría duplicada.
 
 ---
 
+### 5.5 Preview volumétrico: qué tomamos de `gsim-rs` y qué no
+
+`gsim-rs` (2.0.0, MIT/Apache, ~6.500 líneas) es un simulador de G-code Fanuc para fresado vertical, con
+stock volumétrico en WGPU y TUI en ratatui. **No entra como dependencia**, por tres razones
+estructurales: parsearía el G-code que nosotros emitimos para volver a simular, invirtiendo el pipeline
+(el contrato es `MoveStream`, y `cam-post` es lo único que produce texto); corre en GPU con batching por
+frame, así que depende del frame y no tiene CI; y es un visor, no un oráculo — no reporta gouge ni uncut
+con cota. Además metería `wgpu`, `winit` y `ratatui` debajo de `cam-ui`, contra §7.
+
+**Sí entra como referencia para C8**, porque sus tres técnicas de render son las correctas para una
+placa, que es 2.5D y tiene muchísimos movimientos:
+
+1. **Caras internas ocultas al inicio**, reveladas cuando el vecino se remueve: menos geometría en
+   pantalla y sin *popping*.
+2. **Actualizaciones parciales de buffer** por frame, en lugar de re-subir el stock entero.
+3. **Batching de movimientos chicos por frame**, con modo paso a paso aparte para inspección.
+
+Y como **herramienta externa opcional**, nunca en el grafo de crates: una receta `just preview out.nc`
+que invoque el binario si está instalado y, si no, diga cómo instalarlo. Un humano mira el programa
+emitido con un visor maduro; `cam-sim` sigue siendo el que mide.
+
+**Límite explícito:** nada de esto reemplaza al predicado L1 de §11. `gsim-rs` dibuja; si un aislamiento
+penetró se decide con una intersección de regiones, y eso lo escribe `cam-oracle`.
+
+---
+
 ## 6. Mapa de crates
 
 Regla de granularidad, en este orden: **una crate propia cuando aporta (a) dependencias que las demás no
@@ -774,7 +800,7 @@ cuando siguen siendo válidos; los que cambian se listan como delta.
 | **C5 — Isolation** | Isolation sin gouge en las 6 placas con predicado L1 en verde; V-bit con profundidad derivada verificada | El flujo que el usuario de PCB quiere primero |
 | **C6 — NCC** | **NCC más rápida que FlatCAM en la placa grande**, determinista con 1/4/8 hilos, reproducible desde CI; rest machining medido | La tesis del producto |
 | **C7 — Salida** | Catálogo `.pp` con golden por dialecto; autolevelling sobre warp simulado dentro de tolerancia; travel que cruza exclusión se desvía; export Gerber/Excellon con round-trip | G-code listo para máquina |
-| **C8 — UI** | Flujo completo sin tocar `cam-cli`: importar, configurar, generar, simular, exportar; undo estructural con proptest; shell usable con la placa grande | Producto |
+| **C8 — UI** | Flujo completo sin tocar `cam-cli`: importar, configurar, generar, simular, exportar; undo estructural con proptest; shell usable con la placa grande; preview volumétrico según §5.5 (referencia `gsim-rs`) | Producto |
 | **C9 — Extensión** | Paint, panelize, film/punch según demanda | Alcance FlatCAM |
 | **C10 — Endurecimiento** | 20+ placas reales en CI bajo umbral; benchmarks publicados y reproducibles; empaquetado Windows+Linux firmado; guía de migración desde FlatCAM; alfa | Publicación |
 
