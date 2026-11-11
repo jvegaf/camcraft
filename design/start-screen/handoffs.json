@@ -3,13 +3,13 @@
   "chosen": "03-split-workbench.html",
   "handoffs": {
     "03-split-workbench.html": {
-      "status": "in_progress",
+      "status": "implemented",
       "queued": false,
       "sentAt": "2026-11-10T23:59:01.856Z",
       "startedAt": "2026-11-11T00:17:27.373Z",
-      "implementedAt": null,
+      "implementedAt": "2026-11-11T00:53:42.870Z",
       "feature": "odd/tasks/start-screen.md",
-      "note": "Shell side written: no-project state, start modal, recents list, guards. Finishing the desktop launch path and tests."
+      "note": "Implemented in cam-ui and cam-desktop: the start modal, the no-project workspace, the recent-project list persisted by the host. Gate green (1695 tests) and the real window launches and stays up."
     }
   }
 }
