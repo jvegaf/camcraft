@@ -27,43 +27,15 @@ const EMPTY_SAVE_PATH: &str =
   "a save needs a file to write, and this path is empty — use Save As to name one, and no save writes \
    into the directory the window was started from";
 
-/// What a program generation with no post-processor answers.
-///
-/// The dialect is not a default: two post-processors write two different programs from one toolpath, so a
-/// window that picked one for the person would be choosing what their machine runs. The refusal names the one
-/// control that supplies it.
-pub(crate) const NO_POST: &str =
-  "writing a program needs a post-processor, and none is chosen — use Post… in the app bar to name one, and \
-   every program this window writes is written in it";
-
-/// What a program generation from a drawing with no toolpaths answers.
-///
-/// A program is a sequence of moves; a drawing alone is geometry. Naming the missing half is the whole point
-/// of M13 S2, which exists because the shell used to point at a command in another window instead.
-pub(crate) const NO_TOOLPATHS: &str =
-  "this drawing has no toolpaths, so there is no program to write — author one in the Toolpaths task first, \
-   and the program follows from it";
-
 /// What a program generation to an empty path answers.
 ///
 /// An empty path is not a file name, so the refusal comes before any filesystem call: the writer would
 /// otherwise compose its temporary sibling in the directory the window was started from.
-pub(crate) const EMPTY_PROGRAM_PATH: &str =
-  "a program needs a file to write, and this path is empty — use the save dialog to name one, and no program \
-   is written into the directory the window was started from";
-
 /// What a post-processor choice with an empty path answers.
-pub(crate) const EMPTY_POST_PATH: &str =
-  "choosing a post-processor needs a file to read, and this path is empty — use the open dialog to name one";
-
 /// What a program or a post-processor answers from an entry point that holds no shell.
 ///
 /// The post-processor travels with the window, like the archive entries a save refuses to write without
 /// ([`NO_SHELL_FOR_SAVE`]): a program written from a bare handler would be written in a dialect nobody chose.
-const NO_SHELL_FOR_POST: &str =
-  "writing a program needs the post-processor the window is holding, and this entry point has no shell — \
-   choose one with Post… and apply the action through Shell::apply_action";
-
 /// What an export or an import of the tool library answers from an entry point that holds no shell.
 ///
 /// The library travels with the window for the same reason the post-processor does: a bare handler holds no
@@ -295,17 +267,6 @@ pub(crate) fn handle_action_with_file(
     UiAction::ExportTools { .. } | UiAction::ImportTools { .. } => {
       Err(NO_SHELL_FOR_TOOLS.to_owned())
     }
-    // The two program intents ask the host for something and change nothing while asking, exactly as the two
-    // file intents do.
-    UiAction::RequestGenerateGcode | UiAction::RequestChoosePost => Ok(ActionReport {
-      label: action.label(),
-      ..ActionReport::default()
-    }),
-    // And their answers belong to the window, not to this handler: the post-processor is held by the shell,
-    // so a bare handler has no dialect to write in and says so instead of picking one.
-    UiAction::GenerateGcode { .. } | UiAction::ChoosePost { .. } => {
-      Err(NO_SHELL_FOR_POST.to_owned())
-    }
     UiAction::SetJob {
       width,
       height,
@@ -443,24 +404,6 @@ pub(crate) fn handle_action_with_file(
       Command::SetToolpathToolNumber {
         toolpath_id: toolpath_id.clone(),
         tool_number: *tool_number,
-      },
-    ),
-    UiAction::AddToolpath {
-      toolpath_id,
-      name,
-      entity_ids,
-      island_ids,
-      tool_number,
-      operation,
-    } => apply_command(
-      app,
-      Command::AddToolpath {
-        toolpath_id: toolpath_id.clone(),
-        name: name.clone(),
-        entity_ids: entity_ids.clone(),
-        island_ids: island_ids.clone(),
-        tool_number: *tool_number,
-        operation: operation.clone(),
       },
     ),
     UiAction::SetToolpathOperation {

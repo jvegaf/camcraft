@@ -138,12 +138,6 @@ pub struct DrawnState {
   /// widget-by-text lookup from outside a frame, so a test that has to press one of the bar's glyphs is
   /// given the point the button was drawn at instead of guessing at the bar's margins.
   pub app_bar_hits: Vec<(String, (f32, f32))>,
-  /// Where the 3D half's empty state drew its `Simulate` chip, in window pixels (M13 S3).
-  ///
-  /// `None` while the half has a picture to draw, because a control is reported only in the frame that drew it:
-  /// the chip lives in the one state that has no overlay row and no playback bar to carry it, so this is the
-  /// only way a headless test can press it instead of guessing at the half's margins.
-  pub simulate_chip: Option<(f32, f32)>,
   /// What the `F1` help panel drew, in the order it drew it: each group's label, then that group's
   /// command rows, and finally the focused command's `what` and `how`.
   ///
@@ -208,18 +202,6 @@ pub struct DrawnState {
   /// from outside a frame — and it is the only place that pairs a document's `tool_number` with the
   /// library snapshot (camui-toolpath S2).
   pub tool_card: Vec<String>,
-  /// The estimated cutting time drawn beside the current-tool card, as one line of text.
-  ///
-  /// A line of its own and not a fourth card field, because the card's fields are exactly the ones the
-  /// reference frame shows and must not grow (camui-toolpath S2): the time is about the document's
-  /// program, not about the tool. The seconds are the published law
-  /// ([`view3d::seconds_for`](crate::view3d::seconds_for)) and the text is
-  /// [`view3d::clock_text`](crate::view3d::clock_text)'s, so this reads what the playback clock reads.
-  ///
-  /// Empty while the frame is not on the Toolpaths stage and while the document holds no toolpath, for
-  /// the same reason [`Self::tool_card`] is; when the document's program cannot be built it holds the
-  /// emitter's own sentence instead of a duration nobody can measure.
-  pub cutting_time: String,
   /// How much of the previewed program has played, in `0.0..=1.0`.
   ///
   /// The value the clock itself reports: exactly `0.0` while the preview stands on its first
@@ -259,13 +241,9 @@ pub struct DrawnState {
   /// `None` while 3D is off, because a split that is not open has no halves. [`ShellOutput::canvas`] is the
   /// first of the two when the split is open: the rectangle the 2D camera is told about.
   pub split: Option<(PixelRect, PixelRect)>,
-  /// The words the 3D half's overlay row drew — `Material`, `Vectors`, `Toolpaths`, `Tool`, `Simulate again`,
-  /// `Centre`, `?` — and the point that presses each (camui-prancheta S8, M13 S3).
+  /// The words the 3D half's overlay row drew and the point that presses each.
   ///
-  /// Empty while the split is closed, and empty while it is open with no program loaded: the row is drawn
-  /// only when it has something to govern, because a checkbox over nothing is a control that lies. The empty
-  /// half's `Simulate` chip is not in this list — it is reported where it was drawn
-  /// ([`Self::simulate_chip`]) because it is the one control that lives outside the row.
+  /// Empty while the split is closed, and empty while it is open with no program loaded.
   pub layer_chips: Vec<(String, (f32, f32))>,
   /// Which of the four scene layers the overlay row is showing, in the row's own order (camui-prancheta S8).
   ///
@@ -459,42 +437,6 @@ pub struct DrawnState {
   /// different toolpaths: a selection that names a toolpath the document no longer holds reads as the first
   /// one rather than as a card nobody can act on.
   pub toolpath_selected: Option<String>,
-  /// The note the strategy editor drew under its sections, verbatim (camui-prancheta S10).
-  ///
-  /// Empty while the `TOOLPATHS` task is closed, because an editor nobody opened drew no note. The note is the
-  /// spec's own sentence, so it is reported as one string rather than left to a test that would have to find it
-  /// among the panel's painted text.
-  pub strategy_note: String,
-  /// The sentence drawn in place of `Generate toolpath` because the draft's action does not exist yet.
-  ///
-  /// Empty whenever `Generate toolpath` was drawn — the two are exclusive by design (L6, L14): the footer says
-  /// why instead of offering a button that would emit nothing.
-  pub strategy_refusal: String,
-  /// Every pressable thing the strategy editor drew: its word and the point in the window that presses it.
-  ///
-  /// The same surface the palette reports ([`Self::palette_hits`]) and for the same reason. Only controls this
-  /// frame really drew are listed: `Generate toolpath` is absent while [`Self::strategy_refusal`] holds the
-  /// reason, and the name is absent while the name is a reading (camui-prancheta S10).
-  pub strategy_hits: Vec<(String, (f32, f32))>,
-  /// The image cards the editor drew, in the order drawn: the card's word, whether it is the chosen one, and
-  /// how many strokes its diagram painted.
-  ///
-  /// The stroke count is the report that makes "a card carries a picture, not an empty box" answerable: a
-  /// headless test reads shapes, and a shape with no strokes in it is the empty box L23 taught us to look for
-  /// even when the frame is green.
-  pub strategy_cards: Vec<(String, bool, usize)>,
-  /// Whether the collapsible `Quick parameter edit` block was expanded this frame.
-  ///
-  /// Reported because a folded block draws no row, and without this a test could not tell "the quick edit holds
-  /// no number" from "the operator folded it" (the same reason [`Self::layers_open`] exists).
-  pub strategy_quick_open: bool,
-  /// The numbers the `Quick parameter edit` block drew, in order: the row's word and its value.
-  ///
-  /// The same numbers [`Self::strategy_fields`] holds for the full section, drawn one click closer: the quick
-  /// edit duplicates values, never a second copy of them.
-  pub strategy_quick_fields: Vec<(String, String)>,
-  /// The numbers the strategy's `CUT` section drew, in order: the row's word and its value.
-  pub strategy_fields: Vec<(String, String)>,
 }
 
 /// A rectangle in window pixels, as `(x, y, width, height)`.

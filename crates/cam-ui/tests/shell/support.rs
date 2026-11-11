@@ -194,7 +194,6 @@ pub(crate) fn painted_text(output: &egui::FullOutput) -> Vec<String> {
 /// lower half of the tab falls outside the clip rect and a click at a reported point lands on nothing above
 /// it. Reporting a point is only useful while the widget it came from is still on screen.
 ///
-/// The height grew with camui-prancheta S10: the `TOOLPATHS` task now opens on a strategy editor above the
 /// authoring body, so the tab is taller than it was and the window has to keep the promise this helper makes
 /// instead of the promise it used to be able to keep at 2 000 px.
 pub(crate) fn tall_input() -> egui::RawInput {

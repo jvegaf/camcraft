@@ -9,10 +9,7 @@ use crate::DrawShape;
 mod handle;
 
 pub use handle::handle_action;
-pub(crate) use handle::{
-  file_label, handle_action_with_file, DocumentFileState, EMPTY_POST_PATH, EMPTY_PROGRAM_PATH,
-  NO_POST, NO_TOOLPATHS,
-};
+pub(crate) use handle::{file_label, handle_action_with_file, DocumentFileState};
 
 /// What one action produced, as the status bar reports it.
 ///
@@ -214,39 +211,6 @@ pub enum UiAction {
   /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: the shell shows no
   /// dialog, writes no file and touches no document when it receives this.
   RequestSaveAs,
-  /// Write the program the drawing describes to `path`, in the post-processor this shell holds.
-  ///
-  /// This is the answer to [`UiAction::RequestGenerateGcode`], and it is the primary action of the whole
-  /// window: the drawing, its toolpaths and their tools become the file the machine reads. The write is the
-  /// shell's, exactly as [`UiAction::SaveFile`]'s is, so the sentence the person reads and the tests that pin
-  /// it live in one place (M13 S7).
-  ///
-  /// Two things are refused by name rather than by a greyed-out button (M13 S2): a drawing with no toolpaths
-  /// has no program to write, and a window with no post-processor holds no dialect to write it in. Either way
-  /// nothing is created and the status bar says which of the two is missing.
-  GenerateGcode {
-    /// Where to write the program.
-    path: PathBuf,
-  },
-  /// Ask the host for a path to write the program to; the host shows its save dialog and applies
-  /// [`UiAction::GenerateGcode`].
-  ///
-  /// An intent and nothing more: the shell opens no dialog and writes nothing when it receives this.
-  RequestGenerateGcode,
-  /// Hold the post-processor in `path` and write every program with it from now on.
-  ///
-  /// This is the answer to [`UiAction::RequestChoosePost`]. The file is read and parsed **before** it is
-  /// held, so a file that is not a post-processor is refused and the post-processor already in hand stays:
-  /// a choice that could not write a program is not a choice, and losing the working one to it would be a
-  /// second failure on top of the first.
-  ChoosePost {
-    /// The `.pp` file to read.
-    path: PathBuf,
-  },
-  /// Ask the host for a post-processor; the host shows its open dialog and applies [`UiAction::ChoosePost`].
-  ///
-  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
-  RequestChoosePost,
   /// Give an existing toolpath a different tool number, leaving its geometry and operation alone.
   ///
   /// The tool library's `Use this tool` is what pushes this (camui-prancheta S9): the modal chooses a tool
@@ -259,26 +223,6 @@ pub enum UiAction {
     toolpath_id: String,
     /// The new tool number.
     tool_number: u32,
-  },
-  /// Add a toolpath, binding the strategy editor's draft to geometry and a tool (camui-prancheta S10).
-  ///
-  /// The strategy editor's `Generate toolpath` is what pushes this, and it carries the whole draft: the name,
-  /// the vectors the strategy cuts, the tool number a chosen tool carries and the operation with its numbers.
-  /// [`cam_app::Command::AddToolpath`] is the rule; the id is minted by the shell because the document carries
-  /// no toolpath counter, by the same `TPn` scan `cam-cli toolpath` performs.
-  AddToolpath {
-    /// Identifier for the new toolpath; it must be free.
-    toolpath_id: String,
-    /// Display name, as the toolpath list shows it.
-    name: String,
-    /// Entities the toolpath is computed from; at least one.
-    entity_ids: Vec<String>,
-    /// Closed contours inside the region that must be left standing; empty for none.
-    island_ids: Vec<String>,
-    /// Tool number, matched against the tool library at emission time.
-    tool_number: u32,
-    /// The operation and its parameters.
-    operation: Operation,
   },
   /// Replace one toolpath's operation, with its parameters, and leave the rest of it alone.
   ///
@@ -369,10 +313,7 @@ impl UiAction {
       Self::NewProject => "new project",
       Self::Save => "save document",
       Self::SaveFile { .. } | Self::RequestSaveAs => "save document as",
-      Self::GenerateGcode { .. } | Self::RequestGenerateGcode => "generate g-code",
-      Self::ChoosePost { .. } | Self::RequestChoosePost => "choose post-processor",
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
-      Self::AddToolpath { .. } => "add toolpath",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
       Self::SetToolpathName { .. } => "set toolpath name",
       Self::ExportTools { .. } | Self::RequestExportTools => "export tools",

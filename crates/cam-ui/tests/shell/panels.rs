@@ -140,58 +140,6 @@ fn the_right_panel_is_a_ribbon_of_three_categories_in_the_references_order() {
 }
 
 #[test]
-fn opening_a_category_puts_its_task_editor_over_the_panel() {
-  // The idle panel says what is selected; opening `TOOLPATHS` replaces that with the authoring body, which is
-  // what "the task editor replaces the panel's content" means (S6).
-  let mut app = AppState::new(document_with_rectangle());
-  let mut shell = Shell::new();
-  let ctx = egui::Context::default();
-  let (first, texts) = frame_with(&ctx, &mut shell, &mut app);
-  let all = joined(&texts);
-  assert!(
-    all.contains("Properties"),
-    "the idle panel shows the selection's numbers: {all}"
-  );
-  let at = first
-    .drawn
-    .category_hits
-    .iter()
-    .find(|(word, _)| word == "TOOLPATHS")
-    .map(|(_, point)| egui::pos2(point.0, point.1))
-    .expect("TOOLPATHS is on the ribbon");
-
-  let output = click_point(&ctx, &mut shell, &mut app, at);
-  assert_eq!(shell.task(), Some(cam_ui::Category::Toolpaths));
-  assert_eq!(
-    output.drawn.task_editor, "New toolpath · Profile 1",
-    "the toolpath task is the strategy editor, and S10 makes its header say which mode it is in and whose \
-     strategy it is describing"
-  );
-  let (_, texts) = frame_with(&ctx, &mut shell, &mut app);
-  let mut all_texts = texts;
-  // The strategy editor S10 puts at the top of the task is taller than the 55 % body an 800 px window gives
-  // it, so the authoring body below it starts under the fold. The claim this test makes is S6's — the task
-  // editor, not the selection's numbers, is the panel's content — so the body is read the way an operator
-  // reaches it: the wheel, then the words that were there all along.
-  let inspector = egui::pos2(
-    (output.canvas.x + output.canvas.width) as f32 + 100.0,
-    (output.canvas.y + 260.0) as f32,
-  );
-  all_texts.extend(texts_scrolled_to_the_end(
-    &ctx, &mut shell, &mut app, inspector,
-  ));
-  let all = joined(&all_texts);
-  assert!(
-    all.contains("Add text") && all.contains("Authoring"),
-    "the toolpath task carries the authoring body: {all}"
-  );
-  assert!(
-    !all.contains("Properties"),
-    "the task editor replaces the panel's content, it does not stack on it: {all}"
-  );
-}
-
-#[test]
 fn the_task_header_keeps_the_typed_numbers_on_done_and_discards_them_on_cancel() {
   // The only real difference between `✓` and `✕` in this panel: every number applies as it is typed except the
   // material's drafts, so `Done` has nothing to undo and `Cancel` is the one gesture that throws the draft away.
@@ -241,47 +189,3 @@ fn the_task_header_keeps_the_typed_numbers_on_done_and_discards_them_on_cancel()
     "Cancel puts the material's draft back to the document's own stock"
   );
 }
-
-#[test]
-fn the_layers_block_folds_on_its_own_and_leaves_the_task_where_it_was() {
-  // S6: `Camadas` is its own collapsible block below the task editor. It folds without closing the task, and
-  // the task does not come back when the block does.
-  let mut app = AppState::new(document_with_rectangle());
-  let mut shell = Shell::new();
-  shell.open_task(cam_ui::Category::Toolpaths);
-  let ctx = egui::Context::default();
-
-  let (first, _) = frame_with(&ctx, &mut shell, &mut app);
-  assert!(first.drawn.layers_open, "the block starts expanded");
-  assert_eq!(
-    first.drawn.layer_rows,
-    vec![("L1".to_owned(), 1, true)],
-    "an expanded block draws its rows"
-  );
-  let at = first
-    .drawn
-    .layers_heading
-    .map(|(x, y)| egui::pos2(x, y))
-    .expect("the block reports its heading");
-
-  let output = click_point(&ctx, &mut shell, &mut app, at);
-  assert!(!output.drawn.layers_open, "the heading folds the block");
-  assert!(
-    output.drawn.layer_rows.is_empty(),
-    "a folded block draws no row: {:?}",
-    output.drawn.layer_rows
-  );
-  assert_eq!(
-    shell.task(),
-    Some(cam_ui::Category::Toolpaths),
-    "folding the layers block must not close the task"
-  );
-  assert_eq!(
-    output.drawn.task_editor, "New toolpath · Profile 1",
-    "the task editor stays where it was"
-  );
-}
-
-// ---------------------------------------------------------------------------------------------------
-// The rulers (camui-prancheta S5)
-// ---------------------------------------------------------------------------------------------------

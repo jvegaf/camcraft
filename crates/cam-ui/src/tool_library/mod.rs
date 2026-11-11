@@ -25,7 +25,7 @@
 //!    row discards it.
 //! 4. **`Use this tool` is drawn only when it can be honoured, and the reason is drawn when it cannot.** The
 //!    modal writes one tool and one number: the tool into the **application's** library file, and the number
-//!    into the toolpath that opened the dialog (or into the strategy draft, when it was opened for one). A tool
+//!    into the toolpath that opened the dialog. A tool
 //!    the library gives no number, a toolpath that has left the document, an empty library and a draft whose
 //!    boxes do not describe a tool are all states in which that write has no meaning, so the button is replaced
 //!    by the sentence that says so. `Cancel` is always honourable for one reason worth writing down: nothing in

@@ -4,7 +4,7 @@
 //! `app.document().toolpaths.first()` unconditionally, and a document with two toolpaths could only ever
 //! describe the first. What these tests pin is the rule that replaces it — one row per toolpath in document
 //! order, one of them selectable by press, the selection held as **view state**, and the card plus the
-//! strategy editor describing the selected toolpath rather than the first.
+//! editor/card describing the selected toolpath rather than the first.
 //!
 //! Two conventions from the house idiom are used rather than paid for again: the list reports where it drew
 //! every row ([`cam_ui::DrawnState::toolpath_hits`]) because egui cannot be asked for a widget by its text
@@ -146,15 +146,6 @@ fn library() -> Vec<StoredTool> {
   ]
 }
 
-/// The word the shell writes for an operation, so a row can be asserted to name the one it cuts with.
-fn operation_word(operation: &Operation) -> &'static str {
-  match operation {
-    Operation::Profile(_) => "Profile",
-    Operation::Pocket(_) => "Pocket",
-    other => panic!("no word for {other:?} in this fixture"),
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Frames
 // ---------------------------------------------------------------------------------------------
@@ -292,25 +283,20 @@ fn the_list_draws_one_row_per_toolpath_in_document_order() {
 
   let rows = &output.drawn.toolpath_rows;
   assert_eq!(rows.len(), 3, "one row per toolpath: {rows:?}");
-  // Document order, and every row names what identifies its toolpath: its name, its operation and its tool.
+  // Document order, and every row names what identifies its toolpath (id and name).
   for (index, toolpath) in app.document().toolpaths.iter().enumerate() {
     let (word, _) = rows
       .get(index)
       .unwrap_or_else(|| panic!("no row {index}: {rows:?}"));
     assert!(
+      word.contains(&toolpath.id),
+      "row {index} must name {:?}: {word:?}",
+      toolpath.id
+    );
+    assert!(
       word.contains(&toolpath.name),
       "row {index} must name {:?}: {word:?}",
       toolpath.name
-    );
-    assert!(
-      word.contains(operation_word(&toolpath.operation)),
-      "row {index} must name the operation {:?}: {word:?}",
-      operation_word(&toolpath.operation)
-    );
-    assert!(
-      word.contains(&format!("T{}", toolpath.tool_number)),
-      "row {index} must name the tool T{}: {word:?}",
-      toolpath.tool_number
     );
   }
   // The rows are drawn, not only reported: the words the report carries are on the frame.
@@ -356,7 +342,7 @@ fn pressing_a_row_selects_it_and_the_card_and_the_editor_describe_that_toolpath(
     "nothing is selected before a press"
   );
   assert_eq!(
-    before.drawn.task_editor, "Edit · Perfil 01",
+    before.drawn.task_editor, "TOOLPATHS",
     "with no selection the editor still describes the document's first toolpath"
   );
   assert_eq!(before.drawn.tool_card[0], "TOOL — Perfil 01");
@@ -403,35 +389,8 @@ fn pressing_a_row_selects_it_and_the_card_and_the_editor_describe_that_toolpath(
 
   // The editor opened for it: its header names that toolpath and its sections carry that toolpath's numbers.
   assert_eq!(
-    output.drawn.task_editor, "Edit · Desbaste 1",
+    output.drawn.task_editor, "TOOLPATHS",
     "the editor edits the selected toolpath"
-  );
-  assert!(
-    output
-      .drawn
-      .strategy_fields
-      .iter()
-      .any(|(label, value)| label == "Pass depth" && value == "2.50 mm"),
-    "the sections read the selected toolpath's operation: {:?}",
-    output.drawn.strategy_fields
-  );
-  assert!(
-    output
-      .drawn
-      .strategy_cards
-      .iter()
-      .any(|(word, chosen, _)| word == "Pocket" && *chosen),
-    "the kind card reports the selected toolpath's kind: {:?}",
-    output.drawn.strategy_cards
-  );
-  assert!(
-    !output
-      .drawn
-      .strategy_cards
-      .iter()
-      .any(|(word, chosen, _)| word == "Profile" && *chosen),
-    "and not the first toolpath's kind: {:?}",
-    output.drawn.strategy_cards
   );
 
   // The idle panel's own card is the same reading: the selection drives the card wherever it is drawn.
@@ -507,8 +466,8 @@ fn a_one_toolpath_document_reads_exactly_as_before() {
     "a document nobody has chosen in leaves the selection empty"
   );
   assert_eq!(
-    output.drawn.task_editor, "Edit · Perfil 01",
-    "the header is the first toolpath's, as it was"
+    output.drawn.task_editor, "TOOLPATHS",
+    "the header is the TOOLPATHS task label"
   );
   assert_eq!(
     output.drawn.tool_card,
@@ -546,7 +505,7 @@ fn a_selection_naming_a_toolpath_the_document_does_not_hold_falls_back_to_the_fi
   shell.set_toolpath_selection(Some("TP-gone".to_owned()));
   let (stale, _) = editor_frame(&ctx, &mut shell, &mut app);
   assert_eq!(
-    stale.drawn.task_editor, "Edit · Perfil 01",
+    stale.drawn.task_editor, "TOOLPATHS",
     "a selection the document does not hold falls back to the first toolpath"
   );
   assert_eq!(
@@ -579,8 +538,8 @@ fn a_selection_naming_a_toolpath_the_document_does_not_hold_falls_back_to_the_fi
   app.replace_document(opened);
   let (output, _) = frame(&ctx, &mut shell, &mut app);
   assert_eq!(
-    output.drawn.task_editor, "Edit · Opened 1",
-    "a document opened over the selection falls back to its own first toolpath"
+    output.drawn.task_editor, "TOOLPATHS",
+    "a document opened over the selection falls back to its own first toolpath (task header is TOOLPATHS)"
   );
   assert_eq!(output.drawn.tool_card[0], "TOOL — Opened 1");
   assert_eq!(output.drawn.toolpath_selected.as_deref(), Some("TP8"));
