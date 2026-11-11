@@ -190,3 +190,44 @@ vez; un tercer intento seria reintento automatico, que la politica prohibe. El l
 
 **Estado honesto:** la correccion es real y la verifican los gates del proyecto; lo que falta es el veredicto
 del proveedor sobre ella. Queda registrado en vez de disimulado.
+
+**L12** (cierre del lineage colgado, y la leccion que costo): el lineage `review-a768d00350e5a18b`
+no se cerro validando, se cerro **recuperando**. Al consultarlo despues de las dos admissiones
+rechazadas, el proveedor devolvio `action: recover`, `disposition: scope_changed`, con
+`current_candidate_tree = 701d7e77` distinto del candidato de la correccion. Diagnostico: el candidato se
+**movio debajo del lineage** porque segui commiteando C1 mientras la validacion targetada estaba pendiente.
+
+Lo que no puedo afirmar con certeza es que ese movimiento sea la causa de los dos rechazos: al momento de
+la primera admission el arbol todavia era el de la correccion. Lo que si es cierto es que el proveedor
+congela una identidad de candidato y que esa ventana no se puede tocar; una vez movida, la unica salida es
+la que ofrecio. Queda como leccion operativa y no como sentencia sobre el relay.
+
+**La recuperacion.** `review recover` con `disposition=scope_changed`, predecessor
+`review-a768d00350e5a18b`, successor `review-3f5e6a8605ca2a0f`, base `a6e4d217` (el padre del commit de
+Gerber). El proveedor pidio dos campos mas de los seis que habia emitido —`actor` y `reason`— y recien con
+esos ocho commiteo. El predecessor quedo cerrado con su disposicion; el successor arranco en `reviewing`
+sobre **2.043 lineas** (`9618ab24..701d7e77`): el lector de Gerber con su correccion mas C1 completo, en
+un solo candidato. Es mas de lo que pedi y mejor: la correccion del Gerber por fin tiene veredicto, y
+comparte candidato con el motor de conjuntos.
+
+**El relay se cayo una vez y se reintento una vez.** La primera corrida del grupo murio con
+`pi-host-relay-transport-failure`: el revisor de `review-readability` recibio
+`[internal_server_error]` del proveedor a los 207 s, sin un solo token de salida y con
+`prepared_reviewers: 0`. No se consumio nada. STATUS fresco reofrecio **el mismo grupo sin cambios** —misma
+revision `497f7186`, mismos cuatro subject hashes— y esa reentrega es la continuacion exacta ofrecida, no
+un replay. La segunda corrida termino las cuatro lentes en 52 s, 139 s, 212 s y 107 s.
+
+**Resultado: aprobada**, con un unico hallazgo **no bloqueante**: `R2-001` (readability,
+`crates/cam-gerber/src/lib.rs:506-512`, severidad WARNING, disposicion informativa). No abrio correccion ni
+reofrecio transicion de correccion, asi que queda como trabajo aparte y no como motivo para volver a
+revisar este candidato. La autoridad quedo **quemada** con `gentle-ai.review-acknowledged/v1`.
+
+**L13** (regla, para no repetirlo): **no se commitea nada mientras una validacion de review esta
+pendiente.** La ventana de una validation targetada es la identidad de un candidato congelado; un commit
+ajeno a la correccion la invalida, y recuperar cuesta un ciclo de review entero. Si hay trabajo que
+continuar mientras el proveedor valida, va a otra rama o no va.
+
+**Pendiente por `R2-001`:** revisar `crates/cam-gerber/src/lib.rs:506-512` en la proxima pasada por el
+lector. Es el bloque de `AD`/`ADD` que desenvuelve `strip_prefix(..).unwrap()` dos veces seguidas; el
+`unwrap` es seguro por el `starts_with` que lo precede, pero la simetria con el bloque `ADD` invita a
+unificarlos en una sola rama.
