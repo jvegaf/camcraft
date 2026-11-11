@@ -293,3 +293,27 @@ fn a_self_intersecting_offset_keeps_the_largest_boundary() {
      plus the two mouth caps), not the notch sliver: {area}"
   );
 }
+
+#[test]
+fn an_arrangement_refusal_falls_back_to_the_sampled_cleanup() {
+  // R3-arrangement-error-fallback: the arrangement is an improvement over the sampled cleanup, not
+  // the contract, so a refusal has to land on the fallback exactly like a flattening does. At a 1 mm
+  // chord tolerance the arrangement refuses this bracket - its pieces cannot be chained closed -
+  // and propagating that refusal takes away a cleanup this reader already had.
+  let options = OffsetOptions {
+    tolerance: 1.0,
+    ..options()
+  };
+  let offset = offset_contour(&bracket(), -8.0, &options)
+    .expect("a refused arrangement falls back to the sampled cleanup, it does not fail the offset");
+  assert!(
+    offset.flattened,
+    "the fallback is the sampled cleanup, and that one flattens: {:?}",
+    offset.warnings
+  );
+  assert!(
+    offset.warnings.contains(&OffsetWarning::Flattened),
+    "the caller is told the contour came back flattened: {:?}",
+    offset.warnings
+  );
+}

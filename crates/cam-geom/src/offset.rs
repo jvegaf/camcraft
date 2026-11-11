@@ -171,7 +171,7 @@ pub fn offset_contour(
   // curve, so it is asked first whenever the candidate carries an arc; the sampled cleanup stays as
   // the fallback, because it is the contract this reader had before arrangements were available.
   if candidate.has_arcs() {
-    if let Some(surviving) = arrangement_resolution(&candidate, options.tolerance)? {
+    if let Some(surviving) = arrangement_resolution(&candidate, options.tolerance) {
       return Ok(Offset {
         contour: surviving,
         flattened: false,
@@ -531,12 +531,19 @@ fn polygon_area(points: &[Point2]) -> f64 {
 /// The sampled cleanup keeps the larger of the two loops a crossing divides the contour into, and
 /// this keeps the same thing: the largest boundary by absolute area, so the surviving geometry is
 /// the one this reader already promised. `None` means the arrangement could not express the answer -
-/// it flattened, or left nothing - and the caller falls back to the sampled path rather than
-/// returning something weaker than it used to.
-fn arrangement_resolution(contour: &Contour, tolerance: f64) -> Result<Option<Contour>, GeomError> {
-  let normalized = normalize(&Region::new(vec![contour.clone()])?, tolerance)?;
+/// it flattened, it left nothing, or it refused - and the caller falls back to the sampled path
+/// rather than returning something weaker than it used to. A refusal is treated exactly like a
+/// flattening because the arrangement is an improvement over the sampled cleanup, not the contract:
+/// the contract is that a self-intersecting offset gets cleaned, and the sampled path can still
+/// keep it.
+fn arrangement_resolution(contour: &Contour, tolerance: f64) -> Option<Contour> {
+  let Ok(normalized) =
+    Region::new(vec![contour.clone()]).and_then(|region| normalize(&region, tolerance))
+  else {
+    return None;
+  };
   if normalized.flattened {
-    return Ok(None);
+    return None;
   }
   let mut best: Option<(f64, Contour)> = None;
   for boundary in normalized.region.boundaries {
@@ -549,5 +556,5 @@ fn arrangement_resolution(contour: &Contour, tolerance: f64) -> Result<Option<Co
       best = Some((area, boundary));
     }
   }
-  Ok(best.map(|(_, contour)| contour))
+  best.map(|(_, contour)| contour)
 }

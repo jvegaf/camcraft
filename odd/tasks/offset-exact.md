@@ -122,3 +122,37 @@ revirtió y el árbol no la conserva.
 `R3-arrangement-error-fallback` sigue **abierto**, con sus dos salidas honestas y sin decisión tomada.
 `dev` ya no existe: se mergeó a `master`, que es la rama de integración desde que el repo pasó a
 llamarse camcraft.
+
+**L7** (cierre del aviso `R3-arrangement-error-fallback`, salida elegida por el owner: **código**, no
+comentario): `arrangement_resolution` deja de devolver `Result` y devuelve `Option<Contour>`. Una
+**negativa** del arrangement ahora cae al muestreo exactamente igual que un aplanado, porque el
+arrangement es una mejora sobre el cleanup muestreado y no el contrato: el contrato es que un offset
+auto-intersectado se limpie, y el camino muestreado puede cumplirlo.
+
+**Cómo se encontró el fixture que alcanza la rama.** La rama es defensiva, así que primero hubo que
+demostrar que era alcanzable. Un barrido de 60 combinaciones de forma y distancia de offset (brackets de
+brazo 10 a 30 mm, mancuernas de cuello 5.2 a 9 mm, offsets de -2 a -12 mm) **no** la alcanzó: todos los
+errores ocurrían antes, en la construcción del candidato (`DegenerateArc`) o en el guardia de
+atravesado (`OffsetCollapsed`). El camino que sí llega es la **tolerancia**: con `tolerance: 1.0` el
+bracket de -8 mm hace que el arrangement falle con `EditRefused { reason: "the arrangement revisits a
+piece, so its pieces cannot be chained closed" }`. Ese es el test:
+`an_arrangement_refusal_falls_back_to_the_sampled_cleanup`, que exige `Ok`, `flattened == true` y el
+aviso `Flattened`.
+
+**Prueba por mutación:** reponer la propagación que hacía el `?` viejo —un `expect` en el mismo lugar,
+que aborta el offset igual— hace caer el test con ese `EditRefused`. Con el fallback, pasa.
+
+**Alcance del cambio de comportamiento:** sólo cambia la entrada que antes devolvía `Err` desde
+`normalize`; ésas abortaban el offset y ahora devuelven el contorno aplanado. Ninguna salida que ya
+existía se mueve: los goldens de G-code y las 1319 pruebas pasan sin tocarse.
+
+**Estado:** `master` `9c46c26` más este arreglo y los dos tests de la L6, workspace en **1319 passed, 0
+failed**, `fmt --all --check` y `clippy -D warnings` en verde. Los dos avisos de la L5 quedan
+**cerrados**.
+
+**Candidato abierto que apareció de paso, sin tocar:** la mancuerna (bloque grande, cuello de 5 mm,
+bloque chico) con offset -4 se **rechaza** con `DegenerateArc { reason: "consecutive vertices
+coincide" }`. Los vértices de entrada son distintos: coinciden los del **candidato**, porque el cuello
+colapsa. La erosión correcta serían dos componentes separadas, y hoy ninguna distancia intermedia lo
+consigue (con cuello 5.2 y -4 devuelve aplanado el bloque grande solo, área 8464 mm²). Merece tarea
+propia.
