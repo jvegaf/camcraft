@@ -268,3 +268,24 @@ de legado de solo lectura.
 **Decision:** PR4 se pliega dentro de C3. El barrido termina aca: todo lo que era alcanzable esta afuera,
 y lo que queda en el modelo se limpia al definir `camcraft/document@1`, una sola vez, en lugar de inventar
 un relleno y migrar el schema dos veces.
+
+**L24** (decision — topologia de entrega, y una correccion a L13): se eligio **Feature Branch Chain con
+tracker** cuando parecia que la cadena no podia integrarse en pedazos. El barrido demostro lo contrario:
+de los siete cortes, **solo uno rompe el producto** — el borrado (P5), que se lleva `emit` y `simulate`.
+Los otros seis son aditivos o limpieza y pueden mergearse por separado, cada uno dejando el arbol verde.
+Sobre una cadena lineal y mergeable el tracker no aporta nada, asi que se entrega como **PRs apilados**:
+cada rama apunta a su padre y la primera apunta a `master`.
+
+| PR | Rama | Cabeza | Que trae | Mergeable solo |
+| --- | --- | --- | --- | --- |
+| P1 | `camcraft-sweep-01-docs` | `e0ee403` | system design + spec del barrido | si (docs) |
+| P2 | `camcraft-sweep-02-rescue` | `3f1a524` | `cam-ops`: shared, follow, rings, islas, peck (+73 tests) | si (aditivo) |
+| P3 | `camcraft-sweep-03-docs` | `8300d13` | cierre de cadena, calibracion del CRITICAL, gsim-rs | si (docs) |
+| P4 | `camcraft-sweep-04-oracles` | `da5ccd9` | los 89 oraculos de estrategia de `cam-sim` | si (tests) |
+| P5 | `camcraft-sweep-05-deletion` | `fdb87cf` | el dominio de mecanizado general afuera | **no**: sin `emit`/`simulate` hasta C4 |
+| P6 | `camcraft-sweep-06-cleanup` | `fcd83d9` | `medial` + los 7 hallazgos de review | si (borrado muerto + tests) |
+| P7 | `camcraft-sweep-07-docs` | esta punta | L21-L24 y la reparacion del README | si (docs) |
+
+Las ramas de andamiaje (`-c1`..`-c6`, `-s1`, `-dA/dB/dC`) quedan como historia local: los recibos de
+review estan atados a identidades de target, no a nombres de rama, asi que no hacen falta para entregar, y
+reescribir las remotas esta bloqueado por la politica de seguridad del harness.
