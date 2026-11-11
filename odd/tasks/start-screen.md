@@ -79,3 +79,10 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
   -D warnings` clean, `cargo test --workspace` **1695 passed, 0 failed**, and the real binary left running for 12 s
   without a panic. The slice boundary sits there: the artboards are the only reason the first slice is larger than a
   review-sized diff, and they are design deliverables rather than code to review.
+- **L11** — Native review of this candidate, closed. Lineage `review-630e229555badde1`, tier `high`, lenses `review-risk`,
+  `review-resilience`, `review-reliability` (the provider rejected four lenses with `lenses-invalid`, so readability was
+  not reviewed). Three reviewer runs on the frozen candidate tree `dab3905f` (74 s / 154 s / 160 s, 0 cost reported),
+  verdict **approved**, final revision `d766b3b0`, acknowledged and the authority burned
+  (`gentle-ai.review-acknowledged/v1`). The provider's own risk signal was `process_boundary` on
+  `crates/cam-ui/src/lib.rs` — pre-existing script-panel code that appears because the file is in the diff. Delivery
+  stays ordinary repository policy: the branch is local and pushing it is the operator's call.
