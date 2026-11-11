@@ -405,7 +405,7 @@ fn a_region_arc_is_kept_as_a_segment_arc_not_flattened() {
   let arcs: Vec<_> = segments
     .iter()
     .filter_map(|segment| match segment {
-      cam_geom::Segment::Arc(arc) => Some(*arc),
+      cam_geom::Segment::Arc(arc) => Some(arc),
       _ => None,
     })
     .collect();
@@ -635,5 +635,141 @@ fn an_o_aperture_flash_is_refused_naming_the_command_index_and_the_template() {
   assert!(
     message.contains("template O") || (message.contains('O') && message.contains("template")),
     "names the template: {message}"
+  );
+}
+
+/// The endpoints of a drawn stroke's straight sides, in micrometres, sorted.
+fn line_ends(image: &cam_geom::region::Region) -> Vec<(i64, i64)> {
+  let mut ends: Vec<(i64, i64)> = image
+    .boundaries
+    .iter()
+    .flat_map(|contour| contour.segments())
+    .filter(|segment| matches!(segment, cam_geom::Segment::Line(_)))
+    .flat_map(|segment| [segment.start_point(), segment.end_point()])
+    .map(|point| {
+      (
+        (point.x * 1.0e6).round() as i64,
+        (point.y * 1.0e6).round() as i64,
+      )
+    })
+    .collect();
+  ends.sort_unstable();
+  ends
+}
+
+fn caps(image: &cam_geom::region::Region) -> Vec<cam_geom::Arc> {
+  image
+    .boundaries
+    .iter()
+    .flat_map(|contour| contour.segments())
+    .filter_map(|segment| match segment {
+      cam_geom::Segment::Arc(arc) => Some(arc),
+      _ => None,
+    })
+    .collect()
+}
+
+#[test]
+fn a_circular_draw_is_the_aperture_swept_along_the_segment() {
+  // S6: a draw outside a region is the aperture dragged along the segment. Diameter 2 from
+  // (0,0) to (10,0) gives a capsule: two straight sides at y = +-1 and two half-turn caps.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "a capsule is one boundary");
+  assert_eq!(
+    line_ends(&image),
+    vec![
+      (0, -1_000_000),
+      (0, 1_000_000),
+      (10_000_000, -1_000_000),
+      (10_000_000, 1_000_000),
+    ],
+    "the sides run the segment's length at the aperture's half width"
+  );
+  // The arrangement may split an arc where a seam lands on the body's edge, so count the turning
+  // rather than the pieces: two round caps together are one full turn, at the aperture's radius.
+  let caps = caps(&image);
+  assert!(!caps.is_empty(), "a capsule has round ends");
+  let turned: f64 = caps.iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "two half-turn caps are one full turn, got {turned}"
+  );
+  for cap in &caps {
+    assert!(
+      (cap.radius() - 1.0).abs() < 1.0e-6,
+      "cap radius {:?}",
+      cap.radius()
+    );
+  }
+}
+
+#[test]
+fn a_diagonal_draw_sweeps_the_same_capsule() {
+  // The aperture's half width is offset along the segment's normal, so a stroke at 45 degrees
+  // is not the axis-aligned capsule moved about: an implementation that only swept along x or y
+  // would land on different corners.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX006000000Y008000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    line_ends(&image),
+    vec![
+      (-800_000, 600_000),
+      (800_000, -600_000),
+      (5_200_000, 8_600_000),
+      (6_800_000, 7_400_000),
+    ],
+    "the normal of a (6,8) segment is (-0.8, 0.6), not an axis"
+  );
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "the caps stay round at any angle, got {turned}"
+  );
+}
+
+#[test]
+fn a_clear_draw_cuts_a_track_out_of_a_dark_region() {
+  // The stroke goes through the polarity accumulator like everything else: clear subtracts.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,2.0*%\n%LPD*%\nD10*\n\
+     X000000000Y000000000D02*\nG36*\n\
+     X020000000Y000000000D01*\nX020000000Y020000000D01*\n\
+     X000000000Y020000000D01*\nX000000000Y000000000D01*\n\
+     G37*\n%LPC*%\n\
+     X-005000000Y010000000D02*\nG01*\nX025000000Y010000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    2,
+    "a clear track across the square leaves two pieces"
+  );
+}
+
+#[test]
+fn a_rectangular_aperture_draw_is_refused_naming_the_aperture() {
+  // S6: a rectangular aperture sweeps into a Minkowski sum, which is a different shape. Refusing
+  // it by name beats reusing the circular path and calling the result a track.
+  let error = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10R,2.0X2.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses")
+  .image(TOLERANCE)
+  .expect_err("a rectangular stroke is not built yet");
+  let text = format!("{error}");
+  assert!(
+    text.contains("command") && text.contains("template R"),
+    "the refusal names the command and the template: {text}"
   );
 }

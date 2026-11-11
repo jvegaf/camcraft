@@ -261,23 +261,30 @@ impl Gerber {
           region_segments.clear();
         }
         Command::Line { to } => {
-          if !in_region {
-            return Err(GerberError::Unsupported {
-              line: 0,
-              what: format!("command {index}: a line outside a region"),
-            });
-          }
           let from = current.ok_or(GerberError::Unsupported {
             line: 0,
             what: format!("command {index}: a line without a current point"),
           })?;
-          if from.is_near(to, 0.0) {
-            return Err(GerberError::Unsupported {
-              line: 0,
-              what: format!("command {index}: a zero-length line in a region"),
-            });
+          if in_region {
+            if from.is_near(to, 0.0) {
+              return Err(GerberError::Unsupported {
+                line: 0,
+                what: format!("command {index}: a zero-length line in a region"),
+              });
+            }
+            region_segments.push(Segment::Line(LineSeg::new(from, to)));
+          } else {
+            // Outside a region a draw is a stroke: the aperture dragged from one end to the other.
+            let code = selected_aperture.ok_or(GerberError::NoApertureSelected { line: 0 })?;
+            let aperture = self.apertures.iter().find(|a| a.code == code).ok_or(
+              GerberError::UnknownAperture {
+                line: 0,
+                aperture: code,
+              },
+            )?;
+            let stroke = stroke_of(from, to, aperture, code, tolerance, index)?;
+            image = apply_region(image, &stroke, polarity, tolerance, index)?;
           }
-          region_segments.push(Segment::Line(LineSeg::new(from, to)));
           current = Some(to);
         }
         Command::Arc {
@@ -440,6 +447,113 @@ fn arc_from_gerber(
   let delta = if delta.abs() < 1.0e-12 { TAU } else { delta };
   let sweep = if clockwise { -delta } else { delta };
   Arc::new(center, radius, start_angle, sweep).map_err(|_| "an arc whose centre cannot be derived")
+}
+
+/// The shape a draw of `aperture` leaves between two points.
+///
+/// Only a circular aperture is a stroke this reader builds: the capsule, meaning the rectangle of
+/// the aperture's width along the segment plus a disc at each end. A rectangular aperture sweeps
+/// into a Minkowski sum that is a different shape, so it is refused by name instead of being
+/// approximated with the circular path.
+fn stroke_of(
+  from: Point2,
+  to: Point2,
+  aperture: &Aperture,
+  code: u32,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let template = aperture.template.as_str();
+  if template != "C" {
+    return Err(GerberError::Unsupported {
+      line: 0,
+      what: format!(
+        "command {index}: a draw with aperture {code} template {template} is not a stroke this reader builds"
+      ),
+    });
+  }
+  let diameter = aperture
+    .parameters
+    .first()
+    .copied()
+    .ok_or_else(|| GerberError::Unsupported {
+      line: 0,
+      what: format!("command {index}: a draw with aperture {code} template C without a diameter"),
+    })?;
+  capsule(from, to, diameter, tolerance, index)
+}
+
+/// The aperture of diameter `d` swept from `from` to `to`.
+///
+/// The body is the rectangle of width `d` whose axis is the segment; the caps are discs, which is
+/// what makes the ends round instead of square. A segment too short to have a body is a dot, and
+/// the disc alone is the honest answer.
+fn capsule(
+  from: Point2,
+  to: Point2,
+  diameter: f64,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let radius = diameter / 2.0;
+  let cap = |at: Point2| -> Result<Region, GerberError> {
+    let contour = primitive::circle(at, radius).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: the cap of a stroke is not a valid disc: {error}"),
+    })?;
+    Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: the cap of a stroke is not a valid region: {error}"),
+    })
+  };
+
+  let mut stroke = cap(from)?;
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  let length = (dx * dx + dy * dy).sqrt();
+  if length > tolerance {
+    // The body's axis is the segment, so its half-width is the segment's normal at the radius.
+    let nx = -dy / length * radius;
+    let ny = dx / length * radius;
+    let corners = vec![
+      Point2::new(from.x + nx, from.y + ny),
+      Point2::new(to.x + nx, to.y + ny),
+      Point2::new(to.x - nx, to.y - ny),
+      Point2::new(from.x - nx, from.y - ny),
+    ];
+    let contour = Contour::from_points(&corners, true).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: the body of a stroke is not a valid contour: {error}"),
+    })?;
+    let body = Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: the body of a stroke is not a valid region: {error}"),
+    })?;
+    stroke = union_of(stroke, body, tolerance, index)?;
+  }
+  union_of(stroke, cap(to)?, tolerance, index)
+}
+
+/// Add material to a shape being assembled, before it reaches the image's own polarity.
+fn union_of(
+  image: Region,
+  region: Region,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let combined = combine(&image, &region, BooleanOp::Union, tolerance).map_err(|error| {
+    GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a stroke could not be assembled: {error}"),
+    }
+  })?;
+  match combined {
+    Combined::Empty => Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: an empty stroke is not a valid region: {error}"),
+    }),
+    Combined::Region { region, .. } => Ok(region),
+  }
 }
 
 /// Parse a Gerber RS-274X file.
