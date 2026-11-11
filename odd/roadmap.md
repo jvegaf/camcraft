@@ -221,7 +221,7 @@ never emitted because no M0 strategy changes feed mid-segment.
 | Picking, marquee and snapping in screen pixels | `crates/cam-view` | 13 tests incl. tie-breaks and zoom independence |
 | egui shell: panels, canvas, properties, status | `crates/cam-ui` | 16 tests running real `egui` frames headless and reading back painted text |
 | Pointer, wheel and keyboard wiring | `crates/cam-ui` | 10 tests with synthetic clicks, drags, wheel and keys |
-| Native window for Windows and Linux | `crates/cam-desktop` | builds; launched under a compositor, screenshot in `docs/images/editor-m1.png` |
+| Native window for Windows and Linux | `crates/cam-desktop` | builds; launched under a compositor, screenshot in `docs/old/images/editor-m1.png` |
 
 M1 defects found and fixed at the root: the entity id counter ignored ids already in the opened
 document (duplicate `E1`); arc bounds were computed by tessellation, so a circle's bounds were off by
@@ -367,7 +367,7 @@ work exists now: the `boolean ops` item of §3's `cam-geom` description is deliv
 **subtraction**, expressed as even-odd parity plus the arrangement and the distance proof that keep
 parity honest. A union is not part of it and is not claimed. The feature document is
 `odd/tasks/region-booleans.md`; the contract and the user-facing behaviour are in
-`docs/region-booleans.md`. The workspace stands at **707 tests**, green under `./scripts/check.sh`.
+`docs/old/region-booleans.md`. The workspace stands at **707 tests**, green under `./scripts/check.sh`.
 
 | Deliverable | Where | Proof |
 | --- | --- | --- |
@@ -436,7 +436,7 @@ the depth each cell was **authorised** to lose from the document alone, and repo
 material as one subtraction with two signs (D-M5-2). `cam-cli simulate` is that report, and the shell
 shows the same field as a depth-shaded 3D surface it can play. The feature document is
 `odd/tasks/m5-simulation.md`; the model, the report's exact shape, the exit codes and every
-recorded limit are in [docs/m5-simulation.md](../docs/m5-simulation.md). The workspace stands at **795
+recorded limit are in [docs/old/m5-simulation.md](../docs/old/m5-simulation.md). The workspace stands at **795
 tests**, green under `./scripts/check.sh` (`fmt --check`, `clippy -D warnings`, the whole suite).
 
 | Deliverable | Where | Proof |
@@ -501,7 +501,7 @@ absorbed silently, and both are recorded as the milestone's own cost.
 
 The feature document is `odd/tasks/m6-depth-variants.md`; the strategies, their Z laws, their
 refusals, the simulation's claim for each, the differential and the one defect M6 recorded without fixing
-are in [docs/m6-toolpaths.md](../docs/m6-toolpaths.md). The workspace stands at **975 tests across 70 test
+are in [docs/old/m6-toolpaths.md](../docs/old/m6-toolpaths.md). The workspace stands at **975 tests across 70 test
 targets** — 180 more than the 795 the branch cut from — green under `./scripts/check.sh` (`fmt --check`,
 `clippy -D warnings`, the whole suite). In the four crates M6 touches that is cam-model 47, cam-toolpath
 123, cam-sim 99 and cam-cli 104; `cam-sim/tests/target.rs` holds 43 tests, 23 of them M6's, and
@@ -580,7 +580,7 @@ became one). The property that guards all of it is
 
 The feature document is `odd/tasks/m7-vcarve.md`; the law, the axis's certificate, the walk, the
 refusals, the tolerance's four declared costs, the simulation's claim and the three defects T0 found are
-in [docs/m7-vcarve.md](../docs/m7-vcarve.md). The workspace stands at **1056 tests across 79 test
+in [docs/old/m7-vcarve.md](../docs/old/m7-vcarve.md). The workspace stands at **1056 tests across 79 test
 targets** — 81 more than the 975 the branch cut from — green under `./scripts/check.sh` (`fmt --check`,
 `clippy -D warnings`, the whole suite). In the crates M7 touches that is cam-geom **240**, cam-model
 **58**, cam-toolpath **136**, cam-sim **109** and cam-cli **121**.
@@ -701,7 +701,7 @@ and every produced file is byte-identical (all file hashes equal), which is the 
 moved the claim and not the program.
 
 The feature document is `odd/tasks/m8-moulding.md`; the sweep, the stepover certificate, the walk,
-the refusals and the limits are in [docs/m8-moulding.md](../docs/m8-moulding.md). The workspace stands at
+the refusals and the limits are in [docs/old/m8-moulding.md](../docs/old/m8-moulding.md). The workspace stands at
 **1374 tests across 101 test targets** (88 binaries and 13 doc-test targets) — 79 more than the 1295 the
 branch cut from `5bdb81a`, and 16 of them M8's closing evidence — green under `cargo test --workspace`.
 In the crates M8 touches that is cam-geom **274**, cam-model **62**, cam-toolpath **154**, cam-sim **126**
@@ -717,7 +717,7 @@ and cam-cli **140**.
 | Golden programs for a straight rail and a closed frame, each asserted three ways | `crates/cam-cli/tests/cli.rs` | 6 tests; a 60 mm open rail emits **21 lines** — 3 passes at `Z-1.0000`, `Z-3.0000`, `Z-1.0000` — and a 40 x 20 mm closed frame emits **33 lines** — 2 passes at `Z-2.0000`, the inner one with a repeated corner sample per corner (4 bare `G01` blocks) and the outer one with a 45 degree diagonal across each corner; each is pinned as built, after a `c2d` save/load round trip and with the toolpath authored through `cam-cli toolpath`, and every line was read against the law before pinning |
 | Three reports end to end, and the multi-rail case | `crates/cam-cli/tests/cli.rs` | 3 tests; a correct straight-rail moulding prints `program: 12 move(s)`, `removed: 300.000 mm3`, `gouge: 0.000`, `uncut: 0.000` and exits `0`; a frame asking 2 mm out of a **1 mm stock** prints `uncut: 248.000 mm3 over 248 cell(s)` and exits **6**; and a toolpath naming **two rails** cuts and claims both (`removed: 600.000 mm3`, `gouge: 0.000`, `uncut: 0.000`, exit `0`), which is the multi-rail claim proven end to end rather than assumed |
 | Determinism, and no new dependency | workspace | two runs of `toolpath --kind moulding`, of `simulate` and of `emit` are byte-identical (each golden test emits its program twice, and the authoring tests compare the documents on disk); and `Cargo.toml`/`Cargo.lock` are unchanged from the branch's cut point `5bdb81a` (`git diff 5bdb81a -- Cargo.toml Cargo.lock crates/*/Cargo.toml` is empty): no crate and no dependency was added |
-| The shared chord constant, and the limit M8 no longer has | `cam-sim`'s oracle, `docs/m8-moulding.md` | `DEFAULT_CHORD_TOLERANCE` (`0.001` mm) is recorded as a constant `cam-geom`, `cam-toolpath` and `cam-sim` all read — which is what makes the claim's polyline the program's — which **no test pinned** when this row was written; **and the gap was wider than the row said**, because every moulding fixture in `cam-sim` is a straight rail, where a segment samples to one chord at any tolerance, so mutating `claim_moulding`'s call site to `0.01` left all 17 of its tests green. Pinned now, on curved rails, by `a_mouldings_program_is_walked_at_the_one_chord_tolerance_the_claim_reads` (`crates/cam-cli/tests/cli.rs`: the value, the tolerance proved load-bearing, and one `G01X` per further sample of each pass) and `a_mouldings_claim_on_an_arc_rail_is_the_walk_at_the_one_chord_tolerance` (`crates/cam-sim/tests/moulding.rs`: the claimed cells and volume are the default walk's), each proved by installing the mutation and watching it fail. The closed-rail **seam corner**, delivered as a recorded limit at `gouge 2.000 mm³ over 1 cell` on a correct program, was closed post-delivery by `Rail::offset_walk`, with the test it was pinned by inverted and the CLI differential recorded above |
+| The shared chord constant, and the limit M8 no longer has | `cam-sim`'s oracle, `docs/old/m8-moulding.md` | `DEFAULT_CHORD_TOLERANCE` (`0.001` mm) is recorded as a constant `cam-geom`, `cam-toolpath` and `cam-sim` all read — which is what makes the claim's polyline the program's — which **no test pinned** when this row was written; **and the gap was wider than the row said**, because every moulding fixture in `cam-sim` is a straight rail, where a segment samples to one chord at any tolerance, so mutating `claim_moulding`'s call site to `0.01` left all 17 of its tests green. Pinned now, on curved rails, by `a_mouldings_program_is_walked_at_the_one_chord_tolerance_the_claim_reads` (`crates/cam-cli/tests/cli.rs`: the value, the tolerance proved load-bearing, and one `G01X` per further sample of each pass) and `a_mouldings_claim_on_an_arc_rail_is_the_walk_at_the_one_chord_tolerance` (`crates/cam-sim/tests/moulding.rs`: the claimed cells and volume are the default walk's), each proved by installing the mutation and watching it fail. The closed-rail **seam corner**, delivered as a recorded limit at `gouge 2.000 mm³ over 1 cell` on a correct program, was closed post-delivery by `Rail::offset_walk`, with the test it was pinned by inverted and the CLI differential recorded above |
 
 Recorded deviations, each a decision in the feature document: **no tolerance flag, by design** — a
 moulding's error is the rail walk's chord error and nothing else, so `--tolerance` is refused by name, and
@@ -799,7 +799,7 @@ boards.
 
 The feature document is `odd/tasks/m9-nesting.md`; the two nesters and their laws, the two
 certificates, the inside-ness rule and its `INSET_STEP`, the one arithmetic, the CLI surface with exit
-`7`, the refusals, both review lineages and the known limits are in [docs/m9-nesting.md](../docs/m9-nesting.md).
+`7`, the refusals, both review lineages and the known limits are in [docs/old/m9-nesting.md](../docs/old/m9-nesting.md).
 
 The workspace stands at **103 test binaries** green under `cargo test --workspace`, and in the crates M9
 touches that is cam-geom **302**, cam-model **93** and cam-cli **157** — 28 more in `cam-geom` than the 274
@@ -827,7 +827,7 @@ strict disjointness costs one search step beyond the gap; there is **no exact NF
 no union; a run packs **one board size**, and a **mixed document nests each class on boards of its own**,
 because neither nester can be handed the other's placements as an occupied board. Two recorded gaps are
 not deviations but omissions owned by this document: **no shell drafting form** (S7's assumption, carried
-from M4 and M7 — parts and sheets are authored through `cam-cli nest`), and **`docs/format.md` carries no
+from M4 and M7 — parts and sheets are authored through `cam-cli nest`), and **`docs/old/format.md` carries no
 row for the `nesting` section**, which T6's edit surfaces did not include.
 
 **Both of M9's candidates were reviewed, at tier high, and both receipts are burned; the document-format
@@ -928,7 +928,7 @@ authorised lines, one line of code plus the test) and then superseded because T2
 was open: the frozen scope grew from **7 paths to 9**, the provider returned `recover` /
 `scope_changed`, and the **owner authorised** the recover. The approved lineage emitted **nine advisory
 findings**, all informational and none corrected (`bd99706d/R2-001` … `R3-003`, listed with their lenses,
-severities and line locations in [docs/m10-documents.md](../docs/m10-documents.md#the-review-record-and-what-it-does-not-cover)).
+severities and line locations in [docs/old/m10-documents.md](../docs/old/m10-documents.md#the-review-record-and-what-it-does-not-cover)).
 
 **What is not reviewed is stated as measured.** T3 (the print sheet), T3b (the crate split) and T4a (the
 sink) were **not** reviewed: `assess` on `6471d5f..HEAD` measured `reviewDue: false` with
@@ -966,7 +966,7 @@ modal over the canvas (`odd/tasks/script-panel-mount.md`) — and it runs **sync
 that pressed `Run`; the sheet **omits** the
 program, the simulation and the file name and says so under its own `Omitted` heading; the two CSV
 shapes are **two formats, not one schema**, so `cam_import::csv::import` deliberately does not read a
-cut list back; and **`docs/format.md`'s command-line table is stale** from M9 onwards — it lists neither
+cut list back; and **`docs/old/format.md`'s command-line table is stale** from M9 onwards — it lists neither
 `nest` nor M10's four commands and its exit table stops at `6` while `nest` exits `7` — recorded rather
 than patched, because M10 changed no document format and the format document's own rows were not part
 of this milestone's contribution. **Patched after M12**, when the audit went to fix it and found the

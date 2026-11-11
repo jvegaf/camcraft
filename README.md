@@ -134,7 +134,7 @@ back. Opening a document therefore changes nothing about the library, and the cu
 cutting-time estimate resolve against that one file.
 
 `tools_ref` is still a document field and `cam-cli` still honours it — a reference **relative to the document's
-own directory**, which is what [docs/format.md](docs/format.md) says it means — so a document may name a library
+own directory**, which is what [docs/old/format.md](docs/old/format.md) says it means — so a document may name a library
 for the command line. The **window** does not read it: a drawing owning a library is exactly what the
 application-level rule rules out. From the command line the field is joined without a containment guard, so it
 may be absolute or climb out of the directory; the CLI creates the parent directory and the file it is pointed
@@ -176,7 +176,7 @@ cargo run -q -p cam-cli -- tools list tools.sqlite
 ```
 
 Schemas, the post-processor grammar and the CLI contract are specified in
-[docs/format.md](docs/format.md).
+[docs/old/format.md](docs/old/format.md).
 
 ## Layout
 
@@ -236,7 +236,7 @@ pixels at any zoom, snapping, and synthetic clicks, drags, wheel and keys drivin
 
 The native window itself is the one thing not covered by automation: it needs a display. It is
 verified by building and by launching it under a compositor, which is how the screenshot in
-`docs/images/` was taken.
+`docs/old/images/` was taken.
 
 ## Next
 

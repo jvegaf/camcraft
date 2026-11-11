@@ -482,10 +482,10 @@ pre-existing command and nothing else on that surface moving at all.
 - **No shell drafting form** (S7's assumption, carried from M4 and M7): parts, sheets and the run are
   authored through `cam-cli nest`, and the shell's nesting surface is future work rather than a silent
   gap.
-- **`docs/format.md` carries no row for the `nesting` section.** The format document describes the
+- **`docs/old/format.md` carries no row for the `nesting` section.** The format document describes the
   document, the tool library, the post-processor and the command-line contract, and M9's section is
   documented here and in the feature document instead. T6's edit surfaces did not include
-  `docs/format.md`, so the gap is recorded rather than closed: a reader who starts at
+  `docs/old/format.md`, so the gap is recorded rather than closed: a reader who starts at
   [format.md](format.md#document-c2d) will not find `nesting` there.
 - **The document format's commit has no native review** (see the lineage section above): `a5a82fe` is
   in neither candidate, so M9's document contract rests on its tests and the pre-M9 byte-identical

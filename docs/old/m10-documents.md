@@ -461,7 +461,7 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
 - **The sheet omits what it cannot honestly report.** The program, the simulation and the file name are
   named in its own `Omitted` section — three sentences in a 59-line sheet — because it runs no
   post-processor, simulates nothing and the document records no file name.
-- **`docs/format.md`'s command-line table is stale, and M10 did not close it.** It lists ten commands and
+- **`docs/old/format.md`'s command-line table is stale, and M10 did not close it.** It lists ten commands and
   neither `nest` (M9) nor M10's `parts`, `cutlist`, `report` and `script`, and its exit table stops at `6`
   while `nest` exits `7`. M10 changed **no** document format — no file under `crates/cam-model` or
   `crates/cam-store` differs in the range — so T6's edit surface for that document was the format, and
