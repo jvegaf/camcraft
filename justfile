@@ -27,7 +27,7 @@ status:
     printf 'sync:    no upstream configured\n'; \
   fi
   @printf 'dirty:   %s changed path(s)\n' "$(git status --porcelain | wc -l | tr -d ' ')"
-  @printf 'features: %s\n' "$(ls odd/tasks/[0-9][0-9][0-9]-*.md 2>/dev/null | wc -l | tr -d ' ')"
+  @printf 'features: %s\n' "$(ls odd/tasks/*.md 2>/dev/null | grep -v 'INDEX\.md$' | wc -l | tr -d ' ')"
 
 # Format the whole workspace.
 fmt:
