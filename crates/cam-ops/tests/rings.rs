@@ -104,7 +104,11 @@ fn run_with(contour: &Contour, params: &PocketParams, tool: &ToolSpec) -> Pocket
   .expect("toolpath computes")
 }
 
-/// Split the move stream into units of work: each unit opens with a rapid, plunges, cuts, retracts.
+/// Split the move stream into units of work, one per rapid.
+///
+/// A unit *starts* at a rapid; whether it plunges, cuts and retracts is the strategy's business, not
+/// this split's, and a stream that never rapids is one unit.
+///
 fn work_units(moves: &[Move]) -> Vec<Vec<Move>> {
   let mut work_units: Vec<Vec<Move>> = Vec::new();
   for movement in moves {
