@@ -4,9 +4,10 @@
 //! strategy's internals: what the machine is told to do is the contract.
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Job, OriginCorner, PocketParams, PocketStrategy};
+use cam_model::{Job, OriginCorner};
 use cam_move::Move;
 use cam_ops::{pocket, PocketRequest, Pocketpath, ToolSpec, ToolpathError};
+use cam_ops::{PocketParams, PocketStrategy};
 use cam_units::Length;
 
 /// Tolerance for a distance the offset kernel guarantees to within its own slack.

@@ -14,7 +14,9 @@
 
 use cam_geom::region::Region;
 use cam_geom::{Bounds, Contour, Point2, DEFAULT_TOLERANCE};
-use cam_model::{Job, PocketParams, PocketStrategy};
+use cam_model::Job;
+
+use crate::params::{PocketParams, PocketStrategy};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 

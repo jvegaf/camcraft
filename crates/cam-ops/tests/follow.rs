@@ -1,9 +1,10 @@
 //! Behaviour tests for the profile toolpath (A2, A6).
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Job, OriginCorner, ProfileParams, ProfileSide, Tab};
+use cam_model::{Job, OriginCorner, Tab};
 use cam_move::{Move, Point3};
 use cam_ops::{profile, ProfileRequest, ToolSpec, ToolpathError};
+use cam_ops::{ProfileParams, ProfileSide};
 use cam_units::Length;
 
 fn rectangle(width: f64, height: f64) -> Contour {

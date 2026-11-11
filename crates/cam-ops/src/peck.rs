@@ -14,7 +14,9 @@
 use std::f64::consts::TAU;
 
 use cam_geom::{Contour, Point2, Segment};
-use cam_model::{DrillBank, DrillParams, Job, RetractMode};
+use cam_model::Job;
+
+use crate::params::{DrillBank, DrillParams, RetractMode};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 

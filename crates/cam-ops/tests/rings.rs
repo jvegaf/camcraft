@@ -6,9 +6,10 @@
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
-use cam_model::{Job, OriginCorner, PocketParams, PocketStrategy};
+use cam_model::{Job, OriginCorner};
 use cam_move::Move;
 use cam_ops::{pocket, PocketRequest, Pocketpath, ToolSpec, ToolpathError};
+use cam_ops::{PocketParams, PocketStrategy};
 use cam_units::Length;
 
 const TOLERANCE: f64 = 1.0e-6;

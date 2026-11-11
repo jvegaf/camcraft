@@ -4,9 +4,10 @@
 //! the tool down between holes. Every test here asserts the emitted moves, never internals.
 
 use cam_geom::Point2;
-use cam_model::{DrillBank, DrillParams, Job, OriginCorner, RetractMode};
+use cam_model::{Job, OriginCorner};
 use cam_move::{Move, Point3};
 use cam_ops::{drill, DrillHole, DrillRequest, Drillpath, ToolSpec, ToolpathError};
+use cam_ops::{DrillBank, DrillParams, RetractMode};
 use cam_units::Length;
 
 fn job() -> Job {

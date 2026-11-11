@@ -6,11 +6,15 @@
 #![warn(missing_docs)]
 
 pub mod follow;
+pub mod params;
 pub mod peck;
 pub mod rings;
 pub mod shared;
 
 pub use follow::{profile, ProfileRequest};
+pub use params::{
+  DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
+};
 pub use peck::{circle_centre, drill, DrillHole, DrillRequest, Drillpath};
 pub use rings::{pocket, PocketRequest, Pocketpath};
 pub use shared::{ToolSpec, ToolpathError};

@@ -1,7 +1,9 @@
 //! Profile (follow) machining: cut along a contour with side offset, leads and tabs.
 
 use cam_geom::{Contour, Point2, Segment};
-use cam_model::{Job, ProfileParams, ProfileSide, Tab};
+use cam_model::{Job, Tab};
+
+use crate::params::{ProfileParams, ProfileSide};
 use cam_move::{Move, Point3};
 use cam_units::Length;
 
