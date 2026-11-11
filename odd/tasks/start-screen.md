@@ -92,3 +92,9 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
   `item_spacing` between the two acts instead of the style's 8 — measured from the frame, not assumed: content 360 dp
   tall, tile gap 16 dp. `assess` on the follow-up candidate: risk `medium`, `reviewDue: false` (`under_budget`), so no
   native review; the writer's self-verification is the gate that ran (fmt, clippy `-D warnings`, 1695 tests).
+- **L13** — Defect found by the operator after the merge and fixed on `fix-startup-library-message`: `Editor::new()`
+  assigned the sentence a failed `open_app_library()` returns and then cleared the status slot three lines lower. The
+  clear was a leftover of the sample document — `Shell::open_app_library` writes no success line — so once the sample
+  was gone it could only erase that refusal, and a data directory that cannot hold `tools.sqlite` produced a window
+  saying nothing. The clear is gone and the constructor takes the data directory, so the failure is reachable from a
+  test: two tests, and the first was observed **red** with the clear put back before being accepted.

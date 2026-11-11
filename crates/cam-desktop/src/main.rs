@@ -44,6 +44,15 @@ struct Editor {
 
 impl Editor {
   fn new() -> Self {
+    let directory = tool_library::app_data_dir();
+    Self::with_library(directory.as_deref())
+  }
+
+  /// The editor over one application data directory, which is [`Self::new`]'s only variable.
+  ///
+  /// Split out so the one startup failure this window has to report — a data directory that cannot hold a tool
+  /// library — can be produced by a test instead of needing a broken home directory to observe it.
+  fn with_library(directory: Option<&Path>) -> Self {
     let mut shell = Shell::new();
     // No project at launch: the start screen is the first thing the operator sees (start-screen S1, S2).
     let app = AppState::new(Document::new(Job::default_sheet()));
@@ -51,7 +60,16 @@ impl Editor {
     // The tool library belongs to the application, not to a drawing (tool-library-app S1). Open it at
     // launch so the modal and the current-tool card read the application's own file, but do not open the
     // library modal itself: two modals cannot own the first frame (start-screen L5).
-    if let Err(sentence) = shell.open_app_library() {
+    //
+    // A failure stays in the status bar. This window used to clear that slot unconditionally a few lines lower,
+    // which was written when a sample document still left a sentence to drop: `Shell::open_app_library` writes no
+    // success line of its own, so once the sample was gone the clear could only ever erase this refusal — an
+    // operator whose library could not be read got a window that said nothing at all.
+    let opened = match directory {
+      Some(directory) => shell.open_library_at(directory),
+      None => shell.open_app_library(),
+    };
+    if let Err(sentence) = opened {
       shell.status = sentence;
     }
     // Projects opened before live in the application's data directory. A missing file is an empty list; a
@@ -60,7 +78,6 @@ impl Editor {
       RecentsRead::List(recents) => shell.set_recents(recents),
       RecentsRead::Error(sentence) => shell.set_recents_error(Some(sentence)),
     }
-    shell.status.clear();
     Self { app, shell }
   }
 }
@@ -342,7 +359,7 @@ mod tests {
   fn scratch(name: &str) -> PathBuf {
     assert!(!name.contains('/') && !name.contains(".."));
     let directory =
-      PathBuf::from("/var/tmp").join(format!("campilot-recents-{}-{name}", std::process::id()));
+      PathBuf::from("/var/tmp").join(format!("campilot-desktop-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).expect("scratch directory");
     directory
@@ -409,6 +426,39 @@ mod tests {
     assert!(
       !path.with_file_name("recents.json.tmp").exists(),
       "the temporary file is renamed into place, not left behind"
+    );
+  }
+
+  #[test]
+  fn a_library_that_cannot_be_opened_leaves_its_sentence_in_the_status_bar() {
+    let directory = scratch("library-broken");
+    // A directory standing where the library file goes: SQLite cannot open it, which is the answer a read-only or
+    // damaged data directory gives a person.
+    std::fs::create_dir_all(directory.join("tools.sqlite"))
+      .expect("a directory where the file goes");
+
+    let editor = Editor::with_library(Some(&directory));
+
+    assert!(
+      !editor.shell.status.is_empty(),
+      "a library that cannot be read is the one thing a fresh window has to say"
+    );
+  }
+
+  #[test]
+  fn a_library_that_opens_leaves_the_fresh_window_with_nothing_to_report() {
+    let directory = scratch("library-ok");
+
+    let editor = Editor::with_library(Some(&directory));
+
+    assert!(
+      editor.shell.status.is_empty(),
+      "status: {:?}",
+      editor.shell.status
+    );
+    assert!(
+      !editor.shell.tools().is_empty(),
+      "a fresh data directory gets the factory catalogue, so the open really happened"
     );
   }
 }
