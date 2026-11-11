@@ -24,12 +24,12 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
 
 | ID | Specs | What it delivers | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | S1, S2 | `cam-ui`: the shell can sit with no project open — start-screen state, empty canvas (no stock, no rulers' origin), app bar and status bar naming no project, 3D refusing without one | inline | — |
-| T2 | S3, S4 | `cam-ui`: the start modal drawn from the handed-off artboard — New project, Open project, recent list, first-run and unreadable-list states, Esc leaves the empty workspace | inline | — |
-| T3 | S3 | `cam-ui`: the recent-project list as shell state (`RecentProject`), recorded on a successful open and save-as, capped and de-duplicated by path | inline | — |
-| T4 | S1, S2, S3 | `cam-desktop`: launch with no project, no sample document, no preview autoplay, no tool-library auto-open; host the `recents.json` file in the app data directory and answer the file dialog | inline | — |
-| T5 | S1, S2, S3 | Tests: startup holds no project, the three modal choices dispatch their actions, Esc leaves an empty workspace, recents round-trip | inline | — |
-| T6 | S2, S3 | Docs: README startup section, `design/system.md` modal rule (a second dialog, still `radius_dialog`) | inline | — |
+| T1 | S1, S2 | `cam-ui`: the shell can sit with no project open — start-screen state, empty canvas (no stock, no rulers' origin), app bar and status bar naming no project, 3D refusing without one | inline | `37550dc` |
+| T2 | S3, S4 | `cam-ui`: the start modal drawn from the handed-off artboard — New project, Open project, recent list, first-run and unreadable-list states, Esc leaves the empty workspace | inline | `37550dc` |
+| T3 | S3 | `cam-ui`: the recent-project list as shell state (`RecentProject`), recorded on a successful open and save-as, capped and de-duplicated by path | inline | `37550dc` |
+| T4 | S1, S2, S3 | `cam-desktop`: launch with no project, no sample document, no preview autoplay, no tool-library modal at launch; host the `recents.json` file in the app data directory and answer the file dialog | inline | `37550dc` |
+| T5 | S1, S2, S3 | Tests: twelve — nine in `crates/cam-ui/tests/shell/start.rs`, three host-side in `cam-desktop/src/main.rs`, plus the launch state | inline | `37550dc` |
+| T6 | S2, S3 | Docs: README startup section, `design/system.md` modal rule (a second dialog, still `radius_dialog`), the artboards | inline | `ad1e029`, `37550dc` |
 
 ## Log
 
@@ -73,3 +73,9 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
 - **L9** — Coverage added beyond the brief while closing it: pressing the `New project` tile through the real widget
   (the primary act had no click test) and the unreadable-list state, which must not read as "nothing was opened yet".
   Nine tests in `crates/cam-ui/tests/shell/start.rs`.
+- **L10** — Slices and evidence. Two commits on branch `start-screen`: `ad1e029` holds the design (`design/start-screen/`,
+  the `design/system.md` rule) and this document; `37550dc` holds the implementation, its twelve tests, the README and
+  `Cargo.lock`. The gate that closed it: `cargo fmt --all -- --check` clean, `cargo clippy --workspace --all-targets --
+  -D warnings` clean, `cargo test --workspace` **1695 passed, 0 failed**, and the real binary left running for 12 s
+  without a panic. The slice boundary sits there: the artboards are the only reason the first slice is larger than a
+  review-sized diff, and they are design deliverables rather than code to review.
