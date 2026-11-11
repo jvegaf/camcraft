@@ -5,6 +5,7 @@ members = [
     "crates/cam-geom",
     "crates/cam-move",
     "crates/cam-model",
+    "crates/cam-ops",
     "crates/cam-store",
     "crates/cam-post",
     "crates/cam-sim",
@@ -31,6 +32,7 @@ cam-units = { path = "crates/cam-units" }
 cam-geom = { path = "crates/cam-geom" }
 cam-move = { path = "crates/cam-move" }
 cam-model = { path = "crates/cam-model" }
+cam-ops = { path = "crates/cam-ops" }
 cam-store = { path = "crates/cam-store" }
 cam-post = { path = "crates/cam-post" }
 cam-sim = { path = "crates/cam-sim" }
