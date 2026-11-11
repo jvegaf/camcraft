@@ -4,8 +4,8 @@ use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit}
 use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::{primitive, transform, Point2, Vec2};
 use cam_model::{
-  Document, EngraveParams, Entity, EntityKind, Job, Layer, ModelError, Operation, PocketParams,
-  ProfileParams,
+  Document, EngraveParams, Entity, EntityKind, Job, Layer, LayerRole, ModelError, Operation,
+  PocketParams, ProfileParams,
 };
 
 fn state_with_layers(layer_ids: &[&str]) -> AppState {
@@ -14,6 +14,7 @@ fn state_with_layers(layer_ids: &[&str]) -> AppState {
     document.layers.push(Layer {
       id: (*id).to_owned(),
       name: (*id).to_owned(),
+      role: LayerRole::Geometry,
       visible: true,
       entities: Vec::new(),
     });
@@ -1269,6 +1270,7 @@ fn state_with_entities(ids: &[&str]) -> AppState {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "L1".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities,
   });

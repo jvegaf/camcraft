@@ -1,6 +1,6 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Job, Layer, Operation, ProfileParams, Toolpath};
+use cam_model::{Document, Job, Layer, LayerRole, Operation, ProfileParams, Toolpath};
 use cam_store::document::{save_document, DocumentFile};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::{Shell, ShellOutput, Tab};
@@ -11,6 +11,7 @@ pub(crate) fn document_with_rectangle() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),
@@ -356,6 +357,7 @@ pub(crate) fn document_with_squares(count: usize) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities,
   });

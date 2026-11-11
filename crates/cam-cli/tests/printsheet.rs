@@ -9,8 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Nesting, NestingPart, NestingPlacement, NestingSheet,
-  Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Nesting, NestingPart, NestingPlacement,
+  NestingSheet, Operation, ProfileParams, ProfileSide, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_units::{Angle, Length, UnitSystem};
@@ -67,6 +67,7 @@ fn write_document(
   document.layers.push(Layer {
     id: layer.0.to_owned(),
     name: layer.1.to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: entities
       .iter()
@@ -224,7 +225,7 @@ th { background: #eee; }
 </head>
 <body>
 <h1>Print sheet</h1>
-<p>schema c2d/document@2; figures in millimetres</p>
+<p>schema camcraft/document@1; figures in millimetres</p>
 <h2>Job</h2>
 <table>
 <tr><th>width</th><td>200.000 mm</td></tr>

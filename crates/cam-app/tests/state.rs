@@ -158,6 +158,7 @@ fn selection_is_ordered_and_unknown_ids_are_dropped() {
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
     name: "Layer".to_owned(),
+    role: cam_model::LayerRole::Geometry,
     visible: true,
     entities: vec![
       cam_model::Entity {
@@ -227,6 +228,7 @@ fn entity_ids_continue_after_the_ids_already_in_the_document() {
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
     name: "Layer".to_owned(),
+    role: cam_model::LayerRole::Geometry,
     visible: true,
     entities: (1..=3)
       .map(|index| cam_model::Entity {
@@ -258,6 +260,7 @@ fn replacing_the_document_also_ressets_the_id_counter() {
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
     name: "Layer".to_owned(),
+    role: cam_model::LayerRole::Geometry,
     visible: true,
     entities: vec![cam_model::Entity {
       id: "E41".to_owned(),
@@ -309,6 +312,7 @@ fn replacing_a_document_undoably_keeps_the_previous_one_and_reseeds_the_ids() {
   imported.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
     name: "Imported".to_owned(),
+    role: cam_model::LayerRole::Geometry,
     visible: true,
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),

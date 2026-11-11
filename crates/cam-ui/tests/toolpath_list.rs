@@ -14,7 +14,8 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Operation, PocketParams, ProfileParams, Toolpath,
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Operation, PocketParams, ProfileParams,
+  Toolpath,
 };
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::{Category, Shell, ShellOutput};
@@ -40,6 +41,7 @@ fn sheet() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),

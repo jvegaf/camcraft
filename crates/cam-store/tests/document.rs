@@ -1,7 +1,7 @@
 //! Behaviour tests for `.c2d` document persistence (A3).
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer, DOCUMENT_SCHEMA};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, DOCUMENT_SCHEMA};
 use cam_store::document::{load_document, save_document, DocumentFile, DOCUMENT_ENTRY};
 use cam_store::StoreError;
 use std::path::PathBuf;
@@ -30,6 +30,7 @@ fn sample_document() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -69,7 +70,10 @@ fn the_archive_holds_human_readable_json() {
   let mut entry = archive.by_name(DOCUMENT_ENTRY).expect("document entry");
   let mut text = String::new();
   std::io::Read::read_to_string(&mut entry, &mut text).expect("utf8");
-  assert!(text.contains("\"schema\": \"c2d/document@2\""), "{text}");
+  assert!(
+    text.contains("\"schema\": \"camcraft/document@1\""),
+    "{text}"
+  );
   assert!(text.contains('\n'), "payload should be pretty-printed");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }
@@ -196,15 +200,13 @@ fn a_truncated_archive_is_rejected_rather_than_half_read() {
 }
 
 #[test]
-fn a_legacy_document_is_upgraded_on_read_and_written_as_the_current_schema() {
-  // A `c2d/document@1` file is what M0–M4 wrote: no `island_ids` field at all. Reading it must not
-  // fail, and saving it back must produce the current tag so a later build cannot mistake it for a
-  // document that predates islands.
-  let path = scratch("legacy");
+fn a_legacy_schema_document_is_refused_naming_the_schema() {
+  // A `c2d/document@1` file is a campilot document; it must be rejected as an unknown schema, never migrated.
+  let path = scratch("legacy-refused");
   let document = sample_document();
   let legacy_json = serde_json::to_string(&document)
     .expect("serialises")
-    .replace("\"c2d/document@2\"", "\"c2d/document@1\"");
+    .replace("\"camcraft/document@1\"", "\"c2d/document@1\"");
   let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
   writer
     .start_file(DOCUMENT_ENTRY, zip::write::SimpleFileOptions::default())
@@ -215,29 +217,10 @@ fn a_legacy_document_is_upgraded_on_read_and_written_as_the_current_schema() {
     .expect("write payload");
   std::fs::write(&path, writer.finish().expect("finish").into_inner()).expect("write archive");
 
-  let loaded = load_document(&path).expect("a legacy document loads");
-  assert_eq!(loaded.schema, DOCUMENT_SCHEMA);
-  assert_eq!(
-    loaded.toolpaths, document.toolpaths,
-    "the migration changes no toolpath"
-  );
-  assert!(loaded
-    .toolpaths
-    .iter()
-    .all(|toolpath| toolpath.island_ids.is_empty()));
-
-  save_document(&path, &loaded).expect("saves");
-  let raw = std::fs::read(&path).expect("read");
-  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(raw)).expect("zip");
-  let mut payload = String::new();
-  std::io::Read::read_to_string(
-    &mut archive.by_name(DOCUMENT_ENTRY).expect("entry"),
-    &mut payload,
-  )
-  .expect("utf8");
-  assert!(
-    payload.contains("\"schema\": \"c2d/document@2\""),
-    "{payload}"
-  );
+  let error = load_document(&path).expect_err("a legacy schema must be refused");
+  let message = error.to_string();
+  assert!(message.contains("c2d/document@1"), "{message}");
+  assert!(message.contains(DOCUMENT_SCHEMA), "{message}");
+  assert!(matches!(error, StoreError::Invalid { .. }), "{error:?}");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }

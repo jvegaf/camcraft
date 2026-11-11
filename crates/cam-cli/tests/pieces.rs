@@ -9,7 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Nesting, NestingPart, NestingPlacement, NestingSheet,
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Nesting, NestingPart, NestingPlacement,
+  NestingSheet,
 };
 use cam_store::document::save_document;
 use cam_units::{Angle, Length, UnitSystem};
@@ -65,6 +66,7 @@ fn write_document(
     document.layers.push(Layer {
       id: "L1".to_owned(),
       name: "Parts".to_owned(),
+      role: LayerRole::Geometry,
       visible: true,
       entities: entities
         .iter()

@@ -14,7 +14,7 @@ use cam_app::AppState;
 
 use cam_geom::{Contour, Point2};
 
-use cam_model::{Document, Entity, EntityKind, Job, Layer, ProfileParams, Toolpath};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, ProfileParams, Toolpath};
 
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 
@@ -46,6 +46,8 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
     id: "L1".to_owned(),
 
     name: "Part".to_owned(),
+
+    role: LayerRole::Geometry,
 
     visible: true,
 

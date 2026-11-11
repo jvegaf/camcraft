@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 use cam_ui::script_panel::{ScriptPanel, BODY_HEIGHT, PATH_LABEL, RUN, TITLE};
 
 // ---------------------------------------------------------------------------------------------
@@ -54,6 +54,7 @@ fn document() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Parts".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![
       Entity {

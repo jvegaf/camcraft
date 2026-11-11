@@ -22,6 +22,7 @@ fn document_with_square() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -46,7 +47,10 @@ fn a_new_document_carries_the_schema_tag_and_millimetre_job() {
   let document = Document::new(Job::default_sheet());
   assert_eq!(document.schema, DOCUMENT_SCHEMA);
   let json = serde_json::to_string(&document).expect("serialises");
-  assert!(json.contains("\"schema\":\"c2d/document@2\""), "{json}");
+  assert!(
+    json.contains("\"schema\":\"camcraft/document@1\""),
+    "{json}"
+  );
   assert!(json.contains("\"units\":\"mm\""), "{json}");
   document.validate().expect("valid empty document");
 }
@@ -137,10 +141,10 @@ fn a_zero_or_negative_job_dimension_is_rejected() {
 #[test]
 fn deserialising_invalid_geometry_fails_instead_of_producing_it() {
   let json = r#"{
-    "schema": "c2d/document@1",
+    "schema": "camcraft/document@1",
     "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
             "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
-    "layers": [{"id": "L1", "name": "L", "visible": true, "entities": [
+    "layers": [{"id": "L1", "name": "L", "role": "geometry", "visible": true, "entities": [
       {"id": "E1", "type": "contour", "contour": {"vertices": [{"point": {"x": 0.0, "y": 0.0}, "bulge": 0.0}], "closed": true}}
     ]}],
     "toolpaths": []
@@ -156,10 +160,10 @@ fn deserialising_invalid_geometry_fails_instead_of_producing_it() {
 #[test]
 fn an_unknown_entity_type_is_rejected() {
   let json = r#"{
-    "schema": "c2d/document@1",
+    "schema": "camcraft/document@1",
     "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
             "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
-    "layers": [{"id": "L1", "name": "L", "visible": true,
+    "layers": [{"id": "L1", "name": "L", "role": "geometry", "visible": true,
       "entities": [{"id": "E1", "type": "bitmap"}]}],
     "toolpaths": []
   }"#;
@@ -265,7 +269,7 @@ fn a_drilling_toolpath_on_open_geometry_is_rejected() {
 #[test]
 fn an_unknown_operation_kind_is_a_hard_error() {
   let json = r#"{
-    "schema": "c2d/document@1",
+    "schema": "camcraft/document@1",
     "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
             "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
     "layers": [], "toolpaths": [
@@ -276,7 +280,7 @@ fn an_unknown_operation_kind_is_a_hard_error() {
   assert!(error.to_string().contains("laser_cut"), "{error}");
 }
 
-// --- P1: islands and the c2d/document@2 migration (A9, A10) ---
+// --- P1: islands and legacy schema refusal (A9, A10) ---
 
 fn add_circle(document: &mut Document, id: &str, centre: Point2, radius: f64) {
   document.layers[0].entities.push(Entity {
@@ -482,25 +486,31 @@ fn islands_on_a_profile_toolpath_are_rejected() {
 }
 
 #[test]
-fn a_legacy_schema_tag_is_migrated_and_an_unknown_one_is_not() {
+fn a_legacy_schema_tag_is_refused_naming_the_schema() {
   let mut document = pocket_document_with_island();
   document.schema = "c2d/document@1".to_owned();
+  let error = document
+    .validate()
+    .expect_err("must refuse a legacy schema");
+  let message = error.to_string();
+  assert!(message.contains("c2d/document@1"), "{message}");
+  assert!(message.contains(DOCUMENT_SCHEMA), "{message}");
   assert!(
-    document.migrate(),
-    "a legacy document reports the migration"
-  );
-  assert_eq!(document.schema, DOCUMENT_SCHEMA);
-  assert!(
-    !document.migrate(),
-    "a current document is not migrated again"
+    matches!(
+      error,
+      ModelError::UnsupportedSchema { ref found, .. } if found == "c2d/document@1"
+    ),
+    "{error:?}"
   );
 
-  let mut unknown = document.clone();
+  let mut unknown = document_with_square();
   unknown.schema = "c2d/document@3".to_owned();
-  assert!(!unknown.migrate());
   let error = unknown.validate().expect_err("must reject");
   assert!(
-    matches!(error, ModelError::UnsupportedSchema { .. }),
+    matches!(
+      error,
+      ModelError::UnsupportedSchema { ref found, .. } if found == "c2d/document@3"
+    ),
     "{error:?}"
   );
 }
@@ -804,6 +814,7 @@ fn inlay_pair(params: InlayParams) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -1034,7 +1045,7 @@ fn thread_document(pitch: f64, direction: ThreadDirection, start: f64, cut: f64)
 #[test]
 fn a_thread_toolpath_round_trips_with_its_direction() {
   // `ThreadDirection` is a snake_case tag like every other enum in the schema, and the operation is
-  // additive under the existing `kind` tag (A1): the schema stays `c2d/document@2`.
+  // additive under the existing `kind` tag (A1): the schema stays `camcraft/document@1`.
   let document = thread_document(1.5, ThreadDirection::External, 1.0, 9.0);
   document
     .validate()
@@ -1118,7 +1129,7 @@ fn v_carve_document(degrees: f64, tolerance: f64) -> Document {
 #[test]
 fn a_v_carve_toolpath_round_trips_with_its_angle_and_tolerance() {
   // The variant is additive under the existing `kind` tag, so the schema does not move (A4, D-M4-1):
-  // `c2d/document@2` reads and writes it, and a document written before it existed is untouched.
+  // `camcraft/document@1` reads and writes it, and a document written before it existed is untouched.
   let document = v_carve_document(60.0, 0.25);
   document
     .validate()
@@ -1128,7 +1139,7 @@ fn a_v_carve_toolpath_round_trips_with_its_angle_and_tolerance() {
   assert!(json.contains("\"kind\":\"v_carve\""), "{json}");
   assert!(json.contains("\"tolerance\":0.25"), "{json}");
   assert!(
-    json.contains("\"schema\":\"c2d/document@2\""),
+    json.contains("\"schema\":\"camcraft/document@1\""),
     "the schema tag does not move for an additive variant: {json}"
   );
   let parsed: Document = serde_json::from_str(&json).expect("deserialises");
@@ -1407,6 +1418,7 @@ fn nesting_document() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Parts".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![
       Entity {
@@ -1490,7 +1502,7 @@ fn refusal(document: &Document) -> ModelError {
 fn a_document_written_before_nesting_loads_and_re_saves_byte_identically() {
   // The section is optional and top level, the `tools_ref`/`postp` precedent: a document authored
   // before M9 must not gain a byte, so the comparison is against the bytes an older build wrote.
-  let before_m9 = r#"{"schema":"c2d/document@2","job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0},"layers":[{"id":"L1","name":"Part","visible":true,"entities":[{"id":"E1","type":"contour","contour":{"vertices":[{"point":{"x":0.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":100.0},"bulge":0.0},{"point":{"x":0.0,"y":100.0},"bulge":0.0}],"closed":true}}]}],"toolpaths":[]}"#;
+  let before_m9 = r#"{"schema":"camcraft/document@1","job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0},"layers":[{"id":"L1","name":"Part","role":"geometry","visible":true,"entities":[{"id":"E1","type":"contour","contour":{"vertices":[{"point":{"x":0.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":100.0},"bulge":0.0},{"point":{"x":0.0,"y":100.0},"bulge":0.0}],"closed":true}}]}],"toolpaths":[]}"#;
   let document: Document = serde_json::from_str(before_m9).expect("a document written before M9");
   assert!(document.nesting.is_none(), "no nesting section is present");
   document.validate().expect("and it still validates");
@@ -1540,7 +1552,10 @@ fn a_job_with_a_material_round_trips() {
     json,
     "a job that names a material re-saves byte for byte"
   );
-  assert_eq!(DOCUMENT_SCHEMA, "c2d/document@2", "no schema bump (S3)");
+  assert_eq!(
+    DOCUMENT_SCHEMA, "camcraft/document@1",
+    "schema is camcraft/document@1"
+  );
 }
 
 #[test]
@@ -1566,9 +1581,12 @@ fn a_nesting_section_round_trips_losslessly() {
 
 #[test]
 fn the_nesting_section_does_not_move_the_schema_tag() {
-  assert_eq!(DOCUMENT_SCHEMA, "c2d/document@2");
+  assert_eq!(DOCUMENT_SCHEMA, "camcraft/document@1");
   let json = serde_json::to_string(&nesting_document()).expect("serialises");
-  assert!(json.contains("\"schema\":\"c2d/document@2\""), "{json}");
+  assert!(
+    json.contains("\"schema\":\"camcraft/document@1\""),
+    "{json}"
+  );
 }
 
 #[test]
@@ -1747,6 +1765,7 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
     document.layers.push(Layer {
       id: "L1".to_owned(),
       name: "Parts".to_owned(),
+      role: LayerRole::Geometry,
       visible: true,
       entities: Vec::new(),
     });
@@ -1847,6 +1866,7 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
     document.layers.push(Layer {
       id: "L1".to_owned(),
       name: "Parts".to_owned(),
+      role: LayerRole::Geometry,
       visible: true,
       entities: Vec::new(),
     });
@@ -2904,6 +2924,7 @@ fn five_parts_on_one_sheet() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Parts".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),

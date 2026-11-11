@@ -160,6 +160,7 @@ pub(crate) fn author_parts(target: &mut Document, args: &PartsArgs) -> Result<St
     id: fresh_layer_id(&document),
     name: layer_name,
     visible: true,
+    role: cam_model::LayerRole::Geometry,
     entities: Vec::new(),
   });
   let layer = document.layers.len() - 1;

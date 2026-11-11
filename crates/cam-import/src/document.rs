@@ -72,6 +72,7 @@ pub fn into_document(
       id: format!("L{}", index + 1),
       name,
       visible: true,
+      role: cam_model::LayerRole::Geometry,
       entities: Vec::new(),
     };
     for contour in contours {

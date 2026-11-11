@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer, Operation, ProfileParams, Toolpath};
+use cam_model::{
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Operation, ProfileParams, Toolpath,
+};
 use cam_store::tools::{stored_tool_for_number, StoredTool};
 use cam_ui::{Shell, UiAction};
 use egui_kittest::Harness;
@@ -67,6 +69,7 @@ fn document_with_toolpath(tool_number: u32) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),

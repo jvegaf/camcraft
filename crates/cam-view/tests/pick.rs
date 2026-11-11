@@ -35,6 +35,7 @@ fn document(entities: Vec<(&str, Contour)>) -> Document {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
     visible: true,
+    role: cam_model::LayerRole::Geometry,
     entities: entities
       .into_iter()
       .map(|(id, contour)| cam_model::Entity {

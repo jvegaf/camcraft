@@ -7,7 +7,7 @@
 
 use cam_export::{dxf, export_bytes, ExportError, Format};
 use cam_geom::{Contour, Point2, Vertex};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 
 // ---------------------------------------------------------------------------------------------
 // Fixtures.
@@ -19,6 +19,7 @@ fn document(layers: &[(&str, Vec<Contour>)]) -> Document {
     document.layers.push(Layer {
       id: format!("layer-{index}"),
       name: (*name).to_string(),
+      role: LayerRole::Geometry,
       visible: true,
       entities: contours
         .iter()

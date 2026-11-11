@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer, ProfileParams, Toolpath};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, ProfileParams, Toolpath};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry, ToolKind, ToolLibrary};
 use cam_ui::chrome::Category;
 use cam_ui::{Shell, ShellOutput};
@@ -28,6 +28,7 @@ pub(crate) fn document_with_toolpath(tool_number: u32) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),

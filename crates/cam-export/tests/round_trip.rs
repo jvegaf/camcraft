@@ -16,7 +16,7 @@
 use cam_export::{export_bytes, Format};
 use cam_geom::{Contour, Point2};
 use cam_import::{import_bytes, ImportOptions};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 
 /// How far a tessellated point may drift and still be the same shape, in millimetres. The reader
 /// re-derives a bulge from two endpoints and a flag, so a half turn comes back as `0.9999999999999999`
@@ -39,6 +39,7 @@ fn page(layers: &[(&str, Vec<Contour>)]) -> Document {
     document.layers.push(Layer {
       id: name.to_string(),
       name: name.to_string(),
+      role: LayerRole::Geometry,
       visible: true,
       entities,
     });

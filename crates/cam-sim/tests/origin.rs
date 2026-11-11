@@ -14,8 +14,8 @@
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Frame, Job, Layer, Operation, OriginCorner, PocketParams,
-  PocketStrategy, Toolpath,
+  Document, Entity, EntityKind, Frame, Job, Layer, LayerRole, Operation, OriginCorner,
+  PocketParams, PocketStrategy, Toolpath,
 };
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::target::{deviations, target_for, Deviation, ToolShapes};
@@ -71,6 +71,7 @@ fn document(origin: OriginCorner) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),

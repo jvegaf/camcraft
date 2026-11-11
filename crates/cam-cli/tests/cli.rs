@@ -9,8 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Nesting, NestingPart, NestingPlacement, NestingSheet,
-  Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Nesting, NestingPart, NestingPlacement,
+  NestingSheet, Operation, ProfileParams, ProfileSide, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_units::{Angle, Length, UnitSystem};
@@ -54,6 +54,7 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -176,7 +177,7 @@ fn an_unsupported_schema_exits_three_and_names_both_versions() {
     outcome.stderr
   );
   assert!(
-    outcome.stderr.contains("c2d/document@2"),
+    outcome.stderr.contains("camcraft/document@1"),
     "{}",
     outcome.stderr
   );
@@ -451,6 +452,7 @@ fn write_vectors(directory: &Path, name: &str, contours: Vec<Contour>) -> PathBu
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Vectors".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: contours
       .into_iter()
@@ -1539,6 +1541,7 @@ fn write_nesting_document(
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Parts".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: contours
       .into_iter()

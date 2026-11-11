@@ -1,7 +1,7 @@
 use super::support::*;
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Job, Layer};
+use cam_model::{Document, Job, Layer, LayerRole};
 use cam_ui::theme::Role;
 use cam_ui::{Shell, ShellOutput, Tool, UiAction};
 
@@ -293,6 +293,7 @@ fn a_drawing_centred_on_the_origin_reads_negative_below_it() {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Centred".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),

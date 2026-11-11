@@ -14,6 +14,7 @@ fn document_with(entities: Vec<(&str, cam_geom::Contour)>, visible: bool) -> Doc
     id: "L1".to_owned(),
     name: "Part".to_owned(),
     visible,
+    role: cam_model::LayerRole::Geometry,
     entities: entities
       .into_iter()
       .map(|(id, contour)| cam_model::Entity {
@@ -132,6 +133,7 @@ fn drawn_geometry_through_a_command_appears_in_the_scene() {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
     visible: true,
+    role: cam_model::LayerRole::Geometry,
     entities: Vec::new(),
   });
   let mut app = AppState::new(document);

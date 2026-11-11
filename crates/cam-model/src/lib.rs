@@ -23,17 +23,7 @@ use cam_units::{Angle, Length, UnitSystem};
 use serde::{Deserialize, Serialize};
 
 /// The document schema this build writes.
-pub const DOCUMENT_SCHEMA: &str = "c2d/document@2";
-
-/// Schema tags this build still reads, newest first.
-///
-/// `@2` added `Toolpath::island_ids`. Nothing else changed, so reading an `@1` document is not a
-/// transformation: the field is simply absent and therefore empty. The bump exists because the
-/// alternative — keeping `@1` and adding an optional field — is the exactly wrong behaviour here: an
-/// older build ignores a field it does not know, so it would pocket straight through an island the user
-/// asked to keep, and a ruined part is far worse than a refusal (D-RB-3's analogue for the schema,
-/// A10).
-pub const LEGACY_DOCUMENT_SCHEMAS: &[&str] = &["c2d/document@1"];
+pub const DOCUMENT_SCHEMA: &str = "camcraft/document@1";
 
 /// Which corner of the job the machine's XY origin sits on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,7 +133,7 @@ pub struct Job {
   ///
   /// Optional and omitted when absent, exactly like `tools_ref`/`postp`/`nesting`: a document whose
   /// job names no material re-saves byte-identically, which is why the schema tag stays
-  /// `c2d/document@2` (S3). It is the *selector* and not a rate — the feed, the plunge and the
+  /// `camcraft/document@1` (S3). It is the *selector* and not a rate — the feed, the plunge and the
   /// spindle speed stay in the library, keyed per material and machine, and a material the library
   /// has nothing for is refused by name rather than replaced by the tool's own record (S4).
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,6 +191,29 @@ impl Job {
   }
 }
 
+/// The role a layer plays in a PCB document.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerRole {
+  /// Top copper side.
+  CopperTop,
+  /// Bottom copper side.
+  CopperBottom,
+  /// Solder mask.
+  Mask,
+  /// Silkscreen.
+  Silk,
+  /// Board edge, the outline cutout follows.
+  Outline,
+  /// Holes and slots.
+  Drill,
+  /// Areas the tool must not enter.
+  Keepout,
+  /// General geometry with no board role, such as a DXF or SVG import.
+  #[default]
+  Geometry,
+}
+
 /// A named, independently switchable group of geometry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
@@ -208,6 +221,9 @@ pub struct Layer {
   pub id: String,
   /// Display name.
   pub name: String,
+  /// What tells copper from mask from the board edge; `Geometry` is the honest answer for
+  /// geometry with no board role.
+  pub role: LayerRole,
   /// Whether the layer is shown and cuttable by default.
   pub visible: bool,
   /// The geometry in this layer.
@@ -914,7 +930,7 @@ pub struct Document {
   ///
   /// Optional and top level, exactly like `tools_ref`/`postp`, so a document written before M9 loads
   /// and re-saves byte-identically: no existing field learns a new meaning, which is why the schema
-  /// tag stays `c2d/document@2` (invariant 1).
+  /// tag stays `camcraft/document@1` (invariant 1).
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub nesting: Option<Nesting>,
 }
@@ -1588,18 +1604,6 @@ impl Document {
       return None;
     }
     Some(placed_area / used_area)
-  }
-
-  /// Rewrite a schema tag this build still reads into the one it writes.
-  ///
-  /// Returns true when the document was written by an older build, so a caller can report it. The
-  /// migration is an identity: `@1` only lacks `island_ids`, which is absent-and-therefore-empty.
-  pub fn migrate(&mut self) -> bool {
-    if LEGACY_DOCUMENT_SCHEMAS.contains(&self.schema.as_str()) {
-      self.schema = DOCUMENT_SCHEMA.to_owned();
-      return true;
-    }
-    false
   }
 
   /// Check the document's schema tag and every referential invariant.

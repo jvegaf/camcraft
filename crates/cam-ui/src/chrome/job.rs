@@ -123,7 +123,7 @@ impl Shell {
   ///
   /// **The rotary card is drawn and cannot be chosen.** The document has no axis mode: `Job` is a width,
   /// a height, a thickness, a unit system, an origin corner and a safe Z, and `cam-model` plus the
-  /// `c2d/document@2` format are out of scope for this slice (S1). A card that wrote nothing would be a
+  /// `camcraft/document@1` format are out of scope for this slice (S1). A card that wrote nothing would be a
   /// dead control, which S7 and S9 both forbid, so the card carries its reason on its own face and is not
   /// clickable. The operator reads why it is dark instead of pressing a button that does nothing.
   ///

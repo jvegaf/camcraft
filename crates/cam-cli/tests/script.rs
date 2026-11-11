@@ -8,7 +8,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, Entity, EntityKind, Job, Layer, LayerRole, Operation, ProfileParams, ProfileSide,
+  Toolpath,
 };
 use cam_store::document::save_document;
 use cam_units::{Length, UnitSystem};
@@ -57,6 +58,7 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Parts".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![
       Entity {

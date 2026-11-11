@@ -5,7 +5,7 @@
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Job, Layer};
+use cam_model::{Document, Job, Layer, LayerRole};
 use cam_ui::help::Command as HelpCommand;
 use cam_ui::{handle_action, DrawShape, Shell, ShellOutput, Tool, UiAction};
 
@@ -34,6 +34,7 @@ fn document() -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
     name: "Part".to_owned(),
+    role: LayerRole::Geometry,
     visible: true,
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),
