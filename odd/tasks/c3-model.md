@@ -23,6 +23,12 @@ variantes de `Operation` salen cuando el modelo de placa entra, no antes: `Toolp
 no opcional y borrarlo solo deja un enum inhabitable.
 
 **S5 — Nada de lo que sobrevive pierde comportamiento.**
+
+**S6 — Los importadores de PCB entran en C3, y un dialecto que no se entiende se rechaza nombrandolo.**
+Un archivo real de placa trae el cobre en Gerber y los agujeros en Excellon, asi que ambos lectores son
+parte del modelo y no un anexo. Lo que un lector no sabe leer —una polaridad, un formato de digitos, un
+modo de coordenadas— se diagnostica con su linea; nunca se aproxima, porque una escala adivinada pone el
+talon en el lugar equivocado.
 `Job`, `Frame`, `OriginCorner`, `Layer`, `Entity`, el nesting con sus validadores, `cam-store` (contenedor
 ZIP, escritura atómica, librería SQLite) y las superficies del CLI y la UI que la verificación
 independiente dio por buenas.
@@ -35,6 +41,8 @@ independiente dio por buenas.
 | M2 | Variantes `Operation` de PCB con sus params; salen las once de mecanizado y sus 7 validadores | S2, S4 | — |
 | M3 | Reparar consumidores: `cam-cli` (match de nombres), `cam-sim/target.rs`, `cam-app`, `cam-ui` | S5 | — |
 | M4 | `cam-store`: extensión `.cmc`, validación de load-time con roles, round-trip | S2, S3 | — |
+| E1 | Lector de Excellon: tabla de herramientas, agujeros y slots | S6 | `a6e4d21` |
+| E2 | Dialectos de Excellon: formato de dígitos (`;FILE_FORMAT=i:d`, patrón de ceros) y modo relativo `G91` | S6 | `533dddc`, `d26427b` |
 
 ## Log
 
