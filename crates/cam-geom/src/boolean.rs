@@ -161,7 +161,30 @@ fn cut_fractions(
     if other_path == path {
       continue;
     }
-    for other in boundary.segments() {
+    push_fractions(
+      &mut fractions,
+      segment,
+      boundary.segments(),
+      tolerance,
+      re_cut,
+    );
+  }
+  Ok(dedup(&mut fractions, segment, tolerance))
+}
+
+/// Add the fractions where `segment` meets any of `others`.
+///
+/// Split out of [`cut_fractions`] so a set operation cuts one region's segments against another
+/// region's boundaries as well as against its own, under the same crossing rules.
+fn push_fractions(
+  fractions: &mut Vec<f64>,
+  segment: Segment,
+  others: impl IntoIterator<Item = Segment>,
+  tolerance: f64,
+  re_cut: &mut bool,
+) {
+  for other in others {
+    {
       match intersect(segment, other, tolerance) {
         Intersections::None | Intersections::Tangent(_) => {}
         // Two boundaries that overlap along a length are a doubled edge: neither the overlap's ends
@@ -192,7 +215,6 @@ fn cut_fractions(
       }
     }
   }
-  Ok(dedup(&mut fractions, segment, tolerance))
 }
 
 /// Where along `segment` a point sits, if it sits *on* it and away from both of its ends.
@@ -370,9 +392,23 @@ fn probe_points(segment: Segment, distance: f64) -> Option<(Point2, Point2)> {
 /// its contribution is the winding number there: inside or outside *that* boundary, which is the
 /// parity of one boundary and does not depend on how it happens to be oriented.
 fn material_beside(region: &Region, path: usize, point: Point2, tolerance: f64) -> Option<bool> {
+  enclosed_by(region, Some(path), point, tolerance)
+}
+
+/// Whether `point` lies in `region`'s material, skipping one boundary the caller already owns.
+///
+/// Membership is parity across the boundaries, never orientation. `None` means a probe landed within
+/// some boundary's tolerance band, so the question cannot be answered at that distance and the caller
+/// must step farther out.
+fn enclosed_by(
+  region: &Region,
+  skip: Option<usize>,
+  point: Point2,
+  tolerance: f64,
+) -> Option<bool> {
   let mut enclosed = 0_usize;
   for (index, boundary) in region.boundaries.iter().enumerate() {
-    if index == path {
+    if Some(index) == skip {
       if winding_number(boundary, point).rem_euclid(2) == 1 {
         enclosed += 1;
       }
@@ -593,4 +629,239 @@ fn survives_the_bulge(arc: Arc, tolerance: f64) -> bool {
   let radius_error = (rebuilt.radius() - arc.radius()).abs();
   let sweep_error = (rebuilt.sweep() - arc.sweep()).abs() * arc.radius().max(1.0);
   radius_error <= tolerance && sweep_error <= tolerance
+}
+
+/// Which set operation to keep.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BooleanOp {
+  /// Material in either region.
+  Union,
+  /// Material in both regions.
+  Intersection,
+  /// Material in the first region and outside the second.
+  Difference,
+}
+
+impl BooleanOp {
+  /// Whether a point with these memberships is inside the result.
+  fn holds(self, in_a: bool, in_b: bool) -> bool {
+    match self {
+      Self::Union => in_a || in_b,
+      Self::Intersection => in_a && in_b,
+      Self::Difference => in_a && !in_b,
+    }
+  }
+}
+
+/// The answer to a set operation, which may legitimately be nothing.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Combined {
+  /// No material at all.
+  ///
+  /// This is an answer and not a failure: two disjoint regions intersect in nothing, and so do a
+  /// region and itself subtracted. [`normalize`] refuses an empty result because a normalization that
+  /// produces nothing means the input was broken; a combination that produces nothing means the answer
+  /// is nothing.
+  Empty,
+  /// The combined region, with no crossing between its boundaries.
+  Region {
+    /// The result.
+    region: Region,
+    /// True when a surviving piece was rebuilt as straight segments instead of being kept exact.
+    flattened: bool,
+  },
+}
+
+/// A piece of a boundary of either input, before it is classified.
+#[derive(Clone, Copy, Debug)]
+struct Piece {
+  /// Whether the piece came from the first region.
+  from_a: bool,
+  /// Index of the boundary in that region's own order.
+  path: usize,
+  /// The piece itself.
+  segment: Segment,
+}
+
+/// Where a piece goes in the result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Decision {
+  /// Keep it as it is: the result's material is on its left.
+  Keep,
+  /// Reverse it: the result's material is on its right.
+  Reverse,
+  /// Drop it: the result looks the same on both sides.
+  Drop,
+}
+
+/// Combine two regions.
+///
+/// The rule is the one [`normalize`] already applies to a single region, with the predicate evaluated
+/// on both probes: a point is inside the result when [`BooleanOp::holds`] says so for its membership of
+/// each input, a piece survives when the answer differs across it, and it is oriented so the
+/// **result's** material is on its left. There is no per-operation special casing: a difference
+/// inverts the second region by itself, because a piece inside it has the predicate false.
+///
+/// # Errors
+///
+/// Returns the first piece the tolerance cannot resolve, with the inspection that failed. A piece that
+/// lies within a boundary's band at every probe distance is refused rather than classified by guess.
+pub fn combine(
+  a: &Region,
+  b: &Region,
+  op: BooleanOp,
+  tolerance: f64,
+) -> Result<Combined, GeomError> {
+  if !tolerance.is_finite() || tolerance <= 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "a set operation needs a positive, finite tolerance",
+    });
+  }
+
+  // One arrangement over both regions, so no piece ever straddles the predicate's answer: every
+  // segment is cut where it meets the other region's boundaries as well as its own.
+  let mut pieces: Vec<Piece> = Vec::new();
+  let mut re_cut = false;
+  for (from_a, region, other) in [(true, a, b), (false, b, a)] {
+    for (path, boundary) in region.boundaries.iter().enumerate() {
+      for segment in boundary.segments() {
+        let mut fractions = vec![0.0_f64, 1.0];
+        for (other_path, sibling) in region.boundaries.iter().enumerate() {
+          if other_path == path {
+            continue;
+          }
+          push_fractions(
+            &mut fractions,
+            segment,
+            sibling.segments(),
+            tolerance,
+            &mut re_cut,
+          );
+        }
+        for foreign in other.boundaries.iter() {
+          push_fractions(
+            &mut fractions,
+            segment,
+            foreign.segments(),
+            tolerance,
+            &mut re_cut,
+          );
+        }
+        let fractions = dedup(&mut fractions, segment, tolerance);
+        for piece in split_at(segment, &fractions)? {
+          pieces.push(Piece {
+            from_a,
+            path,
+            segment: piece,
+          });
+        }
+      }
+    }
+  }
+
+  let mut survivors: Vec<Segment> = Vec::with_capacity(pieces.len());
+  for piece in pieces {
+    match decide(piece, a, b, op, tolerance)? {
+      Decision::Keep => survivors.push(piece.segment),
+      Decision::Reverse => survivors.push(piece.segment.reversed()),
+      Decision::Drop => {}
+    }
+  }
+  // A doubled edge is not a boundary: crossing it flips parity twice, so a region that kept both
+  // copies would enclose nothing at all while its boundaries still summed to a nonzero area. Two
+  // inputs that share a boundary produce exactly that -- identical regions, or a hole touching the
+  // outer edge along a segment -- so identical pieces are kept once.
+  let survivors = dedup_pieces(survivors, tolerance);
+  if survivors.is_empty() {
+    return Ok(Combined::Empty);
+  }
+  let mut flattened = false;
+  let boundaries = assemble(&survivors, tolerance, &mut flattened)?;
+  Ok(Combined::Region {
+    region: Region { boundaries },
+    flattened,
+  })
+}
+
+/// Decide where a piece goes by asking the predicate on both of its sides.
+fn decide(
+  piece: Piece,
+  a: &Region,
+  b: &Region,
+  op: BooleanOp,
+  tolerance: f64,
+) -> Result<Decision, GeomError> {
+  let segment = piece.segment;
+  let length = segment.length();
+  if length <= 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "a zero-length piece cannot be classified",
+    });
+  }
+  // A piece's own boundary is skipped on its own side, exactly as the single-region walk does; the
+  // other region's boundaries are all consulted.
+  let skip_a = if piece.from_a { Some(piece.path) } else { None };
+  let skip_b = if piece.from_a { None } else { Some(piece.path) };
+  let step = (length * PROBE_STEP).max(PROBE_FLOOR);
+  for attempt in 0..PROBE_TRIES {
+    let distance = step * PROBE_GROWTH.powi(attempt as i32);
+    if distance * 2.0 > length {
+      break;
+    }
+    let Some((left, right)) = probe_points(segment, distance) else {
+      break;
+    };
+    let memberships = (
+      enclosed_by(a, skip_a, left, tolerance),
+      enclosed_by(b, skip_b, left, tolerance),
+      enclosed_by(a, skip_a, right, tolerance),
+      enclosed_by(b, skip_b, right, tolerance),
+    );
+    let (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) = memberships else {
+      // A probe landed within some boundary's band; step farther out and ask again.
+      continue;
+    };
+    let left_inside = op.holds(left_a, left_b);
+    let right_inside = op.holds(right_a, right_b);
+    return Ok(match (left_inside, right_inside) {
+      (true, false) => Decision::Keep,
+      (false, true) => Decision::Reverse,
+      _ => Decision::Drop,
+    });
+  }
+  Err(GeomError::EditRefused {
+    reason: "the arrangement is finer than the tolerance can resolve",
+  })
+}
+
+/// Keep one copy of each geometrically identical piece.
+///
+/// The key is quantised by the tolerance so the comparison is stable and deterministic: two pieces
+/// that came from coincident boundaries carry the same coordinates, and a piece and its reverse are
+/// the same edge. In a parity region this is not a repair but the rule — a doubled edge encloses
+/// nothing.
+fn dedup_pieces(pieces: Vec<Segment>, tolerance: f64) -> Vec<Segment> {
+  let scale = 1.0 / tolerance;
+  let mut seen: std::collections::BTreeSet<(i64, i64, i64, i64)> =
+    std::collections::BTreeSet::new();
+  let mut kept = Vec::with_capacity(pieces.len());
+  for piece in pieces {
+    let start = piece.start_point();
+    let end = piece.end_point();
+    let mut from = (
+      (start.x * scale).round() as i64,
+      (start.y * scale).round() as i64,
+    );
+    let mut to = (
+      (end.x * scale).round() as i64,
+      (end.y * scale).round() as i64,
+    );
+    if to < from {
+      std::mem::swap(&mut from, &mut to);
+    }
+    if seen.insert((from.0, from.1, to.0, to.1)) {
+      kept.push(piece);
+    }
+  }
+  kept
 }
