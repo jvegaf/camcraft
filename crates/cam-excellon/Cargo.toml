@@ -1,0 +1,15 @@
+[package]
+name = "cam-excellon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cam-geom.workspace = true
+cam-units.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cam-geom.workspace = true

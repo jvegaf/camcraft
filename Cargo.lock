@@ -697,6 +697,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cam-excellon"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-units",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cam-export"
 version = "0.0.1"
 dependencies = [
