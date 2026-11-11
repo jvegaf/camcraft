@@ -751,6 +751,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cam-ops"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-model",
+ "cam-move",
+ "cam-units",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cam-post"
 version = "0.0.1"
 dependencies = [
