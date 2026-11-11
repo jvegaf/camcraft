@@ -37,6 +37,17 @@ su deteccion cubren solo DXF/SVG/PDF/EPS/PNG (`crates/cam-import/src/lib.rs:46-5
 El lector existe desde `cc78d52`. La entrada se corrige para nombrar el hueco que
 queda de verdad, en vez de dejar una afirmacion que un `grep` desmiente.
 
+**S6 — Un `D01` con apertura fuera de una region es un trazo, no un rechazo.** Es el barrido de la
+apertura a lo largo del segmento: el material que la herramienta dejaria si arrastrara esa forma desde el
+punto inicial hasta el final. Para una apertura circular de diametro `d` el trazo es una capsula —el
+rectangulo de ancho `d` sobre el segmento mas un semicirculo en cada punta— y su area es
+`largo * d + pi * (d/2)^2`, exacta. Para una apertura rectangular es la suma de Minkowski del rectangulo
+y el segmento, que es un hexagono convexo sin arcos. Es el comando con el que Gerber dibuja **pistas**, asi
+que sin esto un archivo real solo aporta pads y planos.
+
+**S7 — Un `D02` dentro de `G36`/`G37` empieza otro contorno de la misma region.** No es un error: una
+region puede tener varios contornos, y cada `D02` cierra el que venia. Hoy se rechaza por nombre.
+
 ## Tasks
 
 | ID | Task | Specs | Route | Commit |
@@ -45,6 +56,9 @@ queda de verdad, en vez de dejar una afirmacion que un `grep` desmiente.
 | T2 | Un bloque `G36`/`G37` se convierte en un `Region` (lineas y arcos, cerrado) y el acumulador aplica `dark`/`clear` via `combine`; `Flash` y trazo se rechazan por nombre | S1, S2, S3, S4 | delegated | — |
 | T3 | `Flash` de apertura `C` (circulo) y `R` (rectangulo) entra al mismo acumulador | S3 | delegated | — |
 | T4 | G1.1 corregida en `docs/GAPS_CAMCRAFT.md` | S5 | inline | — |
+| T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | delegated | — |
+| T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | delegated | — |
+| T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | delegated | — |
 
 **Fuera de alcance, declarado:** los `D01` con apertura (trazo = barrido de la
 apertura a lo largo del segmento) son el caso dificil y van aparte; `O`/`RoundRect`
