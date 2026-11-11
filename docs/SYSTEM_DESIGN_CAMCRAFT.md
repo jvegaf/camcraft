@@ -594,11 +594,18 @@ Document
 ├─ schema: "camcraft/document@1"
 ├─ board: { width, height, thickness, origin, side_up }
 ├─ layers: [ { id, role: LayerRole, side, color, visible, entities, source: Provenance } ]
-│           role ∈ { CopperTop, CopperBottom, Mask, Silk, Outline, Drill, Keepout }
+│           role ∈ { CopperTop, CopperBottom, MaskTop, MaskBottom, SilkTop, SilkBottom, Outline, Drill, Keepout, Geometry }
 ├─ operations: [ { id, kind, params, inputs: [NodeRef], enabled } ]
 ├─ tools_ref: Option<PathBuf>
 └─ frame: { origin_corner, handedness }        // documento ↔ máquina (cam-model::Frame, se conserva)
 ```
+
+**El lado vive en el rol, no en un campo `side` aparte** (corrección a este boceto, tomada en M4a). Con
+`role: CopperTop` y `side: Bottom` como campos independientes esa combinación es representable y no
+significa nada; con el lado dentro del rol, no se puede escribir. El precio es un enum más largo, el
+beneficio es que el estado incoherente no existe. `Keepout` y `Geometry` son los únicos roles que pueden
+repetirse: una herramienta se mantiene fuera de varias áreas y un dibujo puede llegar en varias capas. Los
+demás son singletons y un segundo los rechaza nombrando el rol.
 
 Diferencias deliberadas con D3:
 
