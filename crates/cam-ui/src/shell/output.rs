@@ -172,6 +172,18 @@ pub struct DrawnState {
   /// test reads the one screen in the shell whose content is a picture: the annotated plan is painted with
   /// a painter, and its three dimension labels are the only part of it a test can quote back.
   pub material: Vec<String>,
+  /// The words the start screen painted, while it was open (start-screen S3).
+  ///
+  /// Reported because the modal's contract is what a person reads: the two acts, the two sentences that say what they
+  /// give, and whichever of the three list states (returning, first run, unreadable) this frame was in.
+  pub start: Vec<String>,
+  /// Where the start screen drew each choice: a title, or a recent project's path, and the point that presses it.
+  ///
+  /// A row is keyed by its path and not by its name, because two projects may share a stem in two folders and the
+  /// press has to say which file it opened. Read it from a frame the modal has settled in: a floating, auto-sized area
+  /// is measured on the frame it first appears, so the first frame's points name rectangles it has already left (the
+  /// material dialog has the same first frame, and the rule is the frame's, not this modal's).
+  pub start_hits: Vec<(String, (f32, f32))>,
   /// Where the material path drew each pressable thing: the Job tab's opener while the dialog is closed,
   /// then the dialog's two cards and its two footer buttons while it is open.
   ///

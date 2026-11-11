@@ -353,7 +353,7 @@ impl Shell {
       "Open the 3D split"
     };
     if ui.button(label).clicked() {
-      self.show_3d = !self.show_3d;
+      self.set_view_3d(!self.show_3d);
     }
     output.drawn.task_editor = Category::Relief3d.label().to_owned();
   }

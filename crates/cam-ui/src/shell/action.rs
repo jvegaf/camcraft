@@ -22,6 +22,20 @@ impl Shell {
   /// command layer reports (entity count, ellipse radial error, arcs lost to tessellation) and any refusal,
   /// with the kernel's own message, into the sentence the user reads.
   pub fn apply_action(&mut self, app: &mut AppState, action: &UiAction) {
+    // Nothing edits a document this window does not hold (start-screen S2). The three actions that can change that
+    // fact are the ones the start screen emits — a new project, a file chosen in the dialog, a row pressed — and
+    // everything else, a draw or a transform or an undo or a save, is refused with the sentence the status bar prints.
+    // Without this guard a rail chip pressed into the empty workspace would edit an invisible empty document and mark
+    // it dirty: the operator would be told nothing is open while something was being changed.
+    if !self.project_open
+      && !matches!(
+        action,
+        UiAction::NewProject | UiAction::RequestOpenFile | UiAction::OpenFile { .. }
+      )
+    {
+      self.status = format!("refused: {}", crate::start_screen::NO_PROJECT_REFUSAL);
+      return;
+    }
     // The file behind the drawing is the shell's, not the application's: the path it was read from and the
     // archive entries this build does not interpret travel with the window, so they are handed to the one
     // handler that touches `AppState` instead of being patched back in here after the fact. That is what
@@ -93,6 +107,31 @@ impl Shell {
       self.clear_preview();
       self.material_size = default_material_size();
       self.auto_frame = true;
+    }
+    // A project exists from the moment a document was created or read (start-screen S2): the modal closes and the
+    // canvas starts drawing the stock the drawing is cut from. `ImportFile` does not open one — an import lands in a
+    // project, which is why the guard above refuses it without one, and why this list is these three and no more.
+    if applied.is_ok()
+      && matches!(
+        action,
+        UiAction::NewProject | UiAction::OpenFile { .. } | UiAction::SaveFile { .. }
+      )
+    {
+      self.project_open = true;
+      self.show_start = false;
+    }
+    // The list of recent projects is a record of files, so the two actions that touched one are the two that write a
+    // row (start-screen S3). The path is the shell's own — `handle_action_with_file` recorded it — so a recent row and
+    // the app bar always name the same file.
+    if applied.is_ok()
+      && matches!(
+        action,
+        UiAction::OpenFile { .. } | UiAction::SaveFile { .. }
+      )
+    {
+      if let Some(path) = self.document_path.clone() {
+        self.record_recent(&path);
+      }
     }
     self.status = match applied {
       Ok(report) => report.message(),

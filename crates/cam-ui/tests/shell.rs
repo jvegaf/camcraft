@@ -28,6 +28,8 @@ mod rulers;
 mod save;
 #[path = "shell/script.rs"]
 mod script;
+#[path = "shell/start.rs"]
+mod start;
 #[path = "shell/status.rs"]
 mod status;
 #[path = "shell/support.rs"]

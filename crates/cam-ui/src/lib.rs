@@ -60,6 +60,8 @@ pub mod script_panel;
 mod shell;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
+/// The start screen: the modal the first frame shows when the window holds no project (start-screen S2, S3).
+pub mod start_screen;
 /// A strategy's editor: the same surface for creating and editing one toolpath (camui-prancheta S10).
 pub mod strategy;
 pub mod theme;
@@ -74,6 +76,7 @@ pub use actions::{handle_action, ActionReport, UiAction};
 pub use chrome::{Category, Tab};
 pub use ruler::{RulerMarker, RulerTick, Rulers};
 pub use shell::{CanvasRect, DrawShape, DrawnState, PixelRect, Shell, ShellOutput, Tool};
+pub use start_screen::RecentProject;
 pub use tool_library::{ToolFamily, ToolFormGroup};
 pub use view3d::Preview3d;
 

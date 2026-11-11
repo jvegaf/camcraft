@@ -1,29 +1,19 @@
-//! Native window binary: opens the editor with a sample document, which the Open button replaces with
-//! a `.c2d` the user picks, and plays its 3D preview.
+//! Native window binary: opens the editor with no project.
+//!
+//! The window starts on the start screen (start-screen S1, S2, S3): no sample document, no generated
+//! preview and no playing 3D half. A project exists only once the operator starts one, opens one from
+//! disk, or resumes one from the list of projects opened before.
 //!
 //! The window itself needs a display, so it is verified by building rather than by automation; the
-//! behaviour it exposes lives in `cam-app`, `cam-sim`, `cam-view` and `cam-ui`, all tested headless.
-//!
-//! The sample preview is a demonstrator, not a feature (M5 V3): a toolpath authored here the way
-//! `cam-cli` authors one — the strategy plus its `ToolSpec` — handed to the shell as the stock it has
-//! not cut yet plus the program that cuts it. The shell plays it, which is what makes the stock
-//! disappear as it cuts (A10); the window never authors a toolpath and never touches the document
-//! (D-M5-9). Small and deterministic on purpose: the same moves every launch, so the picture a
-//! reviewer sees is the picture the tests describe.
-//!
-//! The window opens **playing** from the first move: same start, same speed and same moves on every
-//! launch, so "deterministic" survives the animation. [`cam_ui::Preview3d`] itself opens paused,
-//! which is what a test wants; the demonstrator opts into motion explicitly with
-//! [`cam_ui::Preview3d::set_playing`].
+//! behaviour it exposes lives in `cam-app`, `cam-view` and `cam-ui`, all tested headless.
+
+use std::path::Path;
 
 use cam_app::AppState;
-use cam_geom::{Contour, Point2, Vertex};
-use cam_model::{Document, Entity, EntityKind, Job, Layer, PocketParams, PocketStrategy};
-use cam_move::{MoveStream, Segment, ToolShape};
-use cam_sim::{Heightfield, DEFAULT_CELL};
-use cam_toolpath::{pocket, PocketRequest, ToolSpec};
-use cam_ui::{Shell, UiAction};
-use cam_units::Length;
+use cam_model::{Document, Job};
+use cam_ui::start_screen::MAX_RECENTS;
+use cam_ui::{stamp, tool_library, RecentProject, Shell, UiAction};
+use serde::{Deserialize, Serialize};
 
 fn main() -> eframe::Result<()> {
   let options = eframe::NativeOptions {
@@ -55,27 +45,21 @@ struct Editor {
 impl Editor {
   fn new() -> Self {
     let mut shell = Shell::new();
-    let app = AppState::new(sample_document());
-    let (stock, program) = sample_preview(app.document());
-    // The window hands the shell the stock and the program: the preview plays them, and never
-    // authors a toolpath or touches the document (M5 D-M5-9).
-    shell.set_preview(stock, program, &app.document().job);
-    if let Some(preview) = shell.preview_mut() {
-      // Open playing from the first move: the sample cuts itself, which is the point of A10. The
-      // start state is the same on every launch, so the animation is as deterministic as the moves.
-      preview.set_playing(true);
-    }
-    // The tool library the inspector's tool card resolves a toolpath's number against, and the one the
-    // library modal lists, edits and writes. It belongs to the **application** and not to any drawing
-    // (tool-library-app S1): one file in the application's data directory, the same for every document this
-    // window opens. A fresh install gets the factory catalogue written there, so the modal is never born
-    // empty; a library a person emptied stays empty, because seeding is a first-launch answer and not a
-    // repair. Opening a document no longer touches it: a document's `tools_ref` is `cam-cli`'s to honour.
+    // No project at launch: the start screen is the first thing the operator sees (start-screen S1, S2).
+    let app = AppState::new(Document::new(Job::default_sheet()));
+    shell.start_with_no_project();
+    // The tool library belongs to the application, not to a drawing (tool-library-app S1). Open it at
+    // launch so the modal and the current-tool card read the application's own file, but do not open the
+    // library modal itself: two modals cannot own the first frame (start-screen L5).
     if let Err(sentence) = shell.open_app_library() {
       shell.status = sentence;
     }
-    // The shell keeps its own hint line now, so the sample does not repeat it: this slot belongs to the
-    // outcome of the last command, and on a fresh window there is no command yet.
+    // Projects opened before live in the application's data directory. A missing file is an empty list; a
+    // file that cannot be read or parsed is reported by name and never turned into an empty list.
+    match read_recents() {
+      RecentsRead::List(recents) => shell.set_recents(recents),
+      RecentsRead::Error(sentence) => shell.set_recents_error(Some(sentence)),
+    }
     shell.status.clear();
     Self { app, shell }
   }
@@ -164,10 +148,28 @@ impl eframe::App for Editor {
         },
         other => other,
       };
-      // Through the shell, not the bare handler: the shell turns the command's outcome into the
-      // sentence the user reads, including created counts, an ellipse's radial error and how many
-      // arcs a non-uniform scale cost (M2 A5, D-M2-2).
       self.shell.apply_action(&mut self.app, &action);
+    }
+
+    // The list of projects opened before is a file the host keeps (start-screen S3). The shell reports that it
+    // changed and that a person asked to read it again; the host stamps the labels and writes the file.
+    if self.shell.take_recents_retry() {
+      match read_recents() {
+        RecentsRead::List(recents) => self.shell.set_recents(recents),
+        RecentsRead::Error(sentence) => self.shell.set_recents_error(Some(sentence)),
+      }
+    }
+    if self.shell.take_recents_changed() {
+      // The shell records an entry with an empty label because it reads no wall clock, so the label is stamped here and
+      // the list handed back through the setter — which is the call that also clears the flag a second time. A clone
+      // rather than a mutable borrow of the shell: the list a host writes is a value it owns, not a window into state
+      // a frame could be drawing from.
+      let mut recents = self.shell.recents().to_vec();
+      stamp_recents(&mut recents);
+      self.shell.set_recents(recents);
+      if let Err(sentence) = write_recents(self.shell.recents()) {
+        self.shell.status = sentence;
+      }
     }
   }
 }
@@ -196,182 +198,217 @@ fn library_file_name(shell: &Shell) -> String {
     .into_owned()
 }
 
-/// A small document so the window shows something useful on first launch.
-fn sample_document() -> Document {
-  let mut document = Document::new(Job::default_sheet());
-
-  let rectangle = Contour::from_points(
-    &[
-      Point2::new(200.0, 200.0),
-      Point2::new(700.0, 200.0),
-      Point2::new(700.0, 500.0),
-      Point2::new(200.0, 500.0),
-    ],
-    true,
-  )
-  .expect("rectangle");
-
-  let circle = Contour::new(
-    vec![
-      Vertex::new(Point2::new(1000.0, 350.0), 1.0),
-      Vertex::new(Point2::new(800.0, 350.0), 1.0),
-    ],
-    true,
-  )
-  .expect("circle");
-
-  document.layers.push(Layer {
-    id: "L1".to_owned(),
-    name: "Sample".to_owned(),
-    visible: true,
-    entities: vec![
-      Entity {
-        id: "E1".to_owned(),
-        kind: EntityKind::Contour { contour: rectangle },
-      },
-      Entity {
-        id: "E2".to_owned(),
-        kind: EntityKind::Contour { contour: circle },
-      },
-    ],
-  });
-
-  document
+/// One entry as it is kept in `recents.json`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RecentEntry {
+  name: String,
+  path: String,
+  label: String,
 }
 
-/// The tool the sample program cuts with: a 6 mm end mill, the only tool this demonstrator needs.
-fn sample_tool() -> ToolSpec {
-  ToolSpec {
-    number: 1,
-    diameter: Length::from_mm(6.0),
-    included_angle: None,
-    feed_rate: 100.0,
-    plunge_rate: 30.0,
-    spindle_speed: 18_000,
+impl From<&RecentProject> for RecentEntry {
+  fn from(project: &RecentProject) -> Self {
+    Self {
+      name: project.name.clone(),
+      path: project.path.to_string_lossy().into_owned(),
+      label: project.label.clone(),
+    }
   }
 }
 
-/// The sample's stock and program: the stock untouched, and the moves that pocket it 6 mm deep.
+impl From<RecentEntry> for RecentProject {
+  fn from(entry: RecentEntry) -> Self {
+    Self {
+      name: entry.name,
+      path: std::path::PathBuf::from(entry.path),
+      label: entry.label,
+    }
+  }
+}
+
+/// The result of reading the recents file: the list, or the reason it could not be read.
+enum RecentsRead {
+  List(Vec<RecentProject>),
+  Error(String),
+}
+
+/// The file that holds the list of projects opened before, in the application's data directory.
+fn recents_path() -> Option<std::path::PathBuf> {
+  tool_library::app_data_dir().map(|dir| dir.join("recents.json"))
+}
+
+/// Read the list of projects opened before.
 ///
-/// This is the whole of what the window demonstrates: a toolpath built the way `cam-cli` builds one,
-/// handed to the shell with the stock it has not cut yet. The shell plays it (M5 V3), and because
-/// playback applies whole moves as the cursor crosses them, the surface on screen ends up cell for
-/// cell the field `sweep::apply` gives the report (A10) — which is the demo's own test below.
+/// A missing file is an empty list. A file that cannot be read or parsed is an error named by path, never an
+/// empty list and never a panic: a person with projects and an unreadable file must not be told they have none.
+fn read_recents() -> RecentsRead {
+  match recents_path() {
+    Some(path) => read_recents_at(&path),
+    None => RecentsRead::List(Vec::new()),
+  }
+}
+
+/// Read one recents file, at the path the caller names.
 ///
-/// The `expect`s are this file's own contract: the sample geometry, tool and parameters are
-/// constants, so a failure here is a defect in the demonstrator rather than a user's mistake (the
-/// CLI, which takes a user's document, reports the same failures as messages instead).
-fn sample_preview(document: &Document) -> (Heightfield, MoveStream) {
-  let tool = sample_tool();
-  let contour = document.layers[0].entities[0]
-    .kind
-    .as_contour()
-    .expect("the sample's first entity is a contour");
-  let params = PocketParams {
-    strategy: PocketStrategy::Offset,
-    allowance: Length::from_mm(0.5),
-    stepover: Length::from_mm(4.0),
-    pass_depth: Length::from_mm(6.0),
-    start_depth: Length::ZERO,
-    cut_depth: Length::from_mm(6.0),
+/// Split from [`read_recents`] so the rule that matters can be tested against a scratch file: a missing file is an
+/// empty list, and a file that cannot be read or parsed is an error naming it. They are different answers, and only the
+/// first one means "no project was ever opened here".
+fn read_recents_at(path: &Path) -> RecentsRead {
+  let text = match std::fs::read_to_string(path) {
+    Ok(text) => text,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      return RecentsRead::List(Vec::new());
+    }
+    Err(error) => {
+      return RecentsRead::Error(format!("{}: {error}", path.display()));
+    }
   };
-  let path = pocket(&PocketRequest {
-    contour,
-    islands: &[],
-    params: &params,
-    tool: &tool,
-    job: &document.job,
-  })
-  .expect("the sample pocket computes");
+  match serde_json::from_str::<Vec<RecentEntry>>(&text) {
+    Ok(entries) => {
+      let mut recents: Vec<RecentProject> = entries.into_iter().map(RecentProject::from).collect();
+      recents.truncate(MAX_RECENTS);
+      RecentsRead::List(recents)
+    }
+    Err(error) => RecentsRead::Error(format!("{}: {error}", path.display())),
+  }
+}
 
-  let mut program = MoveStream::new(document.job.safe_z, Point2::new(0.0, 0.0));
-  program.segments.push(Segment {
-    name: "sample pocket".to_owned(),
-    tool_number: tool.number,
-    tool: ToolShape::cylinder(tool.diameter),
-    feed_rate: tool.feed_rate,
-    plunge_rate: tool.plunge_rate,
-    spindle_speed: tool.spindle_speed,
-    moves: path.moves,
-  });
+/// Stamp every entry that has no label yet with the current civil time.
+///
+/// The shell records an entry with an empty label because it reads no wall clock; the host stamps it when it
+/// writes the file, using the same formatter the brand block's `Saved …` line uses.
+fn stamp_recents(recents: &mut [RecentProject]) {
+  let now = std::time::SystemTime::now();
+  let label = stamp::format_stamp(now);
+  for entry in recents {
+    if entry.label.is_empty() {
+      entry.label = label.clone();
+    }
+  }
+}
 
-  // The default cell keeps the demonstrator at the resolution the M5 oracle is written for; the
-  // window's cell count is bounded by `cam-sim`'s own cap rather than by this call. The field is the
-  // untouched stock: the preview cuts it as it plays, and `reset` returns to exactly this.
-  let stock = Heightfield::new(&document.job, Length::from_mm(DEFAULT_CELL))
-    .expect("the sample stock fits the cell cap");
-  (stock, program)
+/// Write the list of projects opened before, atomically.
+///
+/// A sibling temporary file is written and then renamed into place, so a crash mid-write never leaves a file
+/// that reads as "nothing was opened". A failed write is reported as a sentence, not a crash.
+fn write_recents(recents: &[RecentProject]) -> Result<(), String> {
+  match recents_path() {
+    Some(path) => write_recents_at(&path, recents),
+    None => Ok(()),
+  }
+}
+
+/// Write one recents file, at the path the caller names.
+fn write_recents_at(path: &Path, recents: &[RecentProject]) -> Result<(), String> {
+  if let Some(dir) = path.parent() {
+    std::fs::create_dir_all(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+  }
+  let entries: Vec<RecentEntry> = recents
+    .iter()
+    .take(MAX_RECENTS)
+    .map(RecentEntry::from)
+    .collect();
+  let text = serde_json::to_string_pretty(&entries)
+    .map_err(|error| format!("{}: {error}", path.display()))?;
+  let tmp = tmp_path(path);
+  std::fs::write(&tmp, text).map_err(|error| format!("{}: {error}", tmp.display()))?;
+  std::fs::rename(&tmp, path).map_err(|error| {
+    let _ = std::fs::remove_file(&tmp);
+    format!("{}: {error}", path.display())
+  })?;
+  Ok(())
+}
+
+/// A sibling path for the temporary file the atomic write goes through.
+fn tmp_path(path: &Path) -> std::path::PathBuf {
+  let name = path
+    .file_name()
+    .map(|name| name.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "recents.json".to_owned());
+  path.with_file_name(format!("{name}.tmp"))
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{sample_document, sample_preview};
-  use cam_sim::{sweep, Heightfield, DEFAULT_CELL};
-  use cam_units::Length;
+  use std::path::PathBuf;
 
-  #[test]
-  fn the_sample_document_is_valid_and_worth_looking_at() {
-    let document = sample_document();
-    document
-      .validate()
-      .expect("the sample must be a valid document");
-    assert_eq!(document.entities().count(), 2);
-    let layer = &document.layers[0];
-    assert_eq!(layer.name, "Sample");
-    assert!(layer.entities.iter().all(|entity| entity
-      .kind
-      .as_contour()
-      .map(cam_geom::Contour::is_closed)
-      .unwrap_or(false)));
+  use cam_ui::start_screen::MAX_RECENTS;
+  use cam_ui::RecentProject;
+
+  use super::{read_recents_at, write_recents_at, Editor, RecentsRead};
+
+  /// A scratch directory under `/var/tmp`: `/tmp` is a full tmpfs on this machine, and the name is one path segment
+  /// so the deletion below can never aim at somebody else's tree.
+  fn scratch(name: &str) -> PathBuf {
+    assert!(!name.contains('/') && !name.contains(".."));
+    let directory =
+      PathBuf::from("/var/tmp").join(format!("campilot-recents-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).expect("scratch directory");
+    directory
+  }
+
+  fn entries(count: usize) -> Vec<RecentProject> {
+    (0..count)
+      .map(|index| {
+        RecentProject::new(
+          format!("part {index}"),
+          PathBuf::from(format!("/shop/part-{index}.c2d")),
+          String::new(),
+        )
+      })
+      .collect()
   }
 
   #[test]
-  fn the_sample_stock_is_untouched_and_the_preview_that_plays_it_cuts_it() {
-    let document = sample_document();
-    let (stock, program) = sample_preview(&document);
+  fn the_window_starts_with_no_project_and_no_preview() {
+    let editor = Editor::new();
+    assert!(!editor.shell.project_is_open());
+    assert!(editor.shell.start_screen_shown());
+    assert!(!editor.shell.view_3d());
+  }
 
-    assert!(
-      program.move_count() > 0,
-      "the window must have a program to preview"
-    );
-    assert_eq!(
-      stock.volumes().removed,
-      0.0,
-      "the window hands the shell the stock before the first move"
-    );
-    assert_eq!(
-      stock.thickness(),
-      document.job.thickness,
-      "the preview is simulated over the document's own stock"
-    );
-
-    // Playing the sample is what cuts it (A10).
-    let mut preview = cam_ui::Preview3d::new(stock, program.clone(), &document.job);
-    preview.set_playing(true);
-    preview.advance(3_600.0);
-    assert!(
-      preview.finished(),
-      "the sample program must play to its end"
-    );
-    assert!(
-      preview.field().volumes().removed > 0.0,
-      "a preview of an uncut stock would show nothing in 3D"
-    );
-
-    // And the animation cannot disagree with the report: the preview's end state is the
-    // whole-program simulation, cell for cell.
-    let mut expected = Heightfield::new(&document.job, Length::from_mm(DEFAULT_CELL))
-      .expect("the sample stock fits the cell cap");
-    sweep::apply(&program, &mut expected);
-    let grid = expected.grid();
-    for row in 0..grid.rows {
-      for column in 0..grid.columns {
-        assert_eq!(
-          preview.field().surface(column, row),
-          expected.surface(column, row),
-          "cell ({column}, {row}) must match the simulation the report is written from"
-        );
-      }
+  #[test]
+  fn a_missing_recents_file_is_an_empty_list() {
+    let directory = scratch("missing");
+    match read_recents_at(&directory.join("recents.json")) {
+      RecentsRead::List(list) => assert!(list.is_empty()),
+      RecentsRead::Error(sentence) => panic!("a missing file is not an error: {sentence}"),
     }
+  }
+
+  #[test]
+  fn a_malformed_recents_file_is_an_error_and_not_an_empty_list() {
+    let directory = scratch("malformed");
+    let path = directory.join("recents.json");
+    std::fs::write(&path, "{not a list").expect("the broken file");
+
+    match read_recents_at(&path) {
+      RecentsRead::Error(sentence) => assert!(
+        sentence.contains("recents.json"),
+        "the sentence names the file: {sentence}"
+      ),
+      RecentsRead::List(list) => panic!("a broken file must not read as nothing opened: {list:?}"),
+    }
+  }
+
+  #[test]
+  fn recents_round_trip_and_keep_the_newest_twelve() {
+    let directory = scratch("round-trip");
+    let path = directory.join("recents.json");
+
+    write_recents_at(&path, &entries(MAX_RECENTS + 3)).expect("the write");
+
+    match read_recents_at(&path) {
+      RecentsRead::List(list) => {
+        assert_eq!(list.len(), MAX_RECENTS);
+        assert_eq!(list[0].path, PathBuf::from("/shop/part-0.c2d"));
+      }
+      RecentsRead::Error(sentence) => panic!("the file just written could not be read: {sentence}"),
+    }
+    assert!(
+      !path.with_file_name("recents.json.tmp").exists(),
+      "the temporary file is renamed into place, not left behind"
+    );
   }
 }

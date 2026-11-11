@@ -690,16 +690,12 @@ name = "cam-desktop"
 version = "0.0.1"
 dependencies = [
  "cam-app",
- "cam-geom",
  "cam-model",
- "cam-move",
- "cam-sim",
- "cam-toolpath",
  "cam-ui",
- "cam-units",
- "cam-view",
  "eframe",
  "rfd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

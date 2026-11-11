@@ -197,7 +197,7 @@ impl Shell {
       Command::Shortcuts => self.show_shortcuts = !self.show_shortcuts,
       Command::Script => self.show_script = !self.show_script,
       Command::ToolLibrary => self.open_tool_library(app),
-      Command::View3d => self.show_3d = !self.show_3d,
+      Command::View3d => self.set_view_3d(!self.show_3d),
       Command::Theme => self.flip_theme(),
       _ => output.actions.extend(self.command_action(command, app)),
     }

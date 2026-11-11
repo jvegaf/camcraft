@@ -59,6 +59,23 @@ impl Shell {
           area.max,
         );
         let toggle_paint = self.view_toggle(ui, area, &metrics, output);
+        // No project: the drawing area holds one sentence and nothing else (start-screen S2). No stock, no grid, no
+        // ruler numbering an origin that is not there, and no `2D | 3D` toggle over a canvas with nothing to show. The
+        // camera is still told the rectangle it would be drawn in, so the first project to arrive is framed against
+        // the area it will really use instead of against a default nobody can see.
+        if !self.project_open {
+          let canvas = CanvasRect {
+            x: f64::from(drawing.min.x),
+            y: f64::from(drawing.min.y),
+            width: f64::from(drawing.width()),
+            height: f64::from(drawing.height()),
+          };
+          output.canvas = canvas;
+          self.last_canvas = canvas;
+          app.camera_mut().set_viewport(canvas.viewport());
+          crate::start_screen::paint_no_project(ui.painter(), drawing, &palette, &metrics);
+          return;
+        }
         let (area_2d, drawing_2d, drawing_3d) = if self.show_3d {
           // Two columns of the drawing area. The left one's own band area is the left half of the central
           // area, whose inset is exactly the drawing half — which is what keeps the rulers and the camera

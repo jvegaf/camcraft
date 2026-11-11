@@ -8,13 +8,9 @@ publish.workspace = true
 
 [dependencies]
 cam-app.workspace = true
-cam-view.workspace = true
 cam-ui.workspace = true
 cam-model.workspace = true
-cam-geom.workspace = true
-cam-move.workspace = true
-cam-sim.workspace = true
-cam-toolpath.workspace = true
-cam-units.workspace = true
 eframe.workspace = true
 rfd.workspace = true
+serde.workspace = true
+serde_json.workspace = true

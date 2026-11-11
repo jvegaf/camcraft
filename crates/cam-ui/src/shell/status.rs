@@ -43,6 +43,34 @@ impl Shell {
     let mut chips: Vec<(String, (f32, f32))> = Vec::new();
     egui::Panel::bottom("status_bar").show(ui, |ui| {
       ui.horizontal(|ui| {
+        // With no project open there is no pointer position to report and no snap a person could arm: the bar says
+        // what is true — that nothing is open — and names the two commands that end the state (start-screen S2).
+        if !self.project_open {
+          ui.label(
+            RichText::new(crate::start_screen::NOTHING_OPEN)
+              .size(theme::CAPTION)
+              .color(palette.get(Role::TextDim)),
+          );
+          ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add(
+              egui::Label::new(
+                RichText::new(&message)
+                  .size(theme::CAPTION)
+                  .color(palette.get(Role::TextDim)),
+              )
+              .truncate(),
+            );
+            ui.add(
+              egui::Label::new(
+                RichText::new(crate::start_screen::NO_PROJECT_HINT)
+                  .size(theme::CAPTION)
+                  .color(palette.get(Role::TextDim)),
+              )
+              .truncate(),
+            );
+          });
+          return;
+        }
         ui.label(
           RichText::new(&cursor)
             .monospace()
@@ -118,10 +146,16 @@ impl Shell {
         });
       });
     });
-    output.drawn.status_line = format!("{cursor} mm   {facts}   {message}");
-    output.drawn.message = message;
-    output.drawn.status_chips = chips;
-    output.drawn.hint = hint;
+    if self.project_open {
+      output.drawn.status_line = format!("{cursor} mm   {facts}   {message}");
+      output.drawn.message = message;
+      output.drawn.status_chips = chips;
+      output.drawn.hint = hint;
+    } else {
+      output.drawn.status_line = format!("{}   {message}", crate::start_screen::NOTHING_OPEN);
+      output.drawn.message = message;
+      output.drawn.hint = crate::start_screen::NO_PROJECT_HINT.to_owned();
+    }
   }
 }
 

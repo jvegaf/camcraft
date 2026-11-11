@@ -143,6 +143,15 @@ impl Shell {
     if self.show_help {
       self.help_window(&ctx, &mut output);
     }
+    // The start screen is the frame's first modal (start-screen S3). `Esc` leaves it and the workspace with nothing
+    // open — the state the window launched in — and touches nothing else: there is no document for it to cancel, which
+    // is exactly why it is allowed to close the workspace instead of only the dialog.
+    if self.show_start && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.show_start = false;
+    }
+    if self.show_start {
+      self.start_screen(&ctx, &mut output);
+    }
     // The material dialog is the shell's one modal: `Esc` leaves it without writing, the rule the help panel
     // already follows, and `Continue` is the only thing in the dialog that touches the document.
     if self.show_material && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
@@ -194,7 +203,8 @@ impl Shell {
     let dt = f64::from(ctx.input(|input| input.stable_dt));
     // A modal owns the pointer, so the canvas reports no cursor and finds no snap target while one is open:
     // a status bar naming a world position under the backdrop would be describing a canvas nobody can aim at.
-    if !self.show_material
+    if !self.show_start
+      && !self.show_material
       && !self.show_tool_library
       && !self.show_script
       && !self.show_import

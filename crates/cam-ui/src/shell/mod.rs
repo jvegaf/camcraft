@@ -115,6 +115,34 @@ pub struct Shell {
   /// one that cannot be used, and empty is a real answer — the card then says the number it was asked for
   /// is not in the library it was given.
   pub(crate) tools: Vec<StoredTool>,
+  /// Whether this window holds a project at all (start-screen S2).
+  ///
+  /// The shell used to assume one: a drawing was handed in, so every command could act on it. The window now opens
+  /// with nothing open ([`Shell::start_with_no_project`]), and this flag is what the canvas, the app bar, the status
+  /// bar and [`Shell::apply_action`] ask before they draw a stock or edit a document nobody opened. It is `true` in the
+  /// default because the default is the answer every headless test and every `cam-cli` flow already assumes, and the
+  /// launch state is the host's to declare — exactly like [`Self::document_path`].
+  pub project_open: bool,
+  /// Whether the start screen is showing (start-screen S3).
+  ///
+  /// View state with no document behind it: opening it, closing it with `Esc` and pressing a row are not edits. It
+  /// opens on launch, closes the moment a project exists, and the app bar's `No project open` brings it back.
+  pub show_start: bool,
+  /// The projects the start screen lists, most recent first (start-screen S3).
+  ///
+  /// A record of paths and not of documents: a row is opened through [`UiAction::OpenFile`](crate::UiAction::OpenFile)
+  /// with the path it remembers, so it takes the same load, the same refusal and the same bookkeeping a file chosen
+  /// from the dialog takes. The file it mirrors is the host's to read and write; see [`crate::start_screen`].
+  pub(crate) recents: Vec<crate::start_screen::RecentProject>,
+  /// Why the list could not be read, when it could not.
+  ///
+  /// `None` is "the list was read, and here it is", which is a different answer from an empty list: a person with
+  /// twelve projects and an unreadable file must not be told they have none.
+  pub(crate) recents_error: Option<String>,
+  /// Whether the list changed in a way a host should write back.
+  pub(crate) recents_changed: bool,
+  /// Whether a person pressed `Try again` on a list that could not be read.
+  pub(crate) recents_retry: bool,
   /// The file the drawing was opened from, once a host has opened or saved one.
   ///
   /// `None` until [`UiAction::OpenFile`](crate::UiAction::OpenFile) or
@@ -439,6 +467,12 @@ impl Default for Shell {
       text: "CAM".to_owned(),
       text_height: 10.0,
       show_3d: false,
+      project_open: true,
+      show_start: false,
+      recents: Vec::new(),
+      recents_error: None,
+      recents_changed: false,
+      recents_retry: false,
       scene_layers: view3d::Layers::default(),
       preview: None,
       tools: Vec::new(),
@@ -536,7 +570,16 @@ impl Shell {
   }
 
   /// Show the 3D view (`true`) or the drawing (`false`).
+  ///
+  /// With no project open there is no half to split and nothing in it, so the request is refused in the status bar
+  /// instead of stored for a drawing that does not exist yet (start-screen S2). The three switches that reach this —
+  /// the canvas' `2D | 3D`, the ribbon's row and the rail's `3D` — all come through here, so the rule is one rule.
   pub fn set_view_3d(&mut self, showing: bool) {
+    if showing && !self.project_open {
+      self.show_3d = false;
+      self.status = format!("refused: {}", crate::start_screen::NO_PROJECT_REFUSAL);
+      return;
+    }
     self.show_3d = showing;
   }
 

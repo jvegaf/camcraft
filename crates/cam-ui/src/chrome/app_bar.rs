@@ -35,12 +35,30 @@ impl Shell {
 
           // The bar names the file the drawing came from, and says whether it is modified. Until a host
           // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
-          let dirty = if app.is_dirty() { " · modified" } else { "" };
-          ui.label(
-            RichText::new(format!("{}{dirty}", self.document_name()))
-              .size(theme::CAPTION)
-              .color(palette.get(Role::TextDim)),
-          );
+          if self.project_open {
+            let dirty = if app.is_dirty() { " · modified" } else { "" };
+            ui.label(
+              RichText::new(format!("{}{dirty}", self.document_name()))
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            );
+          } else {
+            // No project: the bar names the absence, and the name is the way back to the start screen — otherwise
+            // `Esc` would hide the list of recent projects until the window was launched again (start-screen S3).
+            let open = ui.button(
+              RichText::new(crate::start_screen::NO_PROJECT)
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextDim)),
+            );
+            let centre = open.rect.center();
+            output.drawn.app_bar_hits.push((
+              crate::start_screen::NO_PROJECT.to_owned(),
+              (centre.x, centre.y),
+            ));
+            if open.clicked() {
+              self.show_start = true;
+            }
+          }
 
           ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             // The primary action writes the program the drawing describes, and it is **not** disabled
@@ -147,7 +165,7 @@ impl Shell {
     });
     let control = control?;
     if let Some(pick) = control.picked {
-      self.show_3d = pick == 1;
+      self.set_view_3d(pick == 1);
     }
     output.drawn.view_toggle = control.cells.clone();
     output.drawn.view_toggle_rect = Some(rect_report(control.rect));

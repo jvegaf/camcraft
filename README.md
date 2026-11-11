@@ -122,7 +122,7 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
 ## The editor
 
 ```bash
-cargo run -p cam-desktop          # sample document at launch; Open loads a .c2d, Save writes it back
+cargo run -p cam-desktop          # opens with no project; the start screen offers New project, Open project, and recent projects
 ```
 
 ```
