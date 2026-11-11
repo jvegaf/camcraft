@@ -17,7 +17,13 @@ dark/clear es una resta), isolation, NCC y el predicado de penetración del orá
 
 **S3 — La robustez de entrada es parte de C1, no una fase posterior.**
 > "`E0.2` — Robustez de entrada: normalización de contornos auto-intersectados, bordes coincidentes,
-> vértices de contacto (`region.rs:162-165` hoy rechaza)"
+> vértices de contacto"
+
+> **Corrección medida (C1b):** el GAPS afirmaba que `region.rs:162-165` rechaza los contornos
+> auto-intersectados. **No los rechaza**: `Region::new` sólo exige que el contorno sea cerrado, y
+> `normalize` los pasaba tal cual, dejando un contorno que se cruza con área con signo cero y material
+> distinto de cero. C1b corta cada contorno contra sí mismo y la figura de ocho se resuelve en sus dos
+> loops."
 
 **S4 — El álgebra del conjunto se testea como álgebra, no sólo caso por caso.**
 Las identidades que cualquier motor de conjuntos debe cumplir son el oráculo barato: conmutatividad de
@@ -60,8 +66,9 @@ Todo el aparato está construido y es privado:
 4. **Bordes coincidentes.** Cuando un contorno de A y uno de B yacen exactamente uno sobre otro, un punto
    de prueba sobre el borde no dice de qué lado hay material. Es el caso que rompe clasificadores
    ingenuos y el que el corpus de placas va a traer.
-5. **Aceptar la entrada degenerada.** `Region::new` rechaza contornos auto-intersectados
-   (`region.rs:162-165`), que es precisamente lo que el arrangement sabe arreglar.
+5. ~~Aceptar la entrada degenerada.~~ **Corregido en C1b:** `Region::new` **no** rechaza contornos
+   auto-intersectados — sólo exige que estén cerrados — y `normalize` los dejaba pasar sin resolver.
+   Ahora cada contorno se corta también contra sí mismo, y el auto-cruce se convierte en dos loops.
 
 ## Tasks
 
@@ -82,3 +89,17 @@ existen; lo que no existe es el arrangement de dos regiones, el predicado sobre 
 inversión de B para la diferencia, el manejo de bordes coincidentes y la aceptación de entrada
 auto-intersectada. Es decir: **el motor está a medio camino entre "sabe limpiar una región" y "sabe
 combinar dos"**, y el trabajo es la bisagra.
+
+**L3** (evidencia — la correccion mas util de C1b, y no era de codigo): la especificacion citaba al GAPS
+diciendo que `region.rs:162-165` **rechaza** los contornos auto-intersectados. Leido el codigo, no los
+rechaza: `Region::new` solo exige que el contorno este cerrado, y `normalize` documentaba explicitamente
+que un contorno que se cruza "se pasa tal como llego". O sea que una figura de ocho era un region legal,
+con paridad que respondia bien por cada punto, **y un area con signo de cero mientras su material no lo
+era**: el motor mentia en silencio sobre cualquier entrada auto-intersectada.
+
+Arreglado cortando cada contorno tambien contra si mismo, en `cut_fractions` y en `combine`. La figura de
+ocho se resuelve en dos loops de area 1 cada uno, sus identidades basicas se cumplen, y los 83 tests
+previos de `cam-geom` siguen verdes: el auto-corte no molesta a la entrada sana.
+
+Cubierto tambien en el mismo corte: un vertice de contacto da interseccion vacia (un punto no es area) y
+una arista compartida no se cuenta dos veces (el dedup por pieza identica, que ya existia desde C1a).

@@ -167,9 +167,10 @@ impl Region {
   /// left, and the walk that chains them starts from the lowest piece in `(min.y, min.x, order)` so
   /// two runs on the same input produce the same contours vertex for vertex (S5).
   ///
-  /// A boundary that crosses *itself* is not resolved here: the crossings this removes are the ones
-  /// between boundaries (A4), and a self-crossing contour is passed through as it arrived. The
-  /// even-odd rule still answers for every point of it, and its orientation is never consulted.
+  /// A boundary that crosses *itself* is resolved as well: it is cut at its own crossings, because a
+  /// contour that crosses itself is two loops wearing one contour, and no piece of it can be
+  /// classified until that crossing is a vertex. This used to pass a self-crossing contour through
+  /// untouched, which left a boundary whose signed area was zero while its material was not.
   ///
   /// # Errors
   ///

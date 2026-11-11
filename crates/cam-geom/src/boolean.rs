@@ -106,8 +106,8 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
   let mut cuts: Vec<Cut> = Vec::new();
   let mut re_cut = false;
   for (path, boundary) in region.boundaries.iter().enumerate() {
-    for segment in boundary.segments() {
-      let fractions = cut_fractions(segment, region, path, tolerance, &mut re_cut)?;
+    for (index, segment) in boundary.segments().into_iter().enumerate() {
+      let fractions = cut_fractions(segment, region, path, index, tolerance, &mut re_cut)?;
       for piece in split_at(segment, &fractions)? {
         cuts.push(Cut {
           path,
@@ -152,22 +152,29 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
 fn cut_fractions(
   segment: Segment,
   region: &Region,
-  path: usize,
+  skip_path: usize,
+  skip_index: usize,
   tolerance: f64,
   re_cut: &mut bool,
 ) -> Result<Vec<f64>, GeomError> {
   let mut fractions = vec![0.0_f64, 1.0];
+  // A boundary is cut against itself as well. A contour that crosses itself is two loops wearing one
+  // contour, and the parity rule cannot classify a piece until that crossing is a vertex; passing it
+  // through as it arrived leaves a boundary whose signed area and whose material disagree. Including
+  // the piece's own segments costs nothing: a segment meets itself only along its whole length, and a
+  // meeting at an end is not a split.
   for (other_path, boundary) in region.boundaries.iter().enumerate() {
-    if other_path == path {
-      continue;
-    }
-    push_fractions(
-      &mut fractions,
-      segment,
-      boundary.segments(),
-      tolerance,
-      re_cut,
-    );
+    // The piece itself is excluded *by identity*: compared with itself a segment is `Coincident`,
+    // which would mark every region as crossed. Excluding by equality instead would also drop a
+    // genuine doubled edge — the other contour's segments carry the same coordinates — and then an
+    // untouched input would come back with both copies still in it.
+    let others = boundary
+      .segments()
+      .into_iter()
+      .enumerate()
+      .filter(|(index, _)| !(other_path == skip_path && *index == skip_index))
+      .map(|(_, segment)| segment);
+    push_fractions(&mut fractions, segment, others, tolerance, re_cut);
   }
   Ok(dedup(&mut fractions, segment, tolerance))
 }
@@ -724,19 +731,16 @@ pub fn combine(
   let mut re_cut = false;
   for (from_a, region, other) in [(true, a, b), (false, b, a)] {
     for (path, boundary) in region.boundaries.iter().enumerate() {
-      for segment in boundary.segments() {
+      for (index, segment) in boundary.segments().into_iter().enumerate() {
         let mut fractions = vec![0.0_f64, 1.0];
-        for (other_path, sibling) in region.boundaries.iter().enumerate() {
-          if other_path == path {
-            continue;
-          }
-          push_fractions(
-            &mut fractions,
-            segment,
-            sibling.segments(),
-            tolerance,
-            &mut re_cut,
-          );
+        for (sibling_path, sibling) in region.boundaries.iter().enumerate() {
+          let others = sibling
+            .segments()
+            .into_iter()
+            .enumerate()
+            .filter(|(other_index, _)| !(sibling_path == path && *other_index == index))
+            .map(|(_, segment)| segment);
+          push_fractions(&mut fractions, segment, others, tolerance, &mut re_cut);
         }
         for foreign in other.boundaries.iter() {
           push_fractions(

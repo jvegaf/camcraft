@@ -219,3 +219,72 @@ fn a_degenerate_tolerance_is_refused() {
     "NaN tolerance"
   );
 }
+
+/// A contour that crosses itself: two triangles meeting at (1, 1), each of area 1.
+fn bowtie() -> Region {
+  let contour = Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(2.0, 2.0),
+      Point2::new(2.0, 0.0),
+      Point2::new(0.0, 2.0),
+    ],
+    true,
+  )
+  .expect("bow-tie");
+  Region::new(vec![contour]).expect("a self-crossing contour is a legal region")
+}
+
+#[test]
+fn a_self_crossing_contour_is_healed_into_its_two_loops() {
+  // Before this, `normalize` passed a self-crossing contour through as it arrived: the parity rule
+  // still answered for every point, but the boundary was one crossing contour whose signed area is
+  // zero while its material is not. The arrangement now cuts it against itself.
+  let eight = bowtie();
+  let healed = eight
+    .normalize(TOLERANCE)
+    .expect("the arrangement resolves the crossing");
+  assert_eq!(
+    healed.region.boundaries.len(),
+    2,
+    "two loops, not one crossing contour"
+  );
+  expect_close(area(&healed.region), 2.0, "the eight's material");
+}
+
+#[test]
+fn a_self_crossing_region_answers_the_basic_identities() {
+  let eight = bowtie();
+  expect_close(area_of(&eight, &eight, BooleanOp::Union), 2.0, "A ∪ A");
+  expect_close(
+    area_of(&eight, &eight, BooleanOp::Intersection),
+    2.0,
+    "A ∩ A",
+  );
+  assert!(
+    result(&eight, &eight, BooleanOp::Difference).is_none(),
+    "A ∖ A is nothing"
+  );
+}
+
+#[test]
+fn regions_meeting_at_one_corner_have_no_intersection() {
+  let a = rect(0.0, 0.0, 1.0, 1.0);
+  let b = rect(1.0, 1.0, 2.0, 2.0);
+  expect_close(area_of(&a, &b, BooleanOp::Union), 2.0, "A ∪ B");
+  assert!(
+    result(&a, &b, BooleanOp::Intersection).is_none(),
+    "a corner is no area, so the intersection is empty"
+  );
+}
+
+#[test]
+fn a_shared_edge_is_not_counted_twice() {
+  let a = rect(0.0, 0.0, 1.0, 1.0);
+  let b = rect(1.0, 0.0, 2.0, 1.0);
+  expect_close(area_of(&a, &b, BooleanOp::Union), 2.0, "A ∪ B");
+  assert!(
+    result(&a, &b, BooleanOp::Intersection).is_none(),
+    "an edge is no area, so the intersection is empty"
+  );
+}
