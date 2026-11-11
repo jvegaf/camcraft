@@ -411,6 +411,15 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
     }
   }
 
+  // A block still open here means the file ended before its `%`, so whatever it defined was never
+  // processed. Returning Ok would hand the caller a document silently missing those apertures.
+  if in_block {
+    return Err(GerberError::Invalid {
+      line: block_start_line,
+      what: "an extended block that never closed with %".to_owned(),
+    });
+  }
+
   let format = format.ok_or(GerberError::Invalid {
     line: 1,
     what: "missing %FS format".to_owned(),
@@ -576,12 +585,21 @@ fn parse_fs(inner: &str, line: u32) -> Result<Format, GerberError> {
       what: format!("unsupported format {t:?}"),
     });
   }
-  let integer_digits = xpart.chars().next().unwrap().to_digit(10).unwrap();
-  let decimal_digits = xpart.chars().nth(1).unwrap().to_digit(10).unwrap();
+  // `len() == 2` and `xpart == ypart` prove the shape, not that the characters are digits: a
+  // format of "AA" would have panicked here. Each character is converted once and refused by name.
+  let digits: Vec<u32> = xpart
+    .chars()
+    .map(|character| {
+      character.to_digit(10).ok_or_else(|| GerberError::Invalid {
+        line,
+        what: format!("unsupported format {t:?}"),
+      })
+    })
+    .collect::<Result<_, _>>()?;
   Ok(Format {
     zero_suppression: ZeroSuppression::Leading,
-    integer_digits,
-    decimal_digits,
+    integer_digits: digits[0],
+    decimal_digits: digits[1],
   })
 }
 

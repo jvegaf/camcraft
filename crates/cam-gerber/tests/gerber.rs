@@ -253,3 +253,22 @@ fn refuses_d99_undefined_aperture_naming_its_line() {
   );
   assert!(err.to_string().contains("99"), "{err}");
 }
+
+#[test]
+fn a_format_whose_digits_are_not_digits_is_refused_rather_than_panicking() {
+  // "AA" has the right length and matches itself, so the shape checks pass; the characters are not
+  // digits. Before this test the reader unwrapped that conversion and panicked on untrusted input.
+  let error = parse("%FSLAXAAYAA*%\n%MOMM*%\nM02*\n").expect_err("AA is not a format");
+  assert!(matches!(error, GerberError::Invalid { .. }), "{error:?}");
+  assert!(error.to_string().contains("FSLAXAAYAA"), "{error}");
+}
+
+#[test]
+fn a_file_that_ends_inside_an_extended_block_is_refused() {
+  // The second block never closes, so its contents were never processed. Returning Ok here would
+  // hand the caller a document missing whatever that block defined, with no diagnostic at all.
+  let error = parse("%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,0.25*%\n%ADD11C,0.5")
+    .expect_err("the block never closes");
+  assert!(matches!(error, GerberError::Invalid { .. }), "{error:?}");
+  assert!(error.to_string().contains("never closed"), "{error}");
+}
