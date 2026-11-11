@@ -1051,3 +1051,46 @@ fn a_macro_primitive_this_reader_does_not_build_is_refused_by_number() {
     "the refusal names the primitive: {text}"
   );
 }
+
+#[test]
+fn a_flash_of_a_macro_aperture_is_placed_at_the_flash_point() {
+  // E3b/T10: the macro's coordinates are relative to its own origin, so a flash has to move them.
+  // The disc's arcs are centred on the flash point only if the translation happened.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMPad*\n1,1,2.0,0,0*%\n%ADD10Pad*%\nD10*\n\
+     X005000000Y005000000D03*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  let caps = caps(&image);
+  assert!(!caps.is_empty(), "the macro is a circle of arcs");
+  assert!(
+    caps
+      .iter()
+      .all(|cap| (cap.center().x - 5.0).abs() < 1.0e-6 && (cap.center().y - 5.0).abs() < 1.0e-6),
+    "the pad sits where the flash put it: {:?}",
+    caps.iter().map(|cap| cap.center()).collect::<Vec<_>>()
+  );
+  assert!(
+    caps.iter().all(|cap| (cap.radius() - 1.0).abs() < 1.0e-6),
+    "diameter 2 is radius 1"
+  );
+}
+
+#[test]
+fn a_macro_aperture_draw_is_refused_rather_than_swept() {
+  // Sweeping an arbitrary macro along a segment is a different construction from the capsule and
+  // the rectangle this reader builds, so saying so beats guessing at a shape.
+  let error = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMPad*\n1,1,2.0,0,0*%\n%ADD10Pad*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses")
+  .image(TOLERANCE)
+  .expect_err("a macro stroke is not built");
+  let text = format!("{error}");
+  assert!(
+    text.contains("Pad") && text.contains("not a stroke"),
+    "the refusal names the aperture template: {text}"
+  );
+}

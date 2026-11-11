@@ -382,10 +382,34 @@ impl Gerber {
               })?
             }
             template => {
-              return Err(GerberError::Unsupported {
+              // A template that names a macro is that macro's shapes, placed at the flash point:
+              // the macro's coordinates are relative to its own origin, which a flash moves.
+              let Some(definition) = self.macros.iter().find(|defined| defined.name == template)
+              else {
+                return Err(GerberError::Unsupported {
+                  line: 0,
+                  what: format!("command {index}: a flash of template {template}"),
+                });
+              };
+              let local = macro_region(definition, &aperture.parameters, tolerance, index)?;
+              let mut boundaries = Vec::with_capacity(local.boundaries.len());
+              for boundary in &local.boundaries {
+                boundaries.push(
+                  cam_geom::transform::translate(boundary, cam_geom::Vec2::new(at.x, at.y))
+                    .map_err(|error| GerberError::Invalid {
+                      line: 0,
+                      what: format!(
+                        "command {index}: the flash of macro {template:?} could not be placed at this point: {error}"
+                      ),
+                    })?,
+                );
+              }
+              Region::new(boundaries).map_err(|error| GerberError::Invalid {
                 line: 0,
-                what: format!("command {index}: a flash of template {template}"),
-              });
+                what: format!(
+                  "command {index}: the flash of macro {template:?} is not a valid region: {error}"
+                ),
+              })?
             }
           };
           image = apply_region(image, &shape, polarity, tolerance, index)?;

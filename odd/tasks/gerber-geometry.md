@@ -68,7 +68,7 @@ demas se rechaza nombrando el caracter.
 | T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | inline | L10 |
 | T8 | Evaluador de expresiones de macro: `$n`, `+ - x X * /`, producto con precedencia | S8 | inline | L11 |
 | T9 | Primitivas de macro 1, 20, 21 y 4 a `Region` | S8 | inline | L12 |
-| T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas | S8 | pending | — |
+| T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas | S8 | inline | L13 |
 
 **Fuera de alcance, declarado:** step&repeat queda afuera. La apertura obround (`O`) sigue
 rechazandose por nombre: `crates/cam-geom/src/primitive.rs` tiene `circle` y `rectangle`, no una
@@ -281,3 +281,22 @@ Corregido a "el cuerpo por rectas, los casquetes por giro". Ya van cuatro veces 
 afirmando una vista parcial y creyendo que era el todo.
 
 **Estado:** workspace en **1309 passed, 0 failed, 3 ignored**.
+
+**L13** (T10, y con esto E3b cerrado): un `D03` cuya apertura **nombra una macro** se expande con
+`macro_region` y se traslada al punto del flash con `transform::translate`. Las coordenadas de la macro
+son relativas a su propio origen, asi que sin esa traslacion el pad queda en el origen del archivo y no
+donde el `D03` lo puso — un pad de 2 mm en el lugar equivocado, sin un solo error. Probado por mutacion:
+trasladando por cero, muere `a_flash_of_a_macro_aperture_is_placed_at_the_flash_point`, que afirma los
+**centros de los arcos** y no solo el radio.
+
+Un trazo con apertura macro se sigue rechazando por nombre: barrer una forma arbitraria a lo largo de un
+segmento no es la capsula ni el rectangulo que este lector sabe construir, y decirlo es mejor que
+inventar una forma.
+
+**E3b queda cerrado en tres slices**: expresiones (T8), primitivas (T9) y expansión en el flash (T10).
+Con eso el `RoundRect` de KiCad —la macro con primitivas 4, 1 y 20 y `$1+$1`— se convierte en islas de
+soldadura reales en vez de rechazarse. **Lo que sigue afuera, y se dice:** la rotacion de primitivas
+(se rechaza con el angulo), las primitivas de macro que no son 1/20/21/4 (se rechazan con el numero),
+la apertura obround `O`, y el trazo con apertura macro.
+
+**Estado:** workspace en **1311 passed, 0 failed, 3 ignored**.
