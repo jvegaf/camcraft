@@ -4,10 +4,10 @@
 //! dialect KiCad, Altium and Eagle write — a header between `M48` and `%`, then commands — and
 //! produces an [`Excellon`] that names every feature with the tool that cuts it, in millimetres.
 //!
-//! What it refuses matters as much as what it reads. A relative-mode program (`G91`), a coordinate
-//! before the units are declared, and an integer coordinate in a file that never declares its digit
-//! format are all diagnosed with their line rather than guessed at, because a guessed scale puts the
-//! drill in the wrong place on the board.
+//! What it refuses matters as much as what it reads. A coordinate before the units are declared and
+//! an integer coordinate in a file that never declares its digit format are both diagnosed with their
+//! line rather than guessed at, because a guessed scale puts the drill in the wrong place on the
+//! board. Both coordinate modes are read: `G91` is a step from where the tool already is.
 
 use cam_geom::Point2;
 use cam_units::Length;
@@ -156,6 +156,8 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
   let mut have_position = false;
   let mut rapid_from: Option<Point2> = None;
   let mut tool_down = false;
+  // `G91` makes every coordinate a step from the current position; `G90` returns to absolute.
+  let mut relative = false;
 
   for (index, raw) in text.lines().enumerate() {
     let line = index as u32 + 1;
@@ -214,13 +216,14 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
     }
 
     match code {
-      "G90" => continue,
+      "G90" => {
+        relative = false;
+        continue;
+      }
       "G05" | "G81" => continue,
       "G91" => {
-        return Err(ExcellonError::Unsupported {
-          line,
-          what: "relative coordinates (G91)".to_owned(),
-        })
+        relative = true;
+        continue;
       }
       "M71" => {
         units = Some(Units::Metric);
@@ -294,10 +297,10 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
       });
     }
     if let Some(x) = x {
-      position = Point2::new(x, position.y);
+      position = Point2::new(if relative { position.x + x } else { x }, position.y);
     }
     if let Some(y) = y {
-      position = Point2::new(position.x, y);
+      position = Point2::new(position.x, if relative { position.y + y } else { y });
     }
     have_position = true;
 

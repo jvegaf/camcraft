@@ -104,13 +104,51 @@ fn an_inch_file_is_converted_to_millimetres() {
 }
 
 #[test]
-fn a_relative_program_is_refused_naming_the_line() {
-  let error = parse("M48\nMETRIC\nT1C1.0\n%\nT1\nG00X0Y0\nG91\n").expect_err("G91 is not read");
+fn a_relative_program_accumulates_from_the_last_position() {
+  // E2: G91 makes every coordinate a step from where the tool already is. At 000.000 a step of
+  // 1000 is a millimetre, so the two holes sit at 1 mm and 1.5 mm.
+  let file = parse("M48\nMETRIC,000.000\nT1C1.0\n%\nT1\nG00X0Y0\nG91\nX1000Y0\nX500Y0\nM30\n")
+    .expect("relative coordinates are read");
+  let xs: Vec<f64> = file
+    .features
+    .iter()
+    .filter_map(|feature| match feature {
+      cam_excellon::Feature::Hole { at, .. } => Some(at.x),
+      _ => None,
+    })
+    .collect();
+  assert_eq!(xs.len(), 2, "two holes: {xs:?}");
   assert!(
-    matches!(error, ExcellonError::Unsupported { line: 7, .. }),
-    "{error:?}"
+    (xs[0] - 1.0).abs() < 1.0e-9,
+    "first hole at 1 mm: {:?}",
+    xs[0]
   );
-  assert!(error.to_string().contains("G91"), "{error}");
+  assert!(
+    (xs[1] - 1.5).abs() < 1.0e-9,
+    "the second is one step further: {:?}",
+    xs[1]
+  );
+}
+
+#[test]
+fn g90_returns_to_absolute_coordinates() {
+  let file =
+    parse("M48\nMETRIC,000.000\nT1C1.0\n%\nT1\nG00X0Y0\nG91\nX1000Y0\nG90\nX2000Y0\nM30\n")
+      .expect("both modes are read");
+  let xs: Vec<f64> = file
+    .features
+    .iter()
+    .filter_map(|feature| match feature {
+      cam_excellon::Feature::Hole { at, .. } => Some(at.x),
+      _ => None,
+    })
+    .collect();
+  assert!((xs[0] - 1.0).abs() < 1.0e-9, "the step: {:?}", xs[0]);
+  assert!(
+    (xs[1] - 2.0).abs() < 1.0e-9,
+    "absolute again, not 3: {:?}",
+    xs[1]
+  );
 }
 
 #[test]

@@ -250,3 +250,16 @@ alcanzan como formato — se aceptan como unidades y el entero posterior se rech
 
 Probado por mutacion: sacando la division muere el par de tests del formato; sacando el rechazo muere el
 test del archivo sin formato. 13 tests en el crate, workspace en **1315 passed, 0 failed, 3 ignored**.
+
+**L15** (E2): `G90` y `G91` se leen los dos. En modo relativo cada coordenada es un paso desde donde la
+herramienta ya esta, y `G90` vuelve a absoluto; el estado arranca absoluto, que es el defecto del
+formato. Esto reemplaza el rechazo por nombre que tenia el crate, y con el se fue el test que exigia ese
+rechazo: `a_relative_program_is_refused_naming_the_line` paso a
+`a_relative_program_accumulates_from_the_last_position`.
+
+Probado por mutacion: olvidando el paso relativo muere el test de acumulacion; haciendo que `G90` **no**
+vuelva a absoluto mueren dos —el test del modo y el del archivo KiCad, que usa `G90`—, que es la senal de
+que el flag estaba haciendo trabajo real en un fixture que no escribi para esta tarea.
+
+**Estado:** 14 tests en cam-excellon, workspace en **1316 passed, 0 failed, 3 ignored**. Con E1 (formato de
+digitos) y E2 (modo relativo) cerrados, los dos dialectos que el crate rechazaba por nombre ya se leen.
