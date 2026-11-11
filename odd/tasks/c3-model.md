@@ -164,3 +164,29 @@ lineage `review-1a4ea5cb2a426e2f`, acknowledgement quemado.
    sin `std::env`. Es la cuarta vez en el proyecto. Consecuencia practica: un movimiento de siete tipos
    costo cuatro corridas de modelo. La senal es del proveedor y no se discute, pero conviene tenerla
    presente al estimar el costo de revisar cambios chicos en `cam-ops`.
+
+**L11** (provider, evidencia — dos CRITICAL reales, y un recibo que el proveedor no pudo emitir): el
+review de `cc78d52` (el lector de Gerber) corrio cuatro lentes que trabajaron entre 140 y 277 segundos —el
+doble que cualquier otro candidato— y el refuter confirmo **dos defectos CRITICAL deterministas,
+introducidos por el commit**:
+
+- **R1-001** (risk): `parse_fs` validaba la *forma* del formato (`len == 2`, X igual a Y) y despues
+  desenvolvia `to_digit(10)` de cada caracter. `%FSLAXAAYAA*%` pasa todas las validaciones de forma y
+  **paniquea**: negacion de servicio con entrada no confiable.
+- **R4-001** (resilience): un archivo que termina dentro de un bloque extendido se **descartaba en
+  silencio**. El bucle sale, nadie mira `in_block`, y `parse` devuelve `Ok` si ya vio `%FS` y `%MO`. El
+  lector declaraba la regla "un archivo se lee entero o no se lee" y no la aplicaba en el ultimo lugar
+  donde importa.
+
+Los dos se verificaron leyendo el codigo y se corrigieron en `a8d2e55`, con un test por defecto: 11 tests
+en el crate, 1264 en el workspace, gates verdes.
+
+**Lo que no se pudo cerrar:** la validacion targetada del candidato corregido fue **rechazada dos veces en
+admission** con el mismo motivo y resultados distintos (`targeted validation result does not bind the
+provider-owned correction request [invalid_request]`, 2.410 y 2.135 caracteres, `mutation_performed:
+false`, slot sin consumir). Se siguio la continuacion ofrecida —STATUS fresco y correr ese mismo slot— una
+vez; un tercer intento seria reintento automatico, que la politica prohibe. El lineage
+`review-a768d00350e5a18b` queda en `correction_required`.
+
+**Estado honesto:** la correccion es real y la verifican los gates del proyecto; lo que falta es el veredicto
+del proveedor sobre ella. Queda registrado en vez de disimulado.
