@@ -14,7 +14,7 @@ Force agents to develop exclusively in git worktrees (one agent = one worktree =
 
 | ID | Task | S | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Add convention to `odd/README.md` and `AGENTS.md` (worktree-only per task) | S2 | inline | — |
+| T1 | ✅ Add convention to `odd/README.md` and `AGENTS.md` (worktree-only per task) | S2 | inline | `—` |
 | T2 | Add `just` recipes for worktree creation/claim/release | S2,S3 | inline | — |
 | T3 | Create claim mechanism (`odd/tasks/.claims/NNN.json` or equivalent) with atomic locking and collision detection | S2,S3 | inline | — |
 | T4 | Add validation script (`scripts/check-worktree.sh`) and integrate into `just check`/pre-commit hooks guidance | S2,S3 | inline | — |

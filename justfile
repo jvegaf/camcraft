@@ -100,3 +100,28 @@ deps crate="cam-cli":
 # Build against the committed lock file, which is what CI and a fresh clone see.
 build-locked:
   cargo build --workspace --locked
+
+
+# Worktree management for parallel agent work (one agent = one worktree = one task)
+worktree N:
+  @mkdir -p .worktrees
+  @TASKFILE=$$(ls odd/tasks/{{N}}-*.md 2>/dev/null | head -1); \
+  if [ -z "$$TASKFILE" ]; then echo "No task file found for {{N}}"; exit 1; fi; \
+  SLUG=$$(basename $$TASKFILE .md | sed 's/^[0-9]\+-//'); \
+  BRANCH="feat/{{N}}-$$SLUG"; \
+  if git worktree list | grep -q ".worktrees/{{N}}"; then echo "Worktree already exists at .worktrees/{{N}} (branch $$BRANCH)"; exit 0; fi; \
+  git worktree add .worktrees/{{N}} -b $$BRANCH 2>/dev/null || git worktree add .worktrees/{{N}} $$BRANCH; \
+  echo "Worktree created at .worktrees/{{N}} on branch $$BRANCH"; \
+  echo "cd $(pwd)/.worktrees/{{N}}"
+
+# Claim a task (must be run from task worktree)
+claim N:
+  @./scripts/claim-task.sh {{N}}
+
+# Release a task claim
+release N:
+  @./scripts/release-task.sh {{N}}
+
+# Validate we're in a properly claimed worktree
+check-worktree:
+  @./scripts/check-worktree.sh
