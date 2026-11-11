@@ -44,6 +44,49 @@ el Log con evidencia `path:line`.
 | T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | inline | PR 4 |
 | T7 | Verificación independiente del barrido (riesgo item 3: contrato de CLI) | S4 | `gentle-ai-verify` | — |
 
+## Delivery
+
+**El rescate no entra como un candidato: entra como cadena.** El primer intento fue un slice único de
+5.737 líneas y el proveedor de review lo rechazó en preflight (Log L16). Desde ahí, cada candidato es un
+commit que compila y deja sus tests verdes por separado.
+
+| # | Rama | Contenido | Líneas | Review |
+| --- | --- | --- | ---: | --- |
+| 1 | `camcraft-sweep-c1` | system design + esta especificación | 971 | **approved** (riesgo `low`, sin lentes) |
+| 2 | `camcraft-sweep-c2` | `shared` + `follow` (profile + tabs) | 1.409 | pendiente |
+| 3 | `camcraft-sweep-c3` | `rings` (pocket completo) + tests de anillos | 1.218 | pendiente |
+| 4 | `camcraft-sweep-c4` | esta spec: cadena, Log y tareas al día | ~95 | docs, se auto-aprueba |
+| 5 | `camcraft-sweep-c5` | tests de islas de `rings` | 1.069 | pendiente |
+| 6 | `camcraft-sweep-c6` | `peck` (taladrado) | 1.043 | pendiente |
+
+**El orden follow -> rings -> islas -> peck no es arbitrario.** `follow` es el único modulo que alcanza
+todos los helpers de `shared`; empezar por `peck` dejaria `push_horizontal`, `piece_endpoints` y
+`sub_segment` sin usar, y clippy falla bajo `-D warnings`. Un crate nuevo no se salva de eso con
+`#[allow(dead_code)]`, y no debe: es exactamente la mancha que se limpió en el primer intento (L10).
+
+**Gates por candidato.** Cada uno se commitea con `cargo fmt --all --check`, `cargo clippy --workspace
+--all-targets -- -D warnings` y `cargo test --workspace` en verde. El contador de tests sube candidato a
+candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo.
+
+**El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
+es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
+negociarlo, y por eso el criterio de aceptacion es por candidato y no por linea.
+
+**Base.** `origin/master` ya contiene el trabajo de start-screen, asi que la rama se cortó limpia desde
+`b745501` (L13).
+
+**Topologia.**
+
+```
+origin/master (b745501)
+  +-- camcraft-sweep            <- tracker, draft, no-merge
+        +-- camcraft-sweep-c1   <- aprobado
+        +-- camcraft-sweep-cN   <- candidatos, encadenados
+```
+
+`camcraft` y `camcraft-sweep-s1` quedan como están: la primera intacta, la segunda como red de seguridad
+con el slice sin rebanar. **Los PRs no se crearon: es decisión del dueño.**
+
 ## Log
 
 **L1** (usuario, autoriza el pivote):
@@ -104,3 +147,32 @@ con él la duplicación. Si se moviera, el commit 1 no demostraría nada.
 es decir el repo se queda sin pipeline de G-code usable. No es silencioso: es la consecuencia directa de
 que en campilot todo el pipeline cuelga de las estrategias. S2 se lee en consecuencia — un PR de borrado
 no cambia el comportamiento de la superficie que **sobrevive**.
+
+**L13** (decisión del dueño, entrega): **Feature Branch Chain con tracker**, y **rama limpia desde
+`origin/master`** en vez de seguir sobre `camcraft`. Motivo registrado: el diff de `camcraft` contra
+master traía 7.314 líneas y 32 archivos, de los cuales 16 son del slice y el resto estado viejo
+(`eefe76f` está detrás de master y habría revertido 2.455 líneas). El tracker es `camcraft-sweep`
+(desde `origin/master`, draft y sin merge); el slice 1 vive en `camcraft-sweep-s1` y apunta al tracker
+como padre. `camcraft` no se reescribe ni se borra.
+
+**L14** (evidencia, gates del slice 1): sobre la base limpia — `cargo fmt --all --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK; `cargo test --workspace` **1770 passed,
+0 failed**. `cam-toolpath` con cero archivos en el diff.
+
+**L15** (decisión, re-rebanado): el rescate se parte en candidatos de ~1.000-1.400 líneas. Orden
+`follow -> rings -> islas -> peck` por una razón mecánica verificada: `follow` es el único modulo que usa
+todos los helpers de `shared`, asi que va primero o clippy rompe por `pub(crate)` inalcanzable. Los tests
+de islas se separan de `rings` para que el candidato de `rings` quepa sin forzar nada.
+
+**L16** (provider stop, evidencia): el slice único de 5.737 líneas fue rechazado en `preflight` con
+`lens_context_budget_exceeded`: *"the candidate's complete reviewer evidence exceeds the native context
+budget, so no review authority was created"*. `mutation_performed: false`, nada que abandonar ni reparar,
+y reintentar el mismo candidato no puede funcionar. **`size:exception` deja de ser una opcion: el techo es
+el contexto del revisor.** El proveedor mismo indica partir en candidatos mas chicos.
+
+**L17** (provider, evidencia): el candidato 1 devolvió `state: approved`, `action: closed`,
+`risk_tier: low`, `risk_reasons: [non_executable_only]`, `lenses_required: false`,
+`lineage: review-7c4d08a330fe1f89`, 2 archivos, 971 líneas, `correction_budget: 200`. Cierre terminal
+directo: sin STATUS ni acknowledgement. **Leccion registrada**: el primer START fue rechazado con
+`invalid_request` porque se pidieron lentes; un lente de agente exige review de riesgo medio o alto, y un
+candidato solo de documentación se arranca con `{"mode":"ordinary"}` y **sin lentes**.
