@@ -193,7 +193,16 @@ fn push_fractions(
   for other in others {
     {
       match intersect(segment, other, tolerance) {
-        Intersections::None | Intersections::Tangent(_) => {}
+        Intersections::None => {}
+        // A tangent touch does not cross, but it is still a contact point in the arrangement: when two
+        // boundaries meet without crossing (e.g. a disc tangent inside a rectangle edge), the shared
+        // point must become a vertex so the pieces can be chained and classified correctly.
+        Intersections::Tangent(point) => {
+          if let Some(fraction) = interior_fraction(segment, point, tolerance) {
+            *re_cut = true;
+            fractions.push(fraction);
+          }
+        }
         // Two boundaries that overlap along a length are a doubled edge: neither the overlap's ends
         // nor its interior is an intersection *point*, so the split points are the other boundary's
         // own ends where they land inside this segment.

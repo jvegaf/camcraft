@@ -99,6 +99,13 @@ fn trio(a: &Region, b: &Region) -> Result<(f64, f64, f64), cam_geom::GeomError> 
   ))
 }
 
+fn region_of(a: &Region, b: &Region, op: BooleanOp) -> Result<Region, cam_geom::GeomError> {
+  Ok(match combine(a, b, op, TOLERANCE)? {
+    Combined::Empty => Region::new(Vec::new()).expect("empty region"),
+    Combined::Region { region, .. } => region,
+  })
+}
+
 fn close(actual: f64, expected: f64) -> bool {
   let scale = actual.abs().max(expected.abs()).max(1.0);
   (actual - expected).abs() <= 1.0e-9 * scale
@@ -167,5 +174,37 @@ proptest! {
       (Err(first), Err(second)) => prop_assert_eq!(first.to_string(), second.to_string()),
       _ => prop_assert!(false, "the same pair resolved differently on two runs"),
     }
+  }
+
+  /// De Morgan: removing a union is the same as removing each and keeping the common remainder.
+  #[test]
+  fn de_morgan_difference_over_union(a in any_region(), b in any_region(), c in any_region()) {
+    let Ok(b_union_c) = region_of(&b, &c, BooleanOp::Union) else { return Ok(()); };
+    let Ok(left) = region_of(&a, &b_union_c, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(a_minus_b) = region_of(&a, &b, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(a_minus_c) = region_of(&a, &c, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(right) = region_of(&a_minus_b, &a_minus_c, BooleanOp::Intersection) else { return Ok(()); };
+    prop_assert!(
+      close(area(&left), area(&right)),
+      "A\\(B∪C)={} but (A\\B)∩(A\\C)={}",
+      area(&left),
+      area(&right)
+    );
+  }
+
+  /// De Morgan: removing an intersection is the same as removing either.
+  #[test]
+  fn de_morgan_difference_over_intersection(a in any_region(), b in any_region(), c in any_region()) {
+    let Ok(b_inter_c) = region_of(&b, &c, BooleanOp::Intersection) else { return Ok(()); };
+    let Ok(left) = region_of(&a, &b_inter_c, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(a_minus_b) = region_of(&a, &b, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(a_minus_c) = region_of(&a, &c, BooleanOp::Difference) else { return Ok(()); };
+    let Ok(right) = region_of(&a_minus_b, &a_minus_c, BooleanOp::Union) else { return Ok(()); };
+    prop_assert!(
+      close(area(&left), area(&right)),
+      "A\\(B∩C)={} but (A\\B)∪(A\\C)={}",
+      area(&left),
+      area(&right)
+    );
   }
 }

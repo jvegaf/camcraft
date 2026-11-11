@@ -261,11 +261,31 @@ fn union_with_an_empty_region_returns_the_disc() {
   }
 }
 
-// An arc-only disc tangent to a rectangle edge from the inside (touching without crossing)
-// is not stated here as a clean fixture: at tolerance 1e-9 the arrangement currently refuses it
-// as "the arrangement revisits a piece, so its pieces cannot be chained closed", so expressing it
-// would invent behavior rather than pin a resolvable case. The contained (non-touching) case is
-// pinned above in `a_contained_disc_subtracts_from_a_rectangle`.
+#[test]
+fn a_disc_tangent_to_the_inside_of_an_edge_resolves() {
+  let plate = rect(0.0, 0.0, 10.0, 10.0);
+  // Circle centered at (5,1) with radius 1 touches the bottom edge y=0 at (5,0) from inside.
+  let hole = disc(5.0, 1.0, 1.0);
+  let pi = std::f64::consts::PI;
+  match (
+    combine(&plate, &hole, BooleanOp::Union, TOLERANCE).expect("union resolvable"),
+    combine(&plate, &hole, BooleanOp::Intersection, TOLERANCE).expect("intersection resolvable"),
+    combine(&plate, &hole, BooleanOp::Difference, TOLERANCE).expect("difference resolvable"),
+  ) {
+    (
+      Combined::Region { region: u, .. },
+      Combined::Region { region: i, .. },
+      Combined::Region { region: d, .. },
+    ) => {
+      expect_close(area(&u), 100.0, "tangent-inside union");
+      expect_close(area(&i), pi, "tangent-inside intersection");
+      expect_close(area(&d), 100.0 - pi, "tangent-inside difference");
+      assert_eq!(d.boundaries.len(), 2, "difference leaves the plate and a hole");
+      expect_close(area(&u) + area(&i), 100.0 + pi, "tangent-inside area identity");
+    }
+    other => panic!("a tangent-inside disc must resolve, got {other:?}"),
+  }
+}
 
 /// A contour that crosses itself: two triangles meeting at (1, 1), each of area 1.
 fn bowtie() -> Region {
@@ -334,4 +354,107 @@ fn a_shared_edge_is_not_counted_twice() {
     result(&a, &b, BooleanOp::Intersection).is_none(),
     "an edge is no area, so the intersection is empty"
   );
+}
+
+/// Axis-aligned overlap area of two rectangles; zero when they only touch or are apart.
+fn rect_overlap_area(ax0: f64, ay0: f64, ax1: f64, ay1: f64, bx0: f64, by0: f64, bx1: f64, by1: f64) -> f64 {
+  let x0 = ax0.max(bx0);
+  let y0 = ay0.max(by0);
+  let x1 = ax1.min(bx1);
+  let y1 = ay1.min(by1);
+  let w = (x1 - x0).max(0.0);
+  let h = (y1 - y0).max(0.0);
+  w * h
+}
+
+#[test]
+fn two_hundred_known_area_operations_hold() {
+  // Deterministic corpus of rectangle pairs with analytically known areas (C1a/S2).
+  // Each pair yields 3 operations (union, intersection, difference).
+  let mut a_rects: Vec<(f64, f64, f64, f64)> = Vec::new();
+  let mut b_rects: Vec<(f64, f64, f64, f64)> = Vec::new();
+  // Base A: 10x6 at origin.
+  let a = (0.0, 0.0, 10.0, 6.0);
+  // 70 varied B rectangles: offsets/scales covering disjoint, touching, overlap, containment, identical.
+  for (dx, dy, w, h) in [
+    (12.0, 0.0, 4.0, 3.0),   // disjoint right
+    (-6.0, 0.0, 4.0, 3.0),   // disjoint left
+    (0.0, 8.0, 4.0, 3.0),    // disjoint above
+    (0.0, -5.0, 4.0, 3.0),   // disjoint below
+    (10.0, 0.0, 4.0, 6.0),   // touching right edge
+    (-4.0, 0.0, 4.0, 6.0),   // touching left edge
+    (0.0, 6.0, 10.0, 2.0),   // touching top edge
+    (0.0, -2.0, 10.0, 2.0),  // touching bottom edge
+    (10.0, 6.0, 2.0, 2.0),   // touching corner
+    (2.0, 1.0, 3.0, 2.0),    // contained
+    (1.0, 1.0, 8.0, 4.0),    // contained large
+    (0.0, 0.0, 10.0, 6.0),   // identical
+    (4.0, 2.0, 3.0, 2.0),    // overlap center
+    (-2.0, 1.0, 5.0, 3.0),   // overlap left
+    (8.0, 1.0, 5.0, 3.0),    // overlap right
+    (2.0, -1.0, 4.0, 3.0),   // overlap bottom
+    (2.0, 4.0, 4.0, 4.0),    // overlap top
+    (-1.0, -1.0, 12.0, 8.0), // B contains A
+    (3.0, 1.0, 4.0, 4.0),    // overlap middle
+    (5.0, 0.0, 5.0, 6.0),    // half overlap right
+    (0.0, 0.0, 5.0, 6.0),    // half overlap left
+    (0.0, 3.0, 10.0, 3.0),   // half overlap top
+    (0.0, 0.0, 10.0, 3.0),   // half overlap bottom
+    (-3.0, 2.0, 6.0, 2.0),   // straddle left
+    (7.0, 2.0, 6.0, 2.0),    // straddle right
+    (2.0, -2.0, 6.0, 4.0),   // straddle bottom
+    (2.0, 4.0, 6.0, 4.0),    // straddle top
+    (1.0, 2.0, 1.0, 1.0),    // small inside
+    (8.0, 4.0, 1.0, 1.0),    // small inside corner-ish
+    (9.5, 5.5, 2.0, 2.0),    // overlap corner outside
+    (-1.5, -1.5, 2.0, 2.0),  // overlap bottom-left outside
+    (4.0, 2.5, 2.0, 1.0),    // thin horizontal inside
+    (4.5, 1.0, 1.0, 4.0),    // thin vertical inside
+    (11.0, 1.0, 3.0, 4.0),   // disjoint far right
+    (3.0, 7.0, 4.0, 2.0),    // disjoint far above
+  ] {
+    a_rects.push(a);
+    b_rects.push((dx, dy, dx + w, dy + h));
+  }
+  // Second base pair family: different A and more Bs (35 pairs).
+  let a2 = (-5.0, -3.0, 5.0, 3.0);
+  for (dx, dy, w, h) in [
+    (6.0, 0.0, 2.0, 2.0), (-8.0, 0.0, 2.0, 2.0), (0.0, 4.0, 2.0, 2.0), (0.0, -6.0, 2.0, 2.0),
+    (5.0, -3.0, 3.0, 6.0), (-8.0, -3.0, 3.0, 6.0), (-5.0, 3.0, 10.0, 2.0), (-5.0, -5.0, 10.0, 2.0),
+    (-4.0, -2.0, 8.0, 4.0), (-6.0, -4.0, 12.0, 8.0), (-5.0, -3.0, 10.0, 6.0), (0.0, 0.0, 3.0, 2.0),
+    (-2.0, -1.0, 4.0, 2.0), (3.0, 1.0, 4.0, 4.0), (-9.0, 1.0, 6.0, 4.0), (-2.0, -6.0, 4.0, 5.0),
+    (-2.0, 1.0, 4.0, 5.0), (4.0, -1.0, 3.0, 2.0), (-7.0, -1.0, 3.0, 2.0), (1.0, 2.5, 3.0, 2.0),
+    (1.0, -4.5, 3.0, 2.0), (-3.0, -1.0, 2.0, 2.0), (2.0, -2.0, 2.0, 4.0), (-4.0, -2.0, 2.0, 4.0),
+    (0.0, -3.0, 10.0, 3.0), (0.0, 0.0, 10.0, 3.0), (-10.0, -3.0, 5.0, 6.0), (0.0, -3.0, 5.0, 6.0),
+    (5.0, 3.0, 1.0, 1.0), (-6.0, -4.0, 1.0, 1.0), (2.0, 1.0, 1.0, 1.0), (-3.0, -2.0, 1.0, 1.0),
+    (7.0, 2.0, 2.0, 2.0), (-1.0, 5.0, 2.0, 2.0), (10.0, 0.0, 1.0, 1.0),
+  ] {
+    a_rects.push(a2);
+    b_rects.push((dx, dy, dx + w, dy + h));
+  }
+
+  assert!(a_rects.len() >= 67, "need >=67 pairs for >=201 operations");
+  let mut ops = 0usize;
+  for ((ax0, ay0, ax1, ay1), (bx0, by0, bx1, by1)) in a_rects.into_iter().zip(b_rects) {
+    let ra = rect(ax0, ay0, ax1, ay1);
+    let rb = rect(bx0, by0, bx1, by1);
+    let aa = (ax1 - ax0) * (ay1 - ay0);
+    let ab = (bx1 - bx0) * (by1 - by0);
+    let inter = rect_overlap_area(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1);
+    let expected_union = aa + ab - inter;
+    let expected_inter = inter;
+    let expected_diff = aa - inter;
+
+    let u = area_of(&ra, &rb, BooleanOp::Union);
+    let i_res = result(&ra, &rb, BooleanOp::Intersection);
+    let i = i_res.as_ref().map_or(0.0, area);
+    let d_res = result(&ra, &rb, BooleanOp::Difference);
+    let d = d_res.as_ref().map_or(0.0, area);
+
+    expect_close(u, expected_union, "known-area union");
+    expect_close(i, expected_inter, "known-area intersection");
+    expect_close(d, expected_diff, "known-area difference");
+    ops += 3;
+  }
+  assert!(ops >= 200, "corpus must run >=200 operations, ran {ops}");
 }

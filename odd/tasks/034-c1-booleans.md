@@ -133,5 +133,6 @@ de la interseccion da la suma" era cierta para estrellas y tiras, y falsa como a
 porque un contorno de arcos ni siquiera podia entrar. G0.1 se reabre con nombre propio.
 
 **Limitacion que el arreglo no toca:** un disco que **toca** desde adentro el borde de la region, sin
-cruzarlo, sigue rechazandose ("revisits a piece") a tolerancia 1e-9. No se invento un fixture para
-disimularlo; queda anotado como limite conocido del arrangement.
+cruzarlo, seguia rechazandose ("revisits a piece") a tolerancia 1e-9 en el momento de L4 (ver L5).
+
+**L5** (corte 2026-11-12, baseline + C1b tangencia + refuerzo C1c/C1a): baseline `cargo test -p cam-geom` en verde (booleanos 15+5 y suite completa). C1b: `push_fractions` en `crates/cam-geom/src/boolean.rs` ahora parte también en contactos `Tangent` interiores, de modo que un toque sin cruce genera vértice en el arrangement; se fijó con `a_disc_tangent_to_the_inside_of_an_edge_resolves` en `crates/cam-geom/tests/boolean_operations.rs` (unión/intersección/diferencia e identidad de área). C1c/C1a: se agregaron propiedades explícitas de De Morgan (`de_morgan_difference_over_union`, `de_morgan_difference_over_intersection`) en `boolean_properties.rs` y un corpus determinista de 210 operaciones contra áreas analíticas conocidas en `two_hundred_known_area_operations_hold`. Quedan por acreditar/cerrar según el texto literal del doc: corpus amplio de normalización/degeneradas y cualquier otro caso no resoluble que aparezca; los cambios de código/tests quedan sin commitear en esta sesión.
