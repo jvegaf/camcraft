@@ -142,6 +142,8 @@ pub enum Command {
   },
   /// Select aperture.
   SelectAperture(u32),
+  /// Polarity.
+  Polarity(Polarity),
   /// Region begin.
   RegionBegin,
   /// Region end.
@@ -213,6 +215,7 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
             apertures: &mut apertures,
             macros: &mut macros,
             attributes: &mut attributes,
+            commands: &mut commands,
             macro_names: &mut macro_names,
             aperture_codes: &mut aperture_codes,
           },
@@ -243,6 +246,7 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
             apertures: &mut apertures,
             macros: &mut macros,
             attributes: &mut attributes,
+            commands: &mut commands,
             macro_names: &mut macro_names,
             aperture_codes: &mut aperture_codes,
           },
@@ -454,6 +458,7 @@ struct Tables<'a> {
   apertures: &'a mut Vec<Aperture>,
   macros: &'a mut Vec<Macro>,
   attributes: &'a mut Vec<String>,
+  commands: &'a mut Vec<Command>,
   macro_names: &'a mut std::collections::HashSet<String>,
   aperture_codes: &'a mut std::collections::HashSet<u32>,
 }
@@ -496,14 +501,20 @@ fn process_extended_block(
     return Ok(());
   }
   if inner.starts_with("LP") {
+    // Polarity is state, not decoration: it applies to everything that follows, so it
+    // belongs in the command stream, where order is preserved, and not in attributes.
     let t = inner.trim_end_matches('*');
-    if t == "LPD" || t == "LPC" {
-      tables.attributes.push(format!("%{t}*%"));
-    } else {
-      tables
-        .attributes
-        .push(format!("%{}%", inner.trim_end_matches('*')));
-    }
+    let polarity = match t {
+      "LPD" => Polarity::Dark,
+      "LPC" => Polarity::Clear,
+      _ => {
+        return Err(GerberError::Unsupported {
+          line: start_line,
+          what: format!("polarity statement {t:?}"),
+        })
+      }
+    };
+    tables.commands.push(Command::Polarity(polarity));
     return Ok(());
   }
   if inner.starts_with("ADD") {

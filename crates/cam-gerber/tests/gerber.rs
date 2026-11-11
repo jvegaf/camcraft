@@ -1,7 +1,9 @@
 //! Behaviour tests for the Gerber RS-274X reader.
 
 use cam_geom::Point2;
-use cam_gerber::{parse, Command, Format, GerberError, MacroPrimitive, Units, ZeroSuppression};
+use cam_gerber::{
+  parse, Command, Format, GerberError, MacroPrimitive, Polarity, Units, ZeroSuppression,
+};
 
 const KICAD_EXCERPT: &str = "\
 %TF.GenerationSoftware,KiCad,Pcbnew,10.0.7*%
@@ -61,16 +63,43 @@ fn parses_format_units_first_command_and_dark_polarity() {
     }
   );
   assert_eq!(file.units, Units::Millimetre);
+  // Polarity is state, so it is a command and it comes before the first draw.
   assert_eq!(
     file.commands.first().copied(),
+    Some(Command::Polarity(Polarity::Dark)),
+    "the polarity command precedes the first draw, because it is state"
+  );
+  assert_eq!(
+    file.commands.get(1).copied(),
     Some(Command::SelectAperture(10))
   );
-  // Polarity came through as dark in the attribute stream.
-  let joined = file.attributes.join("\n");
+  // And it is no longer merely text in the attribute stream.
   assert!(
-    joined.contains("LPD") || joined.contains("%LPD"),
-    "dark polarity in attribute stream: {:?}",
+    !file.attributes.iter().any(|a| a.contains("LP")),
+    "polarity left the attribute stream: {:?}",
     file.attributes
+  );
+}
+
+#[test]
+fn parses_clear_polarity_as_a_command() {
+  let file = parse("%FSLAX46Y46*%\n%MOMM*%\n%LPC*%\nM02*\n").expect("clear polarity parses");
+  assert_eq!(
+    file.commands.first().copied(),
+    Some(Command::Polarity(Polarity::Clear)),
+    "clear polarity is the same command carrying the other state"
+  );
+}
+
+#[test]
+fn refuses_a_polarity_it_does_not_implement() {
+  // `%LPI*%` is a real Gerber statement (inverted polarity). Naming it is honest;
+  // guessing at dark would cut material the file never asked to cut.
+  let err = parse("%FSLAX46Y46*%\n%MOMM*%\n%LPI*%\nM02*\n").expect_err("LPI is not supported");
+  let text = format!("{err}");
+  assert!(
+    text.contains("LPI"),
+    "the refusal names the statement it cannot honour: {text}"
   );
 }
 
