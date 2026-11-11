@@ -228,7 +228,7 @@ pub enum ToolpathError {
   },
   /// The medial axis a V-carve walks could not be computed.
   ///
-  /// `cam_geom::medial` refuses a tolerance that is not positive and finite, and a lattice the
+  /// The medial walk refuses a tolerance that is not positive and finite, and a lattice the
   /// tolerance would make larger than its own sample cap. Neither is clamped into a coarser axis: a
   /// silently coarsened tolerance changes what the carve leaves standing (D-M7-5).
   #[error("the V-carve's medial axis could not be computed: {reason}")]

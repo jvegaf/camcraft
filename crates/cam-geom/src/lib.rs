@@ -22,7 +22,6 @@ pub mod distance;
 pub mod edit;
 pub mod intersect;
 pub mod join;
-pub mod medial;
 pub mod moulding;
 pub mod nest;
 pub mod nest_profile;

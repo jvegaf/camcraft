@@ -466,7 +466,7 @@ pub struct VCarveParams {
   /// It is the caller's tolerance in the only sense the milestone has: the axis is refined to this
   /// step, so it bounds the chording between certified vertices, the shortest piece of axis the walk
   /// can see, the band of material left standing near a convex corner, and the truncation at a
-  /// curvature extremum. All four are `cam_geom::medial`'s declared costs and all four cost coverage
+  /// curvature extremum. All four are the medial walk's declared costs and all four cost coverage
   /// only, never depth.
   ///
   /// Stored with the operation rather than passed to `emit`, because the program is recomputed from
@@ -1162,7 +1162,7 @@ pub enum ModelError {
   },
   /// A V-carve's medial-axis tolerance is zero, negative or not a finite number.
   ///
-  /// The tolerance is the lattice step `cam_geom::medial` refines the axis to, so a step with no
+  /// The tolerance is the lattice step the axis is refined to, so a step with no
   /// distance behind it is refused by name rather than clamped into a plausible one (D-M7-5).
   #[error(
     "toolpath {toolpath:?} V-carve tolerance must be a positive number of millimetres, got {value} mm"
@@ -2165,7 +2165,7 @@ fn check_chamfer(toolpath: &Toolpath) -> Result<(), ModelError> {
 ///
 /// Both are refused naming the value rather than clamped, because a clamped carve is a different
 /// shape: an angle at either end of `(0, 180)` degrees has no depth behind it, and a lattice step of
-/// zero is an axis `cam_geom::medial` would refuse, which would leave a document whose only failure
+/// zero is an axis the walk would refuse, which would leave a document whose only failure
 /// mode is a later `emit` (A4, D-M7-5).
 fn check_v_carve(toolpath: &Toolpath) -> Result<(), ModelError> {
   let Operation::VCarve(params) = &toolpath.operation else {
