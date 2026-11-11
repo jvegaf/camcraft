@@ -329,14 +329,13 @@ impl Gerber {
                     ),
                   })?;
               // A circular aperture is the disc of radius d/2 centred at the flash point.
-              let contour = primitive::circle(at, diameter / 2.0).map_err(|error| {
-                GerberError::Invalid {
+              let contour =
+                primitive::circle(at, diameter / 2.0).map_err(|error| GerberError::Invalid {
                   line: 0,
                   what: format!(
                     "command {index}: the flash of aperture {code} template C is not valid: {error}"
                   ),
-                }
-              })?;
+                })?;
               Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
                 line: 0,
                 what: format!(
