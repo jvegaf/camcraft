@@ -9,9 +9,13 @@ set shell := ["bash", "-uc"]
 default:
   @just --list
 
-# Every gate: fmt --check, clippy -D warnings, all tests.
+# Every gate: markdown links, fmt --check, clippy -D warnings, all tests.
 check:
   ./scripts/check.sh
+
+# Fail if a markdown link in the repository points at something that is not there.
+check-docs:
+  ./scripts/check-docs.sh
 
 # Where the tree stands: branch, sync with origin, uncommitted files, suite size.
 status:
@@ -23,7 +27,7 @@ status:
     printf 'sync:    no upstream configured\n'; \
   fi
   @printf 'dirty:   %s changed path(s)\n' "$(git status --porcelain | wc -l | tr -d ' ')"
-  @printf 'features: %s\n' "$(ls odd/tasks/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  @printf 'features: %s\n' "$(ls odd/tasks/[0-9][0-9][0-9]-*.md 2>/dev/null | wc -l | tr -d ' ')"
 
 # Format the whole workspace.
 fmt:
