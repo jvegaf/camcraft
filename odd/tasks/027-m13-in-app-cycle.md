@@ -1,6 +1,6 @@
 # M13 — The cycle closes inside the app
 
-Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log`** before touching code.
+Feature document for milestone **M13** of `odd/roadmap/index.md`. Read **until `## Log`** before touching code.
 
 ## Specs
 
@@ -60,7 +60,7 @@ Feature document for milestone **M13** of `odd/roadmap.md`. Read **until `## Log
 | T2 | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3 | inline | — |
 | T3 | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe | S1 S4 | inline | — |
 | T4 | ✅ delivered in `18ded99` — the stock reads as **material**: dark `StockTop #705c42` / `StockBottom #453726` / `StockEdge #ddc9a3`, light `#e8cb9d` / `#cfad7b` / `#664d2e`; four stock proofs re-derived, two new (the wood band, and `Cut` on the lit face at 3:1 — a pair that had never been proved and measured 1.47:1). No painting code changed | S1 S5 | worker | `18ded99` |
-| T5 | The milestone's row in `odd/roadmap.md`, its §4.16 evidence section and this document's log, with the commits as evidence | — | inline | `0f7dc4e`+ |
+| T5 | The milestone's row in `odd/roadmap/index.md`, its §4.16 evidence section and this document's log, with the commits as evidence | — | inline | `0f7dc4e`+ |
 
 ## Slices
 

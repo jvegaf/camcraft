@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M0 (foundation + vertical slice)
 
-Program plan: `odd/roadmap.md`. This document is the executable specification for M0 only.
+Program plan: `odd/roadmap/index.md`. This document is the executable specification for M0 only.
 Read this file until `## Log` before implementing any task. Stack: Rust, no UI crate in M0.
 
 ## Specs
@@ -166,7 +166,7 @@ through a fixture post-processor produces the exact expected `.nc`, exit 0, empt
 rejected document exits 2 leaving no output file behind.
 
 **T12 — Close M0.** `docs/format.md` (document schema, tool library schema, post-processor grammar),
-`README.md` quickstart (`cargo run -p cam-cli -- emit ...`), update `odd/roadmap.md` status, and
+`README.md` quickstart (`cargo run -p cam-cli -- emit ...`), update `odd/roadmap/index.md` status, and
 record the commit holding each task. No behaviour change.
 
 ## Log
@@ -180,7 +180,7 @@ record the commit holding each task. No behaviour change.
   "Implementar nesting heurístico propio en v1".
 - **L3 (analysis):** the plan's technical basis, recorded: the tool and post-processor record shapes and
   the post-processor grammar M0 implements — 13 directives / 17 variables / 15 blocks.
-- **L4 (plan):** `odd/roadmap.md` — stack justification, architecture, milestones M0–M10, risks.
+- **L4 (plan):** `odd/roadmap/index.md` — stack justification, architecture, milestones M0–M10, risks.
 - **L5:** scope correction recorded, not silently absorbed: D2 includes V-Carve, Inlay, Moulding and
   the other depth-variant strategies, so those are scheduled as M6–M8 rather than folded into the
   core toolpath milestone; nesting (D4) is M9. M0 deliberately contains no strategy beyond `profile`

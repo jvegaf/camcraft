@@ -1,6 +1,6 @@
 # Feature: region booleans and pocket islands
 
-Program plan: `odd/roadmap.md`. M4's decision D-M4-2 left pockets island-free "until the kernel has
+Program plan: `odd/roadmap/index.md`. M4's decision D-M4-2 left pockets island-free "until the kernel has
 boolean subtraction". This document is the executable specification for that kernel work and for the
 pocket islands that consume it. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; new kernel modules in `cam-geom`, then `cam-model`, `cam-toolpath`, `cam-cli`.
@@ -13,17 +13,17 @@ Requirements as stated by the owner (verbatim):
 - **S1** — Owner's choice of scope (verbatim option label and description, this session): "Sólo islas:
   booleanas en cam-geom (grande)" — "Documento de feature propio: sustracción booleana sobre arcos +
   pockets con islas. Trabajo de kernel, multi-sesión, sirve también a M7/M9."
-- **S2** — The roadmap's `cam-geom` description (verbatim, `odd/roadmap.md:66-68`): "2D kernel: Point2,
+- **S2** — The roadmap's `cam-geom` description (verbatim, `odd/roadmap/index.md:66-68`): "2D kernel: Point2,
   LineSeg, Arc (center/radius/direction), Polyline with bulges, Bezier; chaining, winding,
   self-intersection, validation, bounding volumes, spatial index (rstar), offsetting (arc-preserving),
   boolean ops, tessellation".
 - **S3** — Decision D-M4-2 (verbatim, `odd/tasks/005-m4-toolpaths.md`): "A pocket is one region per
   selected contour; islands are out of scope."
-- **S4** — Decision D6 (verbatim, `odd/roadmap.md`): "Arcs first-class, no pre-tessellation".
-- **S5** — Rule 2 of the architecture (verbatim, `odd/roadmap.md:98`): "**Determinism is a feature.**
+- **S4** — Decision D6 (verbatim, `odd/roadmap/index.md`): "Arcs first-class, no pre-tessellation".
+- **S5** — Rule 2 of the architecture (verbatim, `odd/roadmap/index.md:98`): "**Determinism is a feature.**
   Identical input must produce byte-identical G-code. No `HashMap` iteration may reach an output path;
   ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
-- **S6** — Rule 1 of the architecture (verbatim, `odd/roadmap.md:95`): "**`cam-cli` is the contract.**"
+- **S6** — Rule 1 of the architecture (verbatim, `odd/roadmap/index.md:95`): "**`cam-cli` is the contract.**"
 - **S7** — Decision D-M4-1 (verbatim, from the M4 feature document): "New `Operation` variants stay
   inside `c2d/document@1`… Revisit trigger: any change to a field's meaning or units, which *is* a
   `@2`."
@@ -314,7 +314,7 @@ again. Plus the `@1` document from M0-M4 emitted byte-identically (A15).
 **P6 — Docs.** `docs/region-booleans.md`: the parity model and why it is not orientation-based, what
 normalization does and what it flattens, the distance proof's origin (D-M4-9), the islands' document
 contract and the `@2` migration, and the pocket's behaviour with islands in both modes. `docs/format.md`
-gains the `island_ids` field, the `@2` row and the `--islands` CLI row. `odd/roadmap.md` records the
+gains the `island_ids` field, the `@2` row and the `--islands` CLI row. `odd/roadmap/index.md` records the
 kernel capability and removes D-M4-2's restriction from M4's known limits, pointing at this feature.
 
 ## Delivery slices

@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M7 (V-Carve)
 
-Program plan: `odd/roadmap.md` (M7 = "V-Carve"). This document is the executable specification for M7
+Program plan: `odd/roadmap/index.md` (M7 = "V-Carve"). This document is the executable specification for M7
 only. Read this file until `## Log` before implementing any task.
 Stack: the existing Rust workspace (`cam-geom`, `cam-model`, `cam-toolpath`, `cam-move`, `cam-sim`,
 `cam-cli`); no new crate and no new dependency. Branch: `feat/m7-vcarve`, cut from `master` at
@@ -15,11 +15,11 @@ Requirements as stated by the owner:
   `simulate` lo reporta como uncut" and "No: M7 es V-carve a punta pura". Together they bound M7: no
   corner-relief pass of any kind, and no Flat Depth / flat-bottom phase. Both are recorded out of
   scope below rather than quietly dropped.
-- **S3** — Roadmap M7 row (verbatim, `odd/roadmap.md`): "| **M7** | V-Carve | Depth from medial-axis
+- **S3** — Roadmap M7 row (verbatim, `odd/roadmap/index.md`): "| **M7** | V-Carve | Depth from medial-axis
   distance to boundary, per V-bit included angle, corner relief | Research-grade geometry (medial axis
   of arcs); deliberately isolated so it cannot delay the rest |". The row's "corner relief" and the
   per-bit angle are addressed by S2 and A1 respectively.
-- **S4** — Why this milestone is isolated (verbatim, `odd/roadmap.md` §4.1): "V-Carve computes cut
+- **S4** — Why this milestone is isolated (verbatim, `odd/roadmap/index.md` §4.1): "V-Carve computes cut
   depth from the distance between a point and the nearest boundary, scaled by the V-bit's included
   angle, which means the toolpath is not a fixed-Z pass but a depth field. That requires a
   medial-axis/straight-skeleton computation on geometry containing arcs, plus corner-relief handling.
@@ -44,13 +44,13 @@ Requirements as stated by the owner:
   cleared it, so the run has to say which depth it reached instead of assuming the floor is flat.
   Those are the rules a flat-bottom operation enforces; M7 records them out of scope with S2 rather
   than shipping one unchecked.
-- **S9** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md` §3): "**`cam-cli`
+- **S9** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md` §3): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
-- **S10** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap.md` §3):
+- **S10** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md` §3):
   "**Determinism is a feature.** Identical input must produce byte-identical G-code. No `HashMap`
   iteration may reach an output path; ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
-- **S11** — Verification rule 5 (verbatim, `odd/roadmap.md` §5): "**Simulation as oracle** — for each
+- **S11** — Verification rule 5 (verbatim, `odd/roadmap/index.md` §5): "**Simulation as oracle** — for each
   strategy, a test asserts the simulated removed volume matches the analytic expectation within
   tolerance; a too-shallow pocket fails the test, not a screenshot."
 - **S12** — The post can already express a varying-Z linear move, so M7 changes no post contract
@@ -58,17 +58,17 @@ Requirements as stated by the owner:
   and `FIRST_FEED_MOVE` is "`\"[N]G01[X][Y][Z][F]\"`" (`:56-57`). This is the difference from M6, whose
   helix needed four new block kinds.
 - **S13** — The sweep already interpolates Z along a cutting move, which is what makes a varying-Z move
-  measurable (verbatim, `odd/roadmap.md` §7): "**D-M6-12** | The sweep **interpolates Z** along a
+  measurable (verbatim, `odd/roadmap/index.md` §7): "**D-M6-12** | The sweep **interpolates Z** along a
   cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3)".
 - **S14** — Decision D-M4-6, whose cost M7 does not re-open (verbatim as quoted by M6's S14,
   `odd/tasks/008-m6-depth-variants.md`): "**D-M4-6 — Linking moves stay conservative.** Between
   rings, rows and holes the tool retracts to `safe_z` and rapids."
 - **S15** — Decision D-M4-8, still in force (verbatim, `odd/tasks/005-m4-toolpaths.md`):
   "**D-M4-8 — No toolpath UI in M4.** ... `cam-cli toolpath` is how a toolpath is authored."
-- **S16** — Decision D-M6-11, the boundary M7 inherits (verbatim, `odd/roadmap.md` §4.9): "**D-M6-11**
+- **S16** — Decision D-M6-11, the boundary M7 inherits (verbatim, `odd/roadmap/index.md` §4.9): "**D-M6-11**
   leaves the CLI's "a flag no kind uses is silently dropped" open milestone-wide — closing it changes
   the contract for callers that pass a superset today".
-- **S17** — The known defect M7 must fix before it can trust its own oracle (verbatim, `odd/roadmap.md`
+- **S17** — The known defect M7 must fix before it can trust its own oracle (verbatim, `odd/roadmap/index.md`
   §6): "**The simulation's field and the program use different origins** (M6 L17). `cam_sim::grid::grid_for`
   builds the field at `(0, 0)` from `job.width/height` while programs are emitted in machine
   coordinates, so at any origin corner other than bottom-left the report and the preview disagree with

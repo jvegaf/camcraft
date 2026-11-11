@@ -41,7 +41,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   ("El panel edita el documento del shell") and then the semantics (S1).
 - **L2 (the reconnaissance attempt, and its failure).** A first `gentle-ai-explore` run for the candidate
   milestones **timed out** and returned nothing; the roadmap evidence was gathered inline instead
-  (`odd/roadmap.md:145-176`, `:153-156`, `:980`). A second, strictly bounded explorer mapped this feature:
+  (`odd/roadmap/index.md:145-176`, `:153-156`, `:980`). A second, strictly bounded explorer mapped this feature:
   the document lives in `cam_app::AppState` (`crates/cam-app/src/lib.rs:104-105`), not in `Shell`; `Shell`
   keeps only `document_path` (`crates/cam-ui/src/lib.rs:1141`); the dirty flag is `AppState::is_dirty()`
   (`cam-app:175-177`) and the undo-aware wholesale replacement is `replace_document_undoable`

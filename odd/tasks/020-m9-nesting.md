@@ -1,6 +1,6 @@
 # M9 — Nesting: sheets, parts and cost
 
-Feature document for M9 of `odd/roadmap.md`. Read **until `## Log`** before touching code; the Log is
+Feature document for M9 of `odd/roadmap/index.md`. Read **until `## Log`** before touching code; the Log is
 the record, not the brief.
 
 ## Specs
@@ -58,7 +58,7 @@ These are the repo's own conventions, not new requirements; a task that breaks o
 | T3 | Free-profile nesting: the NFP heuristic for contours that are not rectangles, reusing `Region` and the offset kernel rather than a second intersector | S6 S7 | worker | — |
 | T4 | `cam-cli nest`: the flags, the refusals, the report on stdout (utilisation, waste, sheets used, exits non-zero when a part does not fit) and the placements plus cost written into the document — the record is written **from `Document::nesting_utilisation`**, never from `cam_geom::nest::NestPlan::utilisation`, which is the nester's own view and would reopen the trap T1c closed | S2 S3 S6 | worker | — |
 | T5 | Goldens for the report and for the authored document, determinism, and a differential against the milestone's cut point over the pre-existing command surface | S3 S6 | worker | — |
-| T6 | Docs: `docs/m9-nesting.md`, `odd/roadmap.md` §4.12, README, and this document's evidence | S1-S7 | parent | — |
+| T6 | Docs: `docs/m9-nesting.md`, `odd/roadmap/index.md` §4.12, README, and this document's evidence | S1-S7 | parent | — |
 
 Order is the dependency order; each task is one work unit and one commit, and a unit that lands a
 high-risk item gets its own commit so native review can take it alone.

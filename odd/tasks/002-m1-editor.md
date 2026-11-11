@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M1 (2D editor shell)
 
-Program plan: `odd/roadmap.md` (M1 = "2D editor shell"). This document is the executable
+Program plan: `odd/roadmap/index.md` (M1 = "2D editor shell"). This document is the executable
 specification for M1 only. Read this file until `## Evidence — commit per task
 
 | Task | Commit | Notes |

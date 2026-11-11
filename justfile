@@ -79,7 +79,7 @@ features:
 
 # Show the milestone table.
 milestones:
-  @sed -n '/^| \*\*M/p' odd/roadmap.md
+  @sed -n '/^| \*\*M/p' odd/roadmap/index.md
 
 # Remove build artefacts.
 clean:

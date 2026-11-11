@@ -22,7 +22,7 @@ L5). Read **until `## Log`** before touching anything.
   - twelve documents are **named** for the product: `odd/tasks/001-m0-foundation.md` … `m12-export.md`
     plus `region-booleans.md`, and M13's own `m13-in-app-cycle.md`;
   - `docs/m5-simulation.md`, `m6-toolpaths.md`, `m7-vcarve.md`, `m8-moulding.md`, `m9-nesting.md`,
-    `m10-documents.md`, `region-booleans.md`, `odd/roadmap.md`, `odd/tasks/{camui-toolpath,
+    `m10-documents.md`, `region-booleans.md`, `odd/roadmap/index.md`, `odd/tasks/{camui-toolpath,
     shell-open-document,debt-advisories,raster-far-edge-pass}.md`, `crates/cam-program/src/lib.rs`,
     `crates/cam-cli/tests/cli.rs`, `crates/cam-post/tests/parser.rs`, both `.pp` fixtures and one comment in
     `Cargo.toml` mention it in prose.
@@ -41,7 +41,7 @@ L5). Read **until `## Log`** before touching anything.
   in its own roadmap entry.
 - **S6 (naming):** milestone documents lose the product word and keep their meaning:
   `odd/tasks/001-m0-foundation.md` … `m12-export.md`, `m13-in-app-cycle.md`, `region-booleans.md`. Every inbound
-  reference (`odd/roadmap.md`, the other task documents, `docs/`, `Cargo.toml` comments) is updated in the
+  reference (`odd/roadmap/index.md`, the other task documents, `docs/`, `Cargo.toml` comments) is updated in the
   same slice, because a renamed file with a stale link is a broken repository rather than a hygiene win.
 - **S7 (out of scope):** the `.pp` dialect's behaviour, its directives and blocks; the fixtures' Mach3
   compatibility; any code path. This is a provenance and naming change: **no behaviour, no test expectation

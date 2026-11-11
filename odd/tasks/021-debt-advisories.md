@@ -74,7 +74,7 @@ document waits on anyone now.
   `review-305eaa8746f90d29`, `review-3592c554bf15c02f`) and only *terminal-consumption* records for
   `bd99706d`, `12219c3f` and `1ab52143` — id, lineage and three hashes, no findings. So **10 of the 14
   advisories exist only as metadata** (lens, severity, path:line) in `docs/m10-documents.md:355-370`,
-  `odd/tasks/018-m10-documents.md:160`, `docs/m9-nesting.md:392-396`, `odd/roadmap.md:813,899`.
+  `odd/tasks/018-m10-documents.md:160`, `docs/m9-nesting.md:392-396`, `odd/roadmap/index.md:813,899`.
   The reviewer's own words survive for the four below, through `review-61e0b405dc7f498b`, documented as
   `bd99706d`'s superseded predecessor over the same code with shifted lines:
   1. *readability WARNING* — "`end_column` is computed as `token.column + token.text.len()`, but for a
@@ -343,7 +343,7 @@ than by rewriting the entries above. **Three contradictions, each checkable agai
   nine open, six closed, every later register closed, counted as rows rather than inherited as a number.
   That the ledger says nine and its own rows say **ten** is not a new mistake but the same one, and it is
   left visible rather than rounded to whichever number reads better.
-  The same wrong figure is repeated in four more places — `odd/roadmap.md:1098`,
+  The same wrong figure is repeated in four more places — `odd/roadmap/index.md:1098`,
   `odd/tasks/018-m10-documents.md:172`, `odd/tasks/023-script-panel-document.md:40` and `:174`, and
   `odd/tasks/024-advisory-debt-close.md:15` (that last one inside the owner's verbatim `S4`, which is never
   rewritten) — and **none of them is authority now**.

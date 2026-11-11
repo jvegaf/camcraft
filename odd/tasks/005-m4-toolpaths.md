@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M4 (core toolpaths)
 
-Program plan: `odd/roadmap.md` (M4 = "Core toolpaths"). This document is the executable specification
+Program plan: `odd/roadmap/index.md` (M4 = "Core toolpaths"). This document is the executable specification
 for M4 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; `cam-model` (parameters), `cam-toolpath` (the strategies), `cam-cli` (the
 contract). Branch: `feat/m4-toolpaths`, cut from `master` at `802f0a3`; baseline
@@ -11,7 +11,7 @@ contract). Branch: `feat/m4-toolpaths`, cut from `master` at `802f0a3`; baseline
 Requirements as stated by the owner (verbatim):
 
 - **S1** — "arranca M4" (this session's instruction).
-- **S2** — Roadmap M4 row (verbatim, `odd/roadmap.md:141-143`): "Core toolpaths | Profile
+- **S2** — Roadmap M4 row (verbatim, `odd/roadmap/index.md:141-143`): "Core toolpaths | Profile
   (inside/outside/on, tabs, passes, lead-in/out), Pocket (raster + offset, allowance, stepover, clear
   stepover), Drilling (peck, retract, drill bank) | The three strategies that define 2.5D routing;
   they exercise every post-processor block".
@@ -23,19 +23,19 @@ Requirements as stated by the owner (verbatim):
   `Pocket Toolpath`, `Drilling Toolpath`, `Drill Bank Toolpath`".
 - **S5** — Tool cutting-data columns the library keeps: "stepover, clear_stepover", stored per tool
   next to "stepdown".
-- **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:95`): "**`cam-cli`
+- **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:95`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
-- **S7** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:98`):
+- **S7** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:98`):
   "**Determinism is a feature.** Identical input must produce byte-identical G-code. No `HashMap`
   iteration may reach an output path; ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
-- **S8** — Decision D6 (verbatim, `odd/roadmap.md:287`): "Arcs first-class, no pre-tessellation".
-- **S9** — The plan's deferred list (verbatim, `odd/roadmap.md:152-153`): "rotary wrapping
+- **S8** — Decision D6 (verbatim, `odd/roadmap/index.md:287`): "Arcs first-class, no pre-tessellation".
+- **S9** — The plan's deferred list (verbatim, `odd/roadmap/index.md:152-153`): "rotary wrapping
   (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later milestone), **drill-bank
   hardware integration**". This is what bounds S2's "drill bank": the *geometry and selection* half is
   in M4, the machine-command half is deferred by the plan itself.
 - **S10** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser".
-- **S11** — Decision D8 (verbatim, `odd/roadmap.md:295`): "`cam-cli` as the test surface".
+- **S11** — Decision D8 (verbatim, `odd/roadmap/index.md:295`): "`cam-cli` as the test surface".
 
 Owner requirements still in force from earlier milestones:
 
@@ -325,7 +325,7 @@ with the S3 names, the allowance/stepover/step-down rules, peck/retract semantic
 and its deferral of machine commands (A9, S9), the known limits from D-M4-2, D-M4-5, D-M4-6, D-M4-7 and
 D-M4-8, and the `cam-cli toolpath` synopsis with its defaults from the tool library. `docs/format.md`
 gains the two `operation` examples, the `RetractMode` serde shape and the restated `Extensibility` row
-(D-M4-1). `odd/roadmap.md` marks M4 delivered with its evidence table and the deviations, and the
+(D-M4-1). `odd/roadmap/index.md` marks M4 delivered with its evidence table and the deviations, and the
 `docs/format.md` command-line contract table gains the `toolpath` row.
 
 ## Delivery slices

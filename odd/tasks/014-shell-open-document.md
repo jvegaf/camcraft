@@ -81,7 +81,7 @@ This feature connects the three.
   it would not write `cam-cli open` as a command, because there is no `open` subcommand — it is a private
   helper used by `validate`, `inspect`, `check`, `emit` and `simulate`. That shorthand was in **this
   document** (S2, L2) and the parent fixed it here rather than leaving a false command in the
-  specification. It also established that `odd/roadmap.md` needed no edit at all, because no row there
+  specification. It also established that `odd/roadmap/index.md` needed no edit at all, because no row there
   ever said the editor could not open a document — this feature has no roadmap trace, only this document
   and two appended Log entries elsewhere.
 - **L4 (the gate, and a dependency that is a decision).** **Exit 0, 96 suites, 1 184 passed, 0 failed** —

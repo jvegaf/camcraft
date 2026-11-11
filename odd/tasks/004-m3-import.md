@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M3 (import & interchange)
 
-Program plan: `odd/roadmap.md` (M3 = "Import & interchange"). This document is the executable
+Program plan: `odd/roadmap/index.md` (M3 = "Import & interchange"). This document is the executable
 specification for M3 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; new crate `cam-import` (geometry in, report out), then `cam-cli`, then `cam-ui`.
 Branch: `feat/m3-import`, cut from `master` at `0e12edc`.
@@ -10,7 +10,7 @@ Branch: `feat/m3-import`, cut from `master` at `0e12edc`.
 Requirements as stated by the owner (verbatim):
 
 - **S1** — "continua con M3" (this session's instruction).
-- **S2** — Roadmap M3 row (verbatim, `odd/roadmap.md:140`): "DXF, SVG, PDF, EPS, raster trace;
+- **S2** — Roadmap M3 row (verbatim, `odd/roadmap/index.md:140`): "DXF, SVG, PDF, EPS, raster trace;
   validation report of open/self-intersecting vectors".
 - **S3** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser".
 - **S4** — Decision D3 (user, verbatim option label): "Formato propio abierto (JSON/ZIP) + import
@@ -19,14 +19,14 @@ Requirements as stated by the owner (verbatim):
   (*.dxf;*.dwg;*.eps;*.ai;*.pdf,*.skp;*.svg)`", "`Bitmap Image Files
   (*.bmp;*.jpg;*.gif;*.tif;*.tiff;*.png;*.jpeg;*.webp)`". These are the target formats we measure
   ourselves against; the milestone delivers the subset in S2.
-- **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:95`): "**`cam-cli`
+- **S6** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:95`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
 
 Owner requirements still in force from earlier milestones:
 
 - **S7** — Decision D1 (user, verbatim option label): "Rust + wgpu/egui (o Rust + Qt bindings)".
-- **S8** — Decision D6 (verbatim, `odd/roadmap.md:287`): "Arcs first-class, no pre-tessellation".
+- **S8** — Decision D6 (verbatim, `odd/roadmap/index.md:287`): "Arcs first-class, no pre-tessellation".
 
 Everything else in this document is a **derived acceptance criterion** for M3 — an engineering
 consequence of S1–S8 with no new scope. Each one is falsifiable and is the thing a task is checked

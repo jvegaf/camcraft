@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M6 (depth-variant strategies)
 
-Program plan: `odd/roadmap.md` (M6 = "Depth-variant strategies"). This document is the executable
+Program plan: `odd/roadmap/index.md` (M6 = "Depth-variant strategies"). This document is the executable
 specification for M6 only. Read this file until `## Log` before implementing any task.
 Stack: the existing Rust workspace (`cam-model`, `cam-toolpath`, `cam-move`, `cam-post`, `cam-sim`,
 `cam-cli`, `cam-store`); no new crate and no new dependency. Branch: `feat/m6-depth-variants`,
@@ -15,7 +15,7 @@ Requirements as stated by the owner (verbatim):
   description: "Limpieza de rama mergeada y después M6" — "Borrar feat/m5-simulation y arrancar M6
   sobre master limpio." Preceded by the session's first instruction, verbatim: "coge el contexto de
   engram para poder continuar".
-- **S2** — Roadmap M6 row (verbatim, `odd/roadmap.md:143`): "| **M6** | Depth-variant strategies |
+- **S2** — Roadmap M6 row (verbatim, `odd/roadmap/index.md:143`): "| **M6** | Depth-variant strategies |
   Quick Engrave, Chamfer, Fluting, Texture, Thread Milling, Inlay (male/female pair) | All are
   profile/pocket variants with a different Z law — cheap once M4 and M5 exist |".
 - **S3** — What the README promises for M6 (verbatim, `README.md:185-188`): "M6 is the depth-variant
@@ -27,16 +27,16 @@ Requirements as stated by the owner (verbatim):
   `Fluting Toolpath`, `Texture Toolpath`, `Moulding Toolpath`, `Thread Mill` (`ThreadDiameter`,
   `ThreadPitch`, `ThreadDirection`, `ThreadedLength`)". Which of those a given edition exposes is
   decided by gating M6 does not model.
-- **S5** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:90`): "**`cam-cli`
+- **S5** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:90`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
-- **S6** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:93`):
+- **S6** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:93`):
   "**Determinism is a feature.** Identical input must produce byte-identical G-code. No `HashMap`
   iteration may reach an output path; ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
-- **S7** — Verification rule 5 (verbatim, `odd/roadmap.md:411-412`): "**Simulation as oracle** — for
+- **S7** — Verification rule 5 (verbatim, `odd/roadmap/index.md:411-412`): "**Simulation as oracle** — for
   each strategy, a test asserts the simulated removed volume matches the analytic expectation within
   tolerance; a too-shallow pocket fails the test, not a screenshot."
-- **S8** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor third-party `.pp` files".
+- **S8** — Decision D7 (verbatim, `odd/roadmap/index.md:294`): "Do not vendor third-party `.pp` files".
 - **S9** — The move vocabulary's Z convention and its arc restriction (verbatim,
   `crates/cam-move/src/lib.rs:19-21`): "Z position, in millimetres. Positive is up; cutting depths are
   positive magnitudes." and (verbatim, `:57-58`): "Circular cutting move in the XY plane at constant Z."
@@ -427,7 +427,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   `docs/m5-simulation.md` has, and every console block and number in it was produced by running the
   shipped binary rather than transcribed: the six authoring lines, a seven-toolpath simulate report, the
   helical `G03` pair, a post refusal at exit 4, and a 60° bit's square chamfer at 0/0. README's status
-  and "Next" move to M7 with M6 reported as shipped; `odd/roadmap.md` gains §4.9 with the two
+  and "Next" move to M7 with M6 reported as shipped; `odd/roadmap/index.md` gains §4.9 with the two
   prerequisites the milestone's plan did not anticipate, a ten-row deliverable/where/proof table, the
   origin-corner defect as a defect rather than a paragraph, and D-M6-12 / D-M6-14 in §7.
   `ModelError::IslandsRequirePocket` became `IslandsRequirePocketOrInlay` with its sentence and

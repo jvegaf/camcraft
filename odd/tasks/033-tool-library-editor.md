@@ -85,7 +85,7 @@ its report, not by pixels.
 | T5 | S11 | inline + worker | done — `c760cf8` (format), `ac09d07` (dialogs) |
 | T6 | S13, S14 | worker | done — `d04d8c6` (`default_tools()` retired, no fabricated library) |
 | T7 | S3, S10, S11 | worker | done — `ac09d07` (three rows, four writers, two dialogs) |
-| T8 | — | inline | done — M14 row and §4.17 in `odd/roadmap.md`, gate green |
+| T8 | — | inline | done — M14 row and §4.17 in `odd/roadmap/index.md`, gate green |
 
 ## Log
 

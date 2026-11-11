@@ -1,6 +1,6 @@
 # M12 — Export: the document goes back out
 
-Feature document for milestone **M12** of `odd/roadmap.md`. Read **until `## Log`** before touching code.
+Feature document for milestone **M12** of `odd/roadmap/index.md`. Read **until `## Log`** before touching code.
 
 ## Specs
 

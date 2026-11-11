@@ -32,7 +32,7 @@ raster contract. The owner has now taken that decision.
 - **S5 — the documents follow the behaviour.** `docs/m4-toolpaths.md` (the "last grid line that
   fits" sentence, and the table row that says 99 mm is past 97 so there is no 33rd row),
   `odd/tasks/005-m4-toolpaths.md` A5 (superseded by an appended entry, never rewritten),
-  `odd/roadmap.md`'s raster row, and D-M5-12 itself (recorded as decided and delivered). A document
+  `odd/roadmap/index.md`'s raster row, and D-M5-12 itself (recorded as decided and delivered). A document
   that still promises the old lattice is a defect of this task, not a follow-up.
 - **S6 — risk.** Task Size item 3: this changes the G-code that an existing subcommand emits for a
   documented contract. Verification is the full gate plus a differential against the previous code for
@@ -101,7 +101,7 @@ raster contract. The owner has now taken that decision.
   which is what a `1.0e-6` nudge would give and is not this code. The parent accepted the correction and
   rewrote its own brief's number out of the record. Everything written into `docs/m4-toolpaths.md`
   (contract sentence, the 33-row table with row 33 on the far edge, the 50-row unchanged case, the chord)
-  and into `odd/roadmap.md` (33/41, 25/25, 15/25) was re-derived from the tests, not copied from the
+  and into `odd/roadmap/index.md` (33/41, 25/25, 15/25) was re-derived from the tests, not copied from the
   brief; the two period records got appended entries only, with the owner's `si, acepto` verbatim, and
   `docs/m5-simulation.md` was checked and left alone because its 1…99 region already ends on the grid.
   Two things the writer left deliberately and flagged instead of silently fixing: roadmap §4.7's cell that

@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M5 (simulation & 3D preview)
 
-Program plan: `odd/roadmap.md` (M5 = "Simulation & 3D preview"). This document is the executable
+Program plan: `odd/roadmap/index.md` (M5 = "Simulation & 3D preview"). This document is the executable
 specification for M5 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace; new `cam-sim` crate for the material-removal model, `cam-cli` for the contract,
 `cam-view` and `cam-ui` for the 3D surface and its animation. Branch: `feat/m5-simulation`, cut
@@ -17,21 +17,21 @@ Requirements as stated by the owner (verbatim):
 - **S3** — Owner's choice of shell scope (verbatim option label and description, this session):
   "Sólo simulación + preview" — "M5 = cam-sim + reporte + vista 3D + animación + `cam-cli simulate`.
   La ventana muestra el preview del programa ya autorado por `cam-cli`."
-- **S4** — Roadmap M5 row (verbatim, `odd/roadmap.md:142`): "Simulation & 3D preview | Heightfield
+- **S4** — Roadmap M5 row (verbatim, `odd/roadmap/index.md:142`): "Simulation & 3D preview | Heightfield
   material removal, gouge/uncut reporting, 3D stock view, animated preview | G-code without simulation
   is unverifiable by the user; also the only honest acceptance test for M4–M7".
-- **S5** — Roadmap crate description for `cam-sim` (verbatim, `odd/roadmap.md:76-77`):
+- **S5** — Roadmap crate description for `cam-sim` (verbatim, `odd/roadmap/index.md:76-77`):
   "`cam-sim/` Material-removal simulation: heightfield (dexfuture: dexel) + per-tool removal; reports
   gouges and uncut material".
-- **S6** — Roadmap verification rule 5 (verbatim, `odd/roadmap.md:411-412`): "**Simulation as oracle** —
+- **S6** — Roadmap verification rule 5 (verbatim, `odd/roadmap/index.md:411-412`): "**Simulation as oracle** —
   for each strategy, a test asserts the simulated removed volume matches the analytic expectation
   within tolerance; a too-shallow pocket fails the test, not a screenshot."
-- **S7** — Roadmap risk register (verbatim, `odd/roadmap.md:429`): "Simulation performance on large
+- **S7** — Roadmap risk register (verbatim, `odd/roadmap/index.md:429`): "Simulation performance on large
   jobs | UI stalls | Tiled heightfield + `rayon`, resolution decoupled from job size".
-- **S8** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:90`): "**`cam-cli`
+- **S8** — Rule 1 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:90`): "**`cam-cli`
   is the contract.** Any behaviour that cannot be produced headless through the CLI is not considered
   testable, and therefore not done."
-- **S9** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap.md:93`):
+- **S9** — Rule 2 of the architecture, in force since M0 (verbatim, `odd/roadmap/index.md:93`):
   "**Determinism is a feature.** Identical input must produce byte-identical G-code. No `HashMap`
   iteration may reach an output path; ordering is explicit (`BTreeMap`, sorted IDs, stable sorts)."
 - **S10** — What the README promises for M5 (verbatim, `README.md:172-175`): "M5 is simulation:
@@ -67,7 +67,7 @@ Owner requirements still in force from earlier milestones:
 - **S15** — Cross-platform Windows/Linux (D1, owner decision at plan time).
 - **S16** — Decision D2 (user, verbatim option label): "Todo menos 3D y Laser". This bounds S4: the 3D
   here is a *preview of the stock*, not the deferred 3D machining strategies.
-- **S17** — Decision D7 (verbatim, `odd/roadmap.md:294`): "Do not vendor third-party `.pp` files".
+- **S17** — Decision D7 (verbatim, `odd/roadmap/index.md:294`): "Do not vendor third-party `.pp` files".
 
 ### Derived acceptance criteria (M5)
 
@@ -410,7 +410,7 @@ deviations, the crash rule, the resolution/cap policy, the report's exact shape,
 recorded limits (flat-cylinder tool, cell-centre coverage, no linking optimisation yet, no `rayon`).
 `README.md`'s status line and "Next" move to M6; the crate table gains `cam-sim` and the dependency
 sentence gains its edge. `docs/format.md`'s command table gains `simulate` with R (the offset documented
-as addable). `odd/roadmap.md` gains §4.8 with M5's evidence table in the shape §4.6 and §4.7 use, marks
+as addable). `odd/roadmap/index.md` gains §4.8 with M5's evidence table in the shape §4.6 and §4.7 use, marks
 M5 delivered in §4, and **corrects the stale paragraph in §4.7 that still calls P5 open** (P5 landed in
 `075f8da`; the text contradicts the table directly above it).
 

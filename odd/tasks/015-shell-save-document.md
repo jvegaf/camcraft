@@ -57,7 +57,7 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   fails if the write happens. Route: delegated worker. Commit: `c053705`.
 - T2 — the host (S2, S6): `rfd`'s `save_file()` answering `RequestSaveAs`, seeded with the current name.
   Route: parent inline. Commit: `c053705`.
-- T3 — the documents (S1, S2, S7): README, `camui-shell.md` L45, and `odd/roadmap.md` — which needed
+- T3 — the documents (S1, S2, S7): README, `camui-shell.md` L45, and `odd/roadmap/index.md` — which needed
   nothing, checked row by row. Route: delegated worker. Commit: the commit that carries this line.
 - T4 — gate, commits, independent verification, native review (S8). Route: parent. Commit: `c053705` plus
   the record commits.

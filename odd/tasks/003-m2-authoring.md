@@ -1,6 +1,6 @@
 # Feature: 2.5D CAM application — Milestone M2 (vector authoring & editing)
 
-Program plan: `odd/roadmap.md` (M2 = "Vector authoring & editing"). This document is the executable
+Program plan: `odd/roadmap/index.md` (M2 = "Vector authoring & editing"). This document is the executable
 specification for M2 only. Read this file until `## Log` before implementing any task.
 Stack: Rust workspace, `cam-geom` kernel first, then `cam-app` commands, then `cam-ui` wiring.
 
@@ -10,7 +10,7 @@ Requirements as stated by the owner (verbatim; S1 restated by the name-hygiene s
 
 - **S1** — A desktop 2.5D CAM application (restated; the owner's wording named a third-party product).
 - **S2** — "quiero que sea cross platform Windows/Linux"
-- **S3** — Roadmap M2 row (verbatim, `odd/roadmap.md`): "Line/polyline/arc/circle/ellipse/rectangle/polygon/star, text, node editing,
+- **S3** — Roadmap M2 row (verbatim, `odd/roadmap/index.md`): "Line/polyline/arc/circle/ellipse/rectangle/polygon/star, text, node editing,
   join/weld/trim, offset, mirror/rotate/scale, array copy, align"
 
 Decisions taken by the owner for this milestone (verbatim option labels):
