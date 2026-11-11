@@ -68,6 +68,9 @@ todos los helpers de `shared`; empezar por `peck` dejaria `push_horizontal`, `pi
 --all-targets -- -D warnings` y `cargo test --workspace` en verde. El contador de tests sube candidato a
 candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo.
 
+**Estado final de la cadena y de su review: ver L20-L22.** Las ramas `camcraft-sweep-cN`, `-dA/-dB/-dC`
+son andamiaje de review; los commits son el entregable.
+
 **El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
 es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
 negociarlo, y por eso el criterio de aceptacion es por candidato y no por linea.
@@ -217,3 +220,25 @@ tarde.
 huerfanos en disco, sin declaraciones `mod`, que ni compilaban ni corrian (`cargo test --test view3d`
 daba 0 tests). Se detecto comparando el arbol re-rebanado contra el original: el diff no estaba vacio.
 Leccion: al re-rebanar por checkout de paths, las eliminaciones se hacen con `git rm`, nunca se infieren.
+
+**L22** (decision del dueno — alcance de la review del borrado): **el borrado se acepta sin review, y el
+motivo queda escrito.** No es una omision: es lo que el proveedor puede tomar.
+
+Los hechos, todos medidos: el rescate (5.762 lineas) fue rechazado en preflight con
+`lens_context_budget_exceeded` dos veces, la segunda sobre el borrado atomico de 27.870 lineas. El techo
+real esta entre **1.409** (c2, aprobado) y **5.762** (rechazado); no lo conocemos con mas precision.
+Re-rebanar el borrado en cuatro cortes verdes bajo el maximo de 27.870 a **11.257**, y ahi se agoto: los
+dos cortes grandes siguen siendo el doble del unico tamano que sabemos que rebota, y bajarlos mas exige
+separar los tests de su crate en commits propios (solo `cam-toolpath/tests` son ~7.000 lineas) sin
+garantia de entrar.
+
+Lo que **si** esta revisado y aprobado, tres veces, es la parte que se escribe a mano: el rescate de
+`cam-ops` (c1-c3, con una correccion CRITICAL validada) y su spec. El borrado es eliminacion, y se
+verifica con un grep —"¿queda algo usandolo?"— no con un revisor.
+
+**Control compensatorio:** se corre una verificacion independiente sobre lo que sobrevive (subcomandos del
+CLI, superficies de la UI, conciliacion del conteo de tests, ausencia de stubs y de codigo muerto), porque
+el commit que borra 33.000 lineas es justamente el que no tiene segunda opinion.
+
+Nada de esto autoriza delivery: push, PRs y merge siguen siendo decision del dueno, y el push de las ramas
+re-escritas sigue bloqueado por la politica de seguridad del harness.
