@@ -33,6 +33,25 @@ fn options() -> OffsetOptions {
   OffsetOptions::default()
 }
 
+/// The U bracket an existing region test already uses to reach the self-intersection branch, with a
+/// shallow arc along its base. Shrunk by 8 mm its arm walls cross, which is the cleanup path.
+fn bracket() -> Contour {
+  Contour::new(
+    vec![
+      cam_geom::Vertex::new(Point2::new(0.0, 0.0), 0.05),
+      cam_geom::Vertex::new(Point2::new(100.0, 0.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(100.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(85.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(85.0, 40.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(15.0, 40.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(15.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(0.0, 100.0), 0.0),
+    ],
+    true,
+  )
+  .expect("a U bracket with an arc along its base")
+}
+
 #[test]
 fn the_offset_starts_at_the_corner_nearest_the_authored_start() {
   // Lead-ins and tab positions are measured from the start of the contour, so the offset has to keep
@@ -247,21 +266,7 @@ fn a_self_intersecting_offset_keeps_the_arcs_it_started_with() {
   // shallow arc, so if the cleanup keeps the curve the arc is still there afterwards; a flattened
   // rebuild loses it. The bracket's own geometry is the fixture an existing region test already
   // uses to reach this branch, with one arc added.
-  let bracket = Contour::new(
-    vec![
-      cam_geom::Vertex::new(Point2::new(0.0, 0.0), 0.05),
-      cam_geom::Vertex::new(Point2::new(100.0, 0.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(100.0, 100.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(85.0, 100.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(85.0, 40.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(15.0, 40.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(15.0, 100.0), 0.0),
-      cam_geom::Vertex::new(Point2::new(0.0, 100.0), 0.0),
-    ],
-    true,
-  )
-  .expect("a U bracket with an arc along its base");
-  let offset = offset_contour(&bracket, -8.0, &options()).expect("the bracket offsets");
+  let offset = offset_contour(&bracket(), -8.0, &options()).expect("the bracket offsets");
   assert!(
     !offset.flattened,
     "the curve survives the self-intersection cleanup: {:?}",
@@ -270,5 +275,21 @@ fn a_self_intersecting_offset_keeps_the_arcs_it_started_with() {
   assert!(
     offset.contour.has_arcs(),
     "the arc along the base is still an arc"
+  );
+}
+
+#[test]
+fn a_self_intersecting_offset_keeps_the_largest_boundary() {
+  // R3-test-does-not-prove-survivor: the cleanup keeps the largest boundary by absolute area, and
+  // that choice is the one that decides which geometry survives, so it needs its own pin. The
+  // bracket at -8 mm offers exactly two candidates: the eroded base of the block, and the sliver
+  // left at the notch mouth where the two arm walls cross. Keeping the smaller one returns the
+  // sliver and nothing else, so asserting the base's area is what separates the two.
+  let offset = offset_contour(&bracket(), -8.0, &options()).expect("the bracket offsets");
+  let area = offset.contour.signed_area().abs();
+  assert!(
+    (area - 2175.88).abs() < 1.0,
+    "the surviving boundary is the eroded base of the block (~2175.88 mm²: 70 mm x 24 mm of floor \
+     plus the two mouth caps), not the notch sliver: {area}"
   );
 }

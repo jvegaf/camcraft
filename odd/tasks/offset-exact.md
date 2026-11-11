@@ -102,3 +102,23 @@ sin corrección abierta, y con dos avisos no bloqueantes que son justos los dos:
 
 **Estado al cerrar:** `d7e818d`, workspace en **1317 passed, 0 failed, 3 ignored**, `dev` en sincronía con
 `origin`. G3.2 queda con el aplanado cerrado y el rechazo de `Region::offset` abierto como G3.2b.
+
+**L6** (cierre del aviso `R3-test-does-not-prove-survivor`, sobre `master` `9c46c26`): el aviso pedía
+probar **cuál** frontera sobrevive, no sólo que el arco sobrevive. El fixture es el mismo bracket que el
+test de G3.2 ya usaba para llegar a la rama —no hay otro que la alcance—, extraído a un helper `bracket()`
+para que los dos tests compartan la geometría en vez de duplicarla. A -8 mm el cleanup ofrece exactamente
+**dos candidatos**: la base erosionada del bloque, **2175.877489 mm²**, y la lengüeta que deja la boca de
+la muesca donde se cruzan las paredes de los brazos, **60.0 mm²**. El test nuevo,
+`a_self_intersecting_offset_keeps_the_largest_boundary`, afirma el área de la base con una ventana de
+1 mm²: la regla decide *qué geometría sobrevive*, así que lo que se afirma es cuál vuelve, no que algo
+razonable vuelva.
+
+**Prueba por mutación:** cambiando `area > *largest` por `area < *largest` en `arrangement_resolution`
+(`crates/cam-geom/src/offset.rs:546`) el test cae con `60`; con la regla tal cual pasa. La mutación se
+revirtió y el árbol no la conserva.
+
+**Estado:** `master` `9c46c26` más este test, workspace en **1318 passed, 0 failed**, `fmt --all
+--check` y `clippy -D warnings` en verde (exit 0 los tres). El aviso queda **cerrado**;
+`R3-arrangement-error-fallback` sigue **abierto**, con sus dos salidas honestas y sin decisión tomada.
+`dev` ya no existe: se mergeó a `master`, que es la rama de integración desde que el repo pasó a
+llamarse camcraft.
