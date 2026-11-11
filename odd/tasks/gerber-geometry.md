@@ -67,7 +67,7 @@ demas se rechaza nombrando el caracter.
 | T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | inline | L9 |
 | T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | inline | L10 |
 | T8 | Evaluador de expresiones de macro: `$n`, `+ - x X * /`, producto con precedencia | S8 | inline | L11 |
-| T9 | Primitivas de macro 1, 20, 21 y 4 a `Region` | S8 | pending | — |
+| T9 | Primitivas de macro 1, 20, 21 y 4 a `Region` | S8 | inline | L12 |
 | T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas | S8 | pending | — |
 
 **Fuera de alcance, declarado:** step&repeat queda afuera. La apertura obround (`O`) sigue
@@ -259,3 +259,25 @@ Probado por mutacion: sacando el plegado del producto, `$1x$2/2` pasa a evaluars
 
 **Estado:** workspace en **1304 passed, 0 failed, 3 ignored**. Falta T9 (primitivas a formas) y T10 (la
 apertura que las usa), que es donde esto se vuelve geometria.
+
+**L12** (T9): `macro_region(definition, modifiers, tolerance, index)` recorre las primitivas de una
+macro y devuelve una `Region`. Primitiva 1 (circulo), 20 (vector line), 21 (center line) y 4 (outline)
+se construyen; la 20 reusa la misma capsula que un trazo circular, asi que un pad de macro tiene las
+puntas redondas por la misma razon que una pista. **La exposicion decide el signo**: una primitiva con
+exposure 0 resta material de las anteriores, que es exactamente lo que hace el hueco de un pad
+redondeado. Se rechazan por nombre la rotacion distinta de cero (diciendo el angulo) y los numeros de
+primitiva que este lector no construye (diciendo el numero).
+
+Un detalle del parser que casi cuesta un indice corrido: `parse_am` guarda `parts[2..]`, o sea que la
+exposicion **no** esta en `parameters` y el indice 0 es el primer dato propio de la primitiva. Un pad
+con los indices corridos uno es un pad de otro tamano, y nada lo delataria.
+
+Probado por mutacion, una por regla: ignorando la exposicion muere `an_unexposed_macro_primitive_takes_
+material_away`; ignorando la rotacion muere `a_rotated_macro_primitive_is_refused_naming_the_angle`.
+
+**Un cuarto caso del mismo error mio.** El test de la linea vectorial afirmaba `line_bounds` esperando
+que llegara a `-1..5`, y `line_bounds` solo mira rectas: los extremos de una capsula son de los arcos.
+Corregido a "el cuerpo por rectas, los casquetes por giro". Ya van cuatro veces en esta feature
+afirmando una vista parcial y creyendo que era el todo.
+
+**Estado:** workspace en **1309 passed, 0 failed, 3 ignored**.

@@ -627,6 +627,148 @@ fn lex_parameter(text: &str, modifiers: &[f64]) -> Result<(Vec<f64>, Vec<char>),
   Ok((values, ops))
 }
 
+/// The shape a macro describes once an aperture applies its modifiers.
+///
+/// `index` is the command index used in refusals; pass the drawing command's own index when the
+/// macro is expanded for a flash or a stroke, or `0` when it is evaluated on its own.
+pub fn macro_region(
+  definition: &Macro,
+  modifiers: &[f64],
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let name = definition.name.as_str();
+  let mut image = Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+    line: 0,
+    what: format!("command {index}: macro {name:?} starts from an invalid empty region: {error}"),
+  })?;
+  for primitive in &definition.primitives {
+    let shape = macro_primitive(primitive, name, modifiers, tolerance, index)?;
+    // An unexposed primitive is clear: it takes material away from the ones before it.
+    let polarity = if primitive.exposure {
+      Polarity::Dark
+    } else {
+      Polarity::Clear
+    };
+    image = apply_region(image, &shape, polarity, tolerance, index)?;
+  }
+  Ok(image)
+}
+
+/// One primitive of a macro, as the shape it describes.
+///
+/// The parser strips the exposure field, so `parameters` starts at the primitive's own first datum.
+fn macro_primitive(
+  primitive: &MacroPrimitive,
+  macro_name: &str,
+  modifiers: &[f64],
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let code = primitive.code;
+  let read = |position: usize| -> Result<f64, GerberError> {
+    let text = primitive
+      .parameters
+      .get(position)
+      .ok_or_else(|| GerberError::Unsupported {
+        line: 0,
+        what: format!(
+          "command {index}: macro {macro_name:?} primitive {code} has no parameter {}",
+          position + 2
+        ),
+      })?;
+    evaluate_parameter(text, modifiers).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: macro {macro_name:?} primitive {code}: {error}"),
+    })
+  };
+  // A rotated primitive would have to be built at an angle; refusing says so instead of silently
+  // drawing it the wrong way round.
+  let no_rotation = |position: usize| -> Result<(), GerberError> {
+    if primitive.parameters.len() <= position {
+      return Ok(());
+    }
+    let degrees = read(position)?;
+    if degrees.abs() <= 1.0e-9 {
+      return Ok(());
+    }
+    Err(GerberError::Unsupported {
+      line: 0,
+      what: format!(
+        "command {index}: macro {macro_name:?} primitive {code} is rotated by {degrees} degrees, which this reader does not apply"
+      ),
+    })
+  };
+
+  match code {
+    1 => {
+      no_rotation(3)?;
+      let diameter = read(0)?;
+      let center = Point2::new(read(1)?, read(2)?);
+      let contour =
+        primitive::circle(center, diameter / 2.0).map_err(|error| GerberError::Invalid {
+          line: 0,
+          what: format!(
+            "command {index}: macro {macro_name:?} primitive 1 is not a circle: {error}"
+          ),
+        })?;
+      Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+        line: 0,
+        what: format!("command {index}: macro {macro_name:?} primitive 1 is not a region: {error}"),
+      })
+    }
+    20 => {
+      no_rotation(5)?;
+      let width = read(0)?;
+      let from = Point2::new(read(1)?, read(2)?);
+      let to = Point2::new(read(3)?, read(4)?);
+      // A vector line is the aperture's width swept from one end to the other: the same capsule a
+      // circular draw makes.
+      capsule(from, to, width, tolerance, index)
+    }
+    21 => {
+      no_rotation(4)?;
+      let width = read(0)?;
+      let height = read(1)?;
+      let at = Point2::new(read(2)?, read(3)?);
+      rectangle_region(at, width, height, index)
+    }
+    4 => {
+      let declared = read(0)?;
+      if declared < 3.0 || (declared - declared.round()).abs() > 1.0e-9 {
+        return Err(GerberError::Unsupported {
+          line: 0,
+          what: format!(
+            "command {index}: macro {macro_name:?} primitive 4 declares {declared} vertices"
+          ),
+        });
+      }
+      let count = declared.round() as usize;
+      no_rotation(1 + count * 2)?;
+      let mut points = Vec::with_capacity(count);
+      for vertex in 0..count {
+        points.push(Point2::new(read(1 + vertex * 2)?, read(2 + vertex * 2)?));
+      }
+      let contour = Contour::from_points(&points, true).map_err(|error| GerberError::Invalid {
+        line: 0,
+        what: format!(
+          "command {index}: macro {macro_name:?} primitive 4 is not a contour: {error}"
+        ),
+      })?;
+      Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+        line: 0,
+        what: format!("command {index}: macro {macro_name:?} primitive 4 is not a region: {error}"),
+      })
+    }
+    other => Err(GerberError::Unsupported {
+      line: 0,
+      what: format!(
+        "command {index}: macro {macro_name:?} primitive {other} is not a shape this reader builds"
+      ),
+    }),
+  }
+}
+
 /// The shape a draw of `aperture` leaves between two points.
 ///
 /// Only a circular aperture is a stroke this reader builds: the capsule, meaning the rectangle of

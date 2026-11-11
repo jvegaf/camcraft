@@ -961,3 +961,93 @@ fn a_parameter_expression_outside_the_grammar_is_refused() {
     "the refusal says what is missing: {error}"
   );
 }
+
+fn macro_shape(source: &str, modifiers: &[f64]) -> cam_geom::region::Region {
+  let file = parse(source).expect("fixture parses");
+  let definition = file.macros.first().expect("one macro is defined");
+  cam_gerber::macro_region(definition, modifiers, TOLERANCE, 0).expect("the macro builds")
+}
+
+#[test]
+fn a_macro_primitive_one_is_a_circle() {
+  // E3b/T9: `1,exposure,diameter,cx,cy` is a circle, and it stays arcs rather than a polygon.
+  let region = macro_shape(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMDisc*\n1,1,2.0,0,0*%\nM02*\n",
+    &[],
+  );
+  assert_eq!(region.boundaries.len(), 1);
+  let caps = caps(&region);
+  assert!(!caps.is_empty(), "a circle is arcs");
+  assert!(
+    caps.iter().all(|cap| (cap.radius() - 1.0).abs() < 1.0e-6),
+    "diameter 2 is radius 1"
+  );
+  let turned: f64 = caps.iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "a full turn, got {turned}"
+  );
+}
+
+#[test]
+fn an_unexposed_macro_primitive_takes_material_away() {
+  // The second primitive's exposure field is 0, which means clear: a hole in the disc.
+  let region = macro_shape(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMRing*\n1,1,10.0,0,0*\n1,0,4.0,0,0*%\nM02*\n",
+    &[],
+  );
+  assert_eq!(
+    region.boundaries.len(),
+    2,
+    "the outer disc plus the cleared hole"
+  );
+}
+
+#[test]
+fn a_macro_primitive_reads_the_apertures_modifiers() {
+  // `$1` is the first modifier and `$1+$1` is twice it: a vector line of width 2 from (0,0) to
+  // (4,0), which is the same capsule a circular draw makes.
+  let region = macro_shape(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMTrack*\n20,1,$1,0,0,$1+$1,0*%\nM02*\n",
+    &[2.0],
+  );
+  // The body's straight sides span the segment at the half width; the round ends beyond x=0 and
+  // x=4 are arcs, so they are pinned by the turn rather than by the line bounds.
+  assert_eq!(
+    line_bounds(&region),
+    (0, -1_000_000, 4_000_000, 1_000_000),
+    "width 2 swept from 0 to 4"
+  );
+  let turned: f64 = caps(&region).iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "the ends are round: {turned}"
+  );
+}
+
+#[test]
+fn a_rotated_macro_primitive_is_refused_naming_the_angle() {
+  // Drawing it unrotated would put the pad in the wrong place without saying so.
+  let file = parse("%FSLAX36Y36*%\n%MOMM*%\n%AMTurned*\n1,1,2.0,0,0,45*%\nM02*\n").expect("parses");
+  let error = cam_gerber::macro_region(file.macros.first().expect("one macro"), &[], TOLERANCE, 0)
+    .expect_err("a rotated primitive is not applied");
+  let text = format!("{error}");
+  assert!(
+    text.contains("45") && text.contains("rotated"),
+    "the refusal names the angle: {text}"
+  );
+}
+
+#[test]
+fn a_macro_primitive_this_reader_does_not_build_is_refused_by_number() {
+  // Primitive 5 is a regular polygon in Gerber. Refusing it by number beats drawing something else
+  // and calling it a pad.
+  let file = parse("%FSLAX36Y36*%\n%MOMM*%\n%AMGon*\n5,1,4,10.0,0,0*%\nM02*\n").expect("parses");
+  let error = cam_gerber::macro_region(file.macros.first().expect("one macro"), &[], TOLERANCE, 0)
+    .expect_err("primitive 5 is not built");
+  let text = format!("{error}");
+  assert!(
+    text.contains("primitive 5"),
+    "the refusal names the primitive: {text}"
+  );
+}
