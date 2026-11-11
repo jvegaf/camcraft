@@ -479,9 +479,10 @@ fn close_boundary(
 /// Evaluate a macro parameter expression with an aperture's modifiers substituted in.
 ///
 /// The dialect writes `$1`, `$2`, ... and combines them with `+`, `-`, `x`/`X`/`*` and `/`;
-/// multiplication binds tighter than addition, as everywhere else. Anything outside that grammar
-/// - parentheses, functions, a parameter the aperture did not supply - is refused by name instead
-/// of guessed at, because a macro that quietly evaluates to the wrong number changes the copper.
+/// multiplication binds tighter than addition, as everywhere else. Parentheses, functions and a
+/// parameter the aperture never supplied are all outside that grammar, and are refused by name
+/// rather than guessed at: a macro that quietly evaluates to the wrong number changes the copper,
+/// and nothing downstream would say so.
 pub fn evaluate_parameter(text: &str, modifiers: &[f64]) -> Result<f64, GerberError> {
   let (mut values, mut ops) = lex_parameter(text, modifiers)?;
 
