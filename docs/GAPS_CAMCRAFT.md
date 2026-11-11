@@ -73,14 +73,26 @@ El plan menciona "la librería de booleanas elegida en la fase 0" pero no existe
 decisión. Es el gap **más caro de todos** y conviene tratarlo como fase propia, porque condiciona
 las fases 1 y 3.
 
-- **G0.1 — No existe motor booleano de regiones.** `cam-geom` expone exactamente un operador de
-  conjunto: `Region::subtract(&self, hole: &Contour)` (`crates/cam-geom/src/region.rs:152`), más la
-  normalización por arrangement `normalize(region, tolerance)` (`crates/cam-geom/src/boolean.rs:99`).
-  No hay `union`, `intersection` ni `difference` entre regiones arbitrarias. Verificado: `grep "pub fn"` sobre
-  `boolean.rs` y `region.rs` devuelve solo esas entradas.
-  **Impacto:** isolation multipasada, unión de cobre, resolución de polaridad dark/clear, NCC con
-  rest-machining, subtract de exclusiones y merge de capas son todos operaciones de conjunto. Sin
-  esto, la fase 3 completa está bloqueada.
+- **G0.1 — Motor booleano de regiones. CERRADO, CON UNA REAPERTURA QUE CONVIENE RECORDAR.**
+  `combine(a, b, BooleanOp, tolerance) -> Result<Combined, GeomError>` con `Union`, `Intersection` y
+  `Difference` (`crates/cam-geom/src/boolean.rs`), `Combined::Empty` como respuesta y no como error, y
+  cinco propiedades sobre pares aleatorios de regiones.
+  **Se reabrio el 2026-11-11 y no por un caso de laboratorio sino por un pad.** Construyendo el flash de
+  una apertura circular de Gerber, `combine` rechazo con "the arrangement revisits a piece" **todo**
+  circulo hecho de dos semicircunferencias que nada cortara: `dedup_pieces` agrupaba las piezas por par de
+  extremos, y las dos semicircunferencias de un mismo circulo comparten exactamente los dos puntos de
+  costura, asi que borraba una. El defecto era del motor y no del primitivo —`primitive::circle` emite
+  arcos correctos, de area pi exacta, que `normalize` deja intactos— y lo arreglo `c3c1fb0`: dos piezas
+  son la misma arista solo si son la misma curva recorrida en el mismo sentido.
+  **Lo que ningun test veia, y es la leccion:** las cinco propiedades corrian sobre estrellas de radio
+  aleatorio y tiras de 20 mm por 0,02 mm, y **ningun par era un contorno cerrado hecho solo de arcos**. Los
+  discos que ya existian se intersecaban siempre, y la interseccion corta las piezas en los puntos de
+  cruce, lo que destruye la identidad de la costura. El caso que falla es el que no corta nada: un disco
+  contenido, o una union contra la region vacia. Los generadores ahora incluyen un disco de dos arcos.
+  **Limite conocido:** un disco que **toca** desde adentro el borde de una region sin cruzarlo sigue
+  rechazandose a tolerancia 1e-9. Anotado, no disimulado.
+  **Impacto (historico):** isolation multipasada, union de cobre, resolucion de polaridad dark/clear, NCC
+  con rest-machining y merge de capas son todos operaciones de conjunto, y hoy todas tienen motor.
 - **G0.2 — Faltan primitivas de conjunto que sí existen en cualquier kernel de referencia:**
   self-intersection repair de contornos de entrada (`crates/cam-geom/src/region.rs:162-165` lo
   rechaza explícitamente), clipeo contra ventana, y manejo determinista de coincidencias/overlaps
@@ -91,9 +103,18 @@ las fases 1 y 3.
 
 ### Fase 1 — Importadores
 
-- **G1.1 — No hay parser Gerber.** Cero coincidencias de `gerber|excellon|rs-274x|aperture` en
-  `crates/` (`grep -rniE` sobre `--include=*.rs`: vacío). El `Format` de importación y su detección
-  cubren solo DXF/SVG/PDF/EPS/PNG (`crates/cam-import/src/lib.rs:46-55,72-80`).
+- **G1.1 — Parser Gerber. LECTOR CERRADO, EVALUACION PARCIAL.** `crates/cam-gerber` lee el dialecto
+  medido del proyecto real (`cc78d52`): formato y unidades, aperturas `C`/`O`/`RoundRect` —la ultima
+  redefinida como macro—, `G01`/`G02`/`G03`, `G75`, regiones `G36`/`G37`, flashes y polaridad, que desde
+  `2026335` es `Command::Polarity` en el flujo de comandos y ya no texto en `attributes`. La geometria se
+  evalua: `Gerber::image(tolerance)` construye la imagen de una capa, con material dark sumando y clear
+  restando sobre el motor de conjuntos (`c45a0f9`, `fb206c8`). Un flash de apertura circular es un
+  circulo exacto, no un poligono.
+  **Lo que falta todavia:** el trazo de un `D01` con apertura fuera de una region (el barrido de la
+  apertura a lo largo del segmento), las aperturas `O`, `RoundRect` y las que nombran una macro —eso es
+  E3b—, y un `D02` dentro de `G36`/`G37`, que en Gerber **empieza otro contorno de la misma region**. Las
+  tres se rechazan por nombre y con el indice del comando; ninguna se aproxima a otra forma.
+  Detalle de `odd/tasks/gerber-geometry.md`.
 - **G1.2 — No hay parser Excellon.** Mismo grep. No existe tabla de herramientas, ni slots, ni
   manejo de ceros omitidos, ni unidades de archivo.
 - **G1.3 — El modelo de importación no soporta la semántica Gerber.** `Imported`/`ImportedLayer`
