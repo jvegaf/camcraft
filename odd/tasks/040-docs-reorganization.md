@@ -37,11 +37,11 @@ carpetas... lo que mas me guste."
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Renombrar las 39 tareas a `NNN-slug.md` y generar `INDEX.md` | S3, S4, S6 | inline (script) | `31887f9` |
-| T2 | Actualizar las referencias a `odd/tasks/*` fuera de `odd/` | S3, S6 | inline (script) | `31887f9` |
-| T3 | Partir `odd/roadmap/index.md` en `odd/roadmap/` + `odd/archive/` y actualizar sus referencias | S2, S6 | worker | |
-| T4 | Escribir `odd/README.md`: el esquema de nombrado y cómo se lee `odd/` | S5, S6 | inline | `4e68e2b` |
-| T5 | Reescribir `README.md` para camcraft (PCB), sin residuos del producto anterior | S1, S5 | inline | `4e68e2b` |
+| T1 | Renombrar las 39 tareas a `NNN-slug.md` y generar `INDEX.md` | S3, S4, S6 | inline (script) | `cd583d5` |
+| T2 | Actualizar las referencias a `odd/tasks/*` fuera de `odd/` | S3, S6 | inline (script) | `cd583d5` |
+| T3 | Partir `odd/roadmap.md` (el archivo de 1268 líneas) en `odd/roadmap/` + `odd/archive/` y actualizar sus referencias | S2, S6 | worker | `fd853db` |
+| T4 | Escribir `odd/README.md`: el esquema de nombrado y cómo se lee `odd/` | S5, S6 | inline | `6ac2a44` |
+| T5 | Reescribir `README.md` para camcraft (PCB), sin residuos del producto anterior | S1, S5 | inline | `6ac2a44` |
 
 ## Log
 
@@ -54,10 +54,10 @@ deberiamos de decidir el nombrado del fichero de tal manera que esten ordenados,
 decision, si te viene bien numeral, por fecha, carpetas... lo que mas me guste. pero necesito que sea
 mas ordenado para mi."
 
-**L2** (los cortes, y el desvío de la regla de los 400): el primer corte es `31887f9` — cuarenta y
+**L2** (los cortes, y el desvío de la regla de los 400): el primer corte es `cd583d5` — cuarenta y
 tantos archivos, pero **casi todo son movimientos**: el rename en sí no se puede partir sin dejar el
 repo con dos convenciones a la vez, que es exactamente lo que este documento viene a eliminar. El
-segundo corte es `4e68e2b`, sólo documentación nueva. El conteo de líneas del harness cuenta un `git mv`
+segundo corte es `6ac2a44`, sólo documentación nueva. El conteo de líneas del harness cuenta un `git mv`
 como un borrado más una adición, así que 782 líneas "autoradas" no son 782 líneas de prosa: son ~130
 de texto nuevo y el resto renombres. Los cortes quedan por unidad de trabajo, no por número.
 
@@ -66,3 +66,25 @@ Quedan strings `campilot` en `crates/cam-desktop/src/main.rs:23` (el título de 
 de la app, que decide el directorio de datos) y `:335`, y en los directorios temporales de seis tests de
 `cam-cli`. No se toca acá: cambiar el id de la app mueve el directorio de datos de alguien, así que
 merece su propia tarea y su propio review.
+
+**L4** (T3, y las dos correcciones que le hice al worker): el corte es `fd853db`. El worker entregó 25
+archivos y su propia verificación de preservación; la repetí por mi cuenta contra `HEAD:odd/roadmap.md` y
+da **1120 líneas no vacías, 0 faltantes**, con 6 líneas que sí cambiaron de forma: son los enlaces
+`../docs/old/…` que ahora son `../../docs/old/…`, porque los archivos bajaron un directorio. El gate de
+enlaces los exige y la cuenta los nombra en vez de esconderlos. Dos cosas que no acepté tal cual: (a) había
+partido el §4 en un `overview.md` **con la tabla duplicada**, así que la tabla se lee una sola vez, en
+`index.md`, y del `overview.md` sobreviven sus líneas de intro y el párrafo de diferidos, mudados al índice;
+(b) el árbol seguía nombrando `odd/roadmap.md` en prosa y en etiquetas de enlace de 28 archivos —incluidos
+los de tareas, que es donde uno lo va a buscar—, así que el nombre viejo no sobrevive en ninguna parte.
+`scripts/check-docs.sh` se caía con un archivo borrado que sigue en el índice de git; ahora lo saltea.
+
+**L5** (por qué la rama se rehizo): la review nativa de este candidato paró en `preflight` con
+`lens_context_budget_exceeded` —123 paths y 24.046 líneas, casi todo renombres, no entran en el budget de
+contexto de los revisores—, sin crear autoridad. El owner eligió **partir** en vez de apagar el switch, y
+la rama se rehizo en cinco cortes para que el único archivo ejecutable de la feature quede solo en el
+último: `1` renombres (`cd583d5`), `2` los dos README (`6ac2a44`), `3` el roadmap partido (`fd853db`),
+`4` esta libreta, `5` **`scripts/check-docs.sh` más los enlaces de `docs/old/`**, que es el candidato que
+la review puede tomar solo: unas sesenta líneas y el cambio de modo ejecutable, que es lo único que el
+proveedor marcó como señal de riesgo. Los enlaces de `docs/old/` viajan con el gate a propósito: son
+exactamente lo que el gate encontró, y con el estado final de los nombres, así que ese corte deja el
+árbol en verde por sí mismo.
