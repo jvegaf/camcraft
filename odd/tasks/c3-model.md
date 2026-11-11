@@ -85,3 +85,23 @@ schema legacy.
 
 **Leccion:** una regla que se aplica en N−1 de N caminos de escritura no esta aplicada. Y un test que
 necesita un artefacto invalido no debe pedirselo prestado al camino de escritura de produccion.
+
+**L7** (evidencia — el proyecto real, y por que NO es un golden emparejado): el `775-noise-filter` da
+parametros reales (dos cambios respecto de los defaults: `tools_ncc_method` 1→0 y `tools_ncc_overlap`
+40→60.0) y tres programas que FlatCAM emitio de verdad. Pero **los programas no corresponden a los
+parametros guardados**:
+
+- el cutout emitido desciende a **Z = -1.9** y lo hace en **19 niveles de 0.1 mm**, mientras el objeto
+  guardado dice `tools_cutout_z = -1.8` y `tools_cutout_depthperpass = 0.6` (o sea 3 pasadas de 0.6, no 19
+  de 0.1);
+- las fechas lo confirman: los `.nc` son de 04:06, 04:59 y 06:31, y el proyecto se guardo a las 06:31 —
+  el usuario siguio editando despues de generar.
+
+**Consecuencia:** los tres `.nc` sirven como evidencia de **forma** (una placa de 42.30 x 42.30 mm, 263
+puntos distintos de contorno, el contorno partido en 6 tramos por pasada) y como muestra de tamaño real
+(1.132 / 1.717 / 4.996 movimientos de corte). **No** sirven como golden con entradas conocidas: no sabemos
+que parametros produjeron cada programa. Un fixture de aceptacion tiene que generarse con parametros
+fijados a proposito, no heredarse de un proyecto que derivo.
+
+**Y el dato de dominio que si vale:** el usuario no aislo, hizo **NCC**; y el taladro no lo taladro, lo
+fresco como geometria. El primer caso real de este producto es limpieza de no-cobre, no isolation routing.
