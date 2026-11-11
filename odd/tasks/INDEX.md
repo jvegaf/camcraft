@@ -35,7 +35,7 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 028 | [repository-name-hygiene](028-repository-name-hygiene.md) | delivered | 2026-11-08 | `dbd8af0` |
 | 029 | [reviewable-modules](029-reviewable-modules.md) | delivered | 2026-11-08 | `482583a` |
 | 030 | [winding-collinear-overlap](030-winding-collinear-overlap.md) | delivered | 2026-11-08 | `7be2d7e` |
-| 031 | [shell-file-operations](031-shell-file-operations.md) | in progress | 2026-11-09 | `e69d7b3` |
+| 031 | [shell-file-operations](031-shell-file-operations.md) | delivered | 2026-11-09 | `248d28d` |
 | 032 | [tool-library-app](032-tool-library-app.md) | delivered | 2026-11-10 | `5c469ac` |
 | 033 | [tool-library-editor](033-tool-library-editor.md) | delivered | 2026-11-10 | `81e1058` |
 | 034 | [c1-booleans](034-c1-booleans.md) | in progress | 2026-11-11 | `fb206c8` |

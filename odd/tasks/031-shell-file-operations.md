@@ -19,8 +19,9 @@ picker. Read until `## Log` before touching code.
 | --- | --- | --- | --- | --- |
 | T1 | ✅ delivered `4b2b188` — `NewProject` action + `Command::NewProject` + host-free reset + material dialog | S1 | parent | `4b2b188` |
 | T2 | ✅ delivered `4b2b188` — `RequestImportFile` action + `Command::Import` wired to host picker | S2 | parent | `4b2b188` |
-| T3 | Import options modal (join, tolerance, smooth, position, adjust material) | S3 | parent | — |
+| T3 | ✅ delivered `a377741`, `248d28d` — import modal reports parse and offers tolerance/join/smooth/position/adjust-material options before applying | S3 | parent | `a377741`, `248d28d` |
 
 ## Log
 
 - **L1 (owner, verbatim):** "faltan cosas como crear nuevo proyecto… importacion de dxf y svg…".
+- **L2 (reconciliación, 2026-11-12):** T3 ya estaba implementado y cubierto por tests en `crates/cam-ui` (`a377741`, `248d28d`; suite `cargo test -p cam-ui --test shell` → 139 passed). Se actualiza el documento y el índice para reflejar S1–S3 entregadas.
