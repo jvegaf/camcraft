@@ -3,7 +3,7 @@
 **Propósito.** Convertir el diagnóstico de [GAPS_CAMCRAFT.md](GAPS_CAMCRAFT.md) y las decisiones
 D1–D6 asentadas allí (§6) en un plan ejecutable: fases con dependencias explícitas, tareas acotadas y
 **criterios de salida medibles**. Este documento reemplaza el orden de fases de
-[Plan de camcraft.md](Plan%20de%20camcraft.md) donde ambos difieren; el plan original sigue siendo la
+[Plan de camcraft.md](old/Plan%20de%20camcraft.md) donde ambos difieren; el plan original sigue siendo la
 referencia de alcance funcional.
 
 **Base de decisiones.** Motor de conjuntos sobre el kernel propio (D1). Aceptación híbrida por capa

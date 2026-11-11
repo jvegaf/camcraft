@@ -1,8 +1,8 @@
 # Análisis de gaps: campilot → camcraft
 
 **Propósito.** Documentar la distancia real entre el código de campilot en este worktree y lo que
-exige el [Plan de camcraft](Plan%20de%20camcraft.md), usando la lógica extraída de FlatCAM Plus en
-[RUST_PORT_LOGIC.md](RUST_PORT_LOGIC.md) como especificación de referencia. Este documento es el
+exige el [Plan de camcraft](old/Plan%20de%20camcraft.md), usando la lógica extraída de FlatCAM Plus en
+[RUST_PORT_LOGIC.md](old/RUST_PORT_LOGIC.md) como especificación de referencia. Este documento es el
 **diagnóstico**: las decisiones de arquitectura que se derivan están asentadas en §6 y el plan
 ejecutable con roadmap vive en [ROADMAP_CAMCRAFT.md](ROADMAP_CAMCRAFT.md).
 

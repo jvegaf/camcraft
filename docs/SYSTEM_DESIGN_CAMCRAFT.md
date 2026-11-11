@@ -5,8 +5,8 @@
 - el orden de fases y la estructura de crates de [ROADMAP_CAMCRAFT.md](ROADMAP_CAMCRAFT.md) §2 y §14;
 - la decisión **D3** y **D4** de [GAPS_CAMCRAFT.md](GAPS_CAMCRAFT.md) §6, por las razones de §2 de este documento.
 
-Sigue vigente: el alcance funcional de [Plan de camcraft.md](Plan%20de%20camcraft.md) §3–§4, las decisiones
-**D1, D2, D5 y D6** de GAPS §6, y [RUST_PORT_LOGIC.md](RUST_PORT_LOGIC.md) como especificación de
+Sigue vigente: el alcance funcional de [Plan de camcraft.md](old/Plan%20de%20camcraft.md) §3–§4, las decisiones
+**D1, D2, D5 y D6** de GAPS §6, y [RUST_PORT_LOGIC.md](old/RUST_PORT_LOGIC.md) como especificación de
 referencia de la lógica de FlatCAM Plus.
 
 **Qué es este documento.** El contrato arquitectónico del producto: qué invariantes no se negocian,
