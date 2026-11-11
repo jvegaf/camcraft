@@ -220,6 +220,53 @@ fn a_degenerate_tolerance_is_refused() {
   );
 }
 
+#[test]
+fn a_contained_disc_subtracts_from_a_rectangle() {
+  // The pinning case for the seam bug: a circle is two semicircles sharing their endpoints, so
+  // endpoint-only deduplication would delete one and leave the boundary uncloseable. A fully
+  // contained disc never crosses the rectangle, which is exactly the arrangement that used to fail.
+  let plate = rect(0.0, 0.0, 10.0, 10.0);
+  let hole = disc(5.0, 5.0, 1.0);
+  match combine(&plate, &hole, BooleanOp::Difference, TOLERANCE).expect("resolvable") {
+    Combined::Region { region, flattened } => {
+      assert!(
+        !flattened,
+        "rectilinear edges and exact arcs need no flattening"
+      );
+      assert_eq!(
+        region.boundaries.len(),
+        2,
+        "the plate and one hole boundary"
+      );
+      expect_close(
+        area(&region),
+        100.0 - std::f64::consts::PI,
+        "plate minus disc",
+      );
+    }
+    Combined::Empty => panic!("subtracting a contained disc leaves the plate"),
+  }
+}
+
+#[test]
+fn union_with_an_empty_region_returns_the_disc() {
+  let empty = Region::new(Vec::new()).expect("an empty region");
+  let circle = disc(0.0, 0.0, 1.0);
+  match combine(&empty, &circle, BooleanOp::Union, TOLERANCE).expect("resolvable") {
+    Combined::Region { region, .. } => {
+      assert_eq!(region.boundaries.len(), 1, "the disc alone");
+      expect_close(area(&region), std::f64::consts::PI, "disc area");
+    }
+    Combined::Empty => panic!("a disc union nothing is the disc"),
+  }
+}
+
+// An arc-only disc tangent to a rectangle edge from the inside (touching without crossing)
+// is not stated here as a clean fixture: at tolerance 1e-9 the arrangement currently refuses it
+// as "the arrangement revisits a piece, so its pieces cannot be chained closed", so expressing it
+// would invent behavior rather than pin a resolvable case. The contained (non-touching) case is
+// pinned above in `a_contained_disc_subtracts_from_a_rectangle`.
+
 /// A contour that crosses itself: two triangles meeting at (1, 1), each of area 1.
 fn bowtie() -> Region {
   let contour = Contour::from_points(

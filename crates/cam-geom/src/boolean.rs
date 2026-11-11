@@ -840,30 +840,53 @@ fn decide(
 
 /// Keep one copy of each geometrically identical piece.
 ///
-/// The key is quantised by the tolerance so the comparison is stable and deterministic: two pieces
-/// that came from coincident boundaries carry the same coordinates, and a piece and its reverse are
-/// the same edge. In a parity region this is not a repair but the rule — a doubled edge encloses
-/// nothing.
+/// Two pieces are the same edge only when they are the same curve traversed the same way. Sharing
+/// endpoints is not enough: two semicircles of the same circle meet at the same seam points but are
+/// different curves, and both must survive. The key is therefore the quantised oriented endpoints
+/// together with the segment's geometry, so the comparison stays exact-in-tolerance without becoming
+/// a float equality. When the endpoint order is canonicalised, the traversal direction is carried
+/// with the swap (a swapped arc negates its sweep) and the key keeps that directed geometry.
 fn dedup_pieces(pieces: Vec<Segment>, tolerance: f64) -> Vec<Segment> {
   let scale = 1.0 / tolerance;
-  let mut seen: std::collections::BTreeSet<(i64, i64, i64, i64)> =
-    std::collections::BTreeSet::new();
+  let quantise = |value: f64| (value * scale).round() as i64;
+
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+  enum GeometryKey {
+    Line,
+    Arc {
+      center_x: i64,
+      center_y: i64,
+      radius: i64,
+      sweep: i64,
+    },
+  }
+  type PieceKey = ((i64, i64), (i64, i64), GeometryKey);
+
+  let mut seen: std::collections::BTreeSet<PieceKey> = std::collections::BTreeSet::new();
   let mut kept = Vec::with_capacity(pieces.len());
   for piece in pieces {
     let start = piece.start_point();
     let end = piece.end_point();
-    let mut from = (
-      (start.x * scale).round() as i64,
-      (start.y * scale).round() as i64,
-    );
-    let mut to = (
-      (end.x * scale).round() as i64,
-      (end.y * scale).round() as i64,
-    );
+    let mut from = (quantise(start.x), quantise(start.y));
+    let mut to = (quantise(end.x), quantise(end.y));
+    let mut swapped = false;
     if to < from {
       std::mem::swap(&mut from, &mut to);
+      swapped = true;
     }
-    if seen.insert((from.0, from.1, to.0, to.1)) {
+    let geometry = match piece {
+      Segment::Line(_) => GeometryKey::Line,
+      Segment::Arc(arc) => {
+        let sweep = if swapped { -arc.sweep() } else { arc.sweep() };
+        GeometryKey::Arc {
+          center_x: quantise(arc.center().x),
+          center_y: quantise(arc.center().y),
+          radius: quantise(arc.radius()),
+          sweep: quantise(sweep),
+        }
+      }
+    };
+    if seen.insert((from, to, geometry)) {
       kept.push(piece);
     }
   }

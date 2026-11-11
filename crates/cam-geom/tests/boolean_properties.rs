@@ -2,7 +2,7 @@
 
 use cam_geom::boolean::{combine, BooleanOp, Combined};
 use cam_geom::region::Region;
-use cam_geom::{Contour, Point2, Segment};
+use cam_geom::{primitive, Contour, Point2, Segment};
 use proptest::prelude::*;
 use std::f64::consts::TAU;
 
@@ -66,8 +66,21 @@ fn any_sliver() -> impl Strategy<Value = Region> {
   })
 }
 
+/// A two-arc disc: the boundary form `primitive::circle` produces, with two semicircles that meet
+/// at the same seam points.
+///
+/// Discs that intersect each other cut pieces at the crossing points and destroy the seam identity,
+/// so this generator also feeds pairs where a disc is contained in or tangent to another region and
+/// its two arcs must both survive deduplication unchanged.
+fn any_disc() -> impl Strategy<Value = Region> {
+  (-20.0f64..20.0, -20.0f64..20.0, 0.5f64..12.0).prop_map(|(cx, cy, radius)| {
+    let contour = primitive::circle(Point2::new(cx, cy), radius).expect("circle");
+    Region::new(vec![contour]).expect("one boundary")
+  })
+}
+
 fn any_region() -> impl Strategy<Value = Region> {
-  prop_oneof![any_star(), any_sliver()]
+  prop_oneof![any_star(), any_sliver(), any_disc()]
 }
 
 fn area_of(a: &Region, b: &Region, op: BooleanOp) -> Result<f64, cam_geom::GeomError> {
