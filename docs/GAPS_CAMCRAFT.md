@@ -157,14 +157,17 @@ las fases 1 y 3.
   fronteras de región y paridad (`pocket.rs:4-10,81-89`). Es la semilla correcta, pero le falta lo
   específico de PCB: unión previa del cobre, multipasada con offset acumulado, profundidad derivada
   del V-bit, y la guarda anti-gouge.
-- **G3.2 — El offset actual no soporta isolation confiable.**
+- **G3.2 — El offset no soportaba isolation confiable. EL APLANADO ESTA CERRADO; QUEDA EL RECHAZO.**
   `offset_contour` (`cam-geom/src/offset.rs:69`) hace offset por curva y resuelve vértices
-  intersectando curvas soporte, con fallback a puente recto + `OffsetWarning::MiterLimited`
-  (`offset.rs:246-279`); el cleanup de self-intersection **tessela, parte y se queda con el loop más
-  grande, reportando `Flattened`** (`offset.rs:403-491`); y `Region::offset` puede rechazar el
-  resultado si el offset atraviesa la forma (`region_offset.rs:120-185,244-344`).
-  **Impacto:** en cobre denso y concavo, aclaraciones finas de PCB, este camino o pierde exactitud
-  (aplana arcos) o rechaza. Es el segundo bloqueante duro después de G0.1.
+  intersectando curvas soporte, con fallback a puente recto + `OffsetWarning::MiterLimited`.
+  **El cleanup de self-intersection ya no aplana arcos:** cuando el candidato lleva arcos se corta
+  contra sí mismo en el arrangement (`normalize`) y se queda con la frontera de mayor área, que es la
+  misma elección que hacía el camino muestreado; el muestreo queda como fallback y sólo se usa cuando
+  el arrangement no puede expresar la respuesta. Un candidato sin arcos no pierde nada al muestrearse.
+  **Lo que sigue abierto del bloqueante:** `Region::offset` puede rechazar el resultado si el offset
+  atraviesa la forma (`region_offset.rs`), que es el otro extremo del mismo camino.
+  **Impacto histórico:** en cobre denso y cóncavo, aclaraciones finas de PCB, el camino perdía
+  exactitud (aplanaba arcos) o rechazaba. Era el segundo bloqueante duro después de G0.1.
 - **G3.3 — No existe NCC.** Es la operación que define el rendimiento del producto y no hay nada.
   Peor: **no hay ninguna palanca de performance instalada** — `cam-toolpath/Cargo.toml` no trae
   `rayon` ni índice espacial, y `grep` sobre el crate no encuentra uso de ninguno. El plan pide

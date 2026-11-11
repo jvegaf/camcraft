@@ -16,8 +16,10 @@
 use std::f64::consts::TAU;
 
 use crate::arc::Arc;
+use crate::boolean::normalize;
 use crate::contour::{Contour, Vertex};
 use crate::point::{Point2, Vec2};
+use crate::region::Region;
 use crate::segment::Segment;
 use crate::GeomError;
 
@@ -158,22 +160,32 @@ pub fn offset_contour(
   }
 
   let sampled = candidate.tessellate(options.tolerance);
-  match remove_self_intersections(&sampled, options.tolerance) {
-    Some(cleaned) => {
-      let flattened = Contour::from_points(&cleaned, true)?;
-      warnings.push(OffsetWarning::Flattened);
-      Ok(Offset {
-        contour: flattened,
-        flattened: true,
-        warnings,
-      })
-    }
-    None => Ok(Offset {
+  let Some(cleaned) = remove_self_intersections(&sampled, options.tolerance) else {
+    return Ok(Offset {
       contour: candidate,
       flattened: false,
       warnings,
-    }),
+    });
+  };
+  // The offset crosses itself. The arrangement can cut the candidate against itself and keep the
+  // curve, so it is asked first whenever the candidate carries an arc; the sampled cleanup stays as
+  // the fallback, because it is the contract this reader had before arrangements were available.
+  if candidate.has_arcs() {
+    if let Some(surviving) = arrangement_resolution(&candidate, options.tolerance)? {
+      return Ok(Offset {
+        contour: surviving,
+        flattened: false,
+        warnings,
+      });
+    }
   }
+  let flattened = Contour::from_points(&cleaned, true)?;
+  warnings.push(OffsetWarning::Flattened);
+  Ok(Offset {
+    contour: flattened,
+    flattened: true,
+    warnings,
+  })
 }
 
 /// A segment's offset supporting curve.
@@ -512,4 +524,30 @@ fn polygon_area(points: &[Point2]) -> f64 {
     total += current.x * next.y - next.x * current.y;
   }
   total * 0.5
+}
+
+/// Resolve a self-intersecting contour on the arrangement, keeping the curve.
+///
+/// The sampled cleanup keeps the larger of the two loops a crossing divides the contour into, and
+/// this keeps the same thing: the largest boundary by absolute area, so the surviving geometry is
+/// the one this reader already promised. `None` means the arrangement could not express the answer -
+/// it flattened, or left nothing - and the caller falls back to the sampled path rather than
+/// returning something weaker than it used to.
+fn arrangement_resolution(contour: &Contour, tolerance: f64) -> Result<Option<Contour>, GeomError> {
+  let normalized = normalize(&Region::new(vec![contour.clone()])?, tolerance)?;
+  if normalized.flattened {
+    return Ok(None);
+  }
+  let mut best: Option<(f64, Contour)> = None;
+  for boundary in normalized.region.boundaries {
+    let area = boundary.signed_area().abs();
+    let better = match &best {
+      None => true,
+      Some((largest, _)) => area > *largest,
+    };
+    if better {
+      best = Some((area, boundary));
+    }
+  }
+  Ok(best.map(|(_, contour)| contour))
 }

@@ -239,3 +239,36 @@ fn offsetting_an_open_contour_is_a_refusal_not_a_collapse() {
     "the reason must name the precondition: {error}"
   );
 }
+
+#[test]
+fn a_self_intersecting_offset_keeps_the_arcs_it_started_with() {
+  // G3.2: shrinking this U bracket by 8 mm makes the two offset walls of an arm cross, which is the
+  // one path in the kernel that used to rebuild the contour out of sampled points. The base is a
+  // shallow arc, so if the cleanup keeps the curve the arc is still there afterwards; a flattened
+  // rebuild loses it. The bracket's own geometry is the fixture an existing region test already
+  // uses to reach this branch, with one arc added.
+  let bracket = Contour::new(
+    vec![
+      cam_geom::Vertex::new(Point2::new(0.0, 0.0), 0.05),
+      cam_geom::Vertex::new(Point2::new(100.0, 0.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(100.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(85.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(85.0, 40.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(15.0, 40.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(15.0, 100.0), 0.0),
+      cam_geom::Vertex::new(Point2::new(0.0, 100.0), 0.0),
+    ],
+    true,
+  )
+  .expect("a U bracket with an arc along its base");
+  let offset = offset_contour(&bracket, -8.0, &options()).expect("the bracket offsets");
+  assert!(
+    !offset.flattened,
+    "the curve survives the self-intersection cleanup: {:?}",
+    offset.warnings
+  );
+  assert!(
+    offset.contour.has_arcs(),
+    "the arc along the base is still an arc"
+  );
+}
