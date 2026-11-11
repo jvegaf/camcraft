@@ -289,3 +289,30 @@ cada rama apunta a su padre y la primera apunta a `master`.
 Las ramas de andamiaje (`-c1`..`-c6`, `-s1`, `-dA/dB/dC`) quedan como historia local: los recibos de
 review estan atados a identidades de target, no a nombres de rama, asi que no hacen falta para entregar, y
 reescribir las remotas esta bloqueado por la politica de seguridad del harness.
+
+**L25** (decision del dueno — topologia, reemplaza a L24): la entrega **no** va como siete PRs apilados.
+Se consolido en una rama de integracion **`dev`**, con un commit de merge por slice (`--no-ff`), creada
+desde `origin/master`.
+
+Motivo: el proyecto lo lleva una sola persona, y siete PRs que no se pueden revisar por tamano son
+ceremonia sin lector. La rama unica conserva lo unico que importaba de la cadena —las fronteras entre
+slices visibles en la historia— sin el costo de siete punteros que hay que retargetear cada vez que se
+mueve una base.
+
+```
+dev  (desde origin/master)
+  merge P1  system design and the sweep specification
+  merge P2  cam-ops, the three rescued capabilities
+  merge P3  chain close, the CRITICAL calibration, gsim-rs
+  merge P4  the strategy oracles of cam-sim
+  merge P5  the general-machining domain removed
+  merge P6  medial and the seven review findings
+  merge P7  L21-L24 and the README repair
+```
+
+El arbol de `dev` es **identico** al de la punta de la cadena (verificado con `git diff`), asi que no
+cambio contenido, solo como se presenta. Las siete ramas de slice y las de andamiaje quedan como historia.
+
+`dev` es la rama de integracion de aca en adelante; `master` no se toca. Mergear `dev` a `master` sigue
+siendo decision del dueno, y P5 --el merge que se lleva `emit` y `simulate`-- sigue siendo el unico que
+necesita una decision consciente.
