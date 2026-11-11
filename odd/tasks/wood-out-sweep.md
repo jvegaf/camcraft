@@ -198,3 +198,22 @@ muestra solo la correccion), y la review encontro un defecto de lectura real en 
 mecanica. c5 son tests copiados sin codigo de produccion y c6 es `drill.rs` copiado verbatim: el valor
 marginal no paga 4 a 8 corridas de modelo. Queda registrado, no silenciado. Costo total de review del
 rescate: 6 corridas (2 de c2, 4 de c3).
+
+**L21** (evidencia — el borrado, y una perdida que hay que nombrar): el borrado aterrizo en cuatro
+cortes verdes, no en uno: `da5ccd9` los 89 oraculos de `cam-sim`, `bde598b` el editor de estrategia de
+`cam-ui`, `ef6ca70` los subcomandos de `cam-cli`, `fdb87cf` los crates. Cada uno compila porque el
+anterior le quita el ultimo consumidor al siguiente; el arbol de `fdb87cf` es **identico** byte a byte al
+borrado atomico que produjo el worker, verificado con `git diff`.
+
+**Lo que se perdio de verdad:** 55 tests de `cam-ui/tests/view3d` (2.743 lineas, 7 archivos) murieron
+junto con `tests/view3d/support.rs`, que construia los programas con `cam_program::program_for_snapshot` y
+las fixtures con `PocketParams`/`ProfileParams`. Los tests eran de *playback, escena y overlay*, que
+sobreviven como producto, pero su mobiliario era maquinaria borrada. **Consecuencia para C8: hay que
+reconstruir la cobertura de preview 3D y playback, no solo la UI.** Queda escrito para que no se descubra
+tarde.
+
+**Error propio, detectado y corregido:** al re-rebanar traje `crates/cam-ui` desde el arbol del worker con
+`git checkout`, que restaura archivos pero **no** borra los que no existen alli. Resultado: 8 archivos
+huerfanos en disco, sin declaraciones `mod`, que ni compilaban ni corrian (`cargo test --test view3d`
+daba 0 tests). Se detecto comparando el arbol re-rebanado contra el original: el diff no estaba vacio.
+Leccion: al re-rebanar por checkout de paths, las eliminaciones se hacen con `git rm`, nunca se infieren.
