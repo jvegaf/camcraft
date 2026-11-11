@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 
 use cam_geom::boolean::{combine, BooleanOp, Combined};
+use cam_geom::primitive;
 use cam_geom::region::Region;
 use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use std::f64::consts::TAU;
@@ -255,26 +256,7 @@ impl Gerber {
             line: 0,
             what: format!("command {index}: the region is not valid: {error}"),
           })?;
-          let op = match polarity {
-            Polarity::Dark => BooleanOp::Union,
-            Polarity::Clear => BooleanOp::Difference,
-          };
-          // `combine` may legitimately return `Combined::Empty` (an answer, not an error).
-          image = match combine(&image, &region, op, tolerance) {
-            Ok(Combined::Empty) => {
-              Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
-                line: 0,
-                what: format!("command {index}: could not represent an empty image: {error}"),
-              })?
-            }
-            Ok(Combined::Region { region, .. }) => region,
-            Err(error) => {
-              return Err(GerberError::Invalid {
-                line: 0,
-                what: format!("command {index}: polarity could not be applied: {error}"),
-              })
-            }
-          };
+          image = apply_region(image, &region, polarity, tolerance, index)?;
           in_region = false;
           region_segments.clear();
         }
@@ -323,19 +305,118 @@ impl Gerber {
           current = Some(to);
         }
         Command::Flash { at } => {
-          let _ = at;
-          let aperture = selected_aperture
-            .map(|code| format!("aperture {code}"))
-            .unwrap_or_else(|| "no aperture".to_owned());
-          return Err(GerberError::Unsupported {
-            line: 0,
-            what: format!("command {index}: a flash of {aperture}"),
-          });
+          let code = selected_aperture.ok_or(GerberError::NoApertureSelected { line: 0 })?;
+          let aperture =
+            self
+              .apertures
+              .iter()
+              .find(|a| a.code == code)
+              .ok_or(GerberError::UnknownAperture {
+                line: 0,
+                aperture: code,
+              })?;
+          let shape = match aperture.template.as_str() {
+            "C" => {
+              let diameter =
+                aperture
+                  .parameters
+                  .first()
+                  .copied()
+                  .ok_or_else(|| GerberError::Unsupported {
+                    line: 0,
+                    what: format!(
+                      "command {index}: a flash of aperture {code} template C without a diameter"
+                    ),
+                  })?;
+              // A circular aperture is the disc of radius d/2 centred at the flash point.
+              let contour = primitive::circle(at, diameter / 2.0).map_err(|error| {
+                GerberError::Invalid {
+                  line: 0,
+                  what: format!(
+                    "command {index}: the flash of aperture {code} template C is not valid: {error}"
+                  ),
+                }
+              })?;
+              Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+                line: 0,
+                what: format!(
+                  "command {index}: the flash of aperture {code} template C is not valid: {error}"
+                ),
+              })?
+            }
+            "R" => {
+              let width = aperture.parameters.first().copied().ok_or_else(|| {
+                GerberError::Unsupported {
+                  line: 0,
+                  what: format!(
+                    "command {index}: a flash of aperture {code} template R without width and height"
+                  ),
+                }
+              })?;
+              let height = aperture.parameters.get(1).copied().ok_or_else(|| {
+                GerberError::Unsupported {
+                  line: 0,
+                  what: format!(
+                    "command {index}: a flash of aperture {code} template R without width and height"
+                  ),
+                }
+              })?;
+              // Gerber flashes a rectangle centred on the point; cam_geom::primitive::rectangle
+              // takes the lower-left corner, so translate by half the size.
+              let corner = Point2::new(at.x - width / 2.0, at.y - height / 2.0);
+              let contour = primitive::rectangle(corner, width, height).map_err(|error| {
+                GerberError::Invalid {
+                  line: 0,
+                  what: format!(
+                    "command {index}: the flash of aperture {code} template R is not valid: {error}"
+                  ),
+                }
+              })?;
+              Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+                line: 0,
+                what: format!(
+                  "command {index}: the flash of aperture {code} template R is not valid: {error}"
+                ),
+              })?
+            }
+            template => {
+              return Err(GerberError::Unsupported {
+                line: 0,
+                what: format!("command {index}: a flash of template {template}"),
+              });
+            }
+          };
+          image = apply_region(image, &shape, polarity, tolerance, index)?;
         }
       }
     }
 
     Ok(image)
+  }
+}
+
+fn apply_region(
+  image: Region,
+  region: &Region,
+  polarity: Polarity,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let op = match polarity {
+    Polarity::Dark => BooleanOp::Union,
+    Polarity::Clear => BooleanOp::Difference,
+  };
+  // `combine` may legitimately return `Combined::Empty` (an answer, not an error).
+  match combine(&image, region, op, tolerance) {
+    Ok(Combined::Empty) => Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: could not represent an empty image: {error}"),
+    }),
+    Ok(Combined::Region { region, .. }) => Ok(region),
+    Err(error) => Err(GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: polarity could not be applied: {error}"),
+    }),
   }
 }
 

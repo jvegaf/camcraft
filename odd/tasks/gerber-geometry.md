@@ -132,3 +132,35 @@ contorno continuo de 1673 `D01`), pero un bloque con dos contornos se rechaza ho
 aparte y se anota como tal, no se disimula.
 
 **Estado:** workspace en **1288 passed, 0 failed, 3 ignored**; `fmt` y `clippy -D warnings` limpios.
+
+**L7** (T3 entregado, y el defecto de kernel que aparecio en el camino): un `D03` con apertura `C` es
+`primitive::circle(at, d/2)`; con apertura `R` es ese rectangulo **centrado** en el punto del flash
+—`primitive::rectangle` toma la esquina inferior izquierda, asi que se traslada medio ancho y medio
+alto—. Las dos formas entran al mismo acumulador que un bloque de region: `dark` une, `clear` resta, y un
+flash claro cava un hueco exactamente como lo hace geometria clara. `O`, `RoundRect` y las aperturas que
+nombran una macro se rechazan nombrando la plantilla y el indice del comando.
+
+**El primer intento se rechazo, y era lo correcto.** El autor original construyo el `C` como poligono de
+64 lados porque `combine` rechazaba el circulo. Ese rechazo no era del primitivo: `dedup_pieces`
+(`crates/cam-geom/src/boolean.rs`) agrupaba las piezas por **par de extremos**, y las dos
+semicircunferencias de un circulo comparten los dos puntos de costura, asi que borraba una y dejaba un
+conjunto que no cerraba. El motor tenia razon al negarse: le habian sacado media circunferencia. Arreglado
+en `c3c1fb0`, con la clave llevando la direccion con el intercambio de extremos y la geometria del arco
+(centro, radio, sweep con signo).
+
+**Por que no lo habia visto nadie.** Los discos que ya probaba `boolean_operations.rs` **se intersecan**,
+y al cortarse en los puntos de cruce los extremos dejan de coincidir con la costura. Una union contra
+region vacia, o restarle un disco *contenido* a un rectangulo, no corta nada: la costura sobrevive y el
+dedup se come un arco. Ningun caso existente pasaba por ahi; un pad redondo de Gerber lo encontro en una
+llamada. Los generadores del proptest ahora incluyen un disco de dos arcos.
+
+**Prueba de que la forma es real.** Volviendo el `C` a poligono de 64 lados, los dos tests del flash
+claro mueren con el mensaje "a circular aperture is a circle, not a polygon". El test afirma que todos
+los segmentos del contorno son `Arc` y que el area es exactamente pi (`100 - pi` para el material que
+queda), cosas que un poligono no puede afirmar.
+
+**Tambien se fue el atajo de imagen vacia.** `apply_region` lo tenia porque `combine(empty, forma, Union)`
+fallaba; ese fallo era el defecto del kernel. Con el kernel arreglado el camino real corre siempre, y el
+atajo quedo fuera en vez de quedarse como codigo muerto justificado por un bug que ya no existe.
+
+**Estado:** workspace en **1293 passed, 0 failed, 3 ignored**; `fmt` y `clippy -D warnings` limpios.

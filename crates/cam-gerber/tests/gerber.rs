@@ -475,14 +475,154 @@ fn a_multi_quadrant_arc_sweeps_the_long_way_round() {
 }
 
 #[test]
-fn a_flash_is_refused_naming_the_command_index_and_the_aperture_code() {
-  // A flash cannot be built by this pass: refuse it by name, with its command index and aperture.
-  // Command stream: [SelectAperture(10)=0, Flash=1] (no polarity stated, no move needed here).
-  let gerber = parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\nX000000Y000000D03*\nM02*\n")
-    .expect("fixture parses");
+fn a_dark_c_flash_of_diameter_two_at_five_five_gives_bounds_one_millimetre_round_the_point() {
+  // Command stream: [SelectAperture(10)=0, Flash=1]. Diameter 2 => radius 1, centred at (5,5).
+  let gerber =
+    parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\nX005000000Y005000000D03*\nM02*\n")
+      .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "one boundary: {:?}",
+    image.boundaries
+  );
+  let boundary = &image.boundaries[0];
+  assert!(
+    boundary
+      .segments()
+      .iter()
+      .all(|segment| matches!(segment, cam_geom::Segment::Arc(_))),
+    "a circular aperture is a circle, not a polygon: {:?}",
+    boundary.segments()
+  );
+  let bounds = boundary.bounds();
+  assert!((bounds.min.x - 4.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - 4.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 6.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 6.0).abs() < 1.0e-6, "max y {bounds:?}");
+  let area: f64 = image
+    .boundaries
+    .iter()
+    .map(|boundary| boundary.signed_area().abs())
+    .sum();
+  assert!(
+    (area - std::f64::consts::PI).abs() < 1.0e-9,
+    "area is the exact circle area pi, got {area}"
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(5.0, 5.0), TOLERANCE),
+    "the flash point is material"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(5.0, 6.5), TOLERANCE),
+    "beyond the radius is not material"
+  );
+}
+
+#[test]
+fn a_dark_r_flash_of_four_by_two_at_five_five_is_centred_on_the_flash_point() {
+  // A Gerber R flash is centred on the point: 4 wide by 2 high at (5,5) spans (3,4)-(7,6),
+  // which cam_geom::primitive::rectangle would place corner-anchored unless translated.
+  let gerber =
+    parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10R,4.0X2.0*%\nD10*\nX005000000Y005000000D03*\nM02*\n")
+      .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "one boundary: {:?}",
+    image.boundaries
+  );
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - 3.0).abs() < 1.0e-9, "min x {bounds:?}");
+  assert!((bounds.min.y - 4.0).abs() < 1.0e-9, "min y {bounds:?}");
+  assert!((bounds.max.x - 7.0).abs() < 1.0e-9, "max x {bounds:?}");
+  assert!((bounds.max.y - 6.0).abs() < 1.0e-9, "max y {bounds:?}");
+  let cx = (bounds.min.x + bounds.max.x) / 2.0;
+  let cy = (bounds.min.y + bounds.max.y) / 2.0;
+  assert!((cx - 5.0).abs() < 1.0e-9, "centred on x: {cx}");
+  assert!((cy - 5.0).abs() < 1.0e-9, "centred on y: {cy}");
+}
+
+#[test]
+fn a_clear_c_flash_cuts_a_hole_through_a_dark_r_region() {
+  // Dark 10x10 region, then a clear circular flash of diameter 2 at its centre (5,5): polarity
+  // applies to flashes the same way as to region blocks, so the circle is subtracted as a hole.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,2.0*%\nD10*\n\
+     %LPD*%\nX000000000Y000000000D02*\nG36*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     %LPC*%\nX005000000Y005000000D03*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    2,
+    "outer boundary plus inner hole: {:?}",
+    image.boundaries
+  );
+  let outer = image
+    .boundaries
+    .iter()
+    .find(|boundary| (boundary.bounds().max.x - 10.0).abs() < 1.0e-6)
+    .expect("outer boundary present");
+  let hole = image
+    .boundaries
+    .iter()
+    .find(|boundary| (boundary.bounds().max.x - 6.0).abs() < 1.0e-6)
+    .expect("inner hole boundary present");
+  let hole_bounds = hole.bounds();
+  assert!(
+    (hole_bounds.min.x - 4.0).abs() < 1.0e-6,
+    "hole min x {hole_bounds:?}"
+  );
+  assert!(
+    (hole_bounds.min.y - 4.0).abs() < 1.0e-6,
+    "hole min y {hole_bounds:?}"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(5.0, 5.0), TOLERANCE),
+    "the flashed centre is cleared"
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(2.0, 5.0), TOLERANCE),
+    "material remains around the hole"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(12.0, 5.0), TOLERANCE),
+    "outside the region is not material"
+  );
+  assert!(
+    hole
+      .segments()
+      .iter()
+      .all(|segment| matches!(segment, cam_geom::Segment::Arc(_))),
+    "the cleared hole is a circle, not a polygon: {:?}",
+    hole.segments()
+  );
+  // material area = outer minus hole
+  let outer_area = outer.signed_area().abs();
+  let hole_area = hole.signed_area().abs();
+  assert!(
+    ((outer_area - hole_area) - (100.0 - std::f64::consts::PI)).abs() < 1.0e-9,
+    "remaining material is 100-pi, got {}",
+    outer_area - hole_area
+  );
+  let _ = outer;
+}
+
+#[test]
+fn an_o_aperture_flash_is_refused_naming_the_command_index_and_the_template() {
+  // Command stream: [SelectAperture(10)=0, Flash=1]. O (obround) has no primitive constructor.
+  let gerber =
+    parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X1.0*%\nD10*\nX000000000Y000000000D03*\nM02*\n")
+      .expect("fixture parses");
   let error = gerber
     .image(TOLERANCE)
-    .expect_err("a flash is not supported");
+    .expect_err("an O flash is not supported");
   assert!(
     matches!(error, GerberError::Unsupported { line: 0, .. }),
     "refused as unsupported at line 0: {error:?}"
@@ -493,8 +633,7 @@ fn a_flash_is_refused_naming_the_command_index_and_the_aperture_code() {
     "names the command index: {message}"
   );
   assert!(
-    message.contains("aperture 10"),
-    "names the aperture code: {message}"
+    message.contains("template O") || (message.contains('O') && message.contains("template")),
+    "names the template: {message}"
   );
-  assert!(message.contains("flash"), "names the flash: {message}");
 }

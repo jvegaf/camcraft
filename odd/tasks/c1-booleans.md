@@ -103,3 +103,35 @@ previos de `cam-geom` siguen verdes: el auto-corte no molesta a la entrada sana.
 
 Cubierto tambien en el mismo corte: un vertice de contacto da interseccion vacia (un punto no es area) y
 una arista compartida no se cuenta dos veces (el dedup por pieza identica, que ya existia desde C1a).
+
+**L4** (un defecto que C1 no cubria, encontrado por una placa y no por sus tests): el 11 de noviembre,
+construyendo el flash de una apertura circular de Gerber, `combine` rechazo un circulo con "the arrangement
+revisits a piece, so its pieces cannot be chained closed". El circulo no tenia nada de malo:
+`primitive::circle` emite dos semicircunferencias correctas, con area exacta pi, y `normalize` lo dejaba
+intacto. El defecto estaba en `dedup_pieces`, la funcion que C1a introdujo para matar el bug de la arista
+doblada: agrupaba por **par de extremos**, y las dos semicircunferencias de un mismo circulo comparten
+exactamente los dos puntos de costura. Borraba una, y el conjunto resultante ya no cerraba — el motor
+tenia razon al negarse.
+
+**Por que los tests no lo vieron, que es la parte que importa.** Las cinco propiedades de `C1c` corrian
+sobre 640 pares de regiones, pero los generadores eran estrellas de radio aleatorio y tiras de 20 mm por
+0,02 mm. Ninguno de esos pares es un **contorno cerrado hecho solo de arcos**, y esa es justamente la forma
+que una placa usa todo el tiempo: un pad, un agujero, un anillo de aislamiento. Los discos que ya
+existian se intersecaban siempre, y la interseccion corta las piezas en los puntos de cruce, que destruye
+la identidad de la costura. El caso que falla es el que **no corta nada**: un disco contenido, o una union
+contra la region vacia.
+
+**Arreglo (`c3c1fb0`).** Dos piezas son la misma arista solo si son la misma curva recorrida en el mismo
+sentido. La clave canonicaliza los extremos pero **acarrea la direccion con el intercambio** —si invertís
+el orden, negás el signo del sweep— y agrega la geometria cuantizada del arco (centro, radio, sweep con
+signo). `A ∪ A` sigue colapsando como debe; un disco queda entero. Los dos tests nuevos mueren cuando se
+anula el sweep en la clave, que es la prueba de que muerden.
+
+**Correccion al informe de C1.** Al cerrar C1 escribi que el motor de conjuntos estaba completo. No lo
+estaba: estaba completo respecto de lo que sus tests miraban. La propiedad "el area de la union mas el area
+de la interseccion da la suma" era cierta para estrellas y tiras, y falsa como afirmacion sobre el motor,
+porque un contorno de arcos ni siquiera podia entrar. G0.1 se reabre con nombre propio.
+
+**Limitacion que el arreglo no toca:** un disco que **toca** desde adentro el borde de la region, sin
+cruzarlo, sigue rechazandose ("revisits a piece") a tolerancia 1e-9. No se invento un fixture para
+disimularlo; queda anotado como limite conocido del arrangement.
