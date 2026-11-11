@@ -23,3 +23,5 @@ Force agents to develop exclusively in git worktrees (one agent = one worktree =
 ## Log
 
 **L1** (user, verbatim): "podrias agregarlo al odd/engram como tarea pendiente con alta prioridad? de que manera podemos agregar las reglas de desarrollo para que los agentes solamente desarollen mediante worktrees? es que creo que podiamos aumentar el trabajo en diferentes tareas que previamente se han debido seleccionar para evitar que dos o mas agentes esten trabajando en el mismo paquete....."
+
+**L2** (implementado): Agregadas reglas en `odd/README.md` y `AGENTS.md`. Recipes `just worktree/claim/release/check-worktree`, scripts de claim/release/validación, directorio `odd/tasks/.claims/`. Integrado con flujo ODD.
