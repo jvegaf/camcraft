@@ -367,9 +367,23 @@ fn leads_run_along_the_start_tangent_and_out_again() {
     "lead-in length was {}",
     approach.distance_to(contour_start)
   );
-  assert!(moves
+  // The lead-out is a parameter of this request too, and asserting only that *a* retract exists
+  // would pass with lead_out set to anything, including zero.
+  let retract_index = moves
     .iter()
-    .any(|movement| matches!(movement, Move::Retract { .. })));
+    .rposition(|movement| matches!(movement, Move::Retract { .. }))
+    .expect("a retract");
+  assert!(
+    retract_index >= 2,
+    "the retract follows the contour and its lead-out"
+  );
+  let contour_end = moves[retract_index - 2].destination().xy();
+  let departure = moves[retract_index - 1].destination().xy();
+  assert!(
+    (departure.distance_to(contour_end) - 4.0).abs() < 1.0e-6,
+    "lead-out length was {}",
+    departure.distance_to(contour_end)
+  );
 }
 
 #[test]

@@ -1,8 +1,10 @@
 # campilot
 
-A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, written in Rust with the CAM
-domain separated from the window: one document model, one set of toolpaths and one emitted program,
-whether the work is driven headlessly through `cam-cli` or from the editor.
+A cross-platform (Windows + Linux) CAM application for PCB fabrication, written in Rust with the CAM
+domain separated from the window: one document model and one geometry kernel, whether the work is driven
+headlessly through `cam-cli` or from the editor. The project pivoted from general 2.5D machining to
+PCBs: the strategies that produced programs were removed, and the PCB operations that will produce them
+again — isolation, non-copper clearing, drilling, cutout — are the work in progress.
 
 **Status:** The document model, importers, geometry kernel, post-processor dialect, tool library, nesting, simulation, and editor shell are in place. The general-machining strategies and their `cam-cli toolpath`/`emit`/`simulate` pipeline have been removed; PCB operations are being rebuilt separately.
 
@@ -181,7 +183,8 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | Crate | Responsibility |
 | --- | --- |
 | `cam-units` | Millimetres, angles, locale-independent fixed-decimal formatting |
-| `cam-geom` | Points, arcs, bulged contours, chaining, tessellation, arc-preserving offset, regions and their exact boundary distance, the verified medial axis, and the moulding rail's arc-length walk with its cross-section and stepover law |
+| `cam-geom` | Points, arcs, bulged contours, chaining, tessellation, arc-preserving offset, regions and their exact boundary distance |
+| `cam-ops` | The machining capabilities rescued for the PCB product: profile follow with tabs, drilling with pecks and a drill bank, and pocket rings with islands |
 | `cam-move` | The move vocabulary: the contract between toolpaths and the emitter |
 | `cam-model` | Job, layers, entities, toolpaths, schema version, validation |
 | `cam-store` | `.c2d` documents and the SQLite tool library, both with migrations |
@@ -194,7 +197,7 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | `cam-ui` | `egui` shell: docks, canvas, properties, status bar, authoring tools |
 | `cam-desktop` | The native window for Windows and Linux |
 
-Dependency direction is one-way: units → geom → move → model → store, with `post` and `toolpath` on the
+Dependency direction is one-way: units → geom → move → model → store, with `post` and `ops` on the
 move vocabulary; `sim` on geom, move and model; `app` on model + geom; `view` on app, geom and sim; `ui`
 on view and sim; `desktop` and `cli` on everything. Nothing below `cam-ui` knows that `egui` exists.
 
@@ -216,23 +219,19 @@ The program plan, milestone sequence and risk register are in [odd/roadmap.md](o
 
 ## Testing
 
-1506 tests, all deterministic — including the editor, which runs real `egui` frames headless and asserts
+1302 tests, all deterministic — including the editor, which runs real `egui` frames headless and asserts
 on both the actions they produce and the text they paint:
 
 ```bash
 cargo test --workspace
 ```
 
-They cover, in order of what they protect: golden G-code (byte for byte, through the real binary,
-including pocket-with-island and drilling programs), property tests on the geometry kernel (offset
-simplicity, arc fidelity, area monotonicity, winding against a fine tessellation, a distance proof that
-never keeps a piece it has not measured), the simulation's oracle for every strategy M4, M6, M7 and M8
-ship (a pocket's removed volume against its analytic area within the coverage bound, a chamfer's both
-flanks, a ramped flute's closed form, a thread's spiral and its crest, a V-carve's distance field on a
-square and a disc, a moulding's swept cross-section on a straight rail, a closed frame and a V-bit cone,
-each with a program cut a millimetre shallow reported as uncut and one cut a millimetre deep reported as
-gouge), the document and tool-library round trips and migrations (including `c2d/document@1` loading and
-saving as `@2`), every parser diagnostic by line and column, and the editor's behaviour — undo restoring a document exactly, picking measured in
+They cover, in order of what they protect: the rescued machining capabilities in `cam-ops` — profile
+follow with tabs, drilling with pecks and a drill bank, pocket rings with islands — property tests on the
+geometry kernel (offset simplicity, arc fidelity, area monotonicity, winding against a fine tessellation,
+a distance proof that never keeps a piece it has not measured), golden G-code for the post-processor
+dialects, the simulation's sweep and heightfield, the document and tool-library round trips and
+migrations, every parser diagnostic by line and column, and the editor's behaviour — undo restoring a document exactly, picking measured in
 pixels at any zoom, snapping, and synthetic clicks, drags, wheel and keys driving the real shell.
 
 The native window itself is the one thing not covered by automation: it needs a display. It is
@@ -241,17 +240,14 @@ verified by building and by launching it under a compositor, which is how the sc
 
 ## Next
 
-M10 is delivered: the command language, the CSV part list and cut list, the HTML print sheet and a
-minimal scripting panel. M9 was nesting: sheets and parts, rectangle **maxrects + guillotine** first and
-a sound-but-incomplete **free-profile no-fit heuristic** second, with one arithmetic for utilisation and
-waste that the report, the stored cost record and load-time validation all read. M8 was moulding: a rail
-and a cross-section swept along it with a stepover, the first strategy whose answer depends on a
-cross-section rather than a single depth.
-It was scheduled after V-carve on the expectation that it needed the distance field M7 built, and it did
-not: the cross-section is authored data, so M8 changed no post contract, no schema and no dependency, and
-spent its effort on the rail's arc-length walk and the stepover law's coverage certificate instead. M7
-itself carried one defect forward and closed it rather than leaving it: `cam-sim` used to build its field
-at the document origin while programs are emitted in machine coordinates, so at any origin corner other
-than bottom-left the report and the preview disagreed about where the cut was — for every strategy since M5 — and the fix (`cam-model::Frame`, honoured at every
-boundary including the handedness of every arc) has a test per origin corner. See
-[odd/roadmap.md](odd/roadmap.md) §4 and §4.6–4.13 for what M4, the region work and M5–M10 delivered.
+The general-machining milestones are history, not capability: the eleven strategies, their V-carve and
+moulding depth variants, and the `cam-cli toolpath`/`emit`/`simulate` pipeline were removed when the
+project pivoted to PCB fabrication. What they proved still stands: the kernel's arc-native geometry and
+its distance proof, the data-driven post-processor, the deterministic document and tool-library store,
+the heightfield simulation, and `cam-model::Frame` — the frame fix that makes a program and a preview
+agree about where the cut is, with a test per origin corner.
+
+The plan is [docs/SYSTEM_DESIGN_CAMCRAFT.md](docs/SYSTEM_DESIGN_CAMCRAFT.md): an artifact graph in place
+of a document-plus-operations list, a kernel split into prim / boolean / offset / index, the PCB
+operations built on it, and a two-level oracle. The sweep that removed the old domain, with its review
+history and what it cost, is in [odd/tasks/wood-out-sweep.md](odd/tasks/wood-out-sweep.md).

@@ -68,6 +68,9 @@ todos los helpers de `shared`; empezar por `peck` dejaria `push_horizontal`, `pi
 --all-targets -- -D warnings` y `cargo test --workspace` en verde. El contador de tests sube candidato a
 candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo.
 
+**Estado final de la cadena y de su review: ver L20-L22.** Las ramas `camcraft-sweep-cN`, `-dA/-dB/-dC`
+son andamiaje de review; los commits son el entregable.
+
 **El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
 es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
 negociarlo, y por eso el criterio de aceptacion es por candidato y no por linea.
@@ -198,3 +201,44 @@ muestra solo la correccion), y la review encontro un defecto de lectura real en 
 mecanica. c5 son tests copiados sin codigo de produccion y c6 es `drill.rs` copiado verbatim: el valor
 marginal no paga 4 a 8 corridas de modelo. Queda registrado, no silenciado. Costo total de review del
 rescate: 6 corridas (2 de c2, 4 de c3).
+
+**L21** (evidencia — el borrado, y una perdida que hay que nombrar): el borrado aterrizo en cuatro
+cortes verdes, no en uno: `da5ccd9` los 89 oraculos de `cam-sim`, `bde598b` el editor de estrategia de
+`cam-ui`, `ef6ca70` los subcomandos de `cam-cli`, `fdb87cf` los crates. Cada uno compila porque el
+anterior le quita el ultimo consumidor al siguiente; el arbol de `fdb87cf` es **identico** byte a byte al
+borrado atomico que produjo el worker, verificado con `git diff`.
+
+**Lo que se perdio de verdad:** 55 tests de `cam-ui/tests/view3d` (2.743 lineas, 7 archivos) murieron
+junto con `tests/view3d/support.rs`, que construia los programas con `cam_program::program_for_snapshot` y
+las fixtures con `PocketParams`/`ProfileParams`. Los tests eran de *playback, escena y overlay*, que
+sobreviven como producto, pero su mobiliario era maquinaria borrada. **Consecuencia para C8: hay que
+reconstruir la cobertura de preview 3D y playback, no solo la UI.** Queda escrito para que no se descubra
+tarde.
+
+**Error propio, detectado y corregido:** al re-rebanar traje `crates/cam-ui` desde el arbol del worker con
+`git checkout`, que restaura archivos pero **no** borra los que no existen alli. Resultado: 8 archivos
+huerfanos en disco, sin declaraciones `mod`, que ni compilaban ni corrian (`cargo test --test view3d`
+daba 0 tests). Se detecto comparando el arbol re-rebanado contra el original: el diff no estaba vacio.
+Leccion: al re-rebanar por checkout de paths, las eliminaciones se hacen con `git rm`, nunca se infieren.
+
+**L22** (decision del dueno — alcance de la review del borrado): **el borrado se acepta sin review, y el
+motivo queda escrito.** No es una omision: es lo que el proveedor puede tomar.
+
+Los hechos, todos medidos: el rescate (5.762 lineas) fue rechazado en preflight con
+`lens_context_budget_exceeded` dos veces, la segunda sobre el borrado atomico de 27.870 lineas. El techo
+real esta entre **1.409** (c2, aprobado) y **5.762** (rechazado); no lo conocemos con mas precision.
+Re-rebanar el borrado en cuatro cortes verdes bajo el maximo de 27.870 a **11.257**, y ahi se agoto: los
+dos cortes grandes siguen siendo el doble del unico tamano que sabemos que rebota, y bajarlos mas exige
+separar los tests de su crate en commits propios (solo `cam-toolpath/tests` son ~7.000 lineas) sin
+garantia de entrar.
+
+Lo que **si** esta revisado y aprobado, tres veces, es la parte que se escribe a mano: el rescate de
+`cam-ops` (c1-c3, con una correccion CRITICAL validada) y su spec. El borrado es eliminacion, y se
+verifica con un grep —"¿queda algo usandolo?"— no con un revisor.
+
+**Control compensatorio:** se corre una verificacion independiente sobre lo que sobrevive (subcomandos del
+CLI, superficies de la UI, conciliacion del conteo de tests, ausencia de stubs y de codigo muerto), porque
+el commit que borra 33.000 lineas es justamente el que no tiene segunda opinion.
+
+Nada de esto autoriza delivery: push, PRs y merge siguen siendo decision del dueno, y el push de las ramas
+re-escritas sigue bloqueado por la politica de seguridad del harness.

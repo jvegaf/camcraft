@@ -228,7 +228,7 @@ pub enum ToolpathError {
   },
   /// The medial axis a V-carve walks could not be computed.
   ///
-  /// `cam_geom::medial` refuses a tolerance that is not positive and finite, and a lattice the
+  /// The medial walk refuses a tolerance that is not positive and finite, and a lattice the
   /// tolerance would make larger than its own sample cap. Neither is clamped into a coarser axis: a
   /// silently coarsened tolerance changes what the carve leaves standing (D-M7-5).
   #[error("the V-carve's medial axis could not be computed: {reason}")]
@@ -429,14 +429,6 @@ pub fn machine_point(job: &Job, point: Point2) -> Point2 {
   job.frame().to_machine(point)
 }
 
-/// The sense an arc keeps when the job's frame maps it onto the machine.
-///
-/// A frame is not only a position: `top_left` is a **reflection**, and a reflection reverses
-/// orientation, so a curve the document traverses counter-clockwise is traversed clockwise in the
-/// machine's own numbering. Mapping an arc's points and keeping its `ccw` therefore states the
-/// **complementary** arc — a `G03` where the machine needs `G02`, which is a wrong cut rather than a
-/// wrong report. `center` translates and keeps handedness, so it flips nothing (M7 A7, L6). The map
-/// itself is the model's, exactly as it is for [`machine_point`]: this only asks it.
 /// The sense an arc keeps when the job's frame maps it onto the machine.
 ///
 /// A frame is not only a position: `top_left` is a **reflection**, and a reflection reverses

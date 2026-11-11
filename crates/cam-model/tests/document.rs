@@ -1216,7 +1216,7 @@ fn a_v_carve_angle_outside_the_range_is_refused_at_load_naming_the_value() {
 #[test]
 fn a_v_carve_tolerance_must_be_a_positive_number_of_millimetres() {
   // The tolerance is the medial axis's lattice step (D-M7-5), so it is stored with the operation and
-  // refused by name when it is not a step: a zero or negative one would ask `cam_geom::medial` for an
+  // refused by name when it is not a step: a zero or negative one would ask the walk for an
   // axis it refuses, and a document that can never emit is worse than a refusal at load.
   for tolerance in [0.0, -0.1] {
     let document = v_carve_document(90.0, tolerance);

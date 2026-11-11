@@ -59,7 +59,10 @@ pub struct PocketRequest<'a> {
 pub struct Pocketpath {
   /// The moves, in cutting order.
   pub moves: Vec<Move>,
-  /// Number of rings (offset) or rows (raster) cut, before depth passes.
+  /// Rings (offset) or rows (raster) cut, before depth passes.
+  ///
+  /// Named for the ring path, which is the one that produces rings: the raster path counts rows here
+  /// instead, so a caller reading this on a raster pocket is reading a row count.
   ///
   /// One ring is one closed contour, so a stage of the offset loop that came apart into several
   /// contours — a grown island crossing the shrunken outer boundary, say — counts once per contour.

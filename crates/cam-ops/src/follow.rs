@@ -220,11 +220,6 @@ fn tangent_of(segment: Segment) -> cam_geom::Vec2 {
 /// Shared with `chamfer`, which has no tabs: with an empty `tabs` the split is the whole contour, so a
 /// one-pass strategy gets the same arc-preserving walk a profile pass does instead of a second
 /// implementation of it.
-/// Walk the contour once at `z`, splitting at tab boundaries and lifting where a tab applies.
-///
-/// Shared with `chamfer`, which has no tabs: with an empty `tabs` the split is the whole contour, so a
-/// one-pass strategy gets the same arc-preserving walk a profile pass does instead of a second
-/// implementation of it.
 pub(crate) fn walk_contour(
   contour: &Contour,
   job: &Job,
@@ -239,10 +234,8 @@ pub(crate) fn walk_contour(
   let mut current_z = z;
 
   if tabs.is_empty() || total <= 0.0 {
-    for (index, segment) in segments.iter().enumerate() {
-      let (from, _) = piece_endpoints(*segment, 0.0, 1.0);
-      let _ = index;
-      let to = piece_endpoints(*segment, 0.0, 1.0).1;
+    for segment in &segments {
+      let (from, to) = piece_endpoints(*segment, 0.0, 1.0);
       push_horizontal(&mut moves, job, *segment, from, to, z);
     }
     return moves;
