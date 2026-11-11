@@ -765,3 +765,32 @@ fn invalid_tool_depth_and_range_are_refused() {
     assert_eq!(error, expected);
   }
 }
+
+/// A collapsing raster inset is a refusal, never a success that cuts nothing (R3-1).
+///
+/// The ring path refuses a collapse at both ends — an offset error and an offset that leaves no
+/// boundary. The raster path reads the same inset region, so it owes the same refusal. The kernel
+/// refuses these inputs today, so this pins the invariant rather than reproducing a live failure:
+/// whichever way the collapse is reported, the operation must not come back `Ok` with no move.
+#[test]
+fn a_collapsing_raster_inset_is_refused_not_reported_as_success() {
+  for size in [1.0, 2.0] {
+    for strategy in [PocketStrategy::Offset, PocketStrategy::Raster] {
+      let request = PocketRequest {
+        contour: &square(size),
+        islands: &[],
+        params: &params(strategy, 0.0, 3.0, 6.0, 12.0),
+        tool: &tool(4.0),
+        job: &job(),
+      };
+      match pocket(&request) {
+        Err(ToolpathError::OffsetCollapsed { .. }) => {}
+        Ok(path) => assert!(
+          !path.moves.is_empty(),
+          "{strategy:?} at {size} mm: empty toolpath"
+        ),
+        Err(other) => panic!("expected OffsetCollapsed for {strategy:?}, got {other:?}"),
+      }
+    }
+  }
+}

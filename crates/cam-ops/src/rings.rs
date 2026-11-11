@@ -297,6 +297,13 @@ fn raster_rows(
     .map_err(|error| ToolpathError::OffsetCollapsed {
       reason: error.to_string(),
     })?;
+  // The inset can collapse the region the way it can empty a ring set, and an empty region has no
+  // material to raster: `Ok` with no row would report a success that cuts nothing (R3-1).
+  if offset.region.boundaries.is_empty() {
+    return Err(ToolpathError::OffsetCollapsed {
+      reason: "the region offset left no area to raster".to_owned(),
+    });
+  }
   let bounds = region_bounds(&offset.region);
 
   let mut rows = Vec::new();
