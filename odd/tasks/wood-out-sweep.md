@@ -242,3 +242,50 @@ el commit que borra 33.000 lineas es justamente el que no tiene segunda opinion.
 
 Nada de esto autoriza delivery: push, PRs y merge siguen siendo decision del dueno, y el push de las ramas
 re-escritas sigue bloqueado por la politica de seguridad del harness.
+
+**L23** (evidencia — PR4 no es un borrado, es C3): medido antes de intentarlo. En `cam-model` quedan
+**608 lineas** de parametros de madera (263-870: `PocketStrategy`, `PocketParams`, `DrillParams`,
+`ProfileParams`, `ChamferParams`, `VCarveParams`, `EngraveParams`, `FlutingParams`, `TextureParams`,
+`InlayParams`, `ThreadParams`, `MouldingParams`) y **7 validadores** por operacion (~190 lineas:
+`check_chamfer`, `check_v_carve`, `check_fluting`, `check_texture`, `check_inlay`, `check_thread`,
+`check_moulding`). Trece archivos fuera de `cam-model` referencian `Operation::` y dieciocho referencian
+`Toolpath`.
+
+**El bloqueo estructural:** `Toolpath.operation: Operation` es un campo **no opcional**
+(`cam-model/src/lib.rs:892`). Borrar las once variantes deja un enum inhabitable y `Toolpath` sin poder
+construirse, y con el se caen la lista de toolpaths de la UI (que la verificacion independiente dio por
+buena y cableada), el `match` de nombres de `cam-cli/src/lib.rs:1517`, `cam-app` y la derivacion de
+targets de `cam-sim`. Los tres caminos posibles son una variante de relleno (un stub con migracion de
+schema, que C3 borraria despues), definir ya las operaciones PCB (trabajo de C3), o sacar `Toolpath` del
+modelo (que mata una superficie de UI que sobrevive). Ninguno es un borrado.
+
+**Lo que si es cierto, y cierra el barrido:** las operaciones de madera ya son **inalcanzables**. Ningun
+comando que sobrevive crea una — el subcomando `cam-cli toolpath` no existe, el `match` de `cam-cli` solo
+las nombra para mostrarlas, y la UI solo **lee** `Toolpath` (cero construcciones de `Operation::` en
+`cam-ui/src`). La unica forma de tener una es un documento viejo, y los `.c2d` se rechazan (A2). Son datos
+de legado de solo lectura.
+
+**Decision:** PR4 se pliega dentro de C3. El barrido termina aca: todo lo que era alcanzable esta afuera,
+y lo que queda en el modelo se limpia al definir `camcraft/document@1`, una sola vez, en lugar de inventar
+un relleno y migrar el schema dos veces.
+
+**L24** (decision — topologia de entrega, y una correccion a L13): se eligio **Feature Branch Chain con
+tracker** cuando parecia que la cadena no podia integrarse en pedazos. El barrido demostro lo contrario:
+de los siete cortes, **solo uno rompe el producto** — el borrado (P5), que se lleva `emit` y `simulate`.
+Los otros seis son aditivos o limpieza y pueden mergearse por separado, cada uno dejando el arbol verde.
+Sobre una cadena lineal y mergeable el tracker no aporta nada, asi que se entrega como **PRs apilados**:
+cada rama apunta a su padre y la primera apunta a `master`.
+
+| PR | Rama | Cabeza | Que trae | Mergeable solo |
+| --- | --- | --- | --- | --- |
+| P1 | `camcraft-sweep-01-docs` | `e0ee403` | system design + spec del barrido | si (docs) |
+| P2 | `camcraft-sweep-02-rescue` | `3f1a524` | `cam-ops`: shared, follow, rings, islas, peck (+73 tests) | si (aditivo) |
+| P3 | `camcraft-sweep-03-docs` | `8300d13` | cierre de cadena, calibracion del CRITICAL, gsim-rs | si (docs) |
+| P4 | `camcraft-sweep-04-oracles` | `da5ccd9` | los 89 oraculos de estrategia de `cam-sim` | si (tests) |
+| P5 | `camcraft-sweep-05-deletion` | `fdb87cf` | el dominio de mecanizado general afuera | **no**: sin `emit`/`simulate` hasta C4 |
+| P6 | `camcraft-sweep-06-cleanup` | `fcd83d9` | `medial` + los 7 hallazgos de review | si (borrado muerto + tests) |
+| P7 | `camcraft-sweep-07-docs` | esta punta | L21-L24 y la reparacion del README | si (docs) |
+
+Las ramas de andamiaje (`-c1`..`-c6`, `-s1`, `-dA/dB/dC`) quedan como historia local: los recibos de
+review estan atados a identidades de target, no a nombres de rama, asi que no hacen falta para entregar, y
+reescribir las remotas esta bloqueado por la politica de seguridad del harness.
