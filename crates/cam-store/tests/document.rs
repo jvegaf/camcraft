@@ -224,3 +224,24 @@ fn a_legacy_schema_document_is_refused_naming_the_schema() {
   assert!(matches!(error, StoreError::Invalid { .. }), "{error:?}");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }
+
+#[test]
+fn a_legacy_schema_cannot_be_written_through_to_bytes() {
+  // Three doors write an archive: `save`, `save_document` and `to_bytes`. The first two validated and
+  // the third did not, so the schema rule could be bypassed by loading a good file, changing its tag
+  // and serialising the bytes for someone else to write.
+  let path = scratch("legacy-to-bytes");
+  save_document(&path, &sample_document()).expect("saves");
+  let mut file = DocumentFile::load(&path).expect("loads");
+  file.document.schema = "c2d/document@1".to_owned();
+
+  let error = file
+    .to_bytes()
+    .expect_err("a legacy schema must be refused by the byte door too");
+  assert!(error.to_string().contains("c2d/document@1"), "{error}");
+  assert!(
+    file.save(&path).is_err(),
+    "and the file door agrees with it"
+  );
+  std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+}

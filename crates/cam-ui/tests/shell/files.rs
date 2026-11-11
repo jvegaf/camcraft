@@ -844,16 +844,19 @@ fn a_refused_open_changes_nothing_and_says_why() {
   let repeated = broken.layers[0].clone();
   // Two layers with one id: a document the model refuses, so the file loads and the validation fails.
   broken.layers.push(repeated);
-  std::fs::write(
-    &invalid,
-    DocumentFile {
-      document: broken,
-      extras: Default::default(),
-    }
-    .to_bytes()
-    .expect("archive bytes"),
-  )
-  .expect("archive written");
+  // Built by hand, not through `DocumentFile::to_bytes`, which now validates: a corrupt archive is
+  // something only a test needs to fabricate, and the product must not be able to.
+  let json = serde_json::to_string(&broken).expect("serialises");
+  let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+  writer
+    .start_file(
+      cam_store::document::DOCUMENT_ENTRY,
+      zip::write::SimpleFileOptions::default(),
+    )
+    .expect("start entry");
+  use std::io::Write as _;
+  writer.write_all(json.as_bytes()).expect("write payload");
+  std::fs::write(&invalid, writer.finish().expect("finish").into_inner()).expect("archive written");
 
   for (case, path) in [
     ("missing", missing),

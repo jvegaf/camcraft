@@ -25,6 +25,10 @@ cam-view.workspace = true
 
 [dev-dependencies]
 egui = { workspace = true, features = ["default_fonts"] }
+# A test that needs a corrupt archive has to build one, and the product must not be able to: three
+# write doors validate now. Both crates are already workspace dependencies.
+serde_json.workspace = true
+zip.workspace = true
 egui_kittest = { version = "0.37", features = ["wgpu"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 cam-geom.workspace = true

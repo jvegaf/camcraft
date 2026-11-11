@@ -105,6 +105,17 @@ impl DocumentFile {
   /// Exposed for tests and for callers that stream the result somewhere else.
   pub fn to_bytes(&self) -> Result<Vec<u8>, StoreError> {
     let path = "<memory>".to_owned();
+    // `save` and `save_document` validate before they write, and this hands the caller the bytes to
+    // write itself, so it owes the same refusal. Without it the schema rule has a second, silent door:
+    // load a valid file, change its tag, and serialise a legacy archive that no validated path would
+    // have produced.
+    self
+      .document
+      .validate()
+      .map_err(|source| StoreError::Invalid {
+        path: path.clone(),
+        source,
+      })?;
     let json = serde_json::to_vec_pretty(&self.document).map_err(|source| StoreError::Json {
       path: path.clone(),
       source,
