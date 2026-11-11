@@ -126,22 +126,7 @@ impl eframe::App for Editor {
         // the document's own name so a folder of jobs is recognisable (M13 S1). Nothing after the path is the
         // host's business: the posting, the write and the sentence all happen in `apply_action`, where a
         // refusal is a message rather than a silent no-op.
-        UiAction::RequestGenerateGcode => match rfd::FileDialog::new()
-          .add_filter("G-code program", &["nc", "gcode", "tap"])
-          .set_file_name(program_file_name(&self.shell))
-          .save_file()
-        {
-          Some(path) => UiAction::GenerateGcode { path },
-          None => continue,
-        },
-        // The post-processor is a choice of file, so it is the open dialog and not the save one (M13 S1).
-        UiAction::RequestChoosePost => match rfd::FileDialog::new()
-          .add_filter("post-processor", &["pp"])
-          .pick_file()
-        {
-          Some(path) => UiAction::ChoosePost { path },
-          None => continue,
-        },
+
         // The tool library's export is a save dialog in the format the store writes, and it starts from
         // `tools.json` because that is the name a library file keeps wherever it is put down. Everything after
         // the path — the JSON, the refusal, the report — stays in `apply_action` (tool-library-editor S11).
@@ -191,21 +176,9 @@ impl eframe::App for Editor {
   }
 }
 
-/// The name the program's save dialog starts from: the document's own name with a `.nc` extension.
-///
-/// `untitled.c2d` becomes `untitled.nc`, so the program written beside a drawing is recognisable as that
-/// drawing's program rather than as a second copy of the document (M13 S1). The extension is the dialog's
-/// suggestion and not a rule: what is written is whatever name the person accepts.
-fn program_file_name(shell: &Shell) -> String {
-  std::path::Path::new(&shell.document_name())
-    .with_extension("nc")
-    .to_string_lossy()
-    .into_owned()
-}
-
 /// The name the tool library's import dialog starts from: the document's own name, in the library's extension.
 ///
-/// The same suggestion `program_file_name` makes and for the same reason: a library exported beside a drawing is
+/// The library import dialog starts from the document's own name in the library's extension: a library exported beside a drawing is
 /// found by that drawing's name, and `part.c2d` therefore opens on `part.json`. The name is the dialog's
 /// suggestion and not a rule — `tools.json` in the same folder is accepted just as readily (S11).
 fn library_file_name(shell: &Shell) -> String {

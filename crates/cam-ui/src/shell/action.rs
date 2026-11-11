@@ -5,10 +5,7 @@ use cam_geom::{Contour, Point2, Vec2};
 use cam_model::Job;
 use cam_units::Length;
 
-use crate::actions::{
-  file_label, handle_action_with_file, DocumentFileState, EMPTY_POST_PATH, EMPTY_PROGRAM_PATH,
-  NO_POST, NO_TOOLPATHS,
-};
+use crate::actions::{handle_action_with_file, DocumentFileState};
 use crate::{ActionReport, Shell, UiAction};
 
 use super::default_material_size;
@@ -57,8 +54,6 @@ impl Shell {
           ..ActionReport::default()
         })
       }
-      UiAction::ChoosePost { path } => self.choose_post(path),
-      UiAction::GenerateGcode { path } => self.generate_gcode(app, path),
       // `ImportFile` no longer imports: it parses the file and opens the modal that reports what it found
       // (shell-file-operations S3), so nothing replaces the drawing until the operator presses `Import`.
       // `handle_action_with_file` keeps the immediate import for callers with no window at all, which is why
@@ -278,91 +273,7 @@ impl Shell {
   pub fn clear_post(&mut self) {
     self.post = None;
   }
-
-  /// The post-processor's file label, when the window holds one.
-  pub fn post_name(&self) -> Option<&str> {
-    self.post.as_ref().map(|(name, _)| name.as_str())
-  }
-
-  /// Hold the post-processor in `path`, refusing a file that is not one.
-  ///
-  /// The parse is the acceptance test and it happens here rather than at the first program: a file that does
-  /// not parse would otherwise be accepted now and fail once the person believes their program exists. The
-  /// previous post-processor stays on every refusal, so choosing a wrong file costs the choice and nothing
-  /// else.
-  fn choose_post(&mut self, path: &Path) -> Result<ActionReport, String> {
-    if path.as_os_str().is_empty() {
-      return Err(EMPTY_POST_PATH.to_owned());
-    }
-    let name = file_label(path);
-    let source = std::fs::read_to_string(path).map_err(|error| format!("{name}: {error}"))?;
-    cam_post::parse_post(&source).map_err(|error| format!("{name}: {error}"))?;
-    self.post = Some((name.clone(), source));
-    Ok(ActionReport {
-      label: "choose post-processor",
-      note: Some(format!("using {name}")),
-      ..ActionReport::default()
-    })
-  }
-
-  /// Post the open document and write the program to `target` (M13 S1, S2).
-  ///
-  /// The program is [`cam_program::program_for_snapshot`]'s, the same authoring the cut-time estimate in the
-  /// Toolpaths task already uses, so the sentence about how long the job takes and the file the machine runs
-  /// cannot disagree about what the toolpaths are.
-  ///
-  /// # Why the material is not passed on
-  ///
-  /// A snapshot is a list of tools with their own records, and a material is a selector *into a library* —
-  /// `program_for_snapshot` cannot answer one and refuses it by name (`crates/cam-program/src/lib.rs:95-113`),
-  /// so passing the document's material would make every drawing that names one refuse to produce a program.
-  /// `None` is what the snapshot can honestly mean, and the program therefore cuts at the tools' own rates;
-  /// the divergence from `cam-cli emit --material` is the same recorded limit the shell's estimate carries
-  /// (M11's follow-up), and it is named here rather than discovered by a person comparing two files.
-  fn generate_gcode(&self, app: &AppState, target: &Path) -> Result<ActionReport, String> {
-    if target.as_os_str().is_empty() {
-      return Err(EMPTY_PROGRAM_PATH.to_owned());
-    }
-    let Some((name, source)) = self.post.as_ref() else {
-      return Err(NO_POST.to_owned());
-    };
-    if app.document().toolpaths.is_empty() {
-      return Err(NO_TOOLPATHS.to_owned());
-    }
-    let post = cam_post::parse_post(source).map_err(|error| format!("{name}: {error}"))?;
-    let document = app.document();
-    let stream = cam_program::program_for_snapshot(document, &self.tools, None)
-      .map_err(|error| error.to_string())?;
-    let meta = cam_post::ProgramMeta {
-      file_name: target
-        .file_name()
-        .map(|file| file.to_string_lossy().into_owned())
-        .unwrap_or_default(),
-      file_path: target
-        .parent()
-        .map(|dir| dir.to_string_lossy().into_owned())
-        .unwrap_or_default(),
-    };
-    let emitted =
-      cam_post::emit(&post, &stream, &meta).map_err(|error| format!("{name}: {error}"))?;
-    std::fs::write(target, &emitted.text)
-      .map_err(|error| format!("{}: {error}", file_label(target)))?;
-    Ok(ActionReport {
-      label: "generate g-code",
-      note: Some(format!(
-        "wrote {} line(s) to {}",
-        emitted.lines,
-        file_label(target)
-      )),
-      ..ActionReport::default()
-    })
-  }
 }
-
-/// The sentence a shell with no parse to import answers with.
-///
-/// `confirm_import` is public so a headless test can finish an import, and a test — or a host that missed the
-/// flag — asking it to write nothing gets a refusal that names the missing step instead of a silent `Ok`.
 const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import first";
 
 /// Write one parse into `app` as an undoable replacement, and report what arrived.

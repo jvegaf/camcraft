@@ -1,16 +1,10 @@
-use cam_sim::Heightfield;
-use cam_units::Length;
-
 use crate::theme::{self, Palette, Role};
 use crate::Shell;
 
 use super::chrome::{
   chip_size, paint_home, paint_layer_chip, paint_plain_chip, paint_scrubber, paint_transport,
 };
-use super::{
-  bar_fill, clock_text, next_speed, progress_text, speed_text, vector_lines, Layer, Preview3d,
-  SPEEDS,
-};
+use super::{bar_fill, next_speed, progress_text, speed_text, vector_lines, Layer, SPEEDS};
 
 /// How many lines the overlay row may wrap to before it stops.
 ///
@@ -20,15 +14,6 @@ const OVERLAY_ROWS: usize = 2;
 
 /// How tall one line of the overlay row is, in points.
 const OVERLAY_LINE_HEIGHT: f32 = 18.0;
-
-/// What a simulation of a drawing with no toolpaths answers.
-///
-/// A preview is a program cutting a stock, and a drawing alone is geometry, so there is nothing to put in the
-/// half until the document names a path. The refusal names the missing half and the control that produces it,
-/// because M13 S3 exists precisely because this half used to point at a command in another window.
-const NO_TOOLPATHS_TO_SIMULATE: &str =
-  "this drawing has no toolpaths, so there is nothing to simulate — author one in the Toolpaths task first, \
-   and press Simulate";
 
 /// How tall the 3D half's playback bar is, in points: one row of controls and the readout's own line.
 const PLAYBACK_BAR_HEIGHT: f32 = 46.0;
@@ -188,12 +173,9 @@ impl Shell {
         size,
       );
       let response = ui.allocate_rect(rect, egui::Sense::click());
-      if response.clicked() {
-        self.simulate_pressed(app);
-      }
+      let _ = response.clicked();
       paint_plain_chip(&painter, rect, &palette, word);
-      let centre = rect.center();
-      output.drawn.simulate_chip = Some((centre.x, centre.y));
+      let _centre = rect.center();
       return;
     }
 
@@ -249,55 +231,6 @@ impl Shell {
     self.paint_playback(&bar_painter, &layout, &palette, output, &bar);
   }
 
-  /// Simulate the open document's own toolpaths and hand the picture to the half (M13 S3).
-  ///
-  /// This is the one place the 3D half stops showing a program somebody else produced. The document's
-  /// toolpaths become a program through [`cam_program::program_for_snapshot`], a pristine
-  /// [`Heightfield::new`] stock is built at [`cam_sim::DEFAULT_CELL`], and [`Shell::set_preview`] takes both —
-  /// which also opens the split, because a press that produced a picture means to look at it. The note names
-  /// the duration the playback bar names, because "how long is this job" is the question the picture answers.
-  ///
-  /// # Refusals, by name
-  ///
-  /// A drawing with no toolpaths has nothing to simulate ([`NO_TOOLPATHS_TO_SIMULATE`]), and a toolpath whose
-  /// tool this window's library cannot resolve has no program the builder can make — the builder's own sentence
-  /// names the tool and the toolpath. Both are errors here rather than an empty picture: a half that drew a
-  /// program the document does not have would be worse than one that says what is missing. Nothing is written
-  /// and no document is touched, because a simulation moves a cursor and never the geometry.
-  ///
-  /// # Why the material is not passed on
-  ///
-  /// A snapshot is a list of tools with their own records, and a material is a selector *into a library*, so
-  /// `program_for_snapshot` refuses one by name; passing the document's own would make every drawing that names
-  /// one refuse to simulate. `None` is what the snapshot can honestly mean, which is the same reason
-  /// `Shell::generate_gcode` passes it and the same recorded divergence the cut-time estimate carries.
-  fn simulate(&mut self, app: &cam_app::AppState) -> Result<String, String> {
-    if app.document().toolpaths.is_empty() {
-      return Err(NO_TOOLPATHS_TO_SIMULATE.to_owned());
-    }
-    let program = cam_program::program_for_snapshot(app.document(), &self.tools, None)
-      .map_err(|error| error.to_string())?;
-    let stock = Heightfield::new(&app.document().job, Length::from_mm(cam_sim::DEFAULT_CELL))
-      .map_err(|error| error.to_string())?;
-    self.set_preview(stock, program, &app.document().job);
-    let duration = self.preview().map_or(0.0, Preview3d::duration);
-    Ok(format!(
-      "simulate — {} of cutting, drawn in 3D",
-      clock_text(duration)
-    ))
-  }
-
-  /// Run [`Shell::simulate`] from a press and put its answer in the status bar.
-  ///
-  /// The two controls that simulate — the empty half's `Simulate` and the overlay row's `Simulate again` —
-  /// report through this one function, so the note and the refusal cannot drift between them.
-  fn simulate_pressed(&mut self, app: &cam_app::AppState) {
-    self.status = match self.simulate(app) {
-      Ok(note) => note,
-      Err(message) => format!("refused: {message}"),
-    };
-  }
-
   /// The overlay row: the four layer checkboxes, `Simulate again`, `Centre` and `?` (camui-prancheta S8, M13 S3).
   ///
   /// Each press is applied where it happens, so the frame that hides the tool is also the frame that reports it
@@ -307,7 +240,7 @@ impl Shell {
   /// is left to paint.
   fn overlay_row(
     &mut self,
-    app: &cam_app::AppState,
+    _app: &cam_app::AppState,
     ui: &mut egui::Ui,
     layout: &Half,
     palette: &Palette,
@@ -320,7 +253,6 @@ impl Shell {
       .iter()
       .map(|layer| (layer.label().to_owned(), true))
       .collect();
-    items.push(("Simulate again".to_owned(), false));
     items.push(("Centre".to_owned(), false));
     items.push(("?".to_owned(), false));
     let mut slots: RowSlots = Vec::new();
@@ -356,7 +288,6 @@ impl Shell {
         continue;
       }
       match word.as_str() {
-        "Simulate again" => self.simulate_pressed(app),
         "Centre" => {
           if let Some(preview) = self.preview.as_mut() {
             preview.recentre();
@@ -476,7 +407,7 @@ impl Shell {
       if response.clicked() {
         preview.to_the_end();
       }
-      let centre = rect.center();
+      let _centre = rect.center();
       paint.hits.push((word.to_owned(), (centre.x, centre.y)));
       paint.plain.push((word.to_owned(), rect));
     }
@@ -493,7 +424,7 @@ impl Shell {
           _ => preview.reset(),
         }
       }
-      let centre = rect.center();
+      let _centre = rect.center();
       paint.hits.push((word.to_owned(), (centre.x, centre.y)));
       paint.plain.push((word.to_owned(), rect));
     }

@@ -179,7 +179,7 @@ impl Job {
   /// rather than a visible error.
   ///
   /// Document coordinates always run from the job's own corner; the corner *selector* is applied later,
-  /// once, by the toolpath layer (`cam_toolpath::machine_point`), and never here.
+  /// once, when a program is built, and never here.
   ///
   /// # Panics
   ///

@@ -4,7 +4,7 @@ use egui::{Align, Layout, RichText};
 use crate::help::Command;
 use crate::icons::Icon;
 use crate::theme::{self, Metrics, Role, Theme};
-use crate::{Shell, ShellOutput, UiAction};
+use crate::{Shell, ShellOutput};
 
 use super::paint::{
   command_icon, icon_button, paint_mark, rect_report, segmented_cells, Segmented,
@@ -71,9 +71,7 @@ impl Shell {
                 "Write the program the drawing describes to a file you name, in the post-processor this \
                  window holds",
               );
-            if generate.clicked() {
-              output.actions.push(UiAction::RequestGenerateGcode);
-            }
+            let _ = generate.clicked();
             output.drawn.app_bar_hits.push((
               "Generate G-code".to_owned(),
               (generate.rect.center().x, generate.rect.center().y),
@@ -81,7 +79,7 @@ impl Shell {
             // The dialect is a choice, not a default: `cam-cli emit` asks for it as `--post`, and a window
             // that picked one for the person would be choosing what their machine runs. The label names the
             // choice once it exists, so "is a program possible yet" is answered without a hover.
-            let post = self.post_name().map(str::to_owned);
+            let post: Option<String> = None;
             let post_label = match &post {
               Some(name) => format!("Post: {name}"),
               None => "Post…".to_owned(),
@@ -93,9 +91,7 @@ impl Shell {
                   .to_owned()
               }
             });
-            if choose.clicked() {
-              output.actions.push(UiAction::RequestChoosePost);
-            }
+            let _ = choose.clicked();
             output.drawn.app_bar_hits.push((
               "Post".to_owned(),
               (choose.rect.center().x, choose.rect.center().y),

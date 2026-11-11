@@ -4,65 +4,16 @@ A cross-platform (Windows + Linux) 2.5D CAM application for CNC routers, written
 domain separated from the window: one document model, one set of toolpaths and one emitted program,
 whether the work is driven headlessly through `cam-cli` or from the editor.
 
-**Status: M10 complete.** The domain runs end to end — a document, a tool from a SQLite library and a
-post-processor produce real G-code, byte for byte tested — for **profile**, **pocket** (offset rings
-and raster rows, with islands), **drilling** (pecks, both retract modes, drill-bank selection), the six
-depth-variant strategies — **chamfer** (a V-bit bevel whose depth is derived from the bit's angle),
-**quick engrave**, **fluting** (with a ramped entry and exit), **texture** (parallel grooves at a
-spacing and angle, deliberately not a pocket), the **inlay** pair (female cavity and male plug from one
-command) and **thread milling** (a helical descent, emitted as a helical arc) — and **V-carve**: the
-medial axis of the region walked with the tip at `−d/tan(θ/2)` for each tip's own distance `d` to the
-boundary, so the toolpath is a depth **field** rather than a fixed-Z pass, and **moulding**: a rail with
-an authored cross-section swept along it, one lateral pass per stepover offset, so the toolpath is a
-family of Z heights taken from the profile rather than from the bit. Around it: M1 built the
-editor shell, M2 the vector authoring and editing commands, M3 the DXF, SVG, PDF, EPS and raster
-importers, M4 the toolpaths, authored headlessly through `cam-cli toolpath`, and M5 the simulation that
-checks them — the emitted program swept over a heightfield of the stock, a report of removed, gouge and
-uncut material and of every crash, and a 3D preview the shell plays. Every one of the eleven strategies
-is measured against that simulation, in both signs.
+**Status:** The document model, importers, geometry kernel, post-processor dialect, tool library, nesting, simulation, and editor shell are in place. The general-machining strategies and their `cam-cli toolpath`/`emit`/`simulate` pipeline have been removed; PCB operations are being rebuilt separately.
 
 ## What works today
 
 ```
-dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move stream ──▶ post-processor ──▶ part.nc
-     (cam-import)        (c2d/document@2)   eleven      (Rapid/Feed/     (.pp dialect)
-                          (validated)       strategies   Arc/Helix/Retract)
-                                                        │
-                                                        ▼
-                                            cam-sim heightfield ──▶ report · 3D preview
+dxf/svg/pdf/eps/png ──▶ document model
+     (cam-import)        (c2d/document@2, validated)
 ```
 
-- **Arc geometry end to end.** Arcs are first-class from the document through the offset to the
-  emitter: a circle cut with a profile toolpath emits `G02`/`G03`, never a polyline.
-- **Eleven strategies, one contract.** Profile (inside/outside/on, tabs, passes, lead-in/out), pocket
-  (offset rings or raster rows, allowance, stepover, nesting islands) and drilling (peck depth, both
-  retract modes, drill-bank selection), then M6's six depth variants: chamfer (derived V-bit depth),
-  quick engrave, fluting (ramped), texture (grooves at a spacing and angle, never a clearing pass), the
-  inlay pair and thread milling, M7's **V-carve**: the region's medial axis, walked at the depth each
-  tip's own distance to the boundary demands, emitted as varying-Z linear feeds because a V-carve's Z is
-  a function of position and no arc move can carry it — and M8's **moulding**: an authored cross-section
-  swept along a rail at a stepover, one lateral pass per offset, each at the depth its own profile point
-  demands. Each is authored by `cam-cli toolpath` and reaches G-code through `cam-cli emit`, so the test
-  surface is the program a machine would run.
-- **The V-carve's proof is the distance field itself.** A V-bit's body is above its cone, so a tip at
-  `−d/tan(θ/2)` can only leave material standing and never cut deeper than the field: `gouge` is
-  **exactly zero**, not "within a tolerance", for any tip set inside the region, and a dropped piece of
-  axis costs coverage (`uncut`) and nothing else. The simulation authorises `d(centre)/tan(θ/2)` per
-  cell from the document alone, and the oracle asserts both signs — a 20 x 20 mm square removes
-  `1332.5` of its analytic `1333.333 mm³` and a radius-15 disc `3534.152` of `3534.292`, with zero gouge
-  and zero uncut, while a **deliberately thinned axis** reports `uncut` and still zero gouge and a
-  **20% too deep** program reports `gouge 629.557 mm³`.
-- **The moulding's proof is coverage plus a monotone tool law.** The claim and the program read the same
-  pass polyline — `Rail::offset_walk` over the same arc-length walk, closing edge included — the sweep's
-  samples lie on that polyline, and a tool's `rise` grows with distance — so a correct moulding can never
-  remove more than its authored cross-section authorised: `gouge` is **exactly zero**, and a pass dropped
-  or a cross-section authored 1 mm shallower costs `uncut` and nothing else. The simulation authorises the
-  cross-section swept along the rail from the document alone, and the oracle asserts both signs on a
-  straight rail, a **closed frame** and a V-bit cone (660 and 496 mm³ exact with zero gouge and zero
-  uncut; `uncut 300`/`248` 1 mm shallow; `gouge 300`/`248` and `gouge 603.671` 1 mm deep). A closed rail
-  whose drawing *starts* at a corner is exact too: the seam's corner diagonal is an edge the program cuts,
-  so the claim carries it, and what was measured at delivery as `gouge 2.000 mm³` over one cell is pinned
-  closed in [docs/m8-moulding.md](docs/m8-moulding.md#known-limits-each-a-decision).
+- **Arc geometry end to end.** Arcs are first-class from the document through the offset: geometry keeps `G02`/`G03`-style arcs as arcs, never a polyline.
 - **Nesting's proof is a certificate per placement.** `cam-cli nest` packs a document's authored sheets
   and parts and stores the placements and one cost record, and each nester states its promise as one
   predicate instead of restating the arithmetic. Rectangles go through **maxrects**, with a **guillotine**
@@ -78,11 +29,9 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   cannot place every instance exits `7` and writes nothing, because a partial nesting has no honest
   stored form.
 - **A command language, a cut list and a print sheet.** `cam-cli script file.cam` runs one command per
-  line against one document — `open`, `sheet`, `part`, `nest`, `toolpath`, `validate`, `emit`,
-  `simulate`, `save`, `parts`, `cutlist` — and every one of them hands its tokens to the **same flag
-  parser** and the same function its `cam-cli` subcommand calls, so a script cannot nest with different
-  defaults, emit a different program or simulate at a different resolution. The parity is bytes: a
-  scripted `nest` writes the document `cam-cli nest` writes, a scripted `emit` the same program, and a
+  line against one document — `open`, `sheet`, `part`, `nest`, `validate`, `save`, `parts`, `cutlist` — and every one of them hands its tokens to the **same flag
+  parser** and the same function its `cam-cli` subcommand calls. The parity is bytes: a
+  scripted `nest` writes the document `cam-cli nest` writes, and a
   script's captured output is identical to the binary's stdout. A refusal is located and named —
   `line 4:6: --gap must be a non-negative distance in mm, got -1` — and every mutation passes
   `Document::validate` on a clone, so a refused script leaves the file exactly as it was. A part list is
@@ -96,11 +45,7 @@ dxf/svg/pdf/eps/png ──▶ document model ──▶ toolpath ──▶ move s
   section naming what a sheet cannot honestly report. The shell's half is one panel: `cam-ui`'s
   `ScriptPanel` calls `cam_cli::script::run_script_to` as a **library**, shows the run's report and its
   located error in one area, keeps the previous result when a run fails, and never spawns the binary.
-- **A simulation, and every strategy measured against it.** `cam-cli simulate` sweeps the emitted
-  program over a heightfield of the stock and reports the removed material, the through-cut cells,
-  the gouge, the uncut material and every crash that rams the tool. The error bound is the
-  simulation's own documented coverage bound (`perimeter × cell / 2`), and the same sweep, on the
-  field a caller hands in, drives a depth-shaded 3D preview the shell plays.
+- **Simulation.** `cam-sim` sweeps a move stream over a heightfield of the stock and can report removed material, gouge, uncut material and crashes.
 - **Region geometry, arc-native.** Point-in-contour is an exact winding number, not a tessellated
   guess; a region is a boundary list under even-odd parity with normalization and subtraction; and the
   offset that cuts it keeps a distance proof measured exactly against every original boundary, which is
@@ -193,9 +138,7 @@ application-level rule rules out. From the command line the field is joined with
 may be absolute or climb out of the directory; the CLI creates the parent directory and the file it is pointed
 at when it means to write, which is why the shell has no such path to guard any more.
 
-What is not there yet: **toolpath forms** (M4's and M6's strategies are still authored through
-`cam-cli toolpath`, and M5's 3D preview shows a program handed to it — one authored the way `cam-cli`
-authors one — rather than a panel that creates one), and Save has no keyboard shortcut — the keys the shell
+What is not there yet: toolpath authoring, and Save has no keyboard shortcut — the keys the shell
 answers to are `Ctrl+Z`, `Ctrl+Shift+Z`, `Delete`/`Backspace`, `F`, `F1`, `F2` and `Esc`.
 
 Known cosmetic detail: auto-framing fits the canvas as measured when the panel layout settles, so the
@@ -208,8 +151,6 @@ Every recipe below also exists in the `justfile`; `just` on its own lists them.
 ```bash
 just check                 # the three gates: fmt --check, clippy -D warnings, all tests
 just run                   # the editor window
-just cli emit part.c2d --post my_machine.pp --out part.nc
-just cli simulate part.c2d --library tools.sqlite   # removed, gouge, uncut, crashes
 just status                # branch, sync with origin, uncommitted files
 ```
 
@@ -230,7 +171,6 @@ cargo run -q -p cam-cli -- tools add tools.sqlite --id endmill6 --diameter 6 --n
 cargo run -q -p cam-cli -- tools list tools.sqlite
 
 # Emit G-code
-cargo run -q -p cam-cli -- emit part.c2d --post my_machine.pp --library tools.sqlite --out part.nc
 ```
 
 Schemas, the post-processor grammar and the CLI contract are specified in
@@ -246,7 +186,6 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | `cam-model` | Job, layers, entities, toolpaths, schema version, validation |
 | `cam-store` | `.c2d` documents and the SQLite tool library, both with migrations |
 | `cam-post` | `.pp` parser and the data-driven G-code emitter |
-| `cam-toolpath` | Machining strategies: profile, pocket (offset and raster, with islands), drilling, the six M6 depth variants, the V-carve and the moulding |
 | `cam-sim` | Material-removal simulation: the stock's heightfield, swept removal, gouge and uncut reporting |
 | `cam-cli` | Headless pipeline and the verification surface — a library with a 16-line binary, so the shell's scripting panel calls the same functions (D-M10-1) |
 | `cam-import` | DXF, SVG, PDF, EPS and PNG raster import, with a report of what was converted or skipped |

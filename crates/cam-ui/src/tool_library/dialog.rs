@@ -305,20 +305,6 @@ impl Shell {
   /// answer the operator sees must be about the row this frame selected, not the one the last frame had
   /// (L13's reporting rule, which the T3 task paid for).
   fn refusal_for(&self, app: &AppState, tool: Option<&StoredTool>) -> Option<String> {
-    // A draft opened by the strategy editor has no document row to write (S10): the one thing the commit can
-    // mean is "this strategy cuts with this tool", so all it needs is a tool with a number.
-    if self.tool_library_for_draft {
-      let Some(tool) = tool else {
-        return Some(NO_TOOL.to_owned());
-      };
-      if tool.cutting.tool_number.is_none() {
-        return Some(format!(
-          "{} carries no tool number in the library, so a toolpath cannot name it.",
-          tool_title(tool)
-        ));
-      }
-      return None;
-    }
     if self.tools.is_empty() {
       return Some(EMPTY_LIBRARY.to_owned());
     }
@@ -1134,18 +1120,13 @@ impl Shell {
     if let Some(entry) = self.tools.iter_mut().find(|entry| entry.geometry.id == id) {
       *entry = tool.clone();
     }
-    match tool.cutting.tool_number {
-      // The draft's tool, not the document's: `Generate toolpath` is what writes it (S10).
-      Some(number) if self.tool_library_for_draft => self.strategy.tool_number = Some(number),
-      Some(number) => {
-        if let Some(target) = self.tool_library_target.clone() {
-          output.actions.push(UiAction::SetToolpathToolNumber {
-            toolpath_id: target,
-            tool_number: number,
-          });
-        }
+    if let Some(number) = tool.cutting.tool_number {
+      if let Some(target) = self.tool_library_target.clone() {
+        output.actions.push(UiAction::SetToolpathToolNumber {
+          toolpath_id: target,
+          tool_number: number,
+        });
       }
-      None => {}
     }
     self.close_tool_library();
   }

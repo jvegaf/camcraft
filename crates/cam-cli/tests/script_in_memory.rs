@@ -145,24 +145,3 @@ fn open_is_refused_when_the_document_belongs_to_the_caller() {
     "and it says why, got {message:?}"
   );
 }
-
-#[test]
-fn a_command_that_needs_a_file_beside_the_document_says_the_document_has_no_path() {
-  let directory = scratch("no-path");
-  let mut document = document();
-
-  // `emit` resolves the post-processor relative to the document, so an untitled document cannot run
-  // it — and the refusal must say that, not claim no document is open.
-  let (_, _, outcome) = run(&directory, "emit --post post_mm.pp\n", &mut document, None);
-
-  let message = outcome.expect_err("an untitled document has no path to resolve beside");
-  assert!(message.starts_with("line 1:"), "located, got {message:?}");
-  assert!(
-    message.contains("has no path yet"),
-    "names the missing path rather than a missing document, got {message:?}"
-  );
-  assert!(
-    !message.contains("no document is open"),
-    "and never pretends there is no document, got {message:?}"
-  );
-}

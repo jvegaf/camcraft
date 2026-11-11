@@ -355,30 +355,11 @@ impl Shell {
     self.show_tool_library = false;
     self.tool_library_target = None;
     self.tool_library_selected = None;
-    self.tool_library_for_draft = false;
     self.tool_search.clear();
     self.tool_draft = None;
     self.tool_groups_closed.clear();
     self.tool_error = None;
     self.tool_saved_pending.clear();
-  }
-
-  /// Open the library to choose the tool a **new** strategy will cut with (camui-prancheta S10).
-  ///
-  /// The same modal and the same commit, with the one difference the subject forces: the strategy editor is
-  /// drafting a toolpath that does not exist yet, so `Use this tool` has no document row to write and writes the
-  /// draft's tool number instead. Opening it from the card keeps the modal's own promise — the selection starts
-  /// on the tool the draft already names, or on nothing when it names none.
-  pub(crate) fn open_tool_library_for_draft(&mut self) {
-    self.tool_library_target = None;
-    self.tool_library_selected = self.strategy.tool_number.and_then(|number| {
-      stored_tool_for_number(&self.tools, number).map(|tool| tool.geometry.id.clone())
-    });
-    self.tool_library_for_draft = true;
-    self.tool_search.clear();
-    self.tool_error = None;
-    self.tool_saved_pending.clear();
-    self.show_tool_library = true;
   }
 
   /// The toolpath `Use this tool` would retool, by id, while the modal is open.
@@ -407,14 +388,8 @@ impl Shell {
       .drawn
       .tool_card_hits
       .push((CHOOSE.to_owned(), (centre.x, centre.y)));
-    if response.clicked() {
-      // The subject decides what the choice can write (S10): a toolpath on screen is retooled, a draft is
-      // filled in for `Generate toolpath` to write.
-      if app.document().toolpaths.is_empty() {
-        self.open_tool_library_for_draft();
-      } else {
-        self.open_tool_library(app);
-      }
+    if response.clicked() && !app.document().toolpaths.is_empty() {
+      self.open_tool_library(app);
     }
   }
 }

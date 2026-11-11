@@ -12,7 +12,6 @@ use cam_view::SnapKind;
 
 use crate::default_material_size;
 use crate::script_panel;
-use crate::strategy;
 use crate::theme::{self, Palette, Theme};
 use crate::tool_library::ToolDraft;
 use crate::view3d;
@@ -376,65 +375,21 @@ pub struct Shell {
   /// else, so it is not an edit and not an undo step. Every heading starts open, and the list is cleared when
   /// the modal closes so the next visit does not inherit a fold nobody made in it.
   pub tool_groups_closed: Vec<ToolKind>,
-  /// Whether the library was opened by the strategy editor while it is drafting a **new** toolpath (S10).
-  ///
-  /// The modal's commit writes one thing: a tool number. With a toolpath on screen that is a document edit
-  /// ([`UiAction::SetToolpathToolNumber`](crate::UiAction::SetToolpathToolNumber)); with only a draft it can
-  /// only mean "this strategy will cut with this tool", so the number lands in [`Shell::strategy`] and
-  /// `Generate toolpath` is what writes it. The flag is what tells the two apart, and it is cleared whenever
-  /// the modal closes.
-  pub(crate) tool_library_for_draft: bool,
-  /// The library file this window reads and writes: the **application's** own, not a drawing's.
-  ///
-  /// One file for the whole application ([`crate::tool_library::app_data_dir`]), the same for every document
-  /// the window opens and still there after the document is closed (tool-library-app S1). `None` while the
-  /// window has no library it may write: a host that hands in a bare snapshot ([`Shell::set_tools`]) leaves
-  /// nothing to write through, and an application whose library could not be opened leaves the six action rows
-  /// dark with the reason in [`Shell::tool_library_error`].
-  pub(crate) tool_library_path: Option<PathBuf>,
-  /// Why the application's library could not be opened, while the modal goes on saying so.
-  ///
-  /// `None` while the library opened. The sentence is drawn inside the modal under the six action rows and not
-  /// in the status bar: those rows are what its failure disables, so the reason belongs beside them.
-  pub(crate) tool_library_error: Option<String>,
-  /// Why the last `Use this tool` could not write the library, while the modal stays open.
-  ///
-  /// `None` while there is nothing to say. The sentence is drawn inside the modal instead of the status bar,
-  /// for the reason [`Self::import_error`] is: closing on a failure would lose the form the operator was
-  /// editing, and the next opening clears it.
+  /// Why the last tool-library write could not be completed.
   pub(crate) tool_error: Option<String>,
-  /// The geometry ids a library write recorded since the last frame reported one.
-  ///
-  /// `Export…` and `Import…` are answered by the host **between** two frames — the dialog returns a path and
-  /// [`Shell::apply_action`] writes it, with no [`ShellOutput`] to report into — so the ids wait here and the
-  /// next frame that draws the modal moves them into `drawn.tool_saved` and empties this
-  /// ([`crate::tool_library::dialog`], where a write the modal made itself reports itself too). A write the
-  /// modal's own rows make reports straight into the frame and never touches this.
+  /// Geometry ids saved since the last frame reported them.
   pub(crate) tool_saved_pending: Vec<String>,
-  /// A validated tool-library import waiting for the operator's answer (tool-library-app S5).
-  ///
-  /// `Some` while the question modal is open. A bad file never becomes one of these.
+  /// A validated tool-library import waiting for an answer.
   pub(crate) pending_tool_import: Option<PendingToolImport>,
-  /// The note the last answered tool-library import reported (tool-library-app S5).
-  ///
-  /// Held until the next frame that draws the modal reports it, the way `tool_saved_pending` is.
+  /// The note from the last answered tool-library import.
   pub(crate) tool_import_note_pending: Option<String>,
-  /// The toolpath the operator selected in the `TOOLPATHS` surface's list, by id (M13 T3, S4).
-  ///
-  /// View state, like [`Self::show_3d`] or the collapsed rail groups: choosing which toolpath the card and
-  /// the editor describe is a decision about the screen, so it is neither an edit nor an undo step, and the
-  /// document is not written. `None` is not "no toolpath" — it is "no choice", which reads as the document's
-  /// first toolpath, the answer this shell gave before the list existed. A selection that outlives its
-  /// toolpath (a delete, or a document opened over it) reads the same way rather than going stale
-  /// ([`Shell::described_toolpath`]).
+  /// The path to the tool library this window reads and writes.
+  pub(crate) tool_library_path: Option<PathBuf>,
+  /// Why the last tool-library load failed.
+  pub(crate) tool_library_error: Option<String>,
+  /// The selected toolpath id in the toolpaths list.
   pub(crate) selected_toolpath: Option<String>,
-  /// The strategy editor's draft: the name, the tool and the operation `Generate toolpath` writes
-  /// (camui-prancheta S10).
-  ///
-  /// Public and flat the way [`Self::material_size`] is, because a draft whose numbers could not be set from
-  /// outside a frame is a draft only a mouse could test. It is re-seeded from the document whenever the editor's
-  /// subject changes ([`strategy::Draft::sync`]), and `Cancel` throws it away.
-  pub strategy: strategy::Draft,
+
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   pub(crate) help_focus: crate::help::Command,
   /// What the canvas context menu is scoped to, as of the last right-click on the canvas.
@@ -530,15 +485,13 @@ impl Default for Shell {
       tool_library_selected: None,
       tool_draft: None,
       tool_groups_closed: Vec::new(),
-      tool_library_for_draft: false,
-      tool_library_path: None,
-      tool_library_error: None,
       tool_error: None,
       tool_saved_pending: Vec::new(),
       pending_tool_import: None,
       tool_import_note_pending: None,
+      tool_library_path: None,
+      tool_library_error: None,
       selected_toolpath: None,
-      strategy: strategy::Draft::default(),
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }

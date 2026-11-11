@@ -62,8 +62,6 @@ mod shell;
 pub mod stamp;
 /// The start screen: the modal the first frame shows when the window holds no project (start-screen S2, S3).
 pub mod start_screen;
-/// A strategy's editor: the same surface for creating and editing one toolpath (camui-prancheta S10).
-pub mod strategy;
 pub mod theme;
 /// The tool library as a master-detail modal (camui-prancheta S9).
 pub mod tool_library;
@@ -111,9 +109,8 @@ pub const MIN_DRAW_DRAG_PX: f64 = 3.0;
 /// The toolpath a selection names, or the document's first toolpath when it names one the document does not
 /// hold (M13 T3, S4).
 ///
-/// One function and every reader — [`Shell::described_toolpath`], the `TOOLPATHS` list, the current-tool card
-/// and the strategy editor's subject — so the fallback rule has exactly one spelling: a stale selection is
-/// not a state of its own, it is the same answer as no selection at all.
+/// One function and every reader that needs the described toolpath, so the fallback rule has exactly one
+/// spelling: a stale selection is not a state of its own, it is the same answer as no selection at all.
 pub(crate) fn resolve_toolpath<'a>(
   app: &'a AppState,
   selection: Option<&str>,

@@ -35,8 +35,7 @@ use cam_units::Length;
 
 use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args, save_report};
 use crate::{
-  append_toolpath, emit_args, emit_document, fresh_part_id, fresh_sheet_id, nest_args,
-  nest_document, only_path, simulate_args, simulate_document, toolpath_args, validate_report,
+  fresh_part_id, fresh_sheet_id, nest_args, nest_document, only_path, validate_report,
   write_report, Failure, NestRequest,
 };
 
@@ -99,29 +98,11 @@ const COMMANDS: &[Command] = &[
     usage: "[--sheets <WxH>] [--gap <mm>] [--rotation on|off] [--algorithm <mode>] [--step <mm>]",
     run: command_nest,
   },
-  // `cam-cli toolpath`: `toolpath_args` for the flags, `append_toolpath` for the whole command.
-  Command {
-    word: "toolpath",
-    usage: "--kind <kind> --entities <ids> --tool <number> and toolpath's other flags",
-    run: command_toolpath,
-  },
   // `cam-cli validate`: `Document::validate` and `validate_report`, the subcommand's own report.
   Command {
     word: "validate",
     usage: "no arguments",
     run: command_validate,
-  },
-  // `cam-cli emit`: `emit_args` for the flags, `emit_document` for the program.
-  Command {
-    word: "emit",
-    usage: "--post <file> [--out <path>] [--library <path>]",
-    run: command_emit,
-  },
-  // `cam-cli simulate`: `simulate_args` for the flags, `simulate_document` for the report.
-  Command {
-    word: "simulate",
-    usage: "[--library <path>] [--resolution <mm>]",
-    run: command_simulate,
   },
   // `cam_store::document::save_document`, the one writer, which validates as it writes.
   Command {
@@ -195,8 +176,7 @@ pub fn run_script_to(
 /// This is the entry point the shell's scripting panel calls: the document is the one the shell already
 /// has open, so a run mutates the caller's document and writes no file. `document_path` is the path the
 /// document was loaded from — `None` when it is untitled — and it is used for one thing: the commands
-/// that resolve a file beside the document (`toolpath`'s `tools_ref`, `emit`'s and `simulate`'s
-/// post-processor) need it, exactly as they do from a command line.
+/// that resolve a file beside the document need it, exactly as they do from a command line.
 ///
 /// **The whole run is one transaction.** The lines run against a copy, and the copy replaces `document`
 /// only when every line was accepted, so a refusal leaves the caller's document as it was — which is
@@ -691,21 +671,6 @@ fn command_nest(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
     .map_err(|failure| line.at_word(failure))
 }
 
-/// `toolpath [options]`: append a toolpath to the open document.
-///
-/// The tokens go to `toolpath`'s own parser and then to the function the subcommand calls, so every
-/// kind, every default and every refusal a toolpath has is the same one a command line gets.
-fn command_toolpath(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
-  let tokens = line.tokens_as_strings();
-  let args = toolpath_args(&tokens).map_err(|failure| line.locate(failure))?;
-  refuse_document_destination(line, args.path.as_ref(), &args.out)?;
-  let document_path = session.document_path(line)?.to_path_buf();
-  let report = session.mutate(line, |document| {
-    append_toolpath(document, &document_path, &args).map_err(|failure| line.locate(failure))
-  })?;
-  session.say(&report)
-}
-
 /// `validate`: check the open document and write the counts the subcommand prints.
 fn command_validate(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   line.exactly(0)?;
@@ -717,39 +682,6 @@ fn command_validate(session: &mut Session, line: &ScriptLine) -> Result<(), Fail
     validate_report(document)
   };
   session.say(&report)
-}
-
-/// `emit --post <file>`: write the program the open document makes.
-fn command_emit(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
-  let tokens = line.tokens_as_strings();
-  let args = emit_args(&tokens).map_err(|failure| line.locate(failure))?;
-  if let Some(path) = &args.document {
-    return Err(line.fail_at(
-      line.token_for(&path.to_string_lossy()),
-      format!("emit {NO_POSITIONAL}"),
-    ));
-  }
-  let (document, document_path) = session.open_document(line)?;
-  emit_document(document, document_path, &args).map_err(|failure| line.locate(failure))
-}
-
-/// `simulate`: simulate the program the open document makes and report it.
-fn command_simulate(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
-  let tokens = line.tokens_as_strings();
-  let args = simulate_args(&tokens).map_err(|failure| line.locate(failure))?;
-  if let Some(path) = &args.document {
-    return Err(line.fail_at(
-      line.token_for(&path.to_string_lossy()),
-      format!("simulate {NO_POSITIONAL}"),
-    ));
-  }
-  let (document, document_path) = session.open_document(line)?;
-  let outcome =
-    simulate_document(document, document_path, &args).map_err(|failure| line.locate(failure))?;
-  // The report is the finding's body, so it is written before the exit code says which one it was.
-  outcome
-    .write_to(&mut *session.out)
-    .map_err(|failure| line.at_word(failure))
 }
 
 /// `save <document>`: validate the open document and write it here.
@@ -820,7 +752,7 @@ fn command_cutlist(session: &mut Session, line: &ScriptLine) -> Result<(), Failu
   cut_list_document(document, &args, &mut **out).map_err(|failure| line.locate(failure))
 }
 
-/// Refuse a scripted `nest` or `toolpath` a document destination of its own.
+/// Refuse a scripted `nest` a document destination of its own.
 ///
 /// Both subcommands write their document where `--out` says, and a script writes its document with
 /// `save`: accepting the flag and ignoring it would leave a `--out` that was never applied looking
