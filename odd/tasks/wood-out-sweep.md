@@ -55,9 +55,9 @@ commit que compila y deja sus tests verdes por separado.
 | 1 | `camcraft-sweep-c1` | system design + esta especificación | 971 | **approved** (riesgo `low`, sin lentes) |
 | 2 | `camcraft-sweep-c2` | `shared` + `follow` (profile + tabs) | 1.409 | pendiente |
 | 3 | `camcraft-sweep-c3` | `rings` (pocket completo) + tests de anillos | 1.218 | pendiente |
-| 4 | `camcraft-sweep-c4` | esta spec: cadena, Log y tareas al día | ~95 | docs, se auto-aprueba |
-| 5 | `camcraft-sweep-c5` | tests de islas de `rings` | 1.069 | pendiente |
-| 6 | `camcraft-sweep-c6` | `peck` (taladrado) | 1.043 | pendiente |
+| 4 | `camcraft-sweep-c4` | esta spec: cadena, Log y tareas al día | 72 | **approved** (riesgo `low`, sin lentes) |
+| 5 | `camcraft-sweep-c5` | tests de islas de `rings` | 1.069 | **salteado** (L20) |
+| 6 | `camcraft-sweep-c6` | `peck` (taladrado) | 1.043 | **salteado** (L20) |
 
 **El orden follow -> rings -> islas -> peck no es arbitrario.** `follow` es el único modulo que alcanza
 todos los helpers de `shared`; empezar por `peck` dejaria `push_horizontal`, `piece_endpoints` y
@@ -176,3 +176,25 @@ el contexto del revisor.** El proveedor mismo indica partir en candidatos mas ch
 directo: sin STATUS ni acknowledgement. **Leccion registrada**: el primer START fue rechazado con
 `invalid_request` porque se pidieron lentes; un lente de agente exige review de riesgo medio o alto, y un
 candidato solo de documentación se arranca con `{"mode":"ordinary"}` y **sin lentes**.
+
+**L18** (provider, evidencia — c3): el refuter confirmo `R3-1` como CRITICAL `inferential`
+(`rings.rs:295-326`: `raster_rows` no rechaza un inset que deja la region sin contornos, mientras
+`offset_rings` si). **Verificado por el padre y rebajado en la practica:** un probe sobre 32 formas
+degeneradas (rectangulos hasta 0,2 mm de alto, cuadrados de 0,5 a 3 mm, una isla que cancela su contorno
+exactamente) devolvio `OffsetCollapsed` del kernel en los 32. El defecto de lectura es real; el bug vivo
+no existe. Corregido igual como codigo defensivo (guarda + test del invariante), validado por el
+`provider_targeted_validator` en 16 s y aprobado. **Leccion de calibracion**: el proveedor puede marcar
+CRITICAL lo que es asimetria de codigo sin entrada alcanzable; conviene probar antes de creerle la
+severidad.
+
+**L19** (provider, evidencia — c4): `state: approved`, `risk_tier: low`,
+`risk_reasons: [non_executable_only]`, `lenses_required: false`, 1 archivo, 72 lineas,
+`lineage: review-c5a4f854435b4d03`. Cierre terminal directo, sin acknowledgement.
+
+**L20** (decision del dueno, alcance de la review): **c5 y c6 no se revisan.** Motivo: para cuando se
+tomo la decision el rescate ya estaba probado tres veces — los tests viajaron con el codigo y pasan, el
+contenido es identico al slice sin rebanar (`git diff camcraft-sweep-s1 camcraft-sweep-c6 -- crates/cam-ops`
+muestra solo la correccion), y la review encontro un defecto de lectura real en 3.700 lineas de copia
+mecanica. c5 son tests copiados sin codigo de produccion y c6 es `drill.rs` copiado verbatim: el valor
+marginal no paga 4 a 8 corridas de modelo. Queda registrado, no silenciado. Costo total de review del
+rescate: 6 corridas (2 de c2, 4 de c3).
