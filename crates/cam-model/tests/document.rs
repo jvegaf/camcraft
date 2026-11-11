@@ -2416,3 +2416,45 @@ fn a_nesting_that_cannot_say_what_it_used_loads_only_a_record_that_used_nothing(
     "{error:?}"
   );
 }
+
+#[test]
+fn two_layers_cannot_claim_the_same_board_role() {
+  let mut document = document_with_operation(Operation::Isolation(isolation_params()));
+  for id in ["L2", "L3"] {
+    document.layers.push(cam_model::Layer {
+      id: id.to_owned(),
+      name: format!("copper {id}"),
+      role: cam_model::LayerRole::CopperTop,
+      visible: true,
+      entities: Vec::new(),
+    });
+  }
+  let error = refusal(&document);
+  assert!(
+    matches!(error, cam_model::ModelError::DuplicateLayerRole { .. }),
+    "{error:?}"
+  );
+  assert!(error.to_string().contains("CopperTop"), "{error}");
+}
+
+#[test]
+fn keepouts_and_general_geometry_may_repeat() {
+  let mut document = document_with_operation(Operation::Isolation(isolation_params()));
+  for (id, role) in [
+    ("L2", cam_model::LayerRole::Keepout),
+    ("L3", cam_model::LayerRole::Keepout),
+    ("L4", cam_model::LayerRole::Geometry),
+    ("L5", cam_model::LayerRole::Geometry),
+  ] {
+    document.layers.push(cam_model::Layer {
+      id: id.to_owned(),
+      name: format!("layer {id}"),
+      role,
+      visible: true,
+      entities: Vec::new(),
+    });
+  }
+  document
+    .validate()
+    .expect("keeps-outs and general geometry repeat");
+}

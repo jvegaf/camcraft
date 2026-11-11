@@ -199,10 +199,14 @@ pub enum LayerRole {
   CopperTop,
   /// Bottom copper side.
   CopperBottom,
-  /// Solder mask.
-  Mask,
-  /// Silkscreen.
-  Silk,
+  /// Solder mask, top side.
+  MaskTop,
+  /// Solder mask, bottom side.
+  MaskBottom,
+  /// Silkscreen, top side.
+  SilkTop,
+  /// Silkscreen, bottom side.
+  SilkBottom,
   /// Board edge, the outline cutout follows.
   Outline,
   /// Holes and slots.
@@ -212,6 +216,17 @@ pub enum LayerRole {
   /// General geometry with no board role, such as a DXF or SVG import.
   #[default]
   Geometry,
+}
+
+impl LayerRole {
+  /// Whether a board can have more than one layer with this role.
+  ///
+  /// The board's own layers are singletons — one top copper, one top mask, one outline — so a second
+  /// one is a document that cannot mean anything. Keeps-outs and plain geometry are the exceptions:
+  /// a tool can be kept out of many separate areas, and a drawing can arrive as many layers.
+  fn repeatable(self) -> bool {
+    matches!(self, Self::Keepout | Self::Geometry)
+  }
 }
 
 /// A named, independently switchable group of geometry.
@@ -595,6 +610,12 @@ pub enum ModelError {
     found: String,
     /// Tag this build supports.
     supported: String,
+  },
+  /// Two layers claim the same board role.
+  #[error("two layers claim the role {role}; a board has one layer with that role")]
+  DuplicateLayerRole {
+    /// The role both claim.
+    role: String,
   },
   /// Two records share an identifier.
   #[error("duplicate {kind} id {id:?}")]
@@ -1145,6 +1166,7 @@ impl Document {
       check_panelize(toolpath)?;
     }
 
+    check_layers(self)?;
     check_nesting(self)?;
 
     Ok(())
@@ -1167,6 +1189,26 @@ impl Document {
 /// Where a placement's material sits is not re-derived here: [`Document::placement_footprint`] is the
 /// one reading of a placement, so this check and a nester certifying its own output agree by
 /// construction (invariant 2).
+fn check_layers(document: &Document) -> Result<(), ModelError> {
+  // A board has one layer per role; two of them is a document that cannot mean anything, and it is
+  // cheaper to say so here than to let a cutout pick the wrong outline. Ordered by role so the
+  // refusal names the same role whatever order the layers were authored in.
+  let mut seen = std::collections::BTreeMap::new();
+  for layer in &document.layers {
+    if layer.role.repeatable() {
+      continue;
+    }
+    let count = seen.entry(format!("{:?}", layer.role)).or_insert(0u32);
+    *count += 1;
+    if *count > 1 {
+      return Err(ModelError::DuplicateLayerRole {
+        role: format!("{:?}", layer.role),
+      });
+    }
+  }
+  Ok(())
+}
+
 fn check_nesting(document: &Document) -> Result<(), ModelError> {
   let Some(nesting) = &document.nesting else {
     return Ok(());
