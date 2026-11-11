@@ -53,8 +53,8 @@ coverage bound and is the pocket's own residue under the inlay's male half (see 
 | The contract rows for each `kind` | [format.md](format.md#document-c2d) |
 
 The decisions are D-M6-1 … D-M6-14 and the log is L1 … L17 in the
-[feature document](../odd/tasks/m6-depth-variants.md); the milestone's evidence is §4.9 of the
-[roadmap](../odd/roadmap.md), and the project-level summary is in the [README](../README.md).
+[feature document](../../odd/tasks/008-m6-depth-variants.md); the milestone's evidence is §4.9 of the
+[roadmap](../../odd/roadmap/index.md), and the project-level summary is in the [README](../../README.md).
 
 ## The six strategies, one contract
 
@@ -646,10 +646,10 @@ byte-identical. An inlay appends both halves or neither.
 
 | Question | Where |
 | --- | --- |
-| What M6 had to be, and every amendment to it | `odd/tasks/m6-depth-variants.md` — S1 … S14, A1 … A11, D-M6-1 … 14, L1 … L17 |
+| What M6 had to be, and every amendment to it | `odd/tasks/008-m6-depth-variants.md` — S1 … S14, A1 … A11, D-M6-1 … 14, L1 … L17 |
 | What each kind does in the document | [format.md](format.md#document-c2d), one row per `kind` |
 | What the simulation authorises for each | [m5-simulation.md](m5-simulation.md#the-target-surface), one row per operation |
 | How a pocket, a profile and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
 | How islands, parity and the `@2` tag work | [region-booleans.md](region-booleans.md) |
-| What M6 delivered, and what it cost | [odd/roadmap.md](../odd/roadmap.md) §4.9 |
-| The project-level summary | [README.md](../README.md) |
+| What M6 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.9 |
+| The project-level summary | [README.md](../../README.md) |

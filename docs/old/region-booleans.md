@@ -33,7 +33,7 @@ is no "island" shape in the document, and nothing is inferred from the drawing.
 | Both pocket strategies over a region | `cam-toolpath::pocket` |
 
 The contract rows for the document field and the CLI flag are in [format.md](format.md), and the
-decision history is the [feature document](../odd/tasks/region-booleans.md) (D-RB-1 … D-RB-11,
+decision history is the [feature document](../../odd/tasks/007-region-booleans.md) (D-RB-1 … D-RB-11,
 L1 … L11).
 
 ## The model: a boundary list under parity

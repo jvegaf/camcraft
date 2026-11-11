@@ -3,7 +3,7 @@
 V-Carve is the one strategy the roadmap kept out of the mechanical milestones, and the reason is a
 sentence rather than a feature: a V-bit's depth is a function of how far the tip is from the boundary, so
 the toolpath is not a pass sequence at all — it is a **depth field**, and the field's skeleton is the
-medial axis of a region that may contain arcs. `odd/roadmap.md` §4.1 put it in its own milestone for
+medial axis of a region that may contain arcs. `odd/roadmap/index.md` §4.1 put it in its own milestone for
 precisely that: "the algorithm is not recoverable from static analysis — this is a genuine research
 task".
 
@@ -49,8 +49,8 @@ disc's analytic `3534.292` (the difference is the 1 mm grid's quadrature of `∫
 | The contract row for the `v_carve` kind | [format.md](format.md#document-c2d) |
 
 The decisions are D-M7-1 … D-M7-8 and the log is L1 … L12 in the
-[feature document](../odd/tasks/m7-vcarve.md); the milestone's evidence is §4.10 of the
-[roadmap](../odd/roadmap.md), and the project-level summary is in the [README](../README.md).
+[feature document](../../odd/tasks/009-m7-vcarve.md); the milestone's evidence is §4.10 of the
+[roadmap](../../odd/roadmap/index.md), and the project-level summary is in the [README](../../README.md).
 
 ## The claim, and why the medial axis is the toolpath
 
@@ -432,11 +432,11 @@ golden programs and its differential — not on an outside review that never ran
 
 | Question | Where |
 | --- | --- |
-| What M7 had to be, and every amendment to it | `odd/tasks/m7-vcarve.md` — S1 … S18, A1 … A8, D-M7-1 … 8, L1 … L12 |
+| What M7 had to be, and every amendment to it | `odd/tasks/009-m7-vcarve.md` — S1 … S18, A1 … A8, D-M7-1 … 8, L1 … L12 |
 | What the `v_carve` kind stores | [format.md](format.md#document-c2d), one row per `kind` |
 | What the simulation authorises | [m5-simulation.md](m5-simulation.md#the-target-surface) |
 | How a profile, a pocket and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
 | How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
 | How islands, parity and the `@2` tag work | [region-booleans.md](region-booleans.md) |
-| What M7 delivered, and what it cost | [odd/roadmap.md](../odd/roadmap.md) §4.10 |
-| The project-level summary | [README.md](../README.md) |
+| What M7 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.10 |
+| The project-level summary | [README.md](../../README.md) |

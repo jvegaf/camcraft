@@ -49,7 +49,7 @@ below is where it lives.
 | The `nesting` section: sheets, parts, placements, cost, and twelve refusals | `cam-model::Nesting`, `check_nesting` |
 | The one arithmetic for utilisation and waste | `cam-model::Document::nesting_utilisation`, `placement_footprint` |
 | `nest` — its flags, refusals, report, exit `7` and write-back | `cam-cli` |
-| The contract row for the section | this document, and `odd/tasks/m9-nesting.md` |
+| The contract row for the section | this document, and `odd/tasks/020-m9-nesting.md` |
 
 ## What S1–S4 decided
 
@@ -495,11 +495,11 @@ pre-existing command and nothing else on that surface moving at all.
 
 | Question | Where |
 | --- | --- |
-| What M9 had to be, and every decision behind it | `odd/tasks/m9-nesting.md` — S1 … S7, T1 … T6, L1 … L11 |
+| What M9 had to be, and every decision behind it | `odd/tasks/020-m9-nesting.md` — S1 … S7, T1 … T6, L1 … L11 |
 | What the `nesting` section stores, and the document schema | this document, and `crates/cam-model/src/lib.rs`'s `Nesting` |
 | How the simulation authorises a cut | [m5-simulation.md](m5-simulation.md#the-target-surface) |
 | How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
 | How a V-carve's depth field behaves | [m7-vcarve.md](m7-vcarve.md) |
 | How a moulding's cross-section behaves | [m8-moulding.md](m8-moulding.md) |
-| What M9 delivered, and what it cost | [odd/roadmap.md](../odd/roadmap.md) §4.12 |
-| The project-level summary | [README.md](../README.md) |
+| What M9 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.12 |
+| The project-level summary | [README.md](../../README.md) |

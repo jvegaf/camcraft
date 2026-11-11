@@ -70,7 +70,7 @@ the placements name, and M9's one derivation read through a script.
 | The HTML print sheet, escaped by hand | `cam_cli::printsheet` (`print_sheet`, `escape_html`) |
 | The minimal panel and its adapter boundary | `cam_ui::script_panel` (`ScriptPanel::run`, `ScriptPanel::ui`) |
 | The library target the shell calls (D-M10-1) | `crates/cam-cli/src/lib.rs`, and the 16-line `src/main.rs` |
-| The record | this document, and `odd/tasks/m10-documents.md` |
+| The record | this document, and `odd/tasks/018-m10-documents.md` |
 
 ## What S1–S4 decided
 
@@ -304,7 +304,7 @@ last result, and the cut-list-plus-`save` capture.
 
 The module **is mounted now**: a palette command (`Command::Script`, in the SHOW AND SELECT group)
 opens it as a modal over the canvas, `Esc` closes it, and the frame's canvas does not move — see
-`odd/tasks/script-panel-mount.md` and §"Known limits" for what the mount does not solve.
+`odd/tasks/022-script-panel-mount.md` and §"Known limits" for what the mount does not solve.
 
 ## D-M10-1: the crate named `cam-cli` is also the operations home
 
@@ -425,7 +425,7 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   enumerates five zones, `design/camui-shell/02-stages.html:358` says "Five zones and nothing else", and
   `grep -ri script design/` finds nothing, so the surface exists in the shell and not in the boards; and
   **the panel edits the shell's document, and writes no file** (closed in M11; it used to read and write a
-  file on disk, `odd/tasks/script-panel-document.md`). `cam_cli::script::run_script_on` takes the
+  file on disk, `odd/tasks/023-script-panel-document.md`). `cam_cli::script::run_script_on` takes the
   `&mut Document` the caller owns, the whole run is one transaction — a refused line leaves the document
   as it was — and `open`/`save` are refused on the line that tries, because the shell's document is
   already open and the shell's own Save is the one writer. The shell then keeps the result through
@@ -445,7 +445,7 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
   `review-transactions/quarantine/review-5eb75a623cbfc72e-441271739` — so no authority is left open and
   what the mount lacks is the outside view, not a missing correction. Its evidence is `./scripts/check.sh`
   (1517 tests over 110 result lines), the modal's own test and `clippy -D warnings`
-  (`odd/tasks/script-panel-mount.md`, L6-L8). The same inverted finding can be filed again by any fresh
+  (`odd/tasks/022-script-panel-mount.md`, L6-L8). The same inverted finding can be filed again by any fresh
   review of the same commits, because nothing about the candidate changed.
 - **The panel runs synchronously on the frame that pressed `Run`.** Deliberate, and recorded in the
   module: one script over one document, no worker thread, no queue and no progress state. A script that
@@ -472,15 +472,15 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
 
 | Question | Where |
 | --- | --- |
-| What M10 had to be, and every decision behind it | `odd/tasks/m10-documents.md` — S1 … S6, T1 … T6, L1 … L7 |
+| What M10 had to be, and every decision behind it | `odd/tasks/018-m10-documents.md` — S1 … S6, T1 … T6, L1 … L7 |
 | The language's grammar, its diagnostics and its help text | this document, and `--help`'s `SCRIPTS:` block (HELP is `crates/cam-cli/src/lib.rs`) |
 | The part list's dialect in full | `crates/cam-import/src/csv.rs`'s module comment |
 | The cut list's columns and formatting | `crates/cam-cli/src/pieces.rs`'s module comment |
 | What the sheet renders, and what it refuses to | `crates/cam-cli/src/printsheet.rs`'s module comment |
 | The panel's boundary and its three rules | `crates/cam-ui/src/script_panel.rs`'s module comment |
-| Why `cam-cli` is a library (D-M10-1) | this document, and `odd/tasks/m10-documents.md` L4–L6 |
+| Why `cam-cli` is a library (D-M10-1) | this document, and `odd/tasks/018-m10-documents.md` L4–L6 |
 | The `nesting` section the cut list reads | [m9-nesting.md](m9-nesting.md) |
 | How the simulation authorises a cut | [m5-simulation.md](m5-simulation.md#the-target-surface) |
-| What M10 delivered, and what it cost | [odd/roadmap.md](../odd/roadmap.md) §4.13 |
+| What M10 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.13 |
 | The document and post-processor contracts | [format.md](format.md) — its command-line table predates M10's four commands (see Known limits) |
-| The project-level summary | [README.md](../README.md) |
+| The project-level summary | [README.md](../../README.md) |

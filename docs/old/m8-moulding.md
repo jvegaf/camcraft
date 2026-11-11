@@ -3,7 +3,7 @@
 Moulding is the eleventh and last strategy in the scope the roadmap fixed at M0: a **rail** in XY, a
 **cross-section** of `(lateral, depth)` points swept along it, and a **stepover** that spaces the
 overlapped lateral passes. It is the first operation in the tree whose cutting law is a cross-section
-rather than one number, and `odd/roadmap.md` gave it a milestone of its own for exactly that reason —
+rather than one number, and `odd/roadmap/index.md` gave it a milestone of its own for exactly that reason —
 "Needs the 3D-adjacent math from M7's distance field".
 
 What it cost is worth stating against M6 and M7, because M8 is the cheap one. M6 discovered that no tool
@@ -47,8 +47,8 @@ rail, the same profile and the same stepover.
 The owner's scope decision (S3, verbatim: "Sección Z barrida por el rail" — "the Z section swept by the
 rail", with "el rail va en XY, el perfil dice (distancia lateral, profundidad Z), stepover son pasadas
 laterales solapadas") is the whole specification M8 had, and the five decisions below are its reading.
-The feature document is `odd/tasks/m8-moulding.md`; the milestone's evidence is §4.11 of the
-[roadmap](../odd/roadmap.md), and the project-level summary is in the [README](../README.md).
+The feature document is `odd/tasks/019-m8-moulding.md`; the milestone's evidence is §4.11 of the
+[roadmap](../../odd/roadmap/index.md), and the project-level summary is in the [README](../../README.md).
 
 ## What S3 decided, in five decisions
 
@@ -283,11 +283,11 @@ is an input error naming the flag rather than a defaulted spacing.
 
 | Question | Where |
 | --- | --- |
-| What M8 had to be, and every decision behind it | `odd/tasks/m8-moulding.md` — S1 … S7, T1 … T7, L1 … L12 |
+| What M8 had to be, and every decision behind it | `odd/tasks/019-m8-moulding.md` — S1 … S7, T1 … T7, L1 … L12 |
 | What the `moulding` kind stores | [format.md](format.md#document-c2d), one row per `kind` |
 | What the simulation authorises | [m5-simulation.md](m5-simulation.md#the-target-surface) |
 | How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
 | How a V-carve's depth field behaves | [m7-vcarve.md](m7-vcarve.md) |
 | How a profile, a pocket and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
-| What M8 delivered, and what it cost | [odd/roadmap.md](../odd/roadmap.md) §4.11 |
-| The project-level summary | [README.md](../README.md) |
+| What M8 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.11 |
+| The project-level summary | [README.md](../../README.md) |

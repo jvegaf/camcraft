@@ -34,8 +34,8 @@ decimal count and pinned byte for byte.
 
 The contract rows for `simulate` and exit `6` are in [format.md](format.md); the decisions are
 D-M5-1 … D-M5-11 and the log is L1 … L9 in the
-[feature document](../odd/tasks/m5-simulation.md); the milestone's evidence is §4.8 of the
-[roadmap](../odd/roadmap.md), and the project-level summary is in the [README](../README.md). The
+[feature document](../../odd/tasks/006-m5-simulation.md); the milestone's evidence is §4.8 of the
+[roadmap](../../odd/roadmap/index.md), and the project-level summary is in the [README](../../README.md). The
 simulation consumes the same `MoveStream` `cam-cli emit` hands the post-processor, never a strategy's
 intentions (D-M5-1): an oracle that re-reads the intent it is meant to check is not one. A defect the
 strategies share with the emitter is therefore simulated faithfully, which is the point.
