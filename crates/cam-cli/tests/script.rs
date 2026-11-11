@@ -79,7 +79,6 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
     id: "TP1".to_owned(),
     name: "Outside profile".to_owned(),
     entity_ids: vec!["E1".to_owned()],
-    island_ids: Vec::new(),
     tool_number: 1,
     operation: Operation::Isolation(IsolationParams {
       passes: 1,

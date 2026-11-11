@@ -2948,7 +2948,6 @@ fn add_toolpath(toolpath_id: &str, entity_ids: Vec<String>, tool_number: u32) ->
     toolpath_id: toolpath_id.to_owned(),
     name: format!("{toolpath_id} isolation"),
     entity_ids,
-    island_ids: Vec::new(),
     tool_number,
     operation: isolation_op(),
   }
@@ -2971,7 +2970,6 @@ fn adding_a_toolpath_stores_its_tool_number_and_operation() {
   assert_eq!(stored.name, "TP1 isolation");
   assert_eq!(stored.tool_number, 4);
   assert_eq!(stored.entity_ids, vec![rectangle]);
-  assert!(stored.island_ids.is_empty());
   assert_eq!(stored.operation, isolation_op());
 }
 

@@ -93,7 +93,6 @@ fn profile_toolpath(id: &str, name: &str, entity_ids: &[&str], tool: u32) -> Too
     id: id.to_owned(),
     name: name.to_owned(),
     entity_ids: entity_ids.iter().map(|id| (*id).to_owned()).collect(),
-    island_ids: Vec::new(),
     tool_number: tool,
     operation: Operation::Isolation(IsolationParams {
       passes: 1,

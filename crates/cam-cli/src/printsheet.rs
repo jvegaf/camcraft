@@ -246,9 +246,6 @@ fn toolpath_section(document: &Document) -> Vec<String> {
       ("tool", format!("T{}", toolpath.tool_number)),
       ("entities", id_list(&toolpath.entity_ids)),
     ];
-    if !toolpath.island_ids.is_empty() {
-      rows.push(("islands", id_list(&toolpath.island_ids)));
-    }
     rows.extend(parameter_rows(toolpath));
     lines.extend(field_table(&rows));
   }

@@ -66,8 +66,6 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
 
       entity_ids: vec!["E1".to_owned()],
 
-      island_ids: Vec::new(),
-
       tool_number,
 
       operation: cam_model::Operation::Isolation(cam_model::IsolationParams {

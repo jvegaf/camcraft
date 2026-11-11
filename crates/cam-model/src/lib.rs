@@ -436,16 +436,6 @@ pub struct Toolpath {
   pub name: String,
   /// Entities the toolpath is computed from.
   pub entity_ids: Vec<String>,
-  /// Closed contours inside the region that must be left standing, such as a pocket's islands.
-  ///
-  /// Explicit, never inferred: a contour drawn inside another may be an island or may simply be a
-  /// separate feature, and guessing would reverse the user's intent (D-RB-1). Islands may be
-  /// **nested**: an island strictly inside another is legal and is how a boss inside a hole is
-  /// expressed, since the region's parity rule turns a boundary at an odd nesting depth back into
-  /// material (D-RB-2). An island pair that crosses or touches is refused instead. Omitted when empty,
-  /// so a document without islands is byte-identical to one written before they existed.
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub island_ids: Vec<String>,
   /// Tool number, matched against the tool library at emission time.
   pub tool_number: u32,
   /// The operation and its parameters.

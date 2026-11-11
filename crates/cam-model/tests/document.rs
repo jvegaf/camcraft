@@ -59,7 +59,6 @@ fn document_with_operation(operation: Operation) -> Document {
     id: "TP1".to_owned(),
     name: "Op".to_owned(),
     entity_ids: vec!["E1".to_owned()],
-    island_ids: Vec::new(),
     tool_number: 1,
     operation,
   });

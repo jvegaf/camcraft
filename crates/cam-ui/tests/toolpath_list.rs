@@ -57,7 +57,6 @@ fn toolpath(id: &str, name: &str, tool_number: u32, operation: Operation) -> Too
     id: id.to_owned(),
     name: name.to_owned(),
     entity_ids: vec!["E1".to_owned()],
-    island_ids: Vec::new(),
     tool_number,
     operation,
   }

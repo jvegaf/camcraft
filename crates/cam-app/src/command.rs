@@ -393,8 +393,6 @@ pub enum Command {
     name: String,
     /// Entities the toolpath is computed from; at least one.
     entity_ids: Vec<String>,
-    /// Closed contours inside the region that must be left standing; empty for none.
-    island_ids: Vec<String>,
     /// Tool number, matched against the tool library at emission time.
     tool_number: u32,
     /// The operation and its parameters.
@@ -717,7 +715,6 @@ impl Command {
         toolpath_id,
         name,
         entity_ids,
-        island_ids,
         tool_number,
         operation,
       } => {
@@ -731,7 +728,6 @@ impl Command {
           id: toolpath_id.clone(),
           name: name.clone(),
           entity_ids: entity_ids.clone(),
-          island_ids: island_ids.clone(),
           tool_number: *tool_number,
           operation: operation.clone(),
         });
