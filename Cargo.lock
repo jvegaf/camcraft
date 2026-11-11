@@ -726,6 +726,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cam-gerber"
+version = "0.0.1"
+dependencies = [
+ "cam-geom",
+ "cam-units",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cam-import"
 version = "0.0.1"
 dependencies = [

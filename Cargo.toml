@@ -14,6 +14,7 @@ members = [
     "crates/cam-export",
     "crates/cam-import",
     "crates/cam-excellon",
+    "crates/cam-gerber",
     "crates/cam-view",
     "crates/cam-ui",
     "crates/cam-desktop",
@@ -38,6 +39,7 @@ cam-sim = { path = "crates/cam-sim" }
 cam-app = { path = "crates/cam-app" }
 cam-import = { path = "crates/cam-import" }
 cam-excellon = { path = "crates/cam-excellon" }
+cam-gerber = { path = "crates/cam-gerber" }
 cam-export = { path = "crates/cam-export" }
 cam-cli = { path = "crates/cam-cli" }
 cam-view = { path = "crates/cam-view" }
