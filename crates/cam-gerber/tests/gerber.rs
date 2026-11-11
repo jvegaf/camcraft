@@ -909,3 +909,55 @@ fn a_contour_with_fewer_than_three_segments_is_refused() {
     "the refusal says why: {text}"
   );
 }
+
+#[test]
+fn a_macro_parameter_expression_is_evaluated_with_the_apertures_modifiers() {
+  // E3b: the dialect writes `$1+$1` for a width of twice the first modifier, and mixes x and X
+  // with the usual arithmetic signs. Multiplication binds tighter than addition.
+  assert_eq!(
+    cam_gerber::evaluate_parameter("$1+$1", &[2.5]).expect("evaluates"),
+    5.0
+  );
+  assert_eq!(
+    cam_gerber::evaluate_parameter("$1x$2/2", &[3.0, 4.0]).expect("evaluates"),
+    6.0
+  );
+  assert_eq!(
+    cam_gerber::evaluate_parameter("-$1+1", &[0.25]).expect("evaluates"),
+    0.75
+  );
+  assert_eq!(
+    cam_gerber::evaluate_parameter("2X3-1", &[]).expect("evaluates"),
+    5.0
+  );
+}
+
+#[test]
+fn a_parameter_the_aperture_does_not_supply_is_refused_by_name() {
+  let error = cam_gerber::evaluate_parameter("$3+1", &[2.0, 4.0])
+    .expect_err("the aperture supplies two modifiers");
+  let text = format!("{error}");
+  assert!(
+    text.contains("$3") && text.contains('2'),
+    "the refusal names the parameter and what was supplied: {text}"
+  );
+}
+
+#[test]
+fn a_parameter_expression_outside_the_grammar_is_refused() {
+  // Parentheses are not part of what this reader evaluates, and guessing would silently change
+  // the aperture's size, so the refusal names the character.
+  let error = cam_gerber::evaluate_parameter("(1+2)", &[]).expect_err("parentheses are refused");
+  let text = format!("{error}");
+  assert!(
+    text.contains('('),
+    "the refusal names what it could not read: {text}"
+  );
+
+  let error =
+    cam_gerber::evaluate_parameter("$1+", &[1.0]).expect_err("a trailing sign is refused");
+  assert!(
+    format!("{error}").contains("operator"),
+    "the refusal says what is missing: {error}"
+  );
+}

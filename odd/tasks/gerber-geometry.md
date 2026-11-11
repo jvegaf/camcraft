@@ -48,6 +48,13 @@ que sin esto un archivo real solo aporta pads y planos.
 **S7 — Un `D02` dentro de `G36`/`G37` empieza otro contorno de la misma region.** No es un error: una
 region puede tener varios contornos, y cada `D02` cierra el que venia. Hoy se rechaza por nombre.
 
+**S8 — Una apertura puede nombrar una macro, y sus modificadores son los `$n`.** El dialecto medido
+redefine `RoundRect` como macro con primitivas 4, 1 y 20 y expresiones como `$1+$1`: el ancho del pad es
+dos veces el primer modificador de la apertura. Evaluar eso es obligatorio para no perder las islas de
+soldadura de una placa real, y evaluarlo **mal** es peor que rechazarlo, porque cambia el tamano de un pad
+en silencio. La gramatica que se acepta es `+ - x X * /` con el producto mas ligado que la suma; todo lo
+demas se rechaza nombrando el caracter.
+
 ## Tasks
 
 | ID | Task | Specs | Route | Commit |
@@ -59,12 +66,14 @@ region puede tener varios contornos, y cada `D02` cierra el que venia. Hoy se re
 | T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | inline | `71f7883` |
 | T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | inline | L9 |
 | T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | inline | L10 |
+| T8 | Evaluador de expresiones de macro: `$n`, `+ - x X * /`, producto con precedencia | S8 | inline | L11 |
+| T9 | Primitivas de macro 1, 20, 21 y 4 a `Region` | S8 | pending | — |
+| T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas | S8 | pending | — |
 
-**Fuera de alcance, declarado:** los `D01` con apertura (trazo = barrido de la
-apertura a lo largo del segmento) son el caso dificil y van aparte; `O`/`RoundRect`
-necesitan constructores que no existen (`crates/cam-geom/src/primitive.rs:59-95` tiene
-`circle` y `rectangle`, no obround ni radio-esquinas) y `RoundRect` ademas es una macro
-en el dialecto medido, o sea territorio de E3b; step&repeat tambien queda afuera.
+**Fuera de alcance, declarado:** step&repeat queda afuera. La apertura obround (`O`) sigue
+rechazandose por nombre: `crates/cam-geom/src/primitive.rs` tiene `circle` y `rectangle`, no una
+capsula como primitiva, y el trazo de una `O` es otra construccion. Las macros de apertura **si**
+entran: son E3b y son T8 a T10.
 
 ## Log
 
@@ -237,3 +246,16 @@ compartido de mas.
 
 **Estado:** workspace en **1301 passed, 0 failed, 3 ignored**. Con esto se cierra el orden aceptado:
 T5 (trazo circular), T6 (trazo rectangular) y T7 (varios contornos por region).
+
+**L11** (T8, primer slice de E3b): `evaluate_parameter(text, modifiers)` sustituye `$1..$n` por los
+modificadores de la apertura y evalua `+ - x X * /` con la precedencia de siempre —el producto se pliega
+antes que la suma—. Se rechaza por nombre lo que queda fuera de esa gramatica: parentesis, funciones, una
+expresion que termina en operador, y un `$n` que la apertura no provee (el mensaje dice cual y cuantos
+modificadores hay). La razon de rechazar en vez de aproximar es la de todo este documento: una macro que
+evalua mal cambia el tamano de un pad y nada lo delata.
+
+Probado por mutacion: sacando el plegado del producto, `$1x$2/2` pasa a evaluarse como suma y muere
+`a_macro_parameter_expression_is_evaluated_with_the_apertures_modifiers`.
+
+**Estado:** workspace en **1304 passed, 0 failed, 3 ignored**. Falta T9 (primitivas a formas) y T10 (la
+apertura que las usa), que es donde esto se vuelve geometria.

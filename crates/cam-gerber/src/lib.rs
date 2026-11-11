@@ -476,6 +476,156 @@ fn close_boundary(
   Ok(())
 }
 
+/// Evaluate a macro parameter expression with an aperture's modifiers substituted in.
+///
+/// The dialect writes `$1`, `$2`, ... and combines them with `+`, `-`, `x`/`X`/`*` and `/`;
+/// multiplication binds tighter than addition, as everywhere else. Anything outside that grammar
+/// - parentheses, functions, a parameter the aperture did not supply - is refused by name instead
+/// of guessed at, because a macro that quietly evaluates to the wrong number changes the copper.
+pub fn evaluate_parameter(text: &str, modifiers: &[f64]) -> Result<f64, GerberError> {
+  let (mut values, mut ops) = lex_parameter(text, modifiers)?;
+
+  // Products first: folding left to right gives multiplication its usual precedence.
+  let mut index = 0;
+  while index < ops.len() {
+    if let '*' | '/' = ops[index] {
+      let folded = if ops[index] == '/' {
+        values[index] / values[index + 1]
+      } else {
+        values[index] * values[index + 1]
+      };
+      if !folded.is_finite() {
+        return Err(GerberError::Invalid {
+          line: 0,
+          what: format!("{text:?} does not evaluate to a finite number"),
+        });
+      }
+      values[index] = folded;
+      values.remove(index + 1);
+      ops.remove(index);
+    } else {
+      index += 1;
+    }
+  }
+
+  let mut total = values[0];
+  for (position, op) in ops.iter().enumerate() {
+    let next = values[position + 1];
+    total = if *op == '-' {
+      total - next
+    } else {
+      total + next
+    };
+  }
+  if !total.is_finite() {
+    return Err(GerberError::Invalid {
+      line: 0,
+      what: format!("{text:?} does not evaluate to a finite number"),
+    });
+  }
+  Ok(total)
+}
+
+/// Split a parameter expression into its values and the operators between them.
+fn lex_parameter(text: &str, modifiers: &[f64]) -> Result<(Vec<f64>, Vec<char>), GerberError> {
+  let refuse = |what: String| GerberError::Invalid { line: 0, what };
+  let bytes = text.as_bytes();
+  let mut values: Vec<f64> = Vec::new();
+  let mut ops: Vec<char> = Vec::new();
+  let mut index = 0;
+  let mut expecting_value = true;
+
+  while index < bytes.len() {
+    let byte = bytes[index];
+    if byte == b' ' || byte == b'\t' {
+      index += 1;
+      continue;
+    }
+    if !expecting_value {
+      match byte {
+        b'+' | b'-' | b'*' | b'/' => ops.push(byte as char),
+        b'x' | b'X' => ops.push('*'),
+        other => {
+          return Err(refuse(format!(
+            "{text:?} has {:?}, which this reader does not evaluate",
+            other as char
+          )))
+        }
+      }
+      index += 1;
+      expecting_value = true;
+      continue;
+    }
+
+    let mut negative = false;
+    if byte == b'+' || byte == b'-' {
+      negative = byte == b'-';
+      index += 1;
+      if index >= bytes.len() {
+        return Err(refuse(format!("{text:?} ends with a sign")));
+      }
+    }
+    let start = index;
+    let value = if bytes[index] == b'$' {
+      index += 1;
+      let digits = index;
+      while index < bytes.len() && bytes[index].is_ascii_digit() {
+        index += 1;
+      }
+      if index == digits {
+        return Err(refuse(format!(
+          "{text:?} names a parameter without a number"
+        )));
+      }
+      let which: usize = text[digits..index].parse().map_err(|_| {
+        refuse(format!(
+          "{text:?} names a parameter this reader cannot count"
+        ))
+      })?;
+      if which == 0 || which > modifiers.len() {
+        return Err(refuse(format!(
+          "{text:?} asks for ${which} but the aperture supplies {}",
+          modifiers.len()
+        )));
+      }
+      modifiers[which - 1]
+    } else {
+      while index < bytes.len()
+        && (bytes[index].is_ascii_digit() || bytes[index] == b'.' || bytes[index] == b'e')
+      {
+        index += 1;
+      }
+      if index == start {
+        return Err(refuse(format!(
+          "{text:?} has {:?} where a value belongs",
+          bytes[index] as char
+        )));
+      }
+      text[start..index].parse::<f64>().map_err(|_| {
+        refuse(format!(
+          "{text:?} has {:?} where a number belongs",
+          &text[start..index]
+        ))
+      })?
+    };
+    values.push(if negative { -value } else { value });
+    expecting_value = false;
+  }
+
+  if values.is_empty() {
+    return Err(refuse(format!("{text:?} has no value")));
+  }
+  if expecting_value {
+    return Err(refuse(format!("{text:?} ends with an operator")));
+  }
+  if ops.len() + 1 != values.len() {
+    return Err(refuse(format!(
+      "{text:?} is not a chain of values and operators"
+    )));
+  }
+  Ok((values, ops))
+}
+
 /// The shape a draw of `aperture` leaves between two points.
 ///
 /// Only a circular aperture is a stroke this reader builds: the capsule, meaning the rectangle of
