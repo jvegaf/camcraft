@@ -12,8 +12,8 @@ referencia de la lógica de FlatCAM Plus.
 **Qué es este documento.** El contrato arquitectónico del producto: qué invariantes no se negocian,
 cómo se ejecuta una operación, cómo se divide el workspace, cómo se mide, cómo se desarrolla en paralelo
 y dónde están las puertas. No es el roadmap de tareas (eso sigue viviendo en `odd/tasks/`) ni la
-especificación de formatos: `format.md` describía `c2d/document@2` y quedó archivado en `docs/old/`;
-la especificación de `camcraft/document@1` (§9.1) es trabajo del hito C3 y todavía no existe.
+especificación de formatos: `format.md` describe `c2d/document@2`, el formato que este producto ya
+no escribe; la especificación de `camcraft/document@1` (§9.1) es trabajo del hito C3 y todavía no existe.
 
 ---
 
@@ -21,7 +21,8 @@ la especificación de `camcraft/document@1` (§9.1) es trabajo del hito C3 y tod
 
 | # | Decisión | Consecuencia arquitectónica |
 | --- | --- | --- |
-| 1 | **camcraft es el producto; campilot es legado.** | El workspace se llama `camcraft`. El nombre `campilot` sobrevive solo como historia del repositorio, y su documentación ya archivada en `docs/old/` no se mantiene. |
+| 1 | **camcraft es el producto; campilot es legado.** | El workspace se llama `camcraft`. El nombre `campilot` sobrevive solo como historia del repositorio, y su documentación histórica no se
+mantiene. |
 | 2 | **Solo PCB, al estilo de FlatCAM.** Todo el dominio de madera y mecanizado general **sale**. | `cam-toolpath` desaparece como crate. Se rescatan tres capacidades internas, no once estrategias. |
 | 3 | **Calidad sobre plazo, desarrollado con ODD, paralelizable en varios worktrees.** | La arquitectura se elige por **aislamiento de superficies de edición**, no por velocidad de arranque. Contratos congelados antes de fan-out. |
 | 4 | **`cam-app` se rediseña** (undo incluido). | Undo deja de ser snapshot del documento completo. §10. |
