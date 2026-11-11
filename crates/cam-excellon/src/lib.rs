@@ -4,9 +4,10 @@
 //! dialect KiCad, Altium and Eagle write — a header between `M48` and `%`, then commands — and
 //! produces an [`Excellon`] that names every feature with the tool that cuts it, in millimetres.
 //!
-//! What it refuses matters as much as what it reads. A relative-mode program (`G91`) and a
-//! coordinate before the units are declared are diagnosed with their line rather than guessed at,
-//! because a guessed scale puts the drill in the wrong place on the board.
+//! What it refuses matters as much as what it reads. A relative-mode program (`G91`), a coordinate
+//! before the units are declared, and an integer coordinate in a file that never declares its digit
+//! format are all diagnosed with their line rather than guessed at, because a guessed scale puts the
+//! drill in the wrong place on the board.
 
 use cam_geom::Point2;
 use cam_units::Length;
@@ -144,6 +145,9 @@ enum Command {
 /// not mention are the ones nobody notices are missing.
 pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
   let mut units: Option<Units> = None;
+  // The digit split an integer coordinate is read with, declared either by a `;FILE_FORMAT=i:d`
+  // comment or by a zero pattern such as `METRIC,000.000`.
+  let mut format: Option<(u32, u32)> = None;
   let mut raw_tools: Vec<(u32, f64)> = Vec::new();
   let mut features: Vec<Feature> = Vec::new();
   let mut in_header = false;
@@ -155,7 +159,11 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
 
   for (index, raw) in text.lines().enumerate() {
     let line = index as u32 + 1;
-    // Everything after `;` is a comment: KiCad writes its attributes there.
+    // Everything after `;` is a comment, and KiCad writes the digit format there, so read it
+    // before the comment is dropped.
+    if let Some(declared) = file_format_of(raw) {
+      format = Some(declared);
+    }
     let code = raw.split(';').next().unwrap_or("").trim();
     if code.is_empty() {
       continue;
@@ -173,16 +181,27 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
     }
 
     if in_header {
-      match code {
-        "FMAT,2" | "METRIC" | "INCH" => {
-          match code {
-            "METRIC" => units = Some(Units::Metric),
-            "INCH" => units = Some(Units::Inch),
-            _ => {}
+      if code == "FMAT,2" {
+        continue;
+      }
+      if let Some(rest) = code
+        .strip_prefix("METRIC")
+        .or_else(|| code.strip_prefix("INCH"))
+      {
+        units = Some(if code.starts_with("METRIC") {
+          Units::Metric
+        } else {
+          Units::Inch
+        });
+        // A modifier is either a suppression flag, which says nothing about how many digits there
+        // are, or a zero pattern, which does: `METRIC,000.000` is three integer digits and three
+        // decimals. Only the second one can be read as a scale.
+        if let Some(modifier) = rest.strip_prefix(',') {
+          if let Some(declared) = digits_of_pattern(modifier.trim()) {
+            format = Some(declared);
           }
-          continue;
         }
-        _ => {}
+        continue;
       }
       if let Some((number, diameter)) = tool_definition(code) {
         raw_tools.push((number, diameter));
@@ -267,7 +286,7 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
     let Some(units) = units else {
       return Err(ExcellonError::MissingUnits { line });
     };
-    let (x, y) = coordinates(body, units, line)?;
+    let (x, y) = coordinates(body, units, format, line)?;
     if x.is_none() && y.is_none() {
       return Err(ExcellonError::UnknownWord {
         line,
@@ -341,6 +360,32 @@ fn tool_definition(code: &str) -> Option<(u32, f64)> {
   Some((number.parse().ok()?, diameter.parse().ok()?))
 }
 
+/// The digit format a `;FILE_FORMAT=i:d` comment declares.
+fn file_format_of(line: &str) -> Option<(u32, u32)> {
+  let marker = line.find("FILE_FORMAT=")?;
+  let rest = &line[marker + "FILE_FORMAT=".len()..];
+  let end = rest
+    .char_indices()
+    .find(|(_, character)| !character.is_ascii_digit() && *character != ':')
+    .map(|(index, _)| index)
+    .unwrap_or(rest.len());
+  let (integer, decimal) = rest[..end].split_once(':')?;
+  Some((integer.parse().ok()?, decimal.parse().ok()?))
+}
+
+/// The digit format a zero pattern such as `000.000` declares: three and three.
+fn digits_of_pattern(pattern: &str) -> Option<(u32, u32)> {
+  let (integer, decimal) = pattern.split_once('.')?;
+  if integer.is_empty()
+    || decimal.is_empty()
+    || !integer.chars().all(|character| character == '0')
+    || !decimal.chars().all(|character| character == '0')
+  {
+    return None;
+  }
+  Some((integer.len() as u32, decimal.len() as u32))
+}
+
 /// The `X` and `Y` a coordinate line carries, in millimetres.
 ///
 /// An axis the line omits keeps its previous value, which the caller applies; both absent is an
@@ -348,6 +393,7 @@ fn tool_definition(code: &str) -> Option<(u32, f64)> {
 fn coordinates(
   body: &str,
   units: Units,
+  format: Option<(u32, u32)>,
   line: u32,
 ) -> Result<(Option<f64>, Option<f64>), ExcellonError> {
   let mut x = None;
@@ -367,11 +413,36 @@ fn coordinates(
       .map(|(index, _)| index)
       .unwrap_or(rest.len());
     let number = &rest[..end];
-    let value: f64 = number.parse().map_err(|_| ExcellonError::UnknownWord {
-      line,
-      word: number.to_owned(),
-    })?;
-    let value = units.to_mm(value);
+    // A file that writes a decimal point states its own scale. One that does not is written in the
+    // fixed digit split its header declares, and reading those digits as millimetres would put the
+    // hole a factor of the decimal count away, so a missing declaration is refused, not assumed.
+    let raw_value: f64 = if number.contains('.') {
+      number.parse().map_err(|_| ExcellonError::UnknownWord {
+        line,
+        word: number.to_owned(),
+      })?
+    } else {
+      let digits: f64 = number.parse().map_err(|_| ExcellonError::UnknownWord {
+        line,
+        word: number.to_owned(),
+      })?;
+      // Zero is zero at any scale, so it is the one integer that needs no declaration - and `Y0`
+      // is how an ordinary drill line writes a hole on the axis.
+      if digits == 0.0 {
+        0.0
+      } else {
+        let Some((_, decimal)) = format else {
+          return Err(ExcellonError::Unsupported {
+            line,
+            what: format!(
+              "the coordinate {number:?} has no decimal point and the file never declares its digit format"
+            ),
+          });
+        };
+        digits / 10f64.powi(decimal as i32)
+      }
+    };
+    let value = units.to_mm(raw_value);
     if character == 'X' {
       x = Some(value);
     } else {

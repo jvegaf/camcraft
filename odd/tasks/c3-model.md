@@ -231,3 +231,22 @@ continuar mientras el proveedor valida, va a otra rama o no va.
 lector. Es el bloque de `AD`/`ADD` que desenvuelve `strip_prefix(..).unwrap()` dos veces seguidas; el
 `unwrap` es seguro por el `starts_with` que lo precede, pero la simetria con el bloque `ADD` invita a
 unificarlos en una sola rama.
+
+**L14** (E1 de Excellon, y un defecto de escala que aparecio al escribir el dialecto): `coordinates()`
+hacia `number.parse::<f64>()` y lo pasaba a mm **sin aplicar la cantidad de decimales del archivo**. Un
+`X11528623` de un Excellon metrico 2:6 se leia como 11528.623 mm en vez de 11.528623: el taladro a un
+factor del conteo de decimales de distancia, en silencio, que es justo la clase de error que el `//!` del
+crate dice rechazar. Los fixtures existentes tenian punto decimal y por eso nadie lo veia.
+
+Ahora el formato se lee de dos lugares, que es como lo escriben las herramientas: un comentario
+`;FILE_FORMAT=i:d` (KiCad) y un patron de ceros como `METRIC,000.000`, que declara 3 y 3. Un entero se
+divide por `10^d`; un numero con punto decimal conserva su propia escala. **Un entero sin formato
+declarado se rechaza nombrando la linea**, porque adivinar `d` es precisamente el error de colocar el
+taladro en el lugar equivocado. La excepcion es el cero: `Y0` es como una linea de taladrado normal
+escribe un agujero sobre el eje, y cero es cero a cualquier escala.
+
+`METRIC,LZ` y `METRIC,TZ` declaran supresion de ceros pero **no** cuantos digitos hay, asi que no
+alcanzan como formato — se aceptan como unidades y el entero posterior se rechaza si no hay otro dato.
+
+Probado por mutacion: sacando la division muere el par de tests del formato; sacando el rechazo muere el
+test del archivo sin formato. 13 tests en el crate, workspace en **1315 passed, 0 failed, 3 ignored**.

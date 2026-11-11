@@ -159,3 +159,53 @@ fn a_line_that_is_neither_a_command_nor_a_coordinate_is_refused() {
     "{error:?}"
   );
 }
+
+#[test]
+fn an_integer_coordinate_is_read_with_the_declared_file_format() {
+  // E1: KiCad writes its digit split in a comment. 11528623 is eight digits, so 2:6 reads it as
+  // 11.528623 mm; reading those digits as millimetres would put the hole a million times too far.
+  let file = parse("M48\n;FILE_FORMAT=2:6\nMETRIC\nT1C0.800\n%\nT1\nX11528623Y0\nM30\n")
+    .expect("fixture parses");
+  match &file.features[0] {
+    cam_excellon::Feature::Hole { at, .. } => {
+      assert!((at.x - 11.528623).abs() < 1.0e-9, "x {:?}", at.x);
+      assert!(at.y.abs() < 1.0e-9, "y {:?}", at.y);
+    }
+    other => panic!("a hole, got {other:?}"),
+  }
+}
+
+#[test]
+fn a_zero_pattern_declares_the_digit_format_too() {
+  let file = parse("M48\nMETRIC,000.000\nT1C0.800\n%\nT1\nX11528Y0\nM30\n").expect("parses");
+  match &file.features[0] {
+    cam_excellon::Feature::Hole { at, .. } => {
+      assert!((at.x - 11.528).abs() < 1.0e-9, "x {:?}", at.x);
+    }
+    other => panic!("a hole, got {other:?}"),
+  }
+}
+
+#[test]
+fn a_coordinate_with_a_decimal_point_keeps_its_own_scale() {
+  let file = parse("M48\nMETRIC\nT1C0.800\n%\nT1\nX11.528623Y0\nM30\n").expect("parses");
+  match &file.features[0] {
+    cam_excellon::Feature::Hole { at, .. } => {
+      assert!((at.x - 11.528623).abs() < 1.0e-9, "x {:?}", at.x);
+    }
+    other => panic!("a hole, got {other:?}"),
+  }
+}
+
+#[test]
+fn an_integer_coordinate_without_a_declared_format_is_refused() {
+  // METRIC,LZ says the unit and the suppression, and nothing about how many digits there are, so
+  // there is no honest scale to apply.
+  let error = parse("M48\nMETRIC,LZ\nT1C0.800\n%\nT1\nX11528623Y0\nM30\n")
+    .expect_err("a bare unit does not declare the digits");
+  let text = format!("{error}");
+  assert!(
+    text.contains("digit format"),
+    "the refusal says why: {text}"
+  );
+}
