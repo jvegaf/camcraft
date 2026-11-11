@@ -569,8 +569,8 @@ impl Command {
         related: &[Command::Open, Command::SaveAs, Command::FitJob],
       },
       Self::Open => Help {
-        what: "Replaces the drawing with a `.c2d` you chose, and it is refused while the drawing has unsaved changes, so nothing is lost to it.",
-        how: "Press Open in the app bar. Your system's file dialog asks which `.c2d` to open, the drawing \
+        what: "Replaces the drawing with a `.cmc` you chose, and it is refused while the drawing has unsaved changes, so nothing is lost to it.",
+        how: "Press Open in the app bar. Your system's file dialog asks which `.cmc` to open, the drawing \
               is framed to it, and the bar then names the file. A file that will not load is refused in the \
               status bar and changes nothing.",
         related: &[Command::Import, Command::Undo, Command::FitJob],

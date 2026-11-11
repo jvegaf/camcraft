@@ -92,7 +92,7 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   let mut shell = Shell::new();
   let (output, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  for label in ["campilot", "untitled.c2d", "mm", "Generate G-code"] {
+  for label in ["campilot", "untitled.cmc", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
   // The bar's file command moved to the rail (camui-prancheta T2b, S4), and a bar that could not ask for a

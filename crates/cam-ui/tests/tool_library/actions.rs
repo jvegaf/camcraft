@@ -93,7 +93,7 @@ fn with_no_library_at_all_the_four_writers_are_disabled_and_one_sentence_says_wh
   // A window that was handed a snapshot and never opened a library: the application's library is the only one
   // the six rows can write (tool-library-app S1), so a bare snapshot leaves them nothing to write through. The
   // rows are drawn — they are what teaches the operator the action exists — and four of them are dark.
-  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
+  let path = write_document(scratch.path(), "part.cmc", &document_with_toolpath(1));
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &cam_ui::UiAction::OpenFile { path });
@@ -161,7 +161,7 @@ fn new_appends_a_tool_with_the_lowest_free_number_and_writes_it() {
   let mut tools = library();
   tools.push(flat_mill("tool-1", Some(9), 3.0));
   let library_path = write_library(scratch.path(), "tools.sqlite", &tools);
-  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
+  let path = write_document(scratch.path(), "part.cmc", &document_with_toolpath(1));
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();
   shell

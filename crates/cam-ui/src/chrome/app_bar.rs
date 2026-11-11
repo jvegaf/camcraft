@@ -34,7 +34,7 @@ impl Shell {
           ui.separator();
 
           // The bar names the file the drawing came from, and says whether it is modified. Until a host
-          // opens one there is no file to name, which is why the bar said `untitled.c2d` for so long.
+          // opens one there is no file to name, which is why the bar said `untitled.cmc` for so long.
           if self.project_open {
             let dirty = if app.is_dirty() { " · modified" } else { "" };
             ui.label(

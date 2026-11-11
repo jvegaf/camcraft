@@ -146,7 +146,7 @@ pub struct Shell {
   ///
   /// `None` until [`UiAction::OpenFile`](crate::UiAction::OpenFile) or
   /// [`UiAction::SaveFile`](crate::UiAction::SaveFile) succeeds, which is when the app bar stops
-  /// saying `untitled.c2d` and starts naming the file. The shell keeps the path so the bar can name it and
+  /// saying `untitled.cmc` and starts naming the file. The shell keeps the path so the bar can name it and
   /// [`UiAction::Save`](crate::UiAction::Save) can write to it: the shell shows no dialog of its own, so this is
   /// a record of what was read or written and not a file handle.
   pub(crate) document_path: Option<PathBuf>,
@@ -566,7 +566,7 @@ impl Shell {
   /// The file the drawing was opened from or last written to, once a host has opened or saved one.
   ///
   /// `None` while the frame holds a document that has no file yet, which is the state the app bar still
-  /// calls `untitled.c2d` and the state in which [`UiAction::Save`](crate::UiAction::Save) is refused.
+  /// calls `untitled.cmc` and the state in which [`UiAction::Save`](crate::UiAction::Save) is refused.
   pub fn document_path(&self) -> Option<&Path> {
     self.document_path.as_deref()
   }
@@ -597,7 +597,7 @@ impl Shell {
 
   /// The name the app bar shows for the drawing.
   ///
-  /// The opened or saved file's own name once there is one, and `untitled.c2d` before that: the shell had no
+  /// The opened or saved file's own name once there is one, and `untitled.cmc` before that: the shell had no
   /// document path of its own until a host could hand it one, which is why the bar named the frame rather
   /// than a file (M0).
   pub fn document_name(&self) -> String {
@@ -606,7 +606,7 @@ impl Shell {
       .as_ref()
       .and_then(|path| path.file_name())
       .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_else(|| "untitled.c2d".to_owned())
+      .unwrap_or_else(|| "untitled.cmc".to_owned())
   }
 
   /// Hand the 3D panel a program to preview: the stock it cuts, the program itself, and the stock box.

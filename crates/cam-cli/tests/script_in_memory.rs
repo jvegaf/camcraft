@@ -38,7 +38,7 @@ fn document() -> Document {
   })
 }
 
-/// Write `text` as the script at `directory/script.c2ds` and run it against `document`.
+/// Write `text` as the script at `directory/script.cms` and run it against `document`.
 ///
 /// Returns the two sinks and the refusal's message, so a caller can assert the report, the notice and
 /// the diagnostic without a second helper.
@@ -48,7 +48,7 @@ fn run(
   document: &mut Document,
   document_path: Option<&Path>,
 ) -> (String, String, Result<(), String>) {
-  let script = directory.join("script.c2ds");
+  let script = directory.join("script.cms");
   std::fs::write(&script, text).expect("script file");
   let mut reports = Vec::new();
   let mut notices = Vec::new();
@@ -110,7 +110,7 @@ fn save_is_refused_when_the_document_belongs_to_the_caller() {
   let directory = scratch("save");
   let mut document = document();
 
-  let (_, _, outcome) = run(&directory, "save out.c2d\n", &mut document, None);
+  let (_, _, outcome) = run(&directory, "save out.cmc\n", &mut document, None);
 
   let message = outcome.expect_err("a script run against a caller's document writes no file");
   assert!(
@@ -122,7 +122,7 @@ fn save_is_refused_when_the_document_belongs_to_the_caller() {
     "and it says what the rule is, got {message:?}"
   );
   assert!(
-    !directory.join("out.c2d").exists(),
+    !directory.join("out.cmc").exists(),
     "nothing reached the disk"
   );
 }
@@ -132,7 +132,7 @@ fn open_is_refused_when_the_document_belongs_to_the_caller() {
   let directory = scratch("open");
   let mut document = document();
 
-  let (_, _, outcome) = run(&directory, "open other.c2d\n", &mut document, None);
+  let (_, _, outcome) = run(&directory, "open other.cmc\n", &mut document, None);
 
   let message =
     outcome.expect_err("a script against the shell's document cannot open a second one");

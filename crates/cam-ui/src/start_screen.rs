@@ -64,14 +64,14 @@ pub const NEW_PROJECT_SENTENCE: &str = "An empty stock, nothing drawn";
 /// The action that opens a file dialog.
 pub const OPEN_PROJECT: &str = "Open project…";
 /// The sentence under the open-project action.
-pub const OPEN_PROJECT_SENTENCE: &str = "Choose a .c2d file";
+pub const OPEN_PROJECT_SENTENCE: &str = "Choose a .cmc file";
 /// The heading above the list of projects opened before.
 pub const RECENTS_TITLE: &str = "Recent projects";
 /// The empty-list sentence on a first run.
 pub const NO_RECENTS: &str = "No projects opened on this machine yet.";
 /// The hint that follows the first-run sentence.
 pub const NO_RECENTS_HINT: &str =
-  "New project starts an empty stock. Open project… finds a .c2d file anywhere on disk.";
+  "New project starts an empty stock. Open project… finds a .cmc file anywhere on disk.";
 /// The sentence shown when the list could not be read.
 pub const RECENTS_UNREADABLE: &str = "The recent list could not be read, so it is not shown.";
 /// The hint that follows an unreadable-list sentence.
@@ -80,7 +80,7 @@ pub const RECENTS_UNREADABLE_HINT: &str =
 /// The button that asks the host to read the list again.
 pub const RETRY: &str = "Try again";
 /// The footer line that names the file format.
-pub const FOOTER_PATH: &str = "Projects are .c2d files on this machine.";
+pub const FOOTER_PATH: &str = "Projects are .cmc files on this machine.";
 /// The footer line that names the Escape behaviour.
 pub const FOOTER_ESCAPE: &str = "Esc starts with nothing open.";
 /// The tooltip on the modal's close mark.
@@ -91,7 +91,7 @@ pub const NO_PROJECT: &str = "No project open";
 /// What the status bar's left zone says when no project is open.
 pub const NOTHING_OPEN: &str = "Nothing open";
 /// The status bar's right zone: the two commands that change the fact.
-pub const NO_PROJECT_HINT: &str = "New project, or open a .c2d file";
+pub const NO_PROJECT_HINT: &str = "New project, or open a .cmc file";
 /// The sentence a command gets when it needed a project and there was none.
 ///
 /// It is a refusal and not a silence for the reason every other refusal in this shell is a sentence: a command that
@@ -99,7 +99,7 @@ pub const NO_PROJECT_HINT: &str = "New project, or open a .c2d file";
 pub const NO_PROJECT_REFUSAL: &str = "no project open: start a new project or open one first";
 /// The canvas' empty state: what the drawing area holds until a project exists.
 pub const NO_PROJECT_SENTENCE: &str =
-  "The drawing area stays empty until a .c2d project is started or opened.";
+  "The drawing area stays empty until a .cmc project is started or opened.";
 
 /// One project the operator opened before (start-screen S3).
 ///

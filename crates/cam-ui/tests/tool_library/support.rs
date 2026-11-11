@@ -214,7 +214,7 @@ impl Drop for Scratch {
   }
 }
 
-/// Write a real `.c2d` with the store's own writer, so the shell opens a file and not a stub.
+/// Write a real `.cmc` with the store's own writer, so the shell opens a file and not a stub.
 pub(crate) fn write_document(directory: &Path, name: &str, document: &Document) -> PathBuf {
   let path = directory.join(name);
   cam_store::document::save_document(&path, document).expect("document written");
@@ -235,14 +235,14 @@ pub(crate) fn write_library(directory: &Path, name: &str, tools: &[StoredTool]) 
 ///
 /// The library is the application's and not the drawing's (tool-library-app S1): the test writes a real
 /// `tools.sqlite` into the scratch directory the window treats as its data directory, opens it through
-/// [`Shell::open_library_at`] — the same call the desktop host makes at launch — and only then opens a `.c2d`.
+/// [`Shell::open_library_at`] — the same call the desktop host makes at launch — and only then opens a `.cmc`.
 /// The drawing names no library at all, and a drawing that did name one would change nothing here.
 pub(crate) fn opened_library_document(
   ctx: &egui::Context,
   scratch: &Scratch,
 ) -> (AppState, Shell, ShellOutput, PathBuf) {
   let library_path = write_library(scratch.path(), "tools.sqlite", &library());
-  let path = write_document(scratch.path(), "part.c2d", &document_with_toolpath(1));
+  let path = write_document(scratch.path(), "part.cmc", &document_with_toolpath(1));
 
   let mut app = AppState::new(document_with_toolpath(1));
   let mut shell = Shell::new();

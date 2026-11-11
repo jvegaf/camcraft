@@ -475,7 +475,7 @@ fn save_is_refused_because_the_shell_writes_the_document() {
   // line, located, and nothing reaches the disk — the shell's Save is the one writer.
   let directory = scratch("no-save");
   let document = document();
-  let target = directory.join("nested.c2d");
+  let target = directory.join("nested.cmc");
   let script = write_script(
     &directory,
     "save.cam",

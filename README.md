@@ -12,7 +12,7 @@ again — isolation, non-copper clearing, drilling, cutout — are the work in p
 
 ```
 dxf/svg/pdf/eps/png ──▶ document model
-     (cam-import)        (c2d/document@2, validated)
+     (cam-import)        (camcraft/document@1, validated)
 ```
 
 - **Arc geometry end to end.** Arcs are first-class from the document through the offset: geometry keeps `G02`/`G03`-style arcs as arcs, never a polyline.
@@ -39,9 +39,9 @@ dxf/svg/pdf/eps/png ──▶ document model
   `Document::validate` on a clone, so a refused script leaves the file exactly as it was. A part list is
   four columns — `name,width,height,quantity` — with the header required in that order (so a swapped
   width and height refuses instead of rotating every part), quotes refused by name and duplicate names
-  refused rather than summed; `cam-cli parts doc.c2d --csv list.csv` authors one rectangle and one nesting
-  part per row of one. `cam-cli cutlist doc.c2d` writes the placements M9 stored as seven columns at
-  three decimals, and `cam-cli report doc.c2d` writes a self-contained HTML print sheet — every style
+  refused rather than summed; `cam-cli parts doc.cmc --csv list.csv` authors one rectangle and one nesting
+  part per row of one. `cam-cli cutlist doc.cmc` writes the placements M9 stored as seven columns at
+  three decimals, and `cam-cli report doc.cmc` writes a self-contained HTML print sheet — every style
   inside the file, every
   id escaped by hand, the nesting's utilisation from the document's own arithmetic, and an `Omitted`
   section naming what a sheet cannot honestly report. The shell's half is one panel: `cam-ui`'s
@@ -74,7 +74,7 @@ cargo run -p cam-desktop          # opens with no project; the start screen offe
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────┐
-│ campilot   untitled.c2d · modified                     mm · 2D | 3D · ? · Generate G-code │
+│ campilot   untitled.cmc · modified                     mm · 2D | 3D · ? · Generate G-code │
 ├───────────┬──────────────────────────────────────────────┬────────────────────────────────┤
 │  FILE     │  canvas: grid · stock outline · geometry     │  job, units, selection         │
 │  DRAW     │  snap markers · selection highlight          │  history depth                 │
@@ -96,12 +96,12 @@ What works: pan, zoom about the cursor, zoom-to-fit, grid with a 1/2/5 spacing, 
 distance, marquee selection, snapping to endpoints/midpoints/arc centres/grid, undo/redo with a bounded
 history, layer visibility, and the authoring half of the product — line, polyline, arc, circle, ellipse,
 rectangle, polygon and star by dragging, single-stroke text, node editing, join, trim, offset,
-mirror/rotate/scale, array copy and align, plus importing a file by path and opening a `.c2d` you picked
+mirror/rotate/scale, array copy and align, plus importing a file by path and opening a `.cmc` you picked
 in the system's file dialog, each as one undoable step. Open is a chip in the left rail's `FILE` group: the
 shell only asks the window, which owns the dialog (`rfd`, in `cam-desktop` and not in `cam-ui`), and the file
 it answers with is loaded through `cam_store::document::DocumentFile::load` — the archive scan, migration and
 `validate()` `cam-cli`'s own loader performs for every command that reads a document — so the title bar names
-that file where it said `untitled.c2d`, a refused one changes nothing and says `refused: …`, and a good one is
+that file where it said `untitled.cmc`, a refused one changes nothing and says `refused: …`, and a good one is
 one undo away.
 
 Save and **Save as** sit beside Open in that group, and they are the other half of that sentence. `Save` writes
@@ -163,7 +163,7 @@ Without `just`:
 ./scripts/check.sh
 
 # Inspect a document
-cargo run -q -p cam-cli -- inspect part.c2d
+cargo run -q -p cam-cli -- inspect part.cmc
 
 # Validate a post-processor
 cargo run -q -p cam-cli -- postp validate my_machine.pp
@@ -187,7 +187,7 @@ Schemas, the post-processor grammar and the CLI contract are specified in
 | `cam-ops` | The machining capabilities rescued for the PCB product: profile follow with tabs, drilling with pecks and a drill bank, and pocket rings with islands |
 | `cam-move` | The move vocabulary: the contract between toolpaths and the emitter |
 | `cam-model` | Job, layers, entities, toolpaths, schema version, validation |
-| `cam-store` | `.c2d` documents and the SQLite tool library, both with migrations |
+| `cam-store` | `.cmc` documents and the SQLite tool library, both with migrations |
 | `cam-post` | `.pp` parser and the data-driven G-code emitter |
 | `cam-sim` | Material-removal simulation: the stock's heightfield, swept removal, gouge and uncut reporting |
 | `cam-cli` | Headless pipeline and the verification surface — a library with a 16-line binary, so the shell's scripting panel calls the same functions (D-M10-1) |
@@ -213,7 +213,7 @@ own tests and measurements — and none of them rests on a preference:
 | A post-processor is data, never code: a `.pp` file declares thirteen directives and twenty output blocks, and the emitter reads all of them | Implement the dialect; never hard-code a machine |
 | An arc's centre is what the controller needs and the first thing a chord loses, so no stage tessellates ahead of the emitter | Arcs stay arcs through every stage; no pre-tessellation |
 | A nesting plan is worth trusting only when it states its promise as one predicate a test can check, and the repository takes no new dependency unless a task proves it necessary | Own heuristic engine, scheduled as M9 |
-| A project file must be readable, diffable and versioned by its own schema tag — `c2d/document@1` loads and saves as `@2` — and interchange belongs to published formats | Own open format; interoperate through DXF/SVG/PDF/EPS import |
+| A project file must be readable, diffable and versioned by its own schema tag — `camcraft/document@1`, and an older tag is refused rather than migrated, because a file that means something else is worse than a refusal — and interchange belongs to published formats | Own open format; interoperate through DXF/SVG import |
 
 The program plan, milestone sequence and risk register are in [odd/roadmap.md](odd/roadmap.md).
 

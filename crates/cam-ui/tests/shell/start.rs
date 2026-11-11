@@ -52,7 +52,7 @@ fn new_project_from_the_start_screen_opens_one_and_closes_the_modal() {
 fn a_recent_row_opens_the_path_it_remembers() {
   let ctx = egui::Context::default();
   let dir = scratch("recent-open");
-  let path = write_c2d(&dir, "part.c2d", &Document::new(Job::default_sheet()));
+  let path = write_c2d(&dir, "part.cmc", &Document::new(Job::default_sheet()));
   let mut shell = Shell::new();
   shell.start_with_no_project();
   shell.set_recents(vec![RecentProject::from_path(path.clone())]);
@@ -132,7 +132,7 @@ fn the_recent_list_is_one_row_per_path_and_is_capped() {
   shell.start_with_no_project();
   let mut app = empty_app();
 
-  let path = scratch("recents-dedup").join("same.c2d");
+  let path = scratch("recents-dedup").join("same.cmc");
   handle_action(&mut app, &UiAction::NewProject).expect("new project");
   shell.apply_action(&mut app, &UiAction::NewProject);
   // Two successful saves of the same path record one row.
@@ -148,7 +148,7 @@ fn the_recent_list_is_one_row_per_path_and_is_capped() {
   );
 
   for index in 0..(MAX_RECENTS + 5) {
-    let p = scratch("recents-cap").join(format!("p{index}.c2d"));
+    let p = scratch("recents-cap").join(format!("p{index}.cmc"));
     shell.apply_action(&mut app, &UiAction::SaveFile { path: p });
   }
   assert!(shell.recents().len() <= MAX_RECENTS);

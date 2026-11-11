@@ -2,7 +2,7 @@
 //!
 //! Two stores, both versioned with forward-only migrations:
 //!
-//! * [`document`] — the `.c2d` file: a ZIP container holding `document.json`.
+//! * [`document`] — the `.cmc` file: a ZIP container holding `document.json`.
 //! * [`tools`] — the SQLite tool library (`tool_geometry` / `tool_cutting_data` / `tool_entity`),
 //!   normalised so the same tool carries different cutting data per material and machine.
 //!
@@ -30,7 +30,7 @@ pub enum StoreError {
     source: std::io::Error,
   },
   /// The archive could not be read as a ZIP container.
-  #[error("{path} is not a readable c2d archive: {source}")]
+  #[error("{path} is not a readable cmc archive: {source}")]
   Archive {
     /// The path involved.
     path: String,
@@ -39,7 +39,7 @@ pub enum StoreError {
     source: zip::result::ZipError,
   },
   /// The archive exists but carries no document payload.
-  #[error("{path} has no {entry} entry, so it is not a c2d document")]
+  #[error("{path} has no {entry} entry, so it is not a cmc document")]
   MissingEntry {
     /// The path involved.
     path: String,

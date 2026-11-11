@@ -282,7 +282,7 @@ th { background: #eee; }
 fn golden_document(directory: &Path) -> PathBuf {
   write_document(
     directory,
-    "golden.c2d",
+    "golden.cmc",
     ("L1", "Part"),
     &[("E1", 40.0, 30.0), ("E2", 30.0, 20.0)],
     vec![profile_toolpath("TP1", "Outside profile", &["E1"], 1)],
@@ -354,7 +354,7 @@ fn a_hostile_layer_name_and_entity_id_cannot_inject_markup() {
   let directory = scratch("escaping");
   let document = write_document(
     &directory,
-    "hostile.c2d",
+    "hostile.cmc",
     ("L1", "R&D <b>\"x\"</b> 'q'"),
     &[("<script>alert(1)</script>", 40.0, 30.0)],
     vec![profile_toolpath(
@@ -399,7 +399,7 @@ fn a_document_with_no_toolpath_still_prints_a_sheet_that_says_so() {
   let directory = scratch("no-toolpaths");
   let document = write_document(
     &directory,
-    "bare.c2d",
+    "bare.cmc",
     ("L1", "Part"),
     &[("E1", 40.0, 30.0)],
     Vec::new(),
@@ -440,7 +440,7 @@ fn the_nesting_section_reports_the_utilisation_the_document_derives() {
   let directory = scratch("utilisation");
   let document = write_document(
     &directory,
-    "nested.c2d",
+    "nested.cmc",
     ("L1", "Part"),
     &[("E1", 40.0, 30.0)],
     Vec::new(),
@@ -489,7 +489,7 @@ fn a_document_that_does_not_validate_is_refused_by_name() {
   let directory = scratch("refusal");
   let document = write_document(
     &directory,
-    "broken.c2d",
+    "broken.cmc",
     ("L1", "Part"),
     &[("E1", 40.0, 30.0)],
     vec![profile_toolpath("TP1", "Outside profile", &["E1"], 1)],

@@ -101,7 +101,7 @@ fn opening_a_document_leaves_the_applications_library_alone() {
   write_foreign_library(&foreign, 99);
   let mut document = document_with_toolpath(2, 99);
   document.tools_ref = Some("cut-tools.sqlite".to_owned());
-  let path = write_c2d(&directory, "cut.c2d", &document);
+  let path = write_c2d(&directory, "cut.cmc", &document);
   let mut app = AppState::new(document_with_toolpath(2, 99));
 
   shell.apply_action(&mut app, &UiAction::OpenFile { path });

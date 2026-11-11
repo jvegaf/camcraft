@@ -16,7 +16,7 @@ fn opening_and_saving_stamp_the_brand_block_with_the_files_own_write() {
   let directory = std::env::temp_dir().join(format!("campilot-stamp-{}", std::process::id()));
   std::fs::remove_dir_all(&directory).ok();
   std::fs::create_dir_all(&directory).expect("scratch directory");
-  let path = write_c2d(&directory, "stamped.c2d", &document_with_rectangle());
+  let path = write_c2d(&directory, "stamped.cmc", &document_with_rectangle());
   let opened_at = std::fs::metadata(&path)
     .and_then(|metadata| metadata.modified())
     .expect("the file has a modification time");
@@ -803,10 +803,10 @@ fn an_import_at_the_default_options_still_writes_what_the_importer_laid_out() {
 #[test]
 fn opening_a_file_shows_its_document_and_its_name_in_the_app_bar() {
   let directory = scratch("open");
-  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
+  let path = write_c2d(&directory, "bracket.cmc", &document_with_squares(2));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  assert_eq!(shell.document_name(), "untitled.c2d");
+  assert_eq!(shell.document_name(), "untitled.cmc");
 
   shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
 
@@ -815,18 +815,18 @@ fn opening_a_file_shows_its_document_and_its_name_in_the_app_bar() {
     2,
     "the opened drawing is the one showing"
   );
-  assert_eq!(shell.status, "open file — opened bracket.c2d");
+  assert_eq!(shell.status, "open file — opened bracket.cmc");
   assert_eq!(shell.document_path(), Some(path.as_path()));
-  assert_eq!(shell.document_name(), "bracket.c2d");
+  assert_eq!(shell.document_name(), "bracket.cmc");
 
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
   assert!(
-    all.contains("bracket.c2d"),
+    all.contains("bracket.cmc"),
     "the bar must name the opened file: {all}"
   );
   assert!(
-    !all.contains("untitled.c2d"),
+    !all.contains("untitled.cmc"),
     "the bar must stop saying untitled: {all}"
   );
   std::fs::remove_dir_all(&directory).ok();
@@ -835,11 +835,11 @@ fn opening_a_file_shows_its_document_and_its_name_in_the_app_bar() {
 #[test]
 fn a_refused_open_changes_nothing_and_says_why() {
   let directory = scratch("open-refused");
-  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
-  let missing = directory.join("gone.c2d");
-  let not_an_archive = directory.join("notes.c2d");
+  let opened = write_c2d(&directory, "bracket.cmc", &document_with_squares(2));
+  let missing = directory.join("gone.cmc");
+  let not_an_archive = directory.join("notes.cmc");
   std::fs::write(&not_an_archive, b"not a zip archive, just text").expect("text written");
-  let invalid = directory.join("broken.c2d");
+  let invalid = directory.join("broken.cmc");
   let mut broken = document_with_squares(1);
   let repeated = broken.layers[0].clone();
   // Two layers with one id: a document the model refuses, so the file loads and the validation fails.
@@ -906,7 +906,7 @@ fn a_refused_open_changes_nothing_and_says_why() {
     );
     assert_eq!(
       shell.document_name(),
-      "bracket.c2d",
+      "bracket.cmc",
       "{case}: a refused open must not change the name in the bar"
     );
   }
@@ -916,7 +916,7 @@ fn a_refused_open_changes_nothing_and_says_why() {
 #[test]
 fn opening_a_file_clears_the_preview_and_the_material_drafts_and_keeps_the_library() {
   let directory = scratch("open-stale");
-  let path = write_c2d(&directory, "cut.c2d", &document_with_toolpath(2, 4));
+  let path = write_c2d(&directory, "cut.cmc", &document_with_toolpath(2, 4));
   let mut app = AppState::new(document_with_toolpath(1, 4));
   let mut shell = Shell::new();
   shell.set_tools(vec![stored_tool(4)]);
@@ -971,7 +971,7 @@ fn opening_a_file_clears_the_preview_and_the_material_drafts_and_keeps_the_libra
 #[test]
 fn an_open_is_not_undoable_and_undo_leaves_the_opened_document_alone() {
   let directory = scratch("open-undo");
-  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(3));
+  let path = write_c2d(&directory, "bracket.cmc", &document_with_squares(3));
   let mut app = AppState::new(document_with_rectangle());
   let original = app.document_json();
   let mut shell = Shell::new();
@@ -1020,8 +1020,8 @@ fn an_open_is_not_undoable_and_undo_leaves_the_opened_document_alone() {
 #[test]
 fn an_undo_between_two_opens_cannot_make_a_save_overwrite_the_wrong_document() {
   let directory = scratch("open-two-undo-save");
-  let first = write_c2d_with_extras(&directory, "first.c2d", &document_with_squares(3));
-  let second = write_c2d_with_extras(&directory, "second.c2d", &document_with_squares(1));
+  let first = write_c2d_with_extras(&directory, "first.cmc", &document_with_squares(3));
+  let second = write_c2d_with_extras(&directory, "second.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: first });
@@ -1046,7 +1046,7 @@ fn an_undo_between_two_opens_cannot_make_a_save_overwrite_the_wrong_document() {
   );
   shell.apply_action(&mut app, &UiAction::Save);
 
-  assert_eq!(shell.status, "save document — wrote second.c2d");
+  assert_eq!(shell.status, "save document — wrote second.cmc");
   assert_eq!(
     shell.document_path(),
     Some(second.as_path()),
@@ -1073,7 +1073,7 @@ fn an_undo_between_two_opens_cannot_make_a_save_overwrite_the_wrong_document() {
 #[test]
 fn an_open_frames_the_new_drawing_even_when_the_view_was_the_users() {
   let directory = scratch("open-frame");
-  let path = write_c2d(&directory, "wide.c2d", &document_with_squares(2));
+  let path = write_c2d(&directory, "wide.cmc", &document_with_squares(2));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let _ = frame(&mut shell, &mut app);
@@ -1112,7 +1112,7 @@ fn the_rails_open_chip_asks_the_host_for_a_file() {
   assert_eq!(app.document_json(), before, "an intent touches no document");
   assert_eq!(
     shell.document_name(),
-    "untitled.c2d",
+    "untitled.cmc",
     "an intent names no file"
   );
 }

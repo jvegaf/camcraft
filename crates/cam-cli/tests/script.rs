@@ -106,7 +106,7 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
     });
   }
 
-  let path = directory.join("parts.c2d");
+  let path = directory.join("parts.cmc");
   save_document(&path, &document).expect("document saved");
   path
 }
@@ -147,7 +147,7 @@ fn run_in(directory: &Path, arguments: &[&str]) -> Outcome {
   outcome(
     Command::new(binary())
       .current_dir(directory)
-      .env("CAM_CLI_DOCUMENT", "/var/tmp/decoy.c2d")
+      .env("CAM_CLI_DOCUMENT", "/var/tmp/decoy.cmc")
       .env("CAM_CLI_LIBRARY", "/var/tmp/decoy.sqlite")
       .env("CAM_CLI_POST", "/var/tmp/decoy.pp")
       .args(arguments)
@@ -202,7 +202,7 @@ valid: 1 layer(s), 2 entity(ies), 1 toolpath(s)
 fn a_script_authors_sheets_and_parts_nests_them_and_saves_exactly() {
   let directory = scratch("authoring");
   let document = write_document(&directory, &[]);
-  let saved = directory.join("nested.c2d");
+  let saved = directory.join("nested.cmc");
   let script = write_script(
     &directory,
     "author.cam",
@@ -254,8 +254,8 @@ fn a_script_that_nests_writes_the_document_the_nest_subcommand_writes() {
   // parts itself, so the two runs differ in how the sections were authored and in nothing else.
   let authored = write_document(&cli_directory, &[("P1", &["E1"], 2), ("P2", &["E2"], 1)]);
   let bare = write_document(&script_directory, &[]);
-  let from_cli = directory.join("cli.c2d");
-  let from_script = directory.join("script.c2d");
+  let from_cli = directory.join("cli.cmc");
+  let from_script = directory.join("script.cmc");
 
   let cli = run(&[
     "nest",
@@ -373,7 +373,7 @@ fn a_bad_value_reports_the_line_and_column_of_the_offending_token() {
 fn a_model_refusal_names_the_script_line_and_the_model_message() {
   let directory = scratch("model-refusal");
   let document = write_document(&directory, &[]);
-  let saved = directory.join("never.c2d");
+  let saved = directory.join("never.cmc");
   let script = write_script(
     &directory,
     "model.cam",
@@ -452,7 +452,7 @@ nest --gap 0
 save {plain}
 ",
       document = document.display(),
-      plain = directory.join("plain.c2d").display()
+      plain = directory.join("plain.cmc").display()
     ),
   );
   let annotated = write_script(
@@ -473,7 +473,7 @@ save {annotated}
 # and that is the whole script
 ",
       document = document.display(),
-      annotated = directory.join("annotated.c2d").display()
+      annotated = directory.join("annotated.cmc").display()
     ),
   );
 
@@ -487,8 +487,8 @@ save {annotated}
     "a comment and a blank line change no output"
   );
   assert_eq!(
-    std::fs::read(directory.join("annotated.c2d")).expect("annotated document"),
-    std::fs::read(directory.join("plain.c2d")).expect("plain document"),
+    std::fs::read(directory.join("annotated.cmc")).expect("annotated document"),
+    std::fs::read(directory.join("plain.cmc")).expect("plain document"),
     "a comment and a blank line change no bytes"
   );
 
@@ -500,13 +500,13 @@ fn a_path_comes_from_the_script_or_the_command_line_and_nowhere_else() {
   let directory = scratch("paths");
   let elsewhere = directory.join("elsewhere");
   let document = write_document(&elsewhere, &[]);
-  let saved = directory.join("saved").join("nested.c2d");
+  let saved = directory.join("saved").join("nested.cmc");
 
   // A working directory holding a decoy of the document's own file name, and three decoy paths in the
   // environment: none of them is named by the script, so none of them may be read or written.
   let work = directory.join("work");
   std::fs::create_dir_all(&work).expect("work directory");
-  let decoy = work.join("parts.c2d");
+  let decoy = work.join("parts.cmc");
   std::fs::write(&decoy, b"not a document").expect("decoy written");
   let decoy_before = std::fs::read(&decoy).expect("decoy bytes");
 
@@ -545,7 +545,7 @@ save {saved}
   left.sort();
   assert_eq!(
     left,
-    vec!["parts.c2d".to_owned(), "paths.cam".to_owned()],
+    vec!["parts.cmc".to_owned(), "paths.cam".to_owned()],
     "the script wrote nothing into its working directory"
   );
 
@@ -592,7 +592,7 @@ fn a_script_refuses_a_positional_document_for_nest() {
   // script named is never written, which is the part a silent success would have hidden.
   let directory = scratch("nest-positional");
   let document = write_document(&directory, &[("P1", &["E1"], 1)]);
-  let other = directory.join("other.c2d");
+  let other = directory.join("other.cmc");
   std::fs::copy(&document, &other).expect("copy");
   let before = std::fs::read(&other).expect("read");
 

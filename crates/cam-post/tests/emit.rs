@@ -10,8 +10,8 @@ const POST_INCH: &str = include_str!("fixtures/post_inch.pp");
 
 fn meta() -> ProgramMeta {
   ProgramMeta {
-    file_name: "part.c2d".to_owned(),
-    file_path: "/jobs/part.c2d".to_owned(),
+    file_name: "part.cmc".to_owned(),
+    file_path: "/jobs/part.cmc".to_owned(),
   }
 }
 

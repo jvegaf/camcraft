@@ -42,7 +42,7 @@ fn save_with_no_recorded_path_is_refused_and_points_at_save_as() {
 #[test]
 fn save_as_with_an_empty_path_is_refused_and_writes_nothing_into_the_working_directory() {
   let directory = scratch("save-empty-path");
-  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(1));
+  let opened = write_c2d(&directory, "bracket.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(
@@ -90,7 +90,7 @@ fn save_as_with_an_empty_path_is_refused_and_writes_nothing_into_the_working_dir
 #[test]
 fn save_writes_the_opened_document_back_and_clears_the_dirty_flag() {
   let directory = scratch("save-current");
-  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
+  let path = write_c2d(&directory, "bracket.cmc", &document_with_squares(2));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
@@ -111,7 +111,7 @@ fn save_writes_the_opened_document_back_and_clears_the_dirty_flag() {
 
   shell.apply_action(&mut app, &UiAction::Save);
 
-  assert_eq!(shell.status, "save document — wrote bracket.c2d");
+  assert_eq!(shell.status, "save document — wrote bracket.cmc");
   assert!(!app.is_dirty(), "a successful save clears the dirty flag");
   assert_eq!(
     shell.document_path(),
@@ -135,8 +135,8 @@ fn save_writes_the_opened_document_back_and_clears_the_dirty_flag() {
 #[test]
 fn save_as_writes_the_new_path_and_the_bar_names_it_from_then_on() {
   let directory = scratch("save-as");
-  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(2));
-  let target = directory.join("copy.c2d");
+  let opened = write_c2d(&directory, "bracket.cmc", &document_with_squares(2));
+  let target = directory.join("copy.cmc");
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(
@@ -153,24 +153,24 @@ fn save_as_writes_the_new_path_and_the_bar_names_it_from_then_on() {
     },
   );
 
-  assert_eq!(shell.status, "save document as — wrote copy.c2d");
+  assert_eq!(shell.status, "save document as — wrote copy.cmc");
   assert_eq!(
     shell.document_path(),
     Some(target.as_path()),
     "Save As becomes the file the shell writes"
   );
-  assert_eq!(shell.document_name(), "copy.c2d");
+  assert_eq!(shell.document_name(), "copy.cmc");
   assert!(!app.is_dirty(), "a successful save clears the dirty flag");
   let reloaded = DocumentFile::load(&target).expect("the file Save As wrote loads again");
   assert_eq!(&reloaded.document, app.document());
   let (_, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
   assert!(
-    all.contains("copy.c2d"),
+    all.contains("copy.cmc"),
     "the bar must name the file Save As wrote: {all}"
   );
   assert!(
-    !all.contains("bracket.c2d"),
+    !all.contains("bracket.cmc"),
     "the bar must stop naming the file it was opened from: {all}"
   );
   std::fs::remove_dir_all(&directory).ok();
@@ -179,7 +179,7 @@ fn save_as_writes_the_new_path_and_the_bar_names_it_from_then_on() {
 #[test]
 fn an_archive_entry_this_build_does_not_interpret_survives_a_save() {
   let directory = scratch("save-extras");
-  let path = write_c2d_with_extras(&directory, "with-asset.c2d", &document_with_squares(1));
+  let path = write_c2d_with_extras(&directory, "with-asset.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
@@ -213,7 +213,7 @@ fn an_archive_entry_this_build_does_not_interpret_survives_a_save() {
 #[test]
 fn a_save_of_a_document_that_does_not_validate_writes_nothing() {
   let directory = scratch("save-invalid-document");
-  let path = write_c2d(&directory, "bracket.c2d", &document_with_squares(1));
+  let path = write_c2d(&directory, "bracket.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
@@ -258,7 +258,7 @@ fn a_save_of_a_document_that_does_not_validate_writes_nothing() {
 #[test]
 fn every_uninterpreted_entry_survives_a_save_including_one_with_no_bytes() {
   let directory = scratch("save-every-entry");
-  let path = write_c2d_with_extras(&directory, "with-entries.c2d", &document_with_squares(1));
+  let path = write_c2d_with_extras(&directory, "with-entries.cmc", &document_with_squares(1));
   // Two more entries beside the asset: a text note and one that holds no bytes at all, which is the one
   // entry a map that conflated "empty" with "absent" would lose without saying so.
   let mut file = DocumentFile::load(&path).expect("the archive loads again");
@@ -313,7 +313,7 @@ fn every_uninterpreted_entry_survives_a_save_including_one_with_no_bytes() {
 #[test]
 fn the_archive_entries_belong_to_the_file_and_not_to_the_history() {
   let directory = scratch("save-extras-undo");
-  let path = write_c2d_with_extras(&directory, "with-asset.c2d", &document_with_squares(1));
+  let path = write_c2d_with_extras(&directory, "with-asset.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: path.clone() });
@@ -341,7 +341,7 @@ fn the_archive_entries_belong_to_the_file_and_not_to_the_history() {
 
   shell.apply_action(&mut app, &UiAction::Save);
 
-  assert_eq!(shell.status, "save document — wrote with-asset.c2d");
+  assert_eq!(shell.status, "save document — wrote with-asset.cmc");
   let reloaded = DocumentFile::load(&path).expect("the saved file loads again");
   assert_eq!(
     reloaded.extras.get("assets/logo.png"),
@@ -359,7 +359,7 @@ fn the_archive_entries_belong_to_the_file_and_not_to_the_history() {
 #[test]
 fn a_failed_save_changes_neither_the_dirty_flag_nor_the_recorded_path() {
   let directory = scratch("save-failed");
-  let opened = write_c2d(&directory, "bracket.c2d", &document_with_squares(1));
+  let opened = write_c2d(&directory, "bracket.cmc", &document_with_squares(1));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(
@@ -379,7 +379,7 @@ fn a_failed_save_changes_neither_the_dirty_flag_nor_the_recorded_path() {
   let before = app.document_json();
   // A directory is the one target the atomic writer cannot replace with a file: the sibling temporary file
   // is written and the rename onto it fails, which is the error path a save has to survive.
-  let blocked = directory.join("locked.c2d");
+  let blocked = directory.join("locked.cmc");
   std::fs::create_dir(&blocked).expect("a directory where a document should be");
 
   shell.apply_action(
@@ -395,7 +395,7 @@ fn a_failed_save_changes_neither_the_dirty_flag_nor_the_recorded_path() {
     shell.status
   );
   assert!(
-    shell.status.contains("locked.c2d"),
+    shell.status.contains("locked.cmc"),
     "the refusal must name the file it could not write, got {:?}",
     shell.status
   );
@@ -421,8 +421,8 @@ fn a_failed_save_changes_neither_the_dirty_flag_nor_the_recorded_path() {
 #[test]
 fn opening_a_dirty_document_is_refused_and_a_clean_one_still_opens() {
   let directory = scratch("open-dirty");
-  let first = write_c2d(&directory, "first.c2d", &document_with_squares(1));
-  let second = write_c2d(&directory, "second.c2d", &document_with_squares(3));
+  let first = write_c2d(&directory, "first.cmc", &document_with_squares(1));
+  let second = write_c2d(&directory, "second.cmc", &document_with_squares(3));
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   shell.apply_action(
@@ -479,7 +479,7 @@ fn opening_a_dirty_document_is_refused_and_a_clean_one_still_opens() {
     Some(first.as_path()),
     "a refused open leaves the file the bar names alone"
   );
-  assert_eq!(shell.document_name(), "first.c2d");
+  assert_eq!(shell.document_name(), "first.cmc");
 
   // Saving is the way through, and then the open the operator asked for happens.
   shell.apply_action(&mut app, &UiAction::Save);
@@ -491,7 +491,7 @@ fn opening_a_dirty_document_is_refused_and_a_clean_one_still_opens() {
     },
   );
   assert_eq!(app.document().entities().count(), 3);
-  assert_eq!(shell.document_name(), "second.c2d");
+  assert_eq!(shell.document_name(), "second.cmc");
   assert!(
     !app.is_dirty(),
     "the drawing the clean open brought is not modified"
@@ -527,7 +527,7 @@ fn the_rails_save_chips_emit_their_actions() {
 #[test]
 fn a_bare_handle_action_refuses_to_save_because_the_shell_holds_the_entries() {
   let directory = scratch("save-bare");
-  let target = directory.join("nowhere.c2d");
+  let target = directory.join("nowhere.cmc");
   let mut app = AppState::new(document_with_rectangle());
   let before = app.document_json();
 
@@ -575,7 +575,7 @@ fn a_bare_handle_action_refuses_to_save_because_the_shell_holds_the_entries() {
 
   // The same action through the shell writes, and keeps the entries the shell is holding: the rule is about
   // who holds them, not about saving being refused.
-  let opened = write_c2d_with_extras(&directory, "with-asset.c2d", &document_with_squares(1));
+  let opened = write_c2d_with_extras(&directory, "with-asset.cmc", &document_with_squares(1));
   let mut shell = Shell::new();
   shell.apply_action(&mut app, &UiAction::OpenFile { path: opened });
   shell.apply_action(

@@ -191,9 +191,9 @@ back,120,80,4
 #[test]
 fn a_part_list_authors_a_rectangle_and_a_part_per_row_then_nests_them() {
   let directory = scratch("authoring");
-  let document = write_document(&directory, "bare.c2d", &[], None);
+  let document = write_document(&directory, "bare.cmc", &[], None);
   let csv = write_csv(&directory, "parts.csv", THREE_ROWS);
-  let out = directory.join("authored.c2d");
+  let out = directory.join("authored.cmc");
 
   let imported = run(&[
     "parts",
@@ -334,7 +334,7 @@ P2,S1,0.000,80.000,90.000,90.000,60.000
 fn nested_document(directory: &Path) -> PathBuf {
   write_document(
     directory,
-    "nested.c2d",
+    "nested.cmc",
     &[("side", 120.0, 80.0), ("shelf", 90.0, 60.0)],
     Some(nesting(
       vec![sheet("S1", 400.0, 300.0)],
@@ -383,7 +383,7 @@ fn a_cut_list_without_placements_is_refused_by_the_state_it_is_in() {
   // A nesting section that authors parts but holds no placement: a request that has not been nested.
   let unplaced = write_document(
     &directory,
-    "unplaced.c2d",
+    "unplaced.cmc",
     &[("side", 120.0, 80.0)],
     Some(nesting(
       vec![sheet("S1", 400.0, 300.0)],
@@ -408,7 +408,7 @@ fn a_cut_list_without_placements_is_refused_by_the_state_it_is_in() {
   assert!(!out.exists(), "a refused cut list writes no file");
 
   // A document with no nesting section at all is a different state, said by name.
-  let bare = write_document(&directory, "bare.c2d", &[("side", 120.0, 80.0)], None);
+  let bare = write_document(&directory, "bare.cmc", &[("side", 120.0, 80.0)], None);
   let refused = run(&["cutlist", bare.to_str().expect("utf8")]);
   assert_eq!(refused.code, 2, "{}", refused.stderr);
   assert_eq!(
@@ -423,7 +423,7 @@ fn a_cut_list_without_placements_is_refused_by_the_state_it_is_in() {
 #[test]
 fn a_duplicate_part_name_in_the_list_is_refused_with_its_source_line() {
   let directory = scratch("duplicate-row");
-  let document = write_document(&directory, "bare.c2d", &[], None);
+  let document = write_document(&directory, "bare.cmc", &[], None);
   let before = std::fs::read(&document).expect("document bytes");
   let csv = write_csv(
     &directory,
@@ -463,7 +463,7 @@ side,90,60,1
 #[test]
 fn a_part_name_the_document_already_holds_is_refused_with_its_source_line() {
   let directory = scratch("collision");
-  let document = write_document(&directory, "bare.c2d", &[], None);
+  let document = write_document(&directory, "bare.cmc", &[], None);
   let first = write_csv(
     &directory,
     "first.csv",
@@ -524,7 +524,7 @@ fn an_import_that_would_not_validate_is_refused_with_the_model_message_and_the_c
   // that would not load.
   let document = write_document(
     &directory,
-    "nested.c2d",
+    "nested.cmc",
     &[("side", 120.0, 80.0)],
     Some(nesting(
       vec![sheet("S1", 400.0, 300.0)],
@@ -541,7 +541,7 @@ name,width,height,quantity
 extra,50,40,3
 ",
   );
-  let out = directory.join("never.c2d");
+  let out = directory.join("never.cmc");
 
   let refused = run(&[
     "parts",
@@ -577,9 +577,9 @@ fn the_script_reaches_both_commands_and_both_write_the_subcommands_bytes() {
   // Parts in: the command line is handed a bare document and writes it where `--out` says; the script
   // opens the same kind of document, runs the same command and writes it with `save`.
   let csv = write_csv(&directory, "parts.csv", THREE_ROWS);
-  let bare = write_document(&directory, "bare.c2d", &[], None);
-  let from_cli = directory.join("cli.c2d");
-  let from_script = directory.join("script.c2d");
+  let bare = write_document(&directory, "bare.cmc", &[], None);
+  let from_cli = directory.join("cli.cmc");
+  let from_script = directory.join("script.cmc");
 
   let cli = run(&[
     "parts",
@@ -648,7 +648,7 @@ save {from_script}
     &directory,
     "parts-out.cam",
     &format!(
-      "open {}\nparts --csv parts.csv --out out.c2d\n",
+      "open {}\nparts --csv parts.csv --out out.cmc\n",
       bare.display()
     ),
   );
@@ -666,10 +666,10 @@ save {from_script}
 fn two_runs_of_the_same_import_and_of_the_same_cut_list_are_byte_identical() {
   let directory = scratch("determinism");
   let csv = write_csv(&directory, "parts.csv", THREE_ROWS);
-  let bare = write_document(&directory, "bare.c2d", &[], None);
+  let bare = write_document(&directory, "bare.cmc", &[], None);
 
   let mut first = None;
-  for name in ["first.c2d", "second.c2d"] {
+  for name in ["first.cmc", "second.cmc"] {
     let out = directory.join(name);
     let run = run(&[
       "parts",
@@ -711,7 +711,7 @@ fn the_commands_need_their_arguments() {
   assert_eq!(outcome.code, 2, "{}", outcome.stderr);
   assert_eq!(outcome.stderr, "error: parts requires a document path\n");
 
-  let document = write_document(&directory, "bare.c2d", &[], None);
+  let document = write_document(&directory, "bare.cmc", &[], None);
   let outcome = run(&["parts", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 2, "{}", outcome.stderr);
   assert_eq!(outcome.stderr, "error: parts requires --csv <file>\n");

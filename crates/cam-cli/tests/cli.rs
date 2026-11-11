@@ -77,7 +77,7 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
   });
   document.tools_ref = tools_ref.map(str::to_owned);
 
-  let path = directory.join("part.c2d");
+  let path = directory.join("part.cmc");
   save_document(&path, &document).expect("document saved");
   path
 }
@@ -183,7 +183,7 @@ fn an_unsupported_schema_exits_three_and_names_both_versions() {
 
 #[test]
 fn a_missing_document_exits_two() {
-  let outcome = run(&["validate", "/nonexistent/part.c2d"]);
+  let outcome = run(&["validate", "/nonexistent/part.cmc"]);
   assert_eq!(outcome.code, 2);
   assert!(outcome.stderr.contains("error:"), "{}", outcome.stderr);
 }
@@ -209,7 +209,7 @@ fn postp_validate_summarises_and_rejects_with_line_and_column() {
 /// and per machine — and M11's selector is what finally asks for the one you are cutting.
 ///
 /// The same document `write_document` builds, with the job's material set — M11's document field. Built
-/// through the model and not by patching bytes: `.c2d` is not text, which the first version of this
+/// through the model and not by patching bytes: `.cmc` is not text, which the first version of this
 /// helper discovered.
 #[test]
 fn export_writes_the_document_back_out_in_both_formats() {
@@ -481,7 +481,7 @@ fn figure_eight_contour() -> Contour {
 #[test]
 fn check_reports_a_self_intersection_with_its_point_and_segments() {
   let directory = scratch("check-intersection");
-  let document = write_vectors(&directory, "eight.c2d", vec![figure_eight_contour()]);
+  let document = write_vectors(&directory, "eight.cmc", vec![figure_eight_contour()]);
   let outcome = run(&["check", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 5, "{}", outcome.stderr);
   assert_eq!(
@@ -508,7 +508,7 @@ fn check_reports_an_open_contour_with_its_gap() {
     false,
   )
   .expect("open contour");
-  let document = write_vectors(&directory, "open.c2d", vec![open]);
+  let document = write_vectors(&directory, "open.cmc", vec![open]);
   let outcome = run(&["check", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 5, "{}", outcome.stderr);
   assert_eq!(
@@ -523,7 +523,7 @@ fn check_accepts_a_clean_document_and_says_so() {
   let directory = scratch("check-clean");
   let document = write_vectors(
     &directory,
-    "clean.c2d",
+    "clean.cmc",
     vec![
       rectangle_contour(50.0, 25.0),
       cam_geom::primitive::circle(Point2::new(100.0, 50.0), 8.0).expect("circle"),
@@ -548,7 +548,7 @@ fn check_orders_findings_by_entity_id() {
     false,
   )
   .expect("open contour");
-  let document = write_vectors(&directory, "order.c2d", vec![open, figure_eight_contour()]);
+  let document = write_vectors(&directory, "order.cmc", vec![open, figure_eight_contour()]);
   let outcome = run(&["check", document.to_str().expect("utf8")]);
   assert_eq!(outcome.code, 5, "{}", outcome.stderr);
   let lines: Vec<&str> = outcome.stdout.lines().collect();
@@ -564,7 +564,7 @@ fn check_orders_findings_by_entity_id() {
 
 #[test]
 fn check_still_exits_two_for_a_missing_document() {
-  let outcome = run(&["check", "/nonexistent/part.c2d"]);
+  let outcome = run(&["check", "/nonexistent/part.cmc"]);
   assert_eq!(outcome.code, 2);
   assert!(outcome.stderr.contains("error:"), "{}", outcome.stderr);
 }
@@ -589,7 +589,7 @@ fn a_rectangle_part_nests_onto_one_sheet_and_the_document_records_the_placement_
   let directory = scratch("nest-rectangle");
   let document = write_nesting_document(
     &directory,
-    "panel.c2d",
+    "panel.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -642,7 +642,7 @@ fn a_second_sheet_is_opened_when_the_parts_do_not_fit_one() {
   let directory = scratch("nest-second-sheet");
   let document = write_nesting_document(
     &directory,
-    "two-panels.c2d",
+    "two-panels.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 2)],
     &[("S1", 2000.0, 1000.0)],
@@ -705,7 +705,7 @@ fn a_part_that_fits_no_sheet_is_reported_with_its_id_and_exits_seven() {
   let directory = scratch("nest-unplaced");
   let document = write_nesting_document(
     &directory,
-    "wide.c2d",
+    "wide.cmc",
     vec![rectangle_contour(1200.0, 500.0)],
     &[("P1", &[1], 1)],
     &[("S1", 2000.0, 1000.0)],
@@ -757,7 +757,7 @@ fn a_free_profile_part_goes_through_the_no_fit_heuristic_and_the_report_names_it
   let directory = scratch("nest-profile");
   let document = write_nesting_document(
     &directory,
-    "bracket.c2d",
+    "bracket.cmc",
     vec![l_bracket()],
     &[("Bracket", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -800,7 +800,7 @@ fn a_search_step_too_fine_for_the_anchor_cap_is_refused_with_the_lattice_it_aske
   let directory = scratch("nest-step-cap");
   let document = write_nesting_document(
     &directory,
-    "brackets.c2d",
+    "brackets.cmc",
     vec![l_bracket()],
     &[("Bracket", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -853,7 +853,7 @@ fn nest_refuses_the_flags_a_documents_own_classes_give_no_meaning_to_by_name() {
   let directory = scratch("nest-inapplicable");
   let rectangles = write_nesting_document(
     &directory,
-    "panels.c2d",
+    "panels.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -861,7 +861,7 @@ fn nest_refuses_the_flags_a_documents_own_classes_give_no_meaning_to_by_name() {
   );
   let profiles = write_nesting_document(
     &directory,
-    "brackets.c2d",
+    "brackets.cmc",
     vec![l_bracket()],
     &[("Bracket", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -896,7 +896,7 @@ fn nest_refuses_a_flag_value_it_cannot_honour_by_name() {
   let directory = scratch("nest-flag-values");
   let rectangles = write_nesting_document(
     &directory,
-    "panels.c2d",
+    "panels.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -904,7 +904,7 @@ fn nest_refuses_a_flag_value_it_cannot_honour_by_name() {
   );
   let profiles = write_nesting_document(
     &directory,
-    "brackets.c2d",
+    "brackets.cmc",
     vec![l_bracket()],
     &[("Bracket", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
@@ -992,7 +992,7 @@ fn nest_refuses_a_document_with_no_parts_or_no_boards_by_name() {
   // Boards are authored, never defaulted (S4), so a document that authors none names --sheets.
   let no_boards = write_nesting_document(
     &directory,
-    "no-boards.c2d",
+    "no-boards.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 0)],
     &[],
@@ -1011,7 +1011,7 @@ fn nest_refuses_a_document_with_no_parts_or_no_boards_by_name() {
   // And a document with boards but no part has nothing to nest: no default part list either.
   let no_parts = write_nesting_document(
     &directory,
-    "no-parts.c2d",
+    "no-parts.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[],
     &[("S1", 1000.0, 600.0)],
@@ -1037,7 +1037,7 @@ fn nest_refuses_a_part_that_is_not_one_closed_contour_by_name() {
   let directory = scratch("nest-part-shape");
   let two_entities = write_nesting_document(
     &directory,
-    "two-entities.c2d",
+    "two-entities.cmc",
     vec![
       rectangle_contour(300.0, 200.0),
       rectangle_contour(100.0, 100.0),
@@ -1058,7 +1058,7 @@ fn nest_refuses_a_part_that_is_not_one_closed_contour_by_name() {
 
   let open = write_nesting_document(
     &directory,
-    "open.c2d",
+    "open.cmc",
     vec![
       // The wire has to have extent. A flat one has no positive-area footprint at all, so
       // `Document::validate` refuses the placement before `nest` ever reads the document (the model's
@@ -1099,7 +1099,7 @@ fn two_nest_runs_print_and_write_identical_bytes() {
   let directory = scratch("nest-determinism");
   let document = write_nesting_document(
     &directory,
-    "mixed.c2d",
+    "mixed.cmc",
     vec![rectangle_contour(600.0, 400.0), l_bracket()],
     &[("Panel", &[1], 2), ("Bracket", &[2], 1)],
     &[
@@ -1176,7 +1176,7 @@ fn the_algorithm_flag_names_the_heuristic_the_report_reports() {
   ] {
     let document = write_nesting_document(
       &directory,
-      "panels.c2d",
+      "panels.cmc",
       vec![rectangle_contour(600.0, 400.0)],
       &[("P1", &[1], 1)],
       &[("S1", 1000.0, 600.0)],
@@ -1207,14 +1207,14 @@ fn nest_writes_the_out_path_and_leaves_the_input_document_alone() {
   let directory = scratch("nest-out");
   let document = write_nesting_document(
     &directory,
-    "panel.c2d",
+    "panel.cmc",
     vec![rectangle_contour(600.0, 400.0)],
     &[("P1", &[1], 1)],
     &[("S1", 1000.0, 600.0)],
     &[("P1", "S1", 0.0, 0.0)],
   );
   let before = std::fs::read(&document).expect("read");
-  let out = directory.join("nested.c2d");
+  let out = directory.join("nested.cmc");
 
   let outcome = run(&[
     "nest",
@@ -1262,7 +1262,7 @@ fn a_quarter_turn_places_a_part_the_board_only_holds_sideways() {
   let directory = scratch("nest-quarter-turn");
   let document = write_nesting_document(
     &directory,
-    "rail.c2d",
+    "rail.cmc",
     vec![rectangle_contour(500.0, 900.0)],
     &[("P1", &[1], 1)],
     // Authored on a board tall enough to hold it upright, then re-nested onto the short board that
@@ -1337,7 +1337,7 @@ fn the_first_nesting_takes_an_authored_document_with_parts_and_no_placements() {
   let directory = scratch("nest-first");
   let document = write_nesting_document(
     &directory,
-    "authored.c2d",
+    "authored.cmc",
     vec![
       rectangle_contour(600.0, 400.0),
       rectangle_contour(300.0, 200.0),
@@ -1440,7 +1440,7 @@ fn a_first_nested_document_re_nests_to_identical_bytes() {
   let directory = scratch("nest-first-determinism");
   let document = write_nesting_document(
     &directory,
-    "authored.c2d",
+    "authored.cmc",
     vec![rectangle_contour(400.0, 400.0)],
     &[("P1", &[1], 2)],
     &[("S1", 1000.0, 600.0)],
@@ -1482,7 +1482,7 @@ fn a_first_nesting_that_cannot_fit_leaves_the_authored_request_untouched() {
   let directory = scratch("nest-first-unplaced");
   let document = write_nesting_document(
     &directory,
-    "wide.c2d",
+    "wide.cmc",
     vec![rectangle_contour(1200.0, 500.0)],
     &[("P1", &[1], 1)],
     &[("S1", 1000.0, 600.0)],

@@ -154,7 +154,7 @@ pub enum UiAction {
     /// The file to read; its extension decides the format.
     path: String,
   },
-  /// Open a `.c2d` document and replace the drawing with it.
+  /// Open a `.cmc` document and replace the drawing with it.
   ///
   /// The path comes from the caller — the shell has no file dialog and no dialog dependency, so a host
   /// answers [`UiAction::RequestOpenFile`] with the platform's picker and applies this action with what
@@ -169,7 +169,7 @@ pub enum UiAction {
   /// true by construction. The edits an undo step used to protect are protected instead by the refusal: an
   /// open over unsaved work is refused before anything is read.
   OpenFile {
-    /// The `.c2d` to load.
+    /// The `.cmc` to load.
     path: PathBuf,
   },
   /// Ask the host for a document to open; the host shows its file dialog and applies [`UiAction::OpenFile`].

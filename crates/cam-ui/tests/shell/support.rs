@@ -322,7 +322,7 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
   directory
 }
 
-/// Write a real `.c2d` with the store's own writer, so the shell test opens a file and not a stub.
+/// Write a real `.cmc` with the store's own writer, so the shell test opens a file and not a stub.
 pub(crate) fn write_c2d(
   directory: &std::path::Path,
   name: &str,
@@ -423,7 +423,7 @@ pub(crate) fn stored_tool(tool_number: u32) -> StoredTool {
   }
 }
 
-/// Write a real `.c2d` that also holds one archive entry this build does not interpret.
+/// Write a real `.cmc` that also holds one archive entry this build does not interpret.
 ///
 /// The shape the store's own round-trip test builds (`crates/cam-store/tests/document.rs`): a document
 /// written by the store, then given an extra entry and saved back through [`DocumentFile`], which is what

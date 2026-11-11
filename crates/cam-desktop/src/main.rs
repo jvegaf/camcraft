@@ -94,7 +94,7 @@ impl eframe::App for Editor {
       // S2, S3) — the dialog only decides *which* path, never what happens to it.
       let action = match action {
         UiAction::RequestOpenFile => match rfd::FileDialog::new()
-          .add_filter("campilot document", &["c2d"])
+          .add_filter("camcraft document", &["c2d"])
           .pick_file()
         {
           Some(path) => UiAction::OpenFile { path },
@@ -115,7 +115,7 @@ impl eframe::App for Editor {
         // S2). Everything after the path — the extras, the dirty flag, the recorded name — stays in
         // `apply_action`, where a refusal is a sentence instead of a silent no-op.
         UiAction::RequestSaveAs => match rfd::FileDialog::new()
-          .add_filter("campilot document", &["c2d"])
+          .add_filter("camcraft document", &["c2d"])
           .set_file_name(self.shell.document_name())
           .save_file()
         {
@@ -179,7 +179,7 @@ impl eframe::App for Editor {
 /// The name the tool library's import dialog starts from: the document's own name, in the library's extension.
 ///
 /// The library import dialog starts from the document's own name in the library's extension: a library exported beside a drawing is
-/// found by that drawing's name, and `part.c2d` therefore opens on `part.json`. The name is the dialog's
+/// found by that drawing's name, and `part.cmc` therefore opens on `part.json`. The name is the dialog's
 /// suggestion and not a rule — `tools.json` in the same folder is accepted just as readily (S11).
 fn library_file_name(shell: &Shell) -> String {
   std::path::Path::new(&shell.document_name())
@@ -343,7 +343,7 @@ mod tests {
       .map(|index| {
         RecentProject::new(
           format!("part {index}"),
-          PathBuf::from(format!("/shop/part-{index}.c2d")),
+          PathBuf::from(format!("/shop/part-{index}.cmc")),
           String::new(),
         )
       })
@@ -392,7 +392,7 @@ mod tests {
     match read_recents_at(&path) {
       RecentsRead::List(list) => {
         assert_eq!(list.len(), MAX_RECENTS);
-        assert_eq!(list[0].path, PathBuf::from("/shop/part-0.c2d"));
+        assert_eq!(list[0].path, PathBuf::from("/shop/part-0.cmc"));
       }
       RecentsRead::Error(sentence) => panic!("the file just written could not be read: {sentence}"),
     }

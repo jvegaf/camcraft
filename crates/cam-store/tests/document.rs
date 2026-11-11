@@ -1,4 +1,4 @@
-//! Behaviour tests for `.c2d` document persistence (A3).
+//! Behaviour tests for `.cmc` document persistence (A3).
 
 use cam_geom::{Contour, Point2};
 use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, DOCUMENT_SCHEMA};
@@ -11,7 +11,7 @@ fn scratch(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("campilot-store-{}-{name}", std::process::id()));
   let _ = std::fs::remove_dir_all(&directory);
   std::fs::create_dir_all(&directory).expect("scratch directory");
-  directory.join("part.c2d")
+  directory.join("part.cmc")
 }
 
 /// The names in `directory`, sorted, so a test can assert a directory is exactly as it found it.
@@ -102,7 +102,7 @@ fn unknown_archive_entries_survive_a_load_and_save_cycle() {
 #[test]
 fn a_missing_document_entry_names_the_expected_entry() {
   let path = scratch("missing-entry");
-  // A valid ZIP that is not a c2d document.
+  // A valid ZIP that is not a cmc document.
   let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
   writer
     .start_file("notes.txt", zip::write::SimpleFileOptions::default())
