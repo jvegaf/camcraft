@@ -242,3 +242,29 @@ el commit que borra 33.000 lineas es justamente el que no tiene segunda opinion.
 
 Nada de esto autoriza delivery: push, PRs y merge siguen siendo decision del dueno, y el push de las ramas
 re-escritas sigue bloqueado por la politica de seguridad del harness.
+
+**L23** (evidencia — PR4 no es un borrado, es C3): medido antes de intentarlo. En `cam-model` quedan
+**608 lineas** de parametros de madera (263-870: `PocketStrategy`, `PocketParams`, `DrillParams`,
+`ProfileParams`, `ChamferParams`, `VCarveParams`, `EngraveParams`, `FlutingParams`, `TextureParams`,
+`InlayParams`, `ThreadParams`, `MouldingParams`) y **7 validadores** por operacion (~190 lineas:
+`check_chamfer`, `check_v_carve`, `check_fluting`, `check_texture`, `check_inlay`, `check_thread`,
+`check_moulding`). Trece archivos fuera de `cam-model` referencian `Operation::` y dieciocho referencian
+`Toolpath`.
+
+**El bloqueo estructural:** `Toolpath.operation: Operation` es un campo **no opcional**
+(`cam-model/src/lib.rs:892`). Borrar las once variantes deja un enum inhabitable y `Toolpath` sin poder
+construirse, y con el se caen la lista de toolpaths de la UI (que la verificacion independiente dio por
+buena y cableada), el `match` de nombres de `cam-cli/src/lib.rs:1517`, `cam-app` y la derivacion de
+targets de `cam-sim`. Los tres caminos posibles son una variante de relleno (un stub con migracion de
+schema, que C3 borraria despues), definir ya las operaciones PCB (trabajo de C3), o sacar `Toolpath` del
+modelo (que mata una superficie de UI que sobrevive). Ninguno es un borrado.
+
+**Lo que si es cierto, y cierra el barrido:** las operaciones de madera ya son **inalcanzables**. Ningun
+comando que sobrevive crea una — el subcomando `cam-cli toolpath` no existe, el `match` de `cam-cli` solo
+las nombra para mostrarlas, y la UI solo **lee** `Toolpath` (cero construcciones de `Operation::` en
+`cam-ui/src`). La unica forma de tener una es un documento viejo, y los `.c2d` se rechazan (A2). Son datos
+de legado de solo lectura.
+
+**Decision:** PR4 se pliega dentro de C3. El barrido termina aca: todo lo que era alcanzable esta afuera,
+y lo que queda en el modelo se limpia al definir `camcraft/document@1`, una sola vez, en lugar de inventar
+un relleno y migrar el schema dos veces.
