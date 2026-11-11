@@ -42,6 +42,17 @@ use crate::{Shell, ShellOutput, UiAction};
 /// only reason a number is here: a list longer than the modal is a list with a scrollbar nobody asked for.
 pub const MAX_RECENTS: usize = 12;
 
+/// The modal's floor, in dp.
+///
+/// Two columns beside each other read as a dialog only while there is a body under them: with three recent projects the
+/// content measured under 240 and the frame collapsed into a strip with the two acts in its corner. The floor is the
+/// side column's own stack — the wordmark, the `START` heading, the two acts and the two footer lines — with the air
+/// the list wants under its last row, so a short list lengthens the dialog instead of flattening it.
+///
+/// Declared here rather than in [`crate::theme::Metrics`] because only this modal has a floor: every other surface of
+/// the shell is sized by what it holds.
+pub const MIN_HEIGHT: f32 = 360.0;
+
 /// The modal's own words. Constants rather than string literals because a test asserting on a sentence the operator
 /// reads should break when the sentence changes.
 /// The side column's section heading.
@@ -241,6 +252,7 @@ impl Shell {
           .inner_margin(egui::Margin::same(metrics.space(4) as i8)),
       )
       .show(ctx, |ui| {
+        ui.set_min_height(MIN_HEIGHT);
         ui.horizontal_top(|ui| {
           // ---- the side column: what a person can start ----
           ui.vertical(|ui| {
@@ -258,37 +270,44 @@ impl Shell {
 
             heading(ui, &palette, START);
             words.push(START.to_owned());
+            ui.add_space(metrics.space(1));
 
-            for (icon, title, sentence, primary) in [
-              (Icon::New, NEW_PROJECT, NEW_PROJECT_SENTENCE, true),
-              (Icon::Open, OPEN_PROJECT, OPEN_PROJECT_SENTENCE, false),
-            ] {
-              let response = action_tile(
-                ui,
-                &palette,
-                &metrics,
-                Tile {
-                  icon,
-                  title,
-                  sentence,
-                  primary,
-                },
-                side_width,
-              );
-              let centre = response.rect.center();
-              hits.push((title.to_owned(), (centre.x, centre.y)));
-              words.push(title.to_owned());
-              words.push(sentence.to_owned());
-              if response.clicked() {
-                pressed = Some(if primary {
-                  UiAction::NewProject
-                } else {
-                  UiAction::RequestOpenFile
-                });
+            // The two acts are separate decisions and not a list, so they get more air between them than one line and
+            // its neighbour: 16 dp of `item_spacing` instead of the style's 8. The scope keeps that spacing off the
+            // heading above and the footer below, which are read as one block with the column.
+            ui.scope(|ui| {
+              ui.spacing_mut().item_spacing.y = metrics.space(5);
+              for (icon, title, sentence, primary) in [
+                (Icon::New, NEW_PROJECT, NEW_PROJECT_SENTENCE, true),
+                (Icon::Open, OPEN_PROJECT, OPEN_PROJECT_SENTENCE, false),
+              ] {
+                let response = action_tile(
+                  ui,
+                  &palette,
+                  &metrics,
+                  Tile {
+                    icon,
+                    title,
+                    sentence,
+                    primary,
+                  },
+                  side_width,
+                );
+                let centre = response.rect.center();
+                hits.push((title.to_owned(), (centre.x, centre.y)));
+                words.push(title.to_owned());
+                words.push(sentence.to_owned());
+                if response.clicked() {
+                  pressed = Some(if primary {
+                    UiAction::NewProject
+                  } else {
+                    UiAction::RequestOpenFile
+                  });
+                }
               }
-            }
+            });
 
-            ui.add_space(metrics.space(2));
+            ui.add_space(metrics.space(4));
             ui.label(
               RichText::new(FOOTER_PATH)
                 .size(theme::SMALL)
@@ -421,7 +440,9 @@ fn action_tile(
   } = tile;
   let fill = if primary { Role::CutSoft } else { Role::Panel };
   let edge = if primary { Role::Cut } else { Role::Border };
-  let height = metrics.space(5) + theme::BODY + theme::SMALL;
+  // Two lines of text inside a 24 dp of padding either side: the act is a card a person aims at, and at 41 dp it read
+  // as a row of the list beside it.
+  let height = metrics.space(6) + theme::BODY + theme::SMALL;
   let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
   let radius = egui::CornerRadius::same(metrics.radius_panel as u8);
   let painter = ui.painter();

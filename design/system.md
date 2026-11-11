@@ -185,7 +185,9 @@ ribbon. The 24 is the grid, never the render size.
 Declared per module rather than in `Metrics`, and therefore part of the frame an artboard must respect: brand block
 **62** (`chrome.rs`), collapsed inspector strip **12**, the 3D split at exactly **half** the drawing area, playback
 bar **46**, overlay row line **18**, the triad's corner **86 × 68** with arms of **20** and labels padded **10**,
-the home button **22**, the library's columns **296 / 460 / 344 / 186** with a **40 mm** drawing span.
+the home button **22**, the library's columns **296 / 460 / 344 / 186** with a **40 mm** drawing span, and the start
+screen's floor **360** with its side column **232** and list column **456** (`start_screen.rs`) — the one modal that is
+not sized by what it holds.
 
 ## Component rules
 

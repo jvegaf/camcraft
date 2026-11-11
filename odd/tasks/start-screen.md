@@ -86,3 +86,9 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
   (`gentle-ai.review-acknowledged/v1`). The provider's own risk signal was `process_boundary` on
   `crates/cam-ui/src/lib.rs` — pre-existing script-panel code that appears because the file is in the diff. Delivery
   stays ordinary repository policy: the branch is local and pushing it is the operator's call.
+- **L12** — After the operator looked at it: the modal was too short and the two acts sat too close. The artboard was
+  right and the code was the defect, per `design/system.md`'s own rule. Now `MIN_HEIGHT = 360` (`start_screen.rs`, added
+  to the system's declared-per-module list), tiles at `space(6) + BODY + SMALL` = **49 dp** instead of 41, and 16 dp of
+  `item_spacing` between the two acts instead of the style's 8 — measured from the frame, not assumed: content 360 dp
+  tall, tile gap 16 dp. `assess` on the follow-up candidate: risk `medium`, `reviewDue: false` (`under_budget`), so no
+  native review; the writer's self-verification is the gate that ran (fmt, clippy `-D warnings`, 1695 tests).
