@@ -104,7 +104,7 @@ Five facts that the earlier evidence got wrong or never saw, and that every fram
   worth keeping — an empty sheet, and a document with no toolpath — became `next_step(app)` on the Job tab,
   which asks the document instead of the mode.
 
-The rest of the list below is still `odd/tasks/camui-prancheta.md`'s work.
+The rest of the list below is still `odd/tasks/017-camui-prancheta.md`'s work.
 
 ## Still to take
 

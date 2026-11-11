@@ -527,7 +527,7 @@ remains of the concept, in the order the design argues for:
 | T11 | ✅ delivered `a33e45f` — ProgressBar from view3d clock | S2 S4 S8 | worker | `a33e45f` |
 | T12 | ✅ delivered `f4b96b1` — material dialog + SetJob positivity | S2 S7 S8 | worker | `f4b96b1` |
 | T13 | ✅ delivered `6014611` — Stage readiness: the rule that makes Design and Toolpaths *done*, and the string naming what is missing. Relief and Prove keep `—`, because no simulation result and no G-code state reach `AppState` | S2 S4 S9 | worker |
-| T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/camui-toolpath.md` and landed there: the card `ffe4d68`, the estimate `126febc`, both merged in `master` (`abe2e7b`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
+| T14 | ✅ left this feature — the current-tool card and the estimated time became `odd/tasks/012-camui-toolpath.md` and landed there: the card `ffe4d68`, the estimate `126febc`, both merged in `master` (`abe2e7b`). The missing layer this row named (no tool library handle on `Shell`, no toolpath authoring) is the debt that feature left open | S2 S8 | — |
 
 - **S8 — the screenshots are the pattern authority.** Eight frames of the reference live in
   `design/Screenshots-reference/`, and `README.md` annotates each one with the pattern it settles. Where a screenshot
@@ -615,7 +615,7 @@ remains of the concept, in the order the design argues for:
   **Two rows in this document close with it.** **T7** (the stage model) is delivered by **T13**, not abandoned: the
   readiness rule, the gates it can and cannot certify, and the strings that name the next step are exactly what T7
   described. **T14** (the current-tool card and the estimated time) left this feature: it became
-  `odd/tasks/camui-toolpath.md`, because the exploration showed `cam_app` has no toolpath command at all and the
+  `odd/tasks/012-camui-toolpath.md`, because the exploration showed `cam_app` has no toolpath command at all and the
   shell cannot reach the tool library — a missing layer, not a missing button.
   **What this feature leaves behind, none of it hidden**: the light theme's progress trough at 1.06:1 with no
   field/track role in the token set; a stage readiness that is a lower bound on the artboard's gates rather than a
@@ -636,7 +636,7 @@ remains of the concept, in the order the design argues for:
   still unpushed; the owner merged and cleaned the branches, not the remote.
 
 - **L44 (the hand-off L43 recorded is now half closed: the shell opens a `.c2d`).** The follow-up feature that L43
-  named as `camui-toolpath`'s hand-off landed as `odd/tasks/shell-open-document.md` — its S2–S4, not its T4, and
+  named as `camui-toolpath`'s hand-off landed as `odd/tasks/014-shell-open-document.md` — its S2–S4, not its T4, and
   uncommitted in the working tree when this entry was written. The app bar's Open button emits
   `UiAction::RequestOpenFile` and nothing else (`crates/cam-ui/src/chrome.rs:334-348`); the host answers it with
   `rfd::FileDialog::pick_file` (`crates/cam-desktop/src/main.rs:95-102`), which is the file-dialog dependency
@@ -657,7 +657,7 @@ remains of the concept, in the order the design argues for:
   **No gate was run for this entry**: it is documentation, and the code it describes arrived with its own.
 
 - **L45 (L44's other half: the window writes the `.c2d` it opened, and the archive's other entries survive it).**
-  The feature `odd/tasks/shell-save-document.md` specifies landed as its S2–S5 and T1–T3; T4's gate, commits and
+  The feature `odd/tasks/015-shell-save-document.md` specifies landed as its S2–S5 and T1–T3; T4's gate, commits and
   independent verification stay the parent's, so this entry cites no commit — the code is uncommitted in the working
   tree. `UiAction` gained `Save`, `SaveFile { path }`
   and `RequestSaveAs` (`crates/cam-ui/src/lib.rs:508-530`); the app bar draws Save and Save as beside Open
@@ -698,7 +698,7 @@ remains of the concept, in the order the design argues for:
   the document names).** The three entries said the same thing in three tenses — `Document.tools_ref` "is still
   a filename only `cam-cli` resolves", an open "keeps clearing the tool snapshot", and "filling it from the
   opened document's library is the next slice, because resolving that filename the way `cam-cli` does is a rule
-  nobody has moved yet". That slice is `odd/tasks/shell-tools-ref.md`: on a successful open the shell resolves
+  nobody has moved yet". That slice is `odd/tasks/016-shell-tools-ref.md`: on a successful open the shell resolves
   the loaded document's `tools_ref` **relative to the document's own directory** through `tools_beside_document`
   (`crates/cam-ui/src/lib.rs:2752-2798`) and hands `ToolLibrary::tools()` to `set_tools` (`:1081-1090`,
   `:1169`), so the snapshot an open leaves behind is the document's library instead of nothing. L40's reason for

@@ -173,7 +173,7 @@ record the commit holding each task. No behaviour change.
 
 - **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD, with
   Windows/Linux support named as the extra requirement. The owner's sentence also named a third-party
-  product; the repository name hygiene sweep (`odd/tasks/repository-name-hygiene.md`) removed that name
+  product; the repository name hygiene sweep (`odd/tasks/028-repository-name-hygiene.md`) removed that name
   and the words that went with it.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";

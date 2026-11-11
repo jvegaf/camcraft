@@ -1,6 +1,6 @@
 # Debt: the review advisories M9 and M10 left open
 
-Feature document for the advisory debt recorded in `odd/tasks/m10-documents.md` L9 and in Engram
+Feature document for the advisory debt recorded in `odd/tasks/018-m10-documents.md` L9 and in Engram
 observation #165. Read **until `## Log`** before touching code; the Log is the record, not the brief.
 
 ## State of the debt
@@ -74,7 +74,7 @@ document waits on anyone now.
   `review-305eaa8746f90d29`, `review-3592c554bf15c02f`) and only *terminal-consumption* records for
   `bd99706d`, `12219c3f` and `1ab52143` — id, lineage and three hashes, no findings. So **10 of the 14
   advisories exist only as metadata** (lens, severity, path:line) in `docs/m10-documents.md:355-370`,
-  `odd/tasks/m10-documents.md:160`, `docs/m9-nesting.md:392-396`, `odd/roadmap.md:813,899`.
+  `odd/tasks/018-m10-documents.md:160`, `docs/m9-nesting.md:392-396`, `odd/roadmap.md:813,899`.
   The reviewer's own words survive for the four below, through `review-61e0b405dc7f498b`, documented as
   `bd99706d`'s superseded predecessor over the same code with shifted lines:
   1. *readability WARNING* — "`end_column` is computed as `token.column + token.text.len()`, but for a
@@ -219,7 +219,7 @@ document waits on anyone now.
   review-mode decision, not a task.
 - **L15 (the a5a82fe review's six advisories, captured before the burn — and the method that is now proven
   twice).** Lineage **`review-39a6d85c490202c2`** closed `approved` (see
-  `odd/tasks/m9-nesting.md` L13); its receipt is burned, so these words exist only because the
+  `odd/tasks/020-m9-nesting.md` L13); its receipt is burned, so these words exist only because the
   lineage kept a state directory and it was read **before** the acknowledgement. They are informational
   and none of them reopens anything. Tagged by lineage, as the register requires — `39a6d85c/…`:
   1. *risk WARNING* (`cam-model/src/lib.rs:1763-1783`, `R1-nesting-footprint-bypass`) — "`check_nesting`
@@ -299,7 +299,7 @@ document waits on anyone now.
      shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (*equal* bounds only). The
      code is right and the reason is the wrong one — the comment should say which rule it relies on.
 - **L17 (the sweep's seven, and a sixteenth advisory that the sweep found).** Feature document
-  `odd/tasks/advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
+  `odd/tasks/024-advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
   work-unit commits: **`189fbe0`** (the contract change alone, because it refuses input that used to
   load), **`5a7d770`** (three wording advisories and the two missing fixtures) and **`7ed2ef9`** (the
   index and the early exit, 61.99 s → 0.05 s on 5 000 stacked copies). **Closed by this sweep**:
@@ -344,8 +344,8 @@ than by rewriting the entries above. **Three contradictions, each checkable agai
   That the ledger says nine and its own rows say **ten** is not a new mistake but the same one, and it is
   left visible rather than rounded to whichever number reads better.
   The same wrong figure is repeated in four more places — `odd/roadmap.md:1098`,
-  `odd/tasks/m10-documents.md:172`, `odd/tasks/script-panel-document.md:40` and `:174`, and
-  `odd/tasks/advisory-debt-close.md:15` (that last one inside the owner's verbatim `S4`, which is never
+  `odd/tasks/018-m10-documents.md:172`, `odd/tasks/023-script-panel-document.md:40` and `:174`, and
+  `odd/tasks/024-advisory-debt-close.md:15` (that last one inside the owner's verbatim `S4`, which is never
   rewritten) — and **none of them is authority now**.
   **And the determination this reconciliation asked for, on the one live finding.** `b5fe4921/R3-001`,
   the successor `L9` names at `crates/cam-import/src/csv.rs:180-193`, is **open, not closed**: the
@@ -368,7 +368,7 @@ rather than tidied — the point of that entry is that the number was never the 
 ## Successor advisories: the sweep's review, re-filed by its own candidate
 
 Filed here as the register requires, because their words exist only in Engram observation #193 and in
-`odd/tasks/advisory-debt-close.md` L9. Lineage **`review-ca5c7eda65951600`**, closure `approved`, receipt
+`odd/tasks/024-advisory-debt-close.md` L9. Lineage **`review-ca5c7eda65951600`**, closure `approved`, receipt
 burned. The provider marked all five informational against that candidate; three are open work.
 
 | ID | Lens | Severity | Subject | Status |
@@ -379,7 +379,7 @@ burned. The provider marked all five informational against that candidate; three
 | `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `5635855` |
 | `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `5635855` |
 
-**The sixteenth is closed** (`odd/tasks/winding-collinear-overlap.md`, S2 = "Ruta B: arreglar en la
+**The sixteenth is closed** (`odd/tasks/030-winding-collinear-overlap.md`, S2 = "Ruta B: arreglar en la
 raíz"). `winding::relation` now escalates a shared span to `Crossing` when the two interiors lie on the
 same side of it and neither contour encloses the other, deciding the side from each segment's direction
 and each contour's own `signed_area` sign rather than assuming counter-clockwise. A bare coincident
@@ -418,7 +418,7 @@ padding instead of claiming the tests provide it.
 
 L14 said the nine unrecoverable advisories (`bd99706d` ×6, `1ab52143` ×3, `b5fe4921/R3-001`) could only
 be closed by a fresh review that re-files them with new words, and the owner chose "Re-filear con una
-review fresca" (`odd/tasks/advisory-debt-close.md` S4). That route was pursued and it **does not exist
+review fresca" (`odd/tasks/024-advisory-debt-close.md` S4). That route was pursued and it **does not exist
 in this environment**, and the reason is a number rather than an opinion:
 
 - Re-filing a finding means putting its **subject** in front of a reviewer, and each of the nine lives

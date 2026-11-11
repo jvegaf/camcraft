@@ -10,7 +10,7 @@ and stop the gate from writing a seed into a tracked file on a case that should 
   description as the requirement: *"Doc propio. Arregla la discrepancia entre intersect y segment_to_segment, y saca
   la seed del archivo versionado"*. The review of the closing documentation commit was declined explicitly
   (*"No lo revises (mi recomendación)"*), so this document starts no review lineage of its own.
-- **S2 — the defect, as the record already measured it.** From `odd/tasks/camui-toolpath.md` L10, verbatim: *"the gate
+- **S2 — the defect, as the record already measured it.** From `odd/tasks/012-camui-toolpath.md` L10, verbatim: *"the gate
   is flaky for a reason that predates this feature: `cam-geom --test distance`'s
   `the_distance_is_zero_exactly_when_the_segments_meet` finds two concentric arcs where `intersect` answers
   `Coincident` while `segment_to_segment` answers 7.071"*. Reproduced as a rule, not an anecdote: `7.071` is

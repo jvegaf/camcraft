@@ -162,13 +162,13 @@ so it goes first and alone.
   L9 is kept as it was — the Log is the record, not a page to be edited — and this entry supersedes the
   parts a later session must not act on. **The panel is mounted**: `Command::Script` opens
   `ScriptPanel` as an `egui::Modal` over the canvas, `Esc` closes it, and a test pins that `output.canvas`
-  is byte-identical with the pane open and closed (`odd/tasks/script-panel-mount.md`, commits `4a8ebc9`,
+  is byte-identical with the pane open and closed (`odd/tasks/022-script-panel-mount.md`, commits `4a8ebc9`,
   `ad09286`, `6eddd16`). **"Wiring it would move every existing shell golden" was false**: this crate
   keeps no pixel goldens — no shell snapshot, no `*.golden*`, no snapshot directory — and its tests
   assert geometry and text lists, so the mount re-baselined **0** goldens and failed **0** tests; the only
   text list that moved is the palette's 27 → 28 chips. L9's cost claim shaped two decisions before anyone
   measured it, which is the lesson worth carrying: a cost inherited from a record is a claim, not a fact.
-  **The advisory list in L9 is also superseded**: the current state lives in `odd/tasks/debt-advisories.md`
+  **The advisory list in L9 is also superseded**: the current state lives in `odd/tasks/021-debt-advisories.md`
   — six closed, ten unrecoverable, and `R3-001` of the mount's own review filed against `cam-import`'s CSV
   reader. M9's `a5a82fe` decision is unchanged and still the owner's. Workspace floor after this line:
   **1517 tests over 110 result lines**, `./scripts/check.sh` green.

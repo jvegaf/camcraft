@@ -14,7 +14,7 @@ This feature connects the three.
   question the parent asked: option *"Diálogo nativo con rfd"* — *"El botón Open abre el diálogo del
   sistema. Es la feature real, pero suma una dependencia que el registro del proyecto dejó explícitamente
   sin decidir."* The dependency is therefore taken on purpose, not by drift: the record at
-  `odd/tasks/m3-import.md:113` ("`rfd` or equivalent is a later decision") is decided here.
+  `odd/tasks/004-m3-import.md:113` ("`rfd` or equivalent is a later decision") is decided here.
 - **S2 — the capability.** The system's Open button (the glyph that exists unused at
   `cam-ui/src/icons.rs:1545-1552`) asks the host for a path; the host shows the platform file dialog; the
   chosen path is loaded through `cam_store::document::DocumentFile::load`, which is the same call the CLI's
@@ -126,7 +126,7 @@ This feature connects the three.
   **What this receipt does not authorise:** delivery. Push, pull request and merge stay ordinary
   repository policy and the owner's decisions.
 - **L6 (S4 superseded: an open is not undoable any more).** This document's S4 kept an open in the history so
-  an accidental one was "one undo away". `odd/tasks/shell-save-document.md`'s verifier reproduced what that
+  an accidental one was "one undo away". `odd/tasks/015-shell-save-document.md`'s verifier reproduced what that
   costs once the window can write: open `a.c2d`, open `b.c2d`, `Undo`, `Save` overwrote `b.c2d` with a's
   drawing and dropped its archive entries, because the recorded path kept naming `b` while the screen showed
   `a`. The owner's decision, verbatim: *"Abrir deja de ser deshacible"*. An open now swaps through
@@ -144,7 +144,7 @@ This feature connects the three.
   `tools_beside_document` (`:2752-2798`) and hands the entries to `set_tools`, so the snapshot S4 clears is the
   *previous* document's library and no longer the last word about the new one. S4's sentence is left exactly as
   written, because its rule is unchanged: nothing stale survives an open. The feature that owns the resolution
-  is `odd/tasks/shell-tools-ref.md` (S2–S4), and it extends this document's own open rather than replacing it —
+  is `odd/tasks/016-shell-tools-ref.md` (S2–S4), and it extends this document's own open rather than replacing it —
   same `DocumentFile::load`, same `replace_document` swap with no history entry (L6), same host dialog — with one
   addition that matters to S3: a library that is missing, unreadable or not a library does **not** turn the open
   into a refusal, it keeps the open's own status sentence and appends the library and the reason to it

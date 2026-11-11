@@ -22,7 +22,7 @@ Measured, not inferred:
 - The three `v2` lineages under `.git/gentle-ai/review-transactions/v2/` each hold one `review-state.json`,
   and the two that admitted findings carry `admitted_role_results` with the artifact `value` inside —
   `review-61e0b405dc7f498b` is 23 867 bytes and its `fix_finding_ids` are `R1-001`, `R2-001` and `R3-001`.
-- `review-cf16da5a0b71e7b8` — the review of `odd/tasks/script-panel-document.md` — has **no file anywhere in
+- `review-cf16da5a0b71e7b8` — the review of `odd/tasks/023-script-panel-document.md` — has **no file anywhere in
   the store**. Its only trace is the 259-byte terminal-consumption record for
   `target sha256:557f4547…`, and the receipt burned on acknowledgement
   (`sha256:506f7b2a356f1076b478767fd04b0edf02b4aa52bf762bd0730ae32386d213fc`).
@@ -79,9 +79,9 @@ Binding on every session that starts a native review here:
    prints the id, lens, severity, location and disposition; those are the record. Ack after writing, never
    before — the receipt burn is what closes the window.
 2. **Never present an inference as a quotation.** Where the anchor plus the code makes the subject
-   reconstructible, say so and say that it is a reading (`odd/tasks/script-panel-document.md` L8 is the
+   reconstructible, say so and say that it is a reading (`odd/tasks/023-script-panel-document.md` L8 is the
    worked example: six anchors, each with a marked reading). Where it is not reconstructible, the finding
-   stays open and is named unrecoverable — `odd/tasks/debt-advisories.md` L3 is the other worked example.
+   stays open and is named unrecoverable — `odd/tasks/021-debt-advisories.md` L3 is the other worked example.
 3. **Never close a finding by guessing an edit that looks like it.** A stale anchor means the record cannot
    support a resolution, and a plausible edit in its place manufactures one.
 4. **Read the store before assuming it is empty.** A lineage that was abandoned or reclaimed keeps a full
@@ -93,6 +93,6 @@ Binding on every session that starts a native review here:
    commit that touches no executable file is left unreviewed without asking, and the disposition is stated in
    the reply rather than re-derived. Any candidate that does touch executable code is assessed as usual.
 
-The cost of the alternative is already in the record: ten advisories in `odd/tasks/debt-advisories.md` that
+The cost of the alternative is already in the record: ten advisories in `odd/tasks/021-debt-advisories.md` that
 nobody can close without paying for a fresh review of the tree, and five more from
 `review-cf16da5a0b71e7b8` whose anchors survive and whose words do not.

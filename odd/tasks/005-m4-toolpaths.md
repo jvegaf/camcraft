@@ -417,10 +417,10 @@ gains the two `operation` examples, the `RetractMode` serde shape and the restat
   `m4/pocket`, `../campilot-m4-drill` on `m4/drill`, both from `aff108b`), because pocket and drilling
   are two independent units of behaviour over disjoint module and test surfaces.
 - **L11** — A5's lattice is superseded, by the owner's decision recorded in
-  `odd/tasks/raster-far-edge-pass.md`. M5's differential found what "the last one is the last grid line
+  `odd/tasks/013-raster-far-edge-pass.md`. M5's differential found what "the last one is the last grid line
   that fits" costs: on a 100 mm square at a 4 mm stepover the rows stop short of the offset region's far
   edge and the strip the tool's own disc could have cut is never cut, `uncut: 984.000 mm3
-  over 164 cell(s)` (`odd/tasks/m5-simulation.md` D-M5-12, L10). The parent offered that as a
+  over 164 cell(s)` (`odd/tasks/006-m5-simulation.md` D-M5-12, L10). The parent offered that as a
   decision because delivering it changes this document's contract, and the owner answered verbatim
   **`si, acepto`**; the contract changes. `raster_rows` now finishes the lattice with exactly one row on
   `region.max.y` when the grid `min.y + k*stepover` stops short of it, and emits no extra row when a grid

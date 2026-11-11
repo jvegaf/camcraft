@@ -1697,7 +1697,7 @@ fn two_placements_that_overlap_with_collinear_edges_are_refused() {
   // 5 000 mm². `winding::relation` called that a touch — a coincident edge was enough to return
   // `Touching`, before any containment was asked — and this document loaded. The classifier now
   // answers `Crossing` for a same-side shared span with no containment, so the refusal is the one the
-  // nesting rules always claimed (`odd/tasks/winding-collinear-overlap.md` S3).
+  // nesting rules always claimed (`odd/tasks/030-winding-collinear-overlap.md` S3).
   let mut document = nesting_document();
   document.nesting.as_mut().expect("a section").placements[1].position = Point2::new(50.0, 0.0);
   let error = refusal(&document);

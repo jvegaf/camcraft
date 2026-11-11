@@ -17,7 +17,7 @@ Requirements as stated by the owner (verbatim):
   LineSeg, Arc (center/radius/direction), Polyline with bulges, Bezier; chaining, winding,
   self-intersection, validation, bounding volumes, spatial index (rstar), offsetting (arc-preserving),
   boolean ops, tessellation".
-- **S3** — Decision D-M4-2 (verbatim, `odd/tasks/m4-toolpaths.md`): "A pocket is one region per
+- **S3** — Decision D-M4-2 (verbatim, `odd/tasks/005-m4-toolpaths.md`): "A pocket is one region per
   selected contour; islands are out of scope."
 - **S4** — Decision D6 (verbatim, `odd/roadmap.md`): "Arcs first-class, no pre-tessellation".
 - **S5** — Rule 2 of the architecture (verbatim, `odd/roadmap.md:98`): "**Determinism is a feature.**

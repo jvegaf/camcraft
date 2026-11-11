@@ -10,7 +10,7 @@ raster contract. The owner has now taken that decision.
 - **S1 — the decision.** The owner's words, in order: *"si, acepto"*, answering the parent's proposal
   verbatim: *"D-M5-12 (raster de simulación, 984 mm³ sin cortar) … necesita tu decisión porque cambia
   el contrato de M4"*. The requirement itself is the record it accepted, from
-  `odd/tasks/m5-simulation.md:178-188`, verbatim: *"The fix is a boundary pass — one row at the
+  `odd/tasks/006-m5-simulation.md:178-188`, verbatim: *"The fix is a boundary pass — one row at the
   offset region's far edge — and it is deliberately **not** taken here: M4's raster contract says
   'rows on the `min.y + k·stepover` grid' and pins '32 rows at y = 3, 6, … 96', so adding a finishing
   row changes a documented contract and belongs to a decision the owner takes"*. That decision is
@@ -31,7 +31,7 @@ raster contract. The owner has now taken that decision.
   one honest row for a shape special case. Recorded with its measurement.
 - **S5 — the documents follow the behaviour.** `docs/m4-toolpaths.md` (the "last grid line that
   fits" sentence, and the table row that says 99 mm is past 97 so there is no 33rd row),
-  `odd/tasks/m4-toolpaths.md` A5 (superseded by an appended entry, never rewritten),
+  `odd/tasks/005-m4-toolpaths.md` A5 (superseded by an appended entry, never rewritten),
   `odd/roadmap.md`'s raster row, and D-M5-12 itself (recorded as decided and delivered). A document
   that still promises the old lattice is a defect of this task, not a follow-up.
 - **S6 — risk.** Task Size item 3: this changes the G-code that an existing subcommand emits for a

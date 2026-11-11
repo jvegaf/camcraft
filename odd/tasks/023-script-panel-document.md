@@ -1,6 +1,6 @@
 # The script panel edits the shell's document, and the file is written by Save
 
-Feature document for closing the residual `odd/tasks/script-panel-mount.md` S3 left open: the mounted
+Feature document for closing the residual `odd/tasks/022-script-panel-mount.md` S3 left open: the mounted
 `ScriptPanel` runs a script against a path on disk, so the shell's in-memory `Document` never changes.
 Read **until `## Log`** before touching code; the Log is the record, not the brief.
 
@@ -99,7 +99,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   `CHECK_EXIT=0`; `cargo test --workspace -- --list` counts **1525 tests**. The first gate run failed on
   `cargo fmt --check` (the harness's own formatting, nothing semantic); `cargo fmt --all` was the fix.
   **`assess`** answers `risk: medium`, `nativeRisk: unassessable` — *"untracked files require an explicit
-  declaration"*, the same trap `odd/tasks/debt-advisories.md` L7 named — with the plan
+  declaration"*, the same trap `odd/tasks/021-debt-advisories.md` L7 named — with the plan
   `writerSelfVerification: true`, `independentVerifier: false`, `writerProfileSource: runtime`. The native
   review was therefore not started: this candidate is medium, no Task Size high-risk item fired, and the
   self-verification the plan asks for is the gate plus the differential above.
@@ -116,7 +116,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   starts other processes"), not a judgement about the change; correction budget **200**, of which **zero**
   was spent. Two START attempts: the first with an explicit lens selection was refused
   `native-start-input-invalid` / `lenses-invalid`, `lineage_created: false`, nothing burned — the same
-  inert selection `odd/tasks/debt-advisories.md` L10 recorded — so the provider chose the four lenses
+  inert selection `odd/tasks/021-debt-advisories.md` L10 recorded — so the provider chose the four lenses
   itself: **risk, resilience, readability, reliability**. Four host-relay reviewer runs (prompts 80 115,
   80 129, 80 161 and 80 140 bytes; results 944, 4 302, 2 805 and 2 766), closure **`approved` on the last
   admitted event**, no correction, and the receipt burned: `gentle-ai.review-acknowledged/v1`, consumed
@@ -125,7 +125,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   and **their wording is not in the envelope**: it lists id, lens, severity, location and disposition, so
   what follows is the anchor and, where the code still says what the finding was about, this document's
   reading of it, marked as such rather than presented as the reviewer's words (the store blindness of
-  `odd/tasks/debt-advisories.md` L9, one review later):
+  `odd/tasks/021-debt-advisories.md` L9, one review later):
   - **`R2-001`** readability, `WARNING`, `crates/cam-cli/tests/script_in_memory.rs:112-126` — the `save`
     refusal test. Read: it asserts the message *contains* `writes no file` instead of pinning the whole
     diagnostic, so a rewrite of that sentence would pass the test.
@@ -171,11 +171,11 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   that carries this paragraph. The review lineage `review-cf16da5a0b71e7b8` is approved with its
   receipt burned (`sha256:506f7b2a…`); no authority is open for this feature. What a later session
   inherits: five advisories from L8 that were left open (`R2-001`, `R2-002`, `R2-003`, `R3-001`, `R4-002`,
-  all `informational`), the ten unrecoverable advisories named in `odd/tasks/debt-advisories.md`, and the
+  all `informational`), the ten unrecoverable advisories named in `odd/tasks/021-debt-advisories.md`, and the
   store blindness that cost L8's six findings their wording — the one method rule this feature proved
   twice, on its own receipts.
 - **L11 (delivered).** The owner pushed. `origin/master` is `098b2e9` and the branch is level with it —
   nothing ahead, nothing behind — so L10's "local and unpushed" describes the state before this entry, the
-  way L11 of `odd/tasks/script-panel-mount.md` supersedes its own L6. The delivery that this repository
+  way L11 of `odd/tasks/022-script-panel-mount.md` supersedes its own L6. The delivery that this repository
   leaves to its owner was taken: the four commits are on the remote, this documentation entry is the only
   thing the tree carries past them, and the feature is closed on both sides.

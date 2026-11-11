@@ -114,7 +114,7 @@ las fases 1 y 3.
   apertura a lo largo del segmento), las aperturas `O`, `RoundRect` y las que nombran una macro —eso es
   E3b—, y un `D02` dentro de `G36`/`G37`, que en Gerber **empieza otro contorno de la misma region**. Las
   tres se rechazan por nombre y con el indice del comando; ninguna se aproxima a otra forma.
-  Detalle de `odd/tasks/gerber-geometry.md`.
+  Detalle de `odd/tasks/036-gerber-geometry.md`.
 - **G1.2 — No hay parser Excellon.** Mismo grep. No existe tabla de herramientas, ni slots, ni
   manejo de ceros omitidos, ni unidades de archivo.
 - **G1.3 — El modelo de importación no soporta la semántica Gerber.** `Imported`/`ImportedLayer`

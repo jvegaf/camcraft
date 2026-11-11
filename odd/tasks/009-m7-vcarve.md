@@ -61,9 +61,9 @@ Requirements as stated by the owner:
   measurable (verbatim, `odd/roadmap.md` §7): "**D-M6-12** | The sweep **interpolates Z** along a
   cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3)".
 - **S14** — Decision D-M4-6, whose cost M7 does not re-open (verbatim as quoted by M6's S14,
-  `odd/tasks/m6-depth-variants.md`): "**D-M4-6 — Linking moves stay conservative.** Between
+  `odd/tasks/008-m6-depth-variants.md`): "**D-M4-6 — Linking moves stay conservative.** Between
   rings, rows and holes the tool retracts to `safe_z` and rapids."
-- **S15** — Decision D-M4-8, still in force (verbatim, `odd/tasks/m4-toolpaths.md`):
+- **S15** — Decision D-M4-8, still in force (verbatim, `odd/tasks/005-m4-toolpaths.md`):
   "**D-M4-8 — No toolpath UI in M4.** ... `cam-cli toolpath` is how a toolpath is authored."
 - **S16** — Decision D-M6-11, the boundary M7 inherits (verbatim, `odd/roadmap.md` §4.9): "**D-M6-11**
   leaves the CLI's "a flag no kind uses is silently dropped" open milestone-wide — closing it changes

@@ -40,12 +40,12 @@ Requirements as stated by the owner (verbatim):
   toolpath satisfies its rules, not that the part came out right — and it is what the deliberately
   conservative linking between rings and rows was waiting for."
 - **S11** — Decision D-M4-6, which names M5 as its own closure condition (verbatim,
-  `odd/tasks/m4-toolpaths.md:145-148`): "**D-M4-6 — Linking moves stay conservative.** Between
+  `odd/tasks/005-m4-toolpaths.md:145-148`): "**D-M4-6 — Linking moves stay conservative.** Between
   rings, rows and holes the tool retracts to `safe_z` and rapids. Staying down for the next ring (the
   usual CAM optimisation) needs gouge-free linking through material and belongs with M5's simulation,
   which can prove it. Cost recorded: more rapids than a hand-written program."
 - **S12** — Decision D-M1-2, the deviation this milestone inherits (verbatim,
-  `odd/tasks/m1-editor.md:143-148`): "**D-M1-2 — The canvas is painted with `egui`'s painter in
+  `odd/tasks/002-m1-editor.md:143-148`): "**D-M1-2 — The canvas is painted with `egui`'s painter in
   M1; the draw list is backend-agnostic.** The roadmap named `wgpu` for `cam-view`. Splitting the
   *scene* (which is testable math) from the *painter* keeps the wgpu decision intact while making M1
   verifiable without a GPU: `cam-view` emits `Scene`, and a wgpu backend consumes the same `Scene` when
@@ -55,7 +55,7 @@ Requirements as stated by the owner (verbatim):
   position, in millimetres. Positive is up; cutting depths are positive magnitudes." The strategies
   emit a cutting move at `z: Length::from_mm(-depth)` (`crates/cam-toolpath/src/lib.rs:184`), so the
   stock's top surface is `z = 0` and its bottom is `z = -job.thickness`.
-- **S14** — M4's decision on where a toolpath is authored (verbatim, `odd/tasks/m4-toolpaths.md:163-166`):
+- **S14** — M4's decision on where a toolpath is authored (verbatim, `odd/tasks/005-m4-toolpaths.md:163-166`):
   "**D-M4-8 — No toolpath UI in M4.** The roadmap's deliverable for M4 is the strategies and their
   blocks, and S6 makes the CLI the contract; the toolpath panel is UI work that rides on `cam-app`
   commands, which do not exist for toolpaths yet. Recorded so the missing panel is a decision, not a
@@ -182,7 +182,7 @@ What "M5 delivered" means, testable through `cam-cli` unless the criterion names
   `simulate` reports `uncut: 984.000 mm3 over 164 cell(s)` on a program no user would call wrong. The fix
   is a boundary pass — one row at the offset region's far edge — and it is deliberately **not** taken
   here: M4's raster contract says "rows on the `min.y + k·stepover` grid" and pins "32 rows at y = 3, 6,
-  … 96" (`odd/tasks/m4-toolpaths.md`), so adding a finishing row changes a documented contract and
+  … 96" (`odd/tasks/005-m4-toolpaths.md`), so adding a finishing row changes a documented contract and
   belongs to a decision the owner takes, not to a milestone that was asked for simulation and a preview.
   Recorded with its measurement so the report's `uncut` figure on a plain raster pocket is understood as
   the strategy's outline showing through, not as a broken simulation.
@@ -561,7 +561,7 @@ evidence table below, the task commits, and the final `./scripts/check.sh`.
   the raster lattice now finishes itself with exactly one row on `region.max.y` when the grid
   `min.y + k·stepover` stops short of it, and emits no extra row when a grid row already lands there, so
   the strip D-M5-12 measured is cut by a row on the far edge instead of being left standing. The work,
-  its specs (S1–S6) and its evidence are in `odd/tasks/raster-far-edge-pass.md`; M4's contract and its
+  its specs (S1–S6) and its evidence are in `odd/tasks/013-raster-far-edge-pass.md`; M4's contract and its
   worked example now say thirty-three rows (`docs/m4-toolpaths.md`). D-M5-12 and L10 above are left as
   written — they are what the milestone recorded at the time, and the `984 mm³` is that old lattice's
   measurement, not a re-measurement of the finished one.

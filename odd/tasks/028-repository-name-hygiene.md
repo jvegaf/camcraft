@@ -1,6 +1,6 @@
 # Repository name hygiene — campilot speaks only of campilot
 
-Feature document for the sweep the owner asked for while M13 was open (`odd/tasks/m13-in-app-cycle.md`,
+Feature document for the sweep the owner asked for while M13 was open (`odd/tasks/027-m13-in-app-cycle.md`,
 L5). Read **until `## Log`** before touching anything.
 
 ## Specs
@@ -19,7 +19,7 @@ L5). Read **until `## Log`** before touching anything.
     payload, the shell toolkits, the SQLite schema, the 75 post-processors, the nesting engine's 298
     exported functions) and `extract.sh` (34 lines that unpack the installer and run `strings` over the
     executable and the resource DLL);
-  - twelve documents are **named** for the product: `odd/tasks/m0-foundation.md` … `m12-export.md`
+  - twelve documents are **named** for the product: `odd/tasks/001-m0-foundation.md` … `m12-export.md`
     plus `region-booleans.md`, and M13's own `m13-in-app-cycle.md`;
   - `docs/m5-simulation.md`, `m6-toolpaths.md`, `m7-vcarve.md`, `m8-moulding.md`, `m9-nesting.md`,
     `m10-documents.md`, `region-booleans.md`, `odd/roadmap.md`, `odd/tasks/{camui-toolpath,
@@ -40,7 +40,7 @@ L5). Read **until `## Log`** before touching anything.
   it would be the one lie this sweep must not tell. This document fixes the **current tree**, and says so
   in its own roadmap entry.
 - **S6 (naming):** milestone documents lose the product word and keep their meaning:
-  `odd/tasks/m0-foundation.md` … `m12-export.md`, `m13-in-app-cycle.md`, `region-booleans.md`. Every inbound
+  `odd/tasks/001-m0-foundation.md` … `m12-export.md`, `m13-in-app-cycle.md`, `region-booleans.md`. Every inbound
   reference (`odd/roadmap.md`, the other task documents, `docs/`, `Cargo.toml` comments) is updated in the
   same slice, because a renamed file with a stale link is a broken repository rather than a hygiene win.
 - **S7 (out of scope):** the `.pp` dialect's behaviour, its directives and blocks; the fixtures' Mach3

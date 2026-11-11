@@ -250,4 +250,4 @@ agree about where the cut is, with a test per origin corner.
 The plan is [docs/SYSTEM_DESIGN_CAMCRAFT.md](docs/SYSTEM_DESIGN_CAMCRAFT.md): an artifact graph in place
 of a document-plus-operations list, a kernel split into prim / boolean / offset / index, the PCB
 operations built on it, and a two-level oracle. The sweep that removed the old domain, with its review
-history and what it cost, is in [odd/tasks/wood-out-sweep.md](odd/tasks/wood-out-sweep.md).
+history and what it cost, is in [odd/tasks/039-wood-out-sweep.md](odd/tasks/039-wood-out-sweep.md).

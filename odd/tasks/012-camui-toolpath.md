@@ -349,9 +349,9 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
 
 - **L16 (L14's second half is now delivered elsewhere: the shell opens a `.c2d`).** L14 and L5 both recorded that
   "the shell still cannot open a `.c2d` … the feature that makes the shell open a document is not this one". That
-  feature is `odd/tasks/shell-open-document.md`, which landed the Open button (`UiAction::RequestOpenFile`,
+  feature is `odd/tasks/014-shell-open-document.md`, which landed the Open button (`UiAction::RequestOpenFile`,
   `crates/cam-ui/src/chrome.rs:334-348`), the host's dialog (`rfd` in `cam-desktop` only,
-  `crates/cam-desktop/src/main.rs:95-102` — the dependency `odd/tasks/m3-import.md:113` had left undecided) and
+  `crates/cam-desktop/src/main.rs:95-102` — the dependency `odd/tasks/004-m3-import.md:113` had left undecided) and
   the load through `cam_store::document::DocumentFile::load` as one undoable replacement
   (`crates/cam-ui/src/lib.rs:2320-2336`). Uncommitted in the working tree when this entry was written; no gate here.
   **What this document's own hand-off still needs, unchanged:** the card resolves a toolpath's number against the
@@ -364,7 +364,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   recorded it as "`cam-desktop` passes an **empty** snapshot: … `Document.tools_ref` is a filename only `cam-cli`
   resolves", L14 as the one thing the feature left "true and unfinished", and L16 as "T1's remaining hole rather
   than a new one". All three were true of this document and are no longer true of the window: the rule they said
-  nobody had moved is `odd/tasks/shell-tools-ref.md`'s S2, which resolves the loaded document's `tools_ref`
+  nobody had moved is `odd/tasks/016-shell-tools-ref.md`'s S2, which resolves the loaded document's `tools_ref`
   **relative to the document's own directory** through `tools_beside_document`
   (`crates/cam-ui/src/lib.rs:2752-2798`) on a successful open and hands `ToolLibrary::tools()` to `set_tools`
   (`:1081-1090`). Nothing in this document's own surface changed with it: the snapshot is still a

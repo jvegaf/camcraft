@@ -159,7 +159,7 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   sentences stand unqualified — a legacy `c2d/document@1` file is rewritten as `@2`, and extras are file-level
   and outside the undo history — and its third, "a `tools_ref` is serialized and survives the round trip, but
   the window still does not resolve it — that stays the next feature", is answered by
-  `odd/tasks/shell-tools-ref.md`. The answer is about opening, which is why nothing in this document's save path
+  `odd/tasks/016-shell-tools-ref.md`. The answer is about opening, which is why nothing in this document's save path
   moved: on a successful open the shell resolves the loaded document's `tools_ref` **relative to the document's
   own directory** through `tools_beside_document` (`crates/cam-ui/src/lib.rs:2752-2798`) and hands
   `ToolLibrary::tools()` to `set_tools` (`:1081-1090`), so a document this window saved with a `tools_ref`

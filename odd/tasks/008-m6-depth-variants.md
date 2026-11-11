@@ -50,10 +50,10 @@ Requirements as stated by the owner (verbatim):
   tooth_offset, neck_length, tooth_height, threaded_length)`".
 - **S12** — Scope boundary D2 (user, verbatim option label): "Todo menos 3D y Laser". M6 adds no 3D
   machining strategy and no laser strategy; `Moulding`/`Swept Profile` stay at M8 and `V-Carve` at M7.
-- **S13** — Decision D-M4-8, still in force (verbatim, `odd/tasks/m4-toolpaths.md:163-166`):
+- **S13** — Decision D-M4-8, still in force (verbatim, `odd/tasks/005-m4-toolpaths.md:163-166`):
   "**D-M4-8 — No toolpath UI in M4.** ... `cam-cli toolpath` is how a toolpath is authored." M6 keeps
   that: the window gains no toolpath form for any of the six strategies.
-- **S14** — Decision D-M4-6, whose cost M6 does not re-open (verbatim, `odd/tasks/m4-toolpaths.md:145-147`):
+- **S14** — Decision D-M4-6, whose cost M6 does not re-open (verbatim, `odd/tasks/005-m4-toolpaths.md:145-147`):
   "**D-M4-6 — Linking moves stay conservative.** Between rings, rows and holes the tool retracts to
   `safe_z` and rapids." Every new pattern strategy in M6 inherits it.
 

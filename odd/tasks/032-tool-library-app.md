@@ -1,6 +1,6 @@
 # The tool library, finished: one library for the application
 
-Feature document for M15. `odd/tasks/tool-library-editor.md` built the screen and pinned it; this document
+Feature document for M15. `odd/tasks/033-tool-library-editor.md` built the screen and pinned it; this document
 gives that screen the library it was missing, the reference's catalogue, and a JSON round trip a person can
 keep. Read to `## Log` before acting on any task.
 
@@ -225,7 +225,7 @@ agregar. si dice agregar, debemos comparar cada herramienta con las de la biblio
 duplicados`.
 
 **D1** (owner answer, verbatim): `la biblioteca de herramientas pertenece a la aplicacion, no a ningun
-dibujo.` — this supersedes S10 of `odd/tasks/tool-library-editor.md` ("write the tool library beside the
+dibujo.` — this supersedes S10 of `odd/tasks/033-tool-library-editor.md` ("write the tool library beside the
 document") and the sentence that carried it.
 
 **D2** (owner answer): the factory catalogue is the reference's 22 tools, with speeds and feeds derived from

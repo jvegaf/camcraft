@@ -244,7 +244,7 @@ merge for T9–T13.
 
 - **L1** — Owner request (verbatim, this session): "Arrancar M2 (plan de tareas ODD primero)" —
   selected from the offered option whose description reads: "Leo el roadmap, escribo
-  odd/tasks/m2-authoring.md con specs y tareas, y empiezo por T1 en una rama de feature."
+  odd/tasks/003-m2-authoring.md con specs y tareas, y empiezo por T1 en una rama de feature."
 - **L2** — Owner decision on text glyph source (verbatim option label): "Trazo simple ahora, TrueType
   después". Recorded as D-M2-1 (S4).
 - **L3** — Owner decision on non-uniform scale with arcs (verbatim option label): "Teselar

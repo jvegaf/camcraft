@@ -45,7 +45,7 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
   not a split flag. `AppState` stores `document: Document`, never an `Option` (`crates/cam-app/src/lib.rs:105`), and
   `Document::new(job)` (`crates/cam-model/src/lib.rs:1477`) is the empty constructor.
 - **L3** — No app-level preference, config or recents store exists in the workspace: `cam-store` holds `.c2d` documents
-  and the SQLite tool library only, and `odd/tasks/shell-save-document.md:116` records that "the shell keeps no
+  and the SQLite tool library only, and `odd/tasks/015-shell-save-document.md:116` records that "the shell keeps no
   recent-file list". Existing intents to reuse: `OpenFile { path }`, `RequestOpenFile`, `NewProject`, `SaveFile`,
   `RequestSaveAs` (`crates/cam-ui/src/actions/mod.rs:174-216`).
 - **L4** — Design written: `design/start-screen/` with `01-command-board.html`, `02-recent-first.html`,

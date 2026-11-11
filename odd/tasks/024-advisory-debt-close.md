@@ -1,6 +1,6 @@
 # Advisory debt: closing the seven that can be closed, re-filing the nine that cannot
 
-Feature document for the sweep the owner asked for after `odd/tasks/debt-advisories.md` L16. Read
+Feature document for the sweep the owner asked for after `odd/tasks/021-debt-advisories.md` L16. Read
 **until `## Log`** before touching code; the Log is the record, not the brief.
 
 ## Specs
@@ -122,7 +122,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   exists. The shape with no collinear edge answers `Crossing`, which is why nothing in the workspace or
   in the seeded differential test (whose reference re-uses the same predicate) ever saw it. It reaches
   `check_nesting` — overlapping placements load — and `nest_profile`'s own collision test. Recorded as
-  the sixteenth advisory in `odd/tasks/debt-advisories.md` L17, **not fixed**: the fix is shared
+  the sixteenth advisory in `odd/tasks/021-debt-advisories.md` L17, **not fixed**: the fix is shared
   geometry with four consumers and belongs in its own feature with its own review.
 - **L9 (T8, the review: six findings, one of them CRITICAL, and it was right).** Lineage
   **`review-ca5c7eda65951600`** over `master` (`c20c7cf1`..`5635855`), tier `high` on a
@@ -162,7 +162,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/debt-advisor
   `sha256:65a470aa…`).
   **Two walls, both worth recording.** (a) The facade **rejected its own provider-issued
   correction-plan binding** twice — `collectBinding is missing or stale for current STATUS` — while the
-  native CLI accepted the identical tokens, which is the defect `odd/tasks/debt-advisories.md` L2's
+  native CLI accepted the identical tokens, which is the defect `odd/tasks/021-debt-advisories.md` L2's
   predecessor already recorded for M10. (b) The native CLI then answered `managed_assets_outdated`, and
   the owner authorised `gentle-ai sync`; it took **two** syncs, the PATH binary's and then the harness's
   own `…/gentle-pi/.gentle-ai/v4.4.0/gentle-ai sync --agent pi`, because the store had recorded the

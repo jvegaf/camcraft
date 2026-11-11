@@ -1,7 +1,7 @@
 # The sixteenth: `Touching` must not be reported when the interiors overlap
 
-Feature document for advisory **`ca5c7eda`… the sixteenth** recorded in `odd/tasks/debt-advisories.md`
-L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before touching code.
+Feature document for advisory **`ca5c7eda`… the sixteenth** recorded in `odd/tasks/021-debt-advisories.md`
+L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** before touching code.
 
 ## Specs
 
@@ -107,7 +107,7 @@ L17 and `odd/tasks/advisory-debt-close.md` L8. Read **until `## Log`** before to
   (`boundaries_that_share_a_span_with_material_on_the_same_side_are_refused`) instead of quietly
   contributing no nesting depth. `nest_profile`'s flush, L-board and coarse-step fixtures stay green
   **untouched**, which is S6's contract. And the workspace gate found the fix's own footprint: the load
-  tripwire from `odd/tasks/advisory-debt-close.md` L10 had 20 000 ten-millimetre squares **4.5 mm
+  tripwire from `odd/tasks/024-advisory-debt-close.md` L10 had 20 000 ten-millimetre squares **4.5 mm
   apart**, so its copies overlapped each other and validated only because of this defect — the exact
   shape the sixteenth describes, hiding inside a test written to measure something else. Spaced 11 mm
   and given a 300 000 mm sheet, and the comment now says why.

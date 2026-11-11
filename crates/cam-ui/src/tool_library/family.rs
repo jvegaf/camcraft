@@ -44,7 +44,7 @@ impl ToolFamily {
 /// not drawn as a dash — it is not drawn at all, because a row saying `—` describes a shape the tool is
 /// not.
 ///
-/// [S5]: ../../../../odd/tasks/tool-library-editor.md
+/// [S5]: ../../../../odd/tasks/033-tool-library-editor.md
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShapeField {
   /// The cutting diameter.

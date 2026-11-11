@@ -154,7 +154,7 @@ high-risk item gets its own commit so native review can take it alone.
   target 4 more, and `cargo fmt --check` plus `clippy -D warnings` are green. A targeted validator judged
   both findings `met` with no regression and closure was **`approved`** (`sha256:c3f2df03…`), receipt
   burned (`gentle-ai.review-acknowledged/v1`). Its six advisories are informational; their words are in
-  `odd/tasks/debt-advisories.md` L15, captured from the store **before** the acknowledgement, which is
+  `odd/tasks/021-debt-advisories.md` L15, captured from the store **before** the acknowledgement, which is
   the only reason they survive. **Two facts the next session needs: the corrected commit `14a8f0e` is not
   on `master`** — it exists in the detached worktree and landing it is the owner's decision — and a
   `corrected_candidate_unavailable` stop on a committed-only review is not a dead end: it means the

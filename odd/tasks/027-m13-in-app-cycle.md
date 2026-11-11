@@ -100,14 +100,14 @@ measured against the ~400-line guidance that protects the reviewer:
   reach.
 - **L5 (a new requirement, quoted once and elsewhere, and why it is its own document).** The requirement
   arrived as a verbatim message from the owner and is recorded verbatim in
-  `odd/tasks/repository-name-hygiene.md` L1 — one record, not two, because repeating it here would
+  `odd/tasks/028-repository-name-hygiene.md` L1 — one record, not two, because repeating it here would
   reproduce the very names it asks the repository to drop. In words: no reference to the product's name
   or its vendor survives the sweep, and the licensing concern behind the request lives in that quote
   rather than being restated here.
 
   The sweep is **not** a task of this milestone: it touches 32 files, renames thirteen documents and deletes
   a dossier, and folding it in would put a provenance change inside a UI candidate. It lives in
-  `odd/tasks/repository-name-hygiene.md`, which runs after T5. What this document records is the requirement
+  `odd/tasks/028-repository-name-hygiene.md`, which runs after T5. What this document records is the requirement
   and its boundary, so the milestone cannot be called closed with it unread or unstarted.
 - **L6 (T4 dissolved by measurement: the material is a palette decision, not a defect).** Before writing a
   painting rule I read the authority S5 named. `design/system.md:53` sets `StockTop #d6dce6` and calls it "the
@@ -127,7 +127,7 @@ measured against the ~400-line guidance that protects the reviewer:
   estimate does; (b) two `chrome.rs` sentences still name `cam-cli` and need their own task; (c) the launch
   demonstrator stays, because the sample document holds no toolpaths of its own. **One task is open by
   design**: T4 is the owner's palette decision (L6), not an unfinished code path. The requirement recorded in
-  L5 — the reference sweep — is next, in `odd/tasks/repository-name-hygiene.md`.
+  L5 — the reference sweep — is next, in `odd/tasks/028-repository-name-hygiene.md`.
 - **L8 (the owner's three decisions, verbatim).** "1. prefiero tan material 2. haz todo lo que sea necesario
   3.me parece genial" — read against the three open items this session put in front of them: (1) the stock
   reads as material tan, so T4 reopens with S5 rewritten; (2) the history rewrite and the force-push that

@@ -12,10 +12,10 @@ is taken, `git log -S` on a clone of `master` still finds the old names.
 
 §4 records the evidence for each, section by section through §4.16, and §6 the risk register with the one row M7 closed. **After M10 the work did not
 continue as milestones**: the findings those milestones left open became three recorded features with their
-own documents — the advisory debt (`odd/tasks/debt-advisories.md`, which carries its own counts and the reason
+own documents — the advisory debt (`odd/tasks/021-debt-advisories.md`, which carries its own counts and the reason
 the rest cannot be recovered),
-the script panel's mount (`odd/tasks/script-panel-mount.md`) and the panel's document
-(`odd/tasks/script-panel-document.md`) — and the roadmap's Log in §8 names all three.
+the script panel's mount (`odd/tasks/022-script-panel-mount.md`) and the panel's document
+(`odd/tasks/023-script-panel-document.md`) — and the roadmap's Log in §8 names all three.
 
 Owner decisions taken at plan time (verbatim from the decision record, see `## Log`):
 
@@ -175,7 +175,7 @@ Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide
 | **M12** ✅ | Export | **Delivered.** The workspace has no writer of any interchange format — `cam-import` says so in its own header, and `cam-ui`'s icon catalogue has declared `export-dxf` and `export-svg` since M1 with no command behind them. M12 adds a `cam-export` crate mirroring the reader's shape: **DXF** keeps layer identity (one `LWPOLYLINE` per contour, each vertex's bulge verbatim, `70 = 1` when closed, `$INSUNITS = 4`, the layer table in document order) and **SVG** writes one `<path>` per contour with `A` commands whose `rx == ry`, the Y reflection the reader inverts, and a `viewBox` in the document's own millimetres. The acceptance test is the **round trip against our own reader**: exported and imported again, the same shape and the same layer order, compared up to the 10 mm placement the reader performs — never byte equality. SVG's documented loss is that it carries no layers. Toolpaths are **not** written: a toolpath is not geometry, and writing one would make "the same thing that went in" unprovable | A drawing tool that can read five formats and write none is a one-way door; the reader's own conventions are what make the writer provable (see §4.15) |
 | **M13** ✅ | The cycle closes inside the app | **Delivered**, with one task routed to the owner rather than closed. Two dead ends hid behind finished chrome: the app bar's primary action was `add_enabled(false, …)` with a hover excuse (`cam-ui/src/chrome.rs:323`) and the 3D half printed *"Simulate one with `cam-cli simulate` and hand it in"* (`view3d.rs:1390`), so a window that could import, author and display a program sent the person to a terminal for the one artefact the machine runs. M13 makes the program the app's own: `GenerateGcode` posts the open document through `cam-post` inside `apply_action`, the same place `SaveFile` writes (`S7`, corrected after measurement — it had said the host would do it), `Post…` holds the dialect for the session and refuses a file that is not a post-processor while keeping the one in hand, the 3D half builds the drawing's own program with `program_for_snapshot` over a pristine `Heightfield` behind a `Simulate` chip and a `Simulate again` in the overlay row, and the toolpaths are a list whose selection — not `toolpaths.first()` — is what the card, the editor and `open_tool_library` read, with the last of those a door the first version left aiming at the first toolpath (see §4.16). **T4, decided by the owner and delivered in `18ded99`**: the 3D stock paints through `StockTop`/`StockBottom` via `stock_shade` and the system's own value was a cool `#d6dce6` — the tan is the reference palette, so the change is a palette decision, and the owner took it. Resolving the values found a proof nobody had written: the amber `Cut` is painted **on** the stock, and it measured 1.47:1 there before this change; holding it to 3:1 pins the dark stock to a mid-value walnut and narrows its depth ramp from 6.33:1 to 1.80:1 (see §4.16) | The most visible gap left after twelve milestones was not missing machinery but missing *seams*: every part worked, and the person still could not finish a job without a terminal (see §4.16) |
 | **M14** ✅ | The tool library as an editor | **Delivered.** The library modal was a read-only snapshot with one sentence where the reference screen draws six buttons: `New, Duplicate, Delete, Import… and Export… are not here` — true, and a dead end. M14 makes it the screen: a header band with a close that writes nothing, three columns (master 300 / detail 424 / preview 200), a tree grouped by the tool's **kind** with folding headings that carry their count, an editor whose every number is a box with its unit outside it, the tool drawn vertically in a dark card with its length and diameter called out, and the footer sentence above `Cancel` / `Use this tool`. Two things had to become true in the store first: the six kinds are now **stored** in `tool_type` rather than guessed (a drill and a V-bit both carry an included angle, so no rule over the geometry tells a 118° point from a 90° V — zero stays reserved for "the writer did not say", which is what `cam-cli tools add` has always written, so no existing library is relabelled), and `validate_tool` + `save_tool`/`remove_tool`/`replace_tools` exist at all, because `put_geometry` accepted any row it was handed. Editing is a **draft**: nothing is written until `Use this tool`, and the sentence that replaces that button when a draft cannot commit is `validate_tool`'s own, so the two cannot drift. Every library write happens **file first, snapshot second** — a failure mutates nothing and keeps the window open, because a snapshot that changed beside a file that did not is the one outcome nobody can see. Found by the suite's own rewrite and fixed here: `close_tool_library` promised in its doc that the drafts went with it and left one behind, so a cancelled visit's typed diameter came back | A window that can import, author, post and simulate still sent the person to `cam-cli tools add` to fill its own tool library; the reference screen had the button row, and the shell had a paragraph explaining why it did not (see §4.17) |
-| **M15** ✅ | The tool library the application owns | **Delivered.** M14 made the screen and left it unreachable: `writes` was `tool_library_path.is_some()`, only an opened `.c2d` naming an existing `tools.sqlite` could set that path, and nothing in the app created the file or wrote `tools_ref` — so the six write actions were permanently dark and the populated screen could only be reached by hand-building a SQLite file and editing a document's JSON. The library is now the **application's** (the owner's decision, recorded verbatim in `odd/tasks/tool-library-app.md`, D1): one `tools.sqlite` in the app's data directory (`CAM_PILOT_DATA_DIR` as the only override), opened and seeded with the factory catalogue at launch, and opening a document no longer reads a library at all — `tools_ref` stays in the model and `cam-cli` keeps honouring it, because the field is a CLI contract and the ownership rule is the app's. The factory set went from four tools to the reference's **22 across its six families** (T1–T22), with speeds and feeds derived by one rule rather than hand-tuned per tool: feed 100 mm/min, plunge 30, spindle 18000, stepdown half the diameter capped at 3 mm, stepover 40 % of it. `Import…` now **asks** before it writes — `Replace all`, `Add`, `Cancel` — and `Add` skips a tool the library already holds by id, by trimmed case-insensitive name, or by tool number, so importing the same file twice is a no-op that says so. The dialog itself takes the reference's proportions (columns 700 tall rather than 372, a 330-tall preview card drawn light with a dark tool and blue callouts) so the whole form fits without scrolling, as the reference's does. | The screen was finished and unusable, which is the worst of both: the milestone that delivered §4.17 delivered a modal nobody could fill, because the library it edits is not a drawing's property (see §4.18) |
+| **M15** ✅ | The tool library the application owns | **Delivered.** M14 made the screen and left it unreachable: `writes` was `tool_library_path.is_some()`, only an opened `.c2d` naming an existing `tools.sqlite` could set that path, and nothing in the app created the file or wrote `tools_ref` — so the six write actions were permanently dark and the populated screen could only be reached by hand-building a SQLite file and editing a document's JSON. The library is now the **application's** (the owner's decision, recorded verbatim in `odd/tasks/032-tool-library-app.md`, D1): one `tools.sqlite` in the app's data directory (`CAM_PILOT_DATA_DIR` as the only override), opened and seeded with the factory catalogue at launch, and opening a document no longer reads a library at all — `tools_ref` stays in the model and `cam-cli` keeps honouring it, because the field is a CLI contract and the ownership rule is the app's. The factory set went from four tools to the reference's **22 across its six families** (T1–T22), with speeds and feeds derived by one rule rather than hand-tuned per tool: feed 100 mm/min, plunge 30, spindle 18000, stepdown half the diameter capped at 3 mm, stepover 40 % of it. `Import…` now **asks** before it writes — `Replace all`, `Add`, `Cancel` — and `Add` skips a tool the library already holds by id, by trimmed case-insensitive name, or by tool number, so importing the same file twice is a no-op that says so. The dialog itself takes the reference's proportions (columns 700 tall rather than 372, a 330-tall preview card drawn light with a dark tool and blue callouts) so the whole form fits without scrolling, as the reference's does. | The screen was finished and unusable, which is the worst of both: the milestone that delivered §4.17 delivered a modal nobody could fill, because the library it edits is not a drawing's property (see §4.18) |
 
 Deferred / conditional, not scheduled: PDF text-to-outline fidelity beyond vector paths, EPS edge
 cases, rotary wrapping (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later
@@ -366,7 +366,7 @@ M4's decision D-M4-2 left pockets island-free "until the kernel has boolean subt
 work exists now: the `boolean ops` item of §3's `cam-geom` description is delivered as region
 **subtraction**, expressed as even-odd parity plus the arrangement and the distance proof that keep
 parity honest. A union is not part of it and is not claimed. The feature document is
-`odd/tasks/region-booleans.md`; the contract and the user-facing behaviour are in
+`odd/tasks/007-region-booleans.md`; the contract and the user-facing behaviour are in
 `docs/old/region-booleans.md`. The workspace stands at **707 tests**, green under `./scripts/check.sh`.
 
 | Deliverable | Where | Proof |
@@ -435,7 +435,7 @@ satisfies its rules, not that the part comes out right. The new `cam-sim` crate 
 the depth each cell was **authorised** to lose from the document alone, and reports gouge and uncut
 material as one subtraction with two signs (D-M5-2). `cam-cli simulate` is that report, and the shell
 shows the same field as a depth-shaded 3D surface it can play. The feature document is
-`odd/tasks/m5-simulation.md`; the model, the report's exact shape, the exit codes and every
+`odd/tasks/006-m5-simulation.md`; the model, the report's exact shape, the exit codes and every
 recorded limit are in [docs/old/m5-simulation.md](../docs/old/m5-simulation.md). The workspace stands at **795
 tests**, green under `./scripts/check.sh` (`fmt --check`, `clippy -D warnings`, the whole suite).
 
@@ -499,7 +499,7 @@ gouge (D-M6-3). **(2) `Move::Arc` is constant-Z by contract** and the post fixtu
 `Move::Helix`, four helical block kinds, and a refusal when a post defines none (D-M6-8). Neither was
 absorbed silently, and both are recorded as the milestone's own cost.
 
-The feature document is `odd/tasks/m6-depth-variants.md`; the strategies, their Z laws, their
+The feature document is `odd/tasks/008-m6-depth-variants.md`; the strategies, their Z laws, their
 refusals, the simulation's claim for each, the differential and the one defect M6 recorded without fixing
 are in [docs/old/m6-toolpaths.md](../docs/old/m6-toolpaths.md). The workspace stands at **975 tests across 70 test
 targets** — 180 more than the 795 the branch cut from — green under `./scripts/check.sh` (`fmt --check`,
@@ -578,7 +578,7 @@ leaves, so the square's four branches stayed four, the L's ten became nine and t
 became one). The property that guards all of it is
 `a_finer_tolerance_never_returns_more_branches_than_a_coarser_one`.
 
-The feature document is `odd/tasks/m7-vcarve.md`; the law, the axis's certificate, the walk, the
+The feature document is `odd/tasks/009-m7-vcarve.md`; the law, the axis's certificate, the walk, the
 refusals, the tolerance's four declared costs, the simulation's claim and the three defects T0 found are
 in [docs/old/m7-vcarve.md](../docs/old/m7-vcarve.md). The workspace stands at **1056 tests across 79 test
 targets** — 81 more than the 975 the branch cut from — green under `./scripts/check.sh` (`fmt --check`,
@@ -700,7 +700,7 @@ numbers did not move, and a differential against `898cab6` over the moulding com
 and every produced file is byte-identical (all file hashes equal), which is the fact that says the fix
 moved the claim and not the program.
 
-The feature document is `odd/tasks/m8-moulding.md`; the sweep, the stepover certificate, the walk,
+The feature document is `odd/tasks/019-m8-moulding.md`; the sweep, the stepover certificate, the walk,
 the refusals and the limits are in [docs/old/m8-moulding.md](../docs/old/m8-moulding.md). The workspace stands at
 **1374 tests across 101 test targets** (88 binaries and 13 doc-test targets) — 79 more than the 1295 the
 branch cut from `5bdb81a`, and 16 of them M8's closing evidence — green under `cargo test --workspace`.
@@ -797,7 +797,7 @@ flag a document's own classes give no meaning to (`--step` with no profile, `--a
 rectangle) is refused by name, M8's rule; so are two board sizes, because both nesters pack identical
 boards.
 
-The feature document is `odd/tasks/m9-nesting.md`; the two nesters and their laws, the two
+The feature document is `odd/tasks/020-m9-nesting.md`; the two nesters and their laws, the two
 certificates, the inside-ness rule and its `INSET_STEP`, the one arithmetic, the CLI surface with exit
 `7`, the refusals, both review lineages and the known limits are in [docs/old/m9-nesting.md](../docs/old/m9-nesting.md).
 
@@ -813,7 +813,7 @@ M8 left, 31 more in `cam-model` than 62, and 17 more in `cam-cli` than 140.
 | Free-profile nesting: a sound, incomplete no-fit heuristic (S6, S7) | `crates/cam-geom::nest_profile` | 17 tests in `tests/nest_profile.rs`; a circle and a rectangle pack on one board, two contours that would overlap never do, the authored gap is measured between two placed contours, a concave part sits in a notch, a part is turned only when no upright placement exists, an oversized part and a part that only **touches** a circular board from outside are unplaced, a flush part is placed and certified on a rectangle and on an L's arm while one `INSET_STEP` past the edge is refused, a second board opens only when the first cannot hold the part, the same input twice is the same plan, and the certificate fails when a plan breaks it; the incompleteness is the counted fixture — **step 20 costs a second board for a 50 × 50 square although `(45, 0)` is legal, and step 5 finds it at `(50, 0)`** |
 | `cam-cli nest`: the flags, the refusals, the report, exit `7` and the write-back | `crates/cam-cli` | 16 tests, five of them whole-report goldens: a 600 × 400 panel on a 1000 × 600 board prints `utilisation: 0.400` / `waste: 0.600` and stores the record the document derives; two instances that no longer share a board open and author `S2`; a 1200 × 500 part that fits no board prints `sheets used: 0`, `utilisation: none`, `unplaced: P1, 1 of 1 instance(s)` and exits **7** with the file byte-identical; an L bracket goes through the no-fit heuristic and the report names it with its step (`0.200`, conservative by D-M9-2 where its own area would be `0.100`); a 500 × 900 part enters a 1000 × 600 board only turned, as 900 × 500 at `0.750`; `--out` writes elsewhere and leaves the input alone; `--step` on rectangles and `--algorithm` on profiles are refused by name with the file unchanged, as are `--gap -1`, `--sheets 1000`, `--sheets 0x600`, `--step 0`, `--rotation sideways`, `--algorithm triangle`, `--cut-depth`, two board sizes, a part that is not one closed contour, a document with no parts and one with no boards; and `--help` lists the command, its six flags and `7` |
 | Determinism, and no new dependency | `tests/cli.rs`, `tests/nest.rs`, `tests/nest_profile.rs` | two `nest` runs print **and** write identical bytes on a mixed fixture that runs both nesters with its boards authored on the command line, `the_same_input_twice_is_the_same_plan` pins the rectangle packer, and the profile packer's determinism is a stable sort plus `Vec` order with nothing iterating a hash map; `git diff 2ad152d -- Cargo.toml Cargo.lock crates/*/Cargo.toml` is empty, so no crate and no dependency was added |
-| The differential against the milestone's cut point (T5) | `odd/tasks/m9-nesting.md` L11 | **42 invocations per side** run from a `git archive 898cab6` copy built with its own target directory — two `tools add` and `tools list`, three `import` forms, `validate`/`inspect`/`check`, four `toolpath` kinds, five `emit` runs and their four programs, `simulate` at 2, 3 and 5 mm, a document carrying a `nesting` section, two `nest` runs, the error paths and `--help` — compared by exit code, stdout, stderr and **21** produced files' sha256: **39 of 42 invocations and 19 of 21 files byte-identical**, and the three differences are M9's own (`nest` did not exist — exit `2` `unknown command "nest"` against exit `0` with an 11-line report at `utilisation: 0.080`; `--help` **90 → 108 lines**, 18 added and 0 removed; the `nesting` section preserved where the base drops it on a re-save, and deleting the key makes the payloads identical). The current binary run twice gave 42/42 identical result triples and 21/21 identical hashes, so the comparison is not measuring drift |
+| The differential against the milestone's cut point (T5) | `odd/tasks/020-m9-nesting.md` L11 | **42 invocations per side** run from a `git archive 898cab6` copy built with its own target directory — two `tools add` and `tools list`, three `import` forms, `validate`/`inspect`/`check`, four `toolpath` kinds, five `emit` runs and their four programs, `simulate` at 2, 3 and 5 mm, a document carrying a `nesting` section, two `nest` runs, the error paths and `--help` — compared by exit code, stdout, stderr and **21** produced files' sha256: **39 of 42 invocations and 19 of 21 files byte-identical**, and the three differences are M9's own (`nest` did not exist — exit `2` `unknown command "nest"` against exit `0` with an 11-line report at `utilisation: 0.080`; `--help` **90 → 108 lines**, 18 added and 0 removed; the `nesting` section preserved where the base drops it on a re-save, and deleting the key makes the payloads identical). The current binary run twice gave 42/42 identical result triples and 21/21 identical hashes, so the comparison is not measuring drift |
 
 Recorded deviations, each a decision in the feature document: **D-M9-2** makes a placement's footprint
 the part's turned axis-aligned bounding box, so load-time containment and overlap are conservative for a
@@ -913,7 +913,7 @@ is an open contour…`) and the file on disk is untouched until `save`, which va
 | The library plus a 16-line binary, so the shell calls the same code (S4, D-M10-1) | `crates/cam-cli/src/lib.rs`, `src/main.rs`, `Cargo.toml` | the normalised `lib.rs` is **byte-identical** to the pre-split `main.rs` (3 294 lines against 3 294; the only deltas are 145 `pub` insertions, three `mod` → `pub mod`, one dropped import and the moved `fn main`); `Cargo.toml` did not change because cargo detects both targets; `cargo test -p cam-cli` **192** stayed 192 across the move, the binary still builds, `--help` exits 0, `postp validate` exits 0, and an unknown command still exits 2 |
 | One exit for a report — a sink — and the minimal panel on top of it | `crates/cam-cli/src/script.rs` (`run_script_to`), `crates/cam-ui/src/script_panel.rs` | the engine has one exit, `run_script_to(&Path, &mut dyn Write, &mut dyn Write)`: reports to the first sink, the `save` notice to the second, every report through `crate::write_report`, and `cam-cli script` passing stdout and stderr so the binary's own split is preserved; two bypasses found before the panel was written are closed — a scripted `cutlist` without `--out` went straight to stdout and `save` used `eprintln!`, now one `pieces::save_report` shared with `parts_command`. `ScriptPanel::run` touches no egui and calls the library (never a process), `ui()` is the only function needing a frame, and four headless frame tests pin the four observable rules: the report painted, the located `line L:C` error painted, a failed run keeping the previous result, and the cut-list-plus-`wrote …` capture |
 | No schema bump, no new external dependency | `Cargo.lock`, `Cargo.toml`, `crates/cam-model`, `crates/cam-store` | `git diff --name-only 681b722..HEAD` names no file under `crates/cam-model` or `crates/cam-store`, so the document format is untouched and `DOCUMENT_SCHEMA` stays `c2d/document@2`; `Cargo.lock` holds **482** packages before and after and moves **one line** (`+ "cam-cli"` in `cam-ui`'s list); no crate was added. The milestone's own invariant 6 was **wrong** as first written — "the lock must not move" is unsatisfiable for an edge between two workspace crates, because the lock records exactly that list — so it was amended to "no new external dependency, and the package count does not move", which is what it always meant |
-| The differential against the milestone's cut point (T5) | `odd/tasks/m10-documents.md` L7 | **31 invocations per side** from a `git archive 681b722` copy built with its own `CARGO_TARGET_DIR`, the current binary first run twice in two directories so the harness was proven deterministic before it judged anything (both `diff -r` clean over all 31 steps), comparing **323 comparison points per side** — exit code, stdout, stderr and the sha256 of every file left behind, six documents taken twice as zip bytes and as `document.json`, the programs and the library. **The only difference is `--help`**: 108 lines → 152, **44 added and none removed** (`parts`, `cutlist`, `report`, `script` and the `SCRIPTS:` block); everything else is identical, exit codes included (21×0, 4×2, 1×4, 4×6, 1×7 on each side) and **no file hash differs anywhere** |
+| The differential against the milestone's cut point (T5) | `odd/tasks/018-m10-documents.md` L7 | **31 invocations per side** from a `git archive 681b722` copy built with its own `CARGO_TARGET_DIR`, the current binary first run twice in two directories so the harness was proven deterministic before it judged anything (both `diff -r` clean over all 31 steps), comparing **323 comparison points per side** — exit code, stdout, stderr and the sha256 of every file left behind, six documents taken twice as zip bytes and as `document.json`, the programs and the library. **The only difference is `--help`**: 108 lines → 152, **44 added and none removed** (`parts`, `cutlist`, `report`, `script` and the `SCRIPTS:` block); everything else is identical, exit codes included (21×0, 4×2, 1×4, 4×6, 1×7 on each side) and **no file hash differs anywhere** |
 | The totals, measured | workspace | **1 506 tests, 0 failed**, in 110 `test result` lines (96 test binaries plus 14 doc-test suites, which hold none) against 1 452 at M9: `cam-cli` **194** (was 157), `cam-import` **136** (was 123), `cam-ui` **268** (was 264), and 54 of the new tests in the five new binaries — `script` 19, `pieces` 10, `printsheet` 8, `csv` 13, `script_panel` 4 |
 
 **The review record is uneven, and it is recorded that way.** One lineage covers the language and the
@@ -962,7 +962,7 @@ falls back to the word when a message names neither; a **refused write is now a 
 panic** — `write_report` maps a failed `write_all` to a named failure where `print!` used to panic, so a
 report into a broken pipe exits `2` instead of aborting, and no test provokes `EPIPE`; the panel was a
 **standalone module** with no shell tab in M10 and **is mounted now** — `Command::Script` opens it as a
-modal over the canvas (`odd/tasks/script-panel-mount.md`) — and it runs **synchronously** on the frame
+modal over the canvas (`odd/tasks/022-script-panel-mount.md`) — and it runs **synchronously** on the frame
 that pressed `Run`; the sheet **omits** the
 program, the simulation and the file name and says so under its own `Omitted` heading; the two CSV
 shapes are **two formats, not one schema**, so `cam_import::csv::import` deliberately does not read a
@@ -1095,22 +1095,22 @@ did not decompile its algorithms.
 - **L1 (user requirement).** A cross-platform 2.5D CAM application, planned through ODD: the request asked
   for that plan and its milestones, with Windows/Linux support named as the extra requirement. The owner's
   sentence also named a third-party product; the repository name hygiene sweep
-  (`odd/tasks/repository-name-hygiene.md`) removed that name and the words that went with it.
+  (`odd/tasks/028-repository-name-hygiene.md`) removed that name and the words that went with it.
 - **L2 (user decisions, verbatim option labels):** "Rust + wgpu/egui (o Rust + Qt bindings)";
   "Todo menos 3D y Laser"; "Formato propio abierto (JSON/ZIP) + import DXF/SVG/PDF/EPS";
   "Implementar nesting heurístico propio en v1".
 - **L3 (analysis):** the technical analysis that preceded this plan is folded into the rows above; the
   dossier it was written to was deleted by the name-hygiene sweep, which records that in its own Log.
 - **L4 (plan):** this document. Next executable artifact is
-  `odd/tasks/m0-foundation.md`.
+  `odd/tasks/001-m0-foundation.md`.
 - **L5 (after M10, two features and no milestone).** M0–M10 were the whole plan, so the work that followed
   started from the debt the milestones left rather than from a plan row. **The advisory debt**
-  (`odd/tasks/debt-advisories.md`): six advisories closed — four with the reviewer's own words recovered
+  (`odd/tasks/021-debt-advisories.md`): six advisories closed — four with the reviewer's own words recovered
   from a sibling lineage, plus `1ab52143/R1-STEP-DOS` (the search step is now bounded by
   `MAX_SEARCH_ANCHORS`, four million, the same ceiling the simulator's cell grid and the medial axis's
   lattice use) and `R3-CAP-BOUNDARY` (the cap's inclusive edge, proved by installing the mutated
   comparison) — ten unrecoverable because the review store keeps a receipt's lineage and not its findings.
-  **The script panel's mount** (`odd/tasks/script-panel-mount.md`): `ScriptPanel` is drawn as S9's modal
+  **The script panel's mount** (`odd/tasks/022-script-panel-mount.md`): `ScriptPanel` is drawn as S9's modal
   from a palette command, `Esc` closes it, and a test pins that the frame's canvas is byte-identical with
   it open and closed — the recorded claim that the wiring "would move every existing shell golden" was
   measured and is false, since this crate keeps no pixel goldens at all. Six advisories were carried in
@@ -1120,9 +1120,9 @@ did not decompile its algorithms.
   **abandoned** rather than left open: `operator_disposition` by the owner, recorded as
   `gentle-ai.review-reclaim-record/v1` on 2026-11-05 and moved to
   `review-transactions/quarantine/review-5eb75a623cbfc72e-441271739`, because no correction could satisfy
-  the finding without failing `clippy -D warnings` (`odd/tasks/script-panel-mount.md`, L6-L8).
+  the finding without failing `clippy -D warnings` (`odd/tasks/022-script-panel-mount.md`, L6-L8).
 - **L6 (after M10, the third feature: the panel edits the shell's document).**
-  `odd/tasks/script-panel-document.md`, delivered in three commits — `63e7aa4` (the change),
+  `odd/tasks/023-script-panel-document.md`, delivered in three commits — `63e7aa4` (the change),
   `451d586` (its review) and `5332383` (`R4-001`) — which close the residual the mount left open: a script
   run from the panel used to edit a file on disk and reach the document only when the file was reopened.
   The owner chose the shape in two decisions, both quoted verbatim in that document: the panel runs against
@@ -1231,7 +1231,7 @@ code in the window created that file and no code wrote `tools_ref` into a docume
 permanently dark and the populated screen was reachable only by hand-building a SQLite file with `cam-cli tools
 add` and editing a document's JSON to point at it.
 
-**The library is the application's** (`odd/tasks/tool-library-app.md`, S1; the owner's words, D1). One
+**The library is the application's** (`odd/tasks/032-tool-library-app.md`, S1; the owner's words, D1). One
 `tools.sqlite` in the data directory — `$CAM_PILOT_DATA_DIR` as the only override, else
 `$XDG_DATA_HOME/campilot` / `~/.local/share/campilot` on Linux and `%APPDATA%\campilot` on Windows — opened and
 seeded at launch, so a fresh install starts with a catalogue instead of an empty screen, and a library a person

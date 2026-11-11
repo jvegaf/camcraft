@@ -432,7 +432,7 @@ fn boundaries_that_share_a_span_with_material_on_the_same_side_are_refused() {
   // interiors on the same side of it: the material of one lies over the material of the other, so the
   // two boundaries cannot both be the material boundary. This pair used to be read as a touch — a
   // coincident edge was enough — and contributed no nesting depth, so the offset measured a region
-  // nobody had described (`odd/tasks/winding-collinear-overlap.md` S3).
+  // nobody had described (`odd/tasks/030-winding-collinear-overlap.md` S3).
   let overlapping = region(vec![
     square(Point2::new(0.0, 0.0), 10.0, 10.0),
     square(Point2::new(5.0, 0.0), 10.0, 10.0),
