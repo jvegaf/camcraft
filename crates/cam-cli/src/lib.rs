@@ -1514,16 +1514,10 @@ pub(crate) fn parse_mm(value: &str, what: &str) -> Result<f64, Failure> {
 /// A short label for an operation kind, for reports.
 pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str {
   match operation {
-    cam_model::Operation::Profile(_) => "profile",
-    cam_model::Operation::Pocket(_) => "pocket",
-    cam_model::Operation::Drilling(_) => "drilling",
-    cam_model::Operation::Chamfer(_) => "chamfer",
-    cam_model::Operation::VCarve(_) => "vcarve",
-    cam_model::Operation::Engrave(_) => "engrave",
-    cam_model::Operation::Fluting(_) => "fluting",
-    cam_model::Operation::Texture(_) => "texture",
-    cam_model::Operation::Inlay(_) => "inlay",
-    cam_model::Operation::Thread(_) => "thread",
-    cam_model::Operation::Moulding(_) => "moulding",
+    cam_model::Operation::Isolation(_) => "isolation",
+    cam_model::Operation::NonCopperClear(_) => "non-copper clear",
+    cam_model::Operation::Cutout(_) => "cutout",
+    cam_model::Operation::Paint(_) => "paint",
+    cam_model::Operation::Panelize(_) => "panelize",
   }
 }

@@ -27,10 +27,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use cam_model::{
-  Document, InlayParams, MouldingParams, Operation, OriginCorner, ProfileParams, RetractMode,
-  ThreadDirection, Toolpath,
-};
+use cam_model::{Document, Operation, OriginCorner, Toolpath};
 use cam_units::Angle;
 
 use crate::{decimal, value_at, Failure};
@@ -259,185 +256,70 @@ fn toolpath_section(document: &Document) -> Vec<String> {
 }
 
 /// The parameters the toolpath's operation authored, in the same order for every document.
-///
-/// Only authored values are printed: a derived depth (a chamfer's, a V-carve's) belongs to the
-/// toolpath layer's law and not to the document, so the sheet states the numbers the document holds
-/// and leaves the derivation to the command that cuts.
 fn parameter_rows(toolpath: &Toolpath) -> Vec<(&'static str, String)> {
   match &toolpath.operation {
-    Operation::Profile(params) => profile_parameters(params),
-    Operation::Pocket(params) => vec![
+    Operation::Isolation(params) => vec![
+      ("passes", params.passes.to_string()),
+      ("overlap", decimal(params.overlap)),
       (
-        "strategy",
-        match params.strategy {
-          cam_model::PocketStrategy::Offset => "offset",
-          cam_model::PocketStrategy::Raster => "raster",
-        }
-        .to_owned(),
+        "direction",
+        format!("{:?}", params.direction).to_lowercase(),
       ),
-      ("allowance", millimetres(params.allowance.mm())),
-      ("stepover", millimetres(params.stepover.mm())),
-      ("pass depth", millimetres(params.pass_depth.mm())),
-      ("start depth", millimetres(params.start_depth.mm())),
+      ("kind", format!("{:?}", params.kind).to_lowercase()),
+      ("cut depth", millimetres(params.cut_depth.mm())),
+      ("keep pours", params.keep_pours.to_string()),
+    ],
+    Operation::NonCopperClear(params) => vec![
+      ("overlap", decimal(params.overlap)),
+      ("margin", millimetres(params.margin.mm())),
+      ("method", format!("{:?}", params.method).to_lowercase()),
+      ("connect", params.connect.to_string()),
+      ("contour", params.contour.to_string()),
+      (
+        "copper offset",
+        params
+          .copper_offset
+          .map(|v| millimetres(v.mm()))
+          .unwrap_or_else(|| "none".to_owned()),
+      ),
+      (
+        "direction",
+        format!("{:?}", params.direction).to_lowercase(),
+      ),
       ("cut depth", millimetres(params.cut_depth.mm())),
     ],
-    Operation::Drilling(params) => {
+    Operation::Cutout(params) => vec![
+      ("margin", millimetres(params.margin.mm())),
+      ("tabs", params.tabs.len().to_string()),
+      ("tab kind", format!("{:?}", params.tab_kind).to_lowercase()),
+      ("pass depth", millimetres(params.pass_depth.mm())),
+      ("cut depth", millimetres(params.cut_depth.mm())),
+      ("cut interiors", params.cut_interiors.to_string()),
+    ],
+    Operation::Paint(params) => vec![
+      ("overlap", decimal(params.overlap)),
+      ("offset", millimetres(params.offset.mm())),
+      ("method", format!("{:?}", params.method).to_lowercase()),
+      ("connect", params.connect.to_string()),
+      ("contour", params.contour.to_string()),
+      ("cut depth", millimetres(params.cut_depth.mm())),
+    ],
+    Operation::Panelize(params) => {
       let mut rows = vec![
-        ("peck depth", millimetres(params.peck_depth.mm())),
-        (
-          "retract",
-          match params.retract {
-            RetractMode::Full => "full".to_owned(),
-            RetractMode::Amount { amount } => {
-              format!("amount {} above the peck", millimetres(amount.mm()))
-            }
-          },
-        ),
-        ("start depth", millimetres(params.start_depth.mm())),
-        ("cut depth", millimetres(params.cut_depth.mm())),
+        ("rows", params.rows.to_string()),
+        ("columns", params.columns.to_string()),
+        ("spacing x", millimetres(params.spacing_x.mm())),
+        ("spacing y", millimetres(params.spacing_y.mm())),
       ];
-      if let Some(bank) = params.bank {
-        rows.push((
-          "bank",
-          format!(
-            "{} drills at {} pitch",
-            bank.count,
-            millimetres(bank.pitch.mm())
-          ),
-        ));
+      if let Some(v) = params.constrain_x {
+        rows.push(("constrain x", millimetres(v.mm())));
+      }
+      if let Some(v) = params.constrain_y {
+        rows.push(("constrain y", millimetres(v.mm())));
       }
       rows
     }
-    Operation::Chamfer(params) => vec![
-      ("chamfer width", millimetres(params.chamfer_width.mm())),
-      ("included angle", degrees(params.included_angle)),
-      ("start depth", millimetres(params.start_depth.mm())),
-    ],
-    Operation::VCarve(params) => vec![
-      ("included angle", degrees(params.included_angle)),
-      ("tolerance", millimetres(params.tolerance.mm())),
-    ],
-    Operation::Engrave(params) => vec![
-      ("start depth", millimetres(params.start_depth.mm())),
-      ("cut depth", millimetres(params.cut_depth.mm())),
-    ],
-    Operation::Fluting(params) => vec![
-      ("start depth", millimetres(params.start_depth.mm())),
-      ("cut depth", millimetres(params.cut_depth.mm())),
-      ("ramp", millimetres(params.ramp.mm())),
-    ],
-    Operation::Texture(params) => vec![
-      ("start depth", millimetres(params.start_depth.mm())),
-      ("cut depth", millimetres(params.cut_depth.mm())),
-      ("spacing", millimetres(params.spacing.mm())),
-      ("angle", degrees(params.angle)),
-    ],
-    Operation::Inlay(params) => inlay_parameters(toolpath, params),
-    Operation::Thread(params) => vec![
-      ("pitch", millimetres(params.pitch.mm())),
-      (
-        "direction",
-        match params.direction {
-          ThreadDirection::Internal => "internal",
-          ThreadDirection::External => "external",
-        }
-        .to_owned(),
-      ),
-      ("start depth", millimetres(params.start_depth.mm())),
-      ("cut depth", millimetres(params.cut_depth.mm())),
-    ],
-    Operation::Moulding(params) => moulding_parameters(params),
   }
-}
-
-/// A profile's authored parameters, the one operation the golden sheet pins.
-fn profile_parameters(params: &ProfileParams) -> Vec<(&'static str, String)> {
-  vec![
-    (
-      "side",
-      match params.side {
-        cam_model::ProfileSide::Inside => "inside",
-        cam_model::ProfileSide::Outside => "outside",
-        cam_model::ProfileSide::On => "on",
-      }
-      .to_owned(),
-    ),
-    ("allowance", millimetres(params.allowance.mm())),
-    ("pass depth", millimetres(params.pass_depth.mm())),
-    ("start depth", millimetres(params.start_depth.mm())),
-    ("cut depth", millimetres(params.cut_depth.mm())),
-    ("lead in", millimetres(params.lead_in.mm())),
-    ("lead out", millimetres(params.lead_out.mm())),
-    ("tabs", tabs(params)),
-  ]
-}
-
-/// A profile's holding tabs: `none`, or each one's position along the perimeter and its size.
-fn tabs(params: &ProfileParams) -> String {
-  if params.tabs.is_empty() {
-    return "none".to_owned();
-  }
-  params
-    .tabs
-    .iter()
-    .map(|tab| {
-      format!(
-        "{} at {} x {}",
-        decimal(tab.position),
-        millimetres(tab.width.mm()),
-        millimetres(tab.height.mm())
-      )
-    })
-    .collect::<Vec<_>>()
-    .join(", ")
-}
-
-/// An inlay's authored parameters and which half of the pair this toolpath is.
-///
-/// The half is read from the document, not guessed: the model says the male has no boundary entity
-/// and names the region it leaves standing as its islands, and the female names the region it clears
-/// as its entities. [`Document::validate`] refuses a record that is both or neither, so a document
-/// that reaches the sheet has exactly one answer.
-fn inlay_parameters(toolpath: &Toolpath, params: &InlayParams) -> Vec<(&'static str, String)> {
-  vec![
-    (
-      "half",
-      if toolpath.entity_ids.is_empty() && !toolpath.island_ids.is_empty() {
-        "male"
-      } else {
-        "female"
-      }
-      .to_owned(),
-    ),
-    ("allowance", millimetres(params.allowance.mm())),
-    ("stepover", millimetres(params.stepover.mm())),
-    ("pass depth", millimetres(params.pass_depth.mm())),
-    ("start depth", millimetres(params.start_depth.mm())),
-    ("cut depth", millimetres(params.cut_depth.mm())),
-  ]
-}
-
-/// A moulding's authored cross-section, in the `--profile` syntax the command line authors it with,
-/// and the stepover that sweeps it along the rail.
-fn moulding_parameters(params: &MouldingParams) -> Vec<(&'static str, String)> {
-  vec![
-    (
-      "profile",
-      params
-        .profile
-        .iter()
-        .map(|point| {
-          format!(
-            "{}:{}",
-            decimal(point.lateral.mm()),
-            decimal(point.depth.mm())
-          )
-        })
-        .collect::<Vec<_>>()
-        .join(", "),
-    ),
-    ("stepover", millimetres(params.stepover.mm())),
-  ]
 }
 
 /// The tools the toolpaths name, each with how many toolpaths name it.

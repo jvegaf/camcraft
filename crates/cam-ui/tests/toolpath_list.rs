@@ -14,8 +14,8 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, LayerRole, Operation, PocketParams, ProfileParams,
-  Toolpath,
+  Document, Entity, EntityKind, FillMethod, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, NonCopperClearParams, Operation, Toolpath,
 };
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::{Category, Shell, ShellOutput};
@@ -63,34 +63,44 @@ fn toolpath(id: &str, name: &str, tool_number: u32, operation: Operation) -> Too
   }
 }
 
-/// A profile with its own pass depth, so two toolpaths of one kind are still distinguishable by their numbers.
-fn profile(pass_depth: f64) -> Operation {
-  Operation::Profile(ProfileParams {
-    pass_depth: Length::from_mm(pass_depth),
-    ..ProfileParams::default()
+/// An isolation operation with its own cut depth, so two toolpaths are distinguishable.
+fn isolation(cut_depth: f64) -> Operation {
+  Operation::Isolation(IsolationParams {
+    passes: 1,
+    overlap: 0.5,
+    direction: MillingDirection::Climb,
+    kind: IsolationKind::Full,
+    cut_depth: Length::from_mm(cut_depth),
+    keep_pours: false,
   })
 }
 
-/// A pocket with its own pass depth: the other kind the editor drafts.
-fn pocket(pass_depth: f64) -> Operation {
-  Operation::Pocket(PocketParams {
-    pass_depth: Length::from_mm(pass_depth),
-    ..PocketParams::default()
+/// A non-copper clear operation with its own cut depth.
+fn non_copper_clear(cut_depth: f64) -> Operation {
+  Operation::NonCopperClear(NonCopperClearParams {
+    overlap: 0.5,
+    margin: Length::from_mm(1.0),
+    method: FillMethod::Standard,
+    connect: false,
+    contour: false,
+    copper_offset: None,
+    direction: MillingDirection::Climb,
+    cut_depth: Length::from_mm(cut_depth),
   })
 }
 
-/// Three toolpaths in document order: a profile, a pocket, and another profile, each with its own tool.
+/// Three toolpaths in document order: an isolation, a non-copper clear, and another isolation, each with its own tool.
 fn three_toolpaths() -> Document {
   let mut document = sheet();
   document
     .toolpaths
-    .push(toolpath("TP1", "Perfil 01", 2, profile(1.0)));
+    .push(toolpath("TP1", "Perfil 01", 2, isolation(0.1)));
   document
     .toolpaths
-    .push(toolpath("TP2", "Desbaste 1", 4, pocket(2.5)));
+    .push(toolpath("TP2", "Desbaste 1", 4, non_copper_clear(0.2)));
   document
     .toolpaths
-    .push(toolpath("TP3", "Perfil 02", 6, profile(1.5)));
+    .push(toolpath("TP3", "Perfil 02", 6, isolation(0.15)));
   document
 }
 
@@ -99,10 +109,10 @@ fn two_toolpaths() -> Document {
   let mut document = sheet();
   document
     .toolpaths
-    .push(toolpath("TP1", "Perfil 01", 2, profile(1.0)));
+    .push(toolpath("TP1", "Perfil 01", 2, isolation(0.1)));
   document
     .toolpaths
-    .push(toolpath("TP2", "Desbaste 1", 4, pocket(2.5)));
+    .push(toolpath("TP2", "Desbaste 1", 4, non_copper_clear(0.2)));
   document
 }
 
@@ -455,7 +465,7 @@ fn a_one_toolpath_document_reads_exactly_as_before() {
   let mut document = sheet();
   document
     .toolpaths
-    .push(toolpath("TP1", "Perfil 01", 2, profile(1.0)));
+    .push(toolpath("TP1", "Perfil 01", 2, isolation(0.1)));
   let mut app = AppState::new(document);
   let mut shell = Shell::new();
   shell.set_tools(library());
@@ -536,7 +546,7 @@ fn a_selection_naming_a_toolpath_the_document_does_not_hold_falls_back_to_the_fi
   let mut opened = sheet();
   opened
     .toolpaths
-    .push(toolpath("TP8", "Opened 1", 4, pocket(3.0)));
+    .push(toolpath("TP8", "Opened 1", 4, non_copper_clear(3.0)));
   app.replace_document(opened);
   let (output, _) = frame(&ctx, &mut shell, &mut app);
   assert_eq!(

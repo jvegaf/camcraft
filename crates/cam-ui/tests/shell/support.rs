@@ -1,6 +1,9 @@
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Job, Layer, LayerRole, Operation, ProfileParams, Toolpath};
+use cam_model::{
+  Document, IsolationKind, IsolationParams, Job, Layer, LayerRole, MillingDirection, Operation,
+  Toolpath,
+};
 use cam_store::document::{save_document, DocumentFile};
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 use cam_ui::{Shell, ShellOutput, Tab};
@@ -376,7 +379,14 @@ pub(crate) fn document_with_toolpath(count: usize, tool_number: u32) -> Document
     entity_ids: vec!["S0".to_owned()],
     island_ids: Vec::new(),
     tool_number,
-    operation: Operation::Profile(ProfileParams::default()),
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
+    }),
   });
   document
 }

@@ -105,3 +105,49 @@ fijados a proposito, no heredarse de un proyecto que derivo.
 
 **Y el dato de dominio que si vale:** el usuario no aislo, hizo **NCC**; y el taladro no lo taladro, lo
 fresco como geometria. El primer caso real de este producto es limpieza de no-cobre, no isolation routing.
+
+**L8** (evidencia — el modelo PCB, y un campo que quedo sin juez): M2 reemplazo las once variantes de
+mecanizado por las cinco de PCB, con sus cinco validadores, y M3 repario los consumidores. El rescate de
+`cam-ops`, que importaba sus parametros de `cam-model`, gano su propio vocabulario en
+`crates/cam-ops/src/params.rs` — siete tipos de mecanizado **sin serde**, porque no se persisten: el
+documento guarda `IsolationParams`, y un adaptador (C5) traducira uno al otro.
+
+**Lo que salio mal y se corrigio:** `cam-model/tests/document.rs` se reescribio de 104 tests a 4. El arbol
+quedaba verde con el modelo practicamente sin red. Restaurados 66, entre ellos la garantia que introdujo M1
+(un tag `c2d/` se rechaza nombrandolo), los rechazos de schema, los ids duplicados, la geometria abierta,
+las dimensiones de job, la deserializacion de geometria invalida, la identidad byte a byte del documento
+pre-nesting, y los 46 de nesting. Mas tests para los tres validadores nuevos que no tenian ninguno
+(NCC, cutout, paint).
+
+**El hueco que queda abierto:** `Toolpath.island_ids` **sobrevive** — se serializa, el informe lo imprime
+(`cam-cli/src/printsheet.rs:249`) y un comando de `cam-app` lo escribe (`command.rs:734`) — pero su
+validador (`check_islands`) se borro, asi que **nada comprueba que una isla exista, este dentro de su
+region, no se superponga con otra ni sea cerrada**. Nueve tests de islas de HEAD quedan borrados porque su
+sujeto ya no existe.
+
+**Decision pendiente (del dueno), con mi recomendacion:** el campo deberia irse. Un keep-out ya se expresa
+como capa con rol `LayerRole::Keepout`, asi que "una operacion nombra islas" es una segunda manera de decir
+lo mismo, y hoy es una manera que nadie valida. Sacarlo antes del release es gratis; agregarlo despues es
+una migracion, y `camcraft/document@1` no va a tener migraciones. La alternativa es restaurar el validador
+y darle un uso real a las islas — pero ningun parametro de las cinco operaciones PCB las usa hoy.
+
+**L9** (decision del dueno — alcance de la review de M2): M2 se acepta **sin review**, salvo `cam-ops`.
+No es una omision: es otra vez lo que el proveedor puede tomar.
+
+Medido: el commit del swap son **5.468 lineas** y fue rechazado en preflight con
+`lens_context_budget_exceeded`, sin autoridad creada. Se re-rebabano en dos: `cam-ops` (**141**) va a
+review, y el resto (**5.327**) se acepta. El techo empirico queda entre **1.409** (aprobado) y **4.365**
+(rechazado) y no se conoce con mas precision.
+
+**Por que el swap no se puede partir mas sin mentir:** el modelo, sus consumidores y los tests de esos
+consumidores tienen que ir juntos o el arbol no compila ni corre. Bajarlo exigiria commitear un archivo de
+tests escrito para el commit y no para el producto, que es justo el artefacto que este proyecto rechaza.
+
+**Lo que queda sin ojo externo, dicho sin adorno:** los cinco validadores nuevos (reglas de rango y
+positividad, cubiertas por tests que escribio el delegado y verifique el padre), la reparacion de
+consumidores, y la cobertura restaurada. Lo que si va a review es la decision de arquitectura: dos
+vocabularios con una frontera.
+
+**Consecuencia para planificar:** el techo ronda las 5.000 lineas y este proyecto produce cambios de ese
+tamano por naturaleza. M4, C4 y C5 van a chocar igual, asi que conviene plantear cada tarea en cortes de
+~2.000 lineas desde el principio en vez de descubrirlo al final.

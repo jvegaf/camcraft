@@ -9,8 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, LayerRole, Nesting, NestingPart, NestingPlacement,
-  NestingSheet, Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, Nesting, NestingPart, NestingPlacement, NestingSheet, Operation, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_units::{Angle, Length, UnitSystem};
@@ -67,15 +67,13 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
     entity_ids: vec!["E1".to_owned()],
     island_ids: Vec::new(),
     tool_number: 1,
-    operation: Operation::Profile(ProfileParams {
-      side: ProfileSide::Outside,
-      allowance: Length::ZERO,
-      pass_depth: Length::from_mm(6.0),
-      start_depth: Length::ZERO,
-      cut_depth: Length::from_mm(6.0),
-      lead_in: Length::ZERO,
-      lead_out: Length::ZERO,
-      tabs: Vec::new(),
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
     }),
   });
   document.tools_ref = tools_ref.map(str::to_owned);

@@ -14,7 +14,7 @@ use cam_app::AppState;
 
 use cam_geom::{Contour, Point2};
 
-use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, ProfileParams, Toolpath};
+use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, Toolpath};
 
 use cam_store::tools::{CuttingData, StoredTool, ToolGeometry};
 
@@ -70,7 +70,14 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
 
       tool_number,
 
-      operation: cam_model::Operation::Profile(ProfileParams::default()),
+      operation: cam_model::Operation::Isolation(cam_model::IsolationParams {
+        passes: 1,
+        overlap: 0.5,
+        direction: cam_model::MillingDirection::Climb,
+        kind: cam_model::IsolationKind::Full,
+        cut_depth: cam_units::Length::from_mm(0.1),
+        keep_pours: false,
+      }),
     });
   }
 

@@ -9,8 +9,8 @@ use std::process::Command;
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, LayerRole, Nesting, NestingPart, NestingPlacement,
-  NestingSheet, Operation, ProfileParams, ProfileSide, Toolpath,
+  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, Nesting, NestingPart, NestingPlacement, NestingSheet, Operation, Toolpath,
 };
 use cam_store::document::save_document;
 use cam_units::{Angle, Length, UnitSystem};
@@ -95,15 +95,13 @@ fn profile_toolpath(id: &str, name: &str, entity_ids: &[&str], tool: u32) -> Too
     entity_ids: entity_ids.iter().map(|id| (*id).to_owned()).collect(),
     island_ids: Vec::new(),
     tool_number: tool,
-    operation: Operation::Profile(ProfileParams {
-      side: ProfileSide::Outside,
-      allowance: Length::ZERO,
-      pass_depth: Length::from_mm(6.0),
-      start_depth: Length::ZERO,
-      cut_depth: Length::from_mm(6.0),
-      lead_in: Length::ZERO,
-      lead_out: Length::ZERO,
-      tabs: Vec::new(),
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
     }),
   }
 }
@@ -242,17 +240,15 @@ th { background: #eee; }
 <h2>Toolpaths</h2>
 <h3>TP1 — Outside profile</h3>
 <table>
-<tr><th>operation</th><td>profile</td></tr>
+<tr><th>operation</th><td>isolation</td></tr>
 <tr><th>tool</th><td>T1</td></tr>
 <tr><th>entities</th><td>E1</td></tr>
-<tr><th>side</th><td>outside</td></tr>
-<tr><th>allowance</th><td>0.000 mm</td></tr>
-<tr><th>pass depth</th><td>6.000 mm</td></tr>
-<tr><th>start depth</th><td>0.000 mm</td></tr>
-<tr><th>cut depth</th><td>6.000 mm</td></tr>
-<tr><th>lead in</th><td>0.000 mm</td></tr>
-<tr><th>lead out</th><td>0.000 mm</td></tr>
-<tr><th>tabs</th><td>none</td></tr>
+<tr><th>passes</th><td>1</td></tr>
+<tr><th>overlap</th><td>0.500</td></tr>
+<tr><th>direction</th><td>climb</td></tr>
+<tr><th>kind</th><td>full</td></tr>
+<tr><th>cut depth</th><td>0.100 mm</td></tr>
+<tr><th>keep pours</th><td>false</td></tr>
 </table>
 <h2>Tools</h2>
 <table>

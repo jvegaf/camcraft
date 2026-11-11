@@ -15,10 +15,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, Job, Layer, LayerRole, Operation, ProfileParams, Toolpath,
+  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, Operation, Toolpath,
 };
 use cam_store::tools::{stored_tool_for_number, StoredTool};
 use cam_ui::{Shell, UiAction};
+use cam_units::Length;
 use egui_kittest::Harness;
 
 static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -82,7 +84,14 @@ fn document_with_toolpath(tool_number: u32) -> Document {
     entity_ids: vec!["E1".to_owned()],
     island_ids: Vec::new(),
     tool_number,
-    operation: Operation::Profile(ProfileParams::default()),
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
+    }),
   });
   document
 }

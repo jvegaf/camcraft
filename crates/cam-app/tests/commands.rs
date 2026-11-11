@@ -4,9 +4,10 @@ use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit}
 use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::{primitive, transform, Point2, Vec2};
 use cam_model::{
-  Document, EngraveParams, Entity, EntityKind, Job, Layer, LayerRole, ModelError, Operation,
-  PocketParams, ProfileParams,
+  CutoutParams, Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer,
+  LayerRole, MillingDirection, ModelError, Operation, TabKind,
 };
+use cam_units::Length;
 
 fn state_with_layers(layer_ids: &[&str]) -> AppState {
   let mut document = Document::new(Job::default_sheet());
@@ -2918,24 +2919,40 @@ fn set_job_refuses_a_dimension_a_stock_cannot_have() {
 }
 
 // --- the toolpath vocabulary: add, retool, re-operate and delete (S7) --------------------------
-//
-// `cam_app::Command` had no toolpath word at all before this layer: authoring lived only in
-// `cam-cli toolpath`, so a form in the shell had nothing to call. The four commands below are that
-// vocabulary and nothing more. None of them reads a tool library — `cam-app` has no `cam-store`
-// edge, and whether the library holds a number is the emitter's refusal, not this layer's (L5).
 
-/// One `AddToolpath` over `entity_ids`, profiling, with no islands.
+fn isolation_op() -> Operation {
+  Operation::Isolation(IsolationParams {
+    passes: 1,
+    overlap: 0.5,
+    direction: MillingDirection::Climb,
+    kind: IsolationKind::Full,
+    cut_depth: Length::from_mm(0.1),
+    keep_pours: false,
+  })
+}
+
+fn cutout_op() -> Operation {
+  Operation::Cutout(CutoutParams {
+    margin: Length::ZERO,
+    tabs: Vec::new(),
+    tab_kind: TabKind::Straight,
+    pass_depth: Length::ZERO,
+    cut_depth: Length::from_mm(1.6),
+    cut_interiors: false,
+  })
+}
+
+/// One `AddToolpath` over `entity_ids` with an isolation operation and no islands.
 fn add_toolpath(toolpath_id: &str, entity_ids: Vec<String>, tool_number: u32) -> Command {
   Command::AddToolpath {
     toolpath_id: toolpath_id.to_owned(),
-    name: format!("{toolpath_id} profile"),
+    name: format!("{toolpath_id} isolation"),
     entity_ids,
     island_ids: Vec::new(),
     tool_number,
-    operation: Operation::Profile(ProfileParams::default()),
+    operation: isolation_op(),
   }
 }
-
 #[test]
 fn adding_a_toolpath_stores_its_tool_number_and_operation() {
   let mut app = state_with_layer();
@@ -2951,14 +2968,11 @@ fn adding_a_toolpath_stores_its_tool_number_and_operation() {
     .first()
     .expect("the toolpath is stored");
   assert_eq!(stored.id, "TP1");
-  assert_eq!(stored.name, "TP1 profile");
+  assert_eq!(stored.name, "TP1 isolation");
   assert_eq!(stored.tool_number, 4);
   assert_eq!(stored.entity_ids, vec![rectangle]);
   assert!(stored.island_ids.is_empty());
-  assert_eq!(
-    stored.operation,
-    Operation::Profile(ProfileParams::default())
-  );
+  assert_eq!(stored.operation, isolation_op());
 }
 
 #[test]
@@ -3083,59 +3097,14 @@ fn setting_a_toolpaths_operation_keeps_the_tool_and_the_entities() {
   app
     .execute(Command::SetToolpathOperation {
       toolpath_id: "TP1".to_owned(),
-      operation: Operation::Pocket(PocketParams::default()),
+      operation: cutout_op(),
     })
     .expect("the operation is set");
 
   let stored = &app.document().toolpaths[0];
-  assert_eq!(stored.operation, Operation::Pocket(PocketParams::default()));
+  assert_eq!(stored.operation, cutout_op());
   assert_eq!(stored.tool_number, 4);
   assert_eq!(stored.entity_ids, vec![rectangle]);
-}
-
-#[test]
-fn setting_an_operation_the_toolpaths_geometry_cannot_cut_is_refused_naming_the_entity() {
-  let mut app = state_with_layer();
-  let line = draw_line(&mut app, Point2::ORIGIN, Point2::new(20.0, 0.0));
-  // Engraving an open vector is legal — it is the operation that exists for one — so the toolpath
-  // starts valid and only the *change* to a pocket is what the geometry cannot pay for.
-  app
-    .execute(Command::AddToolpath {
-      toolpath_id: "TP1".to_owned(),
-      name: "TP1 engrave".to_owned(),
-      entity_ids: vec![line.clone()],
-      island_ids: Vec::new(),
-      tool_number: 4,
-      operation: Operation::Engrave(EngraveParams::default()),
-    })
-    .expect("engraving an open line is legal");
-
-  let error = assert_refused_atomically(
-    &mut app,
-    Command::SetToolpathOperation {
-      toolpath_id: "TP1".to_owned(),
-      operation: Operation::Pocket(PocketParams::default()),
-    },
-  );
-  assert_eq!(
-    error,
-    CommandError::Invalid(ModelError::OpenContourNotCuttable {
-      toolpath: "TP1".to_owned(),
-      entity: line.clone(),
-    }),
-    "{error:?}"
-  );
-  assert_eq!(
-    error.to_string(),
-    format!(
-      "the command was refused: toolpath \"TP1\" needs closed geometry, entity {line:?} is open"
-    )
-  );
-  assert_eq!(
-    app.document().toolpaths[0].operation,
-    Operation::Engrave(EngraveParams::default()),
-    "the refusal leaves the operation as it was"
-  );
 }
 
 #[test]
@@ -3145,7 +3114,7 @@ fn setting_an_operation_on_an_absent_toolpath_is_refused_naming_it() {
     &mut app,
     Command::SetToolpathOperation {
       toolpath_id: "TP9".to_owned(),
-      operation: Operation::Pocket(PocketParams::default()),
+      operation: cutout_op(),
     },
   );
   assert_eq!(
@@ -3217,7 +3186,7 @@ fn renaming_a_toolpath_to_an_empty_or_blank_name_is_refused_and_writes_nothing()
     assert_eq!(error.to_string(), "a toolpath's name must not be empty");
     assert_eq!(
       app.document().toolpaths[0].name,
-      "TP1 profile",
+      "TP1 isolation",
       "{name:?}: a refused rename leaves the old name standing"
     );
   }
@@ -3315,7 +3284,7 @@ fn the_toolpath_commands_have_human_labels() {
   assert_eq!(
     Command::SetToolpathOperation {
       toolpath_id: "TP1".to_owned(),
-      operation: Operation::Profile(ProfileParams::default()),
+      operation: isolation_op(),
     }
     .label(),
     "set toolpath operation"
