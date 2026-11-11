@@ -44,4 +44,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 037 | [offset-exact](037-offset-exact.md) | delivered | 2026-11-11 | `79a07c9` |
 | 038 | [start-screen](038-start-screen.md) | delivered | 2026-11-11 | `b745501` |
 | 039 | [wood-out-sweep](039-wood-out-sweep.md) | in progress | 2026-11-11 | `2dacebd` |
-| 040 | [docs-reorganization](040-docs-reorganization.md) | in progress |  | `—` |
+| 040 | [docs-reorganization](040-docs-reorganization.md) | delivered | 2026-11-11 | `047b582` |
