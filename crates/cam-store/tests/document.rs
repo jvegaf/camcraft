@@ -1,9 +1,14 @@
 //! Behaviour tests for `.cmc` document persistence (A3).
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole, DOCUMENT_SCHEMA};
+use cam_model::{
+  CutoutParams, Document, Entity, EntityKind, FillMethod, IsolationKind, IsolationParams, Job,
+  Layer, LayerRole, MillingDirection, NonCopperClearParams, Operation, PaintParams, PanelizeParams,
+  Tab, TabKind, Toolpath, DOCUMENT_SCHEMA,
+};
 use cam_store::document::{load_document, save_document, DocumentFile, DOCUMENT_ENTRY};
 use cam_store::StoreError;
+use cam_units::Length;
 use std::path::PathBuf;
 
 fn scratch(name: &str) -> PathBuf {
@@ -243,5 +248,127 @@ fn a_legacy_schema_cannot_be_written_through_to_bytes() {
     file.save(&path).is_err(),
     "and the file door agrees with it"
   );
+  std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+}
+
+/// A board that uses every layer role and every operation kind.
+///
+/// The point is coverage of the format, not a real design: ten layers, one closed contour each, and
+/// one toolpath per operation. If the schema changes shape, this stops round-tripping.
+fn full_board() -> Document {
+  let mut document = Document::new(Job {
+    width: Length::from_mm(60.0),
+    height: Length::from_mm(40.0),
+    thickness: Length::from_mm(1.6),
+    ..Job::default_sheet()
+  });
+  let roles = [
+    LayerRole::CopperTop,
+    LayerRole::CopperBottom,
+    LayerRole::MaskTop,
+    LayerRole::MaskBottom,
+    LayerRole::SilkTop,
+    LayerRole::SilkBottom,
+    LayerRole::Outline,
+    LayerRole::Drill,
+    LayerRole::Keepout,
+    LayerRole::Geometry,
+  ];
+  for (index, role) in roles.iter().enumerate() {
+    let id = format!("L{}", index + 1);
+    document.layers.push(Layer {
+      id: id.clone(),
+      name: format!("{role:?}"),
+      role: *role,
+      visible: true,
+      entities: vec![Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour {
+          contour: Contour::from_points(
+            &[
+              Point2::new(0.0, 0.0),
+              Point2::new(20.0, 0.0),
+              Point2::new(20.0, 15.0),
+              Point2::new(0.0, 15.0),
+            ],
+            true,
+          )
+          .expect("rectangle"),
+        },
+      }],
+    });
+  }
+
+  let cut = Length::from_mm(0.05);
+  let operations = [
+    Operation::Isolation(IsolationParams {
+      passes: 2,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: cut,
+      keep_pours: false,
+    }),
+    Operation::NonCopperClear(NonCopperClearParams {
+      overlap: 0.4,
+      margin: Length::from_mm(1.0),
+      method: FillMethod::Standard,
+      connect: true,
+      contour: true,
+      copper_offset: Some(Length::from_mm(0.2)),
+      direction: MillingDirection::Climb,
+      cut_depth: cut,
+    }),
+    Operation::Cutout(CutoutParams {
+      margin: Length::from_mm(0.1),
+      tabs: vec![Tab {
+        position: 0.25,
+        width: Length::from_mm(4.0),
+        height: Length::from_mm(0.5),
+      }],
+      tab_kind: TabKind::Straight,
+      pass_depth: Length::from_mm(0.6),
+      cut_depth: Length::from_mm(1.8),
+      cut_interiors: true,
+    }),
+    Operation::Paint(PaintParams {
+      overlap: 0.4,
+      offset: Length::from_mm(0.1),
+      method: FillMethod::Lines,
+      connect: true,
+      contour: false,
+      cut_depth: cut,
+    }),
+    Operation::Panelize(PanelizeParams {
+      rows: 2,
+      columns: 3,
+      spacing_x: Length::from_mm(2.0),
+      spacing_y: Length::from_mm(2.0),
+      constrain_x: None,
+      constrain_y: None,
+    }),
+  ];
+  for (index, operation) in operations.into_iter().enumerate() {
+    document.toolpaths.push(Toolpath {
+      id: format!("T{}", index + 1),
+      name: format!("operation {}", index + 1),
+      entity_ids: vec![format!("E{}", index + 1)],
+      tool_number: index as u32 + 1,
+      operation,
+    });
+  }
+  document
+}
+
+#[test]
+fn a_full_board_survives_the_archive_unchanged() {
+  let path = scratch("full-board");
+  let board = full_board();
+  board
+    .validate()
+    .expect("a board with every role and every operation is valid");
+  save_document(&path, &board).expect("saves");
+  let loaded = load_document(&path).expect("loads");
+  assert_eq!(loaded, board, "the board comes back exactly as it went in");
   std::fs::remove_dir_all(path.parent().expect("parent")).ok();
 }
