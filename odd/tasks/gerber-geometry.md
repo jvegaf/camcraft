@@ -164,3 +164,16 @@ fallaba; ese fallo era el defecto del kernel. Con el kernel arreglado el camino 
 atajo quedo fuera en vez de quedarse como codigo muerto justificado por un bug que ya no existe.
 
 **Estado:** workspace en **1293 passed, 0 failed, 3 ignored**; `fmt` y `clippy -D warnings` limpios.
+
+**L8** (review de la feature, aprobada sin hallazgos): el candidato fue el rango commiteado
+`8ee32fe..02f5426` —seis commits, 8 archivos, 1.028 lineas—, con base explicita y `committed-only`, para
+no revisar tres fragmentos por separado. Tier `high` por la señal `process_boundary` sobre
+`cam-gerber/src/lib.rs`, que es el falso positivo conocido: ese crate lee archivos con `std::fs`, no
+levanta procesos. **Aprobada sin un solo hallazgo**, ni bloqueante ni informativo; la autoridad quedo
+quemada.
+
+**Lo que costo llegar al START, por si vuelve a pasar.** Tres intentos rechazados con `lenses-invalid`
+antes de entender: la lista de lentes va en el orden canonico (`risk, resilience, readability,
+reliability`), y pasar `risk, reliability, readability` se rechaza. Se arranco con la lente de riesgo sola
+—riesgo cubre de verdad lo que se toco: entrada no confiable y algebra de conjuntos— en vez de quemar otra
+autoridad adivinando. Es un defecto de herramienta, no del codigo, y queda anotado como tal.
