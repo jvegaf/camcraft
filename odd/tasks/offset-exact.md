@@ -83,3 +83,22 @@ Contra el código viejo el test falla con `[Flattened]`, que es el ROJO honesto;
 **Estado:** workspace en **1317 passed, 0 failed, 3 ignored**. G3.2 queda con el aplanado cerrado; el
 rechazo de `Region::offset` cuando el offset atraviesa la forma sigue abierto y se anota como tarea
 aparte, no como resuelto.
+
+**L5** (review de G3.2, aprobada con dos avisos que este documento tiene que dejar abiertos): el
+candidato fue `d26427b..d7e818d` con las lentes de riesgo y confiabilidad, tier `medium`. **Aprobada**,
+sin corrección abierta, y con dos avisos no bloqueantes que son justos los dos:
+
+1. **`R3-arrangement-error-fallback`** (`crates/cam-geom/src/offset.rs:537`). El comentario dice que el
+   camino muestreado queda de fallback, y el código usa `?` al normalizar: un **error** del arrangement
+   aborta en vez de caer al fallback. El fallback cubre "el arrangement aplana o no devuelve nada", no
+   cubre "el arrangement falla". Hay dos salidas honestas: hacer que el error caiga al muestreo, o
+   corregir el comentario para que prometa sólo lo que el código cumple. La segunda es más chica.
+2. **`R3-test-does-not-prove-survivor`** (`crates/cam-geom/tests/offset.rs:265-273`). El test prueba que
+   **el arco sobrevive**, pero no que la frontera elegida sea la de **mayor área**. La elección por área
+   es la mitad del contrato que este documento dice respetar —la que decide *qué geometría sobrevive*— y
+   quedó sin test. Se arregla con un contorno que se auto-intersecte en dos loops de áreas muy distintas
+   y una aserción de que el que vuelve es el grande. **Esto va primero**: es la mitad del contrato que se
+   declaró cumplido.
+
+**Estado al cerrar:** `d7e818d`, workspace en **1317 passed, 0 failed, 3 ignored**, `dev` en sincronía con
+`origin`. G3.2 queda con el aplanado cerrado y el rechazo de `Region::offset` abierto como G3.2b.
