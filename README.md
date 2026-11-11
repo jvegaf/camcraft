@@ -162,3 +162,19 @@ building and by launching it under a compositor.
 The PCB operations themselves: isolation routing, non-copper clearing, drilling and cutout — the geometry
 they need now exists, and what is missing is the operation that turns copper into a program and a command
 that reads a KiCad export end to end. The readers are tested; nothing calls them yet.
+
+
+## Desarrollo paralelo con agentes (worktrees)
+
+Cada agente trabaja en su propio worktree aislado, una tarea por agente:
+
+```bash
+just worktree N        # crea .worktrees/N y rama feat/N-slug
+cd .worktrees/N
+just claim N           # reclama la tarea (evita colisiones)
+# ... trabajar ...
+just check-worktree    # validar estado
+just release N         # liberar al terminar/entregar
+```
+
+Reglas: un agente = un worktree = una tarea. Las tareas se gestionan en [`odd/tasks/INDEX.md`](odd/tasks/INDEX.md). Ver [`AGENTS.md`](AGENTS.md) y [`odd/README.md`](odd/README.md) para más detalles.
