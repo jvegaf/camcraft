@@ -191,10 +191,7 @@ impl Shell {
     let Some(path) = self.import_path.clone() else {
       return Err(self.import_refused(NO_IMPORT_PENDING.to_owned()));
     };
-    let options = cam_import::ImportOptions {
-      tolerance,
-      ..cam_import::ImportOptions::default()
-    };
+    let options = cam_import::ImportOptions { tolerance };
     let parsed = cam_import::import_path(&path, &options)
       .map_err(|error| self.import_refused(error.to_string()))?;
     self.import_tolerance = tolerance;
@@ -245,7 +242,6 @@ impl Shell {
     let path = PathBuf::from(path);
     let options = cam_import::ImportOptions {
       tolerance: self.import_tolerance,
-      ..cam_import::ImportOptions::default()
     };
     let parsed = cam_import::import_path(&path, &options).map_err(|error| error.to_string())?;
     self.import_path = Some(path);
