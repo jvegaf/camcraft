@@ -137,3 +137,20 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
   - `R1-003`, `R2-001`, `R3-001`, `R4-undeclared-surface`: senalaban que este bloque `## Surfaces` no
     declaraba `crates/cam-ui/src/shell/action.rs`, que es cierto y quedó corregido acá.
 
+- **L9.** Tercer review, sobre el commit del lock del punto 2, linaje **`review-7de47d5a8514bf37`**
+  (tier high, 50 líneas, presupuesto 25, lentes risk + resilience). Refuter → un CRITICAL
+  (`R1-deliver-lock-symlink`): el lock se creaba con `>` sobre un nombre predecible dentro de
+  `.claims/`, y una redirección **sigue un symlink**, así que un repo preparado hacía truncar
+  cualquier archivo escribible. Corrección en `794b5c5`: el lock es ahora el **directorio** de claims,
+  abierto de sólo lectura y bloqueado con `flock` — no se crea archivo, no hay nombre que plantar, no
+  hay truncamiento posible. Validador: **aprobado**, recibo quemado.
+
+  Advisories no bloqueantes del tercer linaje: `R4-flock-preflight` (el script no comprueba que `flock`
+  exista antes de usarlo), `R4-deliver-lock-serialization` y `R4-test-timing` (el test espera 2 s; en una
+  máquina muy cargada el margen es fino).
+
+- **L10.** Entrega: rama `feat/042-parallel-waves` mergeada a `master` con `--no-ff` (`b19a672`), y
+  `just deliver 042 794b5c5` marcó la fila `delivered` y liberó el claim. Los tres linajes de review de
+  esta feature: `review-f8d00f1d61933e35` (escalado, corrección rechazada), `review-db8530b23d8a207a`
+  (aprobado) y `review-7de47d5a8514bf37` (aprobado).
+
