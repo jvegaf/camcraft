@@ -6,6 +6,10 @@
 # crate-level claim would refuse that pair while allowing two tasks that both edit
 # `cam-geom/src/boolean.rs` under different crate tokens. A task that declares no `## Surfaces` block
 # falls back to the crate tokens in its text, which is what the first version did, and says so.
+#
+# A surface may be a glob. A glob is compared by the literal prefix it can match — `src/*.rs` claims
+# `src`, and therefore every file under it — because refusing too much is recoverable and allowing two
+# agents into one file is not.
 set -euo pipefail
 N="${1:-}"
 if [ -z "$N" ]; then echo "Usage: claim-task.sh N" >&2; exit 1; fi
@@ -44,12 +48,15 @@ agent, session = sys.argv[7], sys.argv[8]
 doc = pathlib.Path(taskfile)
 text = doc.read_text(encoding="utf-8")
 
+SURFACES_HEADING = re.compile(r"^##\s+Surfaces\s*$")
+GLOB_CHARS = "*?["
+
 
 def declared_surfaces() -> list[str]:
-    """Paths and globs from the `## Surfaces` block, in document order."""
+    """Paths and globs from the `## Surfaces` block, in document order, without cosmetic noise."""
     inside, out = False, []
     for line in text.splitlines():
-        if re.match(r"^##\s+Surfaces\s*$", line):
+        if SURFACES_HEADING.match(line):
             inside = True
             continue
         if inside and line.startswith("## "):
@@ -60,11 +67,22 @@ def declared_surfaces() -> list[str]:
         if not item or item[0] not in "-*":
             continue
         item = re.sub(r"^[-*]\s*", "", item).strip().strip("`").strip()
-        item = item.rstrip("/")
-        item = re.sub(r"/\*+$", "", item)  # `crates/x/**` names the same tree as `crates/x`
+        while item.startswith("./"):
+            item = item[2:]
+        item = item.lstrip("/").rstrip("/")
         if item and item not in out:
             out.append(item)
     return out
+
+
+def enforced_base(surface: str) -> str:
+    """What a surface can touch: its literal prefix, cut at the first glob segment."""
+    kept = []
+    for part in surface.split("/"):
+        if any(char in part for char in GLOB_CHARS):
+            break
+        kept.append(part)
+    return "/".join(kept) or surface
 
 
 def legacy_crates() -> list[str]:
@@ -72,15 +90,16 @@ def legacy_crates() -> list[str]:
 
 
 def overlaps(one: str, other: str) -> bool:
-    return (
-        one == other
-        or other.startswith(one + "/")
-        or one.startswith(other + "/")
-    )
+    return one == other or other.startswith(one + "/") or one.startswith(other + "/")
 
 
-surfaces = declared_surfaces()
-crates = [] if surfaces else legacy_crates()
+declared = declared_surfaces()
+surfaces = []
+for surface in declared:
+    base = enforced_base(surface)
+    if base not in surfaces:
+        surfaces.append(base)
+crates = [] if declared else legacy_crates()
 mine = surfaces + crates
 
 for other in sorted(pathlib.Path(claimdir).glob("*.json")):
@@ -89,7 +108,14 @@ for other in sorted(pathlib.Path(claimdir).glob("*.json")):
     try:
         claim = json.loads(other.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        continue
+        # A claim nobody can read is not an absent claim: skipping it silently is how two agents end
+        # up in the same file.
+        print(
+            f"ERROR: claim {other} cannot be read as JSON. Remove it, or fix it, before claiming; "
+            "an unreadable claim cannot be checked against this one.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     theirs = list(claim.get("surfaces") or []) + list(claim.get("crates") or [])
     for surface in mine:
         for taken in theirs:
@@ -108,24 +134,34 @@ claim = {
     "session_id": session,
     "branch": branch,
     "worktree": worktree,
-    "mode": "surfaces" if surfaces else "crates-fallback",
+    "mode": "surfaces" if declared else "crates-fallback",
     "surfaces": surfaces,
+    "declared_surfaces": declared,
     "crates": crates,
     "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
 }
+payload = json.dumps(claim, indent=2) + "\n"
 
+# Write the whole claim somewhere else, then link it into place: `os.link` fails if the claim already
+# exists, so exclusive creation and complete content are the same operation. A claim written straight
+# into its final path can be read while half of it is on disk.
+staging = pathlib.Path(claimdir) / f".claim.{n}.{os.getpid()}.tmp"
+with open(staging, "w", encoding="utf-8") as handle:
+    handle.write(payload)
+    handle.flush()
+    os.fsync(handle.fileno())
 try:
-    handle = open(claimpath, "x", encoding="utf-8")
+    os.link(staging, claimpath)
 except FileExistsError:
+    staging.unlink()
     print(f"ERROR: Task {n} already claimed:", file=sys.stderr)
     print(pathlib.Path(claimpath).read_text(encoding="utf-8"), file=sys.stderr)
     sys.exit(1)
-with handle:
-    handle.write(json.dumps(claim, indent=2) + "\n")
+staging.unlink()
 
 print(f"Claimed task {n} ({claim['mode']})")
-print(json.dumps(claim, indent=2))
-if not surfaces:
+print(payload, end="")
+if not declared:
     print(
         "WARNING: the task document declares no `## Surfaces` block, so the claim fell back to the "
         "crate tokens in its text. Declare the paths it will edit.",

@@ -29,7 +29,19 @@ expect_ok "the gate passes on a clean primary tree" run_in "$MAIN" ./scripts/che
 
 mkdir -p "$MAIN/crates"
 printf 'fn a() {}\n' >"$MAIN/crates/probe.rs"
-expect_fail "the gate fails on a primary tree holding work" run_in "$MAIN" ./scripts/check.sh
+expect_fail "the gate fails on a primary tree holding a new source file" run_in "$MAIN" ./scripts/check.sh
 expect_contains "the refusal names the primary tree" "$WORK/err" "primary tree"
+rm -rf "$MAIN/crates"
+
+printf '\n# uncommitted edit\n' >>"$MAIN/justfile"
+expect_fail "the gate fails on a primary tree holding a justfile edit" run_in "$MAIN" ./scripts/check.sh
+expect_contains "the justfile edit is named" "$WORK/err" "justfile"
+git -C "$MAIN" checkout -q -- justfile
+
+git -C "$MAIN" mv odd/tasks/102-gamma.md odd/tasks/102-gamma-renamed.md
+expect_fail "the gate fails on a primary tree holding a staged rename" run_in "$MAIN" ./scripts/check.sh
+expect_contains "the rename is reported" "$WORK/err" "102-gamma"
+git -C "$MAIN" mv odd/tasks/102-gamma-renamed.md odd/tasks/102-gamma.md
+expect_ok "the gate passes again once the tree is clean" run_in "$MAIN" ./scripts/check.sh
 
 summary

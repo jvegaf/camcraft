@@ -32,8 +32,24 @@ expect_contains "the collision names the surface" "$WORK/err" "crates/cam-geom/s
 expect_contains "the collision names the owner" "$WORK/err" "100"
 expect_fail "the refused task left no claim behind" test -f "$MAIN/odd/tasks/.claims/101.json"
 
+expect_fail "a glob surface collides with the file it matches" \
+  run_in "$WORK/wt105" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 105
+expect_contains "the glob collision names the claimed prefix" "$WORK/err" "crates/cam-geom/src"
+expect_fail "a ./ surface collides with the same path" \
+  run_in "$WORK/wt106" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 106
+expect_contains "the ./ collision names the surface" "$WORK/err" "fixtures/corpus"
+
+echo "== an unreadable claim is a refusal, not an absence =="
+printf 'not json at all\n' >"$MAIN/odd/tasks/.claims/199.json"
+expect_fail "claiming refuses while a claim cannot be read" \
+  run_in "$WORK/wt102" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 102
+expect_contains "the refusal names the unreadable claim" "$WORK/err" "199.json"
+rm -f "$MAIN/odd/tasks/.claims/199.json"
+
 expect_ok "a disjoint task claims fine" \
   run_in "$WORK/wt102" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 102
+expect_absent "no staging file is left behind" "$(ls "$MAIN"/odd/tasks/.claims/.claim.* 2>/dev/null | head -1)"
+expect_contains "the claim records the enforced prefix" "$MAIN/odd/tasks/.claims/102.json" "crates/cam-gerber"
 
 echo "== documents without a surfaces block fall back to crates =="
 expect_ok "legacy task claims by crate token" \

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Validate that this tree may hold work: a linked worktree needs a claim, and the primary tree must not
-# be carrying uncommitted work in `crates/` or `scripts/`.
+# Validate that this tree may hold work: a linked worktree needs a claim, and the primary tree must be
+# clean.
 #
 # Called with no argument it is the strict answer an agent asks for. Called with `--gate` it is the
 # same answer made usable inside `scripts/check.sh`, where the primary tree is a legal place to validate
-# a merge but an illegal place to work: a clean primary tree passes, one holding work does not.
+# a merge but an illegal place to work: a clean primary tree passes, one carrying any uncommitted change
+# does not.
+#
+# The primary tree's condition is decided by whether `git status` reports anything at all, never by
+# parsing its output: the paths that matter are all of them, and a parser that answers "clean" for a
+# rename it did not expect, or for a `git status` that failed, is worse than no gate.
 set -euo pipefail
 GATE=0
 case "${1:-}" in
@@ -27,13 +32,16 @@ if [ "$PWD_REAL" = "$MAIN" ]; then
     exit 1
   fi
   # In the gate, a primary tree is fine as long as it is not doing the work itself.
-  WORK=$(git status --porcelain 2>/dev/null | awk '{ $1=""; sub(/^ +/, ""); print }' | grep -E '^(crates|scripts)/' || true)
-  if [ -n "$WORK" ]; then
-    echo "ERROR: primary tree holds uncommitted work; that work belongs in a claimed worktree:" >&2
-    printf '%s\n' "$WORK" | sed 's/^/  /' >&2
+  STATUS=$(git status --porcelain) || {
+    echo "ERROR: git status failed in the primary tree, so the gate cannot call it clean." >&2
+    exit 1
+  }
+  if [ -n "$STATUS" ]; then
+    echo "ERROR: primary tree is not clean; that work belongs in a claimed worktree:" >&2
+    printf '%s\n' "$STATUS" | sed 's/^/  /' >&2
     exit 1
   fi
-  echo "OK: primary tree, no uncommitted work in crates/ or scripts/"
+  echo "OK: primary tree, clean"
   exit 0
 fi
 

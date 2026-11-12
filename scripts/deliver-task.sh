@@ -3,7 +3,8 @@
 #
 # Run this from the primary tree *after* the merge, never from the claiming worktree: the index is
 # shared state, and a claim that writes it from a linked worktree edits a file that is in no branch —
-# it drifts, nobody commits it, and the next agent reads a lie. This script is the one writer.
+# it drifts, nobody commits it, and the next agent reads a lie. This script is the one writer, and it
+# enforces that from here rather than by asking nicely in its own comment.
 set -euo pipefail
 N="${1:-}"
 COMMIT="${2:-}"
@@ -12,11 +13,18 @@ if [ -z "$N" ]; then
   exit 1
 fi
 
+PWD_REAL=$(pwd -P)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 INDEX="$MAIN/odd/tasks/INDEX.md"
 CLAIMDIR="$MAIN/odd/tasks/.claims"
 CLAIM="$CLAIMDIR/$N.json"
+
+# Delivering from a worktree would mark a task delivered before its branch is merged.
+if [ "$PWD_REAL" != "$MAIN" ]; then
+  echo "ERROR: Cannot deliver from $PWD_REAL. Run it from the primary tree, after the merge." >&2
+  exit 1
+fi
 
 if [ ! -f "$INDEX" ]; then
   echo "ERROR: no task index at $INDEX." >&2
@@ -28,7 +36,7 @@ if ! grep -q "| $N |" "$INDEX"; then
 fi
 
 python3 - "$INDEX" "$N" "$COMMIT" <<'PY'
-import sys
+import os, sys
 from pathlib import Path
 
 index, n, commit = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -45,7 +53,15 @@ for line in index.read_text(encoding="utf-8").splitlines():
     out.append(line)
 if not hit:
     sys.exit(f"ERROR: row for task {n} is not a well-formed index row")
-index.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+# Rewrite through a sibling file and rename it into place: `os.replace` is atomic, so a crash leaves
+# the old index intact instead of a half-written one.
+staging = index.with_name(f".{index.name}.{os.getpid()}.tmp")
+with open(staging, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(out) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
+os.replace(staging, index)
 PY
 
 rm -f "$CLAIM"
