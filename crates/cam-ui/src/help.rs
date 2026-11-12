@@ -1,10 +1,9 @@
 //! The command table: what every command is called, where it is found, and what it teaches.
 //!
-//! The shell had no command table. [`crate::UiAction`] is seventeen *parameterised* variants — it means
-//! "add a 100 × 60 rectangle", not "add a rectangle" — so help cannot hang off it: help belongs to the
-//! command, not to one invocation. [`Command`](crate::help::Command) is that missing identity: one
-//! parameterless name per thing the operator can ask the shell to do, and the label the frame already
-//! shows for it.
+//! The shell had no command table. [`crate::UiAction`] is *parameterised* variants — it means "add a
+//! 100 × 60 rectangle", not "add a rectangle" — so help cannot hang off it: help belongs to the command,
+//! not to one invocation. [`Command`](crate::help::Command) is that missing identity: one parameterless
+//! name per thing the operator can ask the shell to do, and the label the frame already shows for it.
 //!
 //! Two rules keep this file from becoming a second source of truth.
 //!
@@ -14,8 +13,8 @@
 //! a command renames the button instead of forking the vocabulary.
 //!
 //! **Only real commands are listed, and each one says where it is reached.** Nine canvas gestures, the
-//! seven commands the Edit rail runs, the ones the Tools tab counts, and the view commands the app bar
-//! and palette offer. [`Command::in_palette`](crate::help::Command::in_palette) and
+//! commands the Edit rail runs, the ones the Tools tab counts, and the view commands the app bar and
+//! palette offer. [`Command::in_palette`](crate::help::Command::in_palette) and
 //! [`Command::tool`](crate::help::Command::tool) are how the rail asks this table which chips to draw and
 //! what pressing one arms, so the palette keeps no list of its own. Nothing the operator cannot reach is
 //! invented here, and a command that is only offered once a number is typed
@@ -44,7 +43,7 @@ pub enum Group {
   /// The document itself: opening, saving, importing, fitting it to the frame, and the two steps
   /// through the edits already made.
   File,
-  /// Making geometry: the nine canvas gestures, text, and the typed rectangle.
+  /// Making geometry: the nine canvas gestures and the typed rectangle.
   Draw,
   /// Surgery on the vectors themselves.
   Edit,
@@ -114,9 +113,9 @@ impl MenuScope {
   /// vectors — over one object the menu draws it dark and its own `how` says why, which is the same answer
   /// the Tools tab's button gives.
   ///
-  /// The canvas menu is what puts something on the sheet (a typed rectangle, text), the history, and the
-  /// four view switches the shell really has — snapping, the inspector, the 3D view and the colour set —
-  /// plus framing the job. Neither menu offers `Select` or the nine drawing gestures: a gesture is armed on
+  /// The canvas menu is what puts something on the sheet (a typed rectangle), the history, and the four
+  /// view switches the shell really has — snapping, the inspector, the 3D view and the colour set — plus
+  /// framing the job. Neither menu offers `Select` or the nine drawing gestures: a gesture is armed on
   /// the rail, and a menu that both armed one and opened over the sheet would be two gestures at once.
   /// `Align` is left out of the object menu because its six modes are what `Align` means, and a menu row
   /// that has to ask which one is a submenu nobody asked for.
@@ -137,8 +136,7 @@ impl MenuScope {
       ),
       Self::Canvas => matches!(
         command,
-        Command::AddText
-          | Command::AddRectangle
+        Command::AddRectangle
           | Command::Undo
           | Command::Redo
           | Command::View3d
@@ -176,8 +174,6 @@ pub enum Command {
   Polygon,
   /// Draw a star.
   Star,
-  /// Draw a string as vectors.
-  AddText,
   /// Add a rectangle of typed size.
   AddRectangle,
   /// Replace the drawing with the vectors in a file.
@@ -281,7 +277,6 @@ impl Command {
     Command::Ellipse,
     Command::Polygon,
     Command::Star,
-    Command::AddText,
     Command::AddRectangle,
     // EDIT
     Command::Offset,
@@ -324,7 +319,6 @@ impl Command {
       Self::Ellipse => "Ellipse",
       Self::Polygon => "Polygon",
       Self::Star => "Star",
-      Self::AddText => "Add text",
       Self::AddRectangle => "Add rectangle",
       Self::Import => "Import",
       Self::NewProject => "New",
@@ -377,7 +371,6 @@ impl Command {
       | Self::Ellipse
       | Self::Polygon
       | Self::Star
-      | Self::AddText
       | Self::AddRectangle => Group::Draw,
       Self::Offset | Self::Join | Self::Trim | Self::NodeEdit | Self::DeleteSelection => {
         Group::Edit
@@ -420,8 +413,8 @@ impl Command {
   /// Whether the left rail draws a chip for this command.
   ///
   /// The rail is a subset of the table, and this is the only list that says which subset: the seven FILE
-  /// commands, the nine gestures plus text, the five transforms the Tools tab also runs, offset and join,
-  /// and the five view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
+  /// commands, the nine gestures, the five transforms the Tools tab also runs, offset and join, and the
+  /// five view chips. Everything else is reached from somewhere the rail is not — `Add rectangle`,
   /// `Align`, `Trim` and the node edits from the Tools tab, and `Icon set` from `F2`.
   ///
   /// **FILE moved here in camui-prancheta T2b, and that is the whole point of the move:** `Open`, `Save`,
@@ -445,7 +438,6 @@ impl Command {
           | Self::FitJob
           | Self::Undo
           | Self::Redo
-          | Self::AddText
           | Self::Move
           | Self::Rotate
           | Self::Scale
@@ -543,12 +535,6 @@ impl Command {
         how: "Arm Star, then drag its box. Tips start at 5 and the inner radius at half the outer one, \
               and both are fields in Tools.",
         related: &[Command::Polygon, Command::Scale, Command::Array],
-      },
-      Self::AddText => Help {
-        what: "Adds your words as real vectors, one entity per glyph stroke, so text can be cut like any drawing.",
-        how: "Type the words and the cap height in millimetres in Tools, then press Add text. It lands \
-              at the centre of the view and is an ordinary vector from then on.",
-        related: &[Command::Move, Command::Scale, Command::Select],
       },
       Self::AddRectangle => Help {
         what: "Adds a rectangle of the exact size you type, without aiming a drag at the sheet.",

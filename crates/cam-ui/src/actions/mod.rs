@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use cam_app::{AlignMode, Transform, VertexEdit};
-use cam_geom::Point2;
 use cam_model::Operation;
 
 use crate::DrawShape;
@@ -128,15 +127,6 @@ pub enum UiAction {
   },
   /// Apply one node edit to the first selected entity.
   EditVertex(VertexEdit),
-  /// Draw `text` as one entity per glyph stroke.
-  AddText {
-    /// The string to lay out.
-    text: String,
-    /// Cap height in millimetres.
-    height: f64,
-    /// Baseline start of the first line, in millimetres.
-    origin: Point2,
-  },
   /// Delete the selected geometry.
   DeleteSelection,
   /// Replace the selection.
@@ -304,7 +294,6 @@ impl UiAction {
         VertexEdit::Insert { .. } => "insert vertex",
         VertexEdit::Delete { .. } => "delete vertex",
       },
-      Self::AddText { .. } => "add text",
       Self::DeleteSelection => "delete selection",
       Self::SetSelection(_) => "select",
       Self::ToggleLayerVisible { .. } => "layer visibility",

@@ -12,13 +12,12 @@
 //!
 //! Every M2 command is one [`UiAction`] handled by [`handle_action`]: [`UiAction::Draw`] carries the
 //! shape a canvas drag described, and [`UiAction::Transform`], [`UiAction::Array`],
-//! [`UiAction::Align`], [`UiAction::Offset`], [`UiAction::Join`], [`UiAction::Trim`],
-//! [`UiAction::EditVertex`] and [`UiAction::AddText`] carry the edit. The editing groups read their
-//! operands from the selection, so the selection *is* the operand of every edit and no command needs
-//! a wizard. Numbers the user does not type during a gesture come from [`Shell`]'s documented fields
-//! and from [`DEFAULT_TOLERANCE_MM`] / [`JOIN_TOLERANCE_MM`]; [`Shell::apply_action`] then puts what
-//! the command produced — entity count, ellipse error, lost arcs, or the kernel's refusal — in the
-//! status bar.
+//! [`UiAction::Align`], [`UiAction::Offset`], [`UiAction::Join`], [`UiAction::Trim`] and
+//! [`UiAction::EditVertex`] carry the edit. The editing groups read their operands from the selection,
+//! so the selection *is* the operand of every edit and no command needs a wizard. Numbers the user does
+//! not type during a gesture come from [`Shell`]'s documented fields and from
+//! [`DEFAULT_TOLERANCE_MM`] / [`JOIN_TOLERANCE_MM`]; [`Shell::apply_action`] then puts what the command
+//! produced — entity count, ellipse error, lost arcs, or the kernel's refusal — in the status bar.
 //!
 //! Arcs are flattened **here**, at half a pixel, and nowhere earlier.
 //!
@@ -46,8 +45,8 @@ pub mod chrome;
 /// The command table and its teaching voice.
 pub mod help;
 pub mod icons;
-/// The seven commands whose numbers travel with their builders: `Add text`, `Move`, `Rotate`, `Scale`,
-/// `Mirror`, `Array` and `Offset`.
+/// The six commands whose numbers travel with their builders: `Move`, `Rotate`, `Scale`, `Mirror`,
+/// `Array` and `Offset`.
 pub mod params;
 /// The two millimetre rulers along the canvas' top and left edges (camui-prancheta S5).
 pub mod ruler;

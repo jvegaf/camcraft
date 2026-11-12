@@ -369,20 +369,6 @@ pub(crate) fn handle_action_with_file(
         },
       )
     }
-    UiAction::AddText {
-      text,
-      height,
-      origin,
-    } => {
-      let layer_id = drawing_layer(app)?;
-      apply_minting(app, |first_entity_index| Command::AddText {
-        layer_id: layer_id.clone(),
-        first_entity_index,
-        text: text.clone(),
-        origin: *origin,
-        height: *height,
-      })
-    }
     UiAction::DeleteSelection => {
       let selected: Vec<String> = app.selection().ids().map(str::to_owned).collect();
       for id in selected {
@@ -554,7 +540,7 @@ fn apply_draw(
 
 /// Apply a command that mints its own `E<n>` ids from a first index, keeping the id counter in step.
 ///
-/// Batch commands (`ArrayCopy`, `OffsetContour`, `TrimEntity`, `AddText`) take a numeric first index
+/// Batch commands (`ArrayCopy`, `OffsetContour`, `TrimEntity`) take a numeric first index
 /// instead of an id, because how many ids they need is an output of the command. The shell therefore
 /// reads the next free number from [`AppState::next_entity_id`] and, once the command has run,
 /// consumes the rest of the ids it actually minted. Without that top-up the next draw would mint an id

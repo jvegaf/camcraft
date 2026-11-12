@@ -953,8 +953,7 @@ const RELIEF: &[Part] = &[
   ]),
 ];
 
-/// A keyboard: two keycaps over a space bar. Added for the `Shortcuts` palette chip, which had been
-/// drawn with the letterform `Add text` already used — two chips, one picture (T8.2).
+/// A keyboard: two keycaps over a space bar. Added for the `Shortcuts` palette chip.
 ///
 /// Three rounded outlines rather than one body with key marks: at 16 px a body would have to hold its
 /// keys inside a 1.6 stroke, and a keycap two units tall is a smear. Three outlines at this spacing are

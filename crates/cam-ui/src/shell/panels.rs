@@ -159,15 +159,6 @@ impl Shell {
             .speed(0.05)
             .range(0.05..=0.95),
         );
-        ui.separator();
-        ui.label("Text");
-        ui.add(egui::TextEdit::singleline(&mut self.text).desired_width(70.0));
-        // The seven parameterised commands draw their numbers and push their payloads from the same module
-        // (`crate::params`), so a chip in the palette and this button cannot build two different actions.
-        params::edit(ui, self, crate::help::Command::AddText);
-        if authoring_button(ui, output, crate::help::Command::AddText) {
-          output.actions.push(params::add_text(self, centre));
-        }
       });
 
       ui.separator();
