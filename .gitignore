@@ -8,6 +8,9 @@
 .m3-brief.md
 .t9-brief.md
 
+# Shared task claims: ephemeral coordination state between agents
+/odd/tasks/.claims/
+
 # Generated skill-registry cache (gentle-ai)
 .atl/
 # Stray downloads that land in the tree and would pollute a review scope
