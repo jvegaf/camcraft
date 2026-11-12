@@ -25,7 +25,7 @@ expect_contains "the refused call wrote nothing" "$MAIN/odd/tasks/INDEX.md" \
 
 echo "== two deliveries at once cannot drop each other =="
 (
-  exec 9>"$MAIN/odd/tasks/.claims/.deliver.lock"
+  exec 9<"$MAIN/odd/tasks/.claims"
   flock -x 9
   sleep 8
 ) &
@@ -33,7 +33,7 @@ HOLDER=$!
 sleep 0.4
 expect_fail "deliver refuses while another delivery holds the lock" \
   run_in "$MAIN" ./scripts/deliver-task.sh 100 abc1234
-expect_contains "the refusal names the lock" "$WORK/err" ".deliver.lock"
+expect_contains "the refusal names the holder" "$WORK/err" "another delivery"
 expect_contains "the refused call wrote nothing" "$MAIN/odd/tasks/INDEX.md" \
   "| 100 | [alpha](100-alpha.md) | in progress |"
 wait "$HOLDER"

@@ -35,13 +35,14 @@ if [ ! -f "$INDEX" ]; then
 fi
 
 # The index is read, rewritten and replaced as one step, and two deliveries at once would each read
-# the index before the other wrote it: the second would silently drop the first's row. The lock lives
-# in the claims directory, which is ignored, so waiting on it never makes the tree dirty.
+# the index before the other wrote it: the second would silently drop the first's row. The lock is the
+# claims directory itself, opened read-only: it creates no file, so there is no predictable name for
+# somebody to pre-plant as a symlink, and it sits in an ignored directory, so waiting never dirties the
+# tree.
 mkdir -p "$CLAIMDIR"
-LOCK="$CLAIMDIR/.deliver.lock"
-exec 9>"$LOCK"
+exec 9<"$CLAIMDIR"
 if ! flock -w 2 9; then
-  echo "ERROR: another delivery holds $LOCK; nothing was written." >&2
+  echo "ERROR: another delivery holds the claims directory; nothing was written." >&2
   exit 1
 fi
 if ! grep -q "| $N |" "$INDEX"; then
