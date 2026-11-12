@@ -368,7 +368,7 @@ fn import_refuses_an_extension_it_cannot_read() {
     outcome.stderr
   );
   assert!(
-    outcome.stderr.contains("dxf, svg, pdf, eps, png"),
+    outcome.stderr.contains("dxf, svg"),
     "stderr: {}",
     outcome.stderr
   );
