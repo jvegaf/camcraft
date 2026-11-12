@@ -33,6 +33,17 @@ if [ ! -f "$INDEX" ]; then
   echo "ERROR: no task index at $INDEX." >&2
   exit 1
 fi
+
+# The index is read, rewritten and replaced as one step, and two deliveries at once would each read
+# the index before the other wrote it: the second would silently drop the first's row. The lock lives
+# in the claims directory, which is ignored, so waiting on it never makes the tree dirty.
+mkdir -p "$CLAIMDIR"
+LOCK="$CLAIMDIR/.deliver.lock"
+exec 9>"$LOCK"
+if ! flock -w 2 9; then
+  echo "ERROR: another delivery holds $LOCK; nothing was written." >&2
+  exit 1
+fi
 if ! grep -q "| $N |" "$INDEX"; then
   echo "ERROR: no row for task $N in $INDEX; add the task before delivering it." >&2
   exit 1
