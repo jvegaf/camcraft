@@ -86,3 +86,30 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
   no sobre el working tree): `scripts/test-worktree-tooling.sh` corre 40 casos en tres archivos — 17 de
   claim, 14 de gate, 9 de deliver — y los tres quedan en verde en cada commit que los contiene.
 
+- **L7.** El review nativo (RDD) sobre el candidato de esta rama, `sha256:07e6e697…`, linaje
+  `review-f8d00f1d61933e35`: tier **high**, 1.012 líneas cambiadas, presupuesto de corrección 200,
+  cuatro lentes (risk, resilience, readability, reliability) más refuter y validador dirigido.
+
+  1. Refuter: **siete hallazgos CRITICAL, todos `introduced`** — `deliver` corrible desde un worktree
+     vinculado; globs de superficie que no colisionaban; el gate parseando `git status` (rename staged
+     invisible, `|| true` convirtiendo un fallo en limpio); claim escrito en el archivo final con el
+     escaneo ignorando claims ilegibles; INDEX reescrito en el lugar.
+  2. Corrección acotada, plan 160 líneas de diff: commit `cbfe321`.
+  3. Validador dirigido: **rechazó la corrección**. Aceptó cinco arreglos, y rechazó dos con razón:
+     un surface que empieza con glob (`*.rs`) no tenía prefijo literal y no colisionaba con nada, y el
+     escaneo normalizaba sólo el claim nuevo, no el viejo. Además encontró una **regresión
+     introducida por la corrección**: la guarda de `deliver` comparaba el directorio del shell con la
+     raíz del árbol, así que correrlo desde un subdirectorio del árbol primario fallaba.
+  4. Estado del linaje: **`escalated`** (`targeted_validator_rejected`), sin segunda corrección en el
+     presupuesto. No se reinicia, no se reintenta y no se reusa su autoridad.
+  5. Los tres puntos abiertos se cerraron como trabajo nuevo en `9bdcbc4`, con casos de test propios:
+     glob sin prefijo literal, claim viejo sin normalizar, y claim/entrega desde subdirectorio. La
+     misma regla — preguntarle al árbol por su raíz — quedó aplicada a `claim`, `deliver` y el gate, lo
+     que cierra la asimetría que el registro de la 041 listaba como abierta.
+  6. Verificación: tooling **61 casos en verde** (29 claim, 13 deliver, 19 gate), `check-docs` 92
+     archivos, y `just check` completo en verde con `EXIT=0` medido dentro del comando.
+
+  **Consecuencia abierta:** el candidato corregido es un candidato **distinto** del que el linaje
+  revisó, y no está revisado por el proveedor. Revisarlo es abrir un linaje nuevo, con su propio
+  consentimiento; la entrega sigue siendo decisión del dueño.
+
