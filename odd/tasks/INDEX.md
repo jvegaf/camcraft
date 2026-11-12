@@ -46,4 +46,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 039 | [wood-out-sweep](039-wood-out-sweep.md) | delivered | 2026-11-11 | `1b4ea6d` |
 | 040 | [docs-reorganization](040-docs-reorganization.md) | delivered | 2026-11-11 | `047b582` |
 | 041 | [worktree-enforcement](041-worktree-enforcement.md) | delivered | 2026-11-12 | `f11a629` |
-| 042 | [parallel-waves](042-parallel-waves.md) | in progress | 2026-11-12 | — |
+| 042 | [parallel-waves](042-parallel-waves.md) | in progress | 2026-11-12 | `bf80cd7` |

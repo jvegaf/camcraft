@@ -39,13 +39,13 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Escribir `odd/roadmap/waves.md` con las olas, agentes, superficies y orden de merge | S1 | inline | — |
-| T2 | Enlazar el mapa desde `odd/roadmap/index.md` | S1 | inline | — |
-| T3 | Tests de comportamiento del tooling, uno por comportamiento para que cada commit lleve el suyo: claim, gate, deliver | S4 | inline | — |
-| T4 | `claim-task.sh`: reclamar superficies del bloque `## Surfaces`, con mensaje de colisión por superficie | S2b, S4 | inline | — |
-| T5 | `check.sh`: fallar en worktree vinculado sin claim y en el árbol primario con trabajo | S2a | inline | — |
-| T6 | `deliver-task.sh` + `just deliver`: INDEX y liberación del claim en el merge | S2c | inline | — |
-| T7 | `justfile`/`AGENTS.md`: worktrees desde herdr en `~/.herdr/worktrees` | S3 | inline | — |
+| T1 | Escribir `odd/roadmap/waves.md` con las olas, agentes, superficies y orden de merge | S1 | inline | `40195e1` |
+| T2 | Enlazar el mapa desde `odd/roadmap/index.md` | S1 | inline | `40195e1` |
+| T3 | Tests de comportamiento del tooling, uno por comportamiento para que cada commit lleve el suyo: claim, gate, deliver | S4 | inline | `6b7af24` `6917f42` `bf80cd7` |
+| T4 | `claim-task.sh`: reclamar superficies del bloque `## Surfaces`, con mensaje de colisión por superficie | S2b, S4 | inline | `6b7af24` |
+| T5 | `check.sh`: fallar en worktree vinculado sin claim y en el árbol primario con trabajo | S2a | inline | `6917f42` |
+| T6 | `deliver-task.sh` + `just deliver`: INDEX y liberación del claim en el merge | S2c | inline | `bf80cd7` |
+| T7 | `justfile`/`AGENTS.md`: worktrees desde herdr en `~/.herdr/worktrees` | S3 | inline | `bf80cd7` `7e29f68` |
 | T8 | Verificación: test del tooling en verde y `./scripts/check-docs.sh` | S1–S4 | inline | — |
 
 ## Log
@@ -65,3 +65,24 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
   los worktrees es correcto y el tooling ya se apoya en `git worktree list`; lo único que había que
   arreglar era `just worktree`, que creaba en `.worktrees/` y competía con herdr. Queda reducido a un
   mensaje que explica que el worktree lo crea herdr.
+
+- **L5.** Corte en commits revisables, a pedido del humano, antes de abrir RDD sobre el candidato. Los
+  slices son, en orden, los que quedaron en la rama `feat/042-parallel-waves`:
+
+  | Slice | Commit | Qué lleva |
+  | --- | --- | --- |
+  | 1 | `40195e1` | `docs(roadmap)` — auditoría F0–F8 del índice y el mapa de olas |
+  | 2 | `ee26aba` | `docs(odd)` — este documento y su fila en el INDEX |
+  | 3 | `6b7af24` | `feat(claims)` — claim por superficies, con su fixture y su test |
+  | 4 | `6917f42` | `feat(gate)` — `--gate` y el gate que corre el claim |
+  | 5 | `bf80cd7` | `feat(claims)` — `deliver-task.sh`, su test y las recetas del `justfile` |
+  | 6 | `7e29f68` | `docs(agents)` — las reglas que el agente lee |
+
+  El slice 3 pasó las ~400 líneas autoradas (≈480): el claim nuevo y el arnés de test que lo prueba son
+  una sola unidad — el arnés sin la implementación no pasa y la implementación sin el arnés no se
+  puede juzgar —, así que se dejó junto y se registra acá en lugar de partirse en un commit que no
+  sería verde. Los demás quedaron por debajo.
+- **L6.** Cada slice se verificó sobre su propio árbol (`git archive <commit>` en un directorio temporal,
+  no sobre el working tree): `scripts/test-worktree-tooling.sh` corre 40 casos en tres archivos — 17 de
+  claim, 14 de gate, 9 de deliver — y los tres quedan en verde en cada commit que los contiene.
+
