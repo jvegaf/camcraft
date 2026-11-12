@@ -1,16 +1,40 @@
 #!/usr/bin/env bash
+# Validate that this tree may hold work: a linked worktree needs a claim, and the primary tree must not
+# be carrying uncommitted work in `crates/` or `scripts/`.
+#
+# Called with no argument it is the strict answer an agent asks for. Called with `--gate` it is the
+# same answer made usable inside `scripts/check.sh`, where the primary tree is a legal place to validate
+# a merge but an illegal place to work: a clean primary tree passes, one holding work does not.
 set -euo pipefail
+GATE=0
+case "${1:-}" in
+  --gate) GATE=1 ;;
+  "") ;;
+  *)
+    echo "Usage: check-worktree.sh [--gate]" >&2
+    exit 2
+    ;;
+esac
 
 PWD_REAL=$(pwd -P)
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 CLAIMDIR="$MAIN/odd/tasks/.claims"
 
-# Never work in the primary tree (regardless of branch).
 if [ "$PWD_REAL" = "$MAIN" ]; then
-  echo "ERROR: Working in primary tree. Use a task worktree (just worktree N)." >&2
-  exit 1
+  if [ "$GATE" -eq 0 ]; then
+    echo "ERROR: Working in primary tree. Use a task worktree (just worktree N)." >&2
+    exit 1
+  fi
+  # In the gate, a primary tree is fine as long as it is not doing the work itself.
+  WORK=$(git status --porcelain 2>/dev/null | awk '{ $1=""; sub(/^ +/, ""); print }' | grep -E '^(crates|scripts)/' || true)
+  if [ -n "$WORK" ]; then
+    echo "ERROR: primary tree holds uncommitted work; that work belongs in a claimed worktree:" >&2
+    printf '%s\n' "$WORK" | sed 's/^/  /' >&2
+    exit 1
+  fi
+  echo "OK: primary tree, no uncommitted work in crates/ or scripts/"
+  exit 0
 fi
 
 # Must be a registered linked worktree.
@@ -33,4 +57,4 @@ if [ ${#matches[@]} -eq 0 ]; then
   exit 1
 fi
 
-echo "OK: In claimed worktree $PWD_REAL ($BRANCH) claim $(basename "${matches[0]}")"
+echo "OK: In claimed worktree $PWD_REAL ($(git rev-parse --abbrev-ref HEAD)) claim $(basename "${matches[0]}")"
