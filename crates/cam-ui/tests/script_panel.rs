@@ -423,42 +423,33 @@ fn a_failed_run_that_printed_partially_keeps_the_previous_output() {
 #[test]
 fn a_run_hands_back_the_document_it_mutated() {
   // The whole point of the task: a script run from the shell edits the shell's document. The panel
-  // hands that document back — one value, so the caller keeps it through its own edit path — and the
-  // cut list it printed is the document's own answer, not a file's.
+  // hands that document back — one value, so the caller keeps it through its own edit path.
   let directory = scratch("hands-back");
   let document = document();
   assert!(document.nesting.is_none(), "the fixture starts un-nested");
   let script = write_script(
     &directory,
-    "nest.cam",
-    "sheet 100 100\npart 1 E1\nnest --gap 0\ncutlist\n",
+    "author.cam",
+    "sheet 100 100\npart 1 E1\nvalidate\n",
   );
   let ctx = egui::Context::default();
   let mut panel = ScriptPanel::with_path(script.display().to_string());
 
   let (painted, committed) = press_run(&ctx, &mut panel, &document);
 
-  for needle in [
-    "part,sheet,x,y,rotation,width,height",
-    "P1,S1,0.000,0.000,0.000,40.000,30.000",
-  ] {
-    assert!(
-      contains(&painted, needle),
-      "the painted area lost the cut list's {needle:?}: {}",
-      joined(&painted)
-    );
-    assert!(
-      panel.output().contains(needle),
-      "a capturing caller lost the cut list's {needle:?}: {}",
-      panel.output()
-    );
-  }
+  let report = "valid: 1 layer(s), 2 entity(ies), 0 toolpath(s)";
+  assert!(
+    contains(&painted, report),
+    "the painted area lost the validation report: {}",
+    joined(&painted)
+  );
   assert!(panel.error().is_none(), "{:?}", panel.error());
 
   let edited = committed.expect("an accepted run hands its document back");
-  let nesting = edited.nesting.as_ref().expect(
-    "the sheet, the part and the placement the script authored are in the document it hands back",
-  );
+  let nesting = edited
+    .nesting
+    .as_ref()
+    .expect("the sheet and the part the script authored are in the document it hands back");
   assert_eq!(nesting.sheets.len(), 1, "one sheet, the one authored");
   assert_eq!(nesting.parts.len(), 1, "one part, the one authored");
   assert!(

@@ -1,7 +1,6 @@
 //! Behaviour tests for the editing commands (A1, A5, A8).
 
 use cam_app::{AlignMode, AppState, Command, CommandError, Transform, VertexEdit};
-use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::{primitive, transform, Point2, Vec2};
 use cam_model::{
   CutoutParams, Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer,
@@ -423,13 +422,6 @@ fn every_command_has_a_label_for_the_interface() {
       inner_radius: 1.0,
       points: 5,
       rotation: 0.0,
-    },
-    Command::AddText {
-      layer_id: "L1".to_owned(),
-      first_entity_index: 1,
-      text: "A".to_owned(),
-      origin: Point2::ORIGIN,
-      height: 1.0,
     },
     Command::TransformEntities {
       entity_ids: vec!["E1".to_owned()],
@@ -986,267 +978,6 @@ fn undoing_an_added_star_restores_the_document_exactly() {
       rotation: 0.0,
     },
   );
-}
-
-// --- M2 text command (A14) --------------------------------------------------------------------
-
-fn text_origin() -> Point2 {
-  Point2::new(10.0, 20.0)
-}
-
-fn text_height() -> f64 {
-  5.0
-}
-
-/// The contours the kernel lays `text` out into, for comparison with what the document stores.
-fn kernel_text(text: &str) -> Vec<cam_geom::Contour> {
-  text_outlines(text, text_origin(), text_height(), &SingleStrokeFont::new())
-    .expect("the kernel lays the text out")
-}
-
-fn add_text_command(layer_id: &str, first_entity_index: u32, text: &str) -> Command {
-  Command::AddText {
-    layer_id: layer_id.to_owned(),
-    first_entity_index,
-    text: text.to_owned(),
-    origin: text_origin(),
-    height: text_height(),
-  }
-}
-
-#[test]
-fn adding_text_creates_one_entity_per_glyph_stroke_on_the_layer() {
-  let mut app = state_with_layers(&["L1", "L2"]);
-  let kernel = kernel_text("AB");
-  assert!(
-    kernel.len() > 1,
-    "the word must become more than one stroke-contour"
-  );
-
-  let outcome = app
-    .execute_with_outcome(add_text_command("L2", 1, "AB"))
-    .expect("text added");
-
-  assert!(app.is_dirty(), "drawing text marks the document dirty");
-  assert_eq!(
-    app.document().entities().count(),
-    kernel.len(),
-    "one entity per stroke-contour and nothing extra"
-  );
-  let expected: Vec<String> = (1..=kernel.len()).map(|n| format!("E{n}")).collect();
-  assert_eq!(
-    outcome.created_entities, expected,
-    "ids run E1..En from first_entity_index in text_outlines order"
-  );
-  for (id, contour) in expected.iter().zip(&kernel) {
-    assert_eq!(
-      layer_holding(&app, id),
-      "L2",
-      "{id} is on the requested layer"
-    );
-    let stored = entity_contour(&app, id);
-    assert_eq!(
-      stored, contour,
-      "cam-app must store the kernel's contours unchanged"
-    );
-    assert_eq!(
-      stored.len(),
-      contour.len(),
-      "{id} keeps the kernel's vertex count"
-    );
-    assert_eq!(stored.is_closed(), contour.is_closed(), "{id}");
-  }
-}
-
-#[test]
-fn text_entity_ids_start_at_the_requested_index() {
-  let mut app = state_with_layer();
-  let kernel = kernel_text("AB");
-
-  app
-    .execute(add_text_command("L1", 7, "AB"))
-    .expect("text added");
-
-  assert_eq!(
-    app.document().entities().count(),
-    kernel.len(),
-    "no entity was dropped or duplicated"
-  );
-  for offset in 0..kernel.len() {
-    let id = format!("E{}", 7 + offset);
-    assert!(
-      app.document().entity(&id).is_some(),
-      "{id} must exist, in text_outlines order"
-    );
-  }
-  assert!(
-    app.document().entity("E1").is_none(),
-    "no id below the start"
-  );
-  assert!(
-    app.document().entity("E0").is_none(),
-    "the index is taken literally, not clamped"
-  );
-}
-
-#[test]
-fn text_with_a_colliding_id_is_refused_atomically() {
-  let mut app = state_with_layer();
-  prime_with_line(&mut app);
-  prime_with_line(&mut app);
-  assert_eq!(app.document().entities().count(), 2);
-
-  // "AB" is several strokes, so starting at 2 collides on E2 — the second id, not the first.
-  // That is what proves no entity is stored before the last id is checked.
-  let error = assert_refused_atomically(&mut app, add_text_command("L1", 2, "AB"));
-  assert!(
-    matches!(error, CommandError::DuplicateEntity(_)),
-    "{error:?}"
-  );
-  assert_eq!(
-    app.document().entities().count(),
-    2,
-    "a refused word leaves no partial entities behind"
-  );
-  assert!(
-    app.document().entity("E3").is_none(),
-    "no idle entity either"
-  );
-
-  // A collision on the very first id is refused the same way.
-  let error = assert_refused_atomically(&mut app, add_text_command("L1", 1, "AB"));
-  assert!(
-    matches!(error, CommandError::DuplicateEntity(_)),
-    "{error:?}"
-  );
-}
-
-#[test]
-fn text_with_an_unsupported_character_is_refused_atomically_and_names_it() {
-  let mut app = state_with_layer();
-  prime_with_line(&mut app);
-
-  let error = assert_refused_atomically(&mut app, add_text_command("L1", 9, "A\u{2603}B"));
-
-  assert!(matches!(error, CommandError::Geometry(_)), "{error:?}");
-  let message = error.to_string();
-  assert!(
-    message.contains('\u{2603}'),
-    "the refusal must name the character: {message}"
-  );
-  assert!(
-    app.document().entity("E9").is_none(),
-    "refusing a character must not leave the earlier glyphs drawn"
-  );
-}
-
-#[test]
-fn text_that_draws_nothing_is_refused() {
-  let mut app = state_with_layer();
-  prime_with_line(&mut app);
-
-  for text in ["", "   ", "\n"] {
-    let error = assert_refused_atomically(&mut app, add_text_command("L1", 9, text));
-    assert!(
-      matches!(error, CommandError::EmptyText),
-      "{text:?} must be refused as text that draws nothing: {error:?}"
-    );
-  }
-}
-
-#[test]
-fn text_with_a_non_positive_height_is_refused() {
-  let mut app = state_with_layer();
-  prime_with_line(&mut app);
-
-  for height in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-    let error = assert_refused_atomically(
-      &mut app,
-      Command::AddText {
-        layer_id: "L1".to_owned(),
-        first_entity_index: 9,
-        text: "AB".to_owned(),
-        origin: text_origin(),
-        height,
-      },
-    );
-    assert!(
-      matches!(error, CommandError::NonPositiveSize { .. }),
-      "{height}: {error:?}"
-    );
-  }
-}
-
-#[test]
-fn undoing_added_text_removes_the_whole_word_in_one_step() {
-  let mut app = state_with_layer();
-  let before = document_text(&app);
-  let depth = app.history_depth();
-
-  app
-    .execute(add_text_command("L1", 1, "AB"))
-    .expect("text added");
-  assert_eq!(app.history_depth(), depth + 1);
-
-  assert!(app.undo(), "one undo must be available");
-  assert_eq!(
-    before,
-    document_text(&app),
-    "one undo must restore the document byte for byte"
-  );
-  assert_eq!(
-    app.document().entities().count(),
-    0,
-    "the whole word is gone"
-  );
-  assert_eq!(app.history_depth(), depth);
-
-  assert!(app.redo(), "the word can come back");
-  assert!(
-    app.document().entity("E1").is_some(),
-    "redo restores the first stroke"
-  );
-}
-
-#[test]
-fn the_outcome_reports_created_entities_and_only_text_creates_them() {
-  let mut app = state_with_layer();
-  let kernel = kernel_text("AB");
-
-  let outcome = app
-    .execute_with_outcome(Command::AddRectangle {
-      layer_id: "L1".to_owned(),
-      entity_id: "E1".to_owned(),
-      at: Point2::ORIGIN,
-      width: 10.0,
-      height: 10.0,
-    })
-    .expect("rectangle added");
-  assert!(
-    outcome.created_entities.is_empty(),
-    "a single-entity command reports nothing new"
-  );
-  assert_eq!(outcome.max_radial_error, None);
-  assert_eq!(outcome.lost_arcs, 0, "drawing a rectangle drops no arcs");
-
-  let outcome = app
-    .execute_with_outcome(add_text_command("L1", 2, "AB"))
-    .expect("text added");
-  assert_eq!(
-    outcome.created_entities.len(),
-    kernel.len(),
-    "every stroke-contour is reported"
-  );
-  assert_eq!(
-    outcome.created_entities.first().map(String::as_str),
-    Some("E2"),
-    "the report starts at the requested index"
-  );
-  assert_eq!(
-    outcome.max_radial_error, None,
-    "text approximates nothing with arcs"
-  );
-  assert_eq!(outcome.lost_arcs, 0, "text approximates nothing with arcs");
 }
 
 // --- M2 transform, array copy and align commands (A11, A12) -----------------------------------
@@ -1844,9 +1575,9 @@ fn an_array_with_a_zero_count_or_non_finite_spacing_is_refused_atomically() {
 }
 
 #[test]
-fn a_zero_index_is_taken_literally_by_both_id_minting_commands() {
+fn a_zero_index_is_taken_literally_by_array_copy() {
   // An id is an opaque string: what has to hold is that every minted id is free, not that the
-  // counter would have produced it. ArrayCopy and AddText therefore behave the same way.
+  // counter would have produced it.
   let mut app = state_with_layers(&["L1"]);
   let outcome = app.execute_with_outcome(array_copy(vec!["E1".to_owned()], 1, 2, 5.0, 0.0, 0));
   // E1 does not exist yet, so the selection is refused for a different reason: prime it first.

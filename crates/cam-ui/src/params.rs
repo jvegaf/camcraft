@@ -1,12 +1,12 @@
-//! The seven commands whose action is built from numbers: one builder per command, and the editor each
+//! The six commands whose action is built from numbers: one builder per command, and the editor each
 //! number is typed into.
 //!
-//! Seven commands in [`crate::help::Command`] take their payload from [`Shell`]'s own fields rather than
-//! from a gesture — Add text, Move, Rotate, Scale, Mirror, Array, Offset — because a gesture cannot say
-//! "three rows" or "rotate by fifteen degrees". Two surfaces reach them: a palette chip or a canvas-menu
-//! row (`chrome::Shell::command_action`) and a labelled button in the Tools tab (`Shell::authoring`).
-//! Those two used to build each payload themselves, which is the shape where a number typed once is one
-//! number the operator can run two ways *if* both copies agree.
+//! Six commands in [`crate::help::Command`] take their payload from [`Shell`]'s own fields rather than
+//! from a gesture — Move, Rotate, Scale, Mirror, Array, Offset — because a gesture cannot say "three
+//! rows" or "rotate by fifteen degrees". Two surfaces reach them: a palette chip or a canvas-menu row
+//! (`chrome::Shell::command_action`) and a labelled button in the Tools tab (`Shell::authoring`). Those
+//! two used to build each payload themselves, which is the shape where a number typed once is one number
+//! the operator can run two ways *if* both copies agree.
 //!
 //! This module is that one copy, and it holds three things so they cannot drift apart:
 //!
@@ -54,15 +54,6 @@ pub fn array_grid_range() -> RangeInclusive<usize> {
 fn grid_count(count: usize) -> usize {
   let range = array_grid_range();
   count.clamp(*range.start(), *range.end())
-}
-
-/// The text command: the shell's words and cap height, placed at the view centre.
-pub fn add_text(shell: &Shell, centre: Point2) -> UiAction {
-  UiAction::AddText {
-    text: shell.text.clone(),
-    height: shell.text_height,
-    origin: centre,
-  }
 }
 
 /// The move command: a displacement in millimetres, which no point has to be named for.
@@ -118,14 +109,13 @@ pub fn offset(shell: &Shell, _centre: Point2) -> UiAction {
   }
 }
 
-/// The action `command` pushes when it is one of the seven, or `None` for every other command.
+/// The action `command` pushes when it is one of the six, or `None` for every other command.
 ///
 /// The palette chip, the canvas-menu row and the Tools tab's button all end up in one of the builders
 /// above; this is the dispatcher the two command surfaces share, and [`Command::action`] is what answers
 /// for the commands that need no number.
 pub fn action(command: Command, shell: &Shell, centre: Point2) -> Option<UiAction> {
   let action = match command {
-    Command::AddText => add_text(shell, centre),
     Command::Move => translate(shell, centre),
     Command::Rotate => rotate(shell, centre),
     Command::Scale => scale(shell, centre),
@@ -139,7 +129,7 @@ pub fn action(command: Command, shell: &Shell, centre: Point2) -> Option<UiActio
 
 /// Which of [`Shell`]'s numbers a Tools-tab row edits.
 ///
-/// The list is the numbers of the seven parameterised commands, and nothing else: a field with no entry
+/// The list is the numbers of the six parameterised commands, and nothing else: a field with no entry
 /// here has no builder and no row, which is what keeps this table honest about its own reach.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Number {
@@ -163,8 +153,6 @@ pub enum Number {
   ArrayDy,
   /// The offset command's distance, in millimetres.
   OffsetDistance,
-  /// The text command's cap height, in millimetres.
-  TextHeight,
 }
 
 impl Number {
@@ -203,7 +191,6 @@ impl Number {
       Number::ArrayDx => &mut shell.array_spacing.0,
       Number::ArrayDy => &mut shell.array_spacing.1,
       Number::OffsetDistance => &mut shell.offset_distance,
-      Number::TextHeight => &mut shell.text_height,
       other => unreachable!("{other:?} is a count, not a real number"),
     }
   }
@@ -243,15 +230,6 @@ impl Field {
     ui.add(drag);
   }
 }
-
-/// The text command's row: only its cap height. The words themselves are a string, not a number, and the
-/// tab edits them with a text field of its own.
-const TEXT: [Field; 1] = [Field {
-  label: "",
-  number: Number::TextHeight,
-  suffix: " mm",
-  speed: 1.0,
-}];
 
 /// The move command's row: a displacement along X and Y.
 const MOVE: [Field; 2] = [
@@ -332,10 +310,9 @@ const OFFSET: [Field; 1] = [Field {
 /// The numbers a command's row edits, in the order the Tools tab draws them.
 ///
 /// Mirror answers with an empty row — its point is the view centre and its direction is the world's Y —
-/// and so does every command that is not one of the seven.
+/// and so does every command that is not one of the six.
 pub fn fields(command: Command) -> &'static [Field] {
   match command {
-    Command::AddText => &TEXT,
     Command::Move => &MOVE,
     Command::Rotate => &ROTATE,
     Command::Scale => &SCALE,
@@ -345,7 +322,7 @@ pub fn fields(command: Command) -> &'static [Field] {
   }
 }
 
-/// Draw every number one of the seven commands reads, the way the Tools tab draws it.
+/// Draw every number one of the six commands reads, the way the Tools tab draws it.
 pub fn edit(ui: &mut egui::Ui, shell: &mut Shell, command: Command) {
   for field in fields(command) {
     field.widget(ui, shell);

@@ -126,19 +126,6 @@ fn the_palette_chips_still_arm_toggle_and_run() {
     "the Layers chip collapses the inspector"
   );
 
-  let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::AddText.label());
-  match output.actions.as_slice() {
-    [UiAction::AddText { text, height, .. }] => {
-      assert_eq!(
-        text.as_str(),
-        "CAM",
-        "the text chip reads the Tools tab's words"
-      );
-      assert_eq!(*height, 10.0, "and its cap height");
-    }
-    other => panic!("the Add text chip must push one AddText action, got {other:?}"),
-  }
-
   let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Move.label());
   match output.actions.as_slice() {
     [UiAction::Transform(Transform::Translate { delta })] => assert_eq!(
@@ -212,8 +199,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   // The authoring buttons live in the `TOOLPATHS` task since camui-prancheta S6, so both routes are measured
   // with that task open — the palette chip and the task's button are the same command either way.
   numbers.open_task(cam_ui::Category::Toolpaths);
-  numbers.text = "Hi".to_owned();
-  numbers.text_height = 7.5;
   numbers.move_delta = (3.5, -2.0);
   numbers.rotate_degrees = 42.0;
   numbers.scale_factors = (1.5, 0.5);
@@ -222,14 +207,6 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   numbers.offset_distance = 4.25;
 
   let cases = [
-    (
-      HelpCommand::AddText,
-      UiAction::AddText {
-        text: "Hi".to_owned(),
-        height: 7.5,
-        origin: centre,
-      },
-    ),
     (
       HelpCommand::Move,
       UiAction::Transform(Transform::Translate {
@@ -298,10 +275,8 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
 
 #[test]
 fn every_palette_chip_is_named_by_its_tooltip() {
-  // The T8.2 defect was invisible to every test here: the Shortcuts chip drew the same glyph as Add text
-  // and its hover text was a sentence that never said "Shortcuts". A headless frame reads neither the
-  // pixels nor the hover card, so the closest thing it can assert is that the words a chip shows on hover
-  // contain the word the chip itself stands for.
+  // A headless frame reads neither the pixels nor the hover card, so the closest thing it can assert is
+  // that the words a chip shows on hover contain the word the chip itself stands for.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();

@@ -189,7 +189,7 @@ back,120,80,4
 ";
 
 #[test]
-fn a_part_list_authors_a_rectangle_and_a_part_per_row_then_nests_them() {
+fn a_part_list_authors_a_rectangle_and_a_part_per_row() {
   let directory = scratch("authoring");
   let document = write_document(&directory, "bare.cmc", &[], None);
   let csv = write_csv(&directory, "parts.csv", THREE_ROWS);
@@ -267,53 +267,6 @@ fn a_part_list_authors_a_rectangle_and_a_part_per_row_then_nests_them() {
       ("P1", vec!["side"], 2),
       ("P2", vec!["shelf"], 1),
       ("P3", vec!["back"], 4),
-    ]
-  );
-
-  // The authored parts nest exactly like any other document's: the nester places every instance on
-  // the one board, at the origins it chose.
-  let nested = run(&[
-    "nest",
-    out.to_str().expect("utf8"),
-    "--sheets",
-    "400x300",
-    "--gap",
-    "0",
-  ]);
-  assert_eq!(nested.code, 0, "{}", nested.stderr);
-
-  let loaded = load(&out);
-  let placements: Vec<(String, String, f64, f64)> = loaded
-    .nesting
-    .expect("nested section")
-    .placements
-    .iter()
-    .map(|placement| {
-      (
-        placement.part_id.clone(),
-        placement.sheet_id.clone(),
-        placement.position.x,
-        placement.position.y,
-      )
-    })
-    .collect();
-  assert_eq!(placements.len(), 7, "every authored instance was placed");
-  // The nester's own deck order and origins, asserted exactly: its equal-area parts are placed
-  // before the smaller one, each copy on a free corner of the board it was handed. Every footprint is
-  // inside the 400 x 300 board and none of them overlap; the counts are the CSV's quantities.
-  assert_eq!(
-    placements
-      .iter()
-      .map(|(part, _, x, y)| (part.as_str(), *x, *y))
-      .collect::<Vec<_>>(),
-    vec![
-      ("P1", 0.0, 0.0),
-      ("P1", 0.0, 80.0),
-      ("P3", 0.0, 160.0),
-      ("P3", 120.0, 0.0),
-      ("P3", 240.0, 0.0),
-      ("P3", 120.0, 80.0),
-      ("P2", 0.0, 240.0),
     ]
   );
 

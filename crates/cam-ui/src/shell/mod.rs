@@ -86,10 +86,6 @@ pub struct Shell {
   pub segment_index: usize,
   /// Position the node-edit commands use, in millimetres. Default the origin.
   pub vertex_position: (f64, f64),
-  /// String the text command draws. Default "CAM".
-  pub text: String,
-  /// Cap height the text command uses, in millimetres. Default 10 mm.
-  pub text_height: f64,
   /// Whether the canvas is showing the 3D split (camui-prancheta S8).
   ///
   /// View state, not document state: like the camera, opening the split is not an edit and is not in the undo
@@ -419,8 +415,6 @@ impl Default for Shell {
       vertex_index: 0,
       segment_index: 0,
       vertex_position: (0.0, 0.0),
-      text: "CAM".to_owned(),
-      text_height: 10.0,
       show_3d: false,
       project_open: true,
       show_start: false,

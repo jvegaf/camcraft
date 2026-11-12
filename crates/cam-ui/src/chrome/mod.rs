@@ -164,8 +164,8 @@ mod tests {
   fn shortcuts_has_a_glyph_and_a_word_of_its_own() {
     assert_ne!(
       command_icon(Command::Shortcuts),
-      command_icon(Command::AddText),
-      "Shortcuts and Add text draw the same glyph, so the two chips are the same picture"
+      command_icon(Command::Help),
+      "Shortcuts and Help draw the same glyph, so the two chips are the same picture"
     );
     assert!(
       palette_tooltip(Command::Shortcuts).contains(Command::Shortcuts.label()),
