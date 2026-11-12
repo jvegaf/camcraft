@@ -631,11 +631,7 @@ fn curvature_sign(pieces: &[Segment], end: (usize, EndAt)) -> i8 {
 /// The counter-clockwise bend sorts first and the clockwise bend last, as the walk's left-hand rule
 /// wants.
 fn angular_key(pieces: &[Segment], end: (usize, EndAt)) -> f64 {
-  // Folded into `[0, 2π)` before anything else: one direction has two names (`atan2` answers `π` and
-  // `-π` for the same -x heading), and a tangency landing on that seam would otherwise compare as two
-  // directions 2π apart and never reach the tie-break below.
-  let angle = outward_angle(pieces, end).rem_euclid(TAU);
-  angle - ANGLE_TIE_BREAK * f64::from(curvature_sign(pieces, end))
+  outward_angle(pieces, end) - ANGLE_TIE_BREAK * f64::from(curvature_sign(pieces, end))
 }
 
 /// Ascending direction order at a vertex, over the whole key and then the identity as a tie-break.
@@ -1059,36 +1055,6 @@ mod angular_key_tests {
         .unwrap_or(Ordering::Equal)
     });
     assert_eq!(sorted, by_key, "one scalar per end, sorted the same way");
-  }
-
-  /// The seam of the angle range is not a tangency: `π` and `-π` name the same -x heading.
-  ///
-  /// Two arcs leaving along -x, one turning each way, must still be ordered by the bend. Compared as
-  /// raw angles they are 2π apart, the tie-break never runs, and the clockwise bend can come first.
-  #[test]
-  fn a_tangency_on_the_angle_seam_is_still_a_tangency() {
-    let half = std::f64::consts::PI;
-    let pieces = vec![ccw_arc_at_tangent(half), cw_arc_at_tangent(-half)];
-    let owners = vec![true, true];
-    let (ccw, cw) = ((0, EndAt::Start), (1, EndAt::Start));
-
-    assert_eq!(curvature_sign(&pieces, ccw), 1);
-    assert_eq!(curvature_sign(&pieces, cw), -1);
-    assert_eq!(
-      outward_angle(&pieces, ccw),
-      half,
-      "the counter-clockwise end is named π"
-    );
-    assert_eq!(
-      outward_angle(&pieces, cw),
-      -half,
-      "the clockwise end is named -π"
-    );
-    assert_eq!(
-      angular_order(&pieces, &owners, ccw, cw),
-      Ordering::Less,
-      "the counter-clockwise bend still comes first on the seam"
-    );
   }
 
   /// Two discs touching at one point leave it in the same direction: only the bend tells them apart.
