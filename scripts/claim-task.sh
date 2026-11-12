@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
+# Claim one task for this worktree, by the file surfaces its document declares.
+#
+# The claim is what stops two agents from editing the same file in two worktrees. It is deliberately
+# about *paths*, not crates: two tasks can live in `cam-cli` and never touch the same file, and a
+# crate-level claim would refuse that pair while allowing two tasks that both edit
+# `cam-geom/src/boolean.rs` under different crate tokens. A task that declares no `## Surfaces` block
+# falls back to the crate tokens in its text, which is what the first version did, and says so.
+#
+# A surface may be a glob. A glob is compared by the literal prefix it can match — `src/*.rs` claims
+# `src`, and therefore every file under it — because refusing too much is recoverable and allowing two
+# agents into one file is not.
 set -euo pipefail
 N="${1:-}"
 if [ -z "$N" ]; then echo "Usage: claim-task.sh N" >&2; exit 1; fi
 
-PWD_REAL=$(pwd -P)
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+PWD_REAL=$(git rev-parse --show-toplevel)
+PWD_REAL=$(cd "$PWD_REAL" && pwd -P)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 CLAIMDIR="$MAIN/odd/tasks/.claims"
@@ -20,62 +31,159 @@ if ! git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); pri
   echo "ERROR: Not in a registered git worktree ($PWD_REAL)." >&2
   exit 1
 fi
+if [ -z "$TASKFILE" ]; then
+  echo "ERROR: No task document for $N in $MAIN/odd/tasks/." >&2
+  exit 1
+fi
 
 mkdir -p "$CLAIMDIR"
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-CRATES=""
-if [ -n "${TASKFILE:-}" ]; then
-  CRATES=$(grep -oP 'crates/[a-zA-Z0-9_-]+' "$TASKFILE" | sort -u || true)
-fi
+python3 - "$TASKFILE" "$CLAIMDIR" "$CLAIM" "$N" "$BRANCH" "$PWD_REAL" \
+  "${PI_AGENT_ID:-unknown}" "${PI_SESSION_ID:-unknown}" <<'PY'
+import json, os, pathlib, re, sys, tempfile
+from datetime import datetime
 
-# Detect task/crate collisions across shared claims before creating ours.
-if [ -f "$CLAIM" ]; then
-  echo "ERROR: Task $N already claimed:" >&2
-  cat "$CLAIM" >&2
-  exit 1
-fi
-shopt -s nullglob
-for f in "$CLAIMDIR"/*.json; do
-  [ "$(basename "$f")" = "$N.json" ] && continue
-  if [ -n "$CRATES" ]; then
-    for c in $CRATES; do
-      if grep -q "\"$c\"" "$f" 2>/dev/null; then
-        echo "ERROR: Crate collision: $c already claimed in $(basename "$f")" >&2
-        cat "$f" >&2
-        exit 1
-      fi
-    done
-  fi
-done
+taskfile, claimdir, claimpath, n, branch, worktree = sys.argv[1:7]
+agent, session = sys.argv[7], sys.argv[8]
+doc = pathlib.Path(taskfile)
+text = doc.read_text(encoding="utf-8")
 
-# Atomic claim creation: fail if file appears between checks.
-tmp=$(mktemp "$CLAIMDIR/.claim.$N.XXXXXX")
-crates_json=""
-if [ -n "$CRATES" ]; then
-  crates_json=$(printf '%s\n' $CRATES | sed 's/.*/"&"/' | paste -sd, -)
-fi
-cat > "$tmp" << JSON
-{
-  "task": $N,
-  "agent": "${PI_AGENT_ID:-unknown}",
-  "session_id": "${PI_SESSION_ID:-unknown}",
-  "branch": "$BRANCH",
-  "worktree": "$PWD_REAL",
-  "crates": [${crates_json}],
-  "started_at": "$(date -Iseconds)"
+SURFACES_HEADING = re.compile(r"^##\s+Surfaces\s*$")
+GLOB_CHARS = "*?["
+
+
+def declared_surfaces() -> list[str]:
+    """Paths and globs from the `## Surfaces` block, in document order, without cosmetic noise."""
+    inside, out = False, []
+    for line in text.splitlines():
+        if SURFACES_HEADING.match(line):
+            inside = True
+            continue
+        if inside and line.startswith("## "):
+            inside = False
+        if not inside:
+            continue
+        item = line.strip()
+        if not item or item[0] not in "-*":
+            continue
+        item = re.sub(r"^[-*]\s*", "", item).strip().strip("`").strip()
+        while item.startswith("./"):
+            item = item[2:]
+        item = item.lstrip("/").rstrip("/")
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
+def enforced_base(surface: str) -> str:
+    """What a surface can touch: its literal prefix, cut at the first glob segment.
+
+    A surface that starts with a glob (`*.rs`) has no literal prefix at all, and `""` is read as
+    "everything" rather than as "nothing": the empty string is not a path anybody can write, and
+    answering "nothing" there is what lets two tasks claim the same file.
+    """
+    while surface.startswith("./"):
+        surface = surface[2:]
+    surface = surface.rstrip("/")
+    kept = []
+    for part in surface.split("/"):
+        if any(char in part for char in GLOB_CHARS):
+            break
+        kept.append(part)
+    return "/".join(kept)
+
+
+def legacy_crates() -> list[str]:
+    return sorted(set(re.findall(r"crates/[A-Za-z0-9_-]+", text)))
+
+
+def overlaps(one: str, other: str) -> bool:
+    if not one or not other:
+        return True
+    return one == other or other.startswith(one + "/") or one.startswith(other + "/")
+
+
+declared = declared_surfaces()
+surfaces = []
+for surface in declared:
+    base = enforced_base(surface)
+    if base not in surfaces:
+        surfaces.append(base)
+crates = [] if declared else legacy_crates()
+mine = surfaces + crates
+
+for other in sorted(pathlib.Path(claimdir).glob("*.json")):
+    if other.resolve() == pathlib.Path(claimpath).resolve():
+        continue
+    try:
+        claim = json.loads(other.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # A claim nobody can read is not an absent claim: skipping it silently is how two agents end
+        # up in the same file.
+        print(
+            f"ERROR: claim {other} cannot be read as JSON. Remove it, or fix it, before claiming; "
+            "an unreadable claim cannot be checked against this one.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # The other claim may predate this normalization, so it is normalized here too: comparing a
+    # normalized surface against a raw one is how a new exact path misses an old './path' claim.
+    theirs = [enforced_base(surface) for surface in (claim.get("surfaces") or [])]
+    theirs += list(claim.get("crates") or [])
+    for surface in mine:
+        for taken in theirs:
+            if overlaps(surface, taken):
+                print(
+                    f"ERROR: Surface collision: {surface} is claimed by task "
+                    f"{claim.get('task', '?')} ({other.name}).",
+                    file=sys.stderr,
+                )
+                print(other.read_text(encoding="utf-8"), file=sys.stderr)
+                sys.exit(1)
+
+claim = {
+    "task": int(n) if n.isdigit() else n,
+    "agent": agent,
+    "session_id": session,
+    "branch": branch,
+    "worktree": worktree,
+    "mode": "surfaces" if declared else "crates-fallback",
+    "surfaces": surfaces,
+    "declared_surfaces": declared,
+    "crates": crates,
+    "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
 }
-JSON
-if ! ( set -o noclobber; : > "$CLAIM" ) 2>/dev/null; then
-  rm -f "$tmp"
-  echo "ERROR: Task $N already claimed (concurrent):" >&2
-  cat "$CLAIM" >&2 || true
-  exit 1
-fi
-mv -f "$tmp" "$CLAIM"
+payload = json.dumps(claim, indent=2) + "\n"
 
-# Best-effort: mark in progress in shared INDEX (primary tree).
-if [ -f "$MAIN/odd/tasks/INDEX.md" ] && grep -q "| $N |" "$MAIN/odd/tasks/INDEX.md"; then
-  sed -i "s/| $N | \([^|]*\)| [^|]*|/| $N | \1| in progress |/" "$MAIN/odd/tasks/INDEX.md" 2>/dev/null || true
-fi
-echo "Claimed task $N"
-cat "$CLAIM"
+# Write the whole claim somewhere else, then link it into place: `os.link` fails if the claim already
+# exists, so exclusive creation and complete content are the same operation. A claim written straight
+# into its final path can be read while half of it is on disk.
+#
+# The staging file is created by `mkstemp`, which is O_CREAT|O_EXCL with mode 0600 at a name nobody
+# can predict: a name derived from the task and the pid can be pre-planted as a symlink and followed,
+# and a claim written with the default umask is world-readable while it carries this session's id.
+descriptor, staging_name = tempfile.mkstemp(dir=claimdir, prefix=".claim.", suffix=".tmp")
+staging = pathlib.Path(staging_name)
+with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+    handle.write(payload)
+    handle.flush()
+    os.fsync(handle.fileno())
+try:
+    os.link(staging, claimpath)
+except FileExistsError:
+    staging.unlink()
+    print(f"ERROR: Task {n} already claimed:", file=sys.stderr)
+    print(pathlib.Path(claimpath).read_text(encoding="utf-8"), file=sys.stderr)
+    sys.exit(1)
+staging.unlink()
+
+print(f"Claimed task {n} ({claim['mode']})")
+print(payload, end="")
+if not declared:
+    print(
+        "WARNING: the task document declares no `## Surfaces` block, so the claim fell back to the "
+        "crate tokens in its text. Declare the paths it will edit.",
+        file=sys.stderr,
+    )
+PY

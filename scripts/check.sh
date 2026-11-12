@@ -3,7 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# First because it is the cheapest and the one a rename breaks without saying so.
+# First: the cheapest, and the one that stops an agent from working unclaimed in a worktree — or from
+# working in the primary tree at all.
+echo "== claim =="
+./scripts/check-worktree.sh --gate
+
+# Next because it is the cheapest and the one a rename breaks without saying so.
 echo "== docs =="
 ./scripts/check-docs.sh
 
