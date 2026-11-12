@@ -20,6 +20,7 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
 - `scripts/tests/lib/common.sh`
 - `justfile`
 - `AGENTS.md`
+- `crates/cam-ui/src/shell/action.rs`
 
 ## Specs
 
@@ -112,4 +113,27 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
   **Consecuencia abierta:** el candidato corregido es un candidato **distinto** del que el linaje
   revisó, y no está revisado por el proveedor. Revisarlo es abrir un linaje nuevo, con su propio
   consentimiento; la entrega sigue siendo decisión del dueño.
+
+- **L8.** Segundo review, sobre el candidato corregido (`sha256:eb6acebd…`), linaje
+  **`review-db8530b23d8a207a`**: tier high, 1.210 líneas, presupuesto 200. Refuter → **tres hallazgos
+  CRITICAL, los tres `introduced`**:
+  - el staging del claim se creaba en una ruta predecible y con el umask por defecto (world-readable, y
+    un symlink pre-plantado se seguía);
+  - `enforced_base` no quitaba la barra final, así que un claim viejo con `crates/cam-gerber/` no
+    colisionaba con `crates/cam-gerber`;
+  - `deliver-task.sh` descartaba el tercer argumento en silencio mientras reportaba éxito.
+
+  Corrección: commit `74a0a7a`. Validador dirigido: **aprobado**, y el acknowledgement quemó la
+  autoridad (`gentle-ai.review-acknowledged/v1`).
+
+  **Advisories no bloqueantes** que el review dejó anotados como trabajo posterior, no como motivo para
+  volver a revisar este candidato:
+  - `R4-deliver-lost-update` (`deliver-task.sh:49-68`): dos entregas concurrentes hacen read-modify-write
+    del INDEX sin bloqueo; una puede pisar a la otra. Vale un `flock` antes de la siguiente ola.
+  - `R4-stale-worktree-remedy` (`check-worktree.sh:32`): el mensaje de worktree sin claim no dice qué
+    hacer con un worktree viejo.
+  - `R2-002` (`AGENTS.md:18`), `R2-003` (`waves.md:31`), `R2-004`/`R2-005`/`R2-006` (tests e INDEX):
+    redacción y nombres.
+  - `R1-003`, `R2-001`, `R3-001`, `R4-undeclared-surface`: senalaban que este bloque `## Surfaces` no
+    declaraba `crates/cam-ui/src/shell/action.rs`, que es cierto y quedó corregido acá.
 
