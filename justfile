@@ -102,27 +102,29 @@ build-locked:
   cargo build --workspace --locked
 
 
-# Worktree management for parallel agent work (one agent = one worktree = one task)
+# Worktrees for parallel agent work are created by herdr (~/.herdr/worktrees); this recipe explains.
 worktree N:
-  @mkdir -p .worktrees
-  @TASKFILE=$$(ls odd/tasks/{{N}}-*.md 2>/dev/null | head -1); \
-  if [ -z "$$TASKFILE" ]; then echo "No task file found for {{N}}"; exit 1; fi; \
-  SLUG=$$(basename $$TASKFILE .md | sed 's/^[0-9]\+-//'); \
-  BRANCH="feat/{{N}}-$$SLUG"; \
-  if git worktree list | grep -q ".worktrees/{{N}}"; then echo "Worktree already exists at .worktrees/{{N}} (branch $$BRANCH)"; exit 0; fi; \
-  git worktree add .worktrees/{{N}} -b $$BRANCH 2>/dev/null || git worktree add .worktrees/{{N}} $$BRANCH; \
-  echo "Worktree created at .worktrees/{{N}} on branch $$BRANCH"; \
-  echo "cd $(pwd)/.worktrees/{{N}}"
+  @echo "Worktrees are created by herdr, not by this recipe."
+  @echo "Create one for task {{N}} at ~/.herdr/worktrees/<slug> on branch feat/{{N}}-<slug>,"
+  @echo "then from inside it run: just claim {{N}}"
+  @echo "Scripts resolve the tree from 'git worktree list', so any location works."
 
-# Claim a task (must be run from a linked task worktree)
+# Claim a task for this worktree, by the paths in its `## Surfaces` block (not by crate).
 claim N:
-  @./scripts/check-worktree.sh >/dev/null 2>&1 || true
   @./scripts/claim-task.sh {{N}}
 
-# Release a task claim
+# Release a claim without delivering (abandoned work, or a claim taken in the wrong tree).
 release N:
   @./scripts/release-task.sh {{N}}
 
-# Validate we're in a properly claimed linked worktree
+# Record a delivered task in the shared index and release its claim. Run it after the merge.
+deliver N commit="":
+  @./scripts/deliver-task.sh {{N}} {{commit}}
+
+# Validate we're in a properly claimed linked worktree.
 check-worktree:
   @./scripts/check-worktree.sh
+
+# Behaviour tests for the claim/merge tooling (throws away its own repository).
+test-tooling:
+  @./scripts/test-worktree-tooling.sh
