@@ -41,7 +41,7 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 python3 - "$TASKFILE" "$CLAIMDIR" "$CLAIM" "$N" "$BRANCH" "$PWD_REAL" \
   "${PI_AGENT_ID:-unknown}" "${PI_SESSION_ID:-unknown}" <<'PY'
-import json, os, pathlib, re, sys
+import json, os, pathlib, re, sys, tempfile
 from datetime import datetime
 
 taskfile, claimdir, claimpath, n, branch, worktree = sys.argv[1:7]
@@ -85,6 +85,7 @@ def enforced_base(surface: str) -> str:
     """
     while surface.startswith("./"):
         surface = surface[2:]
+    surface = surface.rstrip("/")
     kept = []
     for part in surface.split("/"):
         if any(char in part for char in GLOB_CHARS):
@@ -158,8 +159,13 @@ payload = json.dumps(claim, indent=2) + "\n"
 # Write the whole claim somewhere else, then link it into place: `os.link` fails if the claim already
 # exists, so exclusive creation and complete content are the same operation. A claim written straight
 # into its final path can be read while half of it is on disk.
-staging = pathlib.Path(claimdir) / f".claim.{n}.{os.getpid()}.tmp"
-with open(staging, "w", encoding="utf-8") as handle:
+#
+# The staging file is created by `mkstemp`, which is O_CREAT|O_EXCL with mode 0600 at a name nobody
+# can predict: a name derived from the task and the pid can be pre-planted as a symlink and followed,
+# and a claim written with the default umask is world-readable while it carries this session's id.
+descriptor, staging_name = tempfile.mkstemp(dir=claimdir, prefix=".claim.", suffix=".tmp")
+staging = pathlib.Path(staging_name)
+with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
     handle.write(payload)
     handle.flush()
     os.fsync(handle.fileno())

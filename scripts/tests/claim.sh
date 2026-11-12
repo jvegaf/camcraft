@@ -50,6 +50,12 @@ expect_fail "a raw ./ surface in an old claim still collides" \
   run_in "$WORK/wt102" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 102
 expect_contains "the old claim is named" "$WORK/err" "198.json"
 rm -f "$MAIN/odd/tasks/.claims/198.json"
+printf '{"task": 197, "surfaces": ["crates/cam-gerber/"], "crates": []}\n' \
+  >"$MAIN/odd/tasks/.claims/197.json"
+expect_fail "an old surface with a trailing slash still collides" \
+  run_in "$WORK/wt102" env PI_AGENT_ID=t PI_SESSION_ID=t ./scripts/claim-task.sh 102
+expect_contains "the trailing-slash claim is named" "$WORK/err" "197.json"
+rm -f "$MAIN/odd/tasks/.claims/197.json"
 
 echo "== an unreadable claim is a refusal, not an absence =="
 printf 'not json at all\n' >"$MAIN/odd/tasks/.claims/199.json"
@@ -68,6 +74,12 @@ expect_contains "the claim records the enforced prefix" "$MAIN/odd/tasks/.claims
   "crates/cam-gerber"
 expect_absent "no staging file is left behind" \
   "$(ls "$MAIN"/odd/tasks/.claims/.claim.* 2>/dev/null | head -1)"
+MODE=$(stat -c %a "$MAIN/odd/tasks/.claims/102.json")
+if [ "$MODE" = "600" ]; then
+  pass "the claim is private to its owner"
+else
+  fail "the claim is mode $MODE; it carries a session id and belongs to its owner"
+fi
 
 echo "== documents without a surfaces block fall back to crates =="
 expect_ok "legacy task claims by crate token" \

@@ -8,7 +8,7 @@
 set -euo pipefail
 N="${1:-}"
 COMMIT="${2:-}"
-if [ -z "$N" ]; then
+if [ -z "$N" ] || [ "$#" -gt 2 ]; then
   echo "Usage: deliver-task.sh N [commit]" >&2
   exit 1
 fi

@@ -18,6 +18,11 @@ expect_fail "deliver is refused from a linked worktree" \
 expect_contains "the refusal names the worktree" "$WORK/err" "primary tree"
 expect_contains "the claim survives the refusal" "$MAIN/odd/tasks/.claims/100.json" "crates/cam-geom/src/boolean.rs"
 
+expect_fail "deliver refuses a third argument" \
+  run_in "$MAIN" ./scripts/deliver-task.sh 100 abc1234 extra
+expect_contains "the refused call wrote nothing" "$MAIN/odd/tasks/INDEX.md" \
+  "| 100 | [alpha](100-alpha.md) | in progress |"
+
 echo "== deliver writes the index =="
 expect_fail "deliver refuses a task with no index row" run_in "$MAIN" ./scripts/deliver-task.sh 999
 mkdir -p "$MAIN/odd/tasks"
