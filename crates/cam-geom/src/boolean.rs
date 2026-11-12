@@ -22,7 +22,7 @@
 //! a piece whose arc the contour model's bulge cannot hold — and it is reported, never hidden.
 
 use std::cmp::Ordering;
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 
 use crate::arc::Arc;
 use crate::contour::Contour;
@@ -35,6 +35,9 @@ use crate::GeomError;
 
 /// How close to a segment's own end an intersection may sit before it stops counting as a split.
 const FRACTION_EPSILON: f64 = 1.0e-9;
+
+/// Two directions this close are the same direction, which is what a tangency looks like.
+const ANGLE_EPSILON: f64 = 1.0e-12;
 
 /// The first distance a side probe steps away from a piece, as a fraction of the piece's length.
 const PROBE_STEP: f64 = 1.0e-5;
@@ -140,8 +143,10 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
     });
   }
 
+  // A normalization walks one region, so every survivor belongs to the same side of the arrangement.
+  let owners = vec![true; survivors.len()];
   let mut flattened = false;
-  let boundaries = assemble(&survivors, tolerance, &mut flattened)?;
+  let boundaries = assemble(&survivors, &owners, tolerance, &mut flattened)?;
   Ok(Normalized {
     region: Region { boundaries },
     flattened,
@@ -442,6 +447,7 @@ fn enclosed_by(
 /// Chain the survivors into closed contours by walking the arrangement.
 fn assemble(
   pieces: &[Segment],
+  owners: &[bool],
   tolerance: f64,
   flattened: &mut bool,
 ) -> Result<Vec<Contour>, GeomError> {
@@ -467,7 +473,9 @@ fn assemble(
   // that vertex. Keeping the material on the left is what makes that the correct continuation.
   let mut clockwise_next = vec![0_usize; 2 * pieces.len()];
   for vertex in &mut vertices {
-    vertex.ends.sort_by(|a, b| angular_order(pieces, *a, *b));
+    vertex
+      .ends
+      .sort_by(|a, b| angular_order(pieces, owners, *a, *b));
     let count = vertex.ends.len();
     for (slot, end) in vertex.ends.iter().enumerate() {
       let previous = vertex.ends[(slot + count - 1) % count];
@@ -564,25 +572,76 @@ fn other_end_id(id: usize) -> usize {
   id ^ 1
 }
 
-/// The direction a piece leaves a vertex in, as an angle in `(-pi, pi]`.
-fn outward_angle(pieces: &[Segment], end: (usize, EndAt)) -> f64 {
+/// The direction a piece leaves a vertex in, if its geometry defines one.
+fn outward_vector(pieces: &[Segment], end: (usize, EndAt)) -> Option<Vec2> {
   let segment = pieces[end.0];
-  let direction = match (segment, end.1) {
+  match (segment, end.1) {
     (Segment::Line(line), EndAt::Start) => line.direction(),
     (Segment::Line(line), EndAt::End) => line.reversed().direction(),
     (Segment::Arc(arc), EndAt::Start) => Some(arc.tangent_at_start()),
     (Segment::Arc(arc), EndAt::End) => Some(arc.reversed().tangent_at_start()),
-  };
-  direction.map(|vector: Vec2| vector.angle()).unwrap_or(0.0)
+  }
 }
 
-/// Ascending direction order at a vertex, with the piece order as the tie-break.
-fn angular_order(pieces: &[Segment], a: (usize, EndAt), b: (usize, EndAt)) -> Ordering {
-  outward_angle(pieces, a)
-    .partial_cmp(&outward_angle(pieces, b))
-    .unwrap_or(Ordering::Equal)
-    .then(a.0.cmp(&b.0))
-    .then(a.1.rank().cmp(&b.1.rank()))
+/// The direction a piece leaves a vertex in, as an angle in `(-pi, pi]`.
+fn outward_angle(pieces: &[Segment], end: (usize, EndAt)) -> f64 {
+  outward_vector(pieces, end)
+    .map(|vector: Vec2| vector.angle())
+    .unwrap_or(0.0)
+}
+
+/// Which way a piece bends as it leaves a vertex: clockwise `-1`, straight `0`, counter-clockwise `1`.
+///
+/// Two boundaries that touch at a vertex leave it in the *same* direction, so the angle alone cannot
+/// order them, and the order is what decides the chaining. The second-order answer is the only one
+/// that tells them apart: an arc turns towards its centre, so the sign of the turn separates two
+/// tangent arcs from one another.
+fn curvature_sign(pieces: &[Segment], end: (usize, EndAt)) -> i8 {
+  let Segment::Arc(arc) = pieces[end.0] else {
+    return 0;
+  };
+  let Some(direction) = outward_vector(pieces, end) else {
+    return 0;
+  };
+  let point = match end.1 {
+    EndAt::Start => arc.start_point(),
+    EndAt::End => arc.end_point(),
+  };
+  let offset = arc.center() - point;
+  let turn = direction.x * offset.y - direction.y * offset.x;
+  if turn > 0.0 {
+    1
+  } else if turn < 0.0 {
+    -1
+  } else {
+    0
+  }
+}
+
+/// Ascending direction order at a vertex, with curvature, input and piece order as the tie-breaks.
+///
+/// Tangency is why the extra keys exist. Two pieces that are tangent at a vertex share a direction
+/// exactly, and ordering such a pair by its index alone chains a hairpin that walks the same piece
+/// twice; ordering it by the direction it bends puts the counter-clockwise turn first and the
+/// clockwise turn last, which is what keeps each input's boundary on its own side of the touch. The
+/// input and piece order after it keep the walk deterministic when the curvature agrees too.
+fn angular_order(
+  pieces: &[Segment],
+  owners: &[bool],
+  a: (usize, EndAt),
+  b: (usize, EndAt),
+) -> Ordering {
+  let angle_a = outward_angle(pieces, a);
+  let angle_b = outward_angle(pieces, b);
+  let apart = (angle_a - angle_b + PI).rem_euclid(TAU) - PI;
+  let toward = if apart.abs() <= ANGLE_EPSILON {
+    curvature_sign(pieces, b)
+      .cmp(&curvature_sign(pieces, a))
+      .then(owners[a.0].cmp(&owners[b.0]))
+  } else {
+    angle_a.partial_cmp(&angle_b).unwrap_or(Ordering::Equal)
+  };
+  toward.then(a.0.cmp(&b.0)).then(a.1.rank().cmp(&b.1.rank()))
 }
 
 /// The order chains start in: lowest `(bounds.min.y, bounds.min.x, input index)` first.
@@ -772,11 +831,11 @@ pub fn combine(
     }
   }
 
-  let mut survivors: Vec<Segment> = Vec::with_capacity(pieces.len());
+  let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
   for piece in pieces {
     match decide(piece, a, b, op, tolerance)? {
-      Decision::Keep => survivors.push(piece.segment),
-      Decision::Reverse => survivors.push(piece.segment.reversed()),
+      Decision::Keep => survivors.push((piece.segment, piece.from_a)),
+      Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
       Decision::Drop => {}
     }
   }
@@ -788,8 +847,9 @@ pub fn combine(
   if survivors.is_empty() {
     return Ok(Combined::Empty);
   }
+  let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
   let mut flattened = false;
-  let boundaries = assemble(&survivors, tolerance, &mut flattened)?;
+  let boundaries = assemble(&segments, &owners, tolerance, &mut flattened)?;
   Ok(Combined::Region {
     region: Region { boundaries },
     flattened,
@@ -855,7 +915,7 @@ fn decide(
 /// together with the segment's geometry, so the comparison stays exact-in-tolerance without becoming
 /// a float equality. When the endpoint order is canonicalised, the traversal direction is carried
 /// with the swap (a swapped arc negates its sweep) and the key keeps that directed geometry.
-fn dedup_pieces(pieces: Vec<Segment>, tolerance: f64) -> Vec<Segment> {
+fn dedup_pieces(pieces: Vec<(Segment, bool)>, tolerance: f64) -> Vec<(Segment, bool)> {
   let scale = 1.0 / tolerance;
   let quantise = |value: f64| (value * scale).round() as i64;
 
@@ -873,7 +933,7 @@ fn dedup_pieces(pieces: Vec<Segment>, tolerance: f64) -> Vec<Segment> {
 
   let mut seen: std::collections::BTreeSet<PieceKey> = std::collections::BTreeSet::new();
   let mut kept = Vec::with_capacity(pieces.len());
-  for piece in pieces {
+  for (piece, owner) in pieces {
     let start = piece.start_point();
     let end = piece.end_point();
     let mut from = (quantise(start.x), quantise(start.y));
@@ -896,7 +956,7 @@ fn dedup_pieces(pieces: Vec<Segment>, tolerance: f64) -> Vec<Segment> {
       }
     };
     if seen.insert((from, to, geometry)) {
-      kept.push(piece);
+      kept.push((piece, owner));
     }
   }
   kept
