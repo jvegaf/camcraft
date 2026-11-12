@@ -40,11 +40,10 @@ fn rectangle_contour(width: f64, height: f64) -> Contour {
   .expect("rectangle")
 }
 
-/// A document with two rectangular entities and one profile toolpath, so `nest`, `emit` and
-/// `simulate` all have something to work on.
+/// A document with two rectangular entities and one profile toolpath.
 ///
-/// `parts` are the nesting parts the document already authors, as `(id, entity ids, instances)`: the
-/// CLI's `nest` needs them, and a test of the script's own `part` command starts from none.
+/// `parts` are the nesting parts the document already authors, as `(id, entity ids, instances)`: a
+/// test of the script's own `part` command starts from none.
 fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf {
   let mut document = Document::new(Job {
     width: Length::from_mm(200.0),
@@ -156,145 +155,8 @@ fn run_in(directory: &Path, arguments: &[&str]) -> Outcome {
   )
 }
 
-/// The nesting placements a document on disk holds, as `(part, sheet, x, y)`.
-fn placements(document: &Path) -> Vec<(String, String, f64, f64)> {
-  let loaded = cam_store::document::load_document(document).expect("document loads");
-  loaded
-    .nesting
-    .expect("nesting section")
-    .placements
-    .iter()
-    .map(|placement| {
-      (
-        placement.part_id.clone(),
-        placement.sheet_id.clone(),
-        placement.position.x,
-        placement.position.y,
-      )
-    })
-    .collect()
-}
-
 fn script_outcome(script: &Path) -> Outcome {
   run(&["script", script.to_str().expect("utf8")])
-}
-
-/// The nest report a run of `sheet`/`part`/`nest` prints for two parts on one 100 x 100 board, then the
-/// counts `validate` prints for the document that was nested.
-const NESTED_REPORT: &str = "\
-nest: 1 sheet(s) of 100.000 x 100.000 mm, 2 part(s), 3 instance(s)
-options: gap 0.000 mm, rotation off
-sheet S1: used
-part: P1 rectangle, 2 instance(s)
-placement: P1 on S1 at (0.000, 0.000), rotation none, 40.000 x 30.000 mm
-placement: P1 on S1 at (40.000, 0.000), rotation none, 40.000 x 30.000 mm
-part: P2 rectangle, 1 instance(s)
-placement: P2 on S1 at (0.000, 30.000), rotation none, 30.000 x 20.000 mm
-algorithm: rectangle, maxrects
-sheets used: 1
-utilisation: 0.300
-waste: 0.700
-unplaced: none
-valid: 1 layer(s), 2 entity(ies), 1 toolpath(s)
-";
-
-#[test]
-fn a_script_authors_sheets_and_parts_nests_them_and_saves_exactly() {
-  let directory = scratch("authoring");
-  let document = write_document(&directory, &[]);
-  let saved = directory.join("nested.cmc");
-  let script = write_script(
-    &directory,
-    "author.cam",
-    &format!(
-      "\
-open {document}
-sheet 100 100
-part 2 E1
-part 1 E2
-nest --gap 0
-validate
-save {saved}
-",
-      document = document.display(),
-      saved = saved.display()
-    ),
-  );
-
-  let outcome = script_outcome(&script);
-  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
-  assert_eq!(outcome.stdout, NESTED_REPORT);
-  assert_eq!(
-    outcome.stderr,
-    format!("wrote 1 layer(s), 2 entity(ies) to {}\n", saved.display())
-  );
-
-  // The placements are the ones the nesters produce, asserted exactly: two copies of the first part
-  // then one of the second, on the one board the script authored.
-  assert_eq!(
-    placements(&saved),
-    vec![
-      ("P1".to_owned(), "S1".to_owned(), 0.0, 0.0),
-      ("P1".to_owned(), "S1".to_owned(), 40.0, 0.0),
-      ("P2".to_owned(), "S1".to_owned(), 0.0, 30.0),
-    ]
-  );
-
-  std::fs::remove_dir_all(&directory).ok();
-}
-
-#[test]
-fn a_script_that_nests_writes_the_document_the_nest_subcommand_writes() {
-  let directory = scratch("nest-parity");
-  let cli_directory = directory.join("cli");
-  let script_directory = directory.join("script");
-  std::fs::create_dir_all(&cli_directory).expect("cli directory");
-  std::fs::create_dir_all(&script_directory).expect("script directory");
-  // The command line is handed a document that already authors its parts; the script authors the same
-  // parts itself, so the two runs differ in how the sections were authored and in nothing else.
-  let authored = write_document(&cli_directory, &[("P1", &["E1"], 2), ("P2", &["E2"], 1)]);
-  let bare = write_document(&script_directory, &[]);
-  let from_cli = directory.join("cli.cmc");
-  let from_script = directory.join("script.cmc");
-
-  let cli = run(&[
-    "nest",
-    authored.to_str().expect("utf8"),
-    "--sheets",
-    "100x100",
-    "--gap",
-    "0",
-    "--out",
-    from_cli.to_str().expect("utf8"),
-  ]);
-  assert_eq!(cli.code, 0, "{}", cli.stderr);
-
-  let script = write_script(
-    &directory,
-    "nest.cam",
-    &format!(
-      "\
-open {bare}
-sheet 100 100
-part 2 E1
-part 1 E2
-nest --gap 0
-save {from_script}
-",
-      bare = bare.display(),
-      from_script = from_script.display()
-    ),
-  );
-  let outcome = script_outcome(&script);
-  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
-
-  assert_eq!(
-    std::fs::read(&from_script).expect("script document"),
-    std::fs::read(&from_cli).expect("cli document"),
-    "a script's nest must write the bytes the nest subcommand writes"
-  );
-
-  std::fs::remove_dir_all(&directory).ok();
 }
 
 #[test]
@@ -448,7 +310,7 @@ open {document}
 sheet 100 100
 part 2 E1
 part 1 E2
-nest --gap 0
+validate
 save {plain}
 ",
       document = document.display(),
@@ -468,7 +330,7 @@ sheet 100 100
 part 2 E1
 
 part 1 E2
-nest --gap 0
+validate
 save {annotated}
 # and that is the whole script
 ",
@@ -582,38 +444,4 @@ fn a_script_needs_a_path_and_an_open_document() {
   );
 
   std::fs::remove_dir_all(&directory).ok();
-}
-
-#[test]
-fn a_script_refuses_a_positional_document_for_nest() {
-  // R1-001: `nest` used to accept a positional document into its own parser and then drop it, passing
-  // `None` to the refusal — so `open a` plus `nest b` nested **a**, and a following `save b` could
-  // overwrite **b** with a's document. The refusal is the fix; the second half proves that the file the
-  // script named is never written, which is the part a silent success would have hidden.
-  let directory = scratch("nest-positional");
-  let document = write_document(&directory, &[("P1", &["E1"], 1)]);
-  let other = directory.join("other.cmc");
-  std::fs::copy(&document, &other).expect("copy");
-  let before = std::fs::read(&other).expect("read");
-
-  let script = write_script(
-    &directory,
-    "nest-path.cam",
-    &format!(
-      "open {document}\nnest --sheets 400x300 {other}\nsave {other}\n",
-      document = document.display(),
-      other = other.display()
-    ),
-  );
-  let outcome = script_outcome(&script);
-  assert_eq!(outcome.code, 2, "{}", outcome.stderr);
-  assert_eq!(
-    outcome.stderr,
-    "error: line 2:23: nest takes no document path: a script mutates the document `open` read\n"
-  );
-  assert_eq!(
-    std::fs::read(&other).expect("read"),
-    before,
-    "a script that cannot nest writes nothing to the document it named"
-  );
 }

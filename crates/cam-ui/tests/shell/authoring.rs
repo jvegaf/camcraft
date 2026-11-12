@@ -416,54 +416,6 @@ fn the_vertex_edit_group_moves_inserts_and_deletes_nodes() {
 }
 
 #[test]
-fn the_text_group_adds_one_entity_per_glyph_stroke() {
-  let mut app = AppState::new(document_with_rectangle());
-  let mut shell = Shell::new();
-
-  shell.apply_action(
-    &mut app,
-    &UiAction::AddText {
-      text: "AB".to_owned(),
-      height: 10.0,
-      origin: Point2::new(0.0, -20.0),
-    },
-  );
-
-  let added = entity_count(&app) - 1;
-  assert!(
-    added >= 2,
-    "\"AB\" must draw more than one stroke, got {added}: {}",
-    shell.status
-  );
-  assert_eq!(
-    app.selection().len(),
-    added,
-    "the whole word is selected: {}",
-    shell.status
-  );
-  assert!(
-    shell.status.contains("entities created"),
-    "{}",
-    shell.status
-  );
-
-  // Text mints an unknown number of ids, so the counter has to be topped up by what was created.
-  shell.apply_action(
-    &mut app,
-    &UiAction::Draw(DrawShape::Rectangle {
-      at: Point2::new(0.0, 0.0),
-      width: 1.0,
-      height: 1.0,
-    }),
-  );
-  assert!(
-    !shell.status.contains("refused"),
-    "a draw after text must not collide: {}",
-    shell.status
-  );
-}
-
-#[test]
 fn a_non_uniform_scale_reports_the_arcs_it_lost_in_the_status_bar() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
@@ -615,7 +567,6 @@ fn the_tools_tab_offers_every_authoring_command() {
     "Move node",
     "Insert node",
     "Delete node",
-    "Add text",
     "Add rectangle",
   ] {
     assert!(all.contains(label), "missing {label:?} in {all}");

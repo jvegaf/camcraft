@@ -22,16 +22,12 @@ pub mod distance;
 pub mod edit;
 pub mod intersect;
 pub mod join;
-pub mod moulding;
-pub mod nest;
-pub mod nest_profile;
 pub mod offset;
 mod point;
 pub mod primitive;
 pub mod region;
 pub mod region_offset;
 mod segment;
-pub mod text;
 pub mod transform;
 pub mod trim;
 pub mod validate;
@@ -87,143 +83,5 @@ pub enum GeomError {
   EditRefused {
     /// Why the edit could not be applied.
     reason: &'static str,
-  },
-  /// A glyph source cannot draw a character.
-  #[error("the glyph source has no glyph for {character:?}")]
-  UnsupportedCharacter {
-    /// The character that could not be drawn.
-    character: char,
-  },
-  /// A moulding rail has no length for the sweep to advance along.
-  ///
-  /// A rail with no perimeter has no sweep behind it, and a point asked of it would be an invention
-  /// rather than a place on a shape (M8 T2).
-  #[error("a moulding rail needs a length to sweep along, got {length} mm")]
-  MouldingRailTooShort {
-    /// The rail's perimeter in millimetres.
-    length: f64,
-  },
-  /// A moulding profile has fewer than two points, so it is not a cross-section.
-  #[error("a moulding profile needs at least two points, got {points}")]
-  MouldingProfileTooShort {
-    /// How many points were supplied.
-    points: usize,
-  },
-  /// A moulding profile point is not a finite pair of millimetres.
-  #[error(
-    "a moulding profile point must use finite millimetres, got lateral {lateral} mm and depth \
-     {depth} mm"
-  )]
-  MouldingProfilePointNotFinite {
-    /// The offending lateral distance in millimetres.
-    lateral: f64,
-    /// The offending depth in millimetres.
-    depth: f64,
-  },
-  /// A moulding profile's lateral distances are not strictly increasing.
-  ///
-  /// A cross-section is one depth per lateral distance, so a lateral that does not exceed the one
-  /// before it is two depths for the same place. Refused with both values rather than resolved by
-  /// picking one (M8 T2, T3).
-  #[error(
-    "moulding profile point {index} at lateral {lateral} mm must be greater than the previous \
-     {previous} mm: a cross-section is one depth per lateral distance"
-  )]
-  MouldingProfileLateralOrder {
-    /// Index of the offending point in the profile.
-    index: usize,
-    /// The lateral distance of the point before it, in millimetres.
-    previous: f64,
-    /// The offending lateral distance in millimetres.
-    lateral: f64,
-  },
-  /// A moulding stepover is zero, negative or not finite, so it cannot space passes.
-  #[error("a moulding stepover must be a positive number of millimetres, got {stepover} mm")]
-  MouldingStepoverNotPositive {
-    /// The offending stepover in millimetres.
-    stepover: f64,
-  },
-  /// A moulding walk was asked for a chord tolerance that is zero, negative or not finite.
-  #[error(
-    "a moulding rail sample tolerance must be a positive number of millimetres, got {tolerance} mm"
-  )]
-  MouldingToleranceNotPositive {
-    /// The offending tolerance in millimetres.
-    tolerance: f64,
-  },
-  /// A nesting run was given a gap that is not a distance: negative or not finite.
-  ///
-  /// A gap that is not a distance cannot separate anything, so it is refused rather than replaced
-  /// by zero (M9 T2b).
-  #[error("a nesting gap must be a finite number of millimetres zero or more, got {gap} mm")]
-  GapNotMeasurable {
-    /// The offending gap in millimetres.
-    gap: f64,
-  },
-  /// A nesting sheet has no positive, finite side lengths, so it is not a board.
-  #[error("a nesting sheet needs positive millimetre side lengths, got {width} mm by {height} mm")]
-  SheetNotMeasurable {
-    /// The sheet's width in millimetres.
-    width: f64,
-    /// The sheet's height in millimetres.
-    height: f64,
-  },
-  /// A nesting part has a negative or non-finite side length, so it is not a rectangle.
-  ///
-  /// A part with a zero side is accepted: it covers no area, which is a shape the nester can carry.
-  #[error(
-    "nesting part {part} needs non-negative, finite millimetre side lengths, got {width} mm by \
-     {height} mm"
-  )]
-  PartNotMeasurable {
-    /// Index of the offending part in the caller's list.
-    part: usize,
-    /// The offending width in millimetres.
-    width: f64,
-    /// The offending height in millimetres.
-    height: f64,
-  },
-  /// A free-profile nesting run was given a coarse search step that is not a distance.
-  ///
-  /// A step that cannot advance would search one anchor and report the board searched, so it is
-  /// refused with its value (M9 T3).
-  #[error(
-    "a free-profile nesting search step must be a positive number of millimetres, got {step} mm"
-  )]
-  SearchStepNotMeasurable {
-    /// The offending step in millimetres.
-    step: f64,
-  },
-  /// A free-profile nesting run was given a search step fine enough to ask for more lattice anchors
-  /// than the cap allows.
-  ///
-  /// The cost of a search is `(floor(width/step)+1) * (floor(height/step)+1)` anchors, so halving the
-  /// step quadruples it and a step of a thousandth of a millimetre asks a full sheet for 10^12 of them.
-  /// The refusal names the step, the lattice it would walk and the cap, in the words the simulator's
-  /// cell cap already uses, because it is the same kind of cost (M9, advisory `R1-STEP-DOS`).
-  #[error(
-    "a {step} mm search step over this board needs {columns} x {rows} = {anchors} anchors, over the \
-     {cap} anchor cap; use a coarser --step"
-  )]
-  SearchLatticeTooFine {
-    /// The offending step in millimetres.
-    step: f64,
-    /// The lattice's columns, one per anchor position across the board.
-    columns: usize,
-    /// The lattice's rows, one per anchor position up the board.
-    rows: usize,
-    /// `columns * rows`: the anchors the step would walk.
-    anchors: usize,
-    /// The most anchors a single search may walk.
-    cap: usize,
-  },
-  /// A free-profile nesting sheet is not a closed contour, so it encloses no board.
-  #[error("a free-profile nesting sheet must be a closed contour")]
-  SheetNotClosed,
-  /// A free-profile nesting part is not a closed contour, so it is not a shape to nest.
-  #[error("free-profile nesting part {part} must be a closed contour")]
-  PartNotClosed {
-    /// Index of the offending part in the caller's list.
-    part: usize,
   },
 }

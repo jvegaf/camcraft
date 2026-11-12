@@ -676,7 +676,7 @@ fn right_clicking_an_entity_offers_its_commands() {
     "and the command that removes what was pointed at: {menu:?}"
   );
   assert!(
-    !menu.iter().any(|entry| entry == "Add text"),
+    !menu.iter().any(|entry| entry == "Add rectangle"),
     "an object menu is not the canvas menu: {menu:?}"
   );
 }

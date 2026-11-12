@@ -741,7 +741,6 @@ dependencies = [
  "cam-geom",
  "cam-model",
  "cam-units",
- "flate2",
  "serde_json",
  "thiserror 2.0.21",
 ]

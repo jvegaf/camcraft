@@ -23,15 +23,12 @@ fn tool_icon(tool: Tool) -> Icon {
 /// Which glyph a command is drawn with, wherever the frame draws it as an icon.
 ///
 /// A gesture keeps the glyph its tool has always had ([`tool_icon`]); the rest are the symbols the palette
-/// and the app bar already used for them. Each one has to be its own picture: `Shortcuts` drew with
-/// [`Icon::Text`] until T8.2 shipped it two runs below the `Add text` chip, and two chips with one glyph
-/// are two chips an operator cannot tell apart.
+/// and the app bar already used for them.
 pub(super) fn command_icon(command: Command) -> Icon {
   if let Some(tool) = command.tool() {
     return tool_icon(tool);
   }
   match command {
-    Command::AddText => Icon::Text,
     Command::Move => Icon::Move,
     Command::Rotate => Icon::Rotate,
     Command::Scale => Icon::Scale,

@@ -1,4 +1,4 @@
-//! Import of foreign vector and raster formats into millimetre geometry.
+//! Import of foreign vector formats into millimetre geometry.
 //!
 //! # Contract
 //!
@@ -15,9 +15,6 @@
 
 pub mod csv;
 pub mod dxf;
-pub mod eps;
-pub mod pdf;
-pub mod raster;
 pub mod svg;
 
 mod document;
@@ -37,7 +34,7 @@ use cam_geom::Contour;
 pub const DEFAULT_TOLERANCE: f64 = 0.01;
 
 /// The formats this crate reads, as the refusal message spells them.
-pub const SUPPORTED_EXTENSIONS: &str = "dxf, svg, pdf, eps, png";
+pub const SUPPORTED_EXTENSIONS: &str = "dxf, svg";
 
 /// A source format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,12 +43,6 @@ pub enum Format {
   Dxf,
   /// SVG, the subset described in [`svg`].
   Svg,
-  /// PDF vector content streams.
-  Pdf,
-  /// Encapsulated PostScript.
-  Eps,
-  /// PNG raster, traced to contours.
-  Png,
 }
 
 impl Format {
@@ -60,9 +51,6 @@ impl Format {
     match self {
       Self::Dxf => "dxf",
       Self::Svg => "svg",
-      Self::Pdf => "pdf",
-      Self::Eps => "eps",
-      Self::Png => "png",
     }
   }
 
@@ -71,9 +59,6 @@ impl Format {
     match self {
       Self::Dxf => "dxf",
       Self::Svg => "svg",
-      Self::Pdf => "pdf",
-      Self::Eps => "eps",
-      Self::Png => "png",
     }
   }
 
@@ -81,9 +66,6 @@ impl Format {
     match extension {
       "dxf" => Some(Self::Dxf),
       "svg" => Some(Self::Svg),
-      "pdf" => Some(Self::Pdf),
-      "eps" | "ps" => Some(Self::Eps),
-      "png" => Some(Self::Png),
       _ => None,
     }
   }
@@ -94,50 +76,13 @@ impl Format {
 pub struct ImportOptions {
   /// Flattening tolerance for curves that cannot stay arcs, in millimetres.
   pub tolerance: f64,
-  /// Raster tracing parameters.
-  pub trace: TraceOptions,
 }
 
 impl Default for ImportOptions {
   fn default() -> Self {
     Self {
       tolerance: DEFAULT_TOLERANCE,
-      trace: TraceOptions::default(),
     }
-  }
-}
-
-/// Raster tracing parameters, echoed back in the report so a trace can be reproduced.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TraceOptions {
-  /// Luminance cut-off; `None` means the default of 128.
-  pub threshold: Option<u8>,
-  /// Trace the light regions instead of the dark ones.
-  pub invert: bool,
-  /// Pixel density used to convert pixels to millimetres.
-  pub dpi: f64,
-  /// Regions whose area is below this many square millimetres are dropped.
-  pub min_area: f64,
-  /// Distance tolerance for Douglas–Peucker simplification, in millimetres; zero disables it.
-  pub simplify: f64,
-}
-
-impl Default for TraceOptions {
-  fn default() -> Self {
-    Self {
-      threshold: None,
-      invert: false,
-      dpi: 96.0,
-      min_area: 0.0,
-      simplify: 0.0,
-    }
-  }
-}
-
-impl TraceOptions {
-  /// The luminance cut-off actually applied.
-  pub fn effective_threshold(&self) -> u8 {
-    self.threshold.unwrap_or(128)
   }
 }
 
@@ -266,16 +211,6 @@ pub fn detect(path: &Path, bytes: &[u8]) -> Result<Format, ImportError> {
 
 /// Identify a format from its content signature.
 fn sniff(bytes: &[u8]) -> Option<Format> {
-  if bytes.starts_with(b"%PDF-") {
-    return Some(Format::Pdf);
-  }
-  if bytes.starts_with(b"%!PS") {
-    return Some(Format::Eps);
-  }
-  if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-    return Some(Format::Png);
-  }
-
   let head = &bytes[..bytes.len().min(65_536)];
   let text = String::from_utf8_lossy(head);
   let trimmed = text.trim_start_matches(['\u{feff}', ' ', '\t', '\r', '\n']);
@@ -313,9 +248,6 @@ pub fn import_bytes(
   let layers = match format {
     Format::Dxf => dxf::import(bytes, options, &mut report)?,
     Format::Svg => svg::import(bytes, options, &mut report)?,
-    Format::Pdf => pdf::import(bytes, options, &mut report)?,
-    Format::Eps => eps::import(bytes, options, &mut report)?,
-    Format::Png => raster::import(bytes, options, &mut report)?,
   };
 
   report.contours = layers.iter().map(|layer| layer.contours.len()).sum();

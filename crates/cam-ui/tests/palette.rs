@@ -98,7 +98,6 @@ fn the_palette_draws_its_golden_in_order() {
       "Ellipse",
       "Polygon",
       "Star",
-      "Add text",
       "Offset",
       "Join",
       "Move",

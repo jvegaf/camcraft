@@ -39,9 +39,9 @@ el Log con evidencia `path:line`.
 | T1 | Mapear la blast radius real (read-only) | S5 | `gentle-ai-explore` | — |
 | T2 | Crear `cam-ops` con **copias** de `rings` (pocket completo), `peck` (drill) y `follow` (profile) + sus tests | S3, S4 | `gentle-ai-worker` | commit 1 |
 | T3 | PR 1: borrar `cam-toolpath`, `cam-program`, el editor de estrategia de `cam-ui`, los oráculos de estrategia de `cam-sim` y los subcomandos `toolpath`/`emit`/`simulate` de `cam-cli`; árbol verde | S1, S4, S5 | inline | commit 2 |
-| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | inline | PR 2 |
-| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | inline | PR 3 |
-| T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | inline | PR 4 |
+| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `d6fee30` |
+| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `261812b` |
+| T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | plegada a C3 (L23) | — |
 | T7 | Verificación independiente del barrido (riesgo item 3: contrato de CLI) | S4 | `gentle-ai-verify` | — |
 
 ## Delivery
@@ -70,6 +70,8 @@ candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo
 
 **Estado final de la cadena y de su review: ver L20-L22.** Las ramas `camcraft-sweep-cN`, `-dA/-dB/-dC`
 son andamiaje de review; los commits son el entregable.
+
+**Estado.** Delivered. T1-T5 y T7 hechas (T7 en L33); T6 plegada a C3 por decision escrita (L23, L32).
 
 **El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
 es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
@@ -316,3 +318,74 @@ cambio contenido, solo como se presenta. Las siete ramas de slice y las de andam
 `dev` es la rama de integracion de aca en adelante; `master` no se toca. Mergear `dev` a `master` sigue
 siendo decision del dueno, y P5 --el merge que se lleva `emit` y `simulate`-- sigue siendo el unico que
 necesita una decision consciente.
+
+**L26** (decisión del dueño — el tramo que faltaba): "dale con todo maquina", después de corregir que el
+agente en paralelo tiene la **034**, no C3. Alcance acordado: **T4, T5 y T7**, con T6 fuera porque ya está
+plegada a C3 (L23). Reclamo: `odd/tasks/.claims/39.json` con `cam-geom`, `cam-import`, `cam-cli`,
+`cam-app`, `cam-ui`; worktree `worktree-green-forest-611b` (rama del mismo nombre), base `f11a629`.
+
+**L27** (evidencia — el gate base ya estaba rojo, y no es de este tramo): en `f11a629`,
+`cargo fmt --all --check` falla en `crates/cam-geom/tests/boolean_operations.rs:280,357,419` y
+`cargo clippy --workspace --all-targets -- -D warnings` falla con `too_many_arguments` en
+`crates/cam-geom/tests/boolean_operations.rs:360` (función de ocho argumentos que rustfmt además reescribe
+en varias líneas). Viene de `83fcbea` ("resolve tangent contacts and strengthen c1 boolean evidence"), que
+es la **034 en curso de otro agente**. Decisión: no se toca, no se revierte y no se le agrega `#[allow]`;
+se reporta. Consecuencia honesta: `just check` **no** puede quedar verde en este tramo, y el verde que se
+afirma abajo es del resto del workspace.
+
+**L28** (discrepancia doc contra árbol): L25 afirma que `dev` se creó desde `origin/master`. Este clon no
+tiene `dev` — `git rev-parse --verify dev` falla — y sus ramas son `master`,
+`worktree/green-forest-611b` y `worktree/silver-meadow-676f`, las tres en `f11a629`. El tramo se hizo en la
+rama del worktree, cortada de esa base; ni `master` ni la otra rama se tocaron.
+
+**L29** (evidencia — T4, el kernel queda con lo que sirve a PCB): `d6fee30`. Salen `text` (10 tests),
+`nest` (14), `nest_profile` (20) y `moulding` (24) con sus tests, y con ellos la superficie que sólo existía
+para alcanzarlos: `Command::AddText` en `cam-app` (8 tests), el text tool y su panel de parámetros en
+`cam-ui` (1 test), el subcomando `nest` y el `nest` de `script` en `cam-cli` (17 + 3 tests), y tres
+variantes `Moulding*` de `cam-ops` que ningún call site podía construir. **97 tests.** `sheet`/`part` y sus
+generadores de id quedan: los usa `parts`. Los flags de raster del `import` (`--dpi`, `--threshold`,
+`--invert`, `--min-area`, `--simplify`) salen acá porque parseaban, validaban y no hacían nada.
+
+**L30** (evidencia — T5, importadores): `261812b`. Salen `pdf` (16 tests), `eps` (26) y `raster` (16), más
+el caso EPS de `NothingImported` en `tests/import.rs` (1). **59 tests.** `Format` queda en `Dxf`/`Svg`,
+`SUPPORTED_EXTENSIONS` pasa a `"dxf, svg"`, `TraceOptions` sale con el tracer que configuraba, `flate2` sale
+del crate (sus dos únicos usuarios eran los streams de PDF) y el diálogo de `cam-desktop` deja de ofrecer
+tres extensiones que el build no lee. `ImportReport`/`Skipped` y la lista de partes CSV no cambian.
+
+**L31** (evidencia — gates y reconciliación del conteo): `cargo test --workspace` = **1167 passed, 0
+failed**; `cargo clippy` verde en `cam-import`, `cam-cli`, `cam-app` y `cam-ops`; `cargo fmt --all --check`
+y el clippy del workspace fallan sólo en el archivo de la 034 (L27). Reconciliación exacta contra la base:
+`1323 - 156 = 1167`, con **97 + 59** de desglose por archivo (`text` 10, `nest` 14, `nest_profile` 20,
+`moulding` 24, `cam-app` 8, `cli` 17, `script` 3, `authoring` 1; `pdf` 16, `eps` 26, `raster` 16,
+`import` 1). `README.md` se corrige en el mismo tramo: 1319 → 1167 tests, import DXF/SVG, la sección de
+nesting sale, y la lista de herramientas deja de ofrecer texto de un solo trazo.
+
+**L32** (qué sigue fuera de esta tarea, por decisión escrita): T6 entera — las once variantes de
+`Operation`, sus parámetros y validadores, `cutlist`/`parts`/`report` y la autoría vectorial avanzada — más
+la sección `nesting` del modelo (`Nesting`, `nesting_utilisation`) y sus lectores en `pieces.rs` y
+`printsheet.rs`. Son datos y contratos de documento, no kernel, y se limpian al definir
+`camcraft/document@1` (035/C3), una sola vez. T7 (verificación independiente) queda como el último paso de
+esta tarea; nada de este tramo autoriza delivery: push, PRs y merge siguen siendo decisión del dueño.
+
+**L33** (evidencia — T7, verificación independiente): corrida sobre `f11a629..HEAD` con `gentle-ai-verify`,
+riesgo declarado item 3 (contrato de CLI). Veredicto **PASS** en los seis puntos: (1) el contrato: `nest`
+como subcomando y en `script` responden `unknown command` con exit `2`, `--dpi` responde `unknown import
+option` con exit `2` y no hay parseo silencioso, `AddText` no existe en `cam-app` ni en `cam-ui`; (2) la
+superficie que sobrevive corre de verdad contra un documento en `/tmp`: `validate`, `inspect`, `check`,
+`export`, `tools add/list`, `postp validate`, `script` con `open`/`validate`/`save`, y `parts` parsea y
+falla por header, no por comando desconocido; (3) cero restos vivos de la madera fuera de historia
+(`docs/old`, `odd/roadmap`, `odd/tasks`) y `SUPPORTED_EXTENSIONS = "dxf, svg"`; (4) la aritmética del
+conteo se reprodujo archivo por archivo: 156 = 97 + 59, 1323 - 156 = 1167; (5) el gate: 1167 passed, 0
+failed, y el único rojo es el archivo de la 034, con `git diff f11a629..HEAD -- <ese archivo>` vacío; (6)
+README y esta tarea dicen lo que el código hace. **Y la comprobación que el verificador no podía hacer por
+sí solo**: cada commit se probó aislado, no sólo la punta — `d6fee30` desde `git archive` en un árbol
+limpio: **1226 passed, 0 failed**. El segundo corte se re-verifica por separado porque la primera corrida
+murió por falta de espacio en `/tmp` (dos `target/` de 6 GB en un tmpfs de 16 GB), no por el código.
+
+**L34** (evidencia — reconciliación del primer corte, hecha después de commitear): la primera pasada de
+`git add` dejó en `d6fee30` un cambio que pertenece al corte de import — la aserción de
+`crates/cam-cli/tests/cli.rs` sobre la frase de formatos soportados, que en ese commit todavía decía
+`pdf, eps, png`. Se detectó antes de cerrar: ese archivo se corrigió con `commit --amend` para que el
+corte 1 quedara verde por sí mismo, y la aserción nueva entró en `261812b` junto con el cambio que la
+vuelve verdadera. Regla que queda: un commit de borrado no puede adelantar la expectativa de un cambio que
+todavía no aterrizó, aunque el árbol final esté verde.

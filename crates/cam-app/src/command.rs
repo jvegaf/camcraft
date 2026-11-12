@@ -11,7 +11,6 @@
 use cam_geom::edit::{delete_vertex, insert_vertex, move_vertex};
 use cam_geom::join::join;
 use cam_geom::offset::{offset_contour, OffsetOptions};
-use cam_geom::text::{text_outlines, SingleStrokeFont};
 use cam_geom::transform;
 use cam_geom::trim::trim;
 use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
@@ -231,30 +230,6 @@ pub enum Command {
     /// Angle of the first tip, in radians from the positive X axis.
     rotation: f64,
   },
-  /// Add `text` as one entity per glyph stroke-contour, ids running from `first_entity_index`.
-  ///
-  /// A document entity holds exactly one contour, so a string becomes **several** entities, the way
-  /// any vector editor stores a word: "AB" is one entity per pen stroke of the `A` and the `B`.
-  /// That is why this variant takes a starting index instead of an `entity_id`: the ids are
-  /// `E{first_entity_index}`, `E{first_entity_index + 1}`, … in
-  /// [`cam_geom::text::text_outlines`] order, so they stay caller-supplied and applying the command
-  /// stays a pure function of its arguments. If any of those ids is already taken the whole command
-  /// is refused before the document is touched, so text is never left half drawn (M2 A12).
-  ///
-  /// The text is turned into contours here, at creation time (M2 A14): the document schema stays
-  /// the document model and nothing downstream has to know a word was ever typed.
-  AddText {
-    /// Layer to add the entities to.
-    layer_id: String,
-    /// Number in the first id: `1` starts at `E1`.
-    first_entity_index: u32,
-    /// The string to lay out; it must draw at least one contour.
-    text: String,
-    /// Baseline start of the first line, in millimetres.
-    origin: Point2,
-    /// Cap height in millimetres.
-    height: f64,
-  },
   /// Remove an entity from whichever layer holds it.
   DeleteEntity {
     /// Identifier of the entity to remove.
@@ -296,8 +271,8 @@ pub enum Command {
     /// Spacing between rows, in millimetres along Y; it must be finite.
     dy: f64,
     /// Number in the first minted id: `1` starts at `E1`, zero starts at `E0`. The index is taken
-    /// literally, as [`Command::AddText`] takes it: an id is an opaque string, and the guarantee
-    /// that matters is that every minted id is free, which is checked before anything is stored.
+    /// literally: an id is an opaque string, and the guarantee that matters is that every minted id
+    /// is free, which is checked before anything is stored.
     first_entity_index: u32,
   },
   /// Move the selection so it lines up on an edge or centre line of its own combined bounds.
@@ -316,9 +291,9 @@ pub enum Command {
   /// keeps arcs as arcs and refuses a collapse instead of handing back a self-intersecting contour.
   /// The source entity stays exactly where it was: an offset adds a contour, it never replaces one.
   ///
-  /// The new id is `E{first_entity_index}`, taken literally as [`Command::AddText`] takes it, and
-  /// it is checked for a collision before the kernel runs, so a taken id refuses the whole command
-  /// and the document never gains the offset of anything (M2 A12). The number is supplied by the
+  /// The new id is `E{first_entity_index}`, taken literally, and it is checked for a collision
+  /// before the kernel runs, so a taken id refuses the whole command and the document never gains
+  /// the offset of anything (M2 A12). The number is supplied by the
   /// caller rather than generated here so that applying the command stays a pure function of its
   /// arguments.
   OffsetContour {
@@ -458,7 +433,6 @@ impl Command {
       Self::AddEllipse { .. } => "add ellipse",
       Self::AddPolygon { .. } => "add polygon",
       Self::AddStar { .. } => "add star",
-      Self::AddText { .. } => "add text",
       Self::DeleteEntity { .. } => "delete entity",
       Self::SetLayerVisible { .. } => "change layer visibility",
       Self::TransformEntities { transform, .. } => match transform {
@@ -633,37 +607,6 @@ impl Command {
           primitive::star(*at, *outer_radius, *inner_radius, *points, *rotation)
         })
       }
-      Self::AddText {
-        layer_id,
-        first_entity_index,
-        text,
-        origin,
-        height,
-      } => {
-        require_positive("text height", *height)?;
-        let contours = text_outlines(text, *origin, *height, &SingleStrokeFont::new())
-          .map_err(|error| CommandError::Geometry(error.to_string()))?;
-        if contours.is_empty() {
-          return Err(CommandError::EmptyText);
-        }
-        // How many ids this command mints is itself an output of the layout, so they can only be
-        // checked here — and every one of them is checked before a single entity is stored, which
-        // is what makes a collision an all-or-nothing refusal instead of a half-drawn word.
-        let ids: Vec<String> = (0..contours.len())
-          .map(|offset| minted_entity_id(*first_entity_index, offset))
-          .collect();
-        for id in &ids {
-          ensure_id_is_free(document, id)?;
-        }
-        ensure_layer_exists(document, layer_id)?;
-        for (id, contour) in ids.iter().zip(contours) {
-          push_entity(document, layer_id, id, contour)?;
-        }
-        Ok(CommandOutcome {
-          created_entities: ids,
-          ..CommandOutcome::default()
-        })
-      }
       Self::DeleteEntity { entity_id } => {
         remove_entity(document, entity_id)?;
         Ok(CommandOutcome::default())
@@ -781,8 +724,8 @@ impl Command {
 /// What a command produced beyond "it worked".
 ///
 /// A single-entity drawing command reports nothing; an ellipse reports the radial error its arc
-/// approximation actually achieved (M2 A3) and a text command reports the several entities it
-/// created, so the shell can surface both instead of the kernel swallowing them.
+/// approximation actually achieved (M2 A3), and a batch command may report the entities it created,
+/// so the shell can surface both instead of the kernel swallowing them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CommandOutcome {
   /// The largest measured radial error of the arc approximation, in millimetres.
@@ -833,17 +776,10 @@ pub enum CommandError {
     /// The offending value.
     value: f64,
   },
-  /// The text to draw produced no contours, so there is nothing to draw and nothing to undo.
-  ///
-  /// A command that draws nothing must not record an undo step: the user would press undo once
-  /// and see the document change for a word that was never visible.
-  #[error("the text to draw must not be empty")]
-  EmptyText,
   /// The toolpath's new name was empty or only whitespace, so there is nothing to show and nothing to undo.
   ///
-  /// Its own variant rather than [`CommandError::EmptyText`]: that one is about geometry that produced no
-  /// contours, and telling the operator "the text to draw must not be empty" over a rename would be a true
-  /// sentence about the wrong thing.
+  /// A command that changes nothing must not record an undo step: the user would press undo once and see the
+  /// document change for a name that never did.
   #[error("a toolpath's name must not be empty")]
   EmptyToolpathName,
   /// A count parameter was below the minimum the shape needs.
@@ -894,13 +830,6 @@ fn ensure_id_is_free(document: &Document, id: &str) -> Result<(), CommandError> 
     return Err(CommandError::DuplicateEntity(id.to_owned()));
   }
   Ok(())
-}
-
-fn ensure_layer_exists(document: &Document, layer_id: &str) -> Result<(), CommandError> {
-  if document.layers.iter().any(|layer| layer.id == layer_id) {
-    return Ok(());
-  }
-  Err(CommandError::UnknownLayer(layer_id.to_owned()))
 }
 
 /// The index of the toolpath a command targets, refusing an id the document does not hold.
