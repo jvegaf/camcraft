@@ -22,7 +22,7 @@
 //! a piece whose arc the contour model's bulge cannot hold — and it is reported, never hidden.
 
 use std::cmp::Ordering;
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::TAU;
 
 use crate::arc::Arc;
 use crate::contour::Contour;
@@ -36,8 +36,10 @@ use crate::GeomError;
 /// How close to a segment's own end an intersection may sit before it stops counting as a split.
 const FRACTION_EPSILON: f64 = 1.0e-9;
 
-/// Two directions this close are the same direction, which is what a tangency looks like.
-const ANGLE_EPSILON: f64 = 1.0e-12;
+/// How far a bend shifts its end's direction, in radians. Small enough to leave genuine angular
+/// differences alone, large enough to separate the two ends of a tangency, whose directions agree
+/// exactly and would otherwise be ordered by nothing but their index.
+const ANGLE_TIE_BREAK: f64 = 1.0e-12;
 
 /// The first distance a side probe steps away from a piece, as a fraction of the piece's length.
 const PROBE_STEP: f64 = 1.0e-5;
@@ -618,30 +620,38 @@ fn curvature_sign(pieces: &[Segment], end: (usize, EndAt)) -> i8 {
   }
 }
 
-/// Ascending direction order at a vertex, with curvature, input and piece order as the tie-breaks.
+/// Where a piece end sorts at its vertex: the direction it leaves in, with the way it bends folded in.
 ///
-/// Tangency is why the extra keys exist. Two pieces that are tangent at a vertex share a direction
+/// A tangency is two ends leaving one vertex in the same direction, so the direction alone cannot
+/// order them, and the order is what decides the chaining. Folding the bend into the key as a
+/// third-order perturbation separates that pair while keeping **one scalar per end**, which is what a
+/// total order needs. Deciding "these two angles are close enough to be equal" instead is not
+/// transitive -- three ends within a tolerance of each other can be ordered three different ways --
+/// and `sort_by` on a comparator like that may cycle, panic, or chain the arrangement arbitrarily.
+/// The counter-clockwise bend sorts first and the clockwise bend last, as the walk's left-hand rule
+/// wants.
+fn angular_key(pieces: &[Segment], end: (usize, EndAt)) -> f64 {
+  outward_angle(pieces, end) - ANGLE_TIE_BREAK * f64::from(curvature_sign(pieces, end))
+}
+
+/// Ascending direction order at a vertex, over the whole key and then the identity as a tie-break.
+///
+/// Tangency is why the key carries the bend at all. Two pieces tangent at a vertex share a direction
 /// exactly, and ordering such a pair by its index alone chains a hairpin that walks the same piece
-/// twice; ordering it by the direction it bends puts the counter-clockwise turn first and the
-/// clockwise turn last, which is what keeps each input's boundary on its own side of the touch. The
-/// input and piece order after it keep the walk deterministic when the curvature agrees too.
+/// twice. The input and piece order after the key keep the walk deterministic when the curvature
+/// agrees too, and each of them is a total order, so the composition is one.
 fn angular_order(
   pieces: &[Segment],
   owners: &[bool],
   a: (usize, EndAt),
   b: (usize, EndAt),
 ) -> Ordering {
-  let angle_a = outward_angle(pieces, a);
-  let angle_b = outward_angle(pieces, b);
-  let apart = (angle_a - angle_b + PI).rem_euclid(TAU) - PI;
-  let toward = if apart.abs() <= ANGLE_EPSILON {
-    curvature_sign(pieces, b)
-      .cmp(&curvature_sign(pieces, a))
-      .then(owners[a.0].cmp(&owners[b.0]))
-  } else {
-    angle_a.partial_cmp(&angle_b).unwrap_or(Ordering::Equal)
-  };
-  toward.then(a.0.cmp(&b.0)).then(a.1.rank().cmp(&b.1.rank()))
+  angular_key(pieces, a)
+    .partial_cmp(&angular_key(pieces, b))
+    .unwrap_or(Ordering::Equal)
+    .then(owners[a.0].cmp(&owners[b.0]))
+    .then(a.0.cmp(&b.0))
+    .then(a.1.rank().cmp(&b.1.rank()))
 }
 
 /// The order chains start in: lowest `(bounds.min.y, bounds.min.x, input index)` first.
@@ -960,4 +970,111 @@ fn dedup_pieces(pieces: Vec<(Segment, bool)>, tolerance: f64) -> Vec<(Segment, b
     }
   }
   kept
+}
+
+#[cfg(test)]
+mod angular_key_tests {
+  use super::*;
+
+  fn line(angle: f64) -> Segment {
+    Segment::Line(LineSeg::new(
+      Point2::new(0.0, 0.0),
+      Point2::new(angle.cos(), angle.sin()),
+    ))
+  }
+
+  /// An arc whose tangent at its start points at `angle` and turns counter-clockwise.
+  fn ccw_arc_at_tangent(angle: f64) -> Segment {
+    arc(
+      0.0,
+      angle - std::f64::consts::PI / 2.0,
+      std::f64::consts::PI,
+    )
+  }
+
+  /// An arc whose tangent at its start points at `angle` and turns clockwise.
+  fn cw_arc_at_tangent(angle: f64) -> Segment {
+    arc(
+      0.0,
+      angle + std::f64::consts::PI / 2.0,
+      -std::f64::consts::PI,
+    )
+  }
+
+  fn arc(center_x: f64, start_angle: f64, sweep: f64) -> Segment {
+    Segment::Arc(Arc::new(Point2::new(center_x, 0.0), 5.0, start_angle, sweep).expect("an arc"))
+  }
+
+  /// Both ends of every piece, which is what the chaining walk sorts at a vertex.
+  fn ends(pieces: &[Segment]) -> Vec<(usize, EndAt)> {
+    (0..pieces.len())
+      .flat_map(|index| [(index, EndAt::Start), (index, EndAt::End)])
+      .collect()
+  }
+
+  /// The walk calls `sort_by` on this comparator, so an intransitive one can cycle or panic.
+  ///
+  /// This is the triple that makes a tolerance-based tie intransitive: a clockwise arc at angle 0, a
+  /// straight line 0.6e-12 rad away and a counter-clockwise arc 1.2e-12 rad away. Each neighbour is
+  /// within the tie tolerance, so the old comparator ordered them by bend (clockwise arc last, of
+  /// course, the other way round), while the far pair fell back to the angle and reversed it. A total
+  /// order cannot do that, and this one no longer does.
+  #[test]
+  fn the_order_is_total_so_a_sort_cannot_cycle() {
+    let pieces = vec![
+      cw_arc_at_tangent(0.0),
+      line(0.6e-12),
+      ccw_arc_at_tangent(1.2e-12),
+    ];
+    let owners = vec![true; pieces.len()];
+    let all = ends(&pieces);
+
+    for a in &all {
+      for b in &all {
+        for c in &all {
+          let ab = angular_order(&pieces, &owners, *a, *b);
+          let bc = angular_order(&pieces, &owners, *b, *c);
+          let ac = angular_order(&pieces, &owners, *a, *c);
+          if ab != Ordering::Greater && bc != Ordering::Greater {
+            assert_ne!(
+              ac,
+              Ordering::Greater,
+              "{a:?} <= {b:?} and {b:?} <= {c:?} must imply {a:?} <= {c:?}"
+            );
+          }
+        }
+      }
+    }
+
+    let mut sorted = all.clone();
+    sorted.sort_by(|a, b| angular_order(&pieces, &owners, *a, *b));
+    let mut by_key = all;
+    by_key.sort_by(|a, b| {
+      angular_key(&pieces, *a)
+        .partial_cmp(&angular_key(&pieces, *b))
+        .unwrap_or(Ordering::Equal)
+    });
+    assert_eq!(sorted, by_key, "one scalar per end, sorted the same way");
+  }
+
+  /// Two discs touching at one point leave it in the same direction: only the bend tells them apart.
+  #[test]
+  fn a_tangency_sorts_the_counter_clockwise_bend_first() {
+    let pieces = vec![ccw_arc_at_tangent(0.0), cw_arc_at_tangent(0.0)];
+    let owners = vec![true, true];
+    let (left, right) = ((0, EndAt::Start), (1, EndAt::Start));
+
+    assert_eq!(
+      outward_angle(&pieces, left),
+      outward_angle(&pieces, right),
+      "the two ends leave in the same direction"
+    );
+    assert_eq!(curvature_sign(&pieces, left), 1);
+    assert_eq!(curvature_sign(&pieces, right), -1);
+    assert_eq!(
+      angular_order(&pieces, &owners, left, right),
+      Ordering::Less,
+      "the counter-clockwise bend comes first"
+    );
+  }
 }
