@@ -1,6 +1,6 @@
 //! Property tests for the set operations: the algebra has to hold on shapes nobody wrote down.
 
-use cam_geom::boolean::{combine, BooleanOp, Combined};
+use cam_geom::boolean::{combine, normalize, BooleanOp, Combined};
 use cam_geom::region::Region;
 use cam_geom::{primitive, Contour, Point2, Segment};
 use proptest::prelude::*;
@@ -17,6 +17,17 @@ fn area(region: &Region) -> f64 {
     .map(|segment: Segment| segment.area_contribution())
     .sum::<f64>()
     .abs()
+}
+
+/// A region's own area, after the engine has healed its contour, or `None` when it will not heal.
+///
+/// A self-crossing contour is a legal region whose signed area is zero while its material is not
+/// (documented in `034` L3), so the identity has to be asked of the healed region. Reading the raw
+/// contour's area would make the property about the contour's winding instead of about the sets.
+fn healed_area(region: &Region) -> Option<f64> {
+  normalize(region, TOLERANCE)
+    .ok()
+    .map(|healed| area(&healed.region))
 }
 
 /// A star-shaped polygon around a random centre: fixed angles, random radii.
@@ -66,6 +77,28 @@ fn any_sliver() -> impl Strategy<Value = Region> {
   })
 }
 
+/// A contour that crosses itself: the bowtie a hand-typed or exported outline produces.
+///
+/// C1c asks for degenerate pairs in the random corpus, not only in the written one. The engine heals
+/// the crossing in `normalize`, so the properties stay about the operations rather than about the
+/// healing, but a generator that only ever produced simple polygons would never put a crossing in
+/// front of `combine` at all.
+fn any_crossing_quad() -> impl Strategy<Value = Region> {
+  (-20.0f64..20.0, -20.0f64..20.0, 1.0f64..12.0, 1.0f64..12.0).prop_map(|(x, y, w, h)| {
+    let contour = Contour::from_points(
+      &[
+        Point2::new(x, y),
+        Point2::new(x + w, y + h),
+        Point2::new(x + w, y),
+        Point2::new(x, y + h),
+      ],
+      true,
+    )
+    .expect("a crossing quad");
+    Region::new(vec![contour]).expect("one boundary")
+  })
+}
+
 /// A two-arc disc: the boundary form `primitive::circle` produces, with two semicircles that meet
 /// at the same seam points.
 ///
@@ -80,7 +113,7 @@ fn any_disc() -> impl Strategy<Value = Region> {
 }
 
 fn any_region() -> impl Strategy<Value = Region> {
-  prop_oneof![any_star(), any_sliver(), any_disc()]
+  prop_oneof![any_star(), any_sliver(), any_disc(), any_crossing_quad()]
 }
 
 fn area_of(a: &Region, b: &Region, op: BooleanOp) -> Result<f64, cam_geom::GeomError> {
@@ -123,11 +156,14 @@ proptest! {
     let Ok((union, intersection, _)) = trio(&a, &b) else {
       return Ok(());
     };
+    let (Some(area_a), Some(area_b)) = (healed_area(&a), healed_area(&b)) else {
+      return Ok(());
+    };
     prop_assert!(
-      close(union + intersection, area(&a) + area(&b)),
+      close(union + intersection, area_a + area_b),
       "|A∪B| + |A∩B| = {} but |A| + |B| = {}",
       union + intersection,
-      area(&a) + area(&b)
+      area_a + area_b
     );
   }
 
@@ -137,11 +173,14 @@ proptest! {
     let Ok((_, intersection, difference)) = trio(&a, &b) else {
       return Ok(());
     };
+    let Some(area_a) = healed_area(&a) else {
+      return Ok(());
+    };
     prop_assert!(
-      close(difference + intersection, area(&a)),
+      close(difference + intersection, area_a),
       "|A∖B| + |A∩B| = {} but |A| = {}",
       difference + intersection,
-      area(&a)
+      area_a
     );
   }
 
@@ -158,8 +197,11 @@ proptest! {
   /// A region combined with itself is itself, and a region minus itself is nothing.
   #[test]
   fn idempotence_and_self_subtraction(a in any_region()) {
-    prop_assert!(close(area_of(&a, &a, BooleanOp::Union)?, area(&a)));
-    prop_assert!(close(area_of(&a, &a, BooleanOp::Intersection)?, area(&a)));
+    let Some(area_a) = healed_area(&a) else {
+      return Ok(());
+    };
+    prop_assert!(close(area_of(&a, &a, BooleanOp::Union)?, area_a));
+    prop_assert!(close(area_of(&a, &a, BooleanOp::Intersection)?, area_a));
     prop_assert!(area_of(&a, &a, BooleanOp::Difference)? == 0.0);
   }
 
