@@ -71,6 +71,8 @@ candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo
 **Estado final de la cadena y de su review: ver L20-L22.** Las ramas `camcraft-sweep-cN`, `-dA/-dB/-dC`
 son andamiaje de review; los commits son el entregable.
 
+**Estado.** Delivered. T1-T5 y T7 hechas (T7 en L33); T6 plegada a C3 por decision escrita (L23, L32).
+
 **El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
 es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
 negociarlo, y por eso el criterio de aceptacion es por candidato y no por linea.
@@ -364,3 +366,26 @@ la sección `nesting` del modelo (`Nesting`, `nesting_utilisation`) y sus lector
 `printsheet.rs`. Son datos y contratos de documento, no kernel, y se limpian al definir
 `camcraft/document@1` (035/C3), una sola vez. T7 (verificación independiente) queda como el último paso de
 esta tarea; nada de este tramo autoriza delivery: push, PRs y merge siguen siendo decisión del dueño.
+
+**L33** (evidencia — T7, verificación independiente): corrida sobre `f11a629..HEAD` con `gentle-ai-verify`,
+riesgo declarado item 3 (contrato de CLI). Veredicto **PASS** en los seis puntos: (1) el contrato: `nest`
+como subcomando y en `script` responden `unknown command` con exit `2`, `--dpi` responde `unknown import
+option` con exit `2` y no hay parseo silencioso, `AddText` no existe en `cam-app` ni en `cam-ui`; (2) la
+superficie que sobrevive corre de verdad contra un documento en `/tmp`: `validate`, `inspect`, `check`,
+`export`, `tools add/list`, `postp validate`, `script` con `open`/`validate`/`save`, y `parts` parsea y
+falla por header, no por comando desconocido; (3) cero restos vivos de la madera fuera de historia
+(`docs/old`, `odd/roadmap`, `odd/tasks`) y `SUPPORTED_EXTENSIONS = "dxf, svg"`; (4) la aritmética del
+conteo se reprodujo archivo por archivo: 156 = 97 + 59, 1323 - 156 = 1167; (5) el gate: 1167 passed, 0
+failed, y el único rojo es el archivo de la 034, con `git diff f11a629..HEAD -- <ese archivo>` vacío; (6)
+README y esta tarea dicen lo que el código hace. **Y la comprobación que el verificador no podía hacer por
+sí solo**: cada commit se probó aislado, no sólo la punta — `d6fee30` desde `git archive` en un árbol
+limpio: **1226 passed, 0 failed**. El segundo corte se re-verifica por separado porque la primera corrida
+murió por falta de espacio en `/tmp` (dos `target/` de 6 GB en un tmpfs de 16 GB), no por el código.
+
+**L34** (evidencia — reconciliación del primer corte, hecha después de commitear): la primera pasada de
+`git add` dejó en `d6fee30` un cambio que pertenece al corte de import — la aserción de
+`crates/cam-cli/tests/cli.rs` sobre la frase de formatos soportados, que en ese commit todavía decía
+`pdf, eps, png`. Se detectó antes de cerrar: ese archivo se corrigió con `commit --amend` para que el
+corte 1 quedara verde por sí mismo, y la aserción nueva entró en `261812b` junto con el cambio que la
+vuelve verdadera. Regla que queda: un commit de borrado no puede adelantar la expectativa de un cambio que
+todavía no aterrizó, aunque el árbol final esté verde.
