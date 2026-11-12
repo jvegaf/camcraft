@@ -14,7 +14,8 @@ set -euo pipefail
 N="${1:-}"
 if [ -z "$N" ]; then echo "Usage: claim-task.sh N" >&2; exit 1; fi
 
-PWD_REAL=$(pwd -P)
+PWD_REAL=$(git rev-parse --show-toplevel)
+PWD_REAL=$(cd "$PWD_REAL" && pwd -P)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 CLAIMDIR="$MAIN/odd/tasks/.claims"
@@ -76,13 +77,20 @@ def declared_surfaces() -> list[str]:
 
 
 def enforced_base(surface: str) -> str:
-    """What a surface can touch: its literal prefix, cut at the first glob segment."""
+    """What a surface can touch: its literal prefix, cut at the first glob segment.
+
+    A surface that starts with a glob (`*.rs`) has no literal prefix at all, and `""` is read as
+    "everything" rather than as "nothing": the empty string is not a path anybody can write, and
+    answering "nothing" there is what lets two tasks claim the same file.
+    """
+    while surface.startswith("./"):
+        surface = surface[2:]
     kept = []
     for part in surface.split("/"):
         if any(char in part for char in GLOB_CHARS):
             break
         kept.append(part)
-    return "/".join(kept) or surface
+    return "/".join(kept)
 
 
 def legacy_crates() -> list[str]:
@@ -90,6 +98,8 @@ def legacy_crates() -> list[str]:
 
 
 def overlaps(one: str, other: str) -> bool:
+    if not one or not other:
+        return True
     return one == other or other.startswith(one + "/") or one.startswith(other + "/")
 
 
@@ -116,7 +126,10 @@ for other in sorted(pathlib.Path(claimdir).glob("*.json")):
             file=sys.stderr,
         )
         sys.exit(1)
-    theirs = list(claim.get("surfaces") or []) + list(claim.get("crates") or [])
+    # The other claim may predate this normalization, so it is normalized here too: comparing a
+    # normalized surface against a raw one is how a new exact path misses an old './path' claim.
+    theirs = [enforced_base(surface) for surface in (claim.get("surfaces") or [])]
+    theirs += list(claim.get("crates") or [])
     for surface in mine:
         for taken in theirs:
             if overlaps(surface, taken):

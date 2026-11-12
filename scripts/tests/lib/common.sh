@@ -99,6 +99,7 @@ STUB
 | 104 | [legacy-clash](104-legacy-clash.md) | in progress | 2026-11-12 | — |
 | 105 | [glob](105-glob.md) | in progress | 2026-11-12 | — |
 | 106 | [dotslash](106-dotslash.md) | in progress | 2026-11-12 | — |
+| 107 | [root-glob](107-root-glob.md) | in progress | 2026-11-12 | — |
 MD
 
   cat >"$MAIN/odd/tasks/100-alpha.md" <<'MD'
@@ -155,6 +156,14 @@ MD
 - `./fixtures/corpus`
 MD
 
+  cat >"$MAIN/odd/tasks/107-root-glob.md" <<'MD'
+# 107 — root glob
+
+## Surfaces
+
+- `*.rs`
+MD
+
   printf '# fixture justfile\n' >"$MAIN/justfile"
 
   # The real repository ignores the claims directory; without this the fixture's own claims make the
@@ -166,7 +175,7 @@ MD
   git -C "$MAIN" -c user.email=t@t -c user.name=t commit -qm init
 
   local n
-  for n in 100 101 102 103 104 105 106; do
+  for n in 100 101 102 103 104 105 106 107; do
     git -C "$MAIN" worktree add -q "$WORK/wt$n" -b "feat/$n" >/dev/null 2>&1 ||
       git -C "$MAIN" worktree add -q "$WORK/wt$n" "feat/$n" >/dev/null 2>&1
   done

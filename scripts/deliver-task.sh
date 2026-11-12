@@ -13,16 +13,19 @@ if [ -z "$N" ]; then
   exit 1
 fi
 
-PWD_REAL=$(pwd -P)
+TOPLEVEL=$(git rev-parse --show-toplevel)
+TOPLEVEL=$(cd "$TOPLEVEL" && pwd -P)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 INDEX="$MAIN/odd/tasks/INDEX.md"
 CLAIMDIR="$MAIN/odd/tasks/.claims"
 CLAIM="$CLAIMDIR/$N.json"
 
-# Delivering from a worktree would mark a task delivered before its branch is merged.
-if [ "$PWD_REAL" != "$MAIN" ]; then
-  echo "ERROR: Cannot deliver from $PWD_REAL. Run it from the primary tree, after the merge." >&2
+# Delivering from a worktree would mark a task delivered before its branch is merged. The tree is
+# asked for its root, never the shell's directory: a subdirectory of the primary tree is still the
+# primary tree.
+if [ "$TOPLEVEL" != "$MAIN" ]; then
+  echo "ERROR: Cannot deliver from $TOPLEVEL. Run it from the primary tree, after the merge." >&2
   exit 1
 fi
 

@@ -20,7 +20,9 @@ expect_contains "the claim survives the refusal" "$MAIN/odd/tasks/.claims/100.js
 
 echo "== deliver writes the index =="
 expect_fail "deliver refuses a task with no index row" run_in "$MAIN" ./scripts/deliver-task.sh 999
-expect_ok "deliver 100 with its commit" run_in "$MAIN" ./scripts/deliver-task.sh 100 abc1234
+mkdir -p "$MAIN/odd/tasks"
+expect_ok "deliver works from a subdirectory of the primary tree" \
+  run_in "$MAIN/odd" "$MAIN/scripts/deliver-task.sh" 100 abc1234
 expect_contains "the row is delivered" "$MAIN/odd/tasks/INDEX.md" \
   "| 100 | [alpha](100-alpha.md) | delivered |"
 expect_contains "the row records the commit" "$MAIN/odd/tasks/INDEX.md" '`abc1234`'

@@ -21,7 +21,8 @@ case "${1:-}" in
     ;;
 esac
 
-PWD_REAL=$(pwd -P)
+PWD_REAL=$(git rev-parse --show-toplevel)
+PWD_REAL=$(cd "$PWD_REAL" && pwd -P)
 MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
 MAIN=$(cd "$MAIN" && pwd -P)
 CLAIMDIR="$MAIN/odd/tasks/.claims"
