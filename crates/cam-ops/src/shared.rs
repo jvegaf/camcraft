@@ -353,43 +353,6 @@ pub enum ToolpathError {
     /// Id of the offending island.
     island: String,
   },
-  /// A moulding profile has fewer than two points, so no cross-section exists to sweep.
-  ///
-  /// The document model refuses it as the document loads (M8 T1), but a caller that hands the strategy
-  /// its parameters directly reaches it without passing through there, and a profile of one point sweeps
-  /// nothing at all.
-  #[error("a moulding profile needs at least two points, got {points}")]
-  MouldingProfileTooShort {
-    /// How many points the profile held.
-    points: usize,
-  },
-  /// A moulding profile's lateral distances do not strictly increase.
-  ///
-  /// A cross-section is one depth per lateral distance, so a lateral that does not exceed the one before
-  /// it is two depths for the same place. Refused with both values and the offending index rather than
-  /// resolved by picking one, because either pick cuts a profile the document did not author (S3).
-  #[error(
-    "moulding profile point {index} at lateral {lateral} mm must be greater than the previous \
-     {previous} mm: a cross-section is one depth per lateral distance"
-  )]
-  MouldingProfileLateral {
-    /// Index of the offending point in the profile.
-    index: usize,
-    /// The lateral distance of the point before it, in millimetres.
-    previous: f64,
-    /// The offending lateral distance in millimetres.
-    lateral: f64,
-  },
-  /// The geometry kernel refused a moulding's geometry for a reason the strategy does not restate.
-  ///
-  /// A rail with no length is the case this is reached for: it has no sweep behind it, and a program of
-  /// zero moves would look like a strategy that ran and found nothing to cut. The kernel's sentence is
-  /// kept verbatim instead of being guessed at (the `MedialAxis` precedent).
-  #[error("the moulding's geometry could not be built: {reason}")]
-  MouldingGeometry {
-    /// What the kernel said, verbatim.
-    reason: String,
-  },
   /// A strategy refused the toolpath it was handed.
   ///
   /// The strategy's own refusal is the cause and keeps its wording; this states which toolpath asked
