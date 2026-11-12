@@ -39,8 +39,8 @@ el Log con evidencia `path:line`.
 | T1 | Mapear la blast radius real (read-only) | S5 | `gentle-ai-explore` | — |
 | T2 | Crear `cam-ops` con **copias** de `rings` (pocket completo), `peck` (drill) y `follow` (profile) + sus tests | S3, S4 | `gentle-ai-worker` | commit 1 |
 | T3 | PR 1: borrar `cam-toolpath`, `cam-program`, el editor de estrategia de `cam-ui`, los oráculos de estrategia de `cam-sim` y los subcomandos `toolpath`/`emit`/`simulate` de `cam-cli`; árbol verde | S1, S4, S5 | inline | commit 2 |
-| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `7916278` + `3f43554` + `17b9c44` |
-| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `09c0093` |
+| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `7916278` + `31c317c` + `17b9c44` |
+| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `cc9199d` |
 | T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | plegada a C3 (L23) | — |
 | T7 | Verificación independiente del barrido (riesgo item 3: contrato de CLI) | S4 | `gentle-ai-verify` | — |
 
@@ -338,7 +338,7 @@ tiene `dev` — `git rev-parse --verify dev` falla — y sus ramas son `master`,
 `worktree/green-forest-611b` y `worktree/silver-meadow-676f`, las tres en `f11a629`. El tramo se hizo en la
 rama del worktree, cortada de esa base; ni `master` ni la otra rama se tocaron.
 
-**L29** (evidencia — T4, el kernel queda con lo que sirve a PCB): tres cortes, `7916278` (texto), `3f43554` (moulding) e `17b9c44` (nesting); L35 explica por qué son tres. Salen `text` (10 tests),
+**L29** (evidencia — T4, el kernel queda con lo que sirve a PCB): tres cortes, `7916278` (texto), `31c317c` (moulding) e `17b9c44` (nesting); L35 explica por qué son tres. Salen `text` (10 tests),
 `nest` (14), `nest_profile` (20) y `moulding` (24) con sus tests, y con ellos la superficie que sólo existía
 para alcanzarlos: `Command::AddText` en `cam-app` (8 tests), el text tool y su panel de parámetros en
 `cam-ui` (1 test), el subcomando `nest` y el `nest` de `script` en `cam-cli` (17 + 3 tests), y tres
@@ -346,7 +346,7 @@ variantes `Moulding*` de `cam-ops` que ningún call site podía construir. **97 
 generadores de id quedan: los usa `parts`. Los flags de raster del `import` (`--dpi`, `--threshold`,
 `--invert`, `--min-area`, `--simplify`) salen acá porque parseaban, validaban y no hacían nada.
 
-**L30** (evidencia — T5, importadores): `09c0093`. Salen `pdf` (16 tests), `eps` (26) y `raster` (16), más
+**L30** (evidencia — T5, importadores): `cc9199d`. Salen `pdf` (16 tests), `eps` (26) y `raster` (16), más
 el caso EPS de `NothingImported` en `tests/import.rs` (1). **59 tests.** `Format` queda en `Dxf`/`Svg`,
 `SUPPORTED_EXTENSIONS` pasa a `"dxf, svg"`, `TraceOptions` sale con el tracer que configuraba, `flate2` sale
 del crate (sus dos únicos usuarios eran los streams de PDF) y el diálogo de `cam-desktop` deja de ofrecer
@@ -403,7 +403,7 @@ verificando `cargo check` y `cargo test --workspace` antes de commitear. La rama
 como `sweep-backup` (`7a6e6f5`), con sus cinco commits, y no se borra.
 
 **L36** (evidencia — los cinco cortes, cada uno verde por separado): `7916278` texto (1.660 líneas
-authored, 1304 tests), `3f43554` moulding (1.285, 1280), `09c0093` import (5.612, 1221), `17b9c44` nesting
+authored, 1304 tests), `31c317c` moulding (1.285, 1280), `cc9199d` import (5.612, 1221), `17b9c44` nesting
 (5.377, 1167) y el commit de docs que sigue. La aritmética cierra por corte: 1323 - 19 = 1304; - 24 = 1280;
 - 59 = 1221; - 54 = 1167. El árbol de `17b9c44` es **idéntico** al de `sweep-backup` en todo lo que no es
 documentación (`git diff sweep-backup 17b9c44` sólo muestra README y `odd/tasks/`), así que rebanar cambió
