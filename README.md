@@ -8,7 +8,7 @@ strategy catalogue and the `toolpath`/`emit`/`simulate` pipeline — and what it
 rests on: arc-native geometry, a document that validates itself, a deterministic store, and an editor you
 can drive in CI.
 
-**Status.** The kernel, the document model, the panel importers, the nesters, the tool library and the
+**Status.** The kernel, the document model, the importers, the tool library and the
 editor are in place and tested. The two *board* readers — Gerber RS-274X and Excellon — exist as libraries
 and produce copper and holes, but **no command turns a board into a cutting program yet**: that is the work
 in progress, and its plan is [`docs/ROADMAP_CAMCRAFT.md`](docs/ROADMAP_CAMCRAFT.md) under the architecture
@@ -35,24 +35,15 @@ approximated.
 `G91`, and the file's own digit format — the header's `2:6` decides how `X11528623` is read, because
 assuming a decimal point multiplies a coordinate by a hundred and nothing complains.
 
-**Panel import and interchange.** DXF, SVG, PDF, EPS and PNG raster trace, each one either converted or
+**Panel import and interchange.** DXF and SVG, each one either converted or
 listed with a reason and a source location, so a dropped curve is never silent. A document goes back out as
 DXF or SVG (`cam-cli export --format`).
 
-**Nesting, with a certificate per placement.** `cam-cli nest` packs the document's sheets and parts and
-stores the placements and one cost record, and each nester states its promise as one predicate instead of
-restating arithmetic. Rectangles go through maxrects with a guillotine pass that earns its place: on a
-234 × 173 mm board at gap 8 it fits three parts on one sheet where maxrects needs two (`0.5067` against
-`0.2534` utilisation). Anything that is not a rectangle goes through a free-profile heuristic that is sound
-and measurably incomplete — it refuses a legal placement rather than inventing an illegal one. The one
-arithmetic is `Document::nesting_utilisation`, and the report, the stored field and load-time validation
-all read it. A nesting that cannot place every instance exits `7` and writes nothing.
-
 **A command language, a cut list and a print sheet.** `cam-cli script file.cam` runs one command per line
-against one document (`open`, `sheet`, `part`, `nest`, `validate`, `save`, `parts`, `cutlist`), handing its
-tokens to the same flag parser and the same function the matching subcommand calls, so a scripted `nest`
-writes the document `cam-cli nest` writes. A refusal is located and named — `line 4:6: --gap must be a
-non-negative distance in mm, got -1` — and every mutation passes validation on a clone, so a refused script
+against one document (`open`, `sheet`, `part`, `validate`, `save`, `parts`, `cutlist`), handing its
+tokens to the same flag parser and the same function the matching subcommand calls. A refusal is located
+and named — `line 4:6: --gap must be a non-negative distance in mm, got -1` — and every mutation passes
+validation on a clone, so a refused script
 leaves the file exactly as it was. `cutlist` writes the placements as CSV; `report` writes a self-contained
 HTML print sheet, with an `Omitted` section naming what a sheet cannot honestly show.
 
@@ -71,7 +62,7 @@ third-party post-processor file is vendored.
 
 **An editor you can drive and test without a GPU.** Pan, zoom about the cursor, zoom-to-fit, grid, picking
 by screen distance, marquee selection, snapping, bounded undo/redo, layer visibility; the authoring tools —
-line, polyline, arc, circle, ellipse, rectangle, polygon, star, single-stroke text — plus node editing,
+line, polyline, arc, circle, ellipse, rectangle, polygon, star — plus node editing,
 join, trim, offset, mirror/rotate/scale, array copy and align. Open, Save and Save as go out as an intent
 to the host, so `cam-ui` never links a desktop toolkit, and a save validates first and renames a temporary
 sibling into place, so an interrupted save leaves the previous archive on disk.
@@ -117,7 +108,7 @@ reference for what the formats mean.
 | `cam-export` | A document back out as DXF or SVG |
 | `cam-post` | `.pp` parser and the data-driven G-code emitter |
 | `cam-sim` | Material-removal simulation: the stock's heightfield, swept removal, gouge and uncut reporting |
-| `cam-import` | DXF, SVG, PDF, EPS and PNG raster import, with a report of what was converted or skipped |
+| `cam-import` | DXF and SVG import, with a report of what was converted or skipped |
 | `cam-cli` | Headless pipeline and the verification surface — a library with a thin binary, so the shell's scripting panel calls the same functions |
 | `cam-app` | Application state machine: commands, selection, undo/redo. No UI dependencies |
 | `cam-view` | Backend-agnostic scene and grid, picking, marquee and snapping in screen pixels |
@@ -131,7 +122,7 @@ that `egui` exists.
 
 ## Testing
 
-1319 tests, all deterministic — including the editor, which runs real `egui` frames headless and asserts on
+1167 tests, all deterministic — including the editor, which runs real `egui` frames headless and asserts on
 both the actions they produce and the text they paint:
 
 ```bash
