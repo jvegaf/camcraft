@@ -280,8 +280,16 @@ fn a_disc_tangent_to_the_inside_of_an_edge_resolves() {
       expect_close(area(&u), 100.0, "tangent-inside union");
       expect_close(area(&i), pi, "tangent-inside intersection");
       expect_close(area(&d), 100.0 - pi, "tangent-inside difference");
-      assert_eq!(d.boundaries.len(), 2, "difference leaves the plate and a hole");
-      expect_close(area(&u) + area(&i), 100.0 + pi, "tangent-inside area identity");
+      assert_eq!(
+        d.boundaries.len(),
+        2,
+        "difference leaves the plate and a hole"
+      );
+      expect_close(
+        area(&u) + area(&i),
+        100.0 + pi,
+        "tangent-inside area identity",
+      );
     }
     other => panic!("a tangent-inside disc must resolve, got {other:?}"),
   }
@@ -356,8 +364,11 @@ fn a_shared_edge_is_not_counted_twice() {
   );
 }
 
-/// Axis-aligned overlap area of two rectangles; zero when they only touch or are apart.
-fn rect_overlap_area(ax0: f64, ay0: f64, ax1: f64, ay1: f64, bx0: f64, by0: f64, bx1: f64, by1: f64) -> f64 {
+/// Axis-aligned overlap area of two rectangles, each as `(x0, y0, x1, y1)`; zero when they only touch
+/// or are apart.
+fn rect_overlap_area(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> f64 {
+  let (ax0, ay0, ax1, ay1) = a;
+  let (bx0, by0, bx1, by1) = b;
   let x0 = ax0.max(bx0);
   let y0 = ay0.max(by0);
   let x1 = ax1.min(bx1);
@@ -419,15 +430,41 @@ fn two_hundred_known_area_operations_hold() {
   // Second base pair family: different A and more Bs (35 pairs).
   let a2 = (-5.0, -3.0, 5.0, 3.0);
   for (dx, dy, w, h) in [
-    (6.0, 0.0, 2.0, 2.0), (-8.0, 0.0, 2.0, 2.0), (0.0, 4.0, 2.0, 2.0), (0.0, -6.0, 2.0, 2.0),
-    (5.0, -3.0, 3.0, 6.0), (-8.0, -3.0, 3.0, 6.0), (-5.0, 3.0, 10.0, 2.0), (-5.0, -5.0, 10.0, 2.0),
-    (-4.0, -2.0, 8.0, 4.0), (-6.0, -4.0, 12.0, 8.0), (-5.0, -3.0, 10.0, 6.0), (0.0, 0.0, 3.0, 2.0),
-    (-2.0, -1.0, 4.0, 2.0), (3.0, 1.0, 4.0, 4.0), (-9.0, 1.0, 6.0, 4.0), (-2.0, -6.0, 4.0, 5.0),
-    (-2.0, 1.0, 4.0, 5.0), (4.0, -1.0, 3.0, 2.0), (-7.0, -1.0, 3.0, 2.0), (1.0, 2.5, 3.0, 2.0),
-    (1.0, -4.5, 3.0, 2.0), (-3.0, -1.0, 2.0, 2.0), (2.0, -2.0, 2.0, 4.0), (-4.0, -2.0, 2.0, 4.0),
-    (0.0, -3.0, 10.0, 3.0), (0.0, 0.0, 10.0, 3.0), (-10.0, -3.0, 5.0, 6.0), (0.0, -3.0, 5.0, 6.0),
-    (5.0, 3.0, 1.0, 1.0), (-6.0, -4.0, 1.0, 1.0), (2.0, 1.0, 1.0, 1.0), (-3.0, -2.0, 1.0, 1.0),
-    (7.0, 2.0, 2.0, 2.0), (-1.0, 5.0, 2.0, 2.0), (10.0, 0.0, 1.0, 1.0),
+    (6.0, 0.0, 2.0, 2.0),
+    (-8.0, 0.0, 2.0, 2.0),
+    (0.0, 4.0, 2.0, 2.0),
+    (0.0, -6.0, 2.0, 2.0),
+    (5.0, -3.0, 3.0, 6.0),
+    (-8.0, -3.0, 3.0, 6.0),
+    (-5.0, 3.0, 10.0, 2.0),
+    (-5.0, -5.0, 10.0, 2.0),
+    (-4.0, -2.0, 8.0, 4.0),
+    (-6.0, -4.0, 12.0, 8.0),
+    (-5.0, -3.0, 10.0, 6.0),
+    (0.0, 0.0, 3.0, 2.0),
+    (-2.0, -1.0, 4.0, 2.0),
+    (3.0, 1.0, 4.0, 4.0),
+    (-9.0, 1.0, 6.0, 4.0),
+    (-2.0, -6.0, 4.0, 5.0),
+    (-2.0, 1.0, 4.0, 5.0),
+    (4.0, -1.0, 3.0, 2.0),
+    (-7.0, -1.0, 3.0, 2.0),
+    (1.0, 2.5, 3.0, 2.0),
+    (1.0, -4.5, 3.0, 2.0),
+    (-3.0, -1.0, 2.0, 2.0),
+    (2.0, -2.0, 2.0, 4.0),
+    (-4.0, -2.0, 2.0, 4.0),
+    (0.0, -3.0, 10.0, 3.0),
+    (0.0, 0.0, 10.0, 3.0),
+    (-10.0, -3.0, 5.0, 6.0),
+    (0.0, -3.0, 5.0, 6.0),
+    (5.0, 3.0, 1.0, 1.0),
+    (-6.0, -4.0, 1.0, 1.0),
+    (2.0, 1.0, 1.0, 1.0),
+    (-3.0, -2.0, 1.0, 1.0),
+    (7.0, 2.0, 2.0, 2.0),
+    (-1.0, 5.0, 2.0, 2.0),
+    (10.0, 0.0, 1.0, 1.0),
   ] {
     a_rects.push(a2);
     b_rects.push((dx, dy, dx + w, dy + h));
@@ -440,7 +477,7 @@ fn two_hundred_known_area_operations_hold() {
     let rb = rect(bx0, by0, bx1, by1);
     let aa = (ax1 - ax0) * (ay1 - ay0);
     let ab = (bx1 - bx0) * (by1 - by0);
-    let inter = rect_overlap_area(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1);
+    let inter = rect_overlap_area((ax0, ay0, ax1, ay1), (bx0, by0, bx1, by1));
     let expected_union = aa + ab - inter;
     let expected_inter = inter;
     let expected_diff = aa - inter;

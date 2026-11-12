@@ -38,11 +38,11 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 031 | [shell-file-operations](031-shell-file-operations.md) | delivered | 2026-11-09 | `248d28d` |
 | 032 | [tool-library-app](032-tool-library-app.md) | delivered | 2026-11-10 | `5c469ac` |
 | 033 | [tool-library-editor](033-tool-library-editor.md) | delivered | 2026-11-10 | `81e1058` |
-| 034 | [c1-booleans](034-c1-booleans.md) | in progress | 2026-11-11 | `83fcbea` |
+| 034 | [c1-booleans](034-c1-booleans.md) | delivered | 2026-11-11 | `aee3e5d` |
 | 035 | [c3-model](035-c3-model.md) | in progress | 2026-11-11 | `4795c45` |
 | 036 | [gerber-geometry](036-gerber-geometry.md) | delivered | 2026-11-11 | `fc90dda` |
 | 037 | [offset-exact](037-offset-exact.md) | delivered | 2026-11-11 | `79a07c9` |
 | 038 | [start-screen](038-start-screen.md) | delivered | 2026-11-11 | `b745501` |
 | 039 | [wood-out-sweep](039-wood-out-sweep.md) | in progress | 2026-11-11 | `2dacebd` |
 | 040 | [docs-reorganization](040-docs-reorganization.md) | delivered | 2026-11-11 | `047b582` |
-| 041 | [worktree-enforcement](041-worktree-enforcement.md) | delivered | 2026-11-12 | `e3369d7` |
+| 041 | [worktree-enforcement](041-worktree-enforcement.md) | delivered | 2026-11-12 | `f11a629` |

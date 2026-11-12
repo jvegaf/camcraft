@@ -136,3 +136,76 @@ porque un contorno de arcos ni siquiera podia entrar. G0.1 se reabre con nombre 
 cruzarlo, seguia rechazandose ("revisits a piece") a tolerancia 1e-9 en el momento de L4 (ver L5).
 
 **L5** (corte 2026-11-12, baseline + C1b tangencia + refuerzo C1c/C1a): baseline `cargo test -p cam-geom` en verde (booleanos 15+5 y suite completa). C1b: `push_fractions` en `crates/cam-geom/src/boolean.rs` ahora parte también en contactos `Tangent` interiores, de modo que un toque sin cruce genera vértice en el arrangement; se fijó con `a_disc_tangent_to_the_inside_of_an_edge_resolves` en `crates/cam-geom/tests/boolean_operations.rs` (unión/intersección/diferencia e identidad de área). C1c/C1a: se agregaron propiedades explícitas de De Morgan (`de_morgan_difference_over_union`, `de_morgan_difference_over_intersection`) en `boolean_properties.rs` y un corpus determinista de 210 operaciones contra áreas analíticas conocidas en `two_hundred_known_area_operations_hold`. Quedan por acreditar/cerrar según el texto literal del doc: corpus amplio de normalización/degeneradas y cualquier otro caso no resoluble que aparezca; los cambios de código/tests quedan sin commitear en esta sesión.
+
+**L6** (corte 2026-11-12, cierre de C1b y C1c): la evidencia que faltaba está medida y commiteada.
+Corrección a L5: los cambios de ese corte **sí** están commiteados, en `83fcbea`; L5 los describió como
+pendientes y no lo estaban.
+
+- **C1b — corpus degenerado.** `crates/cam-geom/tests/boolean_corpus.rs` (nuevo, 6 tests) ejerce
+  contorno auto-intersectado, borde compartido, contornos coincidentes y recorridos al revés, vértice de
+  contacto, disco tangente a cuatro bordes desde adentro, discos osculantes y vértices colineales. Para
+  cada par: las tres operaciones resuelven, cada entrada normaliza y se cumplen
+  `|A∪B| + |A∩B| = |A| + |B|` y `|A∖B| + |A∩B| = |A|`, con el área de la región curada.
+- **Un defecto real que el corpus encontró, y su arreglo (`0e999a0`).** `combine` rechazaba un par
+  osculante de discos y un disco tangente por dentro con "the arrangement revisits a piece". La causa no
+  era la tangencia en sí sino el desempate: dos bordes tangentes salen del vértice con **el mismo
+  ángulo**, así que el orden ascendente caía al índice de pieza y encadenaba un hairpin que recorría dos
+  veces la misma pieza. Ahora el desempate es por la dirección en que cada pieza se dobla (el centro de
+  un arco está del lado hacia el que gira), después por la región de origen y después por el índice. Con
+  eso la tangencia resuelve y el hueco tangente se sigue reportando como dos contornos (placa y hueco),
+  que es lo que un consumidor de offset necesita.
+- **C1c — propiedades con degeneradas.** El generador de `boolean_properties.rs` incluye ahora un
+  cuadrilátero auto-intersectado, y las propiedades dejaron de comparar contra el área cruda del
+  contorno: un contorno que se cruza tiene área con signo cero aunque su material no la tenga (es
+  exactamente lo que dice L3), así que la identidad se le pedía a un número de winding y no a un
+  conjunto. Ahora miden la región curada por `normalize`, como la ve `combine` (`226f6ed`). Presupuesto
+  fijo de 128 casos por propiedad; conmutatividad, idempotencia, De Morgan y determinismo siguen verdes.
+- **Un límite que el corpus no puede cruzar, medido y fijado.** `Contour::from_points` rechaza vértices
+  consecutivos coincidentes, así que un contorno que no encierra material (ida y vuelta sobre la misma
+  recta) no llega al motor: lo rechaza el constructor. El corpus lo fija como contrato del constructor
+  en lugar de fingir que es un caso del arrangement. Si alguna vez hace falta aceptarlo, el cambio es
+  del constructor, no de C1.
+- **Un gate que ya estaba rojo y se repara acá.** `just check` no pasaba en `83fcbea`: `cargo fmt
+  --check` marcaba `boolean_operations.rs` y `clippy -D warnings` marcaba `rect_overlap_area` con ocho
+  argumentos. Son defectos del corte anterior en los archivos de esta tarea, así que se arreglan acá
+  (formato del archivo y el helper tomando dos cajas en lugar de ocho números) antes de declarar la
+  entrega.
+- **Evidencia de corrida.** `cargo test -p cam-geom` en verde (booleanos: 16 operaciones + 7
+  propiedades + 6 corpus; suite completa del crate en verde) y `cargo test --workspace` en verde; `just check` (docs, fmt, clippy -D warnings y suite completa) en verde.
+
+Con esto C1a (210 operaciones contra áreas analíticas conocidas), C1b (corpus degenerado que resuelve y
+respeta las identidades) y C1c (proptest con degeneradas y presupuesto fijo) quedan acreditados y la
+tarea se entrega. Corte de entrega: `0e999a0` y `226f6ed` (≈400 líneas autoradas), más este registro.
+
+**L7** (review nativo, 2026-11-12): el corte se revisó en dos candidatos —el motor solo y el resto— porque
+el candidato único de 552 líneas no entraba en el bound del relay. Las dos revisiones terminaron
+**aprobadas**, cada una con una corrección acotada y validación dirigida.
+
+- **`review-ce6599023eaa6c32`** (motor: `boolean.rs` + corpus; lentes risk/resilience/readability/
+  reliability + refuter). Hallazgo **R4-001, CRITICAL**: el desempate que acabo de describir en L6
+  mezclaba un empate *por tolerancia* entre pares cercanos con una comparación de ángulo crudo entre
+  pares lejanos, así que la igualdad no era transitiva —tres extremos a 0, 0.6e-12 y 1.2e-12 rad con
+  curvaturas −1/0/+1 se ordenaban en ciclo— y `sort_by` exige un orden total: podía ciclar, entrar en
+  pánico o encadenar en un orden arbitrario. Arreglado en `0163c97` dándole a cada extremo **una sola
+  clave escalar** (ángulo plegado menos el desempate por curvatura); el test unitario fija exactamente
+  esa terna y falla con el comparador anterior. Corrección: 155 líneas de diff, dentro del presupuesto
+  (189).
+- **`review-8ce80a51dcef001e`** (resto: generador de propiedades, reparación de fmt/clippy, seed de
+  proptest, registros ODD; lente `reliability` + refuter). Hallazgo **R3-001, CRITICAL**: la clave nueva
+  comparaba el ángulo **crudo**, y una dirección tiene dos nombres (`atan2` responde `π` y `-π` para el
+  mismo rumbo −x). Una tangencia en esa costura quedaba a 2π de distancia, nunca llegaba al desempate por
+  curvatura y el hairpin volvía justo para los contactos sobre la costura. Arreglado en `aee3e5d`
+  plegando el ángulo a `[0, 2π)` antes de perturbar, con un test de costura que falla sin el pliegue.
+  Corrección: 36 líneas. Sin hallazgos nuevos.
+- **Advisories no bloqueantes** que quedan como trabajo posterior, no como deuda de esta tarea:
+  `R2-001` (sugerencia de legibilidad), `R3-NORMALIZE-MULTI-BOUNDARY-GAP` y `R3-SAME-SIGN-TANGENT`
+  (dos advertencias sobre casos de corpus que hoy no se ejercen).
+- **Evidencia final**: `just check` (docs, fmt, clippy `-D warnings`, suite completa) en verde en el tip
+  de la rama, con `cargo test -p cam-geom` en verde (25 targets, incluidos los 3 tests unitarios del
+  orden angular).
+
+Lo que estos dos hallazgos enseñan, y vale más que el arreglo: un empate por tolerancia dentro de un
+comparador nunca es seguro —una clave por elemento es lo que hace el orden total— y esa clave tiene que
+ser además libre de corte de rama, porque el ángulo tiene dos nombres para una misma dirección. Ninguno
+de los dos defectos era visible en un corpus de tangencias comunes; los expusieron la costura y una terna
+casi empatada.
