@@ -176,3 +176,36 @@ pendientes y no lo estaban.
 Con esto C1a (210 operaciones contra áreas analíticas conocidas), C1b (corpus degenerado que resuelve y
 respeta las identidades) y C1c (proptest con degeneradas y presupuesto fijo) quedan acreditados y la
 tarea se entrega. Corte de entrega: `0e999a0` y `226f6ed` (≈400 líneas autoradas), más este registro.
+
+**L7** (review nativo, 2026-11-12): el corte se revisó en dos candidatos —el motor solo y el resto— porque
+el candidato único de 552 líneas no entraba en el bound del relay. Las dos revisiones terminaron
+**aprobadas**, cada una con una corrección acotada y validación dirigida.
+
+- **`review-ce6599023eaa6c32`** (motor: `boolean.rs` + corpus; lentes risk/resilience/readability/
+  reliability + refuter). Hallazgo **R4-001, CRITICAL**: el desempate que acabo de describir en L6
+  mezclaba un empate *por tolerancia* entre pares cercanos con una comparación de ángulo crudo entre
+  pares lejanos, así que la igualdad no era transitiva —tres extremos a 0, 0.6e-12 y 1.2e-12 rad con
+  curvaturas −1/0/+1 se ordenaban en ciclo— y `sort_by` exige un orden total: podía ciclar, entrar en
+  pánico o encadenar en un orden arbitrario. Arreglado en `0163c97` dándole a cada extremo **una sola
+  clave escalar** (ángulo plegado menos el desempate por curvatura); el test unitario fija exactamente
+  esa terna y falla con el comparador anterior. Corrección: 155 líneas de diff, dentro del presupuesto
+  (189).
+- **`review-8ce80a51dcef001e`** (resto: generador de propiedades, reparación de fmt/clippy, seed de
+  proptest, registros ODD; lente `reliability` + refuter). Hallazgo **R3-001, CRITICAL**: la clave nueva
+  comparaba el ángulo **crudo**, y una dirección tiene dos nombres (`atan2` responde `π` y `-π` para el
+  mismo rumbo −x). Una tangencia en esa costura quedaba a 2π de distancia, nunca llegaba al desempate por
+  curvatura y el hairpin volvía justo para los contactos sobre la costura. Arreglado en `aee3e5d`
+  plegando el ángulo a `[0, 2π)` antes de perturbar, con un test de costura que falla sin el pliegue.
+  Corrección: 36 líneas. Sin hallazgos nuevos.
+- **Advisories no bloqueantes** que quedan como trabajo posterior, no como deuda de esta tarea:
+  `R2-001` (sugerencia de legibilidad), `R3-NORMALIZE-MULTI-BOUNDARY-GAP` y `R3-SAME-SIGN-TANGENT`
+  (dos advertencias sobre casos de corpus que hoy no se ejercen).
+- **Evidencia final**: `just check` (docs, fmt, clippy `-D warnings`, suite completa) en verde en el tip
+  de la rama, con `cargo test -p cam-geom` en verde (25 targets, incluidos los 3 tests unitarios del
+  orden angular).
+
+Lo que estos dos hallazgos enseñan, y vale más que el arreglo: un empate por tolerancia dentro de un
+comparador nunca es seguro —una clave por elemento es lo que hace el orden total— y esa clave tiene que
+ser además libre de corte de rama, porque el ángulo tiene dos nombres para una misma dirección. Ninguno
+de los dos defectos era visible en un corpus de tangencias comunes; los expusieron la costura y una terna
+casi empatada.
