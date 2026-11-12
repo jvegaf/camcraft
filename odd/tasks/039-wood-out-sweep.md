@@ -39,8 +39,8 @@ el Log con evidencia `path:line`.
 | T1 | Mapear la blast radius real (read-only) | S5 | `gentle-ai-explore` | — |
 | T2 | Crear `cam-ops` con **copias** de `rings` (pocket completo), `peck` (drill) y `follow` (profile) + sus tests | S3, S4 | `gentle-ai-worker` | commit 1 |
 | T3 | PR 1: borrar `cam-toolpath`, `cam-program`, el editor de estrategia de `cam-ui`, los oráculos de estrategia de `cam-sim` y los subcomandos `toolpath`/`emit`/`simulate` de `cam-cli`; árbol verde | S1, S4, S5 | inline | commit 2 |
-| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `d6fee30` |
-| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `261812b` |
+| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `7916278` + `31c317c` + `17b9c44` |
+| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `cc9199d` |
 | T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | plegada a C3 (L23) | — |
 | T7 | Verificación independiente del barrido (riesgo item 3: contrato de CLI) | S4 | `gentle-ai-verify` | — |
 
@@ -71,7 +71,7 @@ candidato: 1697 -> 1717 (c2) -> 1731 (c3) -> ... -> 1770 con el rescate completo
 **Estado final de la cadena y de su review: ver L20-L22.** Las ramas `camcraft-sweep-cN`, `-dA/-dB/-dC`
 son andamiaje de review; los commits son el entregable.
 
-**Estado.** Delivered. T1-T5 y T7 hechas (T7 en L33); T6 plegada a C3 por decision escrita (L23, L32).
+**Estado.** Delivered. T1-T5 y T7 hechas (T7 en L33, rebanada en L35); T6 plegada a C3 por decision escrita (L23, L32).
 
 **El presupuesto de review lo pone el proveedor, no el skill.** No hay `size:exception` posible: el techo
 es el contexto del revisor. Los números de arriba son el resultado de aceptar ese techo, no de
@@ -338,7 +338,7 @@ tiene `dev` — `git rev-parse --verify dev` falla — y sus ramas son `master`,
 `worktree/green-forest-611b` y `worktree/silver-meadow-676f`, las tres en `f11a629`. El tramo se hizo en la
 rama del worktree, cortada de esa base; ni `master` ni la otra rama se tocaron.
 
-**L29** (evidencia — T4, el kernel queda con lo que sirve a PCB): `d6fee30`. Salen `text` (10 tests),
+**L29** (evidencia — T4, el kernel queda con lo que sirve a PCB): tres cortes, `7916278` (texto), `31c317c` (moulding) e `17b9c44` (nesting); L35 explica por qué son tres. Salen `text` (10 tests),
 `nest` (14), `nest_profile` (20) y `moulding` (24) con sus tests, y con ellos la superficie que sólo existía
 para alcanzarlos: `Command::AddText` en `cam-app` (8 tests), el text tool y su panel de parámetros en
 `cam-ui` (1 test), el subcomando `nest` y el `nest` de `script` en `cam-cli` (17 + 3 tests), y tres
@@ -346,7 +346,7 @@ variantes `Moulding*` de `cam-ops` que ningún call site podía construir. **97 
 generadores de id quedan: los usa `parts`. Los flags de raster del `import` (`--dpi`, `--threshold`,
 `--invert`, `--min-area`, `--simplify`) salen acá porque parseaban, validaban y no hacían nada.
 
-**L30** (evidencia — T5, importadores): `261812b`. Salen `pdf` (16 tests), `eps` (26) y `raster` (16), más
+**L30** (evidencia — T5, importadores): `cc9199d`. Salen `pdf` (16 tests), `eps` (26) y `raster` (16), más
 el caso EPS de `NothingImported` en `tests/import.rs` (1). **59 tests.** `Format` queda en `Dxf`/`Svg`,
 `SUPPORTED_EXTENSIONS` pasa a `"dxf, svg"`, `TraceOptions` sale con el tracer que configuraba, `flate2` sale
 del crate (sus dos únicos usuarios eran los streams de PDF) y el diálogo de `cam-desktop` deja de ofrecer
@@ -367,7 +367,7 @@ la sección `nesting` del modelo (`Nesting`, `nesting_utilisation`) y sus lector
 `camcraft/document@1` (035/C3), una sola vez. T7 (verificación independiente) queda como el último paso de
 esta tarea; nada de este tramo autoriza delivery: push, PRs y merge siguen siendo decisión del dueño.
 
-**L33** (evidencia — T7, verificación independiente): corrida sobre `f11a629..HEAD` con `gentle-ai-verify`,
+**L33** (evidencia — T7, verificación independiente): corrida sobre `f11a629..` la punta de entonces con `gentle-ai-verify`,
 riesgo declarado item 3 (contrato de CLI). Veredicto **PASS** en los seis puntos: (1) el contrato: `nest`
 como subcomando y en `script` responden `unknown command` con exit `2`, `--dpi` responde `unknown import
 option` con exit `2` y no hay parseo silencioso, `AddText` no existe en `cam-app` ni en `cam-ui`; (2) la
@@ -389,3 +389,57 @@ murió por falta de espacio en `/tmp` (dos `target/` de 6 GB en un tmpfs de 16 G
 corte 1 quedara verde por sí mismo, y la aserción nueva entró en `261812b` junto con el cambio que la
 vuelve verdadera. Regla que queda: un commit de borrado no puede adelantar la expectativa de un cambio que
 todavía no aterrizó, aunque el árbol final esté verde.
+
+**L35** (decisión del dueño — la historia se rebanó, y por qué): el candidato completo se ofreció al
+review del proveedor con tres lentes y volvió **stop en preflight**: `lens_context_budget_exceeded`, *"no
+review authority was created"*, `mutation_performed: false`. Los tamaños explican el rebote: candidato
+completo 14.040 supresiones en 46 archivos; el corte de kernel 8.405; el de import 5.613; el de docs 86.
+El techo medido en esta misma tarea sigue entre 1.409 (aprobado) y 5.762 (rebotado), así que el candidato
+grande no entra ni partido en dos. Decisión del dueño, entre tres opciones: **rebanar más fino y revisar
+lo que entre**. `git reset --hard` está bloqueado por la política del harness incluso con autorización explícita (se
+intentó y rebotó dos veces), así que la historia se reconstruyó **sin operación destructiva**: rama
+`feat/039-wood-out-sweep` en el worktree `.worktrees/039-reslice`, cortada de `f11a629`, con cada corte
+verificando `cargo check` y `cargo test --workspace` antes de commitear. La rama anterior queda intacta
+como `sweep-backup` (`7a6e6f5`), con sus cinco commits, y no se borra.
+
+**L36** (evidencia — los cinco cortes, cada uno verde por separado): `7916278` texto (1.660 líneas
+authored, 1304 tests), `31c317c` moulding (1.285, 1280), `cc9199d` import (5.612, 1221), `17b9c44` nesting
+(5.377, 1167) y el commit de docs que sigue. La aritmética cierra por corte: 1323 - 19 = 1304; - 24 = 1280;
+- 59 = 1221; - 54 = 1167. El árbol de `17b9c44` es **idéntico** al de `sweep-backup` en todo lo que no es
+documentación (`git diff sweep-backup 17b9c44` sólo muestra README y `odd/tasks/`), así que rebanar cambió
+la presentación, no el contenido.
+
+**L37** (lo que aprendí de la reconstrucción, para no repetirlo): `git checkout <rama> -- <dir>` restaura
+archivos pero **no borra** los que la rama origen ya no tiene: en `crates/cam-import` quedaron `pdf.rs`,
+`eps.rs`, `raster.rs` y sus tests hasta que se borraron con `git rm`, y el árbol no compilaba por imports
+a `flate2` y a `TraceOptions` — exactamente el error que L21 ya había registrado una vez en este repo. El
+borrado va con `git rm`, nunca se infiere de un checkout.
+
+**L38** (evidencia — qué revisó el proveedor de la historia rebanada, y qué no entra): cada corte se
+ofreció como candidato propio, con `committedOnly` y base en el corte anterior, lentes `risk` +
+`reliability` para el código y ninguna para docs (L17).
+
+| Corte | Rango | Veredicto del proveedor | Linaje |
+| --- | --- | --- | --- |
+| docs | `17b9c44..e3beceb` | **approved**, `risk_tier: low`, `non_executable_only`, sin lentes | `review-2b8db92b2d855ac6` |
+| texto | `f11a629..7916278` | **approved** tras 2 corridas (1.660 líneas, tier `high`, `correction_budget` 200); acknowledgement quemó la autoridad | `review-11610ba54a726679` |
+| moulding | `7916278..31c317c` | **escalated** (`native_stop_required`): R3-001 BLOCKER inferencial, degradado por el propio proveedor (`downgraded_causal_findings: unverified_location`, `candidate_causal_finding_ids: []`) | `review-e344c2b7641c9a5f` |
+| import | `31c317c..cc9199d` | **stop en preflight**: `lens_context_budget_exceeded`, sin autoridad | `review-23e442de4e4e24f4` |
+| nesting | `cc9199d..17b9c44` | **stop en preflight**: idem | `review-d9aebe81962bba3b` |
+
+**R3-001 es un falso positivo, y queda medido.** El revisor apoyó un BLOCKER en un comentario del propio
+`moulding.rs` borrado (`:300-301`), que decía que `cam-toolpath::moulding` emitía la pasada y
+`cam_sim::target::claim_moulding` la reclamaba: ambos crates salieron del producto en L21-L22, y el
+`crates/cam-geom/src/moulding.rs:1` que cita como "referencia viva" es el archivo que el candidato borra.
+La prueba directa en `31c317c`: `cargo test --workspace` = **1.280 passed, 0 failed**, o sea el workspace
+compila y ningún consumidor quedó apuntando a lo borrado. Es la segunda vez que este repo ve un CRITICAL
+inferencial sin entrada alcanzable (L18); la lección se repite: **probar antes de creerle la severidad**.
+
+**El techo del revisor, medido otra vez y más fino:** entra 1.660 líneas (texto, aprobado) y 1.343
+(moulding, admitido), y rebota 5.377 y 5.612. La banda de L22 (entre 1.409 aprobado y 5.762 rebotado) se
+angosta a **entre 1.660 y 5.377** líneas cambiadas. Los dos cortes grandes —`import` y `nesting`— quedan
+por debajo del control que sí existe: verificación independiente (T7, L33) sobre lo que sobrevive,
+`cargo test --workspace` verde en cada corte aislado (L36) y el árbol idéntico a `sweep-backup`. Si el
+dueño quiere review de proveedor también ahí, hay que partirlos por módulo (pdf 2.149, eps 1.816, raster
+1.550, nest ~3.700, nest_profile ~1.700 con tests) y aceptar las corridas que eso cuesta. Nada de esto
+autoriza delivery.
