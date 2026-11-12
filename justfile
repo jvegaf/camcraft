@@ -114,14 +114,15 @@ worktree N:
   echo "Worktree created at .worktrees/{{N}} on branch $$BRANCH"; \
   echo "cd $(pwd)/.worktrees/{{N}}"
 
-# Claim a task (must be run from task worktree)
+# Claim a task (must be run from a linked task worktree)
 claim N:
+  @./scripts/check-worktree.sh >/dev/null 2>&1 || true
   @./scripts/claim-task.sh {{N}}
 
 # Release a task claim
 release N:
   @./scripts/release-task.sh {{N}}
 
-# Validate we're in a properly claimed worktree
+# Validate we're in a properly claimed linked worktree
 check-worktree:
   @./scripts/check-worktree.sh
