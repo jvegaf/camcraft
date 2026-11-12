@@ -1,5 +1,5 @@
 //! Headless pipeline: `validate`, `inspect`, `import`, `export`, `check`, `postp validate`, `tools`,
-//! `nest`, `parts`, `cutlist`, `report` and `script`.
+//! `parts`, `cutlist`, `report` and `script`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -19,14 +19,11 @@ pub mod script;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use cam_geom::nest::{NestAlgorithm, NestOptions, NestPlan, NestRotation};
-use cam_geom::nest_profile::{ProfileNestOptions, ProfileNestPlan};
-use cam_geom::{Bounds, Contour, Point2, Vec2};
-use cam_model::{Document, Nesting, NestingCost, NestingPart, NestingPlacement, NestingSheet};
+use cam_model::{Document, NestingPart, NestingSheet};
 use cam_post::parse_post;
 use cam_store::document::DocumentFile;
 use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
-use cam_units::{Angle, Format, Length};
+use cam_units::Format;
 
 const HELP: &str = "\
 cam-cli — headless CAM pipeline
@@ -45,20 +42,6 @@ COMMANDS:
         --format <name>       dxf or svg (required)
         --out <path>          Write the file here instead of stdout
     check <document>          Report open and self-intersecting vectors
-    nest <document>           Nest its parts onto its sheets and store the placements and the cost; a
-                              part left unplaced is reported with its id and exits 7
-        --sheets <WxH>        A board to nest on, as width x height in millimetres; repeat it once per
-                              authored sheet. It replaces the document's own sheets, because a sheet is
-                              an authored record that lives in the document. Required when the document
-                              authors none
-        --gap <mm>            Minimum separation between parts on a board (default 0)
-        --rotation <on|off>   Whether a part may turn a quarter turn to fit (default on)
-        --algorithm <mode>    rect-bssf, rect-blsf, rect-baf or rect-guillotine (default rect-bssf);
-                              a choice a rectangle honours and a free profile ignores in favour of
-                              its own heuristic
-        --step <mm>           Resolution of the free-profile placement grid; a non-rectangle honours
-                              it and a rectangle ignores it (default 1)
-        --out <path>          Write the nested document here instead of in place
     parts <document>          Author nesting parts: --csv <file> from a four-column list, or
                               --entity <id> --instances <n> [--id <id>] [--name <name>] for one part;
                               --out <path> writes the document elsewhere
@@ -76,7 +59,7 @@ COMMANDS:
     postp validate <file>     Parse a .pp post-processor and report what it declares
     script <file.cam>         Run a command language script against the document it opens. It takes no
                               --out and writes nothing except the document a `save` line names. It
-                              reads the nesting, part and cutlist commands, and the same report every
+                              reads the sheet, part, parts and cutlist commands, and the same report every
                               command prints on the command line. A refusal names the line and the
                               column, and the document is left exactly as the file held it
 
@@ -86,7 +69,6 @@ EXIT CODES:
     3   unsupported document schema
     4   post-processor error
     5   vector issues found by check
-    7   a nesting could not place every instance, so nothing was written (nest only)
 ";
 
 /// A failure with the exit code the contract assigns to it.
@@ -135,20 +117,6 @@ impl Failure {
     }
   }
 
-  /// A nesting that could not place every instance the document asks for (M9).
-  ///
-  /// This is a **finding**, not invalid input: every flag was usable and every record in the document
-  /// is sound, and the report is what contradicts the request. It gets a code of its own because `6`
-  /// is the simulation's finding and is spoken for, and because a caller scripting a cut has to see
-  /// `0` only when every instance landed — while still being able to tell "I could not nest this" from
-  /// "you gave me something I cannot read".
-  pub fn nesting(message: impl Into<String>) -> Self {
-    Self {
-      code: 7,
-      message: message.into(),
-    }
-  }
-
   /// The same failure, said at a position in a script: the `cam-post` parser's diagnostic shape,
   /// `line {line}:{column}: {message}` (M10 invariant 2).
   ///
@@ -163,46 +131,21 @@ impl Failure {
   }
 }
 
-/// What a command produced, for the commands that can end in a **finding** rather than a refusal.
-///
-/// A `nest` that could not place every instance and a `simulation` that found a defect both have a
-/// report to print and a failure to exit with, in that order: the report is the finding's body. Both
-/// the subcommand and the scripted command read this one shape, so a script cannot print a report its
-/// subcommand would have refused to print first (M10 invariant 1).
-pub enum Outcome {
-  /// The report, and the command succeeded.
-  Done(String),
-  /// The report, and the finding the command ends with.
-  Finding(String, Failure),
-}
-
-impl Outcome {
-  /// Print the report, then answer with the command's result.
-  pub fn print_and_result(self) -> Result<(), Failure> {
-    self.write_to(&mut std::io::stdout())
-  }
-
-  /// Write the report to `sink`, then answer with the command's result.
-  ///
-  /// This is the one body behind [`Outcome::print_and_result`]: a subcommand passes stdout, a script
-  /// passes the sink its caller chose (`script::run_script`), so neither can report something the other
-  /// would not (M10 invariant 1). The report is the finding's body, so it is written before the failure
-  /// is returned.
-  pub fn write_to(self, sink: &mut dyn Write) -> Result<(), Failure> {
-    match self {
-      Self::Done(report) => write_report(sink, &report),
-      Self::Finding(report, failure) => {
-        write_report(sink, &report)?;
-        Err(failure)
-      }
-    }
-  }
-}
-
 /// Write a report to the sink its caller chose: the one way a report leaves this crate.
 ///
 /// `print!` panics when its own write fails, which a caller holding a buffer should never inherit, so a
 /// sink that refuses the bytes becomes a refusal instead.
+/// A short label for an operation kind, for reports.
+pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str {
+  match operation {
+    cam_model::Operation::Isolation(_) => "isolation",
+    cam_model::Operation::NonCopperClear(_) => "non-copper clear",
+    cam_model::Operation::Cutout(_) => "cutout",
+    cam_model::Operation::Paint(_) => "paint",
+    cam_model::Operation::Panelize(_) => "panelize",
+  }
+}
+
 pub(crate) fn write_report(sink: &mut dyn Write, report: &str) -> Result<(), Failure> {
   sink
     .write_all(report.as_bytes())
@@ -228,7 +171,6 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "import" => import_command(rest),
     "export" => export_command(rest),
     "check" => check(rest),
-    "nest" => nest_command(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
     "report" => printsheet::report_command(rest),
@@ -470,7 +412,6 @@ pub fn export_command(rest: &[String]) -> Result<(), Failure> {
     None => {
       // `print!` panics on a closed pipe, which turns `export | head` into exit 101 and a backtrace
       // instead of a failure a script can read (R4-STDOUT-PANIC).
-      use std::io::Write;
       let mut stdout = std::io::stdout().lock();
       stdout
         .write_all(&bytes)
@@ -521,6 +462,7 @@ pub fn import_command(rest: &[String]) -> Result<(), Failure> {
       "--tolerance must be a positive length in mm",
     ));
   }
+
   let imported = cam_import::import_path(&input, &options)
     .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
   let document = cam_import::into_document(&imported, layer.as_deref())
@@ -693,605 +635,6 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
   }
 }
 
-/// Everything `cam-cli nest` accepts, before it is turned into one nesting run.
-#[derive(Default)]
-pub struct NestArgs {
-  pub path: Option<PathBuf>,
-  pub out: Option<PathBuf>,
-  pub sheets: Vec<(f64, f64)>,
-  pub gap: Option<f64>,
-  pub rotation: Option<String>,
-  pub algorithm: Option<String>,
-  pub step: Option<f64>,
-}
-
-/// One part of the document's nesting section, as the nesters need it: one closed contour and the
-/// class its own geometry puts it in.
-pub struct NestPart {
-  pub id: String,
-  pub instances: usize,
-  pub contour: Contour,
-  pub class: NestClass,
-}
-
-/// Which of the two nesters a part's geometry sends it to (S6, S7).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum NestClass {
-  /// A rectangle: the cabinetry panels S7 ships first, packed by maxrects and guillotine.
-  Rectangle,
-  /// Everything else: a free profile, placed by the no-fit heuristic.
-  Profile,
-}
-
-impl NestClass {
-  /// How the report names the class.
-  pub fn label(self) -> &'static str {
-    match self {
-      Self::Rectangle => "rectangle",
-      Self::Profile => "free profile",
-    }
-  }
-}
-
-/// One instance a run placed, before it is written into the document.
-///
-/// `position` is the **placed** footprint's lower-left corner and `rotation` the turn the nester took
-/// (D-M9-1), which is exactly what a [`NestingPlacement`] stores, so nothing is re-derived on the way
-/// in.
-#[derive(Clone, Copy)]
-pub struct NestedInstance {
-  pub part: usize,
-  pub sheet: usize,
-  pub position: Point2,
-  pub rotation: Angle,
-  pub size: Vec2,
-}
-
-/// What a run was asked for and what packed it: the two options every class shares, the algorithm the
-/// rectangle plan was produced by, and the heuristic the free profiles were placed with.
-#[derive(Default)]
-pub struct NestRun {
-  pub gap: f64,
-  pub allow_rotation: bool,
-  pub rectangle: Option<NestAlgorithm>,
-  pub profile: Option<(&'static str, f64)>,
-}
-
-/// One `nest` run's request: everything the run asks for that is not the document itself.
-///
-/// Every field is an `Option` exactly where the command distinguishes "the caller said nothing" from
-/// "the caller said the default", because a flag that means nothing for a document is refused by name
-/// rather than defaulted.
-#[derive(Default)]
-pub struct NestRequest {
-  pub sheets: Vec<(f64, f64)>,
-  pub gap: Option<f64>,
-  pub rotation: Option<String>,
-  pub algorithm: Option<String>,
-  pub step: Option<f64>,
-}
-
-/// Everything `cam-cli nest`'s command line holds, parsed and nothing more.
-///
-/// The scripted `nest` command hands its tokens to this same parser (M10 invariant 1), so an option
-/// means one thing in both places and no second parser exists to drift from it.
-pub fn nest_args(rest: &[String]) -> Result<NestArgs, Failure> {
-  let mut args = NestArgs::default();
-  let mut index = 0;
-  while index < rest.len() {
-    let flag = rest[index].as_str();
-    // Every option takes exactly one value.
-    let take = |what: &str| value_at(rest, index, what);
-    match flag {
-      "--out" => args.out = Some(PathBuf::from(take("--out")?)),
-      "--sheets" => args.sheets.push(parse_sheet(&take("--sheets")?)?),
-      "--gap" => {
-        let value = take("--gap")?;
-        let gap = parse_mm(&value, "--gap")?;
-        if !gap.is_finite() || gap < 0.0 {
-          return Err(Failure::input(format!(
-            "--gap must be a non-negative distance in mm, got {value}"
-          )));
-        }
-        args.gap = Some(gap);
-      }
-      "--step" => {
-        let value = take("--step")?;
-        let step = parse_mm(&value, "--step")?;
-        if !step.is_finite() || step <= 0.0 {
-          return Err(Failure::input(format!(
-            "--step must be a positive distance in mm, got {value}"
-          )));
-        }
-        args.step = Some(step);
-      }
-      "--rotation" => args.rotation = Some(take("--rotation")?),
-      "--algorithm" => args.algorithm = Some(take("--algorithm")?),
-      other if other.starts_with('-') => {
-        return Err(Failure::input(format!("unknown nest option {other:?}")))
-      }
-      other => {
-        if args.path.is_some() {
-          return Err(Failure::input(
-            "nest takes exactly one document, before its options",
-          ));
-        }
-        args.path = Some(PathBuf::from(other));
-        index += 1;
-        continue;
-      }
-    }
-    index += 2;
-  }
-
-  Ok(args)
-}
-
-pub fn nest_command(rest: &[String]) -> Result<(), Failure> {
-  let NestArgs {
-    path,
-    out,
-    sheets,
-    gap,
-    rotation,
-    algorithm,
-    step,
-  } = nest_args(rest)?;
-  let path = path.ok_or_else(|| Failure::input("nest requires a document path"))?;
-  let mut document = open(&path)?;
-  let request = NestRequest {
-    sheets,
-    gap,
-    rotation,
-    algorithm,
-    step,
-  };
-  let outcome = nest_document(&mut document, &request)?;
-  match outcome {
-    Outcome::Done(report) => {
-      let destination = out.unwrap_or(path);
-      cam_store::document::save_document(&destination, &document)
-        .map_err(|error| Failure::input(format!("{}: {error}", destination.display())))?;
-      print!("{report}");
-      Ok(())
-    }
-    Outcome::Finding(report, failure) => {
-      print!("{report}");
-      Err(failure)
-    }
-  }
-}
-
-/// Nest the document's parts onto its sheets, store the placements and the cost, and report the run.
-///
-/// The shape follows `toolpath`: take the document, add what the command was asked for, validate, and
-/// hand the report back — the caller writes it out, `--out` or the document itself. What differs is
-/// what a run can end with — a nesting that could not place every instance is an [`Outcome::Finding`]
-/// with its own exit code, and it writes nothing. `target` is the caller's document and is replaced
-/// only when the run succeeded, because a document whose placements fall short of a part's instance
-/// count does not load: every refusal leaves the caller's document exactly as it was found (M10
-/// invariant 4).
-pub fn nest_document(target: &mut Document, request: &NestRequest) -> Result<Outcome, Failure> {
-  let mut document = target.clone();
-
-  let gap = request.gap.unwrap_or(0.0);
-  let allow_rotation = match request.rotation.as_deref() {
-    None | Some("off") => false,
-    Some("on") => true,
-    Some(other) => {
-      return Err(Failure::input(format!(
-        "--rotation expects on or off, got {other:?}"
-      )))
-    }
-  };
-  let algorithm = match request.algorithm.as_deref() {
-    None | Some("auto") => NestAlgorithm::Auto,
-    Some("maxrects") => NestAlgorithm::MaxRects,
-    Some("guillotine") => NestAlgorithm::Guillotine,
-    Some(other) => {
-      return Err(Failure::input(format!(
-        "--algorithm expects auto, maxrects or guillotine, got {other:?}"
-      )))
-    }
-  };
-  let step = request
-    .step
-    .unwrap_or(cam_geom::nest_profile::DEFAULT_SEARCH_STEP);
-
-  // The parts are authored in the document (S1) and there is no default part list: a part is a
-  // selection of this document's own entities, so there is nothing a flag could name.
-  let Some(nesting) = document.nesting.take() else {
-    return Err(Failure::input(
-      "nest needs parts: the document authors no nesting section, so there is nothing to nest",
-    ));
-  };
-  if nesting.parts.is_empty() {
-    return Err(Failure::input(
-      "nest needs parts: the document authors no nesting parts, so there is nothing to nest",
-    ));
-  }
-
-  // The boards this run nests on. `--sheets` authors them on the command line and replaces whatever
-  // the document held: the sheets are authored records that live in the document (S4), and a run that
-  // kept a board nobody named would report a nesting on a sheet the caller had replaced. Without the
-  // flag the document's own boards are it, and there is no default board — a sheet size is authored,
-  // not assumed.
-  let mut sheets: Vec<NestingSheet> = if request.sheets.is_empty() {
-    if nesting.sheets.is_empty() {
-      return Err(Failure::input(
-        "nest needs --sheets: the document authors no sheets to nest on, and a nesting has no default \
-         board",
-      ));
-    }
-    nesting.sheets.clone()
-  } else {
-    request
-      .sheets
-      .iter()
-      .enumerate()
-      .map(|(number, (width, height))| NestingSheet {
-        id: format!("S{}", number + 1),
-        width: Length::from_mm(*width),
-        height: Length::from_mm(*height),
-      })
-      .collect()
-  };
-
-  // Both nesters pack **identical** boards — one `NestPlan` is one sheet, repeated — so boards of two
-  // sizes cannot be one run, and are refused by name rather than packed on the first board's size.
-  let width = sheets[0].width.mm();
-  let height = sheets[0].height.mm();
-  for sheet in &sheets[1..] {
-    if (sheet.width.mm() - width).abs() > cam_geom::DEFAULT_TOLERANCE
-      || (sheet.height.mm() - height).abs() > cam_geom::DEFAULT_TOLERANCE
-    {
-      return Err(Failure::input(format!(
-        "sheet {:?} is {} x {} mm but sheet {:?} is {} x {} mm: a nesting packs identical boards, so \
-         one run cannot nest onto boards of two sizes",
-        sheets[0].id,
-        decimal(width),
-        decimal(height),
-        sheet.id,
-        decimal(sheet.width.mm()),
-        decimal(sheet.height.mm()),
-      )));
-    }
-  }
-
-  let mut parts: Vec<NestPart> = Vec::with_capacity(nesting.parts.len());
-  for part in &nesting.parts {
-    let contour = part_contour(&document, part)?;
-    parts.push(NestPart {
-      id: part.id.clone(),
-      instances: part.instances,
-      class: classify(&contour),
-      contour,
-    });
-  }
-
-  // Every flag that means nothing for this document is refused by name, the rule `moulding` follows for
-  // its 22: a `--step` nobody searched with, or an `--algorithm` no packer ran, still looks applied.
-  let has_rectangle = parts.iter().any(|part| part.class == NestClass::Rectangle);
-  let has_profile = parts.iter().any(|part| part.class == NestClass::Profile);
-  if request.algorithm.is_some() && !has_rectangle {
-    return Err(Failure::input(
-      "nest takes no --algorithm: no part in this document is a rectangle, so neither maxrects nor \
-       guillotine packs anything, and a free profile is placed by the no-fit heuristic --step drives",
-    ));
-  }
-  if request.step.is_some() && !has_profile {
-    return Err(Failure::input(
-      "nest takes no --step: every part in this document is a rectangle, so the free-profile \
-       heuristic never searches a lattice and no step is applied",
-    ));
-  }
-
-  let board = Bounds {
-    min: Point2::ORIGIN,
-    max: Point2::new(width, height),
-  };
-  let mut run = NestRun {
-    gap,
-    allow_rotation,
-    ..NestRun::default()
-  };
-  let mut instances: Vec<NestedInstance> = Vec::new();
-  let mut boards_used = 0;
-
-  if has_rectangle {
-    // A rectangle part goes through `cam_geom::nest` — maxrects plus the guillotine pass S6 names —
-    // which packs axis-aligned boxes, so a rectangle selection becomes the box its own bounds are.
-    // Every instance is one entry in the parts list, so a plan index maps back to the part it belongs
-    // to and an unplaced entry names the part and not a copy number.
-    let mut owner: Vec<usize> = Vec::new();
-    let mut boxes: Vec<Bounds> = Vec::new();
-    for (number, part) in parts.iter().enumerate() {
-      if part.class != NestClass::Rectangle {
-        continue;
-      }
-      let bounds = part.contour.bounds();
-      for _ in 0..part.instances {
-        owner.push(number);
-        boxes.push(bounds);
-      }
-    }
-    let options = NestOptions::new(gap, allow_rotation)
-      .map_err(|error| Failure::input(error.to_string()))?
-      .with_algorithm(algorithm);
-    let plan =
-      NestPlan::new(board, &boxes, options).map_err(|error| Failure::input(error.to_string()))?;
-    run.rectangle = Some(plan.algorithm());
-    boards_used = plan.sheets_used();
-    for placement in plan.placements() {
-      instances.push(NestedInstance {
-        part: owner[placement.part()],
-        sheet: placement.sheet(),
-        position: placement.origin(),
-        rotation: nest_angle(placement.rotation()),
-        size: placement.footprint_size(),
-      });
-    }
-  }
-
-  if has_profile {
-    // A free-profile part goes through `cam_geom::nest_profile`, the sound but incomplete no-fit
-    // heuristic: one call packs one board and reports the parts it could not fit, so a round that
-    // placed nothing has found the parts that fit no board — the loop is bounded by the part count and
-    // never guesses. The two classes get their own boards because neither nester can be handed the
-    // other's placements as an occupied board: a mixed document nests each class on sheets of its own,
-    // which the report says instead of hiding.
-    let options = ProfileNestOptions::new(gap, allow_rotation)
-      .map_err(|error| Failure::input(error.to_string()))?
-      .with_step(step)
-      .map_err(|error| Failure::input(error.to_string()))?;
-    let board_outline = Contour::from_points(
-      &[
-        Point2::ORIGIN,
-        Point2::new(width, 0.0),
-        Point2::new(width, height),
-        Point2::new(0.0, height),
-      ],
-      true,
-    )
-    .map_err(|error| Failure::input(error.to_string()))?;
-
-    let mut pool: Vec<(usize, Contour)> = Vec::new();
-    for (number, part) in parts.iter().enumerate() {
-      if part.class != NestClass::Profile {
-        continue;
-      }
-      for _ in 0..part.instances {
-        pool.push((number, part.contour.clone()));
-      }
-    }
-
-    let mut boards = 0;
-    while !pool.is_empty() {
-      let contours: Vec<Contour> = pool.iter().map(|(_, contour)| contour.clone()).collect();
-      let plan = ProfileNestPlan::new(&board_outline, &contours, options)
-        .map_err(|error| Failure::input(error.to_string()))?;
-      run.profile = Some((plan.algorithm(), options.step()));
-      if plan.placements().is_empty() {
-        break;
-      }
-      for (index, placement) in plan.placements().iter().enumerate() {
-        let outline = plan.outline(index).ok_or_else(|| {
-          Failure::input("the free-profile nester reported a placement with no outline")
-        })?;
-        let bounds = outline.bounds();
-        instances.push(NestedInstance {
-          part: pool[placement.part()].0,
-          sheet: boards_used + boards,
-          position: placement.origin(),
-          rotation: nest_angle(placement.rotation()),
-          size: Vec2::new(bounds.width(), bounds.height()),
-        });
-      }
-      boards += 1;
-      pool = plan
-        .unplaced()
-        .iter()
-        .map(|index| pool[*index].clone())
-        .collect();
-    }
-    boards_used += boards;
-  }
-
-  // Open the boards the run used, so every placement names a sheet the document holds: a nester
-  // repeats one board, and a board it needed that the document does not author is authored here at the
-  // same size (S4). A board the document authored and the run did not use stays, and the report says
-  // it was unused.
-  while sheets.len() < boards_used {
-    sheets.push(NestingSheet {
-      id: fresh_sheet_id(&sheets),
-      width: Length::from_mm(width),
-      height: Length::from_mm(height),
-    });
-  }
-
-  let placements: Vec<NestingPlacement> = instances
-    .iter()
-    .map(|instance| NestingPlacement {
-      part_id: parts[instance.part].id.clone(),
-      sheet_id: sheets[instance.sheet].id.clone(),
-      position: instance.position,
-      rotation: instance.rotation,
-    })
-    .collect();
-
-  document.nesting = Some(Nesting {
-    sheets,
-    parts: nesting.parts,
-    placements,
-    cost: None,
-  });
-
-  // The cost record is written from **`Document::nesting_utilisation`** and from nothing else. The
-  // nester has its own `NestPlan::utilisation`, but that is its view of its own run: a record derived
-  // from it would be the second arithmetic T1c closed, and the model's own load-time check would then
-  // refuse the document this command had just written. One derivation, then, feeding the record and
-  // the report alike — and when the document cannot answer, no record at all, because an invented
-  // zero would be a claim nobody made.
-  let fractions = document
-    .nesting_utilisation()
-    .map(|utilisation| (utilisation, 1.0 - utilisation));
-  let used_sheets = document
-    .nesting
-    .as_ref()
-    .map(|nesting| {
-      nesting
-        .placements
-        .iter()
-        .map(|placement| placement.sheet_id.as_str())
-        .collect::<std::collections::BTreeSet<_>>()
-        .len()
-    })
-    .unwrap_or(0);
-  if let Some((utilisation, waste)) = fractions {
-    if let Some(nesting) = document.nesting.as_mut() {
-      nesting.cost = Some(NestingCost {
-        sheets_used: used_sheets,
-        utilisation,
-        waste,
-      });
-    }
-  }
-
-  let report = nest_report(&document, &parts, &instances, &run, used_sheets, fractions);
-  let shortfall = nest_shortfall(&parts, &instances);
-  if !shortfall.is_empty() {
-    // A nesting that could not place every instance is a finding, and nothing is written: the model
-    // refuses a document whose placements fall short of a part's instance count
-    // (`NestingInstanceCountMismatch`), so a partial nesting has no honest form to store and the
-    // document stays exactly as the run found it. The report is the finding, and exit 7 names it.
-    let named: Vec<String> = shortfall
-      .iter()
-      .map(|(number, placed, wanted)| {
-        format!("{} ({placed} of {wanted} instance(s))", parts[*number].id)
-      })
-      .collect();
-    return Ok(Outcome::Finding(
-      report,
-      Failure::nesting(format!(
-        "the nesting left {} of {} instance(s) unplaced: {}; the document was not written",
-        shortfall
-          .iter()
-          .map(|(_, placed, wanted)| wanted - placed)
-          .sum::<usize>(),
-        parts.iter().map(|part| part.instances).sum::<usize>(),
-        named.join(", ")
-      )),
-    ));
-  }
-
-  document
-    .validate()
-    .map_err(|error| Failure::input(error.to_string()))?;
-  *target = document;
-  Ok(Outcome::Done(report))
-}
-
-/// The `W x H` one `--sheets` flag authors, in millimetres.
-pub fn parse_sheet(value: &str) -> Result<(f64, f64), Failure> {
-  let malformed = || {
-    Failure::input(format!(
-      "--sheets expects <width>x<height> in millimetres, got {value:?}"
-    ))
-  };
-  let (width, height) = value.split_once('x').ok_or_else(malformed)?;
-  let width = width.trim().parse::<f64>().map_err(|_| malformed())?;
-  let height = height.trim().parse::<f64>().map_err(|_| malformed())?;
-  if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
-    return Err(Failure::input(format!(
-      "--sheets must name a positive width and height in millimetres, got {value}"
-    )));
-  }
-  Ok((width, height))
-}
-
-/// The one closed contour a part is nested from, or the refusal that names the part.
-///
-/// Both nesters place a single outline, and a part whose selection is several contours or an open wire
-/// has no single outline to place: nesting its bounding box and reporting it as one part would be a
-/// placement the cut does not match, so the part is refused by name instead of guessed at.
-pub fn part_contour(document: &Document, part: &NestingPart) -> Result<Contour, Failure> {
-  let [entity_id] = part.entity_ids.as_slice() else {
-    return Err(Failure::input(format!(
-      "nesting part {:?} names {} entities, so its outline is not one closed contour and neither \
-       nester can place it: a part is nested from exactly one closed contour",
-      part.id,
-      part.entity_ids.len()
-    )));
-  };
-  let entity = document.entity(entity_id).ok_or_else(|| {
-    Failure::input(format!(
-      "nesting part {:?} references unknown entity {entity_id:?}",
-      part.id
-    ))
-  })?;
-  let contour = entity.kind.as_contour().ok_or_else(|| {
-    Failure::input(format!(
-      "nesting part {:?} selects entity {entity_id:?}, which is not a contour",
-      part.id
-    ))
-  })?;
-  if !contour.is_closed() {
-    return Err(Failure::input(format!(
-      "nesting part {:?} selects entity {entity_id:?}, which is an open contour: a part's footprint \
-       is the area it encloses, so a part is nested from a closed contour",
-      part.id
-    )));
-  }
-  Ok(contour.clone())
-}
-
-/// Which nester a part's own geometry puts it in (S6, S7).
-///
-/// A part is a **rectangle** when its selection is one closed, arc-free contour of four vertices whose
-/// area is its bounding box's: those are the cabinetry panels S7 ships first, and they go through
-/// `cam_geom::nest`, whose maxrects and guillotine passes are the two heuristics S6 names. Every other
-/// closed contour is a **free profile** and goes through `cam_geom::nest_profile`, the no-fit
-/// heuristic. The class is read from the part and never from a flag, so a part cannot be handed to an
-/// engine that cannot express it, and the report names the class of every part.
-pub fn classify(contour: &Contour) -> NestClass {
-  let bounds = contour.bounds();
-  let box_area = bounds.width() * bounds.height();
-  let area = contour.signed_area().abs();
-  // A four-vertex closed contour whose area is its box's can only be the box itself: every other
-  // quadrilateral inscribed in the box has strictly less area, and a self-intersecting one — a bowtie
-  // through the same four corners — has less again. The tolerance is the crate's, relative to the box,
-  // so a panel authored on a grid is a rectangle and a sliver is not a coincidence.
-  let is_rectangle = !contour.has_arcs()
-    && contour.len() == 4
-    && box_area > 0.0
-    && (area - box_area).abs() <= cam_geom::DEFAULT_TOLERANCE * box_area;
-  if is_rectangle {
-    NestClass::Rectangle
-  } else {
-    NestClass::Profile
-  }
-}
-
-/// The turn a nester chose in the document's own terms: a quarter turn counter-clockwise about the
-/// part's footprint corner (D-M9-1), or none. Both nesters speak [`NestRotation`], so one mapping
-/// serves both and a document has one rotation concept and not two.
-pub fn nest_angle(rotation: NestRotation) -> Angle {
-  match rotation {
-    NestRotation::None => Angle::ZERO,
-    NestRotation::QuarterTurn => Angle::from_radians(std::f64::consts::FRAC_PI_2),
-  }
-}
-
-/// The name a plan's algorithm is reported by.
-pub fn algorithm_label(algorithm: NestAlgorithm) -> &'static str {
-  match algorithm {
-    // A plan never reports this: it names the heuristic that packed it.
-    NestAlgorithm::Auto => "auto",
-    NestAlgorithm::MaxRects => "maxrects",
-    NestAlgorithm::Guillotine => "guillotine",
-  }
-}
-
 /// The next free `S{n}` sheet id: the `next_toolpath_id` scan, from `len + 1` upwards, so a document
 /// that authors its own ids never collides with one a run opens.
 pub fn fresh_sheet_id(sheets: &[NestingSheet]) -> String {
@@ -1318,138 +661,6 @@ pub fn fresh_part_id(parts: &[NestingPart]) -> String {
   }
 }
 
-/// How many instances of each part a run placed, beside how many the part asks for.
-///
-/// The one reading of "did this part get nested": the report and the exit code both read it, so they
-/// cannot disagree about what was left out.
-pub fn nest_shortfall(
-  parts: &[NestPart],
-  instances: &[NestedInstance],
-) -> Vec<(usize, usize, usize)> {
-  parts
-    .iter()
-    .enumerate()
-    .map(|(number, part)| {
-      let placed = instances
-        .iter()
-        .filter(|instance| instance.part == number)
-        .count();
-      (number, placed, part.instances)
-    })
-    .filter(|(_, placed, wanted)| placed < wanted)
-    .collect()
-}
-
-/// The report `cam-cli nest` prints: the boards, every placement, the engine that packed each part
-/// class and what the document's own arithmetic says about utilisation and waste.
-///
-/// One order, one decimal count and no iteration over a map, so two runs print the same bytes
-/// (invariant 4). Every number is either a placement the run made or a value
-/// [`Document::nesting_utilisation`] derived from the document that was written, so the report and the
-/// stored section cannot disagree (invariant 2).
-pub fn nest_report(
-  document: &Document,
-  parts: &[NestPart],
-  instances: &[NestedInstance],
-  run: &NestRun,
-  used_sheets: usize,
-  fractions: Option<(f64, f64)>,
-) -> String {
-  let Some(nesting) = document.nesting.as_ref() else {
-    return String::new();
-  };
-  let width = nesting.sheets.first().map_or(0.0, |sheet| sheet.width.mm());
-  let height = nesting
-    .sheets
-    .first()
-    .map_or(0.0, |sheet| sheet.height.mm());
-
-  let mut lines: Vec<String> = Vec::new();
-  lines.push(format!(
-    "nest: {} sheet(s) of {} x {} mm, {} part(s), {} instance(s)",
-    nesting.sheets.len(),
-    decimal(width),
-    decimal(height),
-    parts.len(),
-    parts.iter().map(|part| part.instances).sum::<usize>(),
-  ));
-  lines.push(format!(
-    "options: gap {} mm, rotation {}",
-    decimal(run.gap),
-    if run.allow_rotation { "on" } else { "off" },
-  ));
-  for (number, sheet) in nesting.sheets.iter().enumerate() {
-    let used = instances.iter().any(|instance| instance.sheet == number);
-    lines.push(format!(
-      "sheet {}: {}",
-      sheet.id,
-      if used { "used" } else { "unused" }
-    ));
-  }
-  for (number, part) in parts.iter().enumerate() {
-    lines.push(format!(
-      "part: {} {}, {} instance(s)",
-      part.id,
-      part.class.label(),
-      part.instances,
-    ));
-    for instance in instances.iter().filter(|instance| instance.part == number) {
-      lines.push(format!(
-        "placement: {} on {} at ({}, {}), rotation {}, {} x {} mm",
-        part.id,
-        nesting.sheets[instance.sheet].id,
-        decimal(instance.position.x),
-        decimal(instance.position.y),
-        if instance.rotation == Angle::ZERO {
-          "none"
-        } else {
-          "quarter turn"
-        },
-        decimal(instance.size.x),
-        decimal(instance.size.y),
-      ));
-    }
-  }
-  if let Some(algorithm) = run.rectangle {
-    lines.push(format!(
-      "algorithm: rectangle, {}",
-      algorithm_label(algorithm)
-    ));
-  }
-  if let Some((heuristic, step)) = run.profile {
-    lines.push(format!(
-      "algorithm: free profile, {heuristic} at {} mm",
-      decimal(step)
-    ));
-  }
-  lines.push(format!("sheets used: {used_sheets}"));
-  match fractions {
-    Some((utilisation, waste)) => {
-      lines.push(format!("utilisation: {}", decimal(utilisation)));
-      lines.push(format!("waste: {}", decimal(waste)));
-    }
-    None => {
-      lines.push("utilisation: none".to_owned());
-      lines.push("waste: none".to_owned());
-    }
-  }
-  let shortfall = nest_shortfall(parts, instances);
-  if shortfall.is_empty() {
-    lines.push("unplaced: none".to_owned());
-  }
-  for (number, placed, wanted) in shortfall {
-    lines.push(format!(
-      "unplaced: {}, {} of {} instance(s)",
-      parts[number].id,
-      wanted - placed,
-      wanted
-    ));
-  }
-  let mut text = lines.join("\n");
-  text.push('\n');
-  text
-}
-
 /// A millimetre figure with the report's three decimals, through `cam-units` so it is locale-free.
 pub fn decimal(value: f64) -> String {
   Format::fixed(3).apply(value)
@@ -1461,28 +672,4 @@ pub(crate) fn value_at(rest: &[String], index: usize, what: &str) -> Result<Stri
     .get(index + 1)
     .cloned()
     .ok_or_else(|| Failure::input(format!("{what} requires a value")))
-}
-
-/// Parse a non-negative distance in millimetres.
-pub(crate) fn parse_mm(value: &str, what: &str) -> Result<f64, Failure> {
-  let number = value
-    .parse::<f64>()
-    .map_err(|_| Failure::input(format!("{what} must be a distance in mm, got {value:?}")))?;
-  if number < 0.0 {
-    return Err(Failure::input(format!(
-      "{what} must be a non-negative distance in mm, got {value}"
-    )));
-  }
-  Ok(number)
-}
-
-/// A short label for an operation kind, for reports.
-pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str {
-  match operation {
-    cam_model::Operation::Isolation(_) => "isolation",
-    cam_model::Operation::NonCopperClear(_) => "non-copper clear",
-    cam_model::Operation::Cutout(_) => "cutout",
-    cam_model::Operation::Paint(_) => "paint",
-    cam_model::Operation::Panelize(_) => "panelize",
-  }
 }

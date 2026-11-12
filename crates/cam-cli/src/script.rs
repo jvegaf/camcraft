@@ -8,12 +8,10 @@
 //! Two laws hold this file together:
 //!
 //! 1. **Every command is a caller, never a second implementation.** `open` calls this crate's `open`,
-//!    each command with flags hands its tokens to the subcommand's own argument parser (`nest_args`,
-//!    `toolpath_args`, `parts_args`, `emit_args`, `cutlist_args`, `simulate_args`) and then to the
-//!    subcommand's own execution function (`nest_document`, `append_toolpath`, `author_parts`,
-//!    `emit_document`, `cut_list_document`, `simulate_document`), and `save` calls
-//!    `cam_store::document::save_document`. There is no geometry, nesting, import or emission step in
-//!    this file at all (M10 invariant 1).
+//!    commands with flags hand their tokens to the subcommand's own argument parser and then to
+//!    the subcommand's own execution function, and `save` calls
+//!    `cam_store::document::save_document`. There is no geometry, nesting-engine, import or
+//!    emission step in this file at all (M10 invariant 1).
 //! 2. **Every refusal is located**, in the `cam-post` parser's shape — `line {line}:{column}: {message}`
 //!    — and every mutation passes through `Document::validate` with the script line attached (M10
 //!    invariants 2 and 4).
@@ -34,10 +32,7 @@ use cam_model::{Document, Nesting, NestingPart, NestingSheet};
 use cam_units::Length;
 
 use crate::pieces::{author_parts, cut_list_document, cutlist_args, parts_args, save_report};
-use crate::{
-  fresh_part_id, fresh_sheet_id, nest_args, nest_document, only_path, validate_report,
-  write_report, Failure, NestRequest,
-};
+use crate::{fresh_part_id, fresh_sheet_id, only_path, validate_report, write_report, Failure};
 
 /// Why a command that needs the document says so: a script reads one, it never guesses at one.
 const NO_DOCUMENT: &str = "no document is open: a script reads one with `open <document>`";
@@ -79,24 +74,18 @@ const COMMANDS: &[Command] = &[
     usage: "<document>",
     run: command_open,
   },
-  // Authors a `NestingSheet` — the record `cam-cli nest` writes from `--sheets` — named by the
-  // `fresh_sheet_id` scan that `nest` already uses for a board it has to open.
+  // Authors a `NestingSheet` — named by the
+  // `fresh_sheet_id` scan, so a scripted `sheet` that authors one board per line names them.
   Command {
     word: "sheet",
     usage: "<width> <height> in millimetres",
     run: command_sheet,
   },
-  // Authors a `NestingPart`, the record `cam-cli nest` nests, named by the `fresh_part_id` scan.
+  // Authors a `NestingPart`, named by the `fresh_part_id` scan.
   Command {
     word: "part",
     usage: "<instances> <entity ids>",
     run: command_part,
-  },
-  // `cam-cli nest`: `nest_args` for the flags, `nest_document` for the run.
-  Command {
-    word: "nest",
-    usage: "[--sheets <WxH>] [--gap <mm>] [--rotation on|off] [--algorithm <mode>] [--step <mm>]",
-    run: command_nest,
   },
   // `cam-cli validate`: `Document::validate` and `validate_report`, the subcommand's own report.
   Command {
@@ -149,7 +138,7 @@ pub fn run_script(path: &Path, out: &mut dyn Write) -> Result<(), Failure> {
 
 /// Run a script, writing every report to `reports` and every notice to `notices`.
 ///
-/// **Reports** are the answers the document's commands produce — `nest: …`, `valid: …`, the cut list,
+/// **Reports** are the answers the document's commands produce — `valid: …`, the cut list,
 /// the part list's own report — and **notices** are the one line `save` writes once the document is on
 /// disk. The two are separate streams because the binary separates them: a command's data is stdout and
 /// its progress line is stderr, and `crates/cam-cli/tests/script.rs` pins both. The shell's scripting
@@ -469,7 +458,7 @@ impl ScriptLine {
   /// A refusal written by a shared parser, said where it is about.
   ///
   /// A command with flags hands its tokens to the subcommand's own parser, which answers the way a
-  /// command line deserves: `unknown nest option "--x"`, `--gap expects a number of millimetres, got
+  /// command line deserves: `unknown option "--x"`, `--gap expects a number of millimetres, got
   /// "abc"`, `--gap must be a non-negative distance in mm, got -1`. Every such refusal quotes the value
   /// it could not use or names the flag it is about, and both are tokens of this line, so the position
   /// is read back from the message. When it names neither, the refusal is about the command as a whole
@@ -648,29 +637,6 @@ fn command_part(session: &mut Session, line: &ScriptLine) -> Result<(), Failure>
   })
 }
 
-/// `nest [options]`: nest the authored parts onto the authored sheets.
-///
-/// The tokens go to `nest`'s own parser and then to the run every `cam-cli nest` performs, so a script
-/// cannot nest with a different engine, a different default or a second cost arithmetic.
-fn command_nest(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
-  let tokens = line.tokens_as_strings();
-  let args = nest_args(&tokens).map_err(|failure| line.locate(failure))?;
-  refuse_document_destination(line, args.path.as_ref(), &args.out)?;
-  let request = NestRequest {
-    sheets: args.sheets,
-    gap: args.gap,
-    rotation: args.rotation,
-    algorithm: args.algorithm,
-    step: args.step,
-  };
-  let outcome = session.mutate(line, |document| {
-    nest_document(document, &request).map_err(|failure| line.locate(failure))
-  })?;
-  outcome
-    .write_to(&mut *session.out)
-    .map_err(|failure| line.at_word(failure))
-}
-
 /// `validate`: check the open document and write the counts the subcommand prints.
 fn command_validate(session: &mut Session, line: &ScriptLine) -> Result<(), Failure> {
   line.exactly(0)?;
@@ -752,11 +718,11 @@ fn command_cutlist(session: &mut Session, line: &ScriptLine) -> Result<(), Failu
   cut_list_document(document, &args, &mut **out).map_err(|failure| line.locate(failure))
 }
 
-/// Refuse a scripted `nest` a document destination of its own.
+/// Refuse a scripted command a document destination of its own.
 ///
-/// Both subcommands write their document where `--out` says, and a script writes its document with
-/// `save`: accepting the flag and ignoring it would leave a `--out` that was never applied looking
-/// applied, so it is refused by name instead.
+/// The corresponding subcommand writes its document where `--out` says, and a script writes its
+/// document with `save`: accepting the flag and ignoring it would leave a `--out` that was never
+/// applied looking applied, so it is refused by name instead.
 fn refuse_document_destination(
   line: &ScriptLine,
   path: Option<&PathBuf>,
