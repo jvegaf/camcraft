@@ -1,9 +1,151 @@
-# Roadmap (pre-pivot history)
+# Roadmap index
 
-This directory records the history of the pre-pivot general-machining project (M0–M15). The live camcraft plan is [docs/ROADMAP_CAMCRAFT.md](../../docs/ROADMAP_CAMCRAFT.md) and [docs/SYSTEM_DESIGN_CAMCRAFT.md](../../docs/SYSTEM_DESIGN_CAMCRAFT.md).
+Two layers live here. The **live plan is the camcraft pivot** — phases F0–F8 defined in
+[docs/ROADMAP_CAMCRAFT.md](../../docs/ROADMAP_CAMCRAFT.md), diagnosed in
+[docs/GAPS_CAMCRAFT.md](../../docs/GAPS_CAMCRAFT.md) and designed in
+[docs/SYSTEM_DESIGN_CAMCRAFT.md](../../docs/SYSTEM_DESIGN_CAMCRAFT.md) — and its verified state is §1
+below. The **pre-pivot general-machining project (M0–M15)** is history: it shipped, and §2 keeps its
+record. Milestones are sequential; each was its own ODD feature document created when it started, and
+every one ended in an artefact demonstrable through `cam-cli`, not a slide.
 
-Milestones are sequential; each is its own ODD feature document created when the milestone starts.
-Every milestone ends with a demonstrable artefact through `cam-cli`, not a slide.
+## 1. Camcraft roadmap state (F0–F8)
+
+Audited **2026-11-12** read-only against the worktree, not against these documents: every row cites
+`path:line` evidence that exists today, and a feature is only `✅` when its code is there. The test
+suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*, not
+*green right now*.
+
+Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not hold yet) · `⬜` absent
+(verified by `grep`/`find` with zero matches).
+
+### F0 — Foundations
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E0.1 Set engine | ✅ | `cam-geom/src/boolean.rs:754` `BooleanOp`, `:805` `Combined`, `:835` `combine`; 5 properties in `cam-geom/tests/boolean_properties.rs:147` (commutativity, idempotence, `A\A=∅`, inclusion–exclusion) incl. a two-arc disc generator; task [034](../tasks/034-c1-booleans.md) delivered `aee3e5d` | — (known limit: a disc that *touches* a region's boundary from inside is still refused at 1e-9) |
+| E0.2 Input robustness | 🟡 | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:153` | Degenerate/unresolvable input is still refused (`region.rs:82`, `boolean.rs:75`, `:94`); the exit criterion is «the corpus produces no normalization errors» and there is no corpus |
+| E0.3 One tolerance policy | ⬜ | Constants remain: `cam-geom/src/lib.rs:52` (`DEFAULT_TOLERANCE=1e-6`), `offset.rs:49` (`0.001`), `region_offset.rs:41`, `:54` | No tolerance object at all: `grep -rn "struct Tolerance" crates` → 0 matches |
+| E0.4 Geometric parity harness | ⬜ | `find . -type d -name '*parity*'` → 0; only `.pp` fixtures exist (`cam-post/tests/fixtures/`) | No polygon/area/point-count comparison against reference geometry |
+| E0.5 Board corpus | ⬜ | `find . -path '*corpus*'` → 0 | No KiCad/EasyEDA/Eagle/Altium boards with `top/bottom/mask/silk/outline/drill` |
+| E0.6 FlatCAM baseline | ⬜ | No baseline table or script under `scripts/`, `odd/reports/`, `crates/` | Nothing measured to compare against |
+| E0.7 Benchmarks | ⬜ | No `benches/` anywhere; `grep -rn criterion Cargo.toml crates/*/Cargo.toml` → 0; `justfile` has no `bench` recipe | `criterion` harness and the CI regression job |
+| E0.8 CI | 🟡 | Local gate `scripts/check.sh:6` = `check-docs` + `cargo fmt --check` + `clippy -D warnings` + `cargo test --workspace`, wired at `justfile:10` | No `.github/workflows`, so nothing runs on a PR; no parity/bench job |
+
+### F1 — Board model and importers
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E1.1 Board model | 🟡 | `cam-model/src/lib.rs:27` `DOCUMENT_SCHEMA = "camcraft/document@1"`; `LayerRole` at `:197` (copper top/bottom, mask, silk, outline, drill, keepout); `Layer { role, … }` at `:237` | **Divergence from the plan**: there is no `c2d/document@3` and no `@2→@3` migration — the schema was *renamed* and legacy `c2d/*` is **rejected** (`cam-model/tests/document.rs:150`, `cam-store/tests/document.rs:139`, `:209`). Per-entity origin metadata is not there. Task [035](../tasks/035-c3-model.md) is still `in progress` (M1 tag/role/reject done) |
+| E1.2 PCB operations in the model | ✅ | `cam-model/src/lib.rs:432` `Operation::{Isolation, NonCopperClear, Cutout, Paint, Panelize}`; params `:289`–`:429`; validation `:1612`–`:1734`; round-trip `cam-model/tests/document.rs:369` | Behaviour beyond parameters, which is intentional at this stage |
+| E1.3 Fabrication-folder importer | ⬜ | `cam-cli/src/lib.rs:453` — `import takes exactly one input file` | No grouping of a folder into a board by role |
+| E1.4 Gerber parser | 🟡 | `crates/cam-gerber/src/lib.rs:14` `parse`; format/units/polarity `:79`; `image(tolerance)` evaluates the layer `:193` | Still rejected by name with the command index: a `D01` trace with an aperture outside a region, apertures `O`/`RoundRect`, macro-named apertures, and a second `D02` inside `G36/G37`. Task [036](../tasks/036-gerber-geometry.md) delivered `fc90dda`; the limits are listed in its doc |
+| E1.5 Polarity and nesting | 🟡 | Dark/clear through `combine` in `cam-gerber/src/lib.rs:193`; tested `cam-gerber/tests/gerber.rs:96` | **Step & repeat absent** — no `SR` handling |
+| E1.6 Excellon parser | 🟡 | `crates/cam-excellon/src/lib.rs:6` units, `:25` tool table, `:46` `Feature::{Hole, Slot}`, `:225` `G90/G91` | Omitted-leading/trailing zeros and the wider dialect are not corpus-proven |
+| E1.7 Import report for Gerber/Excellon | ⬜ | `grep -rn ImportReport crates/cam-gerber crates/cam-excellon` → 0 | Both crates surface their own errors instead of `ImportReport`/`Skipped { construct, reason, location }` (`cam-import/src/report.rs`) |
+| E1.8 PCB tool library | 🟡 | `cam-store/src/tools.rs:174` geometry carries `included_angle`, `flat_diameter`, `tip_radius`, `ToolKind::{VBit, Drill, …}` | `cam-cli tools add` writes the basics only (`cam-cli/src/lib.rs:598`); no isolation-cutter type and no PCB workflow |
+
+### F2 — Drilling and cutout
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E2.1 Drilling from an Excellon table | ⬜ | `cam-ops/src/peck.rs:31` takes geometric `DrillHole`s; no path from `cam-excellon` to a program | Grouping by diameter, tool selection, slots as holes or as paths |
+| E2.2 Deterministic ordering | 🟡 | `cam-ops/src/peck.rs:179` nearest-neighbour tour with a deterministic seed | The 2-opt pass under an **iteration** budget |
+| E2.3 Cutout with tabs | 🟡 | Tabs validated in `cam-ops/src/follow.rs:24`; `CutoutParams` tabs/tab kind at `cam-model/src/lib.rs:315`, validated `:1679` | No outline-driven cutout program, no gaps/mouse-bites |
+| E2.4 Penetration predicate | ⬜ | `grep -rn "overlaps_copper" crates` → 0 | The pure function that F3 accepts against |
+| E2.5 Full drills + cutout program by CLI | ⬜ | `cam-cli/src/lib.rs:260`–`:360` lists `validate inspect import export check parts cutlist report tools postp script` | No generation command at all |
+
+### F3 — Isolation
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E3.1 Copper union before isolation | ⬜ | No consumer of `combine` outside `cam-gerber` | The layer union step |
+| E3.2 Multipass accumulated offset | 🟡 | Ring machinery `cam-ops/src/rings.rs`, `cam-geom/src/region_offset.rs:109`; arc-preserving self-intersection cleanup in task [037](../tasks/037-offset-exact.md) (`79a07c9`) | The `dia·((2i+1)/2) − i·overlap·dia` pass law and the direction by milling type; `Region::offset` can still refuse a traversal that crosses the shape |
+| E3.3 V-bit depth | ⬜ | `IsolationParams` carries `cut_depth` only (`cam-model/src/lib.rs:329`) | Depth derived from included angle and tip |
+| E3.4 Anti-gouge guard | ⬜ | `grep -rn "gouge guard\|anti-gouge" crates` → 0 | Repair-or-fail with an actionable diagnosis |
+| E3.5 `iso_type` + keep pours | 🟡 | `IsolationKind` and `combine_passes` exist as parameters (`cam-model/src/lib.rs:301`) | Nothing selects or executes them |
+| E3.6 `cam-cli isolate` | ⬜ | `grep -rn '"isolate"' crates/cam-cli/src` → 0 | The command and its post-processor path |
+
+### F4 — Non-copper clear
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E4.1–E4.7 | ⬜ | Only the model: `NonCopperClearParams` (`cam-model/src/lib.rs:357`) and `FillMethod::{Lines, Grid, Rings}` (`:289`) as data; `grep -rn rayon Cargo.toml crates` → 0, `grep -rn "rstar\|kdtree"` → 0, no `rest machining` | Envelope, concentric fill, spatial index, parallel fill, rest machining, seed/lines methods, and the published FlatCAM comparison — the whole phase, and the product's performance thesis with it |
+
+### F5 — PCB G-code
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E5.1 FlatCAM dialect catalogue | 🟡 | `.pp` parser/emitter with byte goldens: `cam-post/src/lib.rs:27`, `:137`, `:268`; fixtures `cam-post/tests/fixtures/post_inch.pp`, `post_mm.pp` | The GRBL/Marlin/Repetier dialect **data** |
+| E5.2 `exc_areas` and travel routing | ⬜ | `grep -rn "exc_areas\|exclusion" crates` → 0 | Model field, routing around it, and its simulation check |
+| E5.3 Autolevelling | ⬜ | `grep -rn autolev crates` → 0; `cam-move` still carries fixed Z | Height map plus arc and long-move segmentation as a stream transform |
+| E5.4 `toolchange_style` | ⬜ | `grep -rn toolchange_style crates` → 0 | The enum replacing name matching |
+| E5.5 Gerber/Excellon writers | ⬜ | `cam-export/src/lib.rs:67`, `:123` — DXF and SVG only | Both writers and their round-trip proof against `cam-gerber`/`cam-excellon` |
+
+### F6 — Board UI, F7 — extension, F8 — hardening
+
+| ID | State | Evidence | What is missing |
+| --- | --- | --- | --- |
+| E6.1 Board layer identity | ⬜ | `Layer.role` exists in the model (`cam-model/src/lib.rs:237`), the UI still draws generic layers (`cam-view/tests/scene.rs:17` uses `LayerRole::Geometry`) | Colour by role, copper mode |
+| E6.2 Project tree | ⬜ | No board→layers→operations tree in `cam-ui` | The tree and its navigation |
+| E6.3 Operation forms | ⬜ | `grep -rn "IsolationParams\|NonCopperClearParams\|CutoutParams\|PaintParams" crates/cam-ui/src` → 0 | One form per PCB operation |
+| E6.4 Tool panel bound to the library | 🟡 | `cam-ui/src/tool_library/` is a real editor over the SQLite store (tasks [032](../tasks/032-tool-library-app.md), [033](../tasks/033-tool-library-editor.md)) | The binding to PCB operations, which do not exist yet |
+| E6.5 Shortcuts and Ctrl+S | 🟡 | Shell chrome and the help/shortcuts map exist (`cam-ui/src/shell/`, task [010](../tasks/010-camui-shell.md)) | Proof of Ctrl+S and a documented PCB-flow map |
+| E6.6 Integrated preview + simulation | 🟡 | `cam-ui/src/view3d/` with playback and `cam-sim` behind it (task [027](../tasks/027-m13-in-app-cycle.md)) | Present, but only for the pre-pivot strategies; nothing PCB to preview |
+| E7.1–E7.4 | ⬜ | `PaintParams` (`cam-model/src/lib.rs:395`) and `PanelizeParams` (`:414`) are parameters with no executor; `grep -rn thieving crates` → 0; no film/punch | Paint, panelize, film/punch, copper thieving. Note the plan's warning: nesting ≠ panelize, and **`nest`/`nest_profile` no longer exist** (task [039](../tasks/039-wood-out-sweep.md) removed them) |
+| E8.1–E8.5 | ⬜ / 🟡 | No corpus, no benches, no installer (`grep -rn "installer\|packaging"` → 0 relevant). Docs do exist: `README.md`, `docs/ROADMAP_CAMCRAFT.md`, `docs/GAPS_CAMCRAFT.md`, `docs/SYSTEM_DESIGN_CAMCRAFT.md` | 20+ board regression corpus, published benchmarks, signed installers, a migration/CLI guide for a new user, and the alpha |
+
+### Where the code actually stands
+
+- **The pivot's first real asset is the new `cam-ops` crate** (`cam-ops/src/lib.rs:1`): profile-with-tabs
+  (`follow`), drilling/peck/drill-bank (`peck`), pocket/rings (`rings`) — rescued from `cam-toolpath`
+  so they evolve independently of the wood domain.
+- **The wood domain is out (D4 executed, task [039](../tasks/039-wood-out-sweep.md))** — `cam-toolpath`
+  and `cam-program` no longer exist, `cam-geom` lost `text`/`moulding`/`nest`/`nest_profile`, and
+  `Operation` now lists PCB operations only.
+- **Three crates exist that GAPS_CAMCRAFT.md predates**: `cam-gerber`, `cam-excellon`, `cam-ops`.
+- **Phase 0 is the gap that decides the rest**: the engine (E0.1) exists but not one of its
+  instruments (E0.3 tolerance policy, E0.4 parity, E0.5 corpus, E0.6 baseline, E0.7 benches, E0.8 CI).
+  Every phase below F0 is blocked on being able to *measure* correctness and speed.
+- **Only E1.2 is fully done of all F1 items**, and only E0.1 of F0. Everything else is partial or
+  absent; F4 — the product's thesis — is 0 %.
+
+### Divergences between the plan and the code (decide, do not drift)
+
+1. **Schema identity.** `docs/ROADMAP_CAMCRAFT.md` §4 plans `c2d/document@3` as an *additive* step with
+   an `@2→@3` migration (D3). The code writes `camcraft/document@1` and refuses legacy `c2d/*`. That is
+   a deliberate break, not an additive bump; D3 in `docs/GAPS_CAMCRAFT.md` §6 now describes something
+   that did not happen. Either D3 gets amended with this decision, or the rejection is a defect.
+2. **Removed assets.** GAPS §7 lists `cam-geom`'s `nest`/`nest_profile` as reusable; task 039 removed
+   them, and E7.2 explicitly must not reuse nesting anyway — so the row is consistent, but the GAPS
+   line is stale.
+3. **`EntityKind` is still `Contour`-only** (`cam-model/src/lib.rs:250`), which is what GAPS flagged as
+   blocking (G2.1) and what D3 resolved as "grows at most with `Drill` and `Slot`". Not done.
+
+### Waves and who builds them
+
+The scheduling view of all of the above — which items run in parallel, in which worktree, with which
+claimed surfaces and which merge order — is [waves.md](waves.md). Its first wave is exactly the
+instrument set below.
+
+### Next slice, from here
+
+Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says — but the cheap half of the
+instrument set is still the cheapest thing available:
+
+1. **E0.5 corpus + E0.4 parity harness** — the two that turn every later claim into a test, and the
+   only way to close E0.2's exit criterion.
+2. **E0.8 CI** — without it the corpus and the parity harness protect nothing on a PR.
+3. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
+4. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then F2 (drilling,
+   cutout) as the first real G-code through `cam-cli`.
+
+E0.7's benchmarks and E0.6's baseline can wait for the first PCB operation that has something to
+measure.
+
+## 2. Pre-pivot milestones (M0–M15, history)
+
+Delivered, kept as the record of the general-machining product that the pivot froze (D4). The table
+below is not a status list: all fifteen milestones shipped.
 
 | M | Milestone | Deliverable (verifiable) | Why here | Link |
 | --- | --- | --- | --- | --- |
@@ -28,7 +170,7 @@ Deferred / conditional, not scheduled: PDF text-to-outline fidelity beyond vecto
 cases, rotary wrapping (`ROTARY_WRAP_X/Y` in the DSL is parsed but wrapping toolpaths are a later
 milestone), drill-bank hardware integration, i18n.
 
-## Sections
+## 3. Pre-pivot documents
 
 - [M0 — foundation](m00-foundation.md)
 - [M1 — editor](m01-editor.md)
