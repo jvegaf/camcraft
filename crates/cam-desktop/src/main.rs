@@ -102,7 +102,7 @@ impl eframe::App for Editor {
           None => continue,
         },
         UiAction::RequestImportFile => match rfd::FileDialog::new()
-          .add_filter("vector or image", &["dxf", "svg", "pdf", "eps", "png"])
+          .add_filter("vector", &["dxf", "svg"])
           .pick_file()
         {
           Some(path) => UiAction::ImportFile {

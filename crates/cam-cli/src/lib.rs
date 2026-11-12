@@ -37,15 +37,10 @@ USAGE:
 COMMANDS:
     validate <document>       Check the document's schema and referential invariants
     inspect <document>        Print layer, entity and toolpath counts
-    import <input>            Import DXF, SVG, PDF, EPS or PNG into a new document
+    import <input>            Import DXF or SVG into a new document
         --out <path>          Write the document here; without it the report goes to stdout
         --layer <name>        Put every imported contour in one layer with this name
         --tolerance <mm>      Flattening tolerance for curves (default 0.01)
-        --dpi <n>             Raster trace scale (default 96)
-        --threshold <0-255>   Raster trace luminance cut-off (default 128)
-        --invert              Trace the light regions instead of the dark ones
-        --min-area <mm2>      Drop traced regions smaller than this area
-        --simplify <mm>       Simplify traced contours within this distance
     export <document>         Write the document's geometry back out as DXF or SVG
         --format <name>       dxf or svg (required)
         --out <path>          Write the file here instead of stdout
@@ -507,32 +502,6 @@ pub fn import_command(rest: &[String]) -> Result<(), Failure> {
         options.tolerance = number(rest, index, "--tolerance")?;
         index += 2;
       }
-      "--dpi" => {
-        options.trace.dpi = number(rest, index, "--dpi")?;
-        index += 2;
-      }
-      "--threshold" => {
-        let value = number(rest, index, "--threshold")?;
-        if !(0.0..=255.0).contains(&value) {
-          return Err(Failure::input(format!(
-            "--threshold must be between 0 and 255, got {value}"
-          )));
-        }
-        options.trace.threshold = Some(value.round() as u8);
-        index += 2;
-      }
-      "--min-area" => {
-        options.trace.min_area = number(rest, index, "--min-area")?;
-        index += 2;
-      }
-      "--simplify" => {
-        options.trace.simplify = number(rest, index, "--simplify")?;
-        index += 2;
-      }
-      "--invert" => {
-        options.trace.invert = true;
-        index += 1;
-      }
       other if other.starts_with('-') => {
         return Err(Failure::input(format!("unknown import option {other:?}")))
       }
@@ -552,10 +521,6 @@ pub fn import_command(rest: &[String]) -> Result<(), Failure> {
       "--tolerance must be a positive length in mm",
     ));
   }
-  if options.trace.dpi <= 0.0 {
-    return Err(Failure::input("--dpi must be a positive number"));
-  }
-
   let imported = cam_import::import_path(&input, &options)
     .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
   let document = cam_import::into_document(&imported, layer.as_deref())

@@ -5,8 +5,8 @@ use std::path::Path;
 
 use cam_geom::{primitive, Contour, Point2};
 use cam_import::{
-  detect, import_bytes, into_document, Format, ImportError, ImportOptions, ImportReport, Imported,
-  ImportedLayer, PLACEMENT_MARGIN,
+  detect, into_document, Format, ImportError, ImportOptions, ImportReport, Imported, ImportedLayer,
+  PLACEMENT_MARGIN,
 };
 
 fn report_with_counts() -> ImportReport {
@@ -31,9 +31,6 @@ fn the_extension_decides_the_format_first() {
     ("part.dxf", Format::Dxf),
     ("PART.DXF", Format::Dxf),
     ("logo.svg", Format::Svg),
-    ("sheet.pdf", Format::Pdf),
-    ("plot.eps", Format::Eps),
-    ("art.PNG", Format::Png),
   ] {
     assert_eq!(
       detect(Path::new(name), b"ignored").expect("detect"),
@@ -45,10 +42,7 @@ fn the_extension_decides_the_format_first() {
 
 #[test]
 fn content_signatures_identify_a_format_with_no_known_extension() {
-  let cases: [(&str, &[u8], Format); 5] = [
-    ("part", b"%PDF-1.7\n1 0 obj\n", Format::Pdf),
-    ("plot", b"%!PS-Adobe-3.0 EPSF-3.0\n", Format::Eps),
-    ("art", b"\x89PNG\r\n\x1a\n\x00\x00", Format::Png),
+  let cases: [(&str, &[u8], Format); 2] = [
     ("logo", b"<?xml version=\"1.0\"?>\n<svg/>", Format::Svg),
     ("drawing", b"0\nSECTION\n2\nENTITIES\n0\nEOF\n", Format::Dxf),
   ];
@@ -73,7 +67,7 @@ fn an_unreadable_format_is_refused_naming_the_supported_set() {
   );
   assert_eq!(
     error.to_string(),
-    "unsupported format dwg; supported formats are dxf, svg, pdf, eps, png"
+    "unsupported format dwg; supported formats are dxf, svg"
   );
 }
 
@@ -181,22 +175,8 @@ fn a_single_layer_import_keeps_every_contour_in_one_named_layer() {
 }
 
 #[test]
-fn an_importer_that_produces_nothing_is_an_error_not_an_empty_document() {
-  // The contract every format shares: a file that parses but yields no geometry is an error the
-  // caller sees, never a silent empty document. The spine is the one place that decides it.
-  let error = import_bytes("plot.eps", b"%!PS-Adobe-3.0\n", &ImportOptions::default())
-    .expect_err("nothing imported");
-  match error {
-    ImportError::NothingImported { format, .. } => assert_eq!(format, "eps"),
-    other => panic!("unexpected error {other:?}"),
-  }
-}
-
-#[test]
 fn the_default_tolerance_is_one_hundredth_of_a_millimetre() {
   assert_eq!(ImportOptions::default().tolerance, 0.01);
-  assert_eq!(ImportOptions::default().trace.dpi, 96.0);
-  assert_eq!(ImportOptions::default().trace.effective_threshold(), 128);
 }
 
 /// A contour is comparable when we round-trip it through the format that stores it.

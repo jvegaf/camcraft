@@ -369,7 +369,7 @@ fn import_refuses_an_extension_it_cannot_read() {
     outcome.stderr
   );
   assert!(
-    outcome.stderr.contains("dxf, svg, pdf, eps, png"),
+    outcome.stderr.contains("dxf, svg"),
     "stderr: {}",
     outcome.stderr
   );
@@ -417,16 +417,10 @@ fn import_refuses_an_unknown_option() {
 }
 
 #[test]
-fn the_help_lists_the_import_command_and_its_trace_options() {
+fn the_help_lists_the_import_command_and_its_options() {
   let outcome = run(&["--help"]);
   assert_eq!(outcome.code, 0);
-  for expected in [
-    "import <input>",
-    "--tolerance <mm>",
-    "--threshold <0-255>",
-    "--min-area <mm2>",
-    "--simplify <mm>",
-  ] {
+  for expected in ["import <input>", "--tolerance <mm>"] {
     assert!(
       outcome.stdout.contains(expected),
       "help is missing {expected}:\n{}",
