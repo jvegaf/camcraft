@@ -414,3 +414,32 @@ archivos pero **no borra** los que la rama origen ya no tiene: en `crates/cam-im
 `eps.rs`, `raster.rs` y sus tests hasta que se borraron con `git rm`, y el árbol no compilaba por imports
 a `flate2` y a `TraceOptions` — exactamente el error que L21 ya había registrado una vez en este repo. El
 borrado va con `git rm`, nunca se infiere de un checkout.
+
+**L38** (evidencia — qué revisó el proveedor de la historia rebanada, y qué no entra): cada corte se
+ofreció como candidato propio, con `committedOnly` y base en el corte anterior, lentes `risk` +
+`reliability` para el código y ninguna para docs (L17).
+
+| Corte | Rango | Veredicto del proveedor | Linaje |
+| --- | --- | --- | --- |
+| docs | `17b9c44..e3beceb` | **approved**, `risk_tier: low`, `non_executable_only`, sin lentes | `review-2b8db92b2d855ac6` |
+| texto | `f11a629..7916278` | **approved** tras 2 corridas (1.660 líneas, tier `high`, `correction_budget` 200); acknowledgement quemó la autoridad | `review-11610ba54a726679` |
+| moulding | `7916278..31c317c` | **escalated** (`native_stop_required`): R3-001 BLOCKER inferencial, degradado por el propio proveedor (`downgraded_causal_findings: unverified_location`, `candidate_causal_finding_ids: []`) | `review-e344c2b7641c9a5f` |
+| import | `31c317c..cc9199d` | **stop en preflight**: `lens_context_budget_exceeded`, sin autoridad | `review-23e442de4e4e24f4` |
+| nesting | `cc9199d..17b9c44` | **stop en preflight**: idem | `review-d9aebe81962bba3b` |
+
+**R3-001 es un falso positivo, y queda medido.** El revisor apoyó un BLOCKER en un comentario del propio
+`moulding.rs` borrado (`:300-301`), que decía que `cam-toolpath::moulding` emitía la pasada y
+`cam_sim::target::claim_moulding` la reclamaba: ambos crates salieron del producto en L21-L22, y el
+`crates/cam-geom/src/moulding.rs:1` que cita como "referencia viva" es el archivo que el candidato borra.
+La prueba directa en `31c317c`: `cargo test --workspace` = **1.280 passed, 0 failed**, o sea el workspace
+compila y ningún consumidor quedó apuntando a lo borrado. Es la segunda vez que este repo ve un CRITICAL
+inferencial sin entrada alcanzable (L18); la lección se repite: **probar antes de creerle la severidad**.
+
+**El techo del revisor, medido otra vez y más fino:** entra 1.660 líneas (texto, aprobado) y 1.343
+(moulding, admitido), y rebota 5.377 y 5.612. La banda de L22 (entre 1.409 aprobado y 5.762 rebotado) se
+angosta a **entre 1.660 y 5.377** líneas cambiadas. Los dos cortes grandes —`import` y `nesting`— quedan
+por debajo del control que sí existe: verificación independiente (T7, L33) sobre lo que sobrevive,
+`cargo test --workspace` verde en cada corte aislado (L36) y el árbol idéntico a `sweep-backup`. Si el
+dueño quiere review de proveedor también ahí, hay que partirlos por módulo (pdf 2.149, eps 1.816, raster
+1.550, nest ~3.700, nest_profile ~1.700 con tests) y aceptar las corridas que eso cuesta. Nada de esto
+autoriza delivery.
