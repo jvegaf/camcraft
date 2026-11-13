@@ -47,3 +47,6 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 040 | [docs-reorganization](040-docs-reorganization.md) | delivered | 2026-11-11 | `047b582` |
 | 041 | [worktree-enforcement](041-worktree-enforcement.md) | delivered | 2026-11-12 | `f11a629` |
 | 042 | [parallel-waves](042-parallel-waves.md) | delivered | 2026-11-12 | `794b5c5` |
+| 043 | [w1b-ci](043-w1b-ci.md) | in progress | 2026-11-13 | — |
+| 044 | [e0-7-benchmarks](044-e0-7-benchmarks.md) | in progress | 2026-11-13 | — |
+| 045 | [w1a-corpus-parity](045-w1a-corpus-parity.md) | in progress | 2026-11-13 | — |
