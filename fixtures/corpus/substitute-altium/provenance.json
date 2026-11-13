@@ -1,0 +1,19 @@
+{
+  "slug": "substitute-altium",
+  "source": "kicad-demos/kit-dev-coldfire-xilinx_5213/kit-dev-coldfire-xilinx_5213.kicad_pcb",
+  "source_sha256": "454cca80798a8e44ec5edc8f8045f0c0092241462305d901d58180ddc7638f70",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "substitute for Altium (KiCad, 4 layers, 157 x 91 mm)",
+  "is_substitute": true,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}

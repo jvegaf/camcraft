@@ -1,0 +1,19 @@
+{
+  "slug": "kicad-large-pours",
+  "source": "kicad-demos/pic_programmer/pic_programmer.kicad_pcb",
+  "source_sha256": "1ca70b620506818eb0227e2863bbd573d1fec1672072dc43d0dbe8475e69c8fb",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "S1 larger than 100x100 mm with pours (234 x 140 mm, 4 zones)",
+  "is_substitute": false,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}

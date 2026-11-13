@@ -1,0 +1,19 @@
+{
+  "slug": "kicad-4l-pours",
+  "source": "kicad-demos/tiny_tapeout/tinytapeout-demo.kicad_pcb",
+  "source_sha256": "0d26bf9b6d561e32cf610d428541d6433e60b45e1838f34f73467e25b9144814",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "S1 KiCad 4 layers with pours (167 zones, In1/In2)",
+  "is_substitute": false,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}

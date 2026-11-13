@@ -1,0 +1,19 @@
+{
+  "slug": "substitute-eagle",
+  "source": "kicad-demos/openair-max/One-Air-Max.kicad_pcb",
+  "source_sha256": "a577ba5e2b337c9b827f3c30256161a1893da8303d278fb7db10dba4f02ea810",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "substitute for Eagle (KiCad, 4 layers, 43 zones)",
+  "is_substitute": true,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}

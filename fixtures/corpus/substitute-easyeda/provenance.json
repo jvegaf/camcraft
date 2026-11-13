@@ -1,0 +1,19 @@
+{
+  "slug": "substitute-easyeda",
+  "source": "kicad-demos/complex_hierarchy/complex_hierarchy.kicad_pcb",
+  "source_sha256": "49e8e21ede3c360a85b789d99adb78000042649c1113118ce3b24c05148c635c",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "substitute for EasyEDA (KiCad, 2 layers, 100.7 x 80.0 mm)",
+  "is_substitute": true,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}
