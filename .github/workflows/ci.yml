@@ -13,6 +13,9 @@ jobs:
   gate:
     name: fmt, clippy, docs, test
     runs-on: ubuntu-latest
+    # GitHub's default is 360 minutes, so a hung build or test would sit there for six hours before
+    # it says anything. Loose on purpose: a tripwire, not a budget the suite is tuned against.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4

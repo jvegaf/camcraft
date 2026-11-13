@@ -45,7 +45,9 @@ fi
 echo "== building the measurer"
 # The measurer lives outside the workspace on purpose (see scripts/parity/README.md), so it is built
 # here and its target directory is the workspace's own, which is already ignored by git.
-CARGO_TARGET_DIR="$TARGET" cargo build --manifest-path "$MEASURE_DIR/Cargo.toml" --release --quiet
+# `--locked` on purpose: the measurer pins its own lock file, and resolving a newer version
+# here would change what the corpus is measured with without saying so.
+CARGO_TARGET_DIR="$TARGET" cargo build --manifest-path "$MEASURE_DIR/Cargo.toml" --locked --release --quiet
 MEASURE="$TARGET/release/parity-measure"
 if [ ! -x "$MEASURE" ]; then
   echo "ERROR: $MEASURE was not built" >&2
