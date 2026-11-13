@@ -57,6 +57,18 @@ test-match filter:
 test-loud filter="":
   cargo test --workspace {{filter}} -- --nocapture
 
+# E0.4: measure the committed corpus and fail on any divergence from its goldens (W1a).
+# Never pass `--update` here: re-pinning goldens is a reviewed human change, not a gate.
+parity:
+  ./scripts/parity/run.sh
+
+# E0.7: run the benchmarks and compare them against the committed criterion baseline (W1c).
+# The comparison is reported by criterion; it is hardware-coupled, so it is a tripwire, not a
+# number to gate a shared runner on.
+bench:
+  ./crates/cam-geom/benches/check_regression.sh --noplot
+  ./crates/cam-ops/benches/check_regression.sh --noplot
+
 # Build the workspace in debug.
 build:
   cargo build --workspace
