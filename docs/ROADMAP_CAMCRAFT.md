@@ -50,7 +50,7 @@ F0 Fundamentos ──┬──► F1 Modelo @3 + importadores ──┬──►
                                                           F8 Publicación ◄────┘
 ```
 
-`E0.1` (motor de conjuntos) bloquea `F3` y el cierre de `F1`. `E0.3` (arnés de paridad) y `E0.4`
+`E0.1` (motor de conjuntos) bloquea `F3` y el cierre de `F1`. `E0.4` (arnés de paridad) y `E0.7`
 (benchmarks) pueden avanzar en paralelo con `E0.1` desde el día uno, y son los que permiten que `F1`
 y `F4` tengan criterio de aceptación.
 
@@ -63,7 +63,7 @@ y `F4` tengan criterio de aceptación.
 | ID | Tarea | Tamaño | Criterio de salida |
 | --- | --- | --- | --- |
 | E0.1 | Motor de conjuntos sobre el arrangement existente: `union`, `intersection`, `difference` entre `Region`s, con predicados de selección de tramos sobre `material_side`/`material_beside` (`boolean.rs:306,372`) | **L** | 200 operaciones booleanas contra áreas conocidas con error < tolerancia; property tests con `proptest` sobre regiones aleatorias (incluidas degeneradas) |
-| E0.2 | Robustez de entrada: normalización de contornos auto-intersectados, bordes coincidentes, vértices de contacto (`region.rs:162-165` hoy rechaza) | **M** | El corpus de E0.3 no produce errores de normalización |
+| E0.2 | Robustez de entrada: normalización de contornos auto-intersectados, bordes coincidentes, vértices de contacto (`region.rs:162-165` hoy rechaza) | **M** | El corpus degenerado de `crates/cam-geom/tests/boolean_corpus.rs` no produce errores de normalización: cada caso degenerado o normaliza con la identidad de área, o se rechaza con una variante de error que nombra el constructo — nunca un área silenciosamente falsa. Y el corpus de `E0.5` no añade errores de normalización a esa lista en la medida en que el kernel lo ejerza |
 | E0.3 | Política de tolerancia única: un objeto explícito que cada operación recibe, reemplazando los literales dispersos (`cam-geom/src/lib.rs:52-58`, `offset.rs:26-43`, `region_offset.rs:62-74`) | **M** | Ninguna operación geométrica pública crea un literal de tolerancia propio; test que verifica la política |
 | E0.4 | Arnés de paridad **geométrica**: conteo de polígonos, área total (ε relativo 1e-9), conteo de puntos tras aplanar, sobre corpus fijo | **M** | Corre en CI sobre el corpus mínimo y falla ante divergencia |
 | E0.5 | Corpus mínimo de placas: KiCad 2 capas simple, KiCad 4 capas con pours, EasyEDA, Eagle, Altium, y una placa grande >100×100 mm con pours — cada una con `top/bottom/mask/silk/outline/drill` | **M** | 6 placas versionadas con sus artefactos de fabricación |
