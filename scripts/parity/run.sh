@@ -55,6 +55,14 @@ fi
 echo "== measuring $CORPUS"
 python3 "$ROOT/scripts/parity/collect.py" "$CORPUS" "$MEASURE" >"$WORK/measured.json"
 
+# A non-zero exit of the measurer is a crash, and a crash must never become a golden: `--update` would
+# re-pin it as a state that looks like a reader refusal forever after. This runs before either branch, so
+# the gate and the re-pin both stop here instead of comparing a failure with a failure.
+if ! python3 "$ROOT/scripts/parity/guard_errors.py" "$WORK/measured.json"; then
+  echo "ERROR: a measurer failure is not a corpus divergence; fix the crash and re-run" >&2
+  exit 1
+fi
+
 if [ "$UPDATE" = "1" ]; then
   python3 - "$WORK/measured.json" "$CORPUS" <<'PY'
 import json, sys

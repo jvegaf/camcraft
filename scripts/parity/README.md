@@ -106,8 +106,8 @@ A divergence is either progress or a regression, and the diff decides which:
   commit and its own provenance diff.
 
 `error` is the measurer itself failing — a panic, an allocation failure — and it is deliberately not
-`refused`: a crash has to fail the comparison, and `--update` must not be able to re-pin it as a reader
-refusal that happens to look the same.
+`refused`: `run.sh` stops on it before comparing or re-pinning (see `guard_errors.py`), and a golden may
+never hold it. A crash is not a measurement, so there is nothing for it to match.
 
 The board set is fixed too. Both `compare.py` and the workspace test enumerate the six slugs E0.5 names
 and fail if the corpus holds a different set, so a board directory that disappears is a divergence

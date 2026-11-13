@@ -55,6 +55,15 @@ def close(left: float, right: float) -> bool:
 
 
 def compare_value(where: str, measured: dict, golden: dict, problems: list[str]) -> None:
+    # A measurer failure is never a measurement. If the tree crashed, or a golden ever recorded a crash,
+    # there is nothing to compare and the harness has to say so instead of finding `error` == `error` and
+    # calling it a match - which is the whole reason `error` is a status distinct from `refused`.
+    for side, value in (("the tree", measured), ("the golden", golden)):
+        if value.get("status") == "error":
+            problems.append(
+                f"{where}: {side} records a measurer failure; a crash is not a measurement and cannot be compared"
+            )
+            return
     for field in ("status",):
         if measured.get(field) != golden.get(field):
             problems.append(
