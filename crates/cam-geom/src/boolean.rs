@@ -140,14 +140,9 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
     });
   }
 
-  let valid_snaps_for_classification = filter_valid_snaps(
-    &cuts.iter().map(|c| c.segment).collect::<Vec<_>>(),
-    &near_miss_snaps,
-  );
-  let check_slivers = !valid_snaps_for_classification.is_empty();
   let mut survivors: Vec<Segment> = Vec::with_capacity(cuts.len());
   for cut in cuts {
-    match material_side(cut.segment, cut.path, region, tolerance, check_slivers)? {
+    match material_side(cut.segment, cut.path, region, tolerance, &near_miss_snaps)? {
       Side::Left => survivors.push(cut.segment),
       Side::Right => survivors.push(cut.segment.reversed()),
       Side::Both | Side::Neither => {}
@@ -275,15 +270,13 @@ fn push_fractions(
     for (endpoint, other_end) in endpoints {
       // A near-miss must be closer to its projection than to the endpoint's own neighbor on this
       // segment, or snapping would collapse that segment (e.g. a legitimate micro-edge whose endpoint
-      // happens to project onto a nearby boundary).
-      if endpoint.distance_to(other_end)
-        <= endpoint.distance_to(point_at(segment, {
-          match fraction_along(segment, endpoint) {
-            Some(f) => f,
-            None => continue,
-          }
-        }))
-      {
+      // happens to project onto a nearby boundary). Use strict < so that when equal (micro-edge
+      // tip exactly at projection distance from its neighbor), the snap is still considered.
+      let projection_distance = match fraction_along(segment, endpoint) {
+        Some(f) => endpoint.distance_to(point_at(segment, f)),
+        None => continue,
+      };
+      if endpoint.distance_to(other_end) < projection_distance {
         continue;
       }
       // Reject near-miss if the endpoint's segment (other) and the target segment are roughly
@@ -303,6 +296,13 @@ fn push_fractions(
         }
       }
       if let Some((fraction, projection)) = near_miss_fraction(segment, endpoint, tolerance) {
+        // Reject false near-misses from normal contour vertices: if the endpoint's own segment
+        // (other) is much longer than the gap, this is a legitimate separation between closed
+        // contours, not a micro-edge junction. The micro-edge tip's adjacent segment is comparable
+        // in length to the projection distance.
+        if other_end.distance_to(projection) > projection_distance * 100.0 {
+          continue;
+        }
         *re_cut = true;
         fractions.push(fraction);
         near_miss_snaps.push((endpoint, projection));
@@ -334,15 +334,12 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
   {
     return None;
   }
-  // Much closer to the projection than the projection is to either end of this segment, AND the
-  // absolute distance is bounded by 1000× tolerance. This prevents snapping legitimate clearances
-  // on long edges while still catching the original near-miss: a 5e-7 mm gap at the midpoint of a
-  // 10 mm edge (ratio 1e-7, distance 500x tolerance). At default tolerance=1e-9, this equals 1e-6 mm,
-  // which is the largest micro-edge we preserve (from the corpus).
+  // Much closer to the projection than the projection is to either end of this segment.
+  // A true near-miss junction in the interior, not a distant point whose projection happens to
+  // fall inside. The criterion is relative (no absolute distance cap), so it works at any scale.
   let to_start = projection.distance_to(segment.start_point());
   let to_end = projection.distance_to(segment.end_point());
-  let max_absolute_snap = tolerance * 1000.0;
-  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance <= max_absolute_snap {
+  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 {
     Some((fraction, projection))
   } else {
     None
@@ -462,7 +459,7 @@ fn material_side(
   path: usize,
   region: &Region,
   tolerance: f64,
-  check_slivers: bool,
+  near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Side, GeomError> {
   let length = segment.length();
   if length <= 0.0 {
@@ -498,9 +495,16 @@ fn material_side(
     }
   }
   if let Some(side) = first_definitive {
-    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction; a
-    // close probe detects it (both sides the same locally).
-    if check_slivers && matches!(side, Side::Left | Side::Right) {
+    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
+    // a close probe detects it (both sides the same locally). Only run this guard on pieces
+    // adjacent to a near-miss snap (one endpoint matches a snap endpoint or projection).
+    let is_adjacent_to_snap = near_miss_snaps.iter().any(|(endpoint, projection)| {
+      segment.start_point() == *endpoint
+        || segment.end_point() == *endpoint
+        || segment.start_point() == *projection
+        || segment.end_point() == *projection
+    });
+    if is_adjacent_to_snap && matches!(side, Side::Left | Side::Right) {
       let small = PROBE_FLOOR * PROBE_GROWTH.powi(2);
       if small * 2.0 <= length {
         if let Some((left_point, right_point)) = probe_points(segment, small) {
@@ -1029,14 +1033,9 @@ pub fn combine(
     }
   }
 
-  let check_slivers = !filter_valid_snaps(
-    &pieces.iter().map(|p| p.segment).collect::<Vec<_>>(),
-    &near_miss_snaps,
-  )
-  .is_empty();
   let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
   for piece in pieces {
-    match decide(piece, a, b, op, tolerance, check_slivers)? {
+    match decide(piece, a, b, op, tolerance, &near_miss_snaps)? {
       Decision::Keep => survivors.push((piece.segment, piece.from_a)),
       Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
       Decision::Drop => {}
@@ -1067,7 +1066,7 @@ fn decide(
   b: &Region,
   op: BooleanOp,
   tolerance: f64,
-  check_slivers: bool,
+  near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Decision, GeomError> {
   let segment = piece.segment;
   let length = segment.length();
@@ -1114,9 +1113,16 @@ fn decide(
     }
   }
   if let Some(decision) = first_definitive {
-    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction; a
-    // close probe detects it (both sides the same locally).
-    if check_slivers && matches!(decision, Decision::Keep | Decision::Reverse) {
+    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
+    // a close probe detects it (both sides the same locally). Only run this guard on pieces
+    // adjacent to a near-miss snap (one endpoint matches a snap endpoint or projection).
+    let is_adjacent_to_snap = near_miss_snaps.iter().any(|(endpoint, projection)| {
+      segment.start_point() == *endpoint
+        || segment.end_point() == *endpoint
+        || segment.start_point() == *projection
+        || segment.end_point() == *projection
+    });
+    if is_adjacent_to_snap && matches!(decision, Decision::Keep | Decision::Reverse) {
       let small = PROBE_FLOOR * PROBE_GROWTH.powi(2);
       if small * 2.0 <= length {
         if let Some((left, right)) = probe_points(segment, small) {
