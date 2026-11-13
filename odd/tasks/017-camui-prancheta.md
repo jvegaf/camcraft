@@ -1,9 +1,9 @@
 # camui-prancheta — the shell redrawn from full-resolution reference frames
 
 Evidence: `design/prancheta-reference/` (15 frames, annotated). This file is the requirement. T0-T4 landed on
-`feat/camui-prancheta` from `master` @ `c0d20bd`, merged into `master` when T4 closed; **from T5 on, each task
-gets its own branch from `master`** (L18). T0-T4 routed inline because no subagents were configured here; that
-premise expired (L19), so T5 on routes to a configured worker.
+`feat/camui-prancheta` desde `master` @ `c0d20bd` y se mergearon cuando T4 cerró; **desde T5, cada tarea se trabajó
+en su propia rama desde `master`** (L18) y se fue integrando a `master` (T5–T8b según L21–L30; T9 mergeada en `5bdb81a`, L33).
+T0-T4 se rutearon inline porque no había subagentes configurados (L4/L19); desde T5 se usaron workers cuando correspondió.
 
 ## Specs
 
@@ -73,7 +73,7 @@ words: *"design/prancheta-reference/ + README"*.
 | T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `26c4e1c`; the units finding corrected in `dc95de0` (L25) | S9 | inline | `475c341` |
 | T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `5e3cc1c`; two CRITICAL findings corrected in `a48e43d` (L27) | S10 | inline | `0e7d25b` |
 | T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `c92e9dd`, reviewed and approved on the first pass (L29) | S10 | worker | `1241963` |
-| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `d9fa59a` (system) `5824453` (01) `2532e05` (02) `86a6e47` (04) `4684ec8` (03 + manifest), all on `feat/camui-prancheta-t9`, **not merged and not pushed** (L31) | S1 | inline | `d9fa59a..4684ec8` |
+| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `d9fa59a` (system) `5824453` (01) `2532e05` (02) `86a6e47` (04) `4684ec8` (03 + manifest), mergeados en `master` vía `5bdb81a` (L31–L33) | S1 | inline | `d9fa59a..4684ec8` |
 
 ## Backlog
 
@@ -761,3 +761,4 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   artefact slices carry burned receipts, the branch is **not merged into `master` and not pushed**, and `master`
   stayed at `6310702` throughout. The review lifecycle stops at acknowledgement; commit, push and merge follow
   ordinary repository policy.
+- **L33 (saneado y entrega registrada, verdad de `git`).** Pedido del owner: *"sanea el documento y dejalo como delivered"*. Se verificó en `git`: `4d17aca` y el merge `5bdb81a` ("merge: camui-prancheta T9, the design artefacts re-synced to the delivered shell") ya son ancestros de `master`/`HEAD` (`68f56b8` al sanear), y los artefactos de T9 están en el árbol. L31/L32 quedan como registro histórico del momento en que se escribieron (antes del merge); este saneo alinea la evidencia, la fila de T9 y el `INDEX` con el estado real. `odd/tasks/INDEX.md` actualizado a `delivered` con último commit `5bdb81a` (sin claim activo). El backlog no bloqueante registrado en este documento permanece abierto salvo decisión posterior.

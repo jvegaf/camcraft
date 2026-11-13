@@ -21,7 +21,7 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 014 | [shell-open-document](014-shell-open-document.md) | delivered | 2026-11-02 | `3a412a8` |
 | 015 | [shell-save-document](015-shell-save-document.md) | delivered | 2026-11-02 | `3a412a8` |
 | 016 | [shell-tools-ref](016-shell-tools-ref.md) | delivered | 2026-11-02 | `3a412a8` |
-| 017 | [camui-prancheta](017-camui-prancheta.md) | in progress | 2026-11-03 | `3a412a8` |
+| 017 | [camui-prancheta](017-camui-prancheta.md) | delivered | 2026-11-03 | `5bdb81a` |
 | 018 | [m10-documents](018-m10-documents.md) | delivered | 2026-11-04 | `3a412a8` |
 | 019 | [m8-moulding](019-m8-moulding.md) | delivered | 2026-11-04 | `3a412a8` |
 | 020 | [m9-nesting](020-m9-nesting.md) | delivered | 2026-11-04 | `3a412a8` |
