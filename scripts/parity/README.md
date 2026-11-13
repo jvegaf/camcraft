@@ -63,6 +63,19 @@ not available either, that file belonging to another task of the same wave. Its 
 `cam-gerber` and `cam-excellon` there, which is what lets the in-workspace half measure real layers; the
 out-of-workspace half stays because of the timeouts above, not because of the file.)
 
+### The measurer's own lock file
+
+`scripts/parity/measure/Cargo.lock` is committed, and `run.sh` builds the measurer with `--locked`: the
+lock file is what decides which versions the corpus is measured with, so resolving a newer one silently
+would change the measurement without changing the corpus. The consequence is deliberate: when a
+dependency of the workspace moves (a `serde_json` bump, or a new dev-dependency in `cam-geom`), the
+build **fails with a lock error before measuring anything** instead of quietly resolving. The remedy is
+to regenerate the measurer's lock file and commit the diff:
+
+```bash
+cargo update --manifest-path scripts/parity/measure/Cargo.toml
+```
+
 ## The corpus, and why four of its six boards are substitutes
 
 S1 of the task names six sources: KiCad 2 layers simple, KiCad 4 layers with pours, EasyEDA, Eagle,
