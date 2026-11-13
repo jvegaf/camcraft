@@ -21,7 +21,7 @@ one board is a diff over one file):
       }
     }
 
-`status` is one of `parsed`, `refused`, `timeout`. Everything else is a number the comparison checks;
+`status` is one of `parsed`, `refused`, `timeout`, `error`. Everything else is a number the comparison checks;
 the parser's own refusal message is not stored, because a golden should move when the geometry moves,
 not when a diagnostic is reworded. `collect.py` prints the reasons to stderr so a person can read them
 without them becoming part of the fixture.
@@ -82,15 +82,21 @@ def measure(binary: Path, artefact: Path) -> tuple[dict, str]:
         return {"status": "timeout", **zero}, f"did not finish within {TIMEOUT_SECONDS}s"
 
     if completed.returncode != 0:
+        # A non-zero exit that is not the timeout is the measurer *failing*, not the reader refusing:
+        # a panic, an allocation failure, a killed process. Reporting it as `refused` would make it
+        # indistinguishable from a parser refusal — and for an artefact already pinned as refused that
+        # reads as "matches the goldens" while the measurement never happened. It gets its own status,
+        # so the comparison fails and `--update` cannot quietly re-pin a crash.
         message = completed.stderr.strip().splitlines()
         reason = message[-1] if message else f"exit {completed.returncode}"
+        detail = f"measurer exited {completed.returncode}: {reason}"
         kind = "tools" if artefact.suffix == ".drl" else "polygons"
         zero = {"tools": 0, "features": 0} if kind == "tools" else {
             "polygons": 0,
             "contour_area_mm2": 0.0,
             "points": 0,
         }
-        return {"status": "refused", **zero}, reason
+        return {"status": "error", **zero}, detail
 
     measured = json.loads(completed.stdout)
     reason = "" if measured["status"] == "parsed" else "refused by the reader"

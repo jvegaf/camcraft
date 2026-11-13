@@ -14,6 +14,18 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+/// The boards the corpus is fixed at. E0.5 names six, so a corpus that shrank to five is not a smaller
+/// corpus: it is one board's coverage missing while the suite stays green. Adding or removing a board is
+/// a deliberate edit to this list, to `scripts/parity/compare.py`'s list, and to the corpus itself.
+const EXPECTED_BOARDS: [&str; 6] = [
+  "kicad-2l-simple",
+  "kicad-4l-pours",
+  "kicad-large-pours",
+  "substitute-altium",
+  "substitute-eagle",
+  "substitute-easyeda",
+];
+
 /// The roles every board in the corpus promises. Inner copper is extra, and a board that has it must
 /// pin it too: dropping inner copper would let a 4-layer board pass parity on half its layers.
 const REQUIRED_ROLES: [&str; 8] = [
@@ -82,6 +94,23 @@ fn read_json(path: &Path) -> serde_json::Value {
 
 #[test]
 fn every_board_carries_its_six_roles_and_its_provenance() {
+  let slugs: Vec<String> = boards()
+    .iter()
+    .map(|board| {
+      board
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a Unicode board name")
+        .to_owned()
+    })
+    .collect();
+  assert_eq!(
+    slugs,
+    EXPECTED_BOARDS,
+    "the corpus is fixed at {} boards; the tree has {slugs:?}",
+    EXPECTED_BOARDS.len()
+  );
+
   for board in boards() {
     let slug = board
       .file_name()
@@ -196,8 +225,8 @@ fn a_refused_artefact_is_pinned_without_geometry() {
         .as_str()
         .unwrap_or_else(|| panic!("{where_}: no status"));
       assert!(
-        matches!(status, "parsed" | "refused" | "timeout"),
-        "{where_}: status {status:?} is not one of parsed, refused or timeout"
+        matches!(status, "parsed" | "refused" | "timeout" | "error"),
+        "{where_}: status {status:?} is not one of parsed, refused, timeout or error"
       );
 
       for field in ["polygons", "points", "tools", "features"] {

@@ -9,6 +9,12 @@ The rule is E0.4's, and it is stated once here so no caller has to remember it:
     absolute epsilon would be a different rule for a small board and a large one;
   * `status` and the tolerances recorded in the golden compare exactly.
 
+The boards are enumerated from the corpus on disk and from the goldens, never from the measurement:
+a board directory that disappears has to be a divergence, not a smaller comparison, or the corpus could
+shrink to nothing while the harness kept reporting that it matches. The six slugs E0.5 names are listed
+here so that a deletion has to be argued with in a diff, and the same list is asserted by
+`crates/cam-geom/tests/parity.rs`.
+
 A golden's shape is `fixtures/corpus/<slug>/parity.json`:
 
     {"flatten_tolerance_mm": 0.001, "timeout_seconds": 30, "artefacts": {"<role>": {...}}}
@@ -26,6 +32,17 @@ from pathlib import Path
 RELATIVE_EPSILON = 1e-9
 
 COUNT_FIELDS = ("polygons", "points", "tools", "features")
+
+# The corpus is fixed: E0.5 names six boards. A new board is a deliberate change to this list, the
+# corpus and the goldens together — never something a directory appearing or vanishing does on its own.
+EXPECTED_BOARDS = (
+    "kicad-2l-simple",
+    "kicad-4l-pours",
+    "kicad-large-pours",
+    "substitute-altium",
+    "substitute-eagle",
+    "substitute-easyeda",
+)
 AREA_FIELD = "contour_area_mm2"
 
 
@@ -74,6 +91,17 @@ def main() -> int:
     checked = 0
 
     boards = measured["boards"]
+
+    # The corpus on disk is the authority for which boards exist; the measurement says nothing about a
+    # board it never saw.
+    on_disk = sorted(path.name for path in corpus.iterdir() if path.is_dir())
+    if on_disk != sorted(EXPECTED_BOARDS):
+        problems.append(
+            f"corpus: boards on disk are {on_disk} and the fixed corpus is {sorted(EXPECTED_BOARDS)}"
+        )
+    if sorted(boards) != on_disk:
+        problems.append(f"corpus: measured boards are {sorted(boards)} and the corpus holds {on_disk}")
+
     for slug in sorted(boards):
         board = corpus / slug
         golden_path = board / "parity.json"

@@ -18,7 +18,7 @@ geometry). That test is what `cargo test --workspace` sees; the measurement itse
 
 ## What is measured, and against what
 
-Per artefact: `status` (`parsed`, `refused` or `timeout`), `polygons`, `contour_area_mm2` and `points`
+Per artefact: `status` (`parsed`, `refused`, `timeout` or `error`), `polygons`, `contour_area_mm2` and `points`
 (after flattening at `flatten_tolerance_mm`) for a Gerber layer; `tools` and `features` for an Excellon
 file.
 
@@ -104,6 +104,14 @@ A divergence is either progress or a regression, and the diff decides which:
 - a `timeout` becomes `parsed`: a fix, and worth naming in the commit message;
 - the artefact list changes: the corpus changed, which means `export.sh` ran, which deserves its own
   commit and its own provenance diff.
+
+`error` is the measurer itself failing — a panic, an allocation failure — and it is deliberately not
+`refused`: a crash has to fail the comparison, and `--update` must not be able to re-pin it as a reader
+refusal that happens to look the same.
+
+The board set is fixed too. Both `compare.py` and the workspace test enumerate the six slugs E0.5 names
+and fail if the corpus holds a different set, so a board directory that disappears is a divergence
+instead of a quietly smaller comparison.
 
 `run.sh --update` re-pins all of it. It is never part of a gate: CI runs `run.sh` and fails when the
 goldens and the tree disagree.

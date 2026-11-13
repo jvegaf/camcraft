@@ -23,7 +23,20 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 DEMOS=${KICAD_DEMOS:-/usr/share/kicad/demos}
 OUT="$ROOT/fixtures/corpus"
 CHECK=0
-[ "${1:-}" = "--check" ] && CHECK=1
+# The branch below either rewrites the committed corpus or proves it reproduces. Those are different
+# acts, so the argument that selects one is matched exactly and anything else is a refusal: a typo like
+# `--chek` must not fall through to the rewrite, because the rewrite deletes the corpus first and
+# reports success after — the two halves of that sentence are exactly what a silent fall-through turns
+# into data loss.
+case "$#:${1:-}" in
+0:) ;;
+1:--check) CHECK=1 ;;
+*)
+  echo "usage: scripts/parity/export.sh [--check]" >&2
+  echo "  no argument rewrites fixtures/corpus/; --check only proves it reproduces" >&2
+  exit 2
+  ;;
+esac
 
 if ! command -v kicad-cli >/dev/null 2>&1; then
   echo "ERROR: kicad-cli is not installed; the corpus cannot be regenerated here." >&2
@@ -150,7 +163,11 @@ PY
 done
 
 if [ "$CHECK" = "1" ]; then
-  if diff -r "$WORK/corpus" "$OUT" >"$WORK/diff" 2>&1; then
+  # `parity.json` is the golden, produced by `run.sh --update` from what this script plotted: it is not
+  # the plotter's output, so a corpus that is correct always differs from `$WORK/corpus` by exactly those
+  # files. Excluding them is what makes this check about reproducibility instead of about which files
+  # happen to live in the directory.
+  if diff -r -x parity.json "$WORK/corpus" "$OUT" >"$WORK/diff" 2>&1; then
     echo "corpus reproduces byte for byte"
   else
     echo "ERROR: the committed corpus differs from what the plotter produces now:" >&2

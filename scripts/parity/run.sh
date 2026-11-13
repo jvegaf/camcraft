@@ -23,11 +23,15 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 UPDATE=0
-case "${1:-}" in
-"") ;;
---update) UPDATE=1 ;;
+# `--update` rewrites the goldens; every other invocation is a check. The count is part of the match on
+# purpose: `run.sh --update --check` must not quietly become a write because the first argument happened
+# to be the accepting one.
+case "$#:${1:-}" in
+0:) ;;
+1:--update) UPDATE=1 ;;
 *)
   echo "usage: scripts/parity/run.sh [--update]" >&2
+  echo "  no argument measures and compares; --update re-pins the goldens" >&2
   exit 2
   ;;
 esac
