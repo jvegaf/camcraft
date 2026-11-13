@@ -718,6 +718,8 @@ dependencies = [
 name = "cam-geom"
 version = "0.0.1"
 dependencies = [
+ "cam-excellon",
+ "cam-gerber",
  "cam-units",
  "proptest",
  "serde",
