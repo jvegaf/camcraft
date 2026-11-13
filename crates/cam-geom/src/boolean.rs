@@ -268,15 +268,20 @@ fn push_fractions(
       (other.end_point(), other.start_point()),
     ];
     for (endpoint, other_end) in endpoints {
-      // A near-miss must be closer to its projection than to the endpoint's own neighbor on this
-      // segment, or snapping would collapse that segment (e.g. a legitimate micro-edge whose endpoint
-      // happens to project onto a nearby boundary). Use strict < so that when equal (micro-edge
-      // tip exactly at projection distance from its neighbor), the snap is still considered.
       let projection_distance = match fraction_along(segment, endpoint) {
         Some(f) => endpoint.distance_to(point_at(segment, f)),
         None => continue,
       };
-      if endpoint.distance_to(other_end) < projection_distance {
+      // A near-miss junction arises from a micro-edge perturbation: the endpoint's own adjacent
+      // segment must be short relative to the projection gap. Normal vertices of separate closed
+      // contours have adjacent edges much longer than a small gap and must not be snapped.
+      let own_len = endpoint.distance_to(other_end);
+      if own_len > projection_distance * 10.0 {
+        continue;
+      }
+      // If the endpoint is much closer to its own neighbor than to the projection, snapping would
+      // collapse that segment rather than resolve a near-miss junction.
+      if own_len * 10.0 < projection_distance {
         continue;
       }
       // Reject near-miss if the endpoint's segment (other) and the target segment are roughly
@@ -296,13 +301,6 @@ fn push_fractions(
         }
       }
       if let Some((fraction, projection)) = near_miss_fraction(segment, endpoint, tolerance) {
-        // Reject false near-misses from normal contour vertices: if the endpoint's own segment
-        // (other) is much longer than the gap, this is a legitimate separation between closed
-        // contours, not a micro-edge junction. The micro-edge tip's adjacent segment is comparable
-        // in length to the projection distance.
-        if other_end.distance_to(projection) > projection_distance * 100.0 {
-          continue;
-        }
         *re_cut = true;
         fractions.push(fraction);
         near_miss_snaps.push((endpoint, projection));
@@ -709,26 +707,97 @@ fn vertex_index(
 }
 
 /// Drop snaps that would collapse a surviving piece: if a piece has one endpoint at `from` and the
-/// other at `to` (or already identified), snapping them makes it zero-length in the graph.
+/// other at `to` (or already identified through snaps), snapping them makes it zero-length in the
+/// graph. Identification is transitive over the snap set.
 fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Point2, Point2)> {
-  snaps
-    .iter()
-    .copied()
-    .filter(|(from, to)| {
-      !pieces.iter().any(|piece| {
+  let mut current = snaps.to_vec();
+  loop {
+    let mut changed = false;
+    let mut next = Vec::with_capacity(current.len());
+    for (from, to) in current.iter().copied() {
+      let collapses_piece = pieces.iter().any(|piece| {
         let s = piece.start_point();
         let e = piece.end_point();
-        (s == *from && e == *to) || (s == *to && e == *from)
-      })
-    })
-    .collect()
+        points_identified_transitive(s, e, &current, &[(from, to)])
+          || (points_identified_transitive(s, from, &current, &[])
+            && points_identified_transitive(e, to, &current, &[]))
+          || (points_identified_transitive(s, to, &current, &[])
+            && points_identified_transitive(e, from, &current, &[]))
+      });
+      // A snap collapses a piece if it would make its endpoints identified.
+      let collapses = collapses_piece
+        || pieces.iter().any(|piece| {
+          let s = piece.start_point();
+          let e = piece.end_point();
+          snap_identifies_endpoints(s, e, from, to, &current)
+        });
+      if collapses {
+        changed = true;
+      } else {
+        next.push((from, to));
+      }
+    }
+    if !changed || next.len() == current.len() {
+      return next;
+    }
+    current = next;
+  }
+}
+
+/// Whether applying `(from,to)` together with `snaps` would identify `s` and `e`.
+fn snap_identifies_endpoints(
+  s: Point2,
+  e: Point2,
+  from: Point2,
+  to: Point2,
+  snaps: &[(Point2, Point2)],
+) -> bool {
+  let mut all = snaps.to_vec();
+  all.push((from, to));
+  points_identified_transitive(s, e, &all, &[])
+}
+
+/// Whether two points are the same junction via near-miss snap pairs (transitively).
+fn points_identified_transitive(
+  a: Point2,
+  b: Point2,
+  snaps: &[(Point2, Point2)],
+  extra: &[(Point2, Point2)],
+) -> bool {
+  if a == b {
+    return true;
+  }
+  let mut seen: Vec<Point2> = vec![a];
+  let mut stack: Vec<Point2> = vec![a];
+  while let Some(current) = stack.pop() {
+    if current == b {
+      return true;
+    }
+    for (from, to) in snaps.iter().chain(extra.iter()).copied() {
+      let next = if current == from {
+        Some(to)
+      } else if current == to {
+        Some(from)
+      } else {
+        None
+      };
+      if let Some(next) = next {
+        if next == b {
+          return true;
+        }
+        if !seen.contains(&next) {
+          seen.push(next);
+          stack.push(next);
+        }
+      }
+    }
+  }
+  false
 }
 
 /// Whether two points are the same junction via a near-miss snap pair.
 fn points_identified(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> bool {
-  snaps
-    .iter()
-    .any(|(from, to)| (a == *from && b == *to) || (a == *to && b == *from))
+  points_identified_transitive(a, b, snaps, &[])
 }
 
 /// The unique id of a piece end: pieces are pairs of ends, so the low bit is the end.
