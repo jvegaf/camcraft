@@ -109,6 +109,41 @@ fn is_unchainable_error(err: &GeomError) -> bool {
   )
 }
 
+fn odd_degree_points(pieces: &[Segment], tolerance: f64) -> Vec<Point2> {
+  let mut vertices: Vec<(Point2, usize)> = Vec::new();
+  for piece in pieces {
+    for point in [piece.start_point(), piece.end_point()] {
+      if let Some(idx) = vertices
+        .iter()
+        .position(|(vertex, _)| vertex.is_near(point, tolerance))
+      {
+        vertices[idx].1 += 1;
+      } else {
+        vertices.push((point, 1));
+      }
+    }
+  }
+  vertices
+    .into_iter()
+    .filter(|(_, degree)| degree % 2 == 1)
+    .map(|(point, _)| point)
+    .collect()
+}
+
+fn snap_relevant_to_odd_degree(
+  snap: (Point2, Point2),
+  odd_points: &[Point2],
+  tolerance: f64,
+) -> bool {
+  let (endpoint, projection) = snap;
+  odd_points.iter().any(|point| {
+    endpoint.is_near(*point, tolerance)
+      || projection.is_near(*point, tolerance)
+      || endpoint == *point
+      || projection == *point
+  })
+}
+
 fn normalize_with(
   region: &Region,
   tolerance: f64,
@@ -159,6 +194,15 @@ fn normalize_with(
     return Err(GeomError::EditRefused {
       reason: "normalization leaves no material: the boundaries enclose none",
     });
+  }
+
+  // On near-miss retry, keep only snaps relevant to vertices that remain odd-degree without snaps,
+  // so unrelated legitimate gaps are not welded.
+  if detect_near_misses && !near_miss_snaps.is_empty() {
+    let odd_points = odd_degree_points(&survivors, tolerance);
+    if !odd_points.is_empty() {
+      near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
+    }
   }
 
   // A normalization walks one region, so every survivor belongs to the same side of the arrangement.
@@ -531,17 +575,33 @@ fn material_side(
         || segment.end_point() == *projection
     });
     if is_adjacent_to_snap && matches!(side, Side::Left | Side::Right) {
-      let small = PROBE_FLOOR * PROBE_GROWTH.powi(2);
-      if small * 2.0 <= length {
-        if let Some((left_point, right_point)) = probe_points(segment, small) {
+      // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
+      // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
+      let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let mut sliver: Option<bool> = None;
+      while probe * 2.0 <= length && probe >= min_probe {
+        if let Some((left_point, right_point)) = probe_points(segment, probe) {
           let left = material_beside(region, path, left_point, tolerance);
           let right = material_beside(region, path, right_point, tolerance);
-          if let (Some(l), Some(r)) = (left, right) {
-            if l == r {
-              return Ok(if l { Side::Both } else { Side::Neither });
+          match (left, right) {
+            (Some(l), Some(r)) if l == r => {
+              sliver = Some(l);
+              probe /= PROBE_GROWTH;
+              continue;
             }
+            (Some(l), Some(r)) if l != r => {
+              sliver = None;
+              break;
+            }
+            _ => break,
           }
+        } else {
+          break;
         }
+      }
+      if let Some(l) = sliver {
+        return Ok(if l { Side::Both } else { Side::Neither });
       }
     }
     return Ok(side);
@@ -1167,6 +1227,12 @@ fn combine_with(
     return Ok(Combined::Empty);
   }
   let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
+  if detect_near_misses && !near_miss_snaps.is_empty() {
+    let odd_points = odd_degree_points(&segments, tolerance);
+    if !odd_points.is_empty() {
+      near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
+    }
+  }
   let mut flattened = false;
   let valid_snaps = filter_valid_snaps(&segments, &near_miss_snaps);
   let boundaries = assemble(&segments, &owners, tolerance, &mut flattened, &valid_snaps)?;
@@ -1271,23 +1337,40 @@ fn decide(
         || segment.end_point() == *projection
     });
     if is_adjacent_to_snap && matches!(decision, Decision::Keep | Decision::Reverse) {
-      let small = PROBE_FLOOR * PROBE_GROWTH.powi(2);
-      if small * 2.0 <= length {
-        if let Some((left, right)) = probe_points(segment, small) {
+      // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
+      // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
+      let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let mut drop_as_sliver = false;
+      while probe * 2.0 <= length && probe >= min_probe {
+        if let Some((left, right)) = probe_points(segment, probe) {
           let memberships = (
             enclosed_by(a, skip_a, left, tolerance),
             enclosed_by(b, skip_b, left, tolerance),
             enclosed_by(a, skip_a, right, tolerance),
             enclosed_by(b, skip_b, right, tolerance),
           );
-          if let (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) = memberships {
-            let left_inside = op.holds(left_a, left_b);
-            let right_inside = op.holds(right_a, right_b);
-            if left_inside == right_inside {
-              return Ok(Decision::Drop);
+          match memberships {
+            (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) => {
+              let left_inside = op.holds(left_a, left_b);
+              let right_inside = op.holds(right_a, right_b);
+              if left_inside == right_inside {
+                drop_as_sliver = true;
+                probe /= PROBE_GROWTH;
+                continue;
+              } else {
+                drop_as_sliver = false;
+                break;
+              }
             }
+            _ => break,
           }
+        } else {
+          break;
         }
+      }
+      if drop_as_sliver {
+        return Ok(Decision::Drop);
       }
     }
     return Ok(decision);
