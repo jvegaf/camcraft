@@ -197,10 +197,12 @@ fn normalize_with(
   }
 
   // On near-miss retry, keep only snaps relevant to vertices that remain odd-degree without snaps,
-  // so unrelated legitimate gaps are not welded.
+  // so unrelated legitimate gaps are not welded. No odd-degree vertices means retain none.
   if detect_near_misses && !near_miss_snaps.is_empty() {
     let odd_points = odd_degree_points(&survivors, tolerance);
-    if !odd_points.is_empty() {
+    if odd_points.is_empty() {
+      near_miss_snaps.clear();
+    } else {
       near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
     }
   }
@@ -399,6 +401,10 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
   if distance <= tolerance {
     return None;
   }
+  // Absolute cap: avoid welding legitimate clearances far above tolerance on long edges.
+  if distance > tolerance * 1.0e4 {
+    return None;
+  }
   if projection.is_near(segment.start_point(), tolerance)
     || projection.is_near(segment.end_point(), tolerance)
   {
@@ -406,7 +412,7 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
   }
   // Much closer to the projection than the projection is to either end of this segment.
   // A true near-miss junction in the interior, not a distant point whose projection happens to
-  // fall inside. The criterion is relative (no absolute distance cap), so it works at any scale.
+  // fall inside.
   let to_start = projection.distance_to(segment.start_point());
   let to_end = projection.distance_to(segment.end_point());
   if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 {
@@ -594,9 +600,13 @@ fn material_side(
               sliver = None;
               break;
             }
-            _ => break,
+            _ => {
+              sliver = None;
+              break;
+            }
           }
         } else {
+          sliver = None;
           break;
         }
       }
@@ -680,6 +690,10 @@ fn assemble(
   flattened: &mut bool,
   near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Vec<Contour>, GeomError> {
+  let allowed: Vec<Point2> = pieces
+    .iter()
+    .flat_map(|piece| [piece.start_point(), piece.end_point()])
+    .collect();
   let mut vertices: Vec<Vertex> = Vec::new();
   for (index, piece) in pieces.iter().enumerate() {
     if piece.length() <= 0.0 {
@@ -692,8 +706,15 @@ fn assemble(
       piece.start_point(),
       tolerance,
       near_miss_snaps,
+      &allowed,
     );
-    let end = vertex_index(&mut vertices, piece.end_point(), tolerance, near_miss_snaps);
+    let end = vertex_index(
+      &mut vertices,
+      piece.end_point(),
+      tolerance,
+      near_miss_snaps,
+      &allowed,
+    );
     if start == end {
       return Err(GeomError::EditRefused {
         reason: "a surviving piece begins and ends at the same point",
@@ -774,16 +795,17 @@ fn assemble(
 /// Near-miss snaps unify an endpoint with its projection on another segment: the two points are
 /// farther apart than `tolerance` but are the same junction in the arrangement. A point matches a
 /// vertex when it is within tolerance, or when either side of any snap pair identifies it with a
-/// vertex already present.
+/// vertex already present through surviving endpoints.
 fn vertex_index(
   vertices: &mut Vec<Vertex>,
   point: Point2,
   tolerance: f64,
   near_miss_snaps: &[(Point2, Point2)],
+  allowed: &[Point2],
 ) -> usize {
   if let Some(index) = vertices.iter().position(|vertex| {
     vertex.point.is_near(point, tolerance)
-      || points_identified(vertex.point, point, near_miss_snaps)
+      || points_identified(vertex.point, point, near_miss_snaps, allowed)
   }) {
     return index;
   }
@@ -796,16 +818,20 @@ fn vertex_index(
 
 /// Drop snaps that would collapse a surviving piece: if a piece has one endpoint at `from` and the
 /// other at `to` (or identified through the snap set), snapping makes it zero-length in the graph.
-/// Identification is transitive. Only snaps that participate in collapsing a surviving piece are
-/// removed, so unrelated valid snaps are preserved.
+/// Identification is transitive through surviving endpoints only. Only snaps that participate in
+/// collapsing a surviving piece are removed.
 fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Point2, Point2)> {
+  let allowed: Vec<Point2> = pieces
+    .iter()
+    .flat_map(|piece| [piece.start_point(), piece.end_point()])
+    .collect();
   let mut current = snaps.to_vec();
   loop {
     // Find a piece whose endpoints would be identified by the current snap set.
     let collapse = pieces.iter().find_map(|piece| {
       let s = piece.start_point();
       let e = piece.end_point();
-      if points_identified_transitive(s, e, &current, &[]) {
+      if points_identified_transitive(s, e, &current, &[], &allowed) {
         Some((s, e))
       } else {
         None
@@ -815,7 +841,7 @@ fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Po
       return current;
     };
     // Remove one snap on a path connecting s and e (prefer a snap directly touching either).
-    let path = identifying_path(s, e, &current);
+    let path = identifying_path(s, e, &current, &allowed);
     let Some(path) = path else {
       // Should not happen, but avoid infinite loop.
       return current;
@@ -833,8 +859,13 @@ fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Po
   }
 }
 
-/// Indices of snaps forming a path that identifies `a` and `b`, if any.
-fn identifying_path(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> Option<Vec<usize>> {
+/// Indices of snaps forming a path that identifies `a` and `b`, if any, through allowed points.
+fn identifying_path(
+  a: Point2,
+  b: Point2,
+  snaps: &[(Point2, Point2)],
+  allowed: &[Point2],
+) -> Option<Vec<usize>> {
   if a == b {
     return Some(Vec::new());
   }
@@ -860,6 +891,9 @@ fn identifying_path(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> Option<
       if seen.contains(&next) {
         continue;
       }
+      if next != b && !allowed.contains(&next) {
+        continue;
+      }
       seen.push(next);
       parent.push(Some((current, idx)));
       if next == b {
@@ -882,12 +916,14 @@ fn identifying_path(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> Option<
   None
 }
 
-/// Whether two points are the same junction via near-miss snap pairs (transitively).
+/// Whether two points are the same junction via near-miss snap pairs (transitively) through
+/// allowed intermediate points (surviving piece endpoints).
 fn points_identified_transitive(
   a: Point2,
   b: Point2,
   snaps: &[(Point2, Point2)],
   extra: &[(Point2, Point2)],
+  allowed: &[Point2],
 ) -> bool {
   if a == b {
     return true;
@@ -910,19 +946,21 @@ fn points_identified_transitive(
         if next == b {
           return true;
         }
-        if !seen.contains(&next) {
-          seen.push(next);
-          stack.push(next);
+        if !allowed.contains(&next) || seen.contains(&next) {
+          continue;
         }
+        seen.push(next);
+        stack.push(next);
       }
     }
   }
   false
 }
 
-/// Whether two points are the same junction via a near-miss snap pair.
-fn points_identified(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> bool {
-  points_identified_transitive(a, b, snaps, &[])
+/// Whether two points are the same junction via a near-miss snap pair, restricted to paths
+/// through surviving endpoints.
+fn points_identified(a: Point2, b: Point2, snaps: &[(Point2, Point2)], allowed: &[Point2]) -> bool {
+  points_identified_transitive(a, b, snaps, &[], allowed)
 }
 
 /// The unique id of a piece end: pieces are pairs of ends, so the low bit is the end.
@@ -1229,7 +1267,9 @@ fn combine_with(
   let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
   if detect_near_misses && !near_miss_snaps.is_empty() {
     let odd_points = odd_degree_points(&segments, tolerance);
-    if !odd_points.is_empty() {
+    if odd_points.is_empty() {
+      near_miss_snaps.clear();
+    } else {
       near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
     }
   }
@@ -1363,7 +1403,10 @@ fn decide(
                 break;
               }
             }
-            _ => break,
+            _ => {
+              drop_as_sliver = false;
+              break;
+            }
           }
         } else {
           break;
