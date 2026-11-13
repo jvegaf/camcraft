@@ -318,11 +318,16 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
   {
     return None;
   }
-  // Much closer to the projection than the projection is to either end of this segment: a true
-  // near-miss junction in the interior, not a distant point whose projection happens to fall inside.
+  // Much closer to the projection than the projection is to either end of this segment, AND the
+  // absolute distance is bounded by a multiple of tolerance. This prevents snapping legitimate
+  // clearances on long edges (which would pass a pure relative test) while still catching the
+  // original near-miss: a 5e-7 mm gap at the midpoint of a 10 mm edge (ratio 1e-7, distance
+  // 500x tolerance). The factor of 1000 allows gaps up to ~1e-6 mm, which is the largest
+  // legitimate micro-edge we preserve (1 µm from the corpus).
   let to_start = projection.distance_to(segment.start_point());
   let to_end = projection.distance_to(segment.end_point());
-  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 {
+  let max_absolute_snap = tolerance * 1000.0;
+  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance < max_absolute_snap {
     Some((fraction, projection))
   } else {
     None
