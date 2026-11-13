@@ -10,10 +10,12 @@ every one ended in an artefact demonstrable through `cam-cli`, not a slide.
 
 ## 1. Camcraft roadmap state (F0–F8)
 
-Audited **2026-11-12** read-only against the worktree, not against these documents: every row cites
-`path:line` evidence that exists today, and a feature is only `✅` when its code is there. The test
-suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*, not
-*green right now*.
+Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged
+instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md),
+[045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`), not against these documents: every row
+cites `path:line` evidence that exists today, and a feature is only `✅` when its code is there. The
+test suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*,
+not *green right now*.
 
 Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not hold yet) · `⬜` absent
 (verified by `grep`/`find` with zero matches).
@@ -23,13 +25,13 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
 | E0.1 Set engine | ✅ | `cam-geom/src/boolean.rs:754` `BooleanOp`, `:805` `Combined`, `:835` `combine`; 5 properties in `cam-geom/tests/boolean_properties.rs:147` (commutativity, idempotence, `A\A=∅`, inclusion–exclusion) incl. a two-arc disc generator; task [034](../tasks/034-c1-booleans.md) delivered `aee3e5d` | — (known limit: a disc that *touches* a region's boundary from inside is still refused at 1e-9) |
-| E0.2 Input robustness | 🟡 | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:153` | Degenerate/unresolvable input is still refused (`region.rs:82`, `boolean.rs:75`, `:94`); the exit criterion is «the corpus produces no normalization errors» and there is no corpus |
+| E0.2 Input robustness | 🟡 | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:153`. A 6-board fabrication corpus now exists (`fixtures/corpus/`, E0.5) and the parity gate guards measurement errors (`scripts/parity/guard_errors.py`, run by `scripts/parity/run.sh`) | Degenerate/unresolvable input is still refused (`region.rs:82`, `boolean.rs:75`, `:94`); the exit criterion «the corpus produces no normalization errors» is not explicitly closed in this index |
 | E0.3 One tolerance policy | ⬜ | Constants remain: `cam-geom/src/lib.rs:52` (`DEFAULT_TOLERANCE=1e-6`), `offset.rs:49` (`0.001`), `region_offset.rs:41`, `:54` | No tolerance object at all: `grep -rn "struct Tolerance" crates` → 0 matches |
-| E0.4 Geometric parity harness | ⬜ | `find . -type d -name '*parity*'` → 0; only `.pp` fixtures exist (`cam-post/tests/fixtures/`) | No polygon/area/point-count comparison against reference geometry |
-| E0.5 Board corpus | ⬜ | `find . -path '*corpus*'` → 0 | No KiCad/EasyEDA/Eagle/Altium boards with `top/bottom/mask/silk/outline/drill` |
+| E0.4 Geometric parity harness | ✅ | `scripts/parity/run.sh`, `compare.py`, `collect.py`, `measure/` (`scripts/parity/README.md`); corpus-shape/fixture guard `crates/cam-geom/tests/parity.rs:1`; committed `parity.json` goldens per board under `fixtures/corpus/`; local gate `just parity` (`justfile:79`) and CI job `parity` (`.github/workflows/ci.yml:38`); task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — (polygon/area/point-count comparison against reference geometry, as implemented by the harness) |
+| E0.5 Board corpus | ✅ | 6 boards under `fixtures/corpus/` (`kicad-2l-simple`, `kicad-4l-pours`, `kicad-large-pours`, `substitute-altium`, `substitute-eagle`, `substitute-easyeda`) carrying fabrication roles/artifacts, `provenance.json` and `parity.json`; fixed set asserted in `crates/cam-geom/tests/parity.rs:18`; task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — |
 | E0.6 FlatCAM baseline | ⬜ | No baseline table or script under `scripts/`, `odd/reports/`, `crates/` | Nothing measured to compare against |
-| E0.7 Benchmarks | ⬜ | No `benches/` anywhere; `grep -rn criterion Cargo.toml crates/*/Cargo.toml` → 0; `justfile` has no `bench` recipe | `criterion` harness and the CI regression job |
-| E0.8 CI | 🟡 | Local gate `scripts/check.sh:6` = `check-docs` + `cargo fmt --check` + `clippy -D warnings` + `cargo test --workspace`, wired at `justfile:10` | No `.github/workflows`, so nothing runs on a PR; no parity/bench job |
+| E0.7 Benchmarks | ✅ | `criterion` workspace dep (`Cargo.toml:64`, `crates/cam-geom/Cargo.toml:17`, `crates/cam-ops/Cargo.toml:17`); benches `crates/cam-geom/benches/kernel.rs`, `crates/cam-ops/benches/toolpaths.rs`; committed baselines under `crates/cam-geom/benches/baselines/` and `crates/cam-ops/benches/baselines/`; regression scripts `crates/cam-geom/benches/check_regression.sh`, `crates/cam-ops/benches/check_regression.sh`; `just bench` (`justfile:87`) and CI job `bench` on pushes to `master` (`.github/workflows/ci.yml:61`, hardware-coupled comparison, not a shared-runner threshold gate); task [044](../tasks/044-e0-7-benchmarks.md) delivered `cfb7feb` | — |
+| E0.8 CI | ✅ | `.github/workflows/ci.yml:1` runs `gate` on push/PR (`fmt`/`clippy`/docs/tests via `scripts/check.sh:6`), `parity` on push/PR (`:38`), and `bench` on `master` push (`:61`); task [043](../tasks/043-w1b-ci.md) delivered `612a285` | — (bench comparison is hardware-coupled, see E0.7) |
 
 ### F1 — Board model and importers
 
@@ -103,11 +105,12 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
   and `cam-program` no longer exist, `cam-geom` lost `text`/`moulding`/`nest`/`nest_profile`, and
   `Operation` now lists PCB operations only.
 - **Three crates exist that GAPS_CAMCRAFT.md predates**: `cam-gerber`, `cam-excellon`, `cam-ops`.
-- **Phase 0 is the gap that decides the rest**: the engine (E0.1) exists but not one of its
-  instruments (E0.3 tolerance policy, E0.4 parity, E0.5 corpus, E0.6 baseline, E0.7 benches, E0.8 CI).
-  Every phase below F0 is blocked on being able to *measure* correctness and speed.
-- **Only E1.2 is fully done of all F1 items**, and only E0.1 of F0. Everything else is partial or
-  absent; F4 — the product's thesis — is 0 %.
+- **Phase 0 advanced with wave 1**: the engine (E0.1) and its core instruments are now present (E0.4
+  parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI). What still blocks confident progress is E0.3
+  (tolerance policy), an explicit close of E0.2's corpus exit criterion, and E0.6 (FlatCAM baseline);
+  every phase below F0 still depends on being able to *measure* correctness and speed.
+- **Only E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
+  product's thesis — is 0 %.
 
 ### Divergences between the plan and the code (decide, do not drift)
 
@@ -124,23 +127,22 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 ### Waves and who builds them
 
 The scheduling view of all of the above — which items run in parallel, in which worktree, with which
-claimed surfaces and which merge order — is [waves.md](waves.md). Its first wave is exactly the
-instrument set below.
+claimed surfaces and which merge order — is [waves.md](waves.md). Its first wave (W1a–W1c, instrument
+set E0.4/E0.5/E0.7/E0.8) was delivered and merged as tasks 043–045; later waves in that document still
+describe the next parallel slices.
 
 ### Next slice, from here
 
-Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says — but the cheap half of the
-instrument set is still the cheapest thing available:
+Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says. The core instrument set of wave 1
+(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place; what remains of F0 is:
 
-1. **E0.5 corpus + E0.4 parity harness** — the two that turn every later claim into a test, and the
-   only way to close E0.2's exit criterion.
-2. **E0.8 CI** — without it the corpus and the parity harness protect nothing on a PR.
-3. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
-4. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then F2 (drilling,
-   cutout) as the first real G-code through `cam-cli`.
-
-E0.7's benchmarks and E0.6's baseline can wait for the first PCB operation that has something to
-measure.
+1. **E0.2 input robustness** — close the exit criterion explicitly against the corpus (no normalization
+   errors), with evidence recorded.
+2. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
+3. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
+4. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then move toward F2
+   (drilling, cutout) as the first real G-code through `cam-cli`, following the dependency/wave order in
+   [waves.md](waves.md).
 
 ## 2. Pre-pivot milestones (M0–M15, history)
 
