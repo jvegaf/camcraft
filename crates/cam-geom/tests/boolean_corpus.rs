@@ -496,10 +496,9 @@ fn micro_edge_one_micron_normalizes_preserving_material() {
   assert_region_eq(&normalized.region, &again.region);
 }
 
-// (1, as stated) Same micro-edge through combine: oracle requires area identity or a refusal that
-// names the construct. Current behavior is pinned below.
+// (1, as stated) Same micro-edge through combine: oracle requires area identity.
 #[test]
-fn micro_edge_one_micron_combine_pins_current_behavior() {
+fn micro_edge_one_micron_combine_preserves_area_identity() {
   let contour = Contour::from_points(
     &[
       Point2::new(0.0, 0.0),
@@ -513,11 +512,12 @@ fn micro_edge_one_micron_combine_pins_current_behavior() {
   .expect("constructor accepts a 1e-6 edge");
   let micro = Region::new(vec![contour]).expect("closed contour");
   let other = rect(5.0, 0.0, 15.0, 10.0);
-  let err = combine(&micro, &other, BooleanOp::Union, TOLERANCE)
-    .expect_err("pinned: combine refuses this micro-edge input at TOLERANCE 1e-9");
-  let msg = err.to_string();
+  let a = healed_area(&micro);
+  let b = healed_area(&other);
+  let union = result_area(&micro, &other, BooleanOp::Union);
+  let intersection = result_area(&micro, &other, BooleanOp::Intersection);
   assert!(
-    msg.contains("arrangement revisits a piece"),
-    "pinned refusal text: got `{msg}`"
+    close(union + intersection, a + b),
+    "area identity: |A∪B|+|A∩B|={union}+{intersection} vs |A|+|B|={a}+{b}"
   );
 }
