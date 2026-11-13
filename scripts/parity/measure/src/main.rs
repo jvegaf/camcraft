@@ -49,6 +49,19 @@ fn main() {
     panic!("{name:?} is neither a .gbr nor a .drl");
   };
 
+  // A file that cannot be read is not a file the reader refused, and the difference decides whether the
+  // harness is measuring or pretending to. `refused` means "the reader answered and said no"; an I/O
+  // failure means nobody asked. Collapsing the two would let an unreadable artefact — a permission
+  // change, a vanished file — match a golden already pinned as `refused` and report a false green, so
+  // this exits non-zero and `collect.py` records `error`, which `run.sh` refuses to compare or pin.
+  let measured = match measured {
+    Ok(measured) => measured,
+    Err(error) => {
+      eprintln!("{name}: {error}");
+      std::process::exit(1);
+    }
+  };
+
   println!(
     "{}",
     serde_json::to_string(&Value::Object(measured)).expect("serialise the measurement")
@@ -62,13 +75,11 @@ fn main() {
 /// visible. The *reason* is deliberately not stored here — the parser's message is prose that changes
 /// when someone rewords a diagnostic, and a golden that moves for that reason is noise. The reason is
 /// printed by the harness' readable report instead.
-fn measure_gerber(path: &Path) -> Map<String, Value> {
-  let refused = || refusal(0.0);
+fn measure_gerber(path: &Path) -> Result<Map<String, Value>, String> {
+  let refused = || Ok(refusal(0.0));
 
-  let text = match std::fs::read_to_string(path) {
-    Ok(text) => text,
-    Err(_) => return refused(),
-  };
+  let text = std::fs::read_to_string(path)
+    .map_err(|error| format!("the file could not be read: {error}"))?;
   let gerber = match cam_gerber::parse(&text) {
     Ok(gerber) => gerber,
     Err(_) => return refused(),
@@ -101,23 +112,21 @@ fn measure_gerber(path: &Path) -> Map<String, Value> {
   );
   measured.insert("contour_area_mm2".to_owned(), number(area));
   measured.insert("points".to_owned(), Value::Number((points as u64).into()));
-  measured
+  Ok(measured)
 }
 
 /// What an Excellon file comes to: how many tools it declares and how many features it asks for.
-fn measure_drill(path: &Path) -> Map<String, Value> {
+fn measure_drill(path: &Path) -> Result<Map<String, Value>, String> {
   let refused = || {
     let mut measured = Map::new();
     measured.insert("status".to_owned(), Value::String("refused".to_owned()));
     measured.insert("tools".to_owned(), Value::Number(0u64.into()));
     measured.insert("features".to_owned(), Value::Number(0u64.into()));
-    measured
+    Ok(measured)
   };
 
-  let text = match std::fs::read_to_string(path) {
-    Ok(text) => text,
-    Err(_) => return refused(),
-  };
+  let text = std::fs::read_to_string(path)
+    .map_err(|error| format!("the file could not be read: {error}"))?;
   let drill = match cam_excellon::parse(&text) {
     Ok(drill) => drill,
     Err(_) => return refused(),
@@ -133,7 +142,7 @@ fn measure_drill(path: &Path) -> Map<String, Value> {
     "features".to_owned(),
     Value::Number((drill.features.len() as u64).into()),
   );
-  measured
+  Ok(measured)
 }
 
 /// A refused Gerber layer: the three geometric metrics, all zero.
