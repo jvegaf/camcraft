@@ -286,6 +286,22 @@ fn push_fractions(
       {
         continue;
       }
+      // Reject near-miss if the endpoint's segment (other) and the target segment are roughly
+      // parallel: that indicates separate parallel contours with a consistent gap, not a genuine
+      // near-miss junction. The original micro-edge case has a vertical micro-edge meeting a
+      // horizontal edge (perpendicular), so it passes this check.
+      let other_dir = other_end - endpoint;
+      let segment_dir = segment.end_point() - segment.start_point();
+      if other_dir.length_squared() > 0.0 && segment_dir.length_squared() > 0.0 {
+        let dot = other_dir.dot(segment_dir);
+        let other_len = other_dir.length();
+        let segment_len = segment_dir.length();
+        let cos_angle = (dot / (other_len * segment_len)).abs();
+        if cos_angle > 0.9998 {
+          // ~1 degree threshold
+          continue;
+        }
+      }
       if let Some((fraction, projection)) = near_miss_fraction(segment, endpoint, tolerance) {
         *re_cut = true;
         fractions.push(fraction);
@@ -319,15 +335,14 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
     return None;
   }
   // Much closer to the projection than the projection is to either end of this segment, AND the
-  // absolute distance is bounded by a multiple of tolerance. This prevents snapping legitimate
-  // clearances on long edges (which would pass a pure relative test) while still catching the
-  // original near-miss: a 5e-7 mm gap at the midpoint of a 10 mm edge (ratio 1e-7, distance
-  // 500x tolerance). The factor of 1000 allows gaps up to ~1e-6 mm, which is the largest
-  // legitimate micro-edge we preserve (1 µm from the corpus).
+  // absolute distance is bounded by the maximum legitimate micro-edge (1 µm = 1e-6 mm). This
+  // prevents snapping legitimate clearances on long edges while still catching the original
+  // near-miss: a 5e-7 mm gap at the midpoint of a 10 mm edge (ratio 1e-7, distance 500x tolerance).
+  // The 1 µm cap is the largest micro-edge we preserve (from the corpus).
   let to_start = projection.distance_to(segment.start_point());
   let to_end = projection.distance_to(segment.end_point());
-  let max_absolute_snap = tolerance * 1000.0;
-  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance < max_absolute_snap {
+  const MAX_MICRO_EDGE: f64 = 1e-6;
+  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance < MAX_MICRO_EDGE {
     Some((fraction, projection))
   } else {
     None
