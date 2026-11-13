@@ -335,14 +335,14 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
     return None;
   }
   // Much closer to the projection than the projection is to either end of this segment, AND the
-  // absolute distance is bounded by the maximum legitimate micro-edge (1 µm = 1e-6 mm). This
-  // prevents snapping legitimate clearances on long edges while still catching the original
-  // near-miss: a 5e-7 mm gap at the midpoint of a 10 mm edge (ratio 1e-7, distance 500x tolerance).
-  // The 1 µm cap is the largest micro-edge we preserve (from the corpus).
+  // absolute distance is bounded by 1000× tolerance. This prevents snapping legitimate clearances
+  // on long edges while still catching the original near-miss: a 5e-7 mm gap at the midpoint of a
+  // 10 mm edge (ratio 1e-7, distance 500x tolerance). At default tolerance=1e-9, this equals 1e-6 mm,
+  // which is the largest micro-edge we preserve (from the corpus).
   let to_start = projection.distance_to(segment.start_point());
   let to_end = projection.distance_to(segment.end_point());
-  const MAX_MICRO_EDGE: f64 = 1e-6;
-  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance < MAX_MICRO_EDGE {
+  let max_absolute_snap = tolerance * 1000.0;
+  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 && distance <= max_absolute_snap {
     Some((fraction, projection))
   } else {
     None
