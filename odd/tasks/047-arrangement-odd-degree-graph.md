@@ -19,10 +19,10 @@ El motor de conjuntos de `cam-geom` rechaza geometría legal con `"the arrangeme
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Diagnóstico: nombrar **qué decisión de clasificación** deja el extremo colgado — qué pieza se conserva de más o de menos en `(10,10)` y `(5,10)`, con la instrumentación temporal retirada antes de reportar | S2 | worker | `e3df932` |
-| T2 | Arreglar la causa en `combine`/`decide`, no el síntoma: prohibido subir la tolerancia, atrapar el error y devolver algo degradado, aplanar arcos o special-casear `1e-6` | S1,S3,S5 | worker | `e3df932` |
-| T3 | Convertir `micro_edge_one_micron_combine_pins_current_behavior` en la aserción de identidad de área (`\|A∪B\| + \|A∩B\| = \|A\| + \|B\|` sobre las regiones curadas), RED observado antes del fix y GREEN después, más a lo sumo un test de borde si el fix tiene uno | S1,S4 | worker | `e3df932` |
-| T4 | Regresión completa: la suite del workspace, y el camino que atraviesa `cam-gerber` (la imagen de una capa usa `combine`) sin cambios de resultado en el corpus de paridad | S1,S3 | inline | `e3df932` |
+| T1 | Diagnóstico: nombrar **qué decisión de clasificación** deja el extremo colgado — qué pieza se conserva de más o de menos en `(10,10)` y `(5,10)`, con la instrumentación temporal retirada antes de reportar | S2 | worker | `67b5823` |
+| T2 | Arreglar la causa en `combine`/`decide`, no el síntoma: prohibido subir la tolerancia, atrapar el error y devolver algo degradado, aplanar arcos o special-casear `1e-6` | S1,S3,S5 | worker | `67b5823` |
+| T3 | Convertir `micro_edge_one_micron_combine_pins_current_behavior` en la aserción de identidad de área (`\|A∪B\| + \|A∩B\| = \|A\| + \|B\|` sobre las regiones curadas), RED observado antes del fix y GREEN después, más a lo sumo un test de borde si el fix tiene uno | S1,S4 | worker | `67b5823` |
+| T4 | Regresión completa: la suite del workspace, y el camino que atraviesa `cam-gerber` (la imagen de una capa usa `combine`) sin cambios de resultado en el corpus de paridad | S1,S3 | inline | `67b5823` |
 
 ## Log
 
