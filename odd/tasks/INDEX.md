@@ -51,4 +51,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 044 | [e0-7-benchmarks](044-e0-7-benchmarks.md) | delivered | 2026-11-13 | `cfb7feb` |
 | 045 | [w1a-corpus-parity](045-w1a-corpus-parity.md) | delivered | 2026-11-13 | `56ee332` |
 | 046 | [e0-2-input-robustness](046-e0-2-input-robustness.md) | delivered | 2026-11-13 | `714042c` |
-| 047 | [arrangement-odd-degree-graph](047-arrangement-odd-degree-graph.md) | in progress | 2026-11-13 | — |
+| 047 | [arrangement-odd-degree-graph](047-arrangement-odd-degree-graph.md) | delivered | 2026-11-13 | `766efe7` |

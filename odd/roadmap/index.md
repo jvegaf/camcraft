@@ -10,9 +10,7 @@ every one ended in an artefact demonstrable through `cam-cli`, not a slide.
 
 ## 1. Camcraft roadmap state (F0–F8)
 
-Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged
-instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md),
-[045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`), not against these documents: every row
+Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md), [045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`) and **2026-11-14** for the merged robustness wave (tasks [046](../tasks/046-e0-2-input-robustness.md), [047](../tasks/047-arrangement-odd-degree-graph.md), `master` `766efe7`), not against these documents: every row
 cites `path:line` evidence that exists today, and a feature is only `✅` when its code is there. The
 test suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*,
 not *green right now*.
@@ -24,8 +22,8 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
-| E0.1 Set engine | ✅ | `cam-geom/src/boolean.rs:754` `BooleanOp`, `:805` `Combined`, `:835` `combine`; 5 properties in `cam-geom/tests/boolean_properties.rs:147` (commutativity, idempotence, `A\A=∅`, inclusion–exclusion) incl. a two-arc disc generator; task [034](../tasks/034-c1-booleans.md) delivered `aee3e5d` | — (known limit: a disc that *touches* a region's boundary from inside is still refused at 1e-9) |
-| E0.2 Input robustness | 🟡 | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:153`. A 6-board fabrication corpus now exists (`fixtures/corpus/`, E0.5) and the parity gate guards measurement errors (`scripts/parity/guard_errors.py`, run by `scripts/parity/run.sh`) | Degenerate/unresolvable input is still refused (`region.rs:82`, `boolean.rs:75`, `:94`); the exit criterion «the corpus produces no normalization errors» is not explicitly closed in this index |
+| E0.1 Set engine | ✅ | `cam-geom/src/boolean.rs:1132` `BooleanOp`, `:1154` `Combined`, `:1297` `combine`; 5 properties in `cam-geom/tests/boolean_properties.rs:147` (commutativity, idempotence, `A\A=∅`, inclusion–exclusion) incl. a two-arc disc generator; task [034](../tasks/034-c1-booleans.md) delivered `aee3e5d`; arrangement near-miss snap added by [047](../tasks/047-arrangement-odd-degree-graph.md) delivered `766efe7` | — |
+| E0.2 Input robustness | ✅ | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:222`. E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs` (15 tests) covers auto-intersection, coincident edges, contact vertices and the micro-edge area-identity case fixed by [047](../tasks/047-arrangement-odd-degree-graph.md); constructor rejects named (`crates/cam-geom/src/contour.rs:91`). Exit criterion made measurable in `docs/ROADMAP_CAMCRAFT.md` (task [046](../tasks/046-e0-2-input-robustness.md) `00af97f`); tasks [046](../tasks/046-e0-2-input-robustness.md) delivered `714042c` and [047](../tasks/047-arrangement-odd-degree-graph.md) delivered `766efe7` | Rejections still surface generic `assemble` reasons (do not name the construct), `validate::inspect` collapses tangency into intersection (`crates/cam-geom/src/validate.rs:100-101`), and whether a sub-tolerance open gap should close is an open product decision (backlog of 046) |
 | E0.3 One tolerance policy | ⬜ | Constants remain: `cam-geom/src/lib.rs:52` (`DEFAULT_TOLERANCE=1e-6`), `offset.rs:49` (`0.001`), `region_offset.rs:41`, `:54` | No tolerance object at all: `grep -rn "struct Tolerance" crates` → 0 matches |
 | E0.4 Geometric parity harness | ✅ | `scripts/parity/run.sh`, `compare.py`, `collect.py`, `measure/` (`scripts/parity/README.md`); corpus-shape/fixture guard `crates/cam-geom/tests/parity.rs:1`; committed `parity.json` goldens per board under `fixtures/corpus/`; local gate `just parity` (`justfile:79`) and CI job `parity` (`.github/workflows/ci.yml:38`); task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — (polygon/area/point-count comparison against reference geometry, as implemented by the harness) |
 | E0.5 Board corpus | ✅ | 6 boards under `fixtures/corpus/` (`kicad-2l-simple`, `kicad-4l-pours`, `kicad-large-pours`, `substitute-altium`, `substitute-eagle`, `substitute-easyeda`) carrying fabrication roles/artifacts, `provenance.json` and `parity.json`; fixed set asserted in `crates/cam-geom/tests/parity.rs:18`; task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — |
@@ -106,9 +104,11 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
   `Operation` now lists PCB operations only.
 - **Three crates exist that GAPS_CAMCRAFT.md predates**: `cam-gerber`, `cam-excellon`, `cam-ops`.
 - **Phase 0 advanced with wave 1**: the engine (E0.1) and its core instruments are now present (E0.4
-  parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI). What still blocks confident progress is E0.3
-  (tolerance policy), an explicit close of E0.2's corpus exit criterion, and E0.6 (FlatCAM baseline);
-  every phase below F0 still depends on being able to *measure* correctness and speed.
+  parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI). Input robustness (E0.2) is closed by
+  tasks [046](../tasks/046-e0-2-input-robustness.md) and [047](../tasks/047-arrangement-odd-degree-graph.md),
+  with the E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs`. What still blocks
+  confident progress is E0.3 (tolerance policy) and E0.6 (FlatCAM baseline); every phase below F0
+  still depends on being able to *measure* correctness and speed.
 - **Only E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
   product's thesis — is 0 %.
 
@@ -134,13 +134,12 @@ describe the next parallel slices.
 ### Next slice, from here
 
 Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says. The core instrument set of wave 1
-(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place; what remains of F0 is:
+(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place, and E0.2 input
+robustness is closed by tasks 046/047; what remains of F0 is:
 
-1. **E0.2 input robustness** — close the exit criterion explicitly against the corpus (no normalization
-   errors), with evidence recorded.
-2. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
-3. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
-4. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then move toward F2
+1. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
+2. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
+3. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then move toward F2
    (drilling, cutout) as the first real G-code through `cam-cli`, following the dependency/wave order in
    [waves.md](waves.md).
 
