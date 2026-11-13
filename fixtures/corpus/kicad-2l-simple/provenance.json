@@ -1,0 +1,19 @@
+{
+  "slug": "kicad-2l-simple",
+  "source": "kicad-demos/stickhub/StickHub.kicad_pcb",
+  "source_sha256": "cee5a90f8803791cc55498d2576ed1f3416060d37701a02d4ec2937073c76051",
+  "exported_with": "kicad-cli 10.0.8",
+  "fills": "S1 KiCad 2 layers, no pours (6.5 KB of copper, 2 layers)",
+  "is_substitute": false,
+  "artefacts": [
+    "top",
+    "bottom",
+    "mask-top",
+    "mask-bottom",
+    "silk-top",
+    "silk-bottom",
+    "outline",
+    "drill"
+  ],
+  "note": "Regenerate with scripts/parity/export.sh. Timestamps and generator comments are stripped so a replay lands on the same bytes; the geometry is the plotter's own output."
+}

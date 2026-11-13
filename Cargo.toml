@@ -61,3 +61,4 @@ eframe = "0.37"
 # the intent and the host answers with a path, so the editor crate stays free of the desktop toolkit
 # (shell-open-document S1, taking the decision `odd/tasks/004-m3-import.md:113` had deferred).
 rfd = "0.15"
+criterion = { version = "0.5", features = ["html_reports"] }

@@ -14,3 +14,14 @@ serde.workspace = true
 [dev-dependencies]
 proptest.workspace = true
 serde_json.workspace = true
+criterion.workspace = true
+# The parity harness reads the committed corpus, and that means the two readers as dev-dependencies
+# (task 045, W1a; the lines were contributed by the owner of this file, task 044/W1c). A dev-dependency
+# cycle back onto `cam-geom` is allowed: `cam-gerber` and `cam-excellon` depend on this crate as an
+# ordinary dependency, and dev-dependencies never enter a library's build graph.
+cam-gerber.workspace = true
+cam-excellon.workspace = true
+
+[[bench]]
+name = "kernel"
+harness = false

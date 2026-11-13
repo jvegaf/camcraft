@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "parity-measure"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cam-excellon = { path = "../../../crates/cam-excellon" }
+cam-geom = { path = "../../../crates/cam-geom" }
+cam-gerber = { path = "../../../crates/cam-gerber" }
+serde_json = { version = "1", features = ["float_roundtrip"] }

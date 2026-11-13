@@ -1,0 +1,53 @@
+{
+  "artefacts": {
+    "bottom": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "refused"
+    },
+    "drill": {
+      "features": 165,
+      "status": "parsed",
+      "tools": 7
+    },
+    "mask-bottom": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "refused"
+    },
+    "mask-top": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "refused"
+    },
+    "outline": {
+      "contour_area_mm2": 16114.898739518914,
+      "points": 32,
+      "polygons": 2,
+      "status": "parsed"
+    },
+    "silk-bottom": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "parsed"
+    },
+    "silk-top": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "refused"
+    },
+    "top": {
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "refused"
+    }
+  },
+  "flatten_tolerance_mm": 0.001,
+  "timeout_seconds": 30
+}
