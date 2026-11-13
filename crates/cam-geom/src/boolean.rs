@@ -51,7 +51,7 @@ const PROBE_FLOOR: f64 = 1.0e-9;
 const PROBE_GROWTH: f64 = 16.0;
 
 /// How many probe distances are tried before the arrangement is declared unresolvable.
-const PROBE_TRIES: usize = 4;
+const PROBE_TRIES: usize = 5;
 
 /// A piece of a boundary, before it is classified.
 #[derive(Clone, Copy, Debug)]
@@ -100,19 +100,70 @@ struct Vertex {
   ends: Vec<(usize, EndAt)>,
 }
 
-/// Split every boundary at its crossings, keep the pieces that border material and chain them closed.
-pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomError> {
-  if !tolerance.is_finite() || tolerance <= 0.0 {
-    return Err(GeomError::EditRefused {
-      reason: "normalization needs a positive, finite tolerance",
-    });
-  }
+fn is_unchainable_error(err: &GeomError) -> bool {
+  matches!(
+    err,
+    GeomError::EditRefused { reason }
+      if *reason == "the arrangement revisits a piece, so its pieces cannot be chained closed"
+        || *reason == "the arrangement does not close, so its pieces cannot be chained closed"
+  )
+}
 
+fn odd_degree_points(pieces: &[Segment], tolerance: f64) -> Vec<Point2> {
+  let mut vertices: Vec<(Point2, usize)> = Vec::new();
+  for piece in pieces {
+    for point in [piece.start_point(), piece.end_point()] {
+      if let Some(idx) = vertices
+        .iter()
+        .position(|(vertex, _)| vertex.is_near(point, tolerance))
+      {
+        vertices[idx].1 += 1;
+      } else {
+        vertices.push((point, 1));
+      }
+    }
+  }
+  vertices
+    .into_iter()
+    .filter(|(_, degree)| degree % 2 == 1)
+    .map(|(point, _)| point)
+    .collect()
+}
+
+fn snap_relevant_to_odd_degree(
+  snap: (Point2, Point2),
+  odd_points: &[Point2],
+  tolerance: f64,
+) -> bool {
+  let (endpoint, projection) = snap;
+  odd_points.iter().any(|point| {
+    endpoint.is_near(*point, tolerance)
+      || projection.is_near(*point, tolerance)
+      || endpoint == *point
+      || projection == *point
+  })
+}
+
+fn normalize_with(
+  region: &Region,
+  tolerance: f64,
+  detect_near_misses: bool,
+) -> Result<Normalized, GeomError> {
   let mut cuts: Vec<Cut> = Vec::new();
   let mut re_cut = false;
+  let mut near_miss_snaps: Vec<(Point2, Point2)> = Vec::new();
   for (path, boundary) in region.boundaries.iter().enumerate() {
     for (index, segment) in boundary.segments().into_iter().enumerate() {
-      let fractions = cut_fractions(segment, region, path, index, tolerance, &mut re_cut)?;
+      let fractions = cut_fractions(
+        segment,
+        region,
+        path,
+        index,
+        tolerance,
+        &mut re_cut,
+        &mut near_miss_snaps,
+        detect_near_misses,
+      )?;
       for piece in split_at(segment, &fractions)? {
         cuts.push(Cut {
           path,
@@ -123,7 +174,7 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
   }
 
   // Nothing crossed, so nothing needs re-making: the input comes back in its own vertex order and
-  // arc-exact (A4).
+  // arc-exact (A4). Near-miss detection may still be needed even without geometric crossings.
   if !re_cut {
     return Ok(Normalized {
       region: region.clone(),
@@ -133,7 +184,7 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
 
   let mut survivors: Vec<Segment> = Vec::with_capacity(cuts.len());
   for cut in cuts {
-    match material_side(cut.segment, cut.path, region, tolerance)? {
+    match material_side(cut.segment, cut.path, region, tolerance, &near_miss_snaps)? {
       Side::Left => survivors.push(cut.segment),
       Side::Right => survivors.push(cut.segment.reversed()),
       Side::Both | Side::Neither => {}
@@ -145,17 +196,45 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
     });
   }
 
+  // On near-miss retry, keep only snaps relevant to vertices that remain odd-degree without snaps,
+  // so unrelated legitimate gaps are not welded. No odd-degree vertices means retain none.
+  if detect_near_misses && !near_miss_snaps.is_empty() {
+    let odd_points = odd_degree_points(&survivors, tolerance);
+    if odd_points.is_empty() {
+      near_miss_snaps.clear();
+    } else {
+      near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
+    }
+  }
+
   // A normalization walks one region, so every survivor belongs to the same side of the arrangement.
   let owners = vec![true; survivors.len()];
   let mut flattened = false;
-  let boundaries = assemble(&survivors, &owners, tolerance, &mut flattened)?;
+  let valid_snaps = filter_valid_snaps(&survivors, &near_miss_snaps);
+  let boundaries = assemble(&survivors, &owners, tolerance, &mut flattened, &valid_snaps)?;
   Ok(Normalized {
     region: Region { boundaries },
     flattened,
   })
 }
 
+/// Split every boundary at its crossings, keep the pieces that border material and chain them closed.
+pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomError> {
+  if !tolerance.is_finite() || tolerance <= 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "normalization needs a positive, finite tolerance",
+    });
+  }
+
+  match normalize_with(region, tolerance, false) {
+    Ok(result) => Ok(result),
+    Err(err) if is_unchainable_error(&err) => normalize_with(region, tolerance, true),
+    Err(err) => Err(err),
+  }
+}
+
 /// The fractional positions at which `segment` must be split, including both of its ends.
+#[allow(clippy::too_many_arguments)]
 fn cut_fractions(
   segment: Segment,
   region: &Region,
@@ -163,6 +242,8 @@ fn cut_fractions(
   skip_index: usize,
   tolerance: f64,
   re_cut: &mut bool,
+  near_miss_snaps: &mut Vec<(Point2, Point2)>,
+  detect_near_misses: bool,
 ) -> Result<Vec<f64>, GeomError> {
   let mut fractions = vec![0.0_f64, 1.0];
   // A boundary is cut against itself as well. A contour that crosses itself is two loops wearing one
@@ -181,7 +262,15 @@ fn cut_fractions(
       .enumerate()
       .filter(|(index, _)| !(other_path == skip_path && *index == skip_index))
       .map(|(_, segment)| segment);
-    push_fractions(&mut fractions, segment, others, tolerance, re_cut);
+    push_fractions(
+      &mut fractions,
+      segment,
+      others,
+      tolerance,
+      re_cut,
+      near_miss_snaps,
+      detect_near_misses,
+    );
   }
   Ok(dedup(&mut fractions, segment, tolerance))
 }
@@ -196,6 +285,8 @@ fn push_fractions(
   others: impl IntoIterator<Item = Segment>,
   tolerance: f64,
   re_cut: &mut bool,
+  near_miss_snaps: &mut Vec<(Point2, Point2)>,
+  detect_near_misses: bool,
 ) {
   for other in others {
     {
@@ -237,6 +328,97 @@ fn push_fractions(
         }
       }
     }
+    if !detect_near_misses {
+      continue;
+    }
+    // An endpoint of the other boundary that passes very close to this segment, but not within
+    // `tolerance`, is a near-miss junction: the arrangement has no vertex there, yet the pieces
+    // around it cannot be chained consistently. Split at the projection and record the snap so the
+    // endpoint and the projection become one vertex. Near-miss detection is only enabled when the
+    // arrangement is otherwise unchainable, so legitimate gaps in well-formed arrangements are
+    // never snapped.
+    let endpoints = [
+      (other.start_point(), other.end_point()),
+      (other.end_point(), other.start_point()),
+    ];
+    for (endpoint, other_end) in endpoints {
+      let projection_distance = match fraction_along(segment, endpoint) {
+        Some(f) => endpoint.distance_to(point_at(segment, f)),
+        None => continue,
+      };
+      // A near-miss junction arises from a micro-edge perturbation: the endpoint's own adjacent
+      // segment must be short relative to the projection gap. Normal vertices of separate closed
+      // contours have adjacent edges much longer than a small gap and must not be snapped.
+      let own_len = endpoint.distance_to(other_end);
+      if own_len > projection_distance * 10.0 {
+        continue;
+      }
+      // If the endpoint is much closer to its own neighbor than to the projection, snapping would
+      // collapse that segment rather than resolve a near-miss junction.
+      if own_len * 10.0 < projection_distance {
+        continue;
+      }
+      // Reject near-miss if the endpoint's segment (other) and the target segment are roughly
+      // parallel: that indicates separate parallel contours with a consistent gap, not a genuine
+      // near-miss junction. The original micro-edge case has a vertical micro-edge meeting a
+      // horizontal edge (perpendicular), so it passes this check.
+      let other_dir = other_end - endpoint;
+      let segment_dir = segment.end_point() - segment.start_point();
+      if other_dir.length_squared() > 0.0 && segment_dir.length_squared() > 0.0 {
+        let dot = other_dir.dot(segment_dir);
+        let other_len = other_dir.length();
+        let segment_len = segment_dir.length();
+        let cos_angle = (dot / (other_len * segment_len)).abs();
+        if cos_angle > 0.9998 {
+          // ~1 degree threshold
+          continue;
+        }
+      }
+      if let Some((fraction, projection)) = near_miss_fraction(segment, endpoint, tolerance) {
+        *re_cut = true;
+        fractions.push(fraction);
+        near_miss_snaps.push((endpoint, projection));
+      }
+    }
+  }
+}
+
+/// The projection of `point` onto `segment` as a near-miss junction, if it is one.
+///
+/// A near-miss is an endpoint that lies outside `tolerance` of the segment yet projects into its
+/// interior, closer to that projection than the projection is to either end of the segment and not
+/// within `tolerance` of the segment. That means the endpoint and the segment are trying to meet in
+/// the middle, and the arrangement must connect them. Points already within `tolerance` are not
+/// near-misses: the intersection logic and vertex welding handle them. The caller must also reject
+/// snaps that would collapse the endpoint's own adjacent segments.
+fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option<(f64, Point2)> {
+  let fraction = fraction_along(segment, point)?;
+  if fraction <= FRACTION_EPSILON || fraction >= 1.0 - FRACTION_EPSILON {
+    return None;
+  }
+  let projection = point_at(segment, fraction);
+  let distance = point.distance_to(projection);
+  if distance <= tolerance {
+    return None;
+  }
+  // Absolute cap: avoid welding legitimate clearances far above tolerance on long edges.
+  if distance > tolerance * 1.0e4 {
+    return None;
+  }
+  if projection.is_near(segment.start_point(), tolerance)
+    || projection.is_near(segment.end_point(), tolerance)
+  {
+    return None;
+  }
+  // Much closer to the projection than the projection is to either end of this segment.
+  // A true near-miss junction in the interior, not a distant point whose projection happens to
+  // fall inside.
+  let to_start = projection.distance_to(segment.start_point());
+  let to_end = projection.distance_to(segment.end_point());
+  if distance < to_start * 1.0e-3 && distance < to_end * 1.0e-3 {
+    Some((fraction, projection))
+  } else {
+    None
   }
 }
 
@@ -353,6 +535,7 @@ fn material_side(
   path: usize,
   region: &Region,
   tolerance: f64,
+  near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Side, GeomError> {
   let length = segment.length();
   if length <= 0.0 {
@@ -360,9 +543,10 @@ fn material_side(
       reason: "a zero-length piece cannot be classified",
     });
   }
-  let step = (length * PROBE_STEP).max(PROBE_FLOOR);
+  let base = (length * PROBE_STEP).max(PROBE_FLOOR);
+  let mut first_definitive: Option<Side> = None;
   for attempt in 0..PROBE_TRIES {
-    let distance = step * PROBE_GROWTH.powi(attempt as i32);
+    let distance = base * PROBE_GROWTH.powi(attempt as i32);
     if distance * 2.0 > length {
       break;
     }
@@ -371,14 +555,66 @@ fn material_side(
     };
     let left = material_beside(region, path, left_point, tolerance);
     let right = material_beside(region, path, right_point, tolerance);
-    match (left, right) {
-      (Some(true), Some(false)) => return Ok(Side::Left),
-      (Some(false), Some(true)) => return Ok(Side::Right),
-      (Some(true), Some(true)) => return Ok(Side::Both),
-      (Some(false), Some(false)) => return Ok(Side::Neither),
-      // One probe landed within some other boundary's band; step farther out and ask again.
-      _ => {}
+    let side = match (left, right) {
+      (Some(true), Some(false)) => Some(Side::Left),
+      (Some(false), Some(true)) => Some(Side::Right),
+      (Some(true), Some(true)) => Some(Side::Both),
+      (Some(false), Some(false)) => Some(Side::Neither),
+      _ => None,
+    };
+    if let Some(side) = side {
+      match first_definitive {
+        None => first_definitive = Some(side),
+        Some(prev) if prev != side => break,
+        _ => break,
+      }
     }
+  }
+  if let Some(side) = first_definitive {
+    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
+    // a close probe detects it (both sides the same locally). Only run this guard on pieces
+    // adjacent to a near-miss snap (one endpoint matches a snap endpoint or projection).
+    let is_adjacent_to_snap = near_miss_snaps.iter().any(|(endpoint, projection)| {
+      segment.start_point() == *endpoint
+        || segment.end_point() == *endpoint
+        || segment.start_point() == *projection
+        || segment.end_point() == *projection
+    });
+    if is_adjacent_to_snap && matches!(side, Side::Left | Side::Right) {
+      // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
+      // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
+      let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let mut sliver: Option<bool> = None;
+      while probe * 2.0 <= length && probe >= min_probe {
+        if let Some((left_point, right_point)) = probe_points(segment, probe) {
+          let left = material_beside(region, path, left_point, tolerance);
+          let right = material_beside(region, path, right_point, tolerance);
+          match (left, right) {
+            (Some(l), Some(r)) if l == r => {
+              sliver = Some(l);
+              probe /= PROBE_GROWTH;
+              continue;
+            }
+            (Some(l), Some(r)) if l != r => {
+              sliver = None;
+              break;
+            }
+            _ => {
+              sliver = None;
+              break;
+            }
+          }
+        } else {
+          sliver = None;
+          break;
+        }
+      }
+      if let Some(l) = sliver {
+        return Ok(if l { Side::Both } else { Side::Neither });
+      }
+    }
+    return Ok(side);
   }
   Err(GeomError::EditRefused {
     reason: "the arrangement is finer than the tolerance can resolve",
@@ -452,7 +688,12 @@ fn assemble(
   owners: &[bool],
   tolerance: f64,
   flattened: &mut bool,
+  near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Vec<Contour>, GeomError> {
+  let allowed: Vec<Point2> = pieces
+    .iter()
+    .flat_map(|piece| [piece.start_point(), piece.end_point()])
+    .collect();
   let mut vertices: Vec<Vertex> = Vec::new();
   for (index, piece) in pieces.iter().enumerate() {
     if piece.length() <= 0.0 {
@@ -460,8 +701,20 @@ fn assemble(
         reason: "a surviving piece has no length",
       });
     }
-    let start = vertex_index(&mut vertices, piece.start_point(), tolerance);
-    let end = vertex_index(&mut vertices, piece.end_point(), tolerance);
+    let start = vertex_index(
+      &mut vertices,
+      piece.start_point(),
+      tolerance,
+      near_miss_snaps,
+      &allowed,
+    );
+    let end = vertex_index(
+      &mut vertices,
+      piece.end_point(),
+      tolerance,
+      near_miss_snaps,
+      &allowed,
+    );
     if start == end {
       return Err(GeomError::EditRefused {
         reason: "a surviving piece begins and ends at the same point",
@@ -538,11 +791,22 @@ fn assemble(
 }
 
 /// The vertex a point belongs to, creating it if this is the first piece end here.
-fn vertex_index(vertices: &mut Vec<Vertex>, point: Point2, tolerance: f64) -> usize {
-  if let Some(index) = vertices
-    .iter()
-    .position(|vertex| vertex.point.is_near(point, tolerance))
-  {
+///
+/// Near-miss snaps unify an endpoint with its projection on another segment: the two points are
+/// farther apart than `tolerance` but are the same junction in the arrangement. A point matches a
+/// vertex when it is within tolerance, or when either side of any snap pair identifies it with a
+/// vertex already present through surviving endpoints.
+fn vertex_index(
+  vertices: &mut Vec<Vertex>,
+  point: Point2,
+  tolerance: f64,
+  near_miss_snaps: &[(Point2, Point2)],
+  allowed: &[Point2],
+) -> usize {
+  if let Some(index) = vertices.iter().position(|vertex| {
+    vertex.point.is_near(point, tolerance)
+      || points_identified(vertex.point, point, near_miss_snaps, allowed)
+  }) {
     return index;
   }
   vertices.push(Vertex {
@@ -550,6 +814,153 @@ fn vertex_index(vertices: &mut Vec<Vertex>, point: Point2, tolerance: f64) -> us
     ends: Vec::new(),
   });
   vertices.len() - 1
+}
+
+/// Drop snaps that would collapse a surviving piece: if a piece has one endpoint at `from` and the
+/// other at `to` (or identified through the snap set), snapping makes it zero-length in the graph.
+/// Identification is transitive through surviving endpoints only. Only snaps that participate in
+/// collapsing a surviving piece are removed.
+fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Point2, Point2)> {
+  let allowed: Vec<Point2> = pieces
+    .iter()
+    .flat_map(|piece| [piece.start_point(), piece.end_point()])
+    .collect();
+  let mut current = snaps.to_vec();
+  loop {
+    // Find a piece whose endpoints would be identified by the current snap set.
+    let collapse = pieces.iter().find_map(|piece| {
+      let s = piece.start_point();
+      let e = piece.end_point();
+      if points_identified_transitive(s, e, &current, &[], &allowed) {
+        Some((s, e))
+      } else {
+        None
+      }
+    });
+    let Some((s, e)) = collapse else {
+      return current;
+    };
+    // Remove one snap on a path connecting s and e (prefer a snap directly touching either).
+    let path = identifying_path(s, e, &current, &allowed);
+    let Some(path) = path else {
+      // Should not happen, but avoid infinite loop.
+      return current;
+    };
+    // Choose a snap in the path to drop: prefer one whose endpoint matches s or e.
+    let drop_idx = path
+      .iter()
+      .copied()
+      .find(|&i| {
+        let (from, to) = current[i];
+        from == s || to == s || from == e || to == e
+      })
+      .unwrap_or(path[0]);
+    current.remove(drop_idx);
+  }
+}
+
+/// Indices of snaps forming a path that identifies `a` and `b`, if any, through allowed points.
+fn identifying_path(
+  a: Point2,
+  b: Point2,
+  snaps: &[(Point2, Point2)],
+  allowed: &[Point2],
+) -> Option<Vec<usize>> {
+  if a == b {
+    return Some(Vec::new());
+  }
+  // BFS over points, tracking snap index used to reach each point.
+  let mut queue: std::collections::VecDeque<Point2> = std::collections::VecDeque::new();
+  let mut parent: Vec<Option<(Point2, usize)>> = Vec::new();
+  let mut seen: Vec<Point2> = Vec::new();
+
+  seen.push(a);
+  parent.push(None);
+  queue.push_back(a);
+
+  while let Some(current) = queue.pop_front() {
+    for (idx, (from, to)) in snaps.iter().copied().enumerate() {
+      let next = if current == from {
+        Some(to)
+      } else if current == to {
+        Some(from)
+      } else {
+        None
+      };
+      let Some(next) = next else { continue };
+      if seen.contains(&next) {
+        continue;
+      }
+      if next != b && !allowed.contains(&next) {
+        continue;
+      }
+      seen.push(next);
+      parent.push(Some((current, idx)));
+      if next == b {
+        // Reconstruct path
+        let mut path = Vec::new();
+        let mut cur = b;
+        while cur != a {
+          let pos = seen.iter().position(|p| *p == cur).unwrap();
+          let (p, snap_idx) = parent[pos].unwrap();
+          path.push(snap_idx);
+          cur = p;
+        }
+        path.sort_unstable();
+        path.dedup();
+        return Some(path);
+      }
+      queue.push_back(next);
+    }
+  }
+  None
+}
+
+/// Whether two points are the same junction via near-miss snap pairs (transitively) through
+/// allowed intermediate points (surviving piece endpoints).
+fn points_identified_transitive(
+  a: Point2,
+  b: Point2,
+  snaps: &[(Point2, Point2)],
+  extra: &[(Point2, Point2)],
+  allowed: &[Point2],
+) -> bool {
+  if a == b {
+    return true;
+  }
+  let mut seen: Vec<Point2> = vec![a];
+  let mut stack: Vec<Point2> = vec![a];
+  while let Some(current) = stack.pop() {
+    if current == b {
+      return true;
+    }
+    for (from, to) in snaps.iter().chain(extra.iter()).copied() {
+      let next = if current == from {
+        Some(to)
+      } else if current == to {
+        Some(from)
+      } else {
+        None
+      };
+      if let Some(next) = next {
+        if next == b {
+          return true;
+        }
+        if !allowed.contains(&next) || seen.contains(&next) {
+          continue;
+        }
+        seen.push(next);
+        stack.push(next);
+      }
+    }
+  }
+  false
+}
+
+/// Whether two points are the same junction via a near-miss snap pair, restricted to paths
+/// through surviving endpoints.
+fn points_identified(a: Point2, b: Point2, snaps: &[(Point2, Point2)], allowed: &[Point2]) -> bool {
+  points_identified_transitive(a, b, snaps, &[], allowed)
 }
 
 /// The unique id of a piece end: pieces are pairs of ends, so the low bit is the end.
@@ -779,6 +1190,98 @@ enum Decision {
   Drop,
 }
 
+fn combine_with(
+  a: &Region,
+  b: &Region,
+  op: BooleanOp,
+  tolerance: f64,
+  detect_near_misses: bool,
+) -> Result<Combined, GeomError> {
+  // One arrangement over both regions, so no piece ever straddles the predicate's answer: every
+  // segment is cut where it meets the other region's boundaries as well as its own.
+  let mut pieces: Vec<Piece> = Vec::new();
+  let mut re_cut = false;
+  // Near-miss junctions are detected only on retry after an unchainable arrangement, so
+  // legitimate gaps in well-formed arrangements are never snapped.
+  let mut near_miss_snaps: Vec<(Point2, Point2)> = Vec::new();
+  for (from_a, region, other) in [(true, a, b), (false, b, a)] {
+    for (path, boundary) in region.boundaries.iter().enumerate() {
+      for (index, segment) in boundary.segments().into_iter().enumerate() {
+        let mut fractions = vec![0.0_f64, 1.0];
+        for (sibling_path, sibling) in region.boundaries.iter().enumerate() {
+          let others = sibling
+            .segments()
+            .into_iter()
+            .enumerate()
+            .filter(|(other_index, _)| !(sibling_path == path && *other_index == index))
+            .map(|(_, segment)| segment);
+          push_fractions(
+            &mut fractions,
+            segment,
+            others,
+            tolerance,
+            &mut re_cut,
+            &mut near_miss_snaps,
+            detect_near_misses,
+          );
+        }
+        for foreign in other.boundaries.iter() {
+          push_fractions(
+            &mut fractions,
+            segment,
+            foreign.segments(),
+            tolerance,
+            &mut re_cut,
+            &mut near_miss_snaps,
+            detect_near_misses,
+          );
+        }
+        let fractions = dedup(&mut fractions, segment, tolerance);
+        for piece in split_at(segment, &fractions)? {
+          pieces.push(Piece {
+            from_a,
+            path,
+            segment: piece,
+          });
+        }
+      }
+    }
+  }
+
+  let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
+  for piece in pieces {
+    match decide(piece, a, b, op, tolerance, &near_miss_snaps)? {
+      Decision::Keep => survivors.push((piece.segment, piece.from_a)),
+      Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
+      Decision::Drop => {}
+    }
+  }
+  // A doubled edge is not a boundary: crossing it flips parity twice, so a region that kept both
+  // copies would enclose nothing at all while its boundaries still summed to a nonzero area. Two
+  // inputs that share a boundary produce exactly that -- identical regions, or a hole touching the
+  // outer edge along a segment -- so identical pieces are kept once.
+  let survivors = dedup_pieces(survivors, tolerance);
+  if survivors.is_empty() {
+    return Ok(Combined::Empty);
+  }
+  let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
+  if detect_near_misses && !near_miss_snaps.is_empty() {
+    let odd_points = odd_degree_points(&segments, tolerance);
+    if odd_points.is_empty() {
+      near_miss_snaps.clear();
+    } else {
+      near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
+    }
+  }
+  let mut flattened = false;
+  let valid_snaps = filter_valid_snaps(&segments, &near_miss_snaps);
+  let boundaries = assemble(&segments, &owners, tolerance, &mut flattened, &valid_snaps)?;
+  Ok(Combined::Region {
+    region: Region { boundaries },
+    flattened,
+  })
+}
+
 /// Combine two regions.
 ///
 /// The rule is the one [`normalize`] already applies to a single region, with the predicate evaluated
@@ -803,67 +1306,11 @@ pub fn combine(
     });
   }
 
-  // One arrangement over both regions, so no piece ever straddles the predicate's answer: every
-  // segment is cut where it meets the other region's boundaries as well as its own.
-  let mut pieces: Vec<Piece> = Vec::new();
-  let mut re_cut = false;
-  for (from_a, region, other) in [(true, a, b), (false, b, a)] {
-    for (path, boundary) in region.boundaries.iter().enumerate() {
-      for (index, segment) in boundary.segments().into_iter().enumerate() {
-        let mut fractions = vec![0.0_f64, 1.0];
-        for (sibling_path, sibling) in region.boundaries.iter().enumerate() {
-          let others = sibling
-            .segments()
-            .into_iter()
-            .enumerate()
-            .filter(|(other_index, _)| !(sibling_path == path && *other_index == index))
-            .map(|(_, segment)| segment);
-          push_fractions(&mut fractions, segment, others, tolerance, &mut re_cut);
-        }
-        for foreign in other.boundaries.iter() {
-          push_fractions(
-            &mut fractions,
-            segment,
-            foreign.segments(),
-            tolerance,
-            &mut re_cut,
-          );
-        }
-        let fractions = dedup(&mut fractions, segment, tolerance);
-        for piece in split_at(segment, &fractions)? {
-          pieces.push(Piece {
-            from_a,
-            path,
-            segment: piece,
-          });
-        }
-      }
-    }
+  match combine_with(a, b, op, tolerance, false) {
+    Ok(result) => Ok(result),
+    Err(err) if is_unchainable_error(&err) => combine_with(a, b, op, tolerance, true),
+    Err(err) => Err(err),
   }
-
-  let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
-  for piece in pieces {
-    match decide(piece, a, b, op, tolerance)? {
-      Decision::Keep => survivors.push((piece.segment, piece.from_a)),
-      Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
-      Decision::Drop => {}
-    }
-  }
-  // A doubled edge is not a boundary: crossing it flips parity twice, so a region that kept both
-  // copies would enclose nothing at all while its boundaries still summed to a nonzero area. Two
-  // inputs that share a boundary produce exactly that -- identical regions, or a hole touching the
-  // outer edge along a segment -- so identical pieces are kept once.
-  let survivors = dedup_pieces(survivors, tolerance);
-  if survivors.is_empty() {
-    return Ok(Combined::Empty);
-  }
-  let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
-  let mut flattened = false;
-  let boundaries = assemble(&segments, &owners, tolerance, &mut flattened)?;
-  Ok(Combined::Region {
-    region: Region { boundaries },
-    flattened,
-  })
 }
 
 /// Decide where a piece goes by asking the predicate on both of its sides.
@@ -873,6 +1320,7 @@ fn decide(
   b: &Region,
   op: BooleanOp,
   tolerance: f64,
+  near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Decision, GeomError> {
   let segment = piece.segment;
   let length = segment.length();
@@ -885,9 +1333,10 @@ fn decide(
   // other region's boundaries are all consulted.
   let skip_a = if piece.from_a { Some(piece.path) } else { None };
   let skip_b = if piece.from_a { None } else { Some(piece.path) };
-  let step = (length * PROBE_STEP).max(PROBE_FLOOR);
+  let base = (length * PROBE_STEP).max(PROBE_FLOOR);
+  let mut first_definitive: Option<Decision> = None;
   for attempt in 0..PROBE_TRIES {
-    let distance = step * PROBE_GROWTH.powi(attempt as i32);
+    let distance = base * PROBE_GROWTH.powi(attempt as i32);
     if distance * 2.0 > length {
       break;
     }
@@ -906,11 +1355,68 @@ fn decide(
     };
     let left_inside = op.holds(left_a, left_b);
     let right_inside = op.holds(right_a, right_b);
-    return Ok(match (left_inside, right_inside) {
+    let decision = match (left_inside, right_inside) {
       (true, false) => Decision::Keep,
       (false, true) => Decision::Reverse,
       _ => Decision::Drop,
+    };
+    match first_definitive {
+      None => first_definitive = Some(decision),
+      Some(prev) if prev != decision => break,
+      _ => break,
+    }
+  }
+  if let Some(decision) = first_definitive {
+    // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
+    // a close probe detects it (both sides the same locally). Only run this guard on pieces
+    // adjacent to a near-miss snap (one endpoint matches a snap endpoint or projection).
+    let is_adjacent_to_snap = near_miss_snaps.iter().any(|(endpoint, projection)| {
+      segment.start_point() == *endpoint
+        || segment.end_point() == *endpoint
+        || segment.start_point() == *projection
+        || segment.end_point() == *projection
     });
+    if is_adjacent_to_snap && matches!(decision, Decision::Keep | Decision::Reverse) {
+      // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
+      // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
+      let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let mut drop_as_sliver = false;
+      while probe * 2.0 <= length && probe >= min_probe {
+        if let Some((left, right)) = probe_points(segment, probe) {
+          let memberships = (
+            enclosed_by(a, skip_a, left, tolerance),
+            enclosed_by(b, skip_b, left, tolerance),
+            enclosed_by(a, skip_a, right, tolerance),
+            enclosed_by(b, skip_b, right, tolerance),
+          );
+          match memberships {
+            (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) => {
+              let left_inside = op.holds(left_a, left_b);
+              let right_inside = op.holds(right_a, right_b);
+              if left_inside == right_inside {
+                drop_as_sliver = true;
+                probe /= PROBE_GROWTH;
+                continue;
+              } else {
+                drop_as_sliver = false;
+                break;
+              }
+            }
+            _ => {
+              drop_as_sliver = false;
+              break;
+            }
+          }
+        } else {
+          break;
+        }
+      }
+      if drop_as_sliver {
+        return Ok(Decision::Drop);
+      }
+    }
+    return Ok(decision);
   }
   Err(GeomError::EditRefused {
     reason: "the arrangement is finer than the tolerance can resolve",
