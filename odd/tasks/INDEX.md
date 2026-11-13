@@ -50,4 +50,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 043 | [w1b-ci](043-w1b-ci.md) | delivered | 2026-11-13 | `612a285` |
 | 044 | [e0-7-benchmarks](044-e0-7-benchmarks.md) | delivered | 2026-11-13 | `cfb7feb` |
 | 045 | [w1a-corpus-parity](045-w1a-corpus-parity.md) | delivered | 2026-11-13 | `56ee332` |
-| 046 | [e0-2-input-robustness](046-e0-2-input-robustness.md) | in progress | 2026-11-13 | — |
+| 046 | [e0-2-input-robustness](046-e0-2-input-robustness.md) | delivered | 2026-11-13 | `714042c` |
