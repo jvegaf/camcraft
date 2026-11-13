@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: fmt, clippy, docs, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run project gates
+        run: ./scripts/check.sh
+
+  # E0.4 / W1a. A job of its own on purpose: a hung kernel must fail the parity gate, not drag the
+  # suite above with it. The corpus is committed, so `kicad-cli` is not needed (only `export.sh`
+  # uses it, and regenerating the corpus is a reviewed human act, never CI). `--update` never runs
+  # here for the same reason: re-pinning a golden is a change to review, not a gate.
+  parity:
+    name: parity corpus (W1a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (with the committed corpus)
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Confirm the harness prerequisites
+        run: |
+          python3 --version
+          cargo --version
+
+      - name: Measure the corpus and compare it against its goldens
+        run: ./scripts/parity/run.sh
+
+  # E0.7 / W1c. The baseline was recorded on the development machine, and criterion's comparison is
+  # a ratio between two measurements on the same hardware, so on a shared runner the number is noise
+  # by construction. This job therefore proves the benchmarks build and run against the committed
+  # baseline and publishes the comparison; gating on a threshold needs a runner whose hardware the
+  # baseline was recorded on, which is a decision nobody has taken yet.
+  bench:
+    name: benchmarks (W1c)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run the benchmarks against the committed baseline
+        run: |
+          # The same two commands `just bench` runs: the recipe is the local door, and the runner
+          # does not carry `just` (installing it would add a dependency to the gate for one step).
+          ./crates/cam-geom/benches/check_regression.sh --noplot
+          ./crates/cam-ops/benches/check_regression.sh --noplot
+
+      - name: Upload the criterion report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: target/criterion
+          if-no-files-found: warn

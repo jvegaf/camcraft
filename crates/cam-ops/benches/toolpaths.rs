@@ -1,7 +1,9 @@
 use cam_geom::primitive::rectangle;
 use cam_geom::Point2;
 use cam_model::{Job, OriginCorner};
-use cam_ops::params::{DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode};
+use cam_ops::params::{
+  DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
+};
 use cam_ops::peck::DrillHole;
 use cam_ops::shared::ToolSpec;
 use cam_ops::{drill, pocket, profile, DrillRequest, PocketRequest, ProfileRequest};
@@ -91,12 +93,30 @@ fn bench_pocket_offset_rectangle(c: &mut Criterion) {
 
 fn bench_drill_holes(c: &mut Criterion) {
   let holes = vec![
-    DrillHole { entity: "h1".to_string(), centre: Point2::new(10.0, 10.0) },
-    DrillHole { entity: "h2".to_string(), centre: Point2::new(30.0, 10.0) },
-    DrillHole { entity: "h3".to_string(), centre: Point2::new(50.0, 10.0) },
-    DrillHole { entity: "h4".to_string(), centre: Point2::new(10.0, 30.0) },
-    DrillHole { entity: "h5".to_string(), centre: Point2::new(30.0, 30.0) },
-    DrillHole { entity: "h6".to_string(), centre: Point2::new(50.0, 30.0) },
+    DrillHole {
+      entity: "h1".to_string(),
+      centre: Point2::new(10.0, 10.0),
+    },
+    DrillHole {
+      entity: "h2".to_string(),
+      centre: Point2::new(30.0, 10.0),
+    },
+    DrillHole {
+      entity: "h3".to_string(),
+      centre: Point2::new(50.0, 10.0),
+    },
+    DrillHole {
+      entity: "h4".to_string(),
+      centre: Point2::new(10.0, 30.0),
+    },
+    DrillHole {
+      entity: "h5".to_string(),
+      centre: Point2::new(30.0, 30.0),
+    },
+    DrillHole {
+      entity: "h6".to_string(),
+      centre: Point2::new(50.0, 30.0),
+    },
   ];
   let params = DrillParams {
     peck_depth: Length::from_mm(1.5),
@@ -122,5 +142,10 @@ fn bench_drill_holes(c: &mut Criterion) {
   });
 }
 
-criterion_group!(toolpaths, bench_profile_rectangle, bench_pocket_offset_rectangle, bench_drill_holes);
+criterion_group!(
+  toolpaths,
+  bench_profile_rectangle,
+  bench_pocket_offset_rectangle,
+  bench_drill_holes
+);
 criterion_main!(toolpaths);

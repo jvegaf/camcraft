@@ -13,8 +13,7 @@ fn bench_combine_union(c: &mut Criterion) {
 
   c.bench_function("geom/combine_union_rect_overlap", |bench| {
     bench.iter(|| {
-      let out = combine(black_box(&ra), black_box(&rb), BooleanOp::Union, 1.0e-6)
-        .expect("union");
+      let out = combine(black_box(&ra), black_box(&rb), BooleanOp::Union, 1.0e-6).expect("union");
       black_box(match out {
         Combined::Empty => 0usize,
         Combined::Region { region, .. } => region.boundaries.len(),
