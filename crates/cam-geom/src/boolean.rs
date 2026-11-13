@@ -100,14 +100,20 @@ struct Vertex {
   ends: Vec<(usize, EndAt)>,
 }
 
-/// Split every boundary at its crossings, keep the pieces that border material and chain them closed.
-pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomError> {
-  if !tolerance.is_finite() || tolerance <= 0.0 {
-    return Err(GeomError::EditRefused {
-      reason: "normalization needs a positive, finite tolerance",
-    });
-  }
+fn is_unchainable_error(err: &GeomError) -> bool {
+  matches!(
+    err,
+    GeomError::EditRefused { reason }
+      if *reason == "the arrangement revisits a piece, so its pieces cannot be chained closed"
+        || *reason == "the arrangement does not close, so its pieces cannot be chained closed"
+  )
+}
 
+fn normalize_with(
+  region: &Region,
+  tolerance: f64,
+  detect_near_misses: bool,
+) -> Result<Normalized, GeomError> {
   let mut cuts: Vec<Cut> = Vec::new();
   let mut re_cut = false;
   let mut near_miss_snaps: Vec<(Point2, Point2)> = Vec::new();
@@ -121,6 +127,7 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
         tolerance,
         &mut re_cut,
         &mut near_miss_snaps,
+        detect_near_misses,
       )?;
       for piece in split_at(segment, &fractions)? {
         cuts.push(Cut {
@@ -132,7 +139,7 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
   }
 
   // Nothing crossed, so nothing needs re-making: the input comes back in its own vertex order and
-  // arc-exact (A4).
+  // arc-exact (A4). Near-miss detection may still be needed even without geometric crossings.
   if !re_cut {
     return Ok(Normalized {
       region: region.clone(),
@@ -165,7 +172,23 @@ pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomErro
   })
 }
 
+/// Split every boundary at its crossings, keep the pieces that border material and chain them closed.
+pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomError> {
+  if !tolerance.is_finite() || tolerance <= 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "normalization needs a positive, finite tolerance",
+    });
+  }
+
+  match normalize_with(region, tolerance, false) {
+    Ok(result) => Ok(result),
+    Err(err) if is_unchainable_error(&err) => normalize_with(region, tolerance, true),
+    Err(err) => Err(err),
+  }
+}
+
 /// The fractional positions at which `segment` must be split, including both of its ends.
+#[allow(clippy::too_many_arguments)]
 fn cut_fractions(
   segment: Segment,
   region: &Region,
@@ -174,6 +197,7 @@ fn cut_fractions(
   tolerance: f64,
   re_cut: &mut bool,
   near_miss_snaps: &mut Vec<(Point2, Point2)>,
+  detect_near_misses: bool,
 ) -> Result<Vec<f64>, GeomError> {
   let mut fractions = vec![0.0_f64, 1.0];
   // A boundary is cut against itself as well. A contour that crosses itself is two loops wearing one
@@ -199,6 +223,7 @@ fn cut_fractions(
       tolerance,
       re_cut,
       near_miss_snaps,
+      detect_near_misses,
     );
   }
   Ok(dedup(&mut fractions, segment, tolerance))
@@ -215,6 +240,7 @@ fn push_fractions(
   tolerance: f64,
   re_cut: &mut bool,
   near_miss_snaps: &mut Vec<(Point2, Point2)>,
+  detect_near_misses: bool,
 ) {
   for other in others {
     {
@@ -256,13 +282,15 @@ fn push_fractions(
         }
       }
     }
+    if !detect_near_misses {
+      continue;
+    }
     // An endpoint of the other boundary that passes very close to this segment, but not within
     // `tolerance`, is a near-miss junction: the arrangement has no vertex there, yet the pieces
     // around it cannot be chained consistently. Split at the projection and record the snap so the
-    // endpoint and the projection become one vertex. The junction is identified topologically — the
-    // endpoint projects into the interior of this segment and is closer to that projection than the
-    // projection is to either of this segment's ends — rather than by a distance threshold, so the
-    // tolerance is never raised.
+    // endpoint and the projection become one vertex. Near-miss detection is only enabled when the
+    // arrangement is otherwise unchainable, so legitimate gaps in well-formed arrangements are
+    // never snapped.
     let endpoints = [
       (other.start_point(), other.end_point()),
       (other.end_point(), other.start_point()),
@@ -707,54 +735,91 @@ fn vertex_index(
 }
 
 /// Drop snaps that would collapse a surviving piece: if a piece has one endpoint at `from` and the
-/// other at `to` (or already identified through snaps), snapping them makes it zero-length in the
-/// graph. Identification is transitive over the snap set.
+/// other at `to` (or identified through the snap set), snapping makes it zero-length in the graph.
+/// Identification is transitive. Only snaps that participate in collapsing a surviving piece are
+/// removed, so unrelated valid snaps are preserved.
 fn filter_valid_snaps(pieces: &[Segment], snaps: &[(Point2, Point2)]) -> Vec<(Point2, Point2)> {
   let mut current = snaps.to_vec();
   loop {
-    let mut changed = false;
-    let mut next = Vec::with_capacity(current.len());
-    for (from, to) in current.iter().copied() {
-      let collapses_piece = pieces.iter().any(|piece| {
-        let s = piece.start_point();
-        let e = piece.end_point();
-        points_identified_transitive(s, e, &current, &[(from, to)])
-          || (points_identified_transitive(s, from, &current, &[])
-            && points_identified_transitive(e, to, &current, &[]))
-          || (points_identified_transitive(s, to, &current, &[])
-            && points_identified_transitive(e, from, &current, &[]))
-      });
-      // A snap collapses a piece if it would make its endpoints identified.
-      let collapses = collapses_piece
-        || pieces.iter().any(|piece| {
-          let s = piece.start_point();
-          let e = piece.end_point();
-          snap_identifies_endpoints(s, e, from, to, &current)
-        });
-      if collapses {
-        changed = true;
+    // Find a piece whose endpoints would be identified by the current snap set.
+    let collapse = pieces.iter().find_map(|piece| {
+      let s = piece.start_point();
+      let e = piece.end_point();
+      if points_identified_transitive(s, e, &current, &[]) {
+        Some((s, e))
       } else {
-        next.push((from, to));
+        None
       }
-    }
-    if !changed || next.len() == current.len() {
-      return next;
-    }
-    current = next;
+    });
+    let Some((s, e)) = collapse else {
+      return current;
+    };
+    // Remove one snap on a path connecting s and e (prefer a snap directly touching either).
+    let path = identifying_path(s, e, &current);
+    let Some(path) = path else {
+      // Should not happen, but avoid infinite loop.
+      return current;
+    };
+    // Choose a snap in the path to drop: prefer one whose endpoint matches s or e.
+    let drop_idx = path
+      .iter()
+      .copied()
+      .find(|&i| {
+        let (from, to) = current[i];
+        from == s || to == s || from == e || to == e
+      })
+      .unwrap_or(path[0]);
+    current.remove(drop_idx);
   }
 }
 
-/// Whether applying `(from,to)` together with `snaps` would identify `s` and `e`.
-fn snap_identifies_endpoints(
-  s: Point2,
-  e: Point2,
-  from: Point2,
-  to: Point2,
-  snaps: &[(Point2, Point2)],
-) -> bool {
-  let mut all = snaps.to_vec();
-  all.push((from, to));
-  points_identified_transitive(s, e, &all, &[])
+/// Indices of snaps forming a path that identifies `a` and `b`, if any.
+fn identifying_path(a: Point2, b: Point2, snaps: &[(Point2, Point2)]) -> Option<Vec<usize>> {
+  if a == b {
+    return Some(Vec::new());
+  }
+  // BFS over points, tracking snap index used to reach each point.
+  let mut queue: std::collections::VecDeque<Point2> = std::collections::VecDeque::new();
+  let mut parent: Vec<Option<(Point2, usize)>> = Vec::new();
+  let mut seen: Vec<Point2> = Vec::new();
+
+  seen.push(a);
+  parent.push(None);
+  queue.push_back(a);
+
+  while let Some(current) = queue.pop_front() {
+    for (idx, (from, to)) in snaps.iter().copied().enumerate() {
+      let next = if current == from {
+        Some(to)
+      } else if current == to {
+        Some(from)
+      } else {
+        None
+      };
+      let Some(next) = next else { continue };
+      if seen.contains(&next) {
+        continue;
+      }
+      seen.push(next);
+      parent.push(Some((current, idx)));
+      if next == b {
+        // Reconstruct path
+        let mut path = Vec::new();
+        let mut cur = b;
+        while cur != a {
+          let pos = seen.iter().position(|p| *p == cur).unwrap();
+          let (p, snap_idx) = parent[pos].unwrap();
+          path.push(snap_idx);
+          cur = p;
+        }
+        path.sort_unstable();
+        path.dedup();
+        return Some(path);
+      }
+      queue.push_back(next);
+    }
+  }
+  None
 }
 
 /// Whether two points are the same junction via near-miss snap pairs (transitively).
@@ -1027,38 +1092,19 @@ enum Decision {
   Drop,
 }
 
-/// Combine two regions.
-///
-/// The rule is the one [`normalize`] already applies to a single region, with the predicate evaluated
-/// on both probes: a point is inside the result when [`BooleanOp::holds`] says so for its membership of
-/// each input, a piece survives when the answer differs across it, and it is oriented so the
-/// **result's** material is on its left. There is no per-operation special casing: a difference
-/// inverts the second region by itself, because a piece inside it has the predicate false.
-///
-/// # Errors
-///
-/// Returns the first piece the tolerance cannot resolve, with the inspection that failed. A piece that
-/// lies within a boundary's band at every probe distance is refused rather than classified by guess.
-pub fn combine(
+fn combine_with(
   a: &Region,
   b: &Region,
   op: BooleanOp,
   tolerance: f64,
+  detect_near_misses: bool,
 ) -> Result<Combined, GeomError> {
-  if !tolerance.is_finite() || tolerance <= 0.0 {
-    return Err(GeomError::EditRefused {
-      reason: "a set operation needs a positive, finite tolerance",
-    });
-  }
-
   // One arrangement over both regions, so no piece ever straddles the predicate's answer: every
   // segment is cut where it meets the other region's boundaries as well as its own.
   let mut pieces: Vec<Piece> = Vec::new();
   let mut re_cut = false;
-  // Near-miss junctions: an endpoint of one boundary projects onto the interior of another segment
-  // closer than to any existing vertex of either segment, but farther than `tolerance`, so the
-  // intersection test misses it. The pair (endpoint, projection) must become one vertex or the
-  // arrangement cannot be chained. Recorded here and unified after splitting.
+  // Near-miss junctions are detected only on retry after an unchainable arrangement, so
+  // legitimate gaps in well-formed arrangements are never snapped.
   let mut near_miss_snaps: Vec<(Point2, Point2)> = Vec::new();
   for (from_a, region, other) in [(true, a, b), (false, b, a)] {
     for (path, boundary) in region.boundaries.iter().enumerate() {
@@ -1078,6 +1124,7 @@ pub fn combine(
             tolerance,
             &mut re_cut,
             &mut near_miss_snaps,
+            detect_near_misses,
           );
         }
         for foreign in other.boundaries.iter() {
@@ -1088,6 +1135,7 @@ pub fn combine(
             tolerance,
             &mut re_cut,
             &mut near_miss_snaps,
+            detect_near_misses,
           );
         }
         let fractions = dedup(&mut fractions, segment, tolerance);
@@ -1126,6 +1174,37 @@ pub fn combine(
     region: Region { boundaries },
     flattened,
   })
+}
+
+/// Combine two regions.
+///
+/// The rule is the one [`normalize`] already applies to a single region, with the predicate evaluated
+/// on both probes: a point is inside the result when [`BooleanOp::holds`] says so for its membership of
+/// each input, a piece survives when the answer differs across it, and it is oriented so the
+/// **result's** material is on its left. There is no per-operation special casing: a difference
+/// inverts the second region by itself, because a piece inside it has the predicate false.
+///
+/// # Errors
+///
+/// Returns the first piece the tolerance cannot resolve, with the inspection that failed. A piece that
+/// lies within a boundary's band at every probe distance is refused rather than classified by guess.
+pub fn combine(
+  a: &Region,
+  b: &Region,
+  op: BooleanOp,
+  tolerance: f64,
+) -> Result<Combined, GeomError> {
+  if !tolerance.is_finite() || tolerance <= 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "a set operation needs a positive, finite tolerance",
+    });
+  }
+
+  match combine_with(a, b, op, tolerance, false) {
+    Ok(result) => Ok(result),
+    Err(err) if is_unchainable_error(&err) => combine_with(a, b, op, tolerance, true),
+    Err(err) => Err(err),
+  }
 }
 
 /// Decide where a piece goes by asking the predicate on both of its sides.
