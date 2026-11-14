@@ -24,10 +24,10 @@ Complete the W2a slice of E1.4: Gerber RS-274X constructs still rejected after t
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Flash de apertura `O` (obround): círculo cuando w==h, estadio cuando w!=h, centrado en el punto | S2, S6 | inline | — |
-| T2 | Trazo `D01` con apertura `O` fuera de región | S1, S2, S6 | inline | — |
-| T3 | Trazo `D01` con apertura por macro fuera de región (casos barribles) | S1, S3, S4, S6 | inline | — |
-| T4 | Regresión: tests de cam-gerber y verificación de que D02-en-región sigue funcionando | S5, S6 | inline | — |
+| T1 | Flash de apertura `O` (obround): círculo cuando w==h, estadio si w!=h, centrado en el punto | S2, S6 | inline | `fdab0f1` |
+| T2 | Trazo `D01` con apertura `O` fuera de región | S1, S2, S6 | inline | `fdab0f1` |
+| T3 | Trazo `D01` con apertura por macro fuera de región (casos barribles) | S1, S3, S4, S6 | inline | `fdab0f1` |
+| T4 | Regresión: tests de cam-gerber y verificación de que D02-en-región sigue funcionando | S5, S6 | inline | `fdab0f1` |
 
 ## Log
 
@@ -42,3 +42,5 @@ Complete the W2a slice of E1.4: Gerber RS-274X constructs still rejected after t
 - **L5 (T3).** Trazo con apertura macro: `stroke_of` resuelve la macro y `macro_stroke` barre la forma local si todos sus contornos son segmentos rectos (`sweep_linear_contour`, unión de extremos trasladados y paralelogramos por arista; aristas paralelas al barrido se omiten). Formas con aristas curvas se rechazan por nombre (sin aplanar). `a_macro_aperture_draw_is_refused_rather_than_swept` pasa a rechazar por "curved edges"; se agregan pruebas de barrido poligonal (center-line/primitive 21 y outline/primitive 4). `cargo test -p cam-gerber`: 45 passed.
 
 - **L6 (T4, verificación y corrección de primitiva 4).** `cargo fmt -p cam-gerber` y `cargo clippy -p cam-gerber --tests -- -D warnings` limpios; `cargo test -p cam-gerber`: 45 passed. D02 dentro de región sigue cubierto por la prueba existente (036 T7) y por un caso con dos contornos. Se corrige la lectura de rotación/cierre en primitiva 4 de macros: KiCad emite `n` vértices declarados con un par de cierre repetido y la rotación después de todos los pares; antes se leía la rotación en `1+n*2` (tomando la coordenada del par de cierre) y se rechazaban flashes `RoundRect`/`FreePoly1` del corpus como rotados; ahora se detecta el par de cierre, se lee la rotación en la posición correcta y se descarta el vértice de cierre duplicado al construir el contorno. Verificación dirigida con patrones del corpus: flash y trazo `O` (`O,2.8x1.6`, `O,2.05x0.59`), flash `RoundRect` macro y trazo de macro poligonal `FreePoly1` (4 D01 del corpus) generan imagen sin error. `git status` limpio salvo la tarea 050 y su claim en el árbol principal.
+
+- **L7 (commit).** Slice W2a commiteado en `fdab0f1` (`feat(cam-gerber): add obround and macro-aperture strokes (W2a)`, 3 archivos). Corte cohesivo T1-T4 sobre `crates/cam-gerber/` (el hook advirtió >400 líneas). Corrección menor: `clippy::int_plus_one` en primitiva 4; verificación final `cargo fmt -p cam-gerber`, `cargo clippy -p cam-gerber --tests -- -D warnings`, `cargo test -p cam-gerber` (45 passed) en verde.
