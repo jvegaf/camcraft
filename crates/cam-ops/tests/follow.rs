@@ -86,7 +86,9 @@ fn plunge_depths(moves: &[Move]) -> Vec<f64> {
     let destination = movement.destination();
     if let Move::Feed { .. } = movement {
       if after_rapid
-        && destination.xy().is_near(previous.xy(), 1.0e-9)
+        && destination
+          .xy()
+          .is_near(previous.xy(), cam_geom::TolerancePolicy::uniform(1.0e-9))
         && destination.z.mm() < previous.z.mm()
       {
         depths.push(destination.z.mm());

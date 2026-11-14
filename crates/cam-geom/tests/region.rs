@@ -14,7 +14,7 @@ use cam_geom::winding::{classify, relation, Membership, Relation};
 use cam_geom::{Arc, Contour, GeomError, Point2, Vertex};
 
 /// One nanometre: the tolerance every test here states explicitly.
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn square(at: Point2, width: f64, height: f64) -> Contour {
   primitive::rectangle(at, width, height).expect("square")
@@ -89,10 +89,13 @@ fn arcs(region: &Region) -> Vec<Arc> {
 /// True when `point` is clear of every boundary of the region by a margin, so the two membership
 /// answers are not both "on the boundary".
 fn away_from_boundaries(region: &Region, point: Point2) -> bool {
-  region
-    .boundaries
-    .iter()
-    .all(|boundary| classify(boundary, point, TOLERANCE * 1000.0) != Membership::OnBoundary)
+  region.boundaries.iter().all(|boundary| {
+    classify(
+      boundary,
+      point,
+      cam_geom::TolerancePolicy::uniform(TOLERANCE.epsilon * 1000.0),
+    ) != Membership::OnBoundary
+  })
 }
 
 #[test]
@@ -169,7 +172,7 @@ fn contains_keeps_its_answer_when_it_shares_the_walk_with_the_distance() {
 fn subtract_appends_the_hole_and_normalizes() {
   let pocket = region(vec![square(Point2::new(0.0, 0.0), 20.0, 20.0)]);
   let with_hole = pocket
-    .subtract(&circle(Point2::new(10.0, 10.0), 3.0))
+    .subtract(&circle(Point2::new(10.0, 10.0), 3.0), TOLERANCE)
     .expect("subtraction");
   assert_eq!(with_hole.boundaries.len(), 2, "outer plus the hole");
   assert!(!with_hole.contains(Point2::new(10.0, 10.0), TOLERANCE));
@@ -190,7 +193,7 @@ fn subtracting_the_other_way_round_follows_the_parity_rule() {
   // not an accident of argument order.
   let disc = region(vec![circle(Point2::new(0.0, 0.0), 10.0)]);
   let ring = disc
-    .subtract(&square(Point2::new(-3.0, -3.0), 6.0, 6.0))
+    .subtract(&square(Point2::new(-3.0, -3.0), 6.0, 6.0), TOLERANCE)
     .expect("subtraction");
   assert_eq!(ring.boundaries.len(), 2);
   assert!(
@@ -211,7 +214,9 @@ fn subtracting_the_other_way_round_follows_the_parity_rule() {
 fn a_contour_minus_itself_is_refused_by_name() {
   let boundary = square(Point2::new(0.0, 0.0), 10.0, 10.0);
   let region = region(vec![boundary.clone()]);
-  let refused = region.subtract(&boundary).expect_err("parity 2 everywhere");
+  let refused = region
+    .subtract(&boundary, TOLERANCE)
+    .expect_err("parity 2 everywhere");
   assert!(matches!(refused, GeomError::EditRefused { .. }));
   assert!(
     refused.to_string().contains("no material"),
@@ -328,7 +333,10 @@ fn a_crossing_configuration_keeps_the_parity_area_and_the_arcs() {
       "radius {}",
       arc.radius()
     );
-    assert!(arc.center().is_near(Point2::new(10.0, 5.0), 1.0e-9));
+    assert!(arc.center().is_near(
+      Point2::new(10.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ));
   }
   // The whole circle is a material boundary under parity -- inside it and inside the square cancels,
   // inside it and outside the square does not -- so the surviving arcs cover it exactly once.
@@ -506,7 +514,9 @@ fn a_piece_the_bulge_cannot_hold_is_rebuilt_and_reported() {
   let plate = square(Point2::new(0.0, 0.0), 30.0, 30.0);
   let tab = square(Point2::new(-5.0, 10.0), 10.0, 10.0);
   let crossing = region(vec![plate, near_full_turn, tab]);
-  let normalized = crossing.normalize(1.0e-8).expect("normalization");
+  let normalized = crossing
+    .normalize(cam_geom::TolerancePolicy::uniform(1.0e-8))
+    .expect("normalization");
 
   assert!(
     normalized.flattened,
@@ -521,11 +531,26 @@ fn a_piece_the_bulge_cannot_hold_is_rebuilt_and_reported() {
     "the only arc in this input is the one that was rebuilt"
   );
   // Membership is unchanged: the tab's part over the plate is parity 2, the disc is parity 1.
-  assert!(normalized.region.contains(Point2::new(45.0, 0.0), 1.0e-6));
-  assert!(normalized.region.contains(Point2::new(20.0, 20.0), 1.0e-6));
-  assert!(normalized.region.contains(Point2::new(-2.0, 15.0), 1.0e-6));
-  assert!(!normalized.region.contains(Point2::new(2.0, 15.0), 1.0e-6));
-  assert!(!normalized.region.contains(Point2::new(32.0, 32.0), 1.0e-6));
+  assert!(normalized.region.contains(
+    Point2::new(45.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
+  assert!(normalized.region.contains(
+    Point2::new(20.0, 20.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
+  assert!(normalized.region.contains(
+    Point2::new(-2.0, 15.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
+  assert!(!normalized.region.contains(
+    Point2::new(2.0, 15.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
+  assert!(!normalized.region.contains(
+    Point2::new(32.0, 32.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
   // The rebuilt disc is still a disc to within the tolerance it was rebuilt at.
   let rebuilt_area: f64 = normalized
     .region

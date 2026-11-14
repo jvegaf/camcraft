@@ -1019,7 +1019,9 @@ impl Builder<'_> {
       let Ok(arc) = Arc::from_endpoints_bulge(vertex.point, to, vertex.bulge) else {
         continue;
       };
-      let samples = arc.tessellate(self.tolerance / matrix.max_stretch());
+      let samples = arc.tessellate(
+        cam_geom::TolerancePolicy::standard().with_chord(self.tolerance / matrix.max_stretch()),
+      );
       for sample in samples.iter().skip(1) {
         vertices.push(Vertex::corner(matrix.apply(*sample)));
       }
@@ -1029,7 +1031,10 @@ impl Builder<'_> {
     let mut vertices = tidy_vertices(vertices);
     if subpath.closed && vertices.len() > 2 {
       if let (Some(first), Some(last)) = (vertices.first().copied(), vertices.last().copied()) {
-        if first.point.is_near(last.point, POINT_EPSILON) {
+        if first.point.is_near(
+          last.point,
+          cam_geom::TolerancePolicy::uniform(POINT_EPSILON),
+        ) {
           vertices.pop();
         }
       }
@@ -1100,7 +1105,7 @@ impl Builder<'_> {
       self.coordinate(element, "x2", 0.0)?,
       self.coordinate(element, "y2", 0.0)?,
     );
-    if from.is_near(to, POINT_EPSILON) {
+    if from.is_near(to, cam_geom::TolerancePolicy::uniform(POINT_EPSILON)) {
       return Err(ShapeFailure::Skip(
         "the line has zero length and is not geometry".into(),
       ));
@@ -1234,8 +1239,13 @@ impl Builder<'_> {
     if (rx - ry).abs() <= 1.0e-12 * rx.max(ry) {
       return Ok(vec![circle_subpath(center, rx)]);
     }
-    let approximation = cam_geom::primitive::ellipse(center, rx, ry, tolerance)
-      .map_err(|error| ShapeFailure::Skip(format!("the ellipse could not be built: {error}")))?;
+    let approximation = cam_geom::primitive::ellipse(
+      center,
+      rx,
+      ry,
+      cam_geom::TolerancePolicy::standard().with_chord(tolerance),
+    )
+    .map_err(|error| ShapeFailure::Skip(format!("the ellipse could not be built: {error}")))?;
     if approximation.max_radial_error > 0.0 {
       self.report.warn(format!(
         "<ellipse> is approximated by {} circular arcs with a radial error of {:.6} mm",
@@ -1358,7 +1368,12 @@ fn tidy_vertices(vertices: Vec<Vertex>) -> Vec<Vertex> {
   let mut out: Vec<Vertex> = Vec::with_capacity(vertices.len());
   for vertex in vertices {
     match out.last_mut() {
-      Some(last) if last.point.is_near(vertex.point, POINT_EPSILON) => {
+      Some(last)
+        if last.point.is_near(
+          vertex.point,
+          cam_geom::TolerancePolicy::uniform(POINT_EPSILON),
+        ) =>
+      {
         last.bulge = vertex.bulge;
       }
       _ => out.push(vertex),
@@ -1642,7 +1657,7 @@ impl<'a> PathReader<'a> {
     to: Point2,
   ) {
     let from = self.current;
-    if from.is_near(to, POINT_EPSILON) {
+    if from.is_near(to, cam_geom::TolerancePolicy::uniform(POINT_EPSILON)) {
       // The grammar says an arc whose endpoints coincide draws nothing.
       return;
     }

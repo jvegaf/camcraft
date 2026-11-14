@@ -554,7 +554,9 @@ fn parse_layer(
 
 fn parse_gerber(text: &str, tolerance: f64) -> Result<Vec<Contour>, String> {
   let gerber = cam_gerber::parse(text).map_err(|e| e.to_string())?;
-  let region = gerber.image(tolerance).map_err(|e| e.to_string())?;
+  let region = gerber
+    .image(cam_geom::TolerancePolicy::uniform(tolerance))
+    .map_err(|e| e.to_string())?;
   Ok(region.boundaries)
 }
 

@@ -3,7 +3,7 @@
 use std::f64::consts::TAU;
 
 use crate::point::{Point2, Vec2};
-use crate::{GeomError, MAX_TESSELLATION_STEPS};
+use crate::{GeomError, TolerancePolicy, MAX_TESSELLATION_STEPS};
 
 /// A circular arc, stored as centre, radius, start angle and **signed** sweep.
 ///
@@ -292,13 +292,13 @@ impl Arc {
     delta <= self.sweep.abs() + 1.0e-12
   }
 
-  /// Number of chord steps needed to stay within `tolerance` of the true arc.
-  pub fn step_count(self, tolerance: f64) -> usize {
-    let tolerance = tolerance.max(f64::MIN_POSITIVE);
-    if self.radius <= tolerance {
+  /// Number of chord steps needed to stay within the policy's chord tolerance of the true arc.
+  pub fn step_count(self, tolerance: TolerancePolicy) -> usize {
+    let chord = tolerance.chord.max(f64::MIN_POSITIVE);
+    if self.radius <= chord {
       return 1;
     }
-    let ratio = (1.0 - tolerance / self.radius).clamp(-1.0, 1.0);
+    let ratio = (1.0 - chord / self.radius).clamp(-1.0, 1.0);
     let max_step = 2.0 * ratio.acos();
     if max_step <= 0.0 {
       return MAX_TESSELLATION_STEPS;
@@ -312,7 +312,7 @@ impl Arc {
   }
 
   /// Sample the arc, including both endpoints.
-  pub fn tessellate(self, tolerance: f64) -> Vec<Point2> {
+  pub fn tessellate(self, tolerance: TolerancePolicy) -> Vec<Point2> {
     let steps = self.step_count(tolerance);
     (0..=steps)
       .map(|i| self.point_at_fraction(i as f64 / steps as f64))

@@ -176,12 +176,21 @@ fn an_arc_keeps_its_centre_and_its_quarter_turn_sweep() {
   let Segment::Arc(arc) = segments[0] else {
     panic!("a DXF ARC must stay an arc, got {:?}", segments[0]);
   };
-  assert!(arc.center().is_near(Point2::new(10.0, 20.0), EPSILON));
+  assert!(arc.center().is_near(
+    Point2::new(10.0, 20.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
   assert!((arc.radius() - 5.0).abs() < EPSILON);
   assert_eq!(arc.start_angle(), 0.0);
   assert!((arc.sweep() - FRAC_PI_2).abs() < EPSILON);
-  assert!(arc.start_point().is_near(Point2::new(15.0, 20.0), EPSILON));
-  assert!(arc.end_point().is_near(Point2::new(10.0, 25.0), EPSILON));
+  assert!(arc.start_point().is_near(
+    Point2::new(15.0, 20.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
+  assert!(arc.end_point().is_near(
+    Point2::new(10.0, 25.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
 }
 
 #[test]
@@ -212,12 +221,21 @@ fn an_lwpolyline_bulge_of_one_is_a_half_circle_of_radius_five() {
   let Segment::Arc(arc) = segments[0] else {
     panic!("the bulge must be an arc, got {:?}", segments[0]);
   };
-  assert!(arc.center().is_near(Point2::new(5.0, 0.0), EPSILON));
+  assert!(arc.center().is_near(
+    Point2::new(5.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
   assert!((arc.radius() - 5.0).abs() < EPSILON);
   assert!((arc.sweep() - PI).abs() < EPSILON);
   let bounds = contour.bounds();
-  assert!(bounds.min.is_near(Point2::new(0.0, -5.0), 1.0e-6));
-  assert!(bounds.max.is_near(Point2::new(10.0, 0.0), 1.0e-6));
+  assert!(bounds.min.is_near(
+    Point2::new(0.0, -5.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
+  assert!(bounds.max.is_near(
+    Point2::new(10.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-6)
+  ));
   assert_eq!(report.sources.get("LWPOLYLINE"), Some(&1));
   assert_eq!(report.flattened_curves, 0);
 }
@@ -259,7 +277,10 @@ fn a_polyline_with_vertex_records_carries_the_same_bulge() {
   let Segment::Arc(arc) = segments[0] else {
     panic!("the bulge must be an arc, got {:?}", segments[0]);
   };
-  assert!(arc.center().is_near(Point2::new(5.0, 0.0), EPSILON));
+  assert!(arc.center().is_near(
+    Point2::new(5.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
   assert!((arc.radius() - 5.0).abs() < EPSILON);
   assert!((arc.sweep() - PI).abs() < EPSILON);
   assert_eq!(report.sources.get("POLYLINE"), Some(&1));
@@ -356,7 +377,9 @@ fn a_full_ellipse_rotates_with_its_major_axis() {
   let extent = 2.0 * 62.5_f64.sqrt();
   assert!((bounds.width() - extent).abs() < 0.05, "{:?}", bounds);
   assert!((bounds.height() - extent).abs() < 0.05, "{:?}", bounds);
-  assert!(bounds.center().is_near(Point2::ORIGIN, 0.05));
+  assert!(bounds
+    .center()
+    .is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(0.05)));
 }
 
 #[test]
@@ -383,15 +406,19 @@ fn a_partial_ellipse_is_flattened_and_counted() {
   assert!(!contour.is_closed());
   assert!(!contour.has_arcs(), "a partial ellipse cannot stay arcs");
   assert!(contour.len() > 2);
-  assert!(contour.vertices()[0]
-    .point
-    .is_near(Point2::new(10.0, 0.0), EPSILON));
+  assert!(contour.vertices()[0].point.is_near(
+    Point2::new(10.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
   assert!(contour
     .vertices()
     .last()
     .expect("a last vertex")
     .point
-    .is_near(Point2::new(0.0, 5.0), EPSILON));
+    .is_near(
+      Point2::new(0.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(EPSILON)
+    ));
   for vertex in contour.vertices() {
     let level = (vertex.point.x / 10.0).powi(2) + (vertex.point.y / 5.0).powi(2);
     assert!((level - 1.0).abs() < 0.01, "off the ellipse at {:?}", level);
@@ -462,9 +489,10 @@ fn insunits_inches_scale_every_point_by_twenty_five_point_four() {
   assert_eq!(report.unit_scale, 25.4);
   assert_eq!(report.warnings, Vec::<String>::new());
   let contour = &layers[0].contours[0];
-  assert!(contour.vertices()[1]
-    .point
-    .is_near(Point2::new(25.4, 0.0), EPSILON));
+  assert!(contour.vertices()[1].point.is_near(
+    Point2::new(25.4, 0.0),
+    cam_geom::TolerancePolicy::uniform(EPSILON)
+  ));
   assert!((contour.perimeter() - 25.4).abs() < EPSILON);
 }
 

@@ -56,7 +56,11 @@ impl Intersections {
 }
 
 /// Intersect two segments within `tolerance` millimetres.
-pub fn intersect(first: Segment, second: Segment, tolerance: f64) -> Intersections {
+pub fn intersect(
+  first: Segment,
+  second: Segment,
+  tolerance: crate::TolerancePolicy,
+) -> Intersections {
   match (first, second) {
     (Segment::Line(first), Segment::Line(second)) => line_line(first, second, tolerance),
     (Segment::Line(line), Segment::Arc(arc)) => line_arc(line, arc, tolerance),
@@ -68,7 +72,7 @@ pub fn intersect(first: Segment, second: Segment, tolerance: f64) -> Intersectio
   }
 }
 
-fn line_line(first: LineSeg, second: LineSeg, tolerance: f64) -> Intersections {
+fn line_line(first: LineSeg, second: LineSeg, tolerance: crate::TolerancePolicy) -> Intersections {
   let direction = second.end - second.start;
   let own = first.end - first.start;
   let own_length = own.length();
@@ -82,8 +86,9 @@ fn line_line(first: LineSeg, second: LineSeg, tolerance: f64) -> Intersections {
 
   // Parallel when the perpendicular distance between the lines is within tolerance, so the test has
   // the units of a distance rather than of a cross product.
-  if denominator.abs() <= tolerance * own_length {
-    if direction.cross(base).abs() > tolerance * direction_length {
+  let eps = tolerance.epsilon;
+  if denominator.abs() <= eps * own_length {
+    if direction.cross(base).abs() > eps * direction_length {
       return Intersections::None;
     }
     return collinear_overlap(first, second, tolerance);
@@ -91,8 +96,8 @@ fn line_line(first: LineSeg, second: LineSeg, tolerance: f64) -> Intersections {
 
   let t = base.cross(direction) / denominator;
   let u = base.cross(own) / denominator;
-  let slack_t = tolerance / own_length;
-  let slack_u = tolerance / direction_length;
+  let slack_t = eps / own_length;
+  let slack_u = eps / direction_length;
   let inside = |parameter: f64, slack: f64| parameter >= -slack && parameter <= 1.0 + slack;
   if inside(t, slack_t) && inside(u, slack_u) {
     return Intersections::Point(first.start + own * t);
@@ -101,7 +106,11 @@ fn line_line(first: LineSeg, second: LineSeg, tolerance: f64) -> Intersections {
 }
 
 /// Two collinear segments: overlap, touch at an endpoint, or miss.
-fn collinear_overlap(first: LineSeg, second: LineSeg, tolerance: f64) -> Intersections {
+fn collinear_overlap(
+  first: LineSeg,
+  second: LineSeg,
+  tolerance: crate::TolerancePolicy,
+) -> Intersections {
   let direction = first.end - first.start;
   let length = direction.length();
   if length == 0.0 {
@@ -119,15 +128,16 @@ fn collinear_overlap(first: LineSeg, second: LineSeg, tolerance: f64) -> Interse
       (end, start)
     }
   };
+  let eps = tolerance.epsilon;
   let overlap = a1.min(b1) - a0.max(b0);
-  if overlap > tolerance {
+  if overlap > eps {
     Intersections::Coincident
-  } else if overlap.abs() <= tolerance {
+  } else if overlap.abs() <= eps {
     let meeting = first.start + unit * a0.max(b0);
-    if meeting.distance_to(second.start) <= tolerance
-      || meeting.distance_to(second.end) <= tolerance
-      || meeting.distance_to(first.start) <= tolerance
-      || meeting.distance_to(first.end) <= tolerance
+    if meeting.distance_to(second.start) <= eps
+      || meeting.distance_to(second.end) <= eps
+      || meeting.distance_to(first.start) <= eps
+      || meeting.distance_to(first.end) <= eps
     {
       Intersections::Point(meeting)
     } else {
@@ -138,21 +148,25 @@ fn collinear_overlap(first: LineSeg, second: LineSeg, tolerance: f64) -> Interse
   }
 }
 
-fn degenerate_line(line: LineSeg, other: LineSeg, tolerance: f64) -> Intersections {
+fn degenerate_line(
+  line: LineSeg,
+  other: LineSeg,
+  tolerance: crate::TolerancePolicy,
+) -> Intersections {
   let point = line.start;
-  if other.distance_to_point(point) <= tolerance {
+  if other.distance_to_point(point) <= tolerance.epsilon {
     Intersections::Point(point)
   } else {
     Intersections::None
   }
 }
 
-fn line_arc(line: LineSeg, arc: Arc, tolerance: f64) -> Intersections {
+fn line_arc(line: LineSeg, arc: Arc, tolerance: crate::TolerancePolicy) -> Intersections {
   let direction = line.end - line.start;
   let length = direction.length();
   if length == 0.0 {
     let distance = arc.distance_to_point(line.start);
-    return if distance <= tolerance {
+    return if distance <= tolerance.epsilon {
       Intersections::Point(line.start)
     } else {
       Intersections::None
@@ -165,7 +179,7 @@ fn line_arc(line: LineSeg, arc: Arc, tolerance: f64) -> Intersections {
   let distance = closest.distance_to(arc.center());
   let radius = arc.radius();
 
-  if (distance - radius).abs() <= tolerance {
+  if (distance - radius).abs() <= tolerance.epsilon {
     return if param_inside(along, length, tolerance) && arc_contains_angle(arc, closest, tolerance)
     {
       Intersections::Tangent(closest)
@@ -196,7 +210,7 @@ fn line_arc(line: LineSeg, arc: Arc, tolerance: f64) -> Intersections {
     1 => Intersections::Point(candidates[0].1),
     _ => {
       let (first, second) = (candidates[0].1, candidates[1].1);
-      if first.distance_to(second) <= tolerance {
+      if first.distance_to(second) <= tolerance.epsilon {
         Intersections::Point(first)
       } else {
         Intersections::Points(first, second)
@@ -205,13 +219,14 @@ fn line_arc(line: LineSeg, arc: Arc, tolerance: f64) -> Intersections {
   }
 }
 
-fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
+fn arc_arc(first: Arc, second: Arc, tolerance: crate::TolerancePolicy) -> Intersections {
   let (r1, r2) = (first.radius(), second.radius());
   let between = second.center() - first.center();
   let distance = between.length();
+  let eps = tolerance.epsilon;
 
-  if distance <= tolerance {
-    if (r1 - r2).abs() > tolerance {
+  if distance <= eps {
+    if (r1 - r2).abs() > eps {
       return Intersections::None;
     }
     // One circle: the answer is entirely a question about the two sweeps.
@@ -219,8 +234,8 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
   }
   let unit: Vec2 = between * (1.0 / distance);
 
-  let external = (distance - (r1 + r2)).abs() <= tolerance;
-  let internal = (distance - (r1 - r2).abs()).abs() <= tolerance;
+  let external = (distance - (r1 + r2)).abs() <= eps;
+  let internal = (distance - (r1 - r2).abs()).abs() <= eps;
   if external || internal {
     let sign = if external || r1 > r2 { 1.0 } else { -1.0 };
     let point = first.center() + unit * (r1 * sign);
@@ -253,7 +268,7 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
     1 => Intersections::Point(points[0]),
     _ => {
       let (a, b) = (points[0], points[1]);
-      if a.distance_to(b) <= tolerance {
+      if a.distance_to(b) <= tolerance.epsilon {
         Intersections::Point(a)
       } else {
         // Ordered along the first arc's sweep, so callers can walk it consistently.
@@ -278,10 +293,10 @@ fn arc_arc(first: Arc, second: Arc, tolerance: f64) -> Intersections {
 /// The tolerance decides how much of a shared length counts as a length rather than a point, never
 /// whether the pair meets. A shared length below it still collapses to a point, because the
 /// alternative would be a `None` that the distance between the same arcs denies.
-fn one_circle(first: Arc, second: Arc, tolerance: f64) -> Intersections {
+fn one_circle(first: Arc, second: Arc, tolerance: crate::TolerancePolicy) -> Intersections {
   let radius = first.radius();
   let angular = if radius > 0.0 {
-    tolerance / radius + 1.0e-12
+    tolerance.epsilon / radius + 1.0e-12
   } else {
     1.0e-12
   };
@@ -354,9 +369,9 @@ fn angle_apart(first: f64, second: f64) -> f64 {
   ((second - first + PI).rem_euclid(TAU) - PI).abs()
 }
 
-fn param_inside(parameter: f64, length: f64, tolerance: f64) -> bool {
+fn param_inside(parameter: f64, length: f64, tolerance: crate::TolerancePolicy) -> bool {
   let slack = if length > 0.0 {
-    tolerance / length
+    tolerance.epsilon / length
   } else {
     0.0
   };
@@ -364,13 +379,14 @@ fn param_inside(parameter: f64, length: f64, tolerance: f64) -> bool {
 }
 
 /// Whether `point` lies on `arc`'s own sweep, within `tolerance` millimetres of its radius.
-fn arc_contains_angle(arc: Arc, point: Point2, tolerance: f64) -> bool {
+fn arc_contains_angle(arc: Arc, point: Point2, tolerance: crate::TolerancePolicy) -> bool {
   let radius = arc.radius();
-  if (point.distance_to(arc.center()) - radius).abs() > tolerance {
+  let eps = tolerance.epsilon;
+  if (point.distance_to(arc.center()) - radius).abs() > eps {
     return false;
   }
   let angular = if radius > 0.0 {
-    tolerance / radius + 1.0e-12
+    eps / radius + 1.0e-12
   } else {
     1.0e-12
   };

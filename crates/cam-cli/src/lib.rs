@@ -277,7 +277,7 @@ pub fn check(rest: &[String]) -> Result<(), Failure> {
     let Some(contour) = entity.kind.as_contour() else {
       continue;
     };
-    let issues = cam_geom::validate::inspect(contour, cam_geom::DEFAULT_TOLERANCE);
+    let issues = cam_geom::validate::inspect(contour, cam_geom::TolerancePolicy::standard());
     let mut order = 0;
     if let Some(gap) = issues.open {
       findings.push((

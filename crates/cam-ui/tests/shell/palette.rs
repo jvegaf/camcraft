@@ -191,7 +191,7 @@ fn the_palette_and_the_tools_tab_build_the_same_seven_actions() {
   // the point a payload carries is a measurement of the camera, not the origin a default happens to hold.
   let centre = app.camera().center();
   assert!(
-    !centre.is_near(Point2::ORIGIN, 1.0e-9),
+    !centre.is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-9)),
     "the payload's point must be the framed view centre, not the origin: {centre:?}"
   );
 

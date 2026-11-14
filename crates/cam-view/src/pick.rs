@@ -102,9 +102,15 @@ fn item_intersects(item: &SceneItem, box_world: Bounds) -> bool {
   };
   let mut points = Vec::new();
   points.push(segment.start_point());
-  segment.tessellate_into(0.05, &mut points);
+  segment.tessellate_into(
+    cam_geom::TolerancePolicy::standard().with_chord(0.05),
+    &mut points,
+  );
 
-  if points.iter().any(|point| box_world.contains(*point, 0.0)) {
+  if points
+    .iter()
+    .any(|point| box_world.contains(*point, cam_geom::TolerancePolicy::uniform(0.0)))
+  {
     return true;
   }
   // Any crossing of the box edges counts too.
@@ -266,7 +272,10 @@ pub fn snap_candidates(
       // Geometry beats the grid at equal distance, and the kind order decides the rest.
       .then_with(|| a.kind.cmp(&b.kind))
   });
-  candidates.dedup_by(|a, b| a.point.is_near(b.point, 1.0e-9));
+  candidates.dedup_by(|a, b| {
+    a.point
+      .is_near(b.point, cam_geom::TolerancePolicy::uniform(1.0e-9))
+  });
   candidates
 }
 

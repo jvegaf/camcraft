@@ -13,7 +13,7 @@ use cam_geom::join::join;
 use cam_geom::offset::{offset_contour, OffsetOptions};
 use cam_geom::transform;
 use cam_geom::trim::trim;
-use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
+use cam_geom::{primitive, Bounds, Contour, Point2, TolerancePolicy, Vec2};
 use cam_model::{Document, Entity, EntityKind, ModelError, Operation, Toolpath};
 
 /// One geometric transform applied to a whole selection.
@@ -47,8 +47,8 @@ pub enum Transform {
     sy: f64,
     /// Anchor point, in millimetres.
     about: Point2,
-    /// Largest deviation the caller accepts when arcs must be tessellated, in millimetres.
-    tolerance: f64,
+    /// Tolerance policy used when arcs must be tessellated, in millimetres.
+    tolerance: TolerancePolicy,
   },
   /// Reflect every selected entity about the line through `point` with direction `direction`.
   Mirror {
@@ -178,7 +178,7 @@ pub enum Command {
     /// End point, in millimetres.
     end: Point2,
   },
-  /// Add an ellipse approximated by arcs within `tolerance`.
+  /// Add an ellipse approximated by arcs within the policy's chord tolerance.
   ///
   /// The approximation's achieved error is reported through
   /// [`Command::apply_with_outcome`] / [`crate::AppState::execute_with_outcome`], because an ellipse
@@ -195,8 +195,8 @@ pub enum Command {
     rx: f64,
     /// Radius along Y, in millimetres.
     ry: f64,
-    /// Largest radial error the caller accepts, in millimetres.
-    tolerance: f64,
+    /// Tolerance policy for the approximation, in millimetres.
+    tolerance: TolerancePolicy,
   },
   /// Add a regular polygon with `sides` straight segments.
   AddPolygon {
@@ -315,7 +315,7 @@ pub enum Command {
     /// Entities to join, in selection order; the joined contour takes the first one's id and layer.
     entity_ids: Vec<String>,
     /// How close two endpoints must be to count as touching, in millimetres.
-    tolerance: f64,
+    tolerance: TolerancePolicy,
   },
   /// Remove the span of `target_id` between its two crossings with `cutter_id`.
   ///
@@ -330,7 +330,7 @@ pub enum Command {
     /// The cutting contour.
     cutter_id: String,
     /// How close a crossing must be to count, in millimetres.
-    tolerance: f64,
+    tolerance: TolerancePolicy,
     /// Number in the first minted id: `1` starts at `E1`, zero starts at `E0`. Every id the batch
     /// needs is checked for a collision before the target is removed, so a taken id leaves both
     /// entities exactly as they were (M2 A12).
@@ -560,7 +560,7 @@ impl Command {
       } => {
         require_positive("ellipse X radius", *rx)?;
         require_positive("ellipse Y radius", *ry)?;
-        require_positive("ellipse tolerance", *tolerance)?;
+        require_positive("ellipse tolerance", tolerance.chord)?;
         ensure_id_is_free(document, entity_id)?;
         let approximation = primitive::ellipse(*at, *rx, *ry, *tolerance)
           .map_err(|error| CommandError::Geometry(error.to_string()))?;
@@ -975,7 +975,7 @@ fn validate_transform(transform: &Transform) -> Result<(), CommandError> {
     } => {
       require_scale_factor("scale X factor", *sx)?;
       require_scale_factor("scale Y factor", *sy)?;
-      require_positive("scale tolerance", *tolerance)?;
+      require_positive("scale tolerance", tolerance.chord)?;
       require_finite_point("scale anchor", *about)
     }
     Transform::Mirror { point, direction } => {
@@ -1182,7 +1182,7 @@ fn offset_entity(
   // The kernel owns the geometry (D-M2-3) and its refusal names what collapsed: that message is
   // the command's message, so "the offset passed through the shape" reaches the caller intact.
   let offset =
-    offset_contour(&source, distance, &OffsetOptions::default()).map_err(geometry_error)?;
+    offset_contour(&source, distance, &OffsetOptions::standard()).map_err(geometry_error)?;
   let layer_id = document.layers[site.0].id.clone();
   push_entity(document, &layer_id, &id, offset.contour)?;
   Ok(CommandOutcome {
@@ -1195,9 +1195,9 @@ fn offset_entity(
 fn join_entities(
   document: &mut Document,
   entity_ids: &[String],
-  tolerance: f64,
+  tolerance: TolerancePolicy,
 ) -> Result<CommandOutcome, CommandError> {
-  require_positive("join tolerance", tolerance)?;
+  require_positive("join tolerance", tolerance.epsilon)?;
   require_selection(entity_ids)?;
   let sites = resolve_sites(document, entity_ids)?;
   let contours: Vec<Contour> = sites
@@ -1221,10 +1221,10 @@ fn trim_entity(
   document: &mut Document,
   target_id: &str,
   cutter_id: &str,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   first_entity_index: u32,
 ) -> Result<CommandOutcome, CommandError> {
-  require_positive("trim tolerance", tolerance)?;
+  require_positive("trim tolerance", tolerance.epsilon)?;
   let target_site = resolve_site(document, target_id)?;
   let cutter_site = resolve_site(document, cutter_id)?;
   let target = contour_at(document, target_site).clone();

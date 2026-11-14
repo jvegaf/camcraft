@@ -22,8 +22,14 @@ fn circle(centre: Point2, radius: f64) -> Contour {
 fn a_circle_inside_a_square_is_first_inside() {
   let inner = circle(Point2::new(10.0, 10.0), 3.0);
   let outer = square(Point2::new(0.0, 0.0), 20.0);
-  assert_eq!(relation(&inner, &outer, 1.0e-9), Relation::FirstInside);
-  assert_eq!(relation(&outer, &inner, 1.0e-9), Relation::SecondInside);
+  assert_eq!(
+    relation(&inner, &outer, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::FirstInside
+  );
+  assert_eq!(
+    relation(&outer, &inner, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::SecondInside
+  );
 }
 
 #[test]
@@ -32,38 +38,62 @@ fn the_tolerance_decides_how_close_counts_as_meeting() {
   // tolerance is threaded into the intersection test, not left to the caller to guess.
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(10.0 + 5.0e-10, 0.0), 10.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Touching);
-  assert_eq!(relation(&first, &second, 1.0e-12), Relation::Disjoint);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-12)),
+    Relation::Disjoint
+  );
 }
 
 #[test]
 fn two_overlapping_squares_cross() {
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(5.0, 5.0), 10.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Crossing);
-  assert_eq!(relation(&second, &first, 1.0e-9), Relation::Crossing);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Crossing
+  );
+  assert_eq!(
+    relation(&second, &first, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Crossing
+  );
 }
 
 #[test]
 fn a_contour_crossing_an_arc_is_a_crossing() {
   let plate = square(Point2::new(-10.0, -10.0), 20.0);
   let hole = circle(Point2::new(10.0, 0.0), 5.0);
-  assert_eq!(relation(&plate, &hole, 1.0e-9), Relation::Crossing);
+  assert_eq!(
+    relation(&plate, &hole, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Crossing
+  );
 }
 
 #[test]
 fn two_separate_squares_are_disjoint() {
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(20.0, 0.0), 10.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Disjoint);
-  assert_eq!(relation(&second, &first, 1.0e-9), Relation::Disjoint);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Disjoint
+  );
+  assert_eq!(
+    relation(&second, &first, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Disjoint
+  );
 }
 
 #[test]
 fn squares_sharing_an_edge_touch_rather_than_cross() {
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(10.0, 0.0), 10.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Touching);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
 }
 
 #[test]
@@ -73,28 +103,54 @@ fn a_partial_collinear_overlap_is_a_crossing() {
   // same side of the shared line, which is what makes this an overlap and not a flush pair.
   let first = square(Point2::new(0.0, 0.0), 100.0);
   let second = square(Point2::new(50.0, 0.0), 100.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Crossing);
-  assert_eq!(relation(&second, &first, 1.0e-9), Relation::Crossing);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Crossing
+  );
+  assert_eq!(
+    relation(&second, &first, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Crossing
+  );
 
   // The side is read through each contour's own orientation, never assumed counter-clockwise: flipping
   // one contour's direction flips its interior side with it, and the pair still overlaps in area.
   let clockwise = second.reverse();
-  assert_eq!(relation(&first, &clockwise, 1.0e-9), Relation::Crossing);
-  assert_eq!(relation(&clockwise, &first, 1.0e-9), Relation::Crossing);
+  assert_eq!(
+    relation(
+      &first,
+      &clockwise,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Crossing
+  );
+  assert_eq!(
+    relation(
+      &clockwise,
+      &first,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Crossing
+  );
 }
 
 #[test]
 fn a_circle_tangent_to_the_inside_of_a_square_touches() {
   let inner = circle(Point2::new(10.0, 10.0), 10.0);
   let outer = square(Point2::new(0.0, 0.0), 20.0);
-  assert_eq!(relation(&inner, &outer, 1.0e-9), Relation::Touching);
+  assert_eq!(
+    relation(&inner, &outer, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
 }
 
 #[test]
 fn identical_contours_touch() {
   let first = square(Point2::new(0.0, 0.0), 10.0);
   let second = square(Point2::new(0.0, 0.0), 10.0);
-  assert_eq!(relation(&first, &second, 1.0e-9), Relation::Touching);
+  assert_eq!(
+    relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
 }
 
 #[test]
@@ -129,12 +185,12 @@ fn the_cases_that_merely_touch_stay_touching_in_both_orders() {
     ("inscribed", inscribed),
   ] {
     assert_eq!(
-      relation(&first, &second, 1.0e-9),
+      relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9)),
       Relation::Touching,
       "{case}"
     );
     assert_eq!(
-      relation(&second, &first, 1.0e-9),
+      relation(&second, &first, cam_geom::TolerancePolicy::uniform(1.0e-9)),
       Relation::Touching,
       "{case}, reversed"
     );
@@ -163,8 +219,14 @@ fn equal_bounds_do_not_decide_the_relation() {
     boxed.bounds(),
     "the fixture is only a fixture at equal bounds"
   );
-  assert_eq!(relation(&diamond, &boxed, 1.0e-9), Relation::Touching);
-  assert_eq!(relation(&boxed, &diamond, 1.0e-9), Relation::Touching);
+  assert_eq!(
+    relation(&diamond, &boxed, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
+  assert_eq!(
+    relation(&boxed, &diamond, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::Touching
+  );
 
   let bitten = Contour::from_points(
     &[
@@ -183,8 +245,22 @@ fn equal_bounds_do_not_decide_the_relation() {
     boxed.bounds(),
     "the crossing fixture shares the box too"
   );
-  assert_eq!(relation(&diamond, &bitten, 1.0e-9), Relation::Crossing);
-  assert_eq!(relation(&bitten, &diamond, 1.0e-9), Relation::Crossing);
+  assert_eq!(
+    relation(
+      &diamond,
+      &bitten,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Crossing
+  );
+  assert_eq!(
+    relation(
+      &bitten,
+      &diamond,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Crossing
+  );
 }
 
 #[test]
@@ -205,15 +281,32 @@ fn a_shape_in_the_notch_of_another_is_disjoint_from_it() {
   )
   .expect("c shape");
   let in_the_notch = square(Point2::new(18.0, 8.0), 4.0);
-  assert_eq!(relation(&in_the_notch, &c, 1.0e-9), Relation::Disjoint);
-  assert_eq!(relation(&c, &in_the_notch, 1.0e-9), Relation::Disjoint);
+  assert_eq!(
+    relation(
+      &in_the_notch,
+      &c,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Disjoint
+  );
+  assert_eq!(
+    relation(
+      &c,
+      &in_the_notch,
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
+    Relation::Disjoint
+  );
 }
 
 #[test]
 fn an_arc_inside_another_arc_is_inside_it() {
   let inner = circle(Point2::new(1.0, 1.0), 2.0);
   let outer = circle(Point2::new(0.0, 0.0), 6.0);
-  assert_eq!(relation(&inner, &outer, 1.0e-9), Relation::FirstInside);
+  assert_eq!(
+    relation(&inner, &outer, cam_geom::TolerancePolicy::uniform(1.0e-9)),
+    Relation::FirstInside
+  );
 }
 
 proptest! {
@@ -230,8 +323,8 @@ proptest! {
   ) {
     let first = square(Point2::new(ax, ay), asize);
     let second = square(Point2::new(bx, by), bsize);
-    let forward = relation(&first, &second, 1.0e-9);
-    let backward = relation(&second, &first, 1.0e-9);
+    let forward = relation(&first, &second, cam_geom::TolerancePolicy::uniform(1.0e-9));
+    let backward = relation(&second, &first, cam_geom::TolerancePolicy::uniform(1.0e-9));
     let mirror = match forward {
       Relation::Disjoint => Relation::Disjoint,
       Relation::FirstInside => Relation::SecondInside,

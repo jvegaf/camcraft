@@ -1599,7 +1599,7 @@ fn check_nesting_cost(document: &Document) -> Result<(), ModelError> {
 /// except when the two contours are the same one, which the kernel reports as `Touching` and which is
 /// two copies stacked on one spot.
 fn footprints_overlap(first: &Contour, second: &Contour) -> bool {
-  match cam_geom::winding::relation(first, second, cam_geom::DEFAULT_TOLERANCE) {
+  match cam_geom::winding::relation(first, second, cam_geom::TolerancePolicy::standard()) {
     cam_geom::winding::Relation::Disjoint => false,
     cam_geom::winding::Relation::Touching => first.bounds() == second.bounds(),
     cam_geom::winding::Relation::FirstInside

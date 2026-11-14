@@ -54,7 +54,7 @@ pub fn winding_number(contour: &Contour, point: Point2) -> i32 {
 ///
 /// The boundary test runs first and is a real distance, so a point within `tolerance` of any segment
 /// is reported as `OnBoundary` rather than being assigned to one side by rounding.
-pub fn classify(contour: &Contour, point: Point2, tolerance: f64) -> Membership {
+pub fn classify(contour: &Contour, point: Point2, tolerance: crate::TolerancePolicy) -> Membership {
   classify_with_distance(contour, point, tolerance).0
 }
 
@@ -73,14 +73,14 @@ pub fn classify(contour: &Contour, point: Point2, tolerance: f64) -> Membership 
 pub fn classify_with_distance(
   contour: &Contour,
   point: Point2,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
 ) -> (Membership, f64) {
   let nearest = contour
     .segments()
     .iter()
     .map(|segment| segment.distance_to_point(point))
     .fold(f64::INFINITY, f64::min);
-  if nearest <= tolerance {
+  if nearest <= tolerance.epsilon {
     return (Membership::OnBoundary, nearest);
   }
   if winding_number(contour, point) == 0 {
@@ -242,9 +242,10 @@ pub enum Relation {
 /// contour is inside the other: nothing crosses transversally, but the two interiors overlap in area,
 /// and that is exactly a crossing. A shared edge alone is not enough to say so — a part flush against
 /// a board shares a wall with the material on the same side and is legal.
-pub fn relation(first: &Contour, second: &Contour, tolerance: f64) -> Relation {
-  let first_bounds = first.bounds().expand(tolerance);
-  let second_bounds = second.bounds().expand(tolerance);
+pub fn relation(first: &Contour, second: &Contour, tolerance: crate::TolerancePolicy) -> Relation {
+  let eps = tolerance.epsilon;
+  let first_bounds = first.bounds().expand(eps);
+  let second_bounds = second.bounds().expand(eps);
   let boxes_overlap = first_bounds.min.x <= second_bounds.max.x
     && second_bounds.min.x <= first_bounds.max.x
     && first_bounds.min.y <= second_bounds.max.y
@@ -362,7 +363,11 @@ fn interiors_share_a_side(own: Segment, other: Segment, own_area: f64, other_are
 /// boundary while the board's own far corners are outside the part, and that pair is legal. Anything
 /// ambiguous, such as identical contours where every vertex is `OnBoundary`, is not evidence of an
 /// overlap either.
-fn neither_encloses_the_other(first: &Contour, second: &Contour, tolerance: f64) -> bool {
+fn neither_encloses_the_other(
+  first: &Contour,
+  second: &Contour,
+  tolerance: crate::TolerancePolicy,
+) -> bool {
   let elsewhere = |contour: &Contour, other: &Contour| -> Option<bool> {
     let mut outside = false;
     for vertex in contour.vertices() {
@@ -381,7 +386,7 @@ fn neither_encloses_the_other(first: &Contour, second: &Contour, tolerance: f64)
 }
 
 /// Whether `point` lies on the segment away from both of its ends, within `tolerance` millimetres.
-fn is_interior(segment: Segment, point: Point2, tolerance: f64) -> bool {
+fn is_interior(segment: Segment, point: Point2, tolerance: crate::TolerancePolicy) -> bool {
   let length = segment.length();
   if length <= 0.0 {
     return false;
@@ -403,7 +408,7 @@ fn is_interior(segment: Segment, point: Point2, tolerance: f64) -> bool {
       }
     }
   };
-  fraction * length > tolerance && (1.0 - fraction) * length > tolerance
+  fraction * length > tolerance.epsilon && (1.0 - fraction) * length > tolerance.epsilon
 }
 
 /// A point that is strictly inside a closed contour, if one can be named.

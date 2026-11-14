@@ -19,7 +19,7 @@ use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// One nanometre: the tolerance every test here states explicitly.
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn point(x: f64, y: f64) -> Point2 {
   Point2::new(x, y)
@@ -35,7 +35,7 @@ fn arc(cx: f64, cy: f64, radius: f64, start: f64, sweep: f64) -> Segment {
 
 /// The exact minimum distance, with no tolerance snapping at all.
 fn exact(first: Segment, second: Segment) -> f64 {
-  segment_to_segment(first, second, 0.0)
+  segment_to_segment(first, second, cam_geom::TolerancePolicy::uniform(0.0))
 }
 
 fn square(size: f64) -> Contour {
@@ -203,10 +203,10 @@ fn the_k5_chord_dips_inside_the_distance_its_ends_clear() {
   let island = circle(Point2::new(50.0, 50.0), 10.0);
   let distance = 23.0;
   let naive = region(vec![
-    offset_contour(&outer, -distance, &OffsetOptions::default())
+    offset_contour(&outer, -distance, &OffsetOptions::standard())
       .expect("the wall's inset")
       .contour,
-    offset_contour(&island, distance, &OffsetOptions::default())
+    offset_contour(&island, distance, &OffsetOptions::standard())
       .expect("the island's growth")
       .contour,
   ])
@@ -465,7 +465,7 @@ fn the_nearest_point_and_the_distance_are_the_same_answer() {
         "the reported point is exactly the reported distance away"
       );
       // The nearest set is a single point except at an arc's own centre.
-      let at_centre = matches!(segment, Segment::Arc(a) if a.center().is_near(query, 1.0e-12));
+      let at_centre = matches!(segment, Segment::Arc(a) if a.center().is_near(query, cam_geom::TolerancePolicy::uniform(1.0e-12)));
       assert_eq!(nearest.interval, at_centre, "{segment:?} at {query:?}");
     }
   }

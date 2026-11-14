@@ -90,14 +90,15 @@ pub const MIN_FRAME_CANVAS: f64 = 200.0;
 /// (A5, decision D-M2-2). The kernel takes the tolerance as a parameter and has no default of its own,
 /// so the number the user gets is chosen here, once, instead of being sprinkled through the callers.
 /// Both callers report what the approximation actually cost, so this is a request, not a promise.
-pub const DEFAULT_TOLERANCE_MM: f64 = 0.01;
+pub const DEFAULT_TOLERANCE_MM: cam_geom::TolerancePolicy =
+  cam_geom::TolerancePolicy::standard().with_chord(0.01);
 
 /// How close two endpoints must be for the shell's join and trim commands to count them as touching.
 ///
-/// This is the kernel's own chaining tolerance ([`cam_geom::DEFAULT_TOLERANCE`], one micrometre)
+/// This is the kernel's standard chaining tolerance
 /// rather than a second number invented here: whether two ends meet is a tolerance problem, and the
 /// kernel already owns the answer.
-pub const JOIN_TOLERANCE_MM: f64 = cam_geom::DEFAULT_TOLERANCE;
+pub const JOIN_TOLERANCE_MM: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::standard();
 
 /// How far a drag must travel before it is a shape rather than a click, in pixels.
 ///

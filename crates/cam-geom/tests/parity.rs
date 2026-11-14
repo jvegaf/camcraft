@@ -313,14 +313,18 @@ fn measure_artefact(artefact: &Path, flatten_tolerance_mm: f64) -> serde_json::V
 
   let gerber = cam_gerber::parse(&text)
     .unwrap_or_else(|error| panic!("{where_} is pinned as parsed and is refused now: {error}"));
-  let image = gerber.image(IMAGE_TOLERANCE_MM).unwrap_or_else(|error| {
-    panic!("{where_} is pinned as parsed and no longer evaluates: {error}")
-  });
+  let image = gerber
+    .image(cam_geom::TolerancePolicy::uniform(IMAGE_TOLERANCE_MM))
+    .unwrap_or_else(|error| {
+      panic!("{where_} is pinned as parsed and no longer evaluates: {error}")
+    });
   let mut area = 0.0;
   let mut points = 0;
   for boundary in &image.boundaries {
     area += boundary.signed_area().abs();
-    points += boundary.tessellate(flatten_tolerance_mm).len();
+    points += boundary
+      .tessellate(cam_geom::TolerancePolicy::standard().with_chord(flatten_tolerance_mm))
+      .len();
   }
   serde_json::json!({
     "status": "parsed",

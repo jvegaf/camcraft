@@ -13,7 +13,7 @@
 //! line/arc intersections.
 
 use cam_geom::region::Region;
-use cam_geom::{Bounds, Contour, Point2, DEFAULT_TOLERANCE};
+use cam_geom::{Bounds, Contour, Point2, TolerancePolicy, DEFAULT_TOLERANCE};
 use cam_model::Job;
 
 use crate::params::{PocketParams, PocketStrategy};
@@ -248,7 +248,7 @@ fn offset_rings(
   let mut index = 0usize;
   loop {
     let distance = inset + index as f64 * stepover;
-    let offset = match region.offset(distance, DEFAULT_TOLERANCE) {
+    let offset = match region.offset(distance, TolerancePolicy::uniform(DEFAULT_TOLERANCE)) {
       Ok(offset) => offset,
       Err(error) => {
         // A refused offset is the collapsed centre of the region, not a failure of the request —
@@ -298,7 +298,7 @@ fn raster_rows(
   stepover: f64,
 ) -> Result<(Vec<Row>, bool), ToolpathError> {
   let offset = pocket_region(boundary, islands)?
-    .offset(inset, DEFAULT_TOLERANCE)
+    .offset(inset, TolerancePolicy::uniform(DEFAULT_TOLERANCE))
     .map_err(|error| ToolpathError::OffsetCollapsed {
       reason: error.to_string(),
     })?;
@@ -377,7 +377,8 @@ fn emit_row(rows: &mut Vec<Row>, region: &Region, y: f64) {
 /// against.
 fn row_spans(region: &Region, y: f64) -> Option<(f64, Vec<(f64, f64)>)> {
   for candidate in [y, y + ROW_RETRY_NUDGE, y - ROW_RETRY_NUDGE] {
-    if let Some(spans) = region.raster_spans(candidate, DEFAULT_TOLERANCE) {
+    if let Some(spans) = region.raster_spans(candidate, TolerancePolicy::uniform(DEFAULT_TOLERANCE))
+    {
       if !spans.is_empty() {
         return Some((candidate, spans));
       }

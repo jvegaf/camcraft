@@ -1076,7 +1076,7 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
         let overlaps = match cam_geom::winding::relation(
           &outlines[first],
           &outlines[second],
-          cam_geom::DEFAULT_TOLERANCE,
+          cam_geom::TolerancePolicy::standard(),
         ) {
           cam_geom::winding::Relation::Disjoint => false,
           cam_geom::winding::Relation::Touching => {

@@ -116,7 +116,7 @@ fn prime_with_ellipse(app: &mut AppState) {
       at: Point2::ORIGIN,
       rx: 40.0,
       ry: 10.0,
-      tolerance: 0.01,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
     })
     .expect("the priming ellipse is drawn");
 }
@@ -411,7 +411,7 @@ fn every_command_has_a_label_for_the_interface() {
       at: Point2::ORIGIN,
       rx: 2.0,
       ry: 1.0,
-      tolerance: 0.01,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
     },
     Command::AddPolygon {
       layer_id: "L1".to_owned(),
@@ -671,7 +671,7 @@ fn adding_an_ellipse_reports_the_radial_error_the_kernel_computed() {
       at: Point2::ORIGIN,
       rx: 40.0,
       ry: 10.0,
-      tolerance: 0.01,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
     })
     .expect("ellipse added");
 
@@ -679,7 +679,13 @@ fn adding_an_ellipse_reports_the_radial_error_the_kernel_computed() {
   assert_eq!(layer_holding(&app, &id), "L2");
 
   // The caller is told the error the kernel actually achieved, not a promise about the tolerance.
-  let kernel = primitive::ellipse(Point2::ORIGIN, 40.0, 10.0, 0.01).expect("kernel ellipse");
+  let kernel = primitive::ellipse(
+    Point2::ORIGIN,
+    40.0,
+    10.0,
+    cam_geom::TolerancePolicy::standard().with_chord(0.01),
+  )
+  .expect("kernel ellipse");
   assert_eq!(outcome.max_radial_error, Some(kernel.max_radial_error));
   assert!(
     outcome.max_radial_error.expect("reported") <= 0.01,
@@ -859,7 +865,7 @@ fn an_ellipse_with_a_bad_radius_or_tolerance_is_refused_atomically() {
         at: Point2::ORIGIN,
         rx,
         ry,
-        tolerance,
+        tolerance: cam_geom::TolerancePolicy::standard().with_chord(tolerance),
       },
     );
     assert!(
@@ -947,7 +953,7 @@ fn undoing_an_added_ellipse_restores_the_document_exactly() {
       at: Point2::new(10.0, 10.0),
       rx: 40.0,
       ry: 10.0,
-      tolerance: 0.01,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
     },
   );
 }
@@ -1187,7 +1193,7 @@ fn a_uniform_scale_grows_a_circle_and_keeps_its_arcs() {
   let mut app = state_with_layer();
   let id = draw_circle(&mut app, Point2::new(10.0, 10.0), 5.0);
   let before = entity_contour(&app, &id).clone();
-  let tolerance = 0.01;
+  let tolerance = cam_geom::TolerancePolicy::standard().with_chord(0.01);
 
   let outcome = app
     .execute_with_outcome(Command::TransformEntities {
@@ -1261,7 +1267,7 @@ fn a_non_uniform_scale_over_a_circle_reports_the_lost_arcs() {
   let mut app = state_with_layer();
   let id = draw_circle(&mut app, Point2::ORIGIN, 10.0);
   let before = entity_contour(&app, &id).clone();
-  let tolerance = 0.01;
+  let tolerance = cam_geom::TolerancePolicy::standard().with_chord(0.01);
 
   let outcome = app
     .execute_with_outcome(Command::TransformEntities {
@@ -1288,7 +1294,7 @@ fn a_non_uniform_scale_over_a_circle_reports_the_lost_arcs() {
   assert!(contour.is_closed());
   assert!(contour.is_ccw());
   // An ellipse 2r wide and r tall, tessellated within the declared tolerance.
-  assert_bounds(contour, (-20.0, -10.0), (20.0, 10.0), tolerance);
+  assert_bounds(contour, (-20.0, -10.0), (20.0, 10.0), tolerance.chord);
   assert_eq!(
     contour,
     &transform::scale(&before, 2.0, 1.0, Point2::ORIGIN, tolerance)
@@ -1305,7 +1311,7 @@ fn the_lost_arc_count_is_aggregated_over_the_selection() {
   let rectangle = draw_rectangle(&mut app, Point2::new(50.0, 50.0), 10.0, 10.0);
   let before_circle = entity_contour(&app, &circle).clone();
   let before_rectangle = entity_contour(&app, &rectangle).clone();
-  let tolerance = 0.01;
+  let tolerance = cam_geom::TolerancePolicy::standard().with_chord(0.01);
 
   let outcome = app
     .execute_with_outcome(Command::TransformEntities {
@@ -1365,7 +1371,7 @@ fn a_scale_with_a_zero_or_undefined_factor_is_refused_atomically() {
           sx,
           sy,
           about: Point2::ORIGIN,
-          tolerance: 0.01,
+          tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
         },
       },
     );
@@ -1421,7 +1427,7 @@ fn a_transform_over_an_empty_selection_is_refused_atomically() {
       sx: 2.0,
       sy: 2.0,
       about: Point2::ORIGIN,
-      tolerance: 0.01,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
     },
     Transform::Mirror {
       point: Point2::ORIGIN,
@@ -1846,7 +1852,7 @@ fn trim_command(target_id: &str, cutter_id: &str, first_entity_index: u32) -> Co
   Command::TrimEntity {
     target_id: target_id.to_owned(),
     cutter_id: cutter_id.to_owned(),
-    tolerance: 1.0e-6,
+    tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     first_entity_index,
   }
 }
@@ -1857,7 +1863,7 @@ fn kernel_offset(contour: &cam_geom::Contour, distance: f64) -> cam_geom::Contou
   cam_geom::offset::offset_contour(
     contour,
     distance,
-    &cam_geom::offset::OffsetOptions::default(),
+    &cam_geom::offset::OffsetOptions::standard(),
   )
   .expect("the kernel offsets the fixture")
   .contour
@@ -1968,7 +1974,7 @@ fn joining_two_touching_lines_yields_one_entity_and_removes_the_other() {
   let outcome = app
     .execute_with_outcome(Command::JoinEntities {
       entity_ids: vec![first.clone(), second.clone()],
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     })
     .expect("the two lines join");
 
@@ -1993,7 +1999,7 @@ fn joining_two_touching_lines_yields_one_entity_and_removes_the_other() {
   assert_eq!(joined.perimeter(), 20.0, "joining loses no length");
   assert_eq!(
     joined,
-    &cam_geom::join::join(&parts, 1.0e-6).expect("kernel join"),
+    &cam_geom::join::join(&parts, cam_geom::TolerancePolicy::uniform(1.0e-6)).expect("kernel join"),
     "cam-app must store exactly the contour the kernel returned"
   );
 }
@@ -2009,7 +2015,7 @@ fn an_ambiguous_join_is_refused_atomically_naming_the_fork() {
     &mut app,
     Command::JoinEntities {
       entity_ids: vec![a.clone(), b.clone(), c.clone()],
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     },
   );
 
@@ -2044,8 +2050,12 @@ fn trimming_a_rectangle_with_a_crossing_line_replaces_it_with_one_open_entity() 
   let cutter = draw_line(&mut app, Point2::new(10.0, -5.0), Point2::new(10.0, 15.0));
   let before_target = entity_contour(&app, &target).clone();
   let before_cutter = entity_contour(&app, &cutter).clone();
-  let kernel =
-    cam_geom::trim::trim(&before_target, &before_cutter, 1.0e-6).expect("two clear cuts");
+  let kernel = cam_geom::trim::trim(
+    &before_target,
+    &before_cutter,
+    cam_geom::TolerancePolicy::uniform(1.0e-6),
+  )
+  .expect("two clear cuts");
   assert_eq!(kernel.kept.len(), 1, "a closed target is opened by one cut");
 
   let outcome = app
@@ -2288,7 +2298,10 @@ fn inserting_a_vertex_on_an_arc_yields_two_arcs_on_the_same_circle() {
       arc.radius()
     );
     assert!(
-      arc.center().is_near(Point2::new(10.0, 10.0), 1.0e-9),
+      arc.center().is_near(
+        Point2::new(10.0, 10.0),
+        cam_geom::TolerancePolicy::uniform(1.0e-9)
+      ),
       "both halves stay on the same circle"
     );
   }
@@ -2459,7 +2472,7 @@ fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
     &mut app,
     Command::JoinEntities {
       entity_ids: Vec::new(),
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     },
   );
   assert!(matches!(error, CommandError::EmptySelection), "{error:?}");
@@ -2468,7 +2481,7 @@ fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
     &mut app,
     Command::JoinEntities {
       entity_ids: vec![line.clone()],
-      tolerance: 0.0,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.0),
     },
   );
   assert!(
@@ -2487,7 +2500,7 @@ fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
     Command::TrimEntity {
       target_id: line.clone(),
       cutter_id: "E-none".to_owned(),
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
       first_entity_index: 3,
     },
   );
@@ -2498,7 +2511,7 @@ fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
     Command::TrimEntity {
       target_id: line.clone(),
       cutter_id: cutter.clone(),
-      tolerance: f64::INFINITY,
+      tolerance: cam_geom::TolerancePolicy::standard().with_epsilon(f64::INFINITY),
       first_entity_index: 3,
     },
   );
@@ -2531,7 +2544,7 @@ fn the_new_edit_commands_have_human_labels() {
   assert_eq!(
     Command::JoinEntities {
       entity_ids: vec!["E1".to_owned()],
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     }
     .label(),
     "join entities"
@@ -2582,7 +2595,7 @@ fn undoing_a_join_restores_the_document_exactly() {
     &mut app,
     Command::JoinEntities {
       entity_ids: vec![first, second],
-      tolerance: 1.0e-6,
+      tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0e-6),
     },
   );
 }

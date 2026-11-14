@@ -655,7 +655,9 @@ fn centering_the_drawing_places_it_in_the_middle_of_the_existing_sheet() {
     (sheet.height.mm() - bounds.height()) * 0.5,
   );
   assert!(
-    bounds.min.is_near(expected, 1.0e-9),
+    bounds
+      .min
+      .is_near(expected, cam_geom::TolerancePolicy::uniform(1.0e-9)),
     "the drawing must sit in the middle of the sheet: {:?} vs {expected:?}",
     bounds.min
   );
@@ -682,7 +684,10 @@ fn keeping_the_original_position_leaves_the_import_at_the_importer_margin() {
 
   let bounds = document_bounds(&app);
   assert!(
-    bounds.min.is_near(Point2::new(10.0, 10.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(10.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "unchecked, the geometry keeps the importer's bottom-left margin: {:?}",
     bounds.min
   );
@@ -1088,7 +1093,10 @@ fn an_open_frames_the_new_drawing_even_when_the_view_was_the_users() {
 
   let centre = app.camera().center();
   assert!(
-    centre.is_near(Point2::new(135.0, 45.0), 5.0),
+    centre.is_near(
+      Point2::new(135.0, 45.0),
+      cam_geom::TolerancePolicy::uniform(5.0)
+    ),
     "the opened drawing must be framed, not left at the old drawing's zoom: {centre:?}"
   );
   std::fs::remove_dir_all(&directory).ok();

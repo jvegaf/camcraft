@@ -186,19 +186,27 @@ fn snap_candidates_offer_endpoints_midpoints_and_centres() {
   let near_corner = camera.world_to_screen(Point2::new(0.4, 0.3));
   let snap = choose_snap(&scene, &camera, near_corner, 10.0, &kinds, 0.0).expect("a snap");
   assert_eq!(snap.kind, SnapKind::Endpoint);
-  assert!(snap.point.is_near(Point2::ORIGIN, 1.0e-9));
+  assert!(snap
+    .point
+    .is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-9)));
 
   // Near the middle of its bottom edge.
   let near_middle = camera.world_to_screen(Point2::new(20.3, 0.2));
   let snap = choose_snap(&scene, &camera, near_middle, 10.0, &kinds, 0.0).expect("a snap");
   assert_eq!(snap.kind, SnapKind::Midpoint);
-  assert!(snap.point.is_near(Point2::new(20.0, 0.0), 1.0e-9));
+  assert!(snap.point.is_near(
+    Point2::new(20.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-9)
+  ));
 
   // Near the centre of the circle.
   let near_centre = camera.world_to_screen(Point2::new(100.2, 0.2));
   let snap = choose_snap(&scene, &camera, near_centre, 10.0, &kinds, 0.0).expect("a snap");
   assert_eq!(snap.kind, SnapKind::Center);
-  assert!(snap.point.is_near(Point2::new(100.0, 0.0), 1.0e-9));
+  assert!(snap.point.is_near(
+    Point2::new(100.0, 0.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-9)
+  ));
 }
 
 #[test]
@@ -246,7 +254,10 @@ fn the_grid_offers_the_nearest_intersection() {
   )
   .expect("a grid snap");
   assert_eq!(snap.kind, SnapKind::Grid);
-  assert!(snap.point.is_near(Point2::new(10.0, 10.0), 1.0e-9));
+  assert!(snap.point.is_near(
+    Point2::new(10.0, 10.0),
+    cam_geom::TolerancePolicy::uniform(1.0e-9)
+  ));
 }
 
 #[test]

@@ -82,15 +82,27 @@ fn nearest_boundary_distance(contour: &Contour, point: Point2) -> f64 {
 fn a_square_reports_inside_and_outside() {
   let contour = square(10.0);
   assert_eq!(
-    classify(&contour, Point2::new(5.0, 5.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(5.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside
   );
   assert_eq!(
-    classify(&contour, Point2::new(-1.0, 5.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(-1.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside
   );
   assert_eq!(
-    classify(&contour, Point2::new(11.0, 11.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(11.0, 11.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside
   );
   assert_eq!(winding_number(&contour, Point2::new(5.0, 5.0)), 1);
@@ -113,7 +125,7 @@ fn an_arc_only_contour_reports_inside_and_outside() {
     (Point2::new(3.0, 2.5), Membership::Outside),
   ] {
     assert_eq!(
-      classify(&contour, point, 0.0),
+      classify(&contour, point, cam_geom::TolerancePolicy::uniform(0.0)),
       expected,
       "{point:?} against the circle"
     );
@@ -125,23 +137,39 @@ fn a_bulged_shape_reports_inside_and_outside() {
   let contour = bulged_shape();
   assert!(contour.has_arcs());
   assert_eq!(
-    classify(&contour, Point2::new(10.0, 7.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(10.0, 7.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside
   );
   assert_eq!(
-    classify(&contour, Point2::new(10.0, 16.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(10.0, 16.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside,
     "the top bulge rises to about y = 23, so 16 mm is still material"
   );
   assert_eq!(
-    classify(&contour, Point2::new(10.0, 30.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(10.0, 30.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside,
     "above the top bulge"
   );
   // The bottom bulge dips below its own chord, so a point level with the chord's two ends is inside:
   // that case is where a branch bug in the arc's angle shows up as "outside".
   assert_eq!(
-    classify(&contour, Point2::new(4.621_961_548_201_008, 0.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(4.621_961_548_201_008, 0.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside,
     "the bottom bulge dips to y = -6 between the chord ends"
   );
@@ -151,17 +179,29 @@ fn a_bulged_shape_reports_inside_and_outside() {
 fn a_point_on_an_edge_or_a_vertex_is_on_the_boundary() {
   let contour = square(10.0);
   assert_eq!(
-    classify(&contour, Point2::new(5.0, 0.0), 1.0e-9),
+    classify(
+      &contour,
+      Point2::new(5.0, 0.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     Membership::OnBoundary
   );
   assert_eq!(
-    classify(&contour, Point2::new(0.0, 0.0), 1.0e-9),
+    classify(
+      &contour,
+      Point2::new(0.0, 0.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     Membership::OnBoundary,
     "a vertex is on the boundary too"
   );
   let round = circle(Point2::new(0.0, 0.0), 5.0);
   assert_eq!(
-    classify(&round, Point2::new(0.0, 5.0), 1.0e-9),
+    classify(
+      &round,
+      Point2::new(0.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     Membership::OnBoundary
   );
 }
@@ -172,11 +212,19 @@ fn tolerance_decides_a_point_near_the_boundary() {
   // 1 nm outside the edge: on the boundary at 1 um tolerance, outside at 1 pm.
   let just_outside = Point2::new(5.0, -1.0e-9);
   assert_eq!(
-    classify(&contour, just_outside, 1.0e-6),
+    classify(
+      &contour,
+      just_outside,
+      cam_geom::TolerancePolicy::uniform(1.0e-6)
+    ),
     Membership::OnBoundary
   );
   assert_eq!(
-    classify(&contour, just_outside, 1.0e-12),
+    classify(
+      &contour,
+      just_outside,
+      cam_geom::TolerancePolicy::uniform(1.0e-12)
+    ),
     Membership::Outside
   );
 }
@@ -188,9 +236,16 @@ fn the_winding_sign_follows_the_contour_direction() {
   let inside = Point2::new(5.0, 5.0);
   assert_eq!(winding_number(&counter_clockwise, inside), 1);
   assert_eq!(winding_number(&clockwise, inside), -1);
-  assert_eq!(classify(&clockwise, inside, 0.0), Membership::Inside);
   assert_eq!(
-    classify(&clockwise, Point2::new(-1.0, -1.0), 0.0),
+    classify(&clockwise, inside, cam_geom::TolerancePolicy::uniform(0.0)),
+    Membership::Inside
+  );
+  assert_eq!(
+    classify(
+      &clockwise,
+      Point2::new(-1.0, -1.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside
   );
   // The reversed circle keeps the same membership with the opposite winding.
@@ -203,16 +258,28 @@ fn the_winding_sign_follows_the_contour_direction() {
 fn the_notch_of_a_c_shape_is_outside() {
   let contour = c_shape();
   assert_eq!(
-    classify(&contour, Point2::new(20.0, 10.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(20.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside,
     "the notch is inside the bounds but outside the material"
   );
   assert_eq!(
-    classify(&contour, Point2::new(5.0, 10.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(5.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside
   );
   assert_eq!(
-    classify(&contour, Point2::new(20.0, 3.0), 0.0),
+    classify(
+      &contour,
+      Point2::new(20.0, 3.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Inside,
     "the lower arm"
   );
@@ -231,7 +298,11 @@ fn an_open_contour_encloses_nothing() {
   .expect("open polyline");
   assert_eq!(winding_number(&open, Point2::new(9.0, 1.0)), 0);
   assert_eq!(
-    classify(&open, Point2::new(9.0, 1.0), 0.0),
+    classify(
+      &open,
+      Point2::new(9.0, 1.0),
+      cam_geom::TolerancePolicy::uniform(0.0)
+    ),
     Membership::Outside
   );
 }
@@ -267,7 +338,7 @@ proptest! {
     let point = Point2::new(x, y + 1.234_567_89e-7);
     prop_assume!(nearest_boundary_distance(&contour, point) > 1.0e-3);
 
-    let tessellated = contour.tessellate(1.0e-4);
+    let tessellated = contour.tessellate(cam_geom::TolerancePolicy::standard().with_chord(1.0e-4));
     let reference = tessellated_winding(&tessellated, point);
     prop_assert_eq!(
       winding_number(&contour, point),
@@ -276,7 +347,7 @@ proptest! {
       point
     );
     prop_assert_eq!(
-      classify(&contour, point, 1.0e-9),
+      classify(&contour, point, cam_geom::TolerancePolicy::uniform(1.0e-9)),
       if reference == 0 { Membership::Outside } else { Membership::Inside }
     );
   }

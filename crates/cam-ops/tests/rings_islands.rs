@@ -163,7 +163,9 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         previous = Some(to);
       }
       Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
-        if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
+        if previous.map_or(true, |last| {
+          !last.is_near(to, cam_geom::TolerancePolicy::uniform(1.0e-9))
+        }) {
           points.push(to);
           previous = Some(to);
         }

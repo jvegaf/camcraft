@@ -21,7 +21,7 @@ use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 /// How far a tessellated point may drift and still be the same shape, in millimetres. The reader
 /// re-derives a bulge from two endpoints and a flag, so a half turn comes back as `0.9999999999999999`
 /// rather than `1.0`; a thousandth is far tighter than any shape error worth catching.
-const TOLERANCE: f64 = 1.0e-3;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-3);
 
 fn page(layers: &[(&str, Vec<Contour>)]) -> Document {
   let mut document = Document::new(Job::default_sheet());
@@ -112,7 +112,7 @@ fn assert_same_shape(written: &[Contour], read: &[Contour], what: &str) {
     for point in written_points {
       let distance = nearest(*point, read_points);
       assert!(
-        distance <= TOLERANCE,
+        distance <= TOLERANCE.epsilon,
         "{what}/{index}: a written point ({:.4}, {:.4}) is {distance:.4} mm from the read shape",
         point.x,
         point.y
@@ -121,7 +121,7 @@ fn assert_same_shape(written: &[Contour], read: &[Contour], what: &str) {
     for point in read_points {
       let distance = nearest(*point, written_points);
       assert!(
-        distance <= TOLERANCE,
+        distance <= TOLERANCE.epsilon,
         "{what}/{index}: a read point ({:.4}, {:.4}) is {distance:.4} mm from the written shape",
         point.x,
         point.y

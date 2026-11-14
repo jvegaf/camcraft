@@ -62,7 +62,7 @@ pub fn profile(request: &ProfileRequest<'_>) -> Result<Vec<Move>, ToolpathError>
     cam_geom::offset::offset_contour(
       request.contour,
       lateral.mm(),
-      &cam_geom::offset::OffsetOptions::default(),
+      &cam_geom::offset::OffsetOptions::standard(),
     )
     .map_err(|error| ToolpathError::OffsetCollapsed {
       reason: error.to_string(),

@@ -30,7 +30,7 @@ fn circle(radius: f64) -> Contour {
 }
 
 fn options() -> OffsetOptions {
-  OffsetOptions::default()
+  OffsetOptions::standard()
 }
 
 /// The U bracket an existing region test already uses to reach the self-intersection branch, with a
@@ -247,7 +247,7 @@ fn offsetting_an_open_contour_is_a_refusal_not_a_collapse() {
     cam_geom::Point2::new(10.0, 0.0),
   )
   .expect("valid line");
-  let error = offset_contour(&open, 1.0, &OffsetOptions::default())
+  let error = offset_contour(&open, 1.0, &OffsetOptions::standard())
     .expect_err("an open contour has no inside to offset towards");
   assert!(
     matches!(error, cam_geom::GeomError::EditRefused { .. }),
@@ -301,7 +301,7 @@ fn an_arrangement_refusal_falls_back_to_the_sampled_cleanup() {
   // chord tolerance the arrangement refuses this bracket - its pieces cannot be chained closed -
   // and propagating that refusal takes away a cleanup this reader already had.
   let options = OffsetOptions {
-    tolerance: 1.0,
+    tolerance: cam_geom::TolerancePolicy::standard().with_chord(1.0),
     ..options()
   };
   let offset = offset_contour(&bracket(), -8.0, &options)

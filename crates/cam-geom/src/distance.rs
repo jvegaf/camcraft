@@ -66,7 +66,11 @@ const ANGLE_EPSILON: f64 = 1.0e-12;
 /// collinear segments that stop 10 mm short of each other are 10 mm apart, and an arc's nearest point
 /// being an endpoint is respected because [`Arc::distance_to_point`] and [`LineSeg::distance_to_point`]
 /// are themselves exact.
-pub fn segment_to_segment(first: Segment, second: Segment, tolerance: f64) -> f64 {
+pub fn segment_to_segment(
+  first: Segment,
+  second: Segment,
+  tolerance: crate::TolerancePolicy,
+) -> f64 {
   let value = match (first, second) {
     (Segment::Line(first), Segment::Line(second)) => line_line(first, second),
     (Segment::Line(line), Segment::Arc(arc)) | (Segment::Arc(arc), Segment::Line(line)) => {
@@ -74,7 +78,8 @@ pub fn segment_to_segment(first: Segment, second: Segment, tolerance: f64) -> f6
     }
     (Segment::Arc(first), Segment::Arc(second)) => arc_arc(first, second),
   };
-  if value <= tolerance.max(0.0) {
+  let eps = tolerance.epsilon.max(0.0);
+  if value <= eps {
     0.0
   } else {
     value

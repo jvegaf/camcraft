@@ -6,7 +6,7 @@
 use cam_geom::join;
 use cam_geom::{primitive, Contour, GeomError, Point2, Vertex};
 
-const TOL: f64 = 1.0e-9;
+const TOL: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn line(ax: f64, ay: f64, bx: f64, by: f64) -> Contour {
   primitive::line(Point2::new(ax, ay), Point2::new(bx, by)).expect("valid line")
@@ -99,7 +99,7 @@ fn a_gap_wider_than_the_tolerance_is_not_closed() {
 fn a_gap_within_the_tolerance_is_closed() {
   let joined = join::join(
     &[line(0.0, 0.0, 5.0, 0.0), line(5.001, 0.0, 10.0, 0.0)],
-    0.01,
+    cam_geom::TolerancePolicy::uniform(0.01),
   )
   .expect("a hundredth of a millimetre is within tolerance");
   assert_eq!(joined.len(), 3, "the two contours become one");

@@ -358,7 +358,10 @@ fn process_import(parsed: &cam_import::Imported, settings: ImportSettings) -> ca
     if settings.join {
       // A layer that is not exactly one chain is left as it arrived: the joiner refuses rather than picking
       // between two continuations, and a wrong chain is a cut path nobody asked for.
-      if let Ok(joined) = cam_geom::join::join(&layer.contours, settings.tolerance) {
+      if let Ok(joined) = cam_geom::join::join(
+        &layer.contours,
+        cam_geom::TolerancePolicy::uniform(settings.tolerance),
+      ) {
         layer.contours = vec![joined];
       }
     }

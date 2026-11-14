@@ -2,7 +2,9 @@
 
 use cam_geom::primitive;
 use cam_geom::validate::inspect;
-use cam_geom::{Contour, Point2, Vertex, DEFAULT_TOLERANCE as TOL};
+use cam_geom::{Contour, Point2, TolerancePolicy, Vertex, DEFAULT_TOLERANCE};
+
+const TOL: TolerancePolicy = TolerancePolicy::uniform(DEFAULT_TOLERANCE);
 use proptest::prelude::*;
 
 fn figure_eight() -> Contour {
@@ -24,7 +26,10 @@ fn a_figure_eight_reports_the_crossing_once() {
   assert!(issues.open.is_none());
   assert_eq!(issues.intersections.len(), 1, "{issues:?}");
   let crossing = &issues.intersections[0];
-  assert!(crossing.point.is_near(Point2::new(5.0, 5.0), 1e-9));
+  assert!(crossing.point.is_near(
+    Point2::new(5.0, 5.0),
+    cam_geom::TolerancePolicy::uniform(1e-9)
+  ));
   // Segments 0 and 2 are the two diagonals.
   assert_eq!((crossing.first, crossing.second), (0, 2));
 }

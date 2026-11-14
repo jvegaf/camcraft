@@ -23,7 +23,7 @@ use crate::boolean;
 use crate::contour::Contour;
 use crate::point::Point2;
 use crate::winding::{classify_with_distance, Membership};
-use crate::GeomError;
+use crate::{GeomError, TolerancePolicy};
 
 pub use crate::region_offset::RegionOffset;
 
@@ -88,7 +88,7 @@ impl Region {
   ///
   /// This is the membership half of [`Region::distance_to_boundary`], which answers both questions for
   /// the price of one walk over the boundaries; neither restates the rule.
-  pub fn contains(&self, point: Point2, tolerance: f64) -> bool {
+  pub fn contains(&self, point: Point2, tolerance: TolerancePolicy) -> bool {
     self
       .distance_to_boundary(point, tolerance)
       .is_some_and(|answer| answer.inside)
@@ -115,7 +115,11 @@ impl Region {
   /// `0.0` would claim the point lies *on* a boundary that does not exist (and would put the V-carve
   /// surface at full depth everywhere), and a panic would turn an empty region into a crash instead of
   /// a shape. `Region::default()` is a legal region, so callers must handle `None` rather than assume.
-  pub fn distance_to_boundary(&self, point: Point2, tolerance: f64) -> Option<BoundaryDistance> {
+  pub fn distance_to_boundary(
+    &self,
+    point: Point2,
+    tolerance: TolerancePolicy,
+  ) -> Option<BoundaryDistance> {
     let mut nearest = f64::INFINITY;
     let mut enclosed = 0_usize;
     let mut on_boundary = false;
@@ -142,18 +146,18 @@ impl Region {
   /// There is deliberately no "hole" concept here: the boundary is appended and the parity rule does
   /// the rest, so the same call expresses a boss inside an island. Note that parity has no notion of
   /// which boundary is outer: appending a boundary that *contains* this region's own boundaries
-  /// subtracts the other way round, which is the parity rule and not a bug. Normalization runs at
-  /// [`crate::DEFAULT_TOLERANCE`], which is the tolerance a caller that did not name one is asking for.
+  /// subtracts the other way round, which is the parity rule and not a bug. Normalization runs at the
+  /// given tolerance policy.
   ///
   /// # Errors
   ///
   /// [`GeomError::EditRefused`] when `hole` is not closed, or when the subtraction would remove every
   /// piece of material.
-  pub fn subtract(&self, hole: &Contour) -> Result<Self, GeomError> {
+  pub fn subtract(&self, hole: &Contour, tolerance: TolerancePolicy) -> Result<Self, GeomError> {
     let mut boundaries = self.boundaries.clone();
     boundaries.push(hole.clone());
     Self::new(boundaries)?
-      .normalize(crate::DEFAULT_TOLERANCE)
+      .normalize(tolerance)
       .map(|normalized| normalized.region)
   }
 
@@ -178,7 +182,7 @@ impl Region {
   /// rebuilt, when the arrangement is finer than the tolerance can resolve, when no material is left,
   /// or when the surviving pieces cannot be chained into closed contours. A half-built region is never
   /// returned.
-  pub fn normalize(&self, tolerance: f64) -> Result<Normalized, GeomError> {
+  pub fn normalize(&self, tolerance: TolerancePolicy) -> Result<Normalized, GeomError> {
     boolean::normalize(self, tolerance)
   }
 }
