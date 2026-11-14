@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
@@ -190,14 +191,21 @@ pub(crate) fn library() -> Vec<StoredTool> {
 ///
 /// Outside the worktree on purpose: a test that wrote beside the source would leave a database in `git status`
 /// the first time it failed.
+///
+/// Every directory is unique per call, not per process: tests in one binary share a process id and run in
+/// parallel, so a name-keyed directory makes two of them delete and recreate the same path under each other.
+/// That raced only when the machine had cores to spare, which is exactly the shape a green local run and a red
+/// CI run take.
 pub(crate) struct Scratch {
   path: PathBuf,
 }
 
 impl Scratch {
   pub(crate) fn new(name: &str) -> Self {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let unique = NEXT.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-      "campilot-tool-library-{}-{name}",
+      "campilot-tool-library-{}-{name}-{unique}",
       std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&path);
