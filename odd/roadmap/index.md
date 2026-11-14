@@ -10,7 +10,7 @@ every one ended in an artefact demonstrable through `cam-cli`, not a slide.
 
 ## 1. Camcraft roadmap state (F0–F8)
 
-Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md), [045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`), **2026-11-14** for the merged robustness wave (tasks [046](../tasks/046-e0-2-input-robustness.md), [047](../tasks/047-arrangement-odd-degree-graph.md), `master` `766efe7`), **2026-11-14** for the merged C3 board-model slice (task [035](../tasks/035-c3-model.md), `master` `723cb98`), and **2026-11-14** for the W2 import wave and its review-driven hardening (tasks [048](../tasks/048-w2b-excellon.md), [049](../tasks/049-w2c-folder-import.md), [050](../tasks/050-w2a-gerber.md), [051](../tasks/051-w2d-pcb-tool-library.md), `master` `a4f967a`, full gate green), not against these documents: every row
+Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md), [045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`), **2026-11-14** for the merged robustness wave (tasks [046](../tasks/046-e0-2-input-robustness.md), [047](../tasks/047-arrangement-odd-degree-graph.md), `master` `766efe7`), **2026-11-14** for the merged C3 board-model slice (task [035](../tasks/035-c3-model.md), `master` `723cb98`), and **2026-11-14** for the W2 import wave and its review-driven hardening (tasks [048](../tasks/048-w2b-excellon.md), [049](../tasks/049-w2c-folder-import.md), [050](../tasks/050-w2a-gerber.md), [051](../tasks/051-w2d-pcb-tool-library.md), `master` `a4f967a`, full gate green), and **2026-11-14** for the W3 tolerance-policy slice (task [052](../tasks/052-e0-3-tolerance-policy.md), `master` `pending-merge`), not against these documents: every row
 cites `path:line` evidence that exists today, and a feature is only `✅` when its code is there. The
 test suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*,
 not *green right now*.
@@ -24,7 +24,7 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 | --- | --- | --- | --- |
 | E0.1 Set engine | ✅ | `cam-geom/src/boolean.rs:1132` `BooleanOp`, `:1154` `Combined`, `:1297` `combine`; 5 properties in `cam-geom/tests/boolean_properties.rs:147` (commutativity, idempotence, `A\A=∅`, inclusion–exclusion) incl. a two-arc disc generator; task [034](../tasks/034-c1-booleans.md) delivered `aee3e5d`; arrangement near-miss snap added by [047](../tasks/047-arrangement-odd-degree-graph.md) delivered `766efe7` | — |
 | E0.2 Input robustness | ✅ | `cam-geom/src/region.rs:148` resolves self-crossing contours in `normalize`; recalculation in `boolean.rs:222`. E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs` (15 tests) covers auto-intersection, coincident edges, contact vertices and the micro-edge area-identity case fixed by [047](../tasks/047-arrangement-odd-degree-graph.md); constructor rejects named (`crates/cam-geom/src/contour.rs:91`). Exit criterion made measurable in `docs/ROADMAP_CAMCRAFT.md` (task [046](../tasks/046-e0-2-input-robustness.md) `00af97f`); tasks [046](../tasks/046-e0-2-input-robustness.md) delivered `714042c` and [047](../tasks/047-arrangement-odd-degree-graph.md) delivered `766efe7` | Rejections still surface generic `assemble` reasons (do not name the construct), `validate::inspect` collapses tangency into intersection (`crates/cam-geom/src/validate.rs:100-101`), and whether a sub-tolerance open gap should close is an open product decision (backlog of 046) |
-| E0.3 One tolerance policy | ⬜ | Constants remain: `cam-geom/src/lib.rs:52` (`DEFAULT_TOLERANCE=1e-6`), `offset.rs:49` (`0.001`), `region_offset.rs:41`, `:54` | No tolerance object at all: `grep -rn "struct Tolerance" crates` → 0 matches |
+| E0.3 One tolerance policy | ✅ | `cam-geom/src/tolerance.rs:44` `TolerancePolicy` (`chord`, `epsilon`, `arc`, `simplify`) with `ArcPolicy`/`Simplify`, defaults and constructors/helpers; reexported in `cam-geom/src/lib.rs:43` and `DEFAULT_TOLERANCE` derived from `DEFAULT_EPSILON` (`:49`). Public geometry operations across `cam-geom/src` and workspace consumers take explicit `TolerancePolicy`; policy/literal guard `crates/cam-geom/tests/tolerance_policy.rs` (7 tests). Task [052](../tasks/052-e0-3-tolerance-policy.md) delivered `c62b135` (slices `1d170da`, `720285d`, `525f0b9`, reviewed) | — |
 | E0.4 Geometric parity harness | ✅ | `scripts/parity/run.sh`, `compare.py`, `collect.py`, `measure/` (`scripts/parity/README.md`); corpus-shape/fixture guard `crates/cam-geom/tests/parity.rs:1`; committed `parity.json` goldens per board under `fixtures/corpus/`; local gate `just parity` (`justfile:79`) and CI job `parity` (`.github/workflows/ci.yml:38`); task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — (polygon/area/point-count comparison against reference geometry, as implemented by the harness) |
 | E0.5 Board corpus | ✅ | 6 boards under `fixtures/corpus/` (`kicad-2l-simple`, `kicad-4l-pours`, `kicad-large-pours`, `substitute-altium`, `substitute-eagle`, `substitute-easyeda`) carrying fabrication roles/artifacts, `provenance.json` and `parity.json`; fixed set asserted in `crates/cam-geom/tests/parity.rs:18`; task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — |
 | E0.6 FlatCAM baseline | ⬜ | No baseline table or script under `scripts/`, `odd/reports/`, `crates/` | Nothing measured to compare against |
@@ -106,9 +106,9 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 - **Phase 0 advanced with wave 1**: the engine (E0.1) and its core instruments are now present (E0.4
   parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI). Input robustness (E0.2) is closed by
   tasks [046](../tasks/046-e0-2-input-robustness.md) and [047](../tasks/047-arrangement-odd-degree-graph.md),
-  with the E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs`. What still blocks
-  confident progress is E0.3 (tolerance policy) and E0.6 (FlatCAM baseline); every phase below F0
-  still depends on being able to *measure* correctness and speed.
+  with the E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs`. W3/E0.3 tolerance policy is
+  now in place (task [052](../tasks/052-e0-3-tolerance-policy.md)); what still blocks confident progress in F0 is
+  E0.6 (FlatCAM baseline). Every phase below F0 still depends on being able to *measure* correctness and speed.
 - **E1.1 (board model) landed in S2 literal form with task [035](../tasks/035-c3-model.md)** (`723cb98`),
   but remains partial overall (no per-entity origin metadata; `EntityKind` still contour-only). **Only
   E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
@@ -137,11 +137,10 @@ describe the next parallel slices.
 
 Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says. The core instrument set of wave 1
 (E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place, E0.2 input
-robustness is closed by tasks 046/047, and the C3 board-model slice (E1.1, S2 literal form) landed with
-task [035](../tasks/035-c3-model.md) (`723cb98`). What remains of F0 is:
+robustness is closed by tasks 046/047, the C3 board-model slice (E1.1, S2 literal form) landed with
+task [035](../tasks/035-c3-model.md) (`723cb98`), and W3/E0.3 tolerance policy landed with task [052](../tasks/052-e0-3-tolerance-policy.md). What remains of F0 is:
 
-1. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
-2. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
+1. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
 
 With F0 instruments mostly in place and 035 delivered, the next product slices follow the dependency/wave
 order in [waves.md](waves.md), moving toward F2 (drilling, cutout) as the first real G-code through
