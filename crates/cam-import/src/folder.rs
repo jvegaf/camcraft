@@ -477,6 +477,9 @@ fn file_function_role(value: &str) -> Option<BoardRole> {
     if v.contains("top") || v.contains("l1") {
       return Some(BoardRole::new(LayerRole::CopperTop, Side::Top));
     }
+    if v.contains("inr") || v.contains("inner") {
+      return None;
+    }
     if v.contains("bot") || v.contains("l2") {
       return Some(BoardRole::new(LayerRole::CopperBottom, Side::Bottom));
     }

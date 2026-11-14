@@ -1141,6 +1141,14 @@ fn macro_stroke(
   tolerance: f64,
   index: usize,
 ) -> Result<Region, GerberError> {
+  if local.boundaries.len() > 1 {
+    return Err(GerberError::Unsupported {
+      line: 0,
+      what: format!(
+        "command {index}: a draw with macro aperture {template:?} has inner boundaries this reader cannot sweep without filling voids"
+      ),
+    });
+  }
   let mut stroke: Option<Region> = None;
   for boundary in &local.boundaries {
     if boundary

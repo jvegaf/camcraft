@@ -751,10 +751,7 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
       library
         .save_tool(&tool)
         .map_err(|error| Failure::input(error.to_string()))?;
-      println!(
-        "added {id} as T{number} with a {diameter} mm diameter ({})",
-        kind.slug()
-      );
+      println!("added {id} as T{number} with a {diameter} mm diameter");
       Ok(())
     }
     other => Err(Failure::input(format!(
