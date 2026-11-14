@@ -1,4 +1,4 @@
-# 048 — w2d-pcb-tool-library
+# 051 — w2d-pcb-tool-library
 
 Librería PCB (E1.8 / W2d): fresa de aislamiento como tipo real, V-bit con ángulo y punta end-to-end, y `tools add` completo en CLI.
 
