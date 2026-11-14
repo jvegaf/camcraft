@@ -2481,7 +2481,9 @@ fn the_new_edit_commands_refuse_unknown_ids_and_bad_numbers_atomically() {
     &mut app,
     Command::JoinEntities {
       entity_ids: vec![line.clone()],
-      tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.0),
+      // A join compares the ends it chains, so the tolerance it must be refused for is the
+      // comparison one — `chord` only decides how arcs are walked and cannot make a join absurd.
+      tolerance: cam_geom::TolerancePolicy::standard().with_epsilon(0.0),
     },
   );
   assert!(
