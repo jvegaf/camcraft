@@ -7,7 +7,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+cam-excellon.workspace = true
 cam-geom.workspace = true
+cam-gerber.workspace = true
 cam-model.workspace = true
 cam-units.workspace = true
 thiserror.workspace = true
