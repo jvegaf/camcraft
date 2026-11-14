@@ -570,8 +570,7 @@ fn parse_drill(
     match *feature {
       cam_excellon::Feature::Hole { tool, at } => {
         let Some(diameter) = tool_diameter(&tools, tool) else {
-          undefined_tool(warnings, source, tool);
-          continue;
+          return Err(undefined_tool(tool));
         };
         let radius = (diameter / 2.0).max(0.001);
         let contour = primitive::circle(at, radius).map_err(|e| e.to_string())?;
@@ -579,8 +578,7 @@ fn parse_drill(
       }
       cam_excellon::Feature::Slot { tool, from, to } => {
         let Some(diameter) = tool_diameter(&tools, tool) else {
-          undefined_tool(warnings, source, tool);
-          continue;
+          return Err(undefined_tool(tool));
         };
         let radius = (diameter / 2.0).max(0.001);
         if let Some(contour) = slot_contour(from, to, radius) {
@@ -601,14 +599,13 @@ fn parse_drill(
   Ok(contours)
 }
 
-/// Report a feature that names a tool the file never defines.
+/// The error a feature that names a tool the file never defines reports.
 ///
-/// The diameter is unknown, and substituting one would invent geometry the file does not describe,
-/// so the feature is skipped and the file it belongs to stays importable.
-fn undefined_tool(warnings: &mut Vec<String>, source: &str, tool: u32) {
-  warnings.push(format!(
-    "{source}: a drill feature references undefined tool T{tool} and is skipped"
-  ));
+/// The diameter is unknown, and substituting one would invent geometry the file does not describe. The
+/// file is refused whole rather than trimmed: a drill layer quietly missing the features whose tool was
+/// undefined would reach the machine as a board with holes left out.
+fn undefined_tool(tool: u32) -> String {
+  format!("a drill feature references undefined tool T{tool}")
 }
 
 fn tool_diameter(tools: &[cam_excellon::Tool], number: u32) -> Option<f64> {
