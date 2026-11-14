@@ -278,7 +278,7 @@ impl Gerber {
                 aperture: code,
               },
             )?;
-            let stroke = stroke_of(from, to, aperture, code, tolerance, index)?;
+            let stroke = stroke_of(from, to, aperture, code, &self.macros, tolerance, index)?;
             image = apply_region(image, &stroke, polarity, tolerance, index)?;
           }
           current = Some(to);
@@ -380,6 +380,25 @@ impl Gerber {
                   "command {index}: the flash of aperture {code} template R is not valid: {error}"
                 ),
               })?
+            }
+            "O" => {
+              let width = aperture.parameters.first().copied().ok_or_else(|| {
+                GerberError::Unsupported {
+                  line: 0,
+                  what: format!(
+                    "command {index}: a flash of aperture {code} template O without width and height"
+                  ),
+                }
+              })?;
+              let height = aperture.parameters.get(1).copied().ok_or_else(|| {
+                GerberError::Unsupported {
+                  line: 0,
+                  what: format!(
+                    "command {index}: a flash of aperture {code} template O without width and height"
+                  ),
+                }
+              })?;
+              obround_region(at, width, height, tolerance, index, "a flash")?
             }
             template => {
               // A template that names a macro is that macro's shapes, placed at the flash point:
@@ -768,10 +787,24 @@ fn macro_primitive(
         });
       }
       let count = declared.round() as usize;
-      no_rotation(1 + count * 2)?;
+      // KiCad and common writers give count+1 coordinate pairs when the last repeats the first;
+      // the rotation follows all coordinate pairs.
+      let has_closing_pair = primitive.parameters.len() > (count + 1) * 2
+        && (read(1 + count * 2)? - read(1)?).abs() <= 1.0e-12
+        && (read(2 + count * 2)? - read(2)?).abs() <= 1.0e-12;
+      let rotation_at = 1 + count * 2 + if has_closing_pair { 2 } else { 0 };
+      no_rotation(rotation_at)?;
       let mut points = Vec::with_capacity(count);
       for vertex in 0..count {
         points.push(Point2::new(read(1 + vertex * 2)?, read(2 + vertex * 2)?));
+      }
+      // Writers often repeat the first vertex as the last; the contour is already closed.
+      if points.len() >= 2 {
+        let first = points[0];
+        let last = *points.last().expect("len >= 2");
+        if (first.x - last.x).abs() <= 1.0e-12 && (first.y - last.y).abs() <= 1.0e-12 {
+          points.pop();
+        }
       }
       let contour = Contour::from_points(&points, true).map_err(|error| GerberError::Invalid {
         line: 0,
@@ -804,20 +837,24 @@ fn stroke_of(
   to: Point2,
   aperture: &Aperture,
   code: u32,
+  macros: &[Macro],
   tolerance: f64,
   index: usize,
 ) -> Result<Region, GerberError> {
   let template = aperture.template.as_str();
   match template {
     "C" => {
-      let diameter = aperture
-        .parameters
-        .first()
-        .copied()
-        .ok_or_else(|| GerberError::Unsupported {
-          line: 0,
-          what: format!("command {index}: a draw with aperture {code} template C without a diameter"),
-        })?;
+      let diameter =
+        aperture
+          .parameters
+          .first()
+          .copied()
+          .ok_or_else(|| GerberError::Unsupported {
+            line: 0,
+            what: format!(
+              "command {index}: a draw with aperture {code} template C without a diameter"
+            ),
+          })?;
       capsule(from, to, diameter, tolerance, index)
     }
     "R" => {
@@ -835,12 +872,82 @@ fn stroke_of(
       };
       swept_rectangle(from, to, size(0)?, size(1)?, tolerance, index)
     }
-    other => Err(GerberError::Unsupported {
-      line: 0,
-      what: format!(
-        "command {index}: a draw with aperture {code} template {other} is not a stroke this reader builds"
-      ),
-    }),
+    "O" => {
+      let width = aperture
+        .parameters
+        .first()
+        .copied()
+        .ok_or_else(|| GerberError::Unsupported {
+          line: 0,
+          what: format!(
+            "command {index}: a draw with aperture {code} template O without width and height"
+          ),
+        })?;
+      let height = aperture
+        .parameters
+        .get(1)
+        .copied()
+        .ok_or_else(|| GerberError::Unsupported {
+          line: 0,
+          what: format!(
+            "command {index}: a draw with aperture {code} template O without width and height"
+          ),
+        })?;
+      obround_stroke(from, to, width, height, tolerance, index)
+    }
+    other => {
+      let Some(definition) = macros.iter().find(|defined| defined.name == other) else {
+        return Err(GerberError::Unsupported {
+          line: 0,
+          what: format!(
+            "command {index}: a draw with aperture {code} template {other} is not a stroke this reader builds"
+          ),
+        });
+      };
+      let local = macro_region(definition, &aperture.parameters, tolerance, index)?;
+      macro_stroke(from, to, &local, other, tolerance, index)
+    }
+  }
+}
+
+/// An obround (`O`) aperture dragged from `from` to `to`.
+///
+/// An obround is a stadium: a central rectangle plus two semicircular ends (or a circle when
+/// width equals height). The swept shape is the union of the swept central rectangle and the
+/// capsules swept by the two end discs, which is the Minkowski sum of the aperture and the segment.
+fn obround_stroke(
+  from: Point2,
+  to: Point2,
+  width: f64,
+  height: f64,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  if (width - height).abs() <= 0.0 {
+    return capsule(from, to, width, tolerance, index);
+  }
+  if width > height {
+    let half_span = (width - height) / 2.0;
+    let left_from = Point2::new(from.x - half_span, from.y);
+    let left_to = Point2::new(to.x - half_span, to.y);
+    let right_from = Point2::new(from.x + half_span, from.y);
+    let right_to = Point2::new(to.x + half_span, to.y);
+    let body = swept_rectangle(from, to, width - height, height, tolerance, index)?;
+    let left = capsule(left_from, left_to, height, tolerance, index)?;
+    let right = capsule(right_from, right_to, height, tolerance, index)?;
+    let stroke = union_of(body, left, tolerance, index)?;
+    union_of(stroke, right, tolerance, index)
+  } else {
+    let half_span = (height - width) / 2.0;
+    let bottom_from = Point2::new(from.x, from.y - half_span);
+    let bottom_to = Point2::new(to.x, to.y - half_span);
+    let top_from = Point2::new(from.x, from.y + half_span);
+    let top_to = Point2::new(to.x, to.y + half_span);
+    let body = swept_rectangle(from, to, width, height - width, tolerance, index)?;
+    let bottom = capsule(bottom_from, bottom_to, width, tolerance, index)?;
+    let top = capsule(top_from, top_to, width, tolerance, index)?;
+    let stroke = union_of(body, bottom, tolerance, index)?;
+    union_of(stroke, top, tolerance, index)
   }
 }
 
@@ -970,6 +1077,162 @@ fn capsule(
     stroke = union_of(stroke, body, tolerance, index)?;
   }
   union_of(stroke, cap(to)?, tolerance, index)
+}
+
+/// A standard obround (`O`) aperture centred on `at`.
+///
+/// When width equals height it is a circle; otherwise it is a stadium whose semicircular ends lie
+/// on the shorter axis, so the total extent is the given width and height. `context` names the
+/// operation for diagnostics.
+fn obround_region(
+  at: Point2,
+  width: f64,
+  height: f64,
+  tolerance: f64,
+  index: usize,
+  context: &str,
+) -> Result<Region, GerberError> {
+  if (width - height).abs() <= 0.0 {
+    // Equal sizes: the obround is a circle of that diameter.
+    let contour = primitive::circle(at, width / 2.0).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: {context} of template O is not a valid circle: {error}"),
+    })?;
+    return Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: {context} of template O is not a valid region: {error}"),
+    });
+  }
+  if width > height {
+    let half_span = (width - height) / 2.0;
+    let from = Point2::new(at.x - half_span, at.y);
+    let to = Point2::new(at.x + half_span, at.y);
+    capsule(from, to, height, tolerance, index).map_err(|error| match error {
+      GerberError::Invalid { what, .. } => GerberError::Invalid {
+        line: 0,
+        what: what.replace("a stroke", &format!("{context} of template O")),
+      },
+      other => other,
+    })
+  } else {
+    let half_span = (height - width) / 2.0;
+    let from = Point2::new(at.x, at.y - half_span);
+    let to = Point2::new(at.x, at.y + half_span);
+    capsule(from, to, width, tolerance, index).map_err(|error| match error {
+      GerberError::Invalid { what, .. } => GerberError::Invalid {
+        line: 0,
+        what: what.replace("a stroke", &format!("{context} of template O")),
+      },
+      other => other,
+    })
+  }
+}
+
+/// A macro aperture dragged from `from` to `to`.
+///
+/// Sweeps the macro's local shape (defined at the origin) along the segment. Only shapes whose
+/// boundaries are made entirely of straight segments can be swept without approximating arcs; any
+/// other shape is refused by name.
+fn macro_stroke(
+  from: Point2,
+  to: Point2,
+  local: &Region,
+  template: &str,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let mut stroke: Option<Region> = None;
+  for boundary in &local.boundaries {
+    if boundary
+      .segments()
+      .iter()
+      .any(|segment| !matches!(segment, Segment::Line(_)))
+    {
+      return Err(GerberError::Unsupported {
+        line: 0,
+        what: format!(
+          "command {index}: a draw with macro aperture {template:?} has curved edges this reader cannot sweep without flattening"
+        ),
+      });
+    }
+    let swept = sweep_linear_contour(from, to, boundary, tolerance, index)?;
+    stroke = Some(match stroke {
+      None => swept,
+      Some(current) => union_of(current, swept, tolerance, index)?,
+    });
+  }
+  stroke.ok_or_else(|| GerberError::Unsupported {
+    line: 0,
+    what: format!("command {index}: a draw with macro aperture {template:?} has no shape to sweep"),
+  })
+}
+
+/// Sweep a contour made entirely of straight segments along the vector from `from` to `to`.
+///
+/// The contour's coordinates are relative to the origin; placing it at `from` and sweeping to `to`
+/// is the Minkowski sum of the translated contour and the segment, built as the union of the shape
+/// at both ends and the parallelogram swept by each edge.
+fn sweep_linear_contour(
+  from: Point2,
+  to: Point2,
+  contour: &Contour,
+  tolerance: f64,
+  index: usize,
+) -> Result<Region, GerberError> {
+  let v_from = cam_geom::Vec2::new(from.x, from.y);
+  let v_to = cam_geom::Vec2::new(to.x, to.y);
+  let start =
+    cam_geom::transform::translate(contour, v_from).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a macro stroke could not be placed: {error}"),
+    })?;
+  let end =
+    cam_geom::transform::translate(contour, v_to).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a macro stroke could not be placed: {error}"),
+    })?;
+  let mut stroke = Region::new(vec![start.clone()]).map_err(|error| GerberError::Invalid {
+    line: 0,
+    what: format!("command {index}: a macro stroke is not a valid region: {error}"),
+  })?;
+  stroke = union_of(
+    stroke,
+    Region::new(vec![end]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a macro stroke is not a valid region: {error}"),
+    })?,
+    tolerance,
+    index,
+  )?;
+
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  let segments = start.segments().to_vec();
+  for segment in segments {
+    let Segment::Line(line) = segment else {
+      continue;
+    };
+    let a = line.start;
+    let b = line.end;
+    let ex = b.x - a.x;
+    let ey = b.y - a.y;
+    // An edge parallel to the sweep direction sweeps to no area.
+    if (ex * dy - ey * dx).abs() <= tolerance {
+      continue;
+    }
+    let c = Point2::new(b.x + dx, b.y + dy);
+    let d = Point2::new(a.x + dx, a.y + dy);
+    let quad = Contour::from_points(&[a, b, c, d], true).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a macro stroke edge could not be swept: {error}"),
+    })?;
+    let swept = Region::new(vec![quad]).map_err(|error| GerberError::Invalid {
+      line: 0,
+      what: format!("command {index}: a macro stroke edge is not a valid region: {error}"),
+    })?;
+    stroke = union_of(stroke, swept, tolerance, index)?;
+  }
+  Ok(stroke)
 }
 
 /// Add material to a shape being assembled, before it reaches the image's own polarity.

@@ -615,26 +615,73 @@ fn a_clear_c_flash_cuts_a_hole_through_a_dark_r_region() {
 }
 
 #[test]
-fn an_o_aperture_flash_is_refused_naming_the_command_index_and_the_template() {
-  // Command stream: [SelectAperture(10)=0, Flash=1]. O (obround) has no primitive constructor.
+fn an_obround_aperture_flash_wider_than_tall_is_a_horizontal_stadium() {
+  // S2: O aperture 2.0 wide by 1.0 tall at the origin is a stadium: semicircular ends on the
+  // short (vertical) axis and straight sides along the long axis, bounds (-1,-0.5)-(1,0.5).
   let gerber =
     parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X1.0*%\nD10*\nX000000000Y000000000D03*\nM02*\n")
       .expect("fixture parses");
-  let error = gerber
-    .image(TOLERANCE)
-    .expect_err("an O flash is not supported");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one boundary");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -1.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -0.5).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 1.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 0.5).abs() < 1.0e-6, "max y {bounds:?}");
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
   assert!(
-    matches!(error, GerberError::Unsupported { line: 0, .. }),
-    "refused as unsupported at line 0: {error:?}"
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "the semicircular ends form one full turn, got {turned}"
   );
-  let message = error.to_string();
   assert!(
-    message.contains("command 1"),
-    "names the command index: {message}"
+    image.contains(cam_geom::Point2::new(0.0, 0.0), TOLERANCE),
+    "centre is material"
   );
   assert!(
-    message.contains("template O") || (message.contains('O') && message.contains("template")),
-    "names the template: {message}"
+    !image.contains(cam_geom::Point2::new(1.2, 0.0), TOLERANCE),
+    "beyond the rounded end is not material"
+  );
+}
+
+#[test]
+fn an_obround_aperture_flash_taller_than_wide_is_a_vertical_stadium() {
+  // O aperture 1.0 wide by 3.0 tall: semicircular ends on the horizontal axis.
+  let gerber =
+    parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,1.0X3.0*%\nD10*\nX000000000Y000000000D03*\nM02*\n")
+      .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one boundary");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -0.5).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -1.5).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 0.5).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 1.5).abs() < 1.0e-6, "max y {bounds:?}");
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "the semicircular ends form one full turn, got {turned}"
+  );
+}
+
+#[test]
+fn an_obround_aperture_flash_with_equal_width_and_height_is_a_circle() {
+  // Equal sizes degenerate to a circle of that diameter.
+  let gerber =
+    parse("%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X2.0*%\nD10*\nX005000000Y005000000D03*\nM02*\n")
+      .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - 4.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - 4.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 6.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 6.0).abs() < 1.0e-6, "max y {bounds:?}");
+  assert!(
+    image.boundaries[0]
+      .segments()
+      .iter()
+      .all(|segment| matches!(segment, cam_geom::Segment::Arc(_))),
+    "equal sizes give a circle: {:?}",
+    image.boundaries[0].segments()
   );
 }
 
@@ -851,20 +898,82 @@ fn a_rectangular_draw_at_an_angle_is_a_hexagon_not_a_rotated_rectangle() {
 }
 
 #[test]
-fn an_obround_aperture_draw_is_refused_naming_the_template() {
-  // S6: an O aperture is a capsule already, so sweeping it is a different construction. Refusing
-  // it by name beats pretending the rectangular path covers it.
-  let error = parse(
+fn an_obround_aperture_draw_sweeps_the_stadium_along_the_segment() {
+  // S2: a horizontal obround 4 wide by 2 tall swept along (0,0)-(6,0) is the same stadium as a
+  // circular aperture of diameter 2 swept from (-1,0) to (7,0): the end discs of the obround
+  // extend the reach by half the extra width on each side.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,4.0X2.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX006000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one boundary");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -2.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -1.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 8.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 1.0).abs() < 1.0e-6, "max y {bounds:?}");
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "the swept stadium has round ends, total turn {turned}"
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(-1.5, 0.0), TOLERANCE),
+    "inside the left end is material"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(-2.2, 0.0), TOLERANCE),
+    "beyond the left end is not material"
+  );
+}
+
+#[test]
+fn an_obround_aperture_draw_taller_than_wide_sweeps_vertically_oriented_stadium() {
+  // Vertical obround 2 wide by 4 tall swept along (0,0)-(6,0): bounds extend ±2 in y and ±1
+  // beyond the segment ends in x (the semicircular ends of the obround, radius 1).
+  let gerber = parse(
     "%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X4.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX006000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -1.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -2.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 7.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 2.0).abs() < 1.0e-6, "max y {bounds:?}");
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
+  assert!(
+    turned > 0.0,
+    "the swept vertical obround has curved boundary parts, got {turned}"
+  );
+}
+
+#[test]
+fn an_obround_aperture_draw_with_equal_sizes_is_a_capsule() {
+  // Equal width and height: the obround is a circle, so the stroke is the same capsule as C.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10O,2.0X2.0*%\nD10*\n\
      X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
   )
-  .expect("fixture parses")
-  .image(TOLERANCE)
-  .expect_err("an obround stroke is not built yet");
-  let text = format!("{error}");
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    line_ends(&image),
+    vec![
+      (0, -1_000_000),
+      (0, 1_000_000),
+      (10_000_000, -1_000_000),
+      (10_000_000, 1_000_000),
+    ],
+    "equal O is a circular capsule stroke"
+  );
+  let turned: f64 = caps(&image).iter().map(|cap| cap.sweep().abs()).sum();
   assert!(
-    text.contains("template O"),
-    "the refusal names the template: {text}"
+    (turned - std::f64::consts::TAU).abs() < 1.0e-6,
+    "round caps, got {turned}"
   );
 }
 
@@ -1078,19 +1187,75 @@ fn a_flash_of_a_macro_aperture_is_placed_at_the_flash_point() {
 }
 
 #[test]
-fn a_macro_aperture_draw_is_refused_rather_than_swept() {
-  // Sweeping an arbitrary macro along a segment is a different construction from the capsule and
-  // the rectangle this reader builds, so saying so beats guessing at a shape.
+fn a_macro_aperture_draw_with_curved_edges_is_refused_naming_the_macro() {
+  // A macro whose shape has arcs (a circle here) cannot be swept without flattening, so the
+  // refusal names the macro rather than approximating the trace.
   let error = parse(
     "%FSLAX36Y36*%\n%MOMM*%\n%AMPad*\n1,1,2.0,0,0*%\n%ADD10Pad*%\nD10*\n\
      X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
   )
   .expect("fixture parses")
   .image(TOLERANCE)
-  .expect_err("a macro stroke is not built");
+  .expect_err("a curved macro stroke is not swept");
   let text = format!("{error}");
   assert!(
-    text.contains("Pad") && text.contains("not a stroke"),
-    "the refusal names the aperture template: {text}"
+    text.contains("Pad") && text.contains("curved"),
+    "the refusal names the macro and why it cannot be swept: {text}"
+  );
+}
+
+#[test]
+fn a_macro_aperture_draw_with_linear_outline_is_swept_along_the_segment() {
+  // S3/S4: a macro aperture whose shape is a polygon (all straight edges) can be swept. A 2x2
+  // square macro drawn from (0,0) to (10,0) covers the same 12x2 area as a rectangular stroke.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMSquare*\n21,1,2.0,2.0,0,0,0*%\n%ADD10Square*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one swept boundary");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -1.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -1.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 11.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 1.0).abs() < 1.0e-6, "max y {bounds:?}");
+  assert!(
+    caps(&image).is_empty(),
+    "a polygonal macro sweep has no arcs: {:?}",
+    image.boundaries[0].segments()
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(5.0, 0.0), TOLERANCE),
+    "inside the swept area is material"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(5.0, 1.5), TOLERANCE),
+    "outside the swept area is not material"
+  );
+}
+
+#[test]
+fn a_macro_aperture_draw_with_polygon_outline_matches_corpus_shape() {
+  // A primitive-4 polygon macro (like FreePoly1 in the corpus) is swept as its Minkowski sum with
+  // the segment. A simple triangle swept along X produces the expected extent.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%AMTri*\n4,1,3,-1,-1,1,-1,0,1,0*%\n%ADD10Tri*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
+  )
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - -1.0).abs() < 1.0e-6, "min x {bounds:?}");
+  assert!((bounds.min.y - -1.0).abs() < 1.0e-6, "min y {bounds:?}");
+  assert!((bounds.max.x - 11.0).abs() < 1.0e-6, "max x {bounds:?}");
+  assert!((bounds.max.y - 1.0).abs() < 1.0e-6, "max y {bounds:?}");
+  assert!(
+    image.contains(cam_geom::Point2::new(5.0, 0.0), TOLERANCE),
+    "centre of sweep is material"
+  );
+  assert!(
+    !image.contains(cam_geom::Point2::new(5.0, 1.2), TOLERANCE),
+    "above the swept triangle is not material"
   );
 }
