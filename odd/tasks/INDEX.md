@@ -53,6 +53,6 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 046 | [e0-2-input-robustness](046-e0-2-input-robustness.md) | delivered | 2026-11-13 | `714042c` |
 | 047 | [arrangement-odd-degree-graph](047-arrangement-odd-degree-graph.md) | delivered | 2026-11-13 | `766efe7` |
 | 048 | [w2b-excellon](048-w2b-excellon.md) | delivered | 2026-11-14 | `861d6cb` |
-| 049 | [w2c-folder-import](049-w2c-folder-import.md) | delivered | 2026-11-14 | `9f88d44` |
-| 050 | [w2a-gerber](050-w2a-gerber.md) | delivered | 2026-11-14 | `fd603fd` |
-| 051 | [w2d-pcb-tool-library](051-w2d-pcb-tool-library.md) | delivered | 2026-11-14 | `8f419cc` |
+| 049 | [w2c-folder-import](049-w2c-folder-import.md) | delivered | 2026-11-14 | `a4f967a` |
+| 050 | [w2a-gerber](050-w2a-gerber.md) | delivered | 2026-11-14 | `c5d71c5` |
+| 051 | [w2d-pcb-tool-library](051-w2d-pcb-tool-library.md) | delivered | 2026-11-14 | `d1f79b8` |
