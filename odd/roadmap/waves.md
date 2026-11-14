@@ -31,7 +31,8 @@ el grafo de dependencias. Donde hay dependencia técnica no hay ola: hay serie.
    entero (45 G en el árbol primario hoy). Cuatro agentes en paralelo es disco y CPU, no sólo
    coordinación.
 7. **Merge en el orden que dice la ola**, y quien mergea actualiza el INDEX. Un merge fuera de orden
-   reordena el índice de la siguiente ola, no el código.
+   reordena el índice de la siguiente ola, no el código. Las ramas de ola mergean en **`dev`**; `master`
+   recibe sólo PRs desde `dev`, con tag de release (`odd/roadmap/workflow.md`).
 
 ---
 

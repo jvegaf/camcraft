@@ -17,6 +17,18 @@ check:
 check-docs:
   ./scripts/check-docs.sh
 
+# Install this repository's hooks (idempotent). `pre-commit` runs fmt, the docs links and the parity
+# measurer's build; `pre-push` runs clippy, the tests, and the corpus measurement when the push can
+# move it. They are the local half of the two-trunk flow: `dev` trusts them for the expensive gates.
+hooks:
+  git config core.hooksPath .githooks
+  @echo "hooks installed: .githooks/pre-commit, .githooks/pre-push"
+
+# Uninstall them, for when a hook is in the way and the machine is not yours.
+hooks-off:
+  git config --unset core.hooksPath || true
+  @echo "hooks uninstalled"
+
 # Where the tree stands: branch, sync with origin, uncommitted files, suite size.
 status:
   @printf 'branch:  %s\n' "$(git rev-parse --abbrev-ref HEAD)"

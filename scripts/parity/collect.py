@@ -37,7 +37,17 @@ import sys
 from pathlib import Path
 
 FLATTEN_TOLERANCE_MM = 0.001
-TIMEOUT_SECONDS = 30
+
+# The bound an artefact gets before it is recorded as `timeout` instead of hanging the job.
+#
+# Twenty seconds, and the number is measured rather than assumed. At thirty the corpus takes ten
+# minutes and measures twelve artefacts; at ten it takes four and measures ten, because two layers of
+# `substitute-easyeda` (mask-top, mask-bottom) terminate between ten and thirty seconds and are the
+# only real geometry that board contributes. Twenty keeps all twelve and still saves about three
+# minutes, and the eighteen layers that never terminate cost the rest.
+#
+# The bound is recorded in every golden, so changing it is a change to review, never a silent retune.
+TIMEOUT_SECONDS = 20
 
 ROLES = (
     "top",

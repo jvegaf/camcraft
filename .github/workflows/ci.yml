@@ -1,24 +1,39 @@
 name: CI
 
+# Two trunks, and the cost follows the trunk. `dev` is where work integrates: it runs the cheap
+# gates on every push, and the expensive measurement only when the change can move it. `master` is
+# the release trunk: it receives pull requests from `dev` and nothing else (branch protection
+# requires `gate`, `parity` and `bench` there), so the expensive gates run exactly when a release is
+# being prepared, not on every save.
+#
+# The job names are load-bearing: `gate`, `parity` and `bench` are the required status contexts of
+# the `master` protection rule. Renaming a job silently unrequires it.
 on:
   push:
-    branches: [master]
+    branches: [dev]
   pull_request:
+    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # One cache namespace for every job: the three jobs build the same workspace, and separate keys
+  # make each of them compile from cold.
+  CARGO_TERM_COLOR: always
+
 jobs:
   gate:
-    name: fmt, clippy, docs, test
+    name: gate
     runs-on: ubuntu-latest
     # GitHub's default is 360 minutes, so a hung build or test would sit there for six hours before
     # it says anything. Loose on purpose: a tripwire, not a budget the suite is tuned against.
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -27,6 +42,11 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: camcraft
+          # A pull request restores the cache and does not write one: the release trunk should not
+          # publish a cache entry that `dev` never produced.
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: Run project gates
         run: ./scripts/check.sh
@@ -35,26 +55,60 @@ jobs:
   # suite above with it. The corpus is committed, so `kicad-cli` is not needed (only `export.sh`
   # uses it, and regenerating the corpus is a reviewed human act, never CI). `--update` never runs
   # here for the same reason: re-pinning a golden is a change to review, not a gate.
+  #
+  # On `dev` the measurement runs only when the push can move it — the corpus, a parser, the kernel
+  # or the harness itself. On a release pull request it always runs, because a release is exactly
+  # the moment the numbers have to be true.
   parity:
-    name: parity corpus (W1a)
+    name: parity
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout (with the committed corpus)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          # The scope step diffs against the pushed-from commit, which a depth-1 clone does not have.
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: camcraft
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: Confirm the harness prerequisites
         run: |
           python3 --version
           cargo --version
 
+      - name: Decide whether this change can move the measurement
+        id: scope
+        run: |
+          # A release pull request, a manual run, or a push whose base we cannot see: measure. Only a
+          # `dev` push that provably touches none of the inputs is skipped, and even then the job
+          # reports success — it is a required context, and a required context that does not report
+          # blocks the release rather than passing it.
+          base="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" != "push" ] || [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "The measurement runs: this is a ${{ github.event_name }}, not a push with a base."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" "${{ github.sha }}")
+          echo "Changed files:"; echo "$changed"
+          if echo "$changed" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)'; then
+            echo "The measurement runs: the push touches a parser, the kernel, the corpus or the harness."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The measurement is skipped: nothing this push changes can move what the corpus measures."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Measure the corpus and compare it against its goldens
+        if: steps.scope.outputs.run == 'true'
         run: ./scripts/parity/run.sh
 
   # E0.7 / W1c. The baseline was recorded on the development machine, and criterion's comparison is
@@ -62,20 +116,27 @@ jobs:
   # by construction. This job therefore proves the benchmarks build and run against the committed
   # baseline and publishes the comparison; gating on a threshold needs a runner whose hardware the
   # baseline was recorded on, which is a decision nobody has taken yet.
+  #
+  # It runs on release pull requests and by hand, never on a `dev` push: building the benches is
+  # minutes nobody reads, and the question it answers ("did a change move the cost?") is asked before
+  # a release or after a suspicious commit.
   bench:
-    name: benchmarks (W1c)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    name: bench
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: camcraft
+          save-if: false
 
       - name: Run the benchmarks against the committed baseline
         run: |
@@ -86,7 +147,7 @@ jobs:
 
       - name: Upload the criterion report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: criterion-report
           path: target/criterion

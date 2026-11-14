@@ -1,7 +1,13 @@
 # AGENTS.md — Reglas para agentes en camcraft
 
+## Ramas: `dev` integra, `master` publica
+- **`dev` es el tronco de desarrollo.** Todo el trabajo integrado llega ahí; los pushes a `dev` corren los gates baratos (`gate` siempre, `parity` sólo si el push toca parsers, kernel, corpus o arnés).
+- **`master` es sólo releases.** Se mueve únicamente por PR desde `dev`, con tag (`v0.X.0`), y está protegida: `gate`, `parity` y `bench` son checks requeridos. No pushees directo a `master`.
+- El flujo completo, con los comandos de release, está en `odd/roadmap/workflow.md`.
+- **Instalá los hooks una vez por clon:** `just hooks` (pre-commit: fmt, links de docs, build del medidor de paridad; pre-push: clippy, tests y `parity` cuando el push puede moverlo).
+
 ## Desarrollo en worktrees (obligatorio para trabajo paralelo)
-- **Un agente = un worktree = una tarea.** Trabajá siempre en un worktree dedicado para la tarea que tomaste de `odd/tasks/INDEX.md`. No trabajes en el árbol principal (`master`).
+- **Un agente = un worktree = una tarea.** Trabajá siempre en un worktree dedicado para la tarea que tomaste de `odd/tasks/INDEX.md`. Las ramas de tarea salen de `dev`, no de `master`.
 - **Los worktrees los crea el humano con herdr**, no este repo: la ruta configurada es `~/.herdr/worktrees/<slug>`. La receta `just worktree N` sólo explica cómo pedirlo; no crea nada, y no hay `.worktrees/` en uso.
 - **Brama dedicada.** Usá `feat/NNN-<slug>` (o convención acordada) para cada tarea.
 - **Declará tus superficies antes de reclamar.** El documento de la tarea lleva un bloque:

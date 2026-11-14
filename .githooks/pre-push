@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# What a push pays for, while the commit is still local.
+#
+# This is the hook that pays for the cheap trunk: `dev` does not run the corpus measurement on every
+# push, so the push itself is the last moment to find out that a parser change moved the numbers. It
+# runs the parts of the gate that a push can invalidate, chosen from the range being pushed — read from
+# the remote-tracking branch, not from the working tree, so an uncommitted experiment never decides what
+# is verified.
+#
+# Skipped work says so, with the reason. A hook that silently checks nothing is worse than no hook.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+remote=${1:-origin}
+url=${2:-}
+
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
+if [ -n "$upstream" ] && git rev-parse --verify --quiet "$upstream" >/dev/null; then
+  base="$upstream"
+else
+  # No upstream yet (a branch's first push): compare with the trunk it will be merged into.
+  base=$(git rev-parse --verify --quiet 'origin/dev' || git rev-parse --verify --quiet 'origin/master' || true)
+fi
+
+if [ -z "${base:-}" ]; then
+  echo "pre-push: no base to diff against; running the whole gate."
+  ./scripts/check.sh
+  exit $?
+fi
+
+range="$base..HEAD"
+changed=$(git diff --name-only "$range")
+
+if [ -z "$changed" ]; then
+  echo "pre-push: nothing to push ($range is empty)."
+  exit 0
+fi
+
+run_clippy=false
+run_tests=false
+run_parity=false
+
+echo "$changed" | grep -qE '\.rs$|^Cargo\.(toml|lock)$' && { run_clippy=true; run_tests=true; }
+echo "$changed" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)' && run_parity=true
+
+echo "pre-push: pushing $(echo "$changed" | wc -l | tr -d ' ') changed file(s) over $range"
+
+if $run_clippy; then
+  echo "pre-push: clippy -D warnings"
+  cargo clippy --workspace --all-targets -- -D warnings
+else
+  echo "pre-push: clippy skipped (no Rust or manifest changed)"
+fi
+
+if $run_tests; then
+  echo "pre-push: cargo test --workspace"
+  cargo test --workspace
+else
+  echo "pre-push: tests skipped (no Rust or manifest changed)"
+fi
+
+if $run_parity; then
+  echo "pre-push: the corpus still matches its goldens"
+  ./scripts/parity/run.sh
+else
+  echo "pre-push: parity skipped (nothing pushed can move what the corpus measures)"
+fi

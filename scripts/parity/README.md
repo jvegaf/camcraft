@@ -84,7 +84,9 @@ against — of the **54 artefacts**: 12 are `parsed`, 24 are still `refused`, an
 
 Those 18 are the important line. They are not the layers the reader rejects: they are layers W2a/W2b
 now *accept* and hand to the geometry kernel, which does not finish evaluating them inside the harness'
-30 s bound. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
+20 s bound, down from 30 s: at ten the run takes four minutes but loses two `substitute-easyeda`
+layers that do terminate between ten and thirty, so twenty is the largest saving that keeps every
+measurement. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
 moved from "the reader says no" to "the kernel does not finish", and `timeout` is the harness recording
 that honestly instead of hanging CI. Their measurement is zeroed and the status is compared, so the day
 one of them finishes, the divergence says so in a single line.
