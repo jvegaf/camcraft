@@ -40,14 +40,16 @@ FLATTEN_TOLERANCE_MM = 0.001
 
 # The bound an artefact gets before it is recorded as `timeout` instead of hanging the job.
 #
-# Twenty seconds, and the number is measured rather than assumed. At thirty the corpus takes ten
-# minutes and measures twelve artefacts; at ten it takes four and measures ten, because two layers of
-# `substitute-easyeda` (mask-top, mask-bottom) terminate between ten and thirty seconds and are the
-# only real geometry that board contributes. Twenty keeps all twelve and still saves about three
-# minutes, and the eighteen layers that never terminate cost the rest.
+# Thirty seconds, and the number is now known to be about stability rather than about speed: two
+# layers of `substitute-easyeda` (mask-top, mask-bottom) terminate in roughly twenty seconds, so a
+# twenty-second bound flips them between `parsed` and `timeout` from run to run — the goldens then
+# disagree with the tree on a measurement nobody changed. Ten seconds is faster still and loses those
+# two outright. The eighteen that never terminate dominate the run either way; the honest saving is
+# not to lower the bound but to skip the measurement when a push cannot move it (see the `parity` job
+# in `.github/workflows/ci.yml`).
 #
 # The bound is recorded in every golden, so changing it is a change to review, never a silent retune.
-TIMEOUT_SECONDS = 20
+TIMEOUT_SECONDS = 30
 
 ROLES = (
     "top",

@@ -139,6 +139,14 @@ Nada de esto tiene ola asignada, y no es un olvido: **F4 (NCC), E4.3, E4.4, E5.3
 E6.x y E7.x** dependen de que existan E3.1/E3.2 y de que el arnés de W1a pueda medirlos. Asignarles
 agente hoy sería asignarles una interfaz imaginaria.
 
+**Después de que se complete la UI de placa (E6.x)**, y no antes: **el tope por artefacto del arnés de
+paridad (E0.4)**. Hoy el tope es único (30 s) y lo pagan por igual las dieciocho capas que no terminan y
+las doce que sí; un tope por artefacto —corto para las que no terminan, largo para las que el golden ya
+registra como terminantes— baja la corrida de diez minutos a unos cinco y la vuelve determinista (hoy dos
+capas de `substitute-easyeda` oscilan alrededor de los 20 s). Va detrás de la UI porque mueve
+`timeout_seconds` de campo por placa a campo por artefacto: es un cambio de esquema de los goldens, con
+su review y un único re-pin, y no conviene mezclarlo con la ola que está en curso.
+
 Lo único de las fases tardías que se puede adelantar sin riesgo es **E5.5 (escritores Gerber/Excellon
 en `cam-export`)**: no depende de nada del kernel, sólo de que W2a/W2b fijen el dialecto que se
 escribe. Cabe como ola 2c de un agente, con superficie `crates/cam-export/` y el round-trip contra

@@ -49,5 +49,5 @@
     }
   },
   "flatten_tolerance_mm": 0.001,
-  "timeout_seconds": 20
+  "timeout_seconds": 30
 }
