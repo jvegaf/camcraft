@@ -135,11 +135,11 @@ pub fn head_version() -> u32 {
 
 /// The kind of cutting tool a library row describes.
 ///
-/// The reference screen offers six kinds and this is that list, in its order. It has to be *stored*
-/// rather than derived, for one reason worth writing down: a drill and a V-bit are both described by an
-/// included angle, so no rule over the geometry can tell a 118° drill point from a 90° V. The shape
-/// families (the drawing still derives those) say how a tool is *drawn*; this says what the operator
-/// *called* it.
+/// The reference screen offers six kinds and PCB isolation adds a seventh; this is that list, in its
+/// order. It has to be *stored* rather than derived, for one reason worth writing down: a drill and a
+/// V-bit are both described by an included angle, so no rule over the geometry can tell a 118° drill
+/// point from a 90° V. The shape families (the drawing still derives those) say how a tool is *drawn*;
+/// this says what the operator *called* it.
 ///
 /// The stored code is [`ToolKind::raw`], and [`ToolKind::of`] is the only reader: a row whose code is
 /// [`ToolKind::LEGACY_RAW`] — every row `cam-cli tools add` has ever written — is read as the shape its
@@ -158,6 +158,8 @@ pub enum ToolKind {
   Engraving,
   /// A pointed drill.
   Drill,
+  /// A cutter used to mill isolation paths on a PCB.
+  IsolationMill,
 }
 
 impl ToolKind {
@@ -168,16 +170,17 @@ impl ToolKind {
   pub const LEGACY_RAW: u8 = 0;
 
   /// Every kind, in the order the form's combo offers them.
-  pub const ALL: [ToolKind; 6] = [
+  pub const ALL: [ToolKind; 7] = [
     ToolKind::FlatEndMill,
     ToolKind::BallNose,
     ToolKind::CornerRadius,
     ToolKind::VBit,
     ToolKind::Engraving,
     ToolKind::Drill,
+    ToolKind::IsolationMill,
   ];
 
-  /// The stored code: `1` to `6`, in [`ToolKind::ALL`]'s order. Never [`ToolKind::LEGACY_RAW`].
+  /// The stored code: `1` to `7`, in [`ToolKind::ALL`]'s order. Never [`ToolKind::LEGACY_RAW`].
   pub fn raw(self) -> u8 {
     match self {
       ToolKind::FlatEndMill => 1,
@@ -186,6 +189,7 @@ impl ToolKind {
       ToolKind::VBit => 4,
       ToolKind::Engraving => 5,
       ToolKind::Drill => 6,
+      ToolKind::IsolationMill => 7,
     }
   }
 
@@ -204,11 +208,12 @@ impl ToolKind {
 
   /// The kind a tool's geometry proves, for a row that carries no kind of its own.
   ///
-  /// A shape cannot prove `Drill` or `Engraving` — a drill's included angle reads exactly like a V's,
-  /// and an engraving cutter's flat end reads exactly like an end mill's — so those two are reachable
-  /// only by a stored code. The four that *are* provable are read the way the drawing reads them: an
-  /// included angle makes a V, a tip radius of exactly half the diameter makes a ball, any other tip
-  /// radius makes a corner radius, and no radius at all makes a flat end mill.
+  /// A shape cannot prove `Drill`, `Engraving` or `IsolationMill` — a drill's included angle reads
+  /// exactly like a V's, and a flat-ended engraving or isolation cutter reads exactly like an end
+  /// mill's — so those are reachable only by a stored code. The four that *are* provable are read the
+  /// way the drawing reads them: an included angle makes a V, a tip radius of exactly half the diameter
+  /// makes a ball, any other tip radius makes a corner radius, and no radius at all makes a flat end
+  /// mill.
   pub fn from_shape(geometry: &ToolGeometry) -> ToolKind {
     if geometry.included_angle.is_some() {
       return ToolKind::VBit;
@@ -231,6 +236,7 @@ impl ToolKind {
       ToolKind::VBit => "V-bit",
       ToolKind::Engraving => "Engraving",
       ToolKind::Drill => "Drill",
+      ToolKind::IsolationMill => "Isolation mill",
     }
   }
 
@@ -247,6 +253,7 @@ impl ToolKind {
       ToolKind::VBit => "v-bit",
       ToolKind::Engraving => "engraving",
       ToolKind::Drill => "drill",
+      ToolKind::IsolationMill => "isolation-mill",
     }
   }
 

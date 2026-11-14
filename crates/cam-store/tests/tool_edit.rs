@@ -92,6 +92,40 @@ fn a_declared_kind_wins_over_the_shape_because_a_drill_is_not_a_v() {
 }
 
 #[test]
+fn isolation_mill_is_a_real_kind_with_stable_identity() {
+  assert_eq!(ToolKind::IsolationMill.raw(), 7);
+  assert_eq!(ToolKind::IsolationMill.slug(), "isolation-mill");
+  assert_eq!(ToolKind::IsolationMill.label(), "Isolation mill");
+  assert_eq!(
+    ToolKind::from_raw(ToolKind::IsolationMill.raw()),
+    Some(ToolKind::IsolationMill)
+  );
+  assert_eq!(
+    ToolKind::from_slug("isolation-mill"),
+    Some(ToolKind::IsolationMill)
+  );
+  assert!(
+    ToolKind::ALL.contains(&ToolKind::IsolationMill),
+    "the kind is offered alongside the others"
+  );
+  let library = ToolLibrary::open_in_memory().expect("opens");
+  let mut tool = sound(1);
+  tool.geometry.id = "ISO1".to_owned();
+  tool.geometry.tool_type = ToolKind::IsolationMill.raw();
+  tool.geometry.included_angle = Some(Angle::from_degrees(30.0));
+  tool.geometry.flat_diameter = Some(Length::from_mm(0.1));
+  library.save_tool(&tool).expect("saves");
+  let read = library.tools().expect("lists");
+  assert_eq!(read.len(), 1);
+  assert_eq!(ToolKind::of(&read[0].geometry), ToolKind::IsolationMill);
+  assert_eq!(
+    read[0].geometry.included_angle,
+    Some(Angle::from_degrees(30.0))
+  );
+  assert_eq!(read[0].geometry.flat_diameter, Some(Length::from_mm(0.1)));
+}
+
+#[test]
 fn saving_a_tool_writes_the_geometry_the_cutting_data_and_the_link() {
   let library = ToolLibrary::open_in_memory().expect("opens");
   library.save_tool(&sound(1)).expect("saves");
