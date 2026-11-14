@@ -23,7 +23,7 @@ fn world_and_screen_round_trip() {
   ] {
     let back = camera.screen_to_world(camera.world_to_screen(world));
     assert!(
-      back.is_near(world, 1.0e-9),
+      back.is_near(world, cam_geom::TolerancePolicy::uniform(1.0e-9)),
       "{:?} came back as {:?}",
       world,
       back
@@ -37,7 +37,7 @@ fn the_centre_of_the_viewport_is_the_camera_centre() {
   let centre = camera.viewport().center();
   assert!(camera
     .screen_to_world(centre)
-    .is_near(camera.center(), 1.0e-9));
+    .is_near(camera.center(), cam_geom::TolerancePolicy::uniform(1.0e-9)));
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn zooming_keeps_the_world_point_under_the_cursor() {
   camera.zoom_at(anchor, 1.7);
   let after = camera.screen_to_world(anchor);
   assert!(
-    after.is_near(before, 1.0e-6),
+    after.is_near(before, cam_geom::TolerancePolicy::uniform(1.0e-6)),
     "the anchor drifted from {before:?} to {after:?}"
   );
   assert!(camera.pixels_per_mm() > 4.0, "zoom must actually increase");
@@ -139,7 +139,9 @@ fn zoom_to_fit_frames_the_job_inside_the_viewport_with_the_margin() {
   );
   assert!(top_right.y >= 20.0 - 1.0e-6, "clipped at the top");
   assert!(
-    bounds.center().is_near(camera.center(), 1.0e-9),
+    bounds
+      .center()
+      .is_near(camera.center(), cam_geom::TolerancePolicy::uniform(1.0e-9)),
     "fit must centre the job"
   );
 }

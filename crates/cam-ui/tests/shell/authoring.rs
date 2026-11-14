@@ -121,8 +121,13 @@ fn the_transform_group_reaches_translate_rotate_scale_and_mirror() {
   );
   let bounds = contour_of(&app, "E1").bounds();
   assert!(
-    bounds.min.is_near(Point2::new(10.0, 5.0), 1.0e-9)
-      && bounds.max.is_near(Point2::new(110.0, 65.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(10.0, 5.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ) && bounds.max.is_near(
+      Point2::new(110.0, 65.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "translate: {bounds:?}"
   );
 
@@ -135,8 +140,13 @@ fn the_transform_group_reaches_translate_rotate_scale_and_mirror() {
   );
   let bounds = contour_of(&app, "E1").bounds();
   assert!(
-    bounds.min.is_near(Point2::new(-110.0, -65.0), 1.0e-9)
-      && bounds.max.is_near(Point2::new(-10.0, -5.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(-110.0, -65.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ) && bounds.max.is_near(
+      Point2::new(-10.0, -5.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "rotate: {bounds:?}"
   );
 
@@ -151,8 +161,13 @@ fn the_transform_group_reaches_translate_rotate_scale_and_mirror() {
   );
   let bounds = contour_of(&app, "E1").bounds();
   assert!(
-    bounds.min.is_near(Point2::new(-220.0, -130.0), 1.0e-9)
-      && bounds.max.is_near(Point2::new(-20.0, -10.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(-220.0, -130.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ) && bounds.max.is_near(
+      Point2::new(-20.0, -10.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "scale: {bounds:?}"
   );
 
@@ -165,8 +180,13 @@ fn the_transform_group_reaches_translate_rotate_scale_and_mirror() {
   );
   let bounds = contour_of(&app, "E1").bounds();
   assert!(
-    bounds.min.is_near(Point2::new(20.0, -130.0), 1.0e-9)
-      && bounds.max.is_near(Point2::new(220.0, -10.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(20.0, -130.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ) && bounds.max.is_near(
+      Point2::new(220.0, -10.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "mirror: {bounds:?}"
   );
   assert_eq!(
@@ -271,13 +291,20 @@ fn the_offset_group_adds_a_contour_and_keeps_the_source() {
   assert_ne!(created, "E1", "the offset is a new entity");
   let bounds = contour_of(&app, &created).bounds();
   assert!(
-    bounds.min.is_near(Point2::new(-2.0, -2.0), 1.0e-9)
-      && bounds.max.is_near(Point2::new(102.0, 62.0), 1.0e-9),
+    bounds.min.is_near(
+      Point2::new(-2.0, -2.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ) && bounds.max.is_near(
+      Point2::new(102.0, 62.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "a rectangle offset by 2 mm grows by 2 mm on every side: {bounds:?}"
   );
   let source = contour_of(&app, "E1").bounds();
   assert!(
-    source.min.is_near(Point2::ORIGIN, 1.0e-9),
+    source
+      .min
+      .is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-9)),
     "the source must not move: {source:?}"
   );
 }
@@ -381,9 +408,10 @@ fn the_vertex_edit_group_moves_inserts_and_deletes_nodes() {
     }),
   );
   assert!(
-    contour_of(&app, "E1").vertices()[0]
-      .point
-      .is_near(Point2::new(-10.0, -10.0), 1.0e-9),
+    contour_of(&app, "E1").vertices()[0].point.is_near(
+      Point2::new(-10.0, -10.0),
+      cam_geom::TolerancePolicy::uniform(1.0e-9)
+    ),
     "moving vertex 0 must move it: {}",
     shell.status
   );

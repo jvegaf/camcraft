@@ -138,7 +138,7 @@ fn paint_item(
       // earlier in the pipeline.
       let tolerance_mm = 0.5 / camera.pixels_per_mm();
       arc
-        .tessellate(tolerance_mm)
+        .tessellate(cam_geom::TolerancePolicy::standard().with_chord(tolerance_mm))
         .into_iter()
         .map(|point| canvas.to_window(camera.world_to_screen(point)))
         .collect()

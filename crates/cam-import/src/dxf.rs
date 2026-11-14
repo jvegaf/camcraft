@@ -690,8 +690,13 @@ fn ellipse_entity(
 
   // A full ellipse stays arc-bearing: the rotation by the major-axis angle is exact on arcs.
   if raw_span.abs() >= TAU - tolerance {
-    let approximation = primitive::ellipse(center, major_length, minor_length, tolerance)
-      .map_err(|error| Stop::Skip(format!("cannot build the ellipse: {error}")))?;
+    let approximation = primitive::ellipse(
+      center,
+      major_length,
+      minor_length,
+      cam_geom::TolerancePolicy::standard().with_chord(tolerance),
+    )
+    .map_err(|error| Stop::Skip(format!("cannot build the ellipse: {error}")))?;
     if approximation.max_radial_error > tolerance {
       report.warn(format!(
         "a full ellipse is approximated by {} arcs with a radial error of {:.4} mm, above the \
@@ -810,7 +815,7 @@ fn scale_contour(
     scale,
     scale,
     Point2::ORIGIN,
-    flatten_tolerance(options),
+    cam_geom::TolerancePolicy::standard().with_chord(flatten_tolerance(options)),
   )
   .map(|outcome| outcome.contour)
   .map_err(|error| ImportError::parse_plain(FORMAT, error.to_string()))

@@ -111,8 +111,8 @@ pub enum DrawShape {
     rx: f64,
     /// Radius along Y, in millimetres.
     ry: f64,
-    /// Largest radial error the caller accepts, in millimetres.
-    tolerance: f64,
+    /// Tolerance policy for the approximation, in millimetres.
+    tolerance: cam_geom::TolerancePolicy,
   },
   /// A circle, stored as two half-turn arcs.
   Circle {

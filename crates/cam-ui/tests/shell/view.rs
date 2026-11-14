@@ -67,7 +67,10 @@ fn a_degenerate_canvas_is_never_framed() {
     1.0,
     "a 24x18 canvas must not be framed"
   );
-  assert!(app.camera().center().is_near(Point2::ORIGIN, 1.0e-9));
+  assert!(app
+    .camera()
+    .center()
+    .is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-9)));
 
   // The real layout arrives and the drawing is framed.
   let real = cam_ui::CanvasRect {

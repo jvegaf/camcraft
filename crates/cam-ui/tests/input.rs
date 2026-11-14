@@ -411,9 +411,17 @@ fn hovering_a_corner_reports_a_snap_marker_and_the_status_readout() {
     .shell
     .snap_marker
     .expect("a corner must offer a snap point");
-  assert!(marker.1.is_near(Point2::ORIGIN, 1.0e-6), "{marker:?}");
+  assert!(
+    marker
+      .1
+      .is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-6)),
+    "{marker:?}"
+  );
   let world = harness.shell.cursor_world.expect("cursor world position");
-  assert!(world.is_near(Point2::ORIGIN, 1.0e-6), "{world:?}");
+  assert!(
+    world.is_near(Point2::ORIGIN, cam_geom::TolerancePolicy::uniform(1.0e-6)),
+    "{world:?}"
+  );
   assert!(harness.output.drawn.status_line.contains("X"));
 }
 
@@ -444,7 +452,10 @@ fn a_rectangle_drag_draws_one_command_of_the_dragged_world_size() {
     );
   };
   assert!(
-    at.is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM),
+    at.is_near(
+      Point2::new(10.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(GESTURE_TOLERANCE_MM)
+    ),
     "{at:?}"
   );
   assert!(
@@ -483,12 +494,13 @@ fn a_rectangle_drag_draws_one_command_of_the_dragged_world_size() {
     .expect("a contour")
     .bounds();
   assert!(
-    bounds
-      .min
-      .is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM)
-      && bounds
-        .max
-        .is_near(Point2::new(90.0, 50.0), GESTURE_TOLERANCE_MM),
+    bounds.min.is_near(
+      Point2::new(10.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(GESTURE_TOLERANCE_MM)
+    ) && bounds.max.is_near(
+      Point2::new(90.0, 50.0),
+      cam_geom::TolerancePolicy::uniform(GESTURE_TOLERANCE_MM)
+    ),
     "the stored rectangle must be the dragged one, got {bounds:?}"
   );
 
@@ -530,11 +542,17 @@ fn a_line_drag_draws_one_open_line_even_when_it_is_horizontal() {
     );
   };
   assert!(
-    from.is_near(Point2::new(10.0, 10.0), GESTURE_TOLERANCE_MM),
+    from.is_near(
+      Point2::new(10.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(GESTURE_TOLERANCE_MM)
+    ),
     "{from:?}"
   );
   assert!(
-    to.is_near(Point2::new(90.0, 10.0), GESTURE_TOLERANCE_MM),
+    to.is_near(
+      Point2::new(90.0, 10.0),
+      cam_geom::TolerancePolicy::uniform(GESTURE_TOLERANCE_MM)
+    ),
     "{to:?}"
   );
 

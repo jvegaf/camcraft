@@ -14,7 +14,7 @@ use cam_ops::{PocketParams, PocketStrategy};
 use cam_units::Length;
 
 /// Tolerance for a coordinate the kernel computes analytically.
-const TOLERANCE: f64 = 1.0e-6;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-6);
 
 /// Tolerance for a raster row's Y, in millimetres.
 ///
@@ -133,7 +133,9 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         previous = Some(to);
       }
       Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
-        if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
+        if previous.map_or(true, |last| {
+          !last.is_near(to, cam_geom::TolerancePolicy::uniform(1.0e-9))
+        }) {
           points.push(to);
           previous = Some(to);
         }
@@ -188,7 +190,7 @@ fn sampled(span: (Point2, Point2), step: f64) -> Vec<Point2> {
 fn row_y(unit: &[Move]) -> f64 {
   let (start, end) = row_span(unit);
   assert!(
-    (start.y - end.y).abs() < TOLERANCE,
+    (start.y - end.y).abs() < TOLERANCE.epsilon,
     "a raster row is horizontal, got {} and {}",
     start.y,
     end.y
@@ -244,7 +246,7 @@ fn a_row_crossing_an_island_is_cut_as_two_spans() {
     if *span_count == 1 {
       let (start, end) = row_span(first);
       assert!(
-        (start.x - 3.0).abs() < TOLERANCE && (end.x - 97.0).abs() < TOLERANCE,
+        (start.x - 3.0).abs() < TOLERANCE.epsilon && (end.x - 97.0).abs() < TOLERANCE.epsilon,
         "row {k} misses the island and spans x 3…97, got {}…{}",
         start.x,
         end.x
@@ -265,30 +267,30 @@ fn a_row_crossing_an_island_is_cut_as_two_spans() {
     };
     let half = (13.0f64.powi(2) - (y - 50.0).powi(2)).sqrt();
     assert!(
-      (left.0.x - 3.0).abs() < TOLERANCE,
+      (left.0.x - 3.0).abs() < TOLERANCE.epsilon,
       "row {k} starts on the wall, got {}",
       left.0.x
     );
     assert!(
-      (left.1.x - (50.0 - half)).abs() < TOLERANCE,
+      (left.1.x - (50.0 - half)).abs() < TOLERANCE.epsilon,
       "row {k} should end on the island at x = {}, got {}",
       50.0 - half,
       left.1.x
     );
     assert!(
-      (right.0.x - (50.0 + half)).abs() < TOLERANCE,
+      (right.0.x - (50.0 + half)).abs() < TOLERANCE.epsilon,
       "row {k} should resume at x = {}, got {}",
       50.0 + half,
       right.0.x
     );
     assert!(
-      (right.1.x - 97.0).abs() < TOLERANCE,
+      (right.1.x - 97.0).abs() < TOLERANCE.epsilon,
       "row {k} ends on the far wall, got {}",
       right.1.x
     );
     for span in [left, right] {
       assert!(
-        (span.0.y - y).abs() < TOLERANCE && (span.1.y - y).abs() < TOLERANCE,
+        (span.0.y - y).abs() < TOLERANCE.epsilon && (span.1.y - y).abs() < TOLERANCE.epsilon,
         "both spans of row {k} lie at y = {y}"
       );
     }
@@ -312,7 +314,7 @@ fn no_cutting_move_passes_through_the_island() {
       for point in sampled(span, CUT_STEP) {
         let clearance = distance_to(&island, point);
         assert!(
-          clearance >= 3.0 - TOLERANCE,
+          clearance >= 3.0 - TOLERANCE.epsilon,
           "unit {index} cuts {point:?}, only {clearance} mm from the island: the tool radius is 3"
         );
       }
@@ -348,7 +350,7 @@ fn a_row_the_island_covers_entirely_emits_nothing() {
     );
     let (start, end) = row_span(&units[index]);
     assert!(
-      (start.x - 3.0).abs() < TOLERANCE && (end.x - 97.0).abs() < TOLERANCE,
+      (start.x - 3.0).abs() < TOLERANCE.epsilon && (end.x - 97.0).abs() < TOLERANCE.epsilon,
       "row {index} should span the full wall, got {}…{}",
       start.x,
       end.x
@@ -416,7 +418,7 @@ fn a_row_touching_a_narrow_island_strip_never_emits_an_unpaired_span() {
     if *span_count == 1 {
       let (start, end) = row_span(first);
       assert!(
-        (start.x - 3.0).abs() < TOLERANCE && (end.x - 97.0).abs() < TOLERANCE,
+        (start.x - 3.0).abs() < TOLERANCE.epsilon && (end.x - 97.0).abs() < TOLERANCE.epsilon,
         "row {k} misses the strip, got {}…{}",
         start.x,
         end.x
@@ -430,7 +432,7 @@ fn a_row_touching_a_narrow_island_strip_never_emits_an_unpaired_span() {
         (right, left)
       };
       assert!(
-        (left.1.x - 37.0).abs() < TOLERANCE && (right.0.x - 63.0).abs() < TOLERANCE,
+        (left.1.x - 37.0).abs() < TOLERANCE.epsilon && (right.0.x - 63.0).abs() < TOLERANCE.epsilon,
         "row {k} should stop at x = 37 and resume at x = 63, got {} and {}",
         left.1.x,
         right.0.x

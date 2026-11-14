@@ -12,7 +12,7 @@ use cam_ops::{pocket, PocketRequest, Pocketpath, ToolSpec, ToolpathError};
 use cam_ops::{PocketParams, PocketStrategy};
 use cam_units::Length;
 
-const TOLERANCE: f64 = 1.0e-6;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-6);
 
 /// Tolerance for a raster row's Y, in millimetres.
 ///
@@ -146,7 +146,9 @@ fn cut_path(unit: &[Move]) -> Vec<Point2> {
         previous = Some(to);
       }
       Move::Feed { .. } | Move::Arc { .. } | Move::Helix { .. } => {
-        if previous.map_or(true, |last| !last.is_near(to, 1.0e-9)) {
+        if previous.map_or(true, |last| {
+          !last.is_near(to, cam_geom::TolerancePolicy::uniform(1.0e-9))
+        }) {
           points.push(to);
           previous = Some(to);
         }
@@ -239,14 +241,15 @@ fn offset_square_cuts_twelve_rings_at_expected_insets() {
     let (min_x, min_y, max_x, max_y) = xy_bounds(&points);
     let side = 100.0 - 2.0 * inset;
     assert!(
-      (min_x - inset).abs() < TOLERANCE
-        && (min_y - inset).abs() < TOLERANCE
-        && (max_x - (100.0 - inset)).abs() < TOLERANCE
-        && (max_y - (100.0 - inset)).abs() < TOLERANCE,
+      (min_x - inset).abs() < TOLERANCE.epsilon
+        && (min_y - inset).abs() < TOLERANCE.epsilon
+        && (max_x - (100.0 - inset)).abs() < TOLERANCE.epsilon
+        && (max_y - (100.0 - inset)).abs() < TOLERANCE.epsilon,
       "ring {index} should sit at inset {inset}, got {min_x}..{max_x} x {min_y}..{max_y}"
     );
     assert!(
-      (max_x - min_x - side).abs() < TOLERANCE && (max_y - min_y - side).abs() < TOLERANCE,
+      (max_x - min_x - side).abs() < TOLERANCE.epsilon
+        && (max_y - min_y - side).abs() < TOLERANCE.epsilon,
       "ring {index} should be a {side} mm square"
     );
     assert_eq!(arc_moves(unit), 0, "a square ring has no arcs");
@@ -282,7 +285,7 @@ fn raster_square_cuts_rows_at_stepover_spacing() {
     );
     let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
     assert!(
-      (min_x - 3.0).abs() < TOLERANCE && (max_x - 97.0).abs() < TOLERANCE,
+      (min_x - 3.0).abs() < TOLERANCE.epsilon && (max_x - 97.0).abs() < TOLERANCE.epsilon,
       "row {index} should span x 3…97, got {min_x}…{max_x}"
     );
     assert_eq!(arc_moves(unit), 0, "raster rows are straight");
@@ -335,7 +338,7 @@ fn a_stepover_that_stops_short_is_finished_at_the_far_edge_and_never_twice() {
   );
   let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
   assert!(
-    (min_x - 3.0).abs() < TOLERANCE && (max_x - 97.0).abs() < TOLERANCE,
+    (min_x - 3.0).abs() < TOLERANCE.epsilon && (max_x - 97.0).abs() < TOLERANCE.epsilon,
     "the finishing row should span x 3…97, got {min_x}…{max_x}"
   );
 
@@ -416,7 +419,7 @@ fn a_raster_row_on_the_region_far_edge_is_cut() {
     );
     let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
     assert!(
-      (min_x - 1.0).abs() < TOLERANCE && (max_x - 99.0).abs() < TOLERANCE,
+      (min_x - 1.0).abs() < TOLERANCE.epsilon && (max_x - 99.0).abs() < TOLERANCE.epsilon,
       "row {index} should span x 1…99, got {min_x}…{max_x}"
     );
   }
@@ -486,17 +489,17 @@ fn allowance_insets_every_ring_and_row_by_one_millimetre() {
     .flat_map(|(a, b)| [*a, *b])
     .collect();
   let (min_x, min_y, max_x, max_y) = xy_bounds(&first);
-  assert!((min_x - 4.0).abs() < TOLERANCE, "min x {min_x}");
-  assert!((min_y - 4.0).abs() < TOLERANCE, "min y {min_y}");
-  assert!((max_x - 96.0).abs() < TOLERANCE, "max x {max_x}");
-  assert!((max_y - 96.0).abs() < TOLERANCE, "max y {max_y}");
+  assert!((min_x - 4.0).abs() < TOLERANCE.epsilon, "min x {min_x}");
+  assert!((min_y - 4.0).abs() < TOLERANCE.epsilon, "min y {min_y}");
+  assert!((max_x - 96.0).abs() < TOLERANCE.epsilon, "max x {max_x}");
+  assert!((max_y - 96.0).abs() < TOLERANCE.epsilon, "max y {max_y}");
   let second: Vec<Point2> = cut_spans(&units[1])
     .iter()
     .flat_map(|(a, b)| [*a, *b])
     .collect();
   let (second_min_x, _, _, _) = xy_bounds(&second);
   assert!(
-    (second_min_x - 8.0).abs() < TOLERANCE,
+    (second_min_x - 8.0).abs() < TOLERANCE.epsilon,
     "rings stay one stepover apart, got {second_min_x}"
   );
 
@@ -507,8 +510,11 @@ fn allowance_insets_every_ring_and_row_by_one_millimetre() {
   let units = work_units(&raster.moves);
   let (start, end) = cut_spans(&units[0])[0];
   let (min_x, _, max_x, _) = xy_bounds(&[start, end]);
-  assert!((min_x - 4.0).abs() < TOLERANCE, "row min x {min_x}");
-  assert!((max_x - 96.0).abs() < TOLERANCE, "row max x {max_x}");
+  assert!((min_x - 4.0).abs() < TOLERANCE.epsilon, "row min x {min_x}");
+  assert!(
+    (max_x - 96.0).abs() < TOLERANCE.epsilon,
+    "row max x {max_x}"
+  );
   assert!((start.y - 4.0).abs() < ROW_TOLERANCE, "row y {}", start.y);
 }
 
@@ -544,7 +550,7 @@ fn tool_wider_than_the_pocket_is_refused_as_offset_collapsed() {
     .flat_map(|(a, b)| [*a, *b])
     .collect();
   let (min_x, _, max_x, _) = xy_bounds(&points);
-  assert!((min_x - 2.0).abs() < TOLERANCE && (max_x - 3.0).abs() < TOLERANCE);
+  assert!((min_x - 2.0).abs() < TOLERANCE.epsilon && (max_x - 3.0).abs() < TOLERANCE.epsilon);
 }
 
 #[test]
@@ -568,7 +574,7 @@ fn circle_raster_spans_match_the_analytic_chord() {
     assert_eq!(spans.len(), 1, "a row across a circle is one span");
     let (start, end) = spans[0];
     assert!(
-      (start.y - end.y).abs() < TOLERANCE,
+      (start.y - end.y).abs() < TOLERANCE.epsilon,
       "a row is horizontal, got {} and {}",
       start.y,
       end.y
@@ -577,12 +583,12 @@ fn circle_raster_spans_match_the_analytic_chord() {
     let half_chord = (17.0f64.powi(2) - (y - 50.0).powi(2)).max(0.0).sqrt();
     let width = (end.x - start.x).abs();
     assert!(
-      (width - 2.0 * half_chord).abs() < TOLERANCE,
+      (width - 2.0 * half_chord).abs() < TOLERANCE.epsilon,
       "row at y = {y} should be {} mm wide, got {width}",
       2.0 * half_chord
     );
     assert!(
-      ((start.x + end.x) / 2.0 - 50.0).abs() < TOLERANCE,
+      ((start.x + end.x) / 2.0 - 50.0).abs() < TOLERANCE.epsilon,
       "the span is centred on the inset circle"
     );
   }
@@ -605,13 +611,13 @@ fn tangent_raster_row_never_emits_an_unpaired_span() {
     assert_eq!(spans.len(), 1, "every span is a single paired piece");
     let (start, end) = spans[0];
     assert!(
-      (start.y - end.y).abs() < TOLERANCE && (start.x - end.x).abs() > 0.0,
+      (start.y - end.y).abs() < TOLERANCE.epsilon && (start.x - end.x).abs() > 0.0,
       "a span is a horizontal piece of material, not a point"
     );
     for point in [start, end] {
       let radius = point.distance_to(Point2::new(50.0, 50.0));
       assert!(
-        (radius - 17.0).abs() < TOLERANCE,
+        (radius - 17.0).abs() < TOLERANCE.epsilon,
         "span end {point:?} must lie on the inset circle, radius {radius}"
       );
     }

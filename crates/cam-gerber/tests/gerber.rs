@@ -302,7 +302,7 @@ fn a_file_that_ends_inside_an_extended_block_is_refused() {
   assert!(error.to_string().contains("never closed"), "{error}");
 }
 
-const TOLERANCE: f64 = 1.0e-6;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-6);
 
 #[test]
 fn a_region_square_becomes_one_closed_boundary_of_four_lines_with_expected_bounds() {

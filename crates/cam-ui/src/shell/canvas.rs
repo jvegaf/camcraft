@@ -182,7 +182,10 @@ impl Shell {
     let before_centre = app.camera().center();
     self.frame_document(app, canvas);
     (app.camera().pixels_per_mm() - before_zoom).abs() > 1.0e-6
-      || !app.camera().center().is_near(before_centre, 1.0e-6)
+      || !app
+        .camera()
+        .center()
+        .is_near(before_centre, cam_geom::TolerancePolicy::uniform(1.0e-6))
   }
 
   /// Frame the document for this canvas.

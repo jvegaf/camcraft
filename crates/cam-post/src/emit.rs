@@ -529,7 +529,9 @@ fn index_by_source(post: &PostProcessor) -> BTreeMap<String, VarSpec> {
 
 /// True when the move descends without changing XY, which the dialect calls a plunge.
 fn is_plunge(from: Point3, to: Point3) -> bool {
-  let same_xy = from.xy().is_near(to.xy(), 1.0e-9);
+  let same_xy = from
+    .xy()
+    .is_near(to.xy(), cam_geom::TolerancePolicy::uniform(1.0e-9));
   to.z.mm() < from.z.mm() && same_xy
 }
 

@@ -346,7 +346,9 @@ pub fn vector_lines(document: &cam_model::Document) -> Vec<Line3> {
         sweep,
         ..
       } => match cam_geom::Arc::new(*center, *radius, *start_angle, *sweep) {
-        Ok(arc) => arc.tessellate(VECTOR_TOLERANCE_MM),
+        Ok(arc) => {
+          arc.tessellate(cam_geom::TolerancePolicy::standard().with_chord(VECTOR_TOLERANCE_MM))
+        }
         // An arc the kernel will not build is dropped rather than replaced with an invented chord: a vector
         // drawn as a line it is not would be a picture of a document that does not exist.
         Err(_) => continue,
@@ -400,7 +402,7 @@ fn path_points(from: Point3, movement: Move, tolerance: f64) -> Vec<(Point3, Poi
   } else {
     ARC_TOLERANCE_PX
   };
-  let points = arc.tessellate(tolerance);
+  let points = arc.tessellate(cam_geom::TolerancePolicy::standard().with_chord(tolerance));
   let (start_z, end_z) = (from.z.mm(), to.z.mm());
   let last = points.len().saturating_sub(1).max(1) as f64;
   let mut edges = Vec::with_capacity(points.len());

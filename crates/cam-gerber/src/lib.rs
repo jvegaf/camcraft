@@ -8,7 +8,7 @@
 use cam_geom::boolean::{combine, BooleanOp, Combined};
 use cam_geom::primitive;
 use cam_geom::region::Region;
-use cam_geom::{Arc, Contour, LineSeg, Point2, Segment};
+use cam_geom::{Arc, Contour, LineSeg, Point2, Segment, TolerancePolicy};
 use std::f64::consts::TAU;
 
 /// Why a Gerber file could not be read.
@@ -190,7 +190,7 @@ impl Gerber {
   /// cannot build yet (`Flash`, a draw outside a region, an arc whose centre cannot be derived, or
   /// a region with fewer than three segments). `Command` carries no source line number, so the
   /// refusal reports the command index in `what` and uses `0` for `line`.
-  pub fn image(&self, tolerance: f64) -> Result<Region, GerberError> {
+  pub fn image(&self, tolerance: TolerancePolicy) -> Result<Region, GerberError> {
     let mut current: Option<Point2> = None;
     let mut polarity = Polarity::Dark;
     let mut selected_aperture: Option<u32> = None;
@@ -262,7 +262,7 @@ impl Gerber {
             what: format!("command {index}: a line without a current point"),
           })?;
           if in_region {
-            if from.is_near(to, 0.0) {
+            if from.distance_to(to) == 0.0 {
               return Err(GerberError::Unsupported {
                 line: 0,
                 what: format!("command {index}: a zero-length line in a region"),
@@ -444,7 +444,7 @@ fn apply_region(
   image: Region,
   region: &Region,
   polarity: Polarity,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let op = match polarity {
@@ -677,7 +677,7 @@ fn lex_parameter(text: &str, modifiers: &[f64]) -> Result<(Vec<f64>, Vec<char>),
 pub fn macro_region(
   definition: &Macro,
   modifiers: &[f64],
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let name = definition.name.as_str();
@@ -705,7 +705,7 @@ fn macro_primitive(
   primitive: &MacroPrimitive,
   macro_name: &str,
   modifiers: &[f64],
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let code = primitive.code;
@@ -838,7 +838,7 @@ fn stroke_of(
   aperture: &Aperture,
   code: u32,
   macros: &[Macro],
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let template = aperture.template.as_str();
@@ -920,7 +920,7 @@ fn obround_stroke(
   to: Point2,
   width: f64,
   height: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   if (width - height).abs() <= 0.0 {
@@ -982,7 +982,7 @@ fn swept_rectangle(
   to: Point2,
   width: f64,
   height: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let corners = |at: Point2| {
@@ -1011,7 +1011,7 @@ fn swept_rectangle(
     let (bx, by) = (start[next].x, start[next].y);
     // An edge along the segment sweeps to a sliver of no material; adding it would only ask the
     // arrangement to chain four collinear points.
-    if ((bx - ax) * dy - (by - ay) * dx).abs() <= tolerance {
+    if ((bx - ax) * dy - (by - ay) * dx).abs() <= tolerance.epsilon {
       continue;
     }
     let quad = vec![start[edge], start[next], end[next], end[edge]];
@@ -1037,7 +1037,7 @@ fn capsule(
   from: Point2,
   to: Point2,
   diameter: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let radius = diameter / 2.0;
@@ -1056,7 +1056,7 @@ fn capsule(
   let dx = to.x - from.x;
   let dy = to.y - from.y;
   let length = (dx * dx + dy * dy).sqrt();
-  if length > tolerance {
+  if length > tolerance.epsilon {
     // The body's axis is the segment, so its half-width is the segment's normal at the radius.
     let nx = -dy / length * radius;
     let ny = dx / length * radius;
@@ -1088,7 +1088,7 @@ fn obround_region(
   at: Point2,
   width: f64,
   height: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
   context: &str,
 ) -> Result<Region, GerberError> {
@@ -1138,7 +1138,7 @@ fn macro_stroke(
   to: Point2,
   local: &Region,
   template: &str,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   if local.boundaries.len() > 1 && has_nested_boundary(local, tolerance) {
@@ -1180,7 +1180,7 @@ fn macro_stroke(
 /// Nested boundaries (a hole inside an outer contour) cannot be swept as independent filled shapes
 /// without filling the void. Disjoint outer contours have no containment relationship and may be
 /// swept and unioned safely.
-fn has_nested_boundary(region: &Region, tolerance: f64) -> bool {
+fn has_nested_boundary(region: &Region, tolerance: TolerancePolicy) -> bool {
   use cam_geom::winding::{classify, Membership};
 
   let boundaries = &region.boundaries;
@@ -1214,7 +1214,7 @@ fn sweep_linear_contour(
   from: Point2,
   to: Point2,
   contour: &Contour,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let v_from = cam_geom::Vec2::new(from.x, from.y);
@@ -1255,7 +1255,7 @@ fn sweep_linear_contour(
     let ex = b.x - a.x;
     let ey = b.y - a.y;
     // An edge parallel to the sweep direction sweeps to no area.
-    if (ex * dy - ey * dx).abs() <= tolerance {
+    if (ex * dy - ey * dx).abs() <= tolerance.epsilon {
       continue;
     }
     let c = Point2::new(b.x + dx, b.y + dy);
@@ -1277,7 +1277,7 @@ fn sweep_linear_contour(
 fn union_of(
   image: Region,
   region: Region,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
   index: usize,
 ) -> Result<Region, GerberError> {
   let combined = combine(&image, &region, BooleanOp::Union, tolerance).map_err(|error| {

@@ -58,7 +58,7 @@ fn assert_near(actual: f64, expected: f64, what: &str) {
 
 fn assert_point(actual: Point2, expected: Point2, what: &str) {
   assert!(
-    actual.is_near(expected, 1e-9),
+    actual.is_near(expected, cam_geom::TolerancePolicy::uniform(1e-9)),
     "{what}: expected {expected:?}, got {actual:?}"
   );
 }
