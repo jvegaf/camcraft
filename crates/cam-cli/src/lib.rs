@@ -55,7 +55,7 @@ COMMANDS:
                               nesting stored
         --out <path>          Write the HTML to a file instead of stdout
     tools list <library>      List the tools in a SQLite library
-    tools add <library>       Add a tool (--id, --diameter, --number)
+    tools add <library>       Add a tool (--id, --diameter, --number; --kind, geometry and cutting flags)
     postp validate <file>     Parse a .pp post-processor and report what it declares
     script <file.cam>         Run a command language script against the document it opens. It takes no
                               --out and writes nothing except the document a `save` line names. It
@@ -548,6 +548,19 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
       let mut diameter = None;
       let mut number = None;
       let mut name_format = String::from("{Tool Type} ({Diameter|F}{Units Short})");
+      let mut kind = cam_store::tools::ToolKind::FlatEndMill;
+      let mut flutes: u32 = 2;
+      let mut included_angle = None;
+      let mut flat_diameter = None;
+      let mut tip_radius = None;
+      let mut flute_length = None;
+      let mut shank_diameter = None;
+      let mut overall_length = None;
+      let mut feed: Option<f64> = Some(100.0);
+      let mut plunge: Option<f64> = Some(30.0);
+      let mut spindle: Option<u32> = Some(18_000);
+      let mut stepdown = Some(cam_units::Length::from_mm(6.0));
+      let mut stepover = None;
       let mut index = 0;
       while index < rest.len() - 1 {
         let argument = &rest[index + 1];
@@ -574,6 +587,121 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
             }
             index += 2;
           }
+          "--kind" => {
+            let Some(value) = rest.get(index + 2) else {
+              return Err(Failure::input("--kind requires a value"));
+            };
+            kind = cam_store::tools::ToolKind::from_slug(value)
+              .ok_or_else(|| Failure::input(format!("unknown tool kind {value:?}")))?;
+            index += 2;
+          }
+          "--flutes" => {
+            flutes = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<u32>().ok())
+              .ok_or_else(|| Failure::input("--flutes requires an integer value"))?;
+            index += 2;
+          }
+          "--included-angle" => {
+            included_angle = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Angle::from_degrees);
+            if included_angle.is_none() {
+              return Err(Failure::input("--included-angle requires a number"));
+            }
+            index += 2;
+          }
+          "--flat-diameter" => {
+            flat_diameter = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Length::from_mm);
+            if flat_diameter.is_none() {
+              return Err(Failure::input("--flat-diameter requires a number"));
+            }
+            index += 2;
+          }
+          "--tip-radius" => {
+            tip_radius = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Length::from_mm);
+            if tip_radius.is_none() {
+              return Err(Failure::input("--tip-radius requires a number"));
+            }
+            index += 2;
+          }
+          "--flute-length" => {
+            flute_length = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Length::from_mm);
+            if flute_length.is_none() {
+              return Err(Failure::input("--flute-length requires a number"));
+            }
+            index += 2;
+          }
+          "--shank-diameter" => {
+            shank_diameter = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Length::from_mm);
+            if shank_diameter.is_none() {
+              return Err(Failure::input("--shank-diameter requires a number"));
+            }
+            index += 2;
+          }
+          "--overall-length" => {
+            overall_length = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(cam_units::Length::from_mm);
+            if overall_length.is_none() {
+              return Err(Failure::input("--overall-length requires a number"));
+            }
+            index += 2;
+          }
+          "--feed" => {
+            feed = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(Some)
+              .ok_or_else(|| Failure::input("--feed requires a number"))?;
+            index += 2;
+          }
+          "--plunge" => {
+            plunge = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(Some)
+              .ok_or_else(|| Failure::input("--plunge requires a number"))?;
+            index += 2;
+          }
+          "--spindle" => {
+            spindle = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<u32>().ok())
+              .map(Some)
+              .ok_or_else(|| Failure::input("--spindle requires an integer value"))?;
+            index += 2;
+          }
+          "--stepdown" => {
+            stepdown = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(|value| Some(cam_units::Length::from_mm(value)))
+              .ok_or_else(|| Failure::input("--stepdown requires a number"))?;
+            index += 2;
+          }
+          "--stepover" => {
+            stepover = rest
+              .get(index + 2)
+              .and_then(|value| value.parse::<f64>().ok())
+              .map(|value| Some(cam_units::Length::from_mm(value)))
+              .ok_or_else(|| Failure::input("--stepover requires a number"))?;
+            index += 2;
+          }
           other if !other.starts_with('-') && path.is_none() => {
             path = Some(PathBuf::from(other));
             index += 1;
@@ -591,41 +719,42 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
       let number = number.ok_or_else(|| Failure::input("tools add requires --number"))?;
 
       let library = ToolLibrary::open(&path).map_err(|error| Failure::input(error.to_string()))?;
-      library
-        .put_geometry(&ToolGeometry {
+      let tool = cam_store::tools::StoredTool {
+        geometry: ToolGeometry {
           id: id.clone(),
           name_format,
-          tool_type: 0,
+          tool_type: kind.raw(),
           units: cam_units::UnitSystem::Mm,
           diameter: Some(cam_units::Length::from_mm(diameter)),
-          included_angle: None,
-          flat_diameter: None,
-          num_flutes: Some(2),
-          flute_length: None,
-          tip_radius: None,
-          shank_diameter: None,
-          overall_length: None,
+          included_angle,
+          flat_diameter,
+          num_flutes: Some(flutes),
+          flute_length,
+          tip_radius,
+          shank_diameter,
+          overall_length,
           custom_attributes: None,
-        })
-        .map_err(|error| Failure::input(error.to_string()))?;
-      library
-        .put_cutting_data(&CuttingData {
+        },
+        cutting: CuttingData {
           id: format!("{id}-cut"),
           rate_units: cam_units::UnitSystem::Mm,
-          feed_rate: Some(100.0),
-          plunge_rate: Some(30.0),
-          spindle_speed: Some(18_000),
-          stepdown: Some(cam_units::Length::from_mm(6.0)),
-          stepover: None,
+          feed_rate: feed,
+          plunge_rate: plunge,
+          spindle_speed: spindle,
+          stepdown,
+          stepover,
           clear_stepover: None,
           tool_number: Some(number),
           notes: None,
-        })
-        .map_err(|error| Failure::input(error.to_string()))?;
+        },
+      };
       library
-        .link(&format!("{id}-link"), &id, &format!("{id}-cut"), None, None)
+        .save_tool(&tool)
         .map_err(|error| Failure::input(error.to_string()))?;
-      println!("added {id} as T{number} with a {diameter} mm diameter");
+      println!(
+        "added {id} as T{number} with a {diameter} mm diameter ({})",
+        kind.slug()
+      );
       Ok(())
     }
     other => Err(Failure::input(format!(

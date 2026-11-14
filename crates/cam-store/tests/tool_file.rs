@@ -146,3 +146,23 @@ fn a_drill_and_a_v_bit_stay_apart_through_a_file() {
   let read = from_json(&text).expect("reads");
   assert_eq!(ToolKind::of(&read[0].geometry), ToolKind::Drill);
 }
+
+#[test]
+fn an_isolation_mill_stays_a_real_type_through_a_file() {
+  let mut tool = inch_library_tool();
+  tool.geometry.tool_type = ToolKind::IsolationMill.raw();
+  tool.geometry.included_angle = Some(Angle::from_degrees(30.0));
+  tool.geometry.flat_diameter = Some(Length::from_mm(0.1));
+  let text = to_json(&[tool]).expect("writes");
+  assert!(
+    text.contains("\"kind\": \"isolation-mill\""),
+    "the file names the kind by its stable slug: {text}"
+  );
+  let read = from_json(&text).expect("reads");
+  assert_eq!(ToolKind::of(&read[0].geometry), ToolKind::IsolationMill);
+  assert_eq!(
+    read[0].geometry.included_angle,
+    Some(Angle::from_degrees(30.0))
+  );
+  assert_eq!(read[0].geometry.flat_diameter, Some(Length::from_mm(0.1)));
+}

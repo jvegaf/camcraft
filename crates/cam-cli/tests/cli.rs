@@ -344,6 +344,110 @@ fn tools_add_then_list_round_trips() {
 }
 
 #[test]
+fn tools_add_creates_a_vbit_with_angle_and_tip_end_to_end() {
+  let directory = scratch("tools-vbit");
+  let library = directory.join("tools.sqlite");
+  let added = run(&[
+    "tools",
+    "add",
+    library.to_str().expect("utf8"),
+    "--id",
+    "VB1",
+    "--diameter",
+    "3.175",
+    "--number",
+    "7",
+    "--kind",
+    "v-bit",
+    "--included-angle",
+    "60",
+    "--flat-diameter",
+    "0.1",
+    "--flutes",
+    "1",
+  ]);
+  assert_eq!(
+    added.code, 0,
+    "stderr: {}\nstdout: {}",
+    added.stderr, added.stdout
+  );
+  assert!(added.stdout.contains("v-bit"), "{}", added.stdout);
+
+  let store = cam_store::tools::ToolLibrary::open(&library).expect("opens");
+  let tools = store.tools().expect("lists");
+  assert_eq!(tools.len(), 1);
+  assert_eq!(tools[0].cutting.tool_number, Some(7));
+  assert_eq!(
+    cam_store::tools::ToolKind::of(&tools[0].geometry),
+    cam_store::tools::ToolKind::VBit
+  );
+  assert_eq!(
+    tools[0].geometry.diameter.map(|value| value.mm()),
+    Some(3.175)
+  );
+  assert_eq!(
+    tools[0].geometry.included_angle,
+    Some(cam_units::Angle::from_degrees(60.0))
+  );
+  assert_eq!(
+    tools[0].geometry.flat_diameter,
+    Some(cam_units::Length::from_mm(0.1))
+  );
+  assert_eq!(tools[0].geometry.num_flutes, Some(1));
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
+fn tools_add_creates_an_isolation_mill_as_a_real_type() {
+  let directory = scratch("tools-iso");
+  let library = directory.join("tools.sqlite");
+  let added = run(&[
+    "tools",
+    "add",
+    library.to_str().expect("utf8"),
+    "--id",
+    "ISO1",
+    "--diameter",
+    "0.8",
+    "--number",
+    "9",
+    "--kind",
+    "isolation-mill",
+    "--included-angle",
+    "30",
+    "--flat-diameter",
+    "0.1",
+  ]);
+  assert_eq!(
+    added.code, 0,
+    "stderr: {}\nstdout: {}",
+    added.stderr, added.stdout
+  );
+  assert!(added.stdout.contains("isolation-mill"), "{}", added.stdout);
+
+  let store = cam_store::tools::ToolLibrary::open(&library).expect("opens");
+  let tools = store.tools().expect("lists");
+  assert_eq!(tools.len(), 1);
+  assert_eq!(
+    cam_store::tools::ToolKind::of(&tools[0].geometry),
+    cam_store::tools::ToolKind::IsolationMill
+  );
+  assert_eq!(
+    tools[0].geometry.diameter.map(|value| value.mm()),
+    Some(0.8)
+  );
+  assert_eq!(
+    tools[0].geometry.included_angle,
+    Some(cam_units::Angle::from_degrees(30.0))
+  );
+  assert_eq!(
+    tools[0].geometry.flat_diameter,
+    Some(cam_units::Length::from_mm(0.1))
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
+#[test]
 fn an_unknown_command_is_invalid_input() {
   let outcome = run(&["frobnicate"]);
   assert_eq!(outcome.code, 2);
