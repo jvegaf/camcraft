@@ -549,6 +549,7 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
       let mut number = None;
       let mut name_format = String::from("{Tool Type} ({Diameter|F}{Units Short})");
       let mut kind = cam_store::tools::ToolKind::FlatEndMill;
+      let mut kind_explicit = false;
       let mut flutes: u32 = 2;
       let mut included_angle = None;
       let mut flat_diameter = None;
@@ -593,6 +594,7 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
             };
             kind = cam_store::tools::ToolKind::from_slug(value)
               .ok_or_else(|| Failure::input(format!("unknown tool kind {value:?}")))?;
+            kind_explicit = true;
             index += 2;
           }
           "--flutes" => {
@@ -751,7 +753,14 @@ pub fn tools(rest: &[String]) -> Result<(), Failure> {
       library
         .save_tool(&tool)
         .map_err(|error| Failure::input(error.to_string()))?;
-      println!("added {id} as T{number} with a {diameter} mm diameter");
+      if kind_explicit {
+        println!(
+          "added {id} as T{number} with a {diameter} mm diameter ({})",
+          kind.slug()
+        );
+      } else {
+        println!("added {id} as T{number} with a {diameter} mm diameter");
+      }
       Ok(())
     }
     other => Err(Failure::input(format!(
