@@ -12,6 +12,10 @@ echo "== claim =="
 echo "== docs =="
 ./scripts/check-docs.sh
 
+# The records come before the code: a task nobody wrote down is the one failure no test can catch.
+echo "== records =="
+./scripts/check-records.sh
+
 echo "== fmt =="
 cargo fmt --check
 

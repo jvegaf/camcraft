@@ -29,6 +29,15 @@ just deliver N <commit>   # records the delivery in odd/tasks/INDEX.md
 git push origin dev
 ```
 
+## A record, before anything is called done
+
+`just deliver N <commit>` is the moment a task is called finished, so it is the moment the record is
+proved: `scripts/deliver-task.sh` runs `scripts/check-records.sh --task N --engram-required` first and
+writes nothing if the document is incomplete, the commit does not resolve, or Engram holds no memory
+naming the task's slug. `just check` runs the same verifier as `== records ==` — without the Engram
+requirement, because CI has no memory daemon — and reports documents written before the convention as
+advisories instead of failing history.
+
 ## A release
 
 `master` moves only through a pull request from `dev`, and a release is that merge plus a tag.

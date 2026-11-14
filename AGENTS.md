@@ -25,6 +25,11 @@
 - **No escribas el INDEX.** `odd/tasks/INDEX.md` lo actualiza **quien mergea**, con `just deliver N <commit>`, que además libera el claim. Un claim nunca toca el índice: lo que se escribe desde un worktree no está en ninguna rama y deriva.
 - **Liberar.** Si abandonás la tarea, `just release N`. Si la entregás, `just deliver N <commit>`.
 
+## Registro obligatorio (gate)
+- Nada se da por completado sin estar registrado en **ODD** (documento de tarea + fila en `odd/tasks/INDEX.md`) y en **Engram** (una memoria que nombre el slug de la tarea).
+- `scripts/check-records.sh` lo verifica; `scripts/deliver-task.sh` lo exige con `--engram-required` **antes** de escribir `delivered`, así que `just deliver N <commit>` se niega si falta el documento, una sección, una entrada de Log, el commit, o la memoria.
+- `just check` corre el chequeo como `== records ==` (sin exigir Engram: CI no tiene demonio de memoria). Los documentos anteriores a la tarea 053 se informan como avisos, no se fallan.
+
 ## Flujo ODD
 - Seguí el flujo ODD del sistema: autorizar/explorar/resolver/clasificar/track/implementar/cerrar.
 - Para tareas grandes, usá el documento de tarea en `odd/tasks/` con Specs verbatim, Tasks y Log.

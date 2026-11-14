@@ -17,6 +17,10 @@ check:
 check-docs:
   ./scripts/check-docs.sh
 
+# Prove a task is recorded: its document is complete, its commit exists, and Engram holds a memory.
+records:
+  ./scripts/check-records.sh
+
 # Install this repository's hooks (idempotent). `pre-commit` runs fmt, the docs links and the parity
 # measurer's build; `pre-push` runs clippy, the tests, and the corpus measurement when the push can
 # move it. They are the local half of the two-trunk flow: `dev` trusts them for the expensive gates.

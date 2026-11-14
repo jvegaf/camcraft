@@ -50,6 +50,20 @@ if ! grep -q "| $N |" "$INDEX"; then
   exit 1
 fi
 
+# The commit the row will point at has to exist: a hash nobody can resolve makes the index a guess.
+if [ -n "$COMMIT" ] && ! git cat-file -e "${COMMIT}^{commit}" 2>/dev/null; then
+  echo "ERROR: commit $COMMIT does not exist in this repository; nothing was written." >&2
+  exit 1
+fi
+
+# Before the index says "delivered": the document must be complete and the task must exist in
+# memory. Delivering is the moment something is called finished, so it is the moment to prove the
+# record exists — not the day after, when nobody remembers what the task even was.
+if ! ./scripts/check-records.sh --task "$N" --engram-required; then
+  echo "ERROR: task $N is not recorded yet (see above); nothing was written." >&2
+  exit 1
+fi
+
 python3 - "$INDEX" "$N" "$COMMIT" <<'PY'
 import os, sys
 from pathlib import Path
