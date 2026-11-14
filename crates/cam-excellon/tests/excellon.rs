@@ -247,3 +247,121 @@ fn an_integer_coordinate_without_a_declared_format_is_refused() {
     "the refusal says why: {text}"
   );
 }
+
+/// The six fabrication drill files the corpus ships: each must read with the tool table and hit
+/// count the file declares. "Hits" are the features the file cuts — holes and routed slots.
+#[test]
+fn the_six_corpus_drill_files_match_their_tools_and_hits() {
+  struct Board {
+    slug: &'static str,
+    tools: &'static [(u32, f64)],
+    features: usize,
+  }
+
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    .join("../../fixtures/corpus")
+    .canonicalize()
+    .expect("fixtures/corpus is part of the repository");
+
+  let boards = [
+    Board {
+      slug: "kicad-2l-simple",
+      tools: &[(1, 0.3), (2, 0.4), (3, 1.5)],
+      features: 88,
+    },
+    Board {
+      slug: "kicad-4l-pours",
+      tools: &[(1, 0.3), (2, 0.3), (3, 0.4), (4, 0.6), (5, 1.0), (6, 3.2)],
+      features: 692,
+    },
+    Board {
+      slug: "kicad-large-pours",
+      tools: &[
+        (1, 0.6),
+        (2, 0.75),
+        (3, 0.8),
+        (4, 0.9),
+        (5, 1.0),
+        (6, 1.1),
+        (7, 1.2),
+        (8, 1.27),
+        (9, 1.3),
+        (10, 2.0),
+        (11, 3.2),
+        (12, 3.5),
+        (13, 4.3),
+      ],
+      features: 251,
+    },
+    Board {
+      slug: "substitute-altium",
+      tools: &[
+        (1, 0.4),
+        (2, 0.75),
+        (3, 0.8),
+        (4, 0.813),
+        (5, 1.0),
+        (6, 1.016),
+        (7, 1.2),
+        (8, 1.3),
+        (9, 1.6),
+        (10, 3.2),
+      ],
+      features: 526,
+    },
+    Board {
+      slug: "substitute-eagle",
+      tools: &[
+        (1, 0.3),
+        (2, 0.4),
+        (3, 0.6),
+        (4, 0.65),
+        (5, 0.7),
+        (6, 0.9),
+        (7, 0.914),
+        (8, 1.0),
+        (9, 1.1),
+        (10, 1.3),
+        (11, 1.6),
+        (12, 1.8),
+      ],
+      features: 445,
+    },
+    Board {
+      slug: "substitute-easyeda",
+      tools: &[
+        (1, 0.7),
+        (2, 0.75),
+        (3, 0.8),
+        (4, 1.0),
+        (5, 1.1),
+        (6, 1.2),
+        (7, 1.3),
+      ],
+      features: 165,
+    },
+  ];
+
+  for board in boards {
+    let slug = board.slug;
+    let path = root.join(slug).join("drill.drl");
+    let text = std::fs::read_to_string(&path)
+      .unwrap_or_else(|error| panic!("{slug}: cannot read {}: {error}", path.display()));
+    let file = parse(&text).unwrap_or_else(|error| panic!("{slug}: {error}"));
+
+    assert_eq!(file.tools.len(), board.tools.len(), "{slug}: tool count");
+    for (actual, &(number, diameter_mm)) in file.tools.iter().zip(board.tools) {
+      assert_eq!(actual.number, number, "{slug}: tool number");
+      assert!(
+        (actual.diameter.mm() - diameter_mm).abs() < 1.0e-9,
+        "{slug}: tool T{number} diameter: got {} mm, expected {diameter_mm} mm",
+        actual.diameter.mm()
+      );
+    }
+    assert_eq!(
+      file.features.len(),
+      board.features,
+      "{slug}: feature/hit count"
+    );
+  }
+}

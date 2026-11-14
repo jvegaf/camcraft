@@ -267,6 +267,33 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
       });
     }
 
+    // A routed slot written inline as `X..Y..G85X..Y..`: move to the first point, cut to the
+    // second. It is one feature, and the tool ends at the second point.
+    if let Some((before, after)) = code.split_once("G85") {
+      let Some(units) = units else {
+        return Err(ExcellonError::MissingUnits { line });
+      };
+      let Some(tool) = selected else {
+        return Err(ExcellonError::NoToolSelected { line });
+      };
+      let (from, have_from) = apply_coordinates(
+        before,
+        position,
+        have_position,
+        relative,
+        units,
+        format,
+        line,
+      )?;
+      let (to, _) = apply_coordinates(after, from, have_from, relative, units, format, line)?;
+      features.push(Feature::Slot { tool, from, to });
+      position = to;
+      have_position = true;
+      rapid_from = Some(position);
+      tool_down = false;
+      continue;
+    }
+
     // Three shapes remain: a rapid, a feed, and a bare coordinate — which is a hole in drill mode,
     // or the next leg of a slot while the tool is down.
     let command = if code.starts_with("G00") {
@@ -289,19 +316,9 @@ pub fn parse(text: &str) -> Result<Excellon, ExcellonError> {
     let Some(units) = units else {
       return Err(ExcellonError::MissingUnits { line });
     };
-    let (x, y) = coordinates(body, units, format, line)?;
-    if x.is_none() && y.is_none() {
-      return Err(ExcellonError::UnknownWord {
-        line,
-        word: code.to_owned(),
-      });
-    }
-    if let Some(x) = x {
-      position = Point2::new(if relative { position.x + x } else { x }, position.y);
-    }
-    if let Some(y) = y {
-      position = Point2::new(position.x, if relative { position.y + y } else { y });
-    }
+    let (position_new, _) =
+      apply_coordinates(body, position, have_position, relative, units, format, line)?;
+    position = position_new;
     have_position = true;
 
     if matches!(command, Some(Command::Rapid)) {
@@ -387,6 +404,35 @@ fn digits_of_pattern(pattern: &str) -> Option<(u32, u32)> {
     return None;
   }
   Some((integer.len() as u32, decimal.len() as u32))
+}
+
+/// Apply the `X`/`Y` values in `body` to `position`, returning the new position.
+///
+/// `relative` makes each axis a step from the current value. A body that carries neither axis is
+/// refused, because it names no place for the tool to go.
+fn apply_coordinates(
+  body: &str,
+  mut position: Point2,
+  _have_position: bool,
+  relative: bool,
+  units: Units,
+  format: Option<(u32, u32)>,
+  line: u32,
+) -> Result<(Point2, bool), ExcellonError> {
+  let (x, y) = coordinates(body, units, format, line)?;
+  if x.is_none() && y.is_none() {
+    return Err(ExcellonError::UnknownWord {
+      line,
+      word: body.to_owned(),
+    });
+  }
+  if let Some(x) = x {
+    position = Point2::new(if relative { position.x + x } else { x }, position.y);
+  }
+  if let Some(y) = y {
+    position = Point2::new(position.x, if relative { position.y + y } else { y });
+  }
+  Ok((position, true))
 }
 
 /// The `X` and `Y` a coordinate line carries, in millimetres.
