@@ -15,12 +15,14 @@
 
 pub mod csv;
 pub mod dxf;
+pub mod folder;
 pub mod svg;
 
 mod document;
 mod report;
 
 pub use document::{into_document, PLACEMENT_MARGIN};
+pub use folder::{detect_role, import_folder, BoardRole, Detection, FolderImport, GroupedFile};
 pub use report::{ImportReport, Skipped};
 
 use std::path::Path;
