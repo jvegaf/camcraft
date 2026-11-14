@@ -1141,7 +1141,7 @@ fn macro_stroke(
   tolerance: f64,
   index: usize,
 ) -> Result<Region, GerberError> {
-  if local.boundaries.len() > 1 {
+  if local.boundaries.len() > 1 && has_nested_boundary(local, tolerance) {
     return Err(GerberError::Unsupported {
       line: 0,
       what: format!(
@@ -1173,6 +1173,36 @@ fn macro_stroke(
     line: 0,
     what: format!("command {index}: a draw with macro aperture {template:?} has no shape to sweep"),
   })
+}
+
+/// Returns `true` when any boundary of `region` is nested inside another.
+///
+/// Nested boundaries (a hole inside an outer contour) cannot be swept as independent filled shapes
+/// without filling the void. Disjoint outer contours have no containment relationship and may be
+/// swept and unioned safely.
+fn has_nested_boundary(region: &Region, tolerance: f64) -> bool {
+  use cam_geom::winding::{classify, Membership};
+
+  let boundaries = &region.boundaries;
+  for (j, inner) in boundaries.iter().enumerate() {
+    let segments = inner.segments();
+    let Some(segment) = segments.first() else {
+      continue;
+    };
+    let sample = match segment {
+      Segment::Line(line) => line.point_at(0.5),
+      Segment::Arc(arc) => arc.point_at_fraction(0.5),
+    };
+    for (i, outer) in boundaries.iter().enumerate() {
+      if i == j {
+        continue;
+      }
+      if classify(outer, sample, tolerance) == Membership::Inside {
+        return true;
+      }
+    }
+  }
+  false
 }
 
 /// Sweep a contour made entirely of straight segments along the vector from `from` to `to`.
