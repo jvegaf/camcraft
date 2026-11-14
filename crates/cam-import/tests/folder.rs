@@ -229,6 +229,97 @@ fn a_recognized_file_that_fails_to_parse_is_warned_but_not_imported() {
   let _ = fs::remove_dir_all(&dir);
 }
 
+fn drill_entity_count(result: &cam_import::FolderImport) -> usize {
+  result
+    .document
+    .layers
+    .iter()
+    .filter(|layer| layer.role == LayerRole::Drill)
+    .map(|layer| layer.entities.len())
+    .sum()
+}
+
+#[test]
+fn a_drill_naming_an_undefined_tool_is_skipped_without_losing_the_folder() {
+  let dir = temp_dir("undefined-tool");
+  write_file(
+    &dir,
+    "outline.gbr",
+    &gerber_square(0, 0, 20_000_000, 15_000_000),
+  );
+  // T2 is selected but never given a diameter, so the whole drill file is refused: no feature of it
+  // can be measured, and inventing a diameter would describe geometry the file does not contain.
+  write_file(
+    &dir,
+    "drill.drl",
+    "M48\nMETRIC\nT1C0.800\n%\nT1\nX5.000Y5.000\nT2\nX10.000Y10.000\nM30\n",
+  );
+
+  let result = import_folder(&dir, &ImportOptions::default()).expect("import folder");
+
+  assert!(
+    result
+      .warnings
+      .iter()
+      .any(|w| w.contains("drill.drl") && w.contains("skipped")),
+    "the unreadable drill file is reported and named: {:?}",
+    result.warnings
+  );
+  assert!(
+    result
+      .document
+      .layers
+      .iter()
+      .all(|layer| layer.role != LayerRole::Drill),
+    "no drill layer is built from it: {:?}",
+    result.warnings
+  );
+  assert!(
+    result
+      .document
+      .layers
+      .iter()
+      .any(|layer| layer.role == LayerRole::Outline),
+    "the rest of the folder still imports"
+  );
+
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_zero_length_slot_is_imported_as_a_hole_and_reported() {
+  let dir = temp_dir("zero-slot");
+  write_file(
+    &dir,
+    "outline.gbr",
+    &gerber_square(0, 0, 20_000_000, 15_000_000),
+  );
+  write_file(
+    &dir,
+    "drill.drl",
+    "M48\nMETRIC\nT1C0.800\n%\nT1\nX5.000Y5.000G85X5.000Y5.000\nM30\n",
+  );
+
+  let result = import_folder(&dir, &ImportOptions::default()).expect("import folder");
+
+  assert!(
+    result
+      .warnings
+      .iter()
+      .any(|w| w.contains("zero-length slot")),
+    "the degenerate slot is reported: {:?}",
+    result.warnings
+  );
+  assert_eq!(
+    drill_entity_count(&result),
+    1,
+    "the zero-length slot lands as one hole: {:?}",
+    result.warnings
+  );
+
+  let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn import_simplified_kicad_folder_as_complete_board_with_correct_roles() {
   let dir = temp_dir("simple-kicad");

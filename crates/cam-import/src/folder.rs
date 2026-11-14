@@ -61,9 +61,11 @@ pub struct FolderImport {
   pub document: Document,
   /// Files that were recognized and imported, in directory order.
   pub imported: Vec<GroupedFile>,
-  /// Files present but not assigned to a board role.
+  /// Files present but not assigned to a board role, including files that could not be read.
   pub unrecognized: Vec<PathBuf>,
-  /// Non-fatal issues encountered while importing recognized files.
+  /// Non-fatal issues encountered while importing: a file that could not be read, a layer that
+  /// failed to parse, geometry this reader could not represent faithfully, and so on. Every one of
+  /// them names the file it belongs to.
   pub warnings: Vec<String>,
 }
 
@@ -117,7 +119,7 @@ pub fn import_folder(
       continue;
     };
 
-    match parse_layer(&path, &bytes, role, options.tolerance) {
+    match parse_layer(&path, &bytes, role, options.tolerance, &mut warnings) {
       Ok(Some(parsed)) => {
         pending.push((grouped.clone(), parsed));
         imported.push(grouped);
@@ -132,7 +134,12 @@ pub fn import_folder(
         imported.push(grouped);
       }
       Err(message) => {
-        warnings.push(format!("{}: {message}", path.display()));
+        warnings.push(format!(
+          "{}: recognized as {:?}/{:?} but skipped: {message}",
+          path.display(),
+          role.role,
+          role.side
+        ));
       }
     }
   }
@@ -510,6 +517,7 @@ fn parse_layer(
   bytes: &[u8],
   role: BoardRole,
   tolerance: f64,
+  warnings: &mut Vec<String>,
 ) -> Result<Option<ParsedLayer>, String> {
   let text = String::from_utf8_lossy(bytes);
   let ext = path
@@ -522,7 +530,7 @@ fn parse_layer(
     matches!(role.role, LayerRole::Drill) || matches!(ext.as_str(), "drl" | "xln" | "exc");
 
   let contours = if is_drill {
-    parse_drill(&text)?
+    parse_drill(&text, &path.display().to_string(), warnings)?
   } else {
     parse_gerber(&text, tolerance)?
   };
@@ -550,25 +558,39 @@ fn parse_gerber(text: &str, tolerance: f64) -> Result<Vec<Contour>, String> {
   Ok(region.boundaries)
 }
 
-fn parse_drill(text: &str) -> Result<Vec<Contour>, String> {
+fn parse_drill(
+  text: &str,
+  source: &str,
+  warnings: &mut Vec<String>,
+) -> Result<Vec<Contour>, String> {
   let excellon = cam_excellon::parse(text).map_err(|e| e.to_string())?;
   let mut contours = Vec::new();
   let tools = excellon.tools;
   for feature in &excellon.features {
     match *feature {
       cam_excellon::Feature::Hole { tool, at } => {
-        let diameter = tool_diameter(&tools, tool);
+        let Some(diameter) = tool_diameter(&tools, tool) else {
+          undefined_tool(warnings, source, tool);
+          continue;
+        };
         let radius = (diameter / 2.0).max(0.001);
         let contour = primitive::circle(at, radius).map_err(|e| e.to_string())?;
         contours.push(contour);
       }
       cam_excellon::Feature::Slot { tool, from, to } => {
-        let diameter = tool_diameter(&tools, tool);
+        let Some(diameter) = tool_diameter(&tools, tool) else {
+          undefined_tool(warnings, source, tool);
+          continue;
+        };
         let radius = (diameter / 2.0).max(0.001);
         if let Some(contour) = slot_contour(from, to, radius) {
           contours.push(contour);
         } else {
-          // Degenerate slot: fall back to a hole at midpoint
+          // A slot that starts and ends in the same place is a drill hit: the tool's circle at that
+          // point is the exact geometry, not an approximation, so it is imported and reported.
+          warnings.push(format!(
+            "{source}: a zero-length slot is imported as a {diameter:.3} mm hole"
+          ));
           let mid = Point2::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
           let contour = primitive::circle(mid, radius).map_err(|e| e.to_string())?;
           contours.push(contour);
@@ -579,12 +601,21 @@ fn parse_drill(text: &str) -> Result<Vec<Contour>, String> {
   Ok(contours)
 }
 
-fn tool_diameter(tools: &[cam_excellon::Tool], number: u32) -> f64 {
+/// Report a feature that names a tool the file never defines.
+///
+/// The diameter is unknown, and substituting one would invent geometry the file does not describe,
+/// so the feature is skipped and the file it belongs to stays importable.
+fn undefined_tool(warnings: &mut Vec<String>, source: &str, tool: u32) {
+  warnings.push(format!(
+    "{source}: a drill feature references undefined tool T{tool} and is skipped"
+  ));
+}
+
+fn tool_diameter(tools: &[cam_excellon::Tool], number: u32) -> Option<f64> {
   tools
     .iter()
     .find(|t| t.number == number)
     .map(|t| t.diameter.mm())
-    .unwrap_or(1.0)
 }
 
 fn slot_contour(from: Point2, to: Point2, radius: f64) -> Option<Contour> {
