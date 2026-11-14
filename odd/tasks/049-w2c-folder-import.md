@@ -17,9 +17,9 @@ Importar una carpeta de fabricación como placa (E1.3 / W2c): detectar y agrupar
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Detección y agrupación de archivos de una carpeta por nombre y por contenido en roles `top/bottom/mask/silk/outline/drill` con lado cuando aplica, ignorando artefactos ajenos y reportando lo no reconocido | S1, S3, S4 | inline | (pendiente) |
-| T2 | Importar el contenido de cada archivo agrupado (Gerber/Excellon) y construir un `Document` de placa con `LayerRole`/`Side` correctos, dimensiones derivadas y geometría por capa | S1, S2, S4 | inline | (pendiente) |
-| T3 | Pruebas: carpeta de estilo KiCad (nombres simplificados del corpus y/o convenciones KiCad) se abre como placa completa con roles correctos; agrupación por nombre y por contenido | S1, S2, S3 | inline | (pendiente) |
+| T1 | Detección y agrupación de archivos de una carpeta por nombre y por contenido en roles `top/bottom/mask/silk/outline/drill` con lado cuando aplica, ignorando artefactos ajenos y reportando lo no reconocido | S1, S3, S4 | inline | `19ee800` |
+| T2 | Importar el contenido de cada archivo agrupado (Gerber/Excellon) y construir un `Document` de placa con `LayerRole`/`Side` correctos, dimensiones derivadas y geometría por capa | S1, S2, S4 | inline | `19ee800` |
+| T3 | Pruebas: carpeta de estilo KiCad (nombres simplificados del corpus y/o convenciones KiCad) se abre como placa completa con roles correctos; agrupación por nombre y por contenido | S1, S2, S3 | inline | `19ee800` |
 
 ## Log
 
