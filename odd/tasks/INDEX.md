@@ -56,3 +56,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 049 | [w2c-folder-import](049-w2c-folder-import.md) | delivered | 2026-11-14 | `a4f967a` |
 | 050 | [w2a-gerber](050-w2a-gerber.md) | delivered | 2026-11-14 | `c5d71c5` |
 | 051 | [w2d-pcb-tool-library](051-w2d-pcb-tool-library.md) | delivered | 2026-11-14 | `d1f79b8` |
+| 052 | [e0-3-tolerance-policy](052-e0-3-tolerance-policy.md) | in_progress | 2026-11-14 | — |
