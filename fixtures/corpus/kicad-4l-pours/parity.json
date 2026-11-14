@@ -4,30 +4,30 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "drill": {
-      "features": 0,
-      "status": "refused",
-      "tools": 0
+      "features": 692,
+      "status": "parsed",
+      "tools": 6
     },
     "inner1": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "inner2": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "mask-bottom": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 427.89801403766705,
+      "points": 8490,
+      "polygons": 144,
+      "status": "parsed"
     },
     "mask-top": {
       "contour_area_mm2": 0.0,

@@ -7,33 +7,33 @@
       "status": "refused"
     },
     "drill": {
-      "features": 0,
-      "status": "refused",
-      "tools": 0
+      "features": 526,
+      "status": "parsed",
+      "tools": 10
     },
     "inner1": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "inner2": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "mask-bottom": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "mask-top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "outline": {
       "contour_area_mm2": 0.0,

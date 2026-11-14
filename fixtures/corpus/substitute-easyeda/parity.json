@@ -12,16 +12,16 @@
       "tools": 7
     },
     "mask-bottom": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 434.13788601087197,
+      "points": 9118,
+      "polygons": 165,
+      "status": "parsed"
     },
     "mask-top": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 434.13788601087197,
+      "points": 9118,
+      "polygons": 165,
+      "status": "parsed"
     },
     "outline": {
       "contour_area_mm2": 16114.898739518914,
@@ -45,7 +45,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     }
   },
   "flatten_tolerance_mm": 0.001,

@@ -76,6 +76,29 @@ to regenerate the measurer's lock file and commit the diff:
 cargo update --manifest-path scripts/parity/measure/Cargo.toml
 ```
 
+## What the corpus measures today (re-pinned 2026-11-14)
+
+The W2 importers changed what the tree makes of the corpus, so the goldens were re-pinned. The shape of
+the current measurement is worth stating once, because it is the baseline every later change is compared
+against — of the **54 artefacts**: 12 are `parsed`, 24 are still `refused`, and **18 are `timeout`**.
+
+Those 18 are the important line. They are not the layers the reader rejects: they are layers W2a/W2b
+now *accept* and hand to the geometry kernel, which does not finish evaluating them inside the harness'
+30 s bound. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
+moved from "the reader says no" to "the kernel does not finish", and `timeout` is the harness recording
+that honestly instead of hanging CI. Their measurement is zeroed and the status is compared, so the day
+one of them finishes, the divergence says so in a single line.
+
+Two consequences worth keeping in view:
+
+- **A `timeout` in a golden is a performance debt, not a pass.** It is tracked here rather than hidden:
+  the corpus cannot measure those layers' geometry until the kernel terminates on them.
+- **The measurer is compiled by `just check`.** It lives outside the workspace (navigation above), so
+  `cargo clippy`/`cargo test --workspace` never touched it; a tolerance type change (`f64` →
+  `TolerancePolicy`) compiled fine locally and failed only in the CI `parity` job. The last gate in
+  `scripts/check.sh` now builds `scripts/parity/measure/Cargo.toml` so that breakage is found on the
+  machine that causes it.
+
 ## The corpus, and why four of its six boards are substitutes
 
 S1 of the task names six sources: KiCad 2 layers simple, KiCad 4 layers with pours, EasyEDA, Eagle,

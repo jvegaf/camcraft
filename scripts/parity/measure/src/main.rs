@@ -84,7 +84,7 @@ fn measure_gerber(path: &Path) -> Result<Map<String, Value>, String> {
     Ok(gerber) => gerber,
     Err(_) => return refused(),
   };
-  let image = match gerber.image(IMAGE_TOLERANCE_MM) {
+  let image = match gerber.image(cam_geom::TolerancePolicy::uniform(IMAGE_TOLERANCE_MM)) {
     Ok(image) => image,
     Err(_) => return refused(),
   };
@@ -101,7 +101,11 @@ fn measure_gerber(path: &Path) -> Result<Map<String, Value>, String> {
   let mut points = 0usize;
   for boundary in &image.boundaries {
     area += boundary.signed_area().abs();
-    points += boundary.tessellate(FLATTEN_TOLERANCE_MM).len();
+    points += boundary
+      .tessellate(cam_geom::TolerancePolicy::with_default_epsilon(
+        FLATTEN_TOLERANCE_MM,
+      ))
+      .len();
   }
 
   let mut measured = Map::new();
