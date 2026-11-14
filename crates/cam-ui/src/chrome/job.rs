@@ -49,7 +49,7 @@ impl Shell {
     palette: &Palette,
     output: &mut ShellOutput,
   ) {
-    let job = &app.document().job;
+    let job = &app.document().board;
     section(ui, palette, "MATERIAL");
     // The opener is the only path to the dialog, so it is also the only thing in this tab that writes.
     // Reported only while the dialog is closed: with the modal up this point is behind its backdrop, and
@@ -313,7 +313,7 @@ impl Shell {
   /// Public because starting a new job is the other thing that opens this, and because a dialog whose
   /// opening cannot be driven from outside a frame is a dialog only a mouse could test.
   pub fn open_material(&mut self, app: &AppState) {
-    let job = &app.document().job;
+    let job = &app.document().board;
     self.material_size = (job.width.mm(), job.height.mm(), job.thickness.mm());
     self.show_material = true;
   }

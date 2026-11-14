@@ -4,17 +4,15 @@ use cam_geom::Point2;
 use cam_model::{Job, OriginCorner};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield};
-use cam_units::{Angle, Length, UnitSystem};
+use cam_units::{Angle, Length};
 
 fn job(extent: f64, thickness: f64) -> Job {
   Job {
     width: Length::from_mm(extent),
     height: Length::from_mm(extent),
     thickness: Length::from_mm(thickness),
-    units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 

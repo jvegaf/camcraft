@@ -116,7 +116,7 @@ pub fn target_for(
   cell: Length,
   _tools: &ToolShapes,
 ) -> Result<Target, TargetError> {
-  let grid = grid_for(&document.job, cell)?;
+  let grid = grid_for(&document.board, cell)?;
   if let Some(toolpath) = document.toolpaths.first() {
     let operation = match &toolpath.operation {
       Operation::Isolation(_) => "isolation",

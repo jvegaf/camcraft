@@ -163,7 +163,10 @@ fn every_pass_retracts_to_safe_z() {
   assert_eq!(retracts, 2, "one retract per pass");
   for movement in &moves {
     if let Move::Retract { to } = movement {
-      assert_eq!(to.z, job.safe_z);
+      assert_eq!(
+        to.z,
+        cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM)
+      );
     }
   }
 }

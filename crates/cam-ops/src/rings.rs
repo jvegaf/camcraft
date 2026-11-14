@@ -404,7 +404,10 @@ fn cut_ring(moves: &mut Vec<Move>, job: &Job, ring: &Contour, z: f64) {
   };
   let start = machine_point(job, first.start_point());
   moves.push(Move::Rapid {
-    to: point3(start, job.safe_z),
+    to: point3(
+      start,
+      cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    ),
   });
   moves.push(Move::Feed {
     to: point3(start, Length::from_mm(z)),
@@ -427,7 +430,7 @@ fn cut_ring(moves: &mut Vec<Move>, job: &Job, ring: &Contour, z: f64) {
     to: Point3 {
       x: last.x,
       y: last.y,
-      z: job.safe_z,
+      z: cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
     },
   });
 }
@@ -437,7 +440,10 @@ fn cut_span(moves: &mut Vec<Move>, job: &Job, from: Point2, to: Point2, z: f64) 
   let start = machine_point(job, from);
   let end = machine_point(job, to);
   moves.push(Move::Rapid {
-    to: point3(start, job.safe_z),
+    to: point3(
+      start,
+      cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    ),
   });
   moves.push(Move::Feed {
     to: point3(start, Length::from_mm(z)),
@@ -446,7 +452,10 @@ fn cut_span(moves: &mut Vec<Move>, job: &Job, from: Point2, to: Point2, z: f64) 
     to: point3(end, Length::from_mm(z)),
   });
   moves.push(Move::Retract {
-    to: point3(end, job.safe_z),
+    to: point3(
+      end,
+      cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    ),
   });
 }
 

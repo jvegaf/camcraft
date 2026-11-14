@@ -133,7 +133,7 @@ fn refuse_unwritable(document: &Document) -> Result<(), ExportError> {
           return Err(refused(format!(
             "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
              number, which an SVG cannot spell",
-            entity.id, layer.name
+            entity.id, layer.id
           )));
         }
       }

@@ -41,9 +41,6 @@ use cam_model::{Document, Entity, EntityKind, Layer, Nesting, NestingPart};
 
 use crate::{decimal, fresh_part_id, value_at, Failure};
 
-/// The layer a part list lands in when the caller names none.
-const DEFAULT_LAYER: &str = "Parts";
-
 /// The cut list's one header row: the seven columns every row carries, in order.
 const CUT_LIST_HEADER: &str = "part,sheet,x,y,rotation,width,height";
 
@@ -151,19 +148,35 @@ pub(crate) fn author_parts(target: &mut Document, args: &PartsArgs) -> Result<St
   let list = cam_import::csv::import(&bytes)
     .map_err(|error| Failure::input(format!("{}: {error}", csv.display())))?;
 
-  let layer_name = args
-    .layer
-    .clone()
-    .unwrap_or_else(|| DEFAULT_LAYER.to_owned());
   let mut document = target.clone();
-  document.layers.push(Layer {
-    id: fresh_layer_id(&document),
-    name: layer_name,
-    visible: true,
-    role: cam_model::LayerRole::Geometry,
-    entities: Vec::new(),
-  });
-  let layer = document.layers.len() - 1;
+  let layer = if let Some(name) = &args.layer {
+    if let Some(index) = document.layers.iter().position(|layer| layer.id == *name) {
+      index
+    } else {
+      document.layers.push(Layer {
+        id: name.clone(),
+        role: layer_role_for_new_parts(&document),
+        side: cam_model::Side::Both,
+        color: "#000000".to_owned(),
+        visible: true,
+        entities: Vec::new(),
+        source: cam_model::Provenance::default(),
+      });
+      document.layers.len() - 1
+    }
+  } else {
+    let layer_id = fresh_layer_id(&document);
+    document.layers.push(Layer {
+      id: layer_id,
+      role: layer_role_for_new_parts(&document),
+      side: cam_model::Side::Both,
+      color: "#000000".to_owned(),
+      visible: true,
+      entities: Vec::new(),
+      source: cam_model::Provenance::default(),
+    });
+    document.layers.len() - 1
+  };
 
   // The part id and entity id each row authored, with the line it came from, so a refusal the model
   // makes after the loop can name the row that produced it.
@@ -230,6 +243,21 @@ fn rectangle(width: f64, height: f64) -> Result<Contour, Failure> {
       "a {width} x {height} mm part is not a contour: {error}"
     ))
   })
+}
+
+/// Pick a role for a newly created parts layer that does not violate S2 (role, side) uniqueness.
+///
+/// Prefer `Outline` on `Both` sides when free to preserve the previous semantics; fall back to
+/// `Keepout`, which may repeat.
+fn layer_role_for_new_parts(document: &Document) -> cam_model::LayerRole {
+  let outline_taken = document.layers.iter().any(|layer| {
+    layer.role == cam_model::LayerRole::Outline && layer.side == cam_model::Side::Both
+  });
+  if outline_taken {
+    cam_model::LayerRole::Keepout
+  } else {
+    cam_model::LayerRole::Outline
+  }
 }
 
 /// The next free `L{n}` layer id: the `fresh_part_id`/`fresh_sheet_id` scan in `script.rs`, so the

@@ -19,7 +19,7 @@ impl Shell {
                 layer_id: layer.id.clone(),
               });
             }
-            ui.label(format!("{} — {}", layer.id, layer.name));
+            ui.label(format!("{} — {:?}/{:?}", layer.id, layer.role, layer.side));
           });
           ui.label(format!("  {} entit(ies)", layer.entities.len()));
           output
@@ -45,7 +45,7 @@ impl Shell {
       {
         output.actions.push(UiAction::DeleteSelection);
       }
-      let job = &app.document().job;
+      let job = &app.document().board;
       let mut lines = vec![
         format!(
           "Job: {:.1} x {:.1} x {:.1} mm",
@@ -53,8 +53,8 @@ impl Shell {
           job.height.mm(),
           job.thickness.mm()
         ),
-        format!("Units: {:?}, origin {:?}", job.units, job.origin),
-        format!("Safe Z: {:.1} mm", job.safe_z.mm()),
+        format!("Origin {:?}, side up {:?}", job.origin, job.side_up),
+        format!("Default safe Z: {:.1} mm", cam_model::DEFAULT_SAFE_Z_MM),
       ];
       ui.label(&lines[0]);
       ui.label(&lines[1]);

@@ -70,7 +70,7 @@ pub fn profile(request: &ProfileRequest<'_>) -> Result<Vec<Move>, ToolpathError>
     .contour
   };
 
-  let safe_z = request.job.safe_z;
+  let safe_z = cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM);
   let passes = pass_depths(
     params.start_depth.mm(),
     params.cut_depth.mm(),

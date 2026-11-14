@@ -18,9 +18,11 @@ fn document_with_rectangle() -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline,
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour {

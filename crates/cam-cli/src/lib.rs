@@ -239,19 +239,18 @@ pub fn inspect(rest: &[String]) -> Result<(), Failure> {
   let document = open(&path)?;
   println!("schema: {}", document.schema);
   println!(
-    "job: {:.3} x {:.3} x {:.3} mm, origin {:?}, safe Z {:.3} mm",
-    document.job.width.mm(),
-    document.job.height.mm(),
-    document.job.thickness.mm(),
-    document.job.origin,
-    document.job.safe_z.mm()
+    "job: {:.3} x {:.3} x {:.3} mm, origin {:?}, default safe Z {:.3} mm",
+    document.board.width.mm(),
+    document.board.height.mm(),
+    document.board.thickness.mm(),
+    document.board.origin,
+    cam_model::DEFAULT_SAFE_Z_MM
   );
   println!("layers: {}", document.layers.len());
   for layer in &document.layers {
     println!(
-      "  {} {:?}: {} entity(ies), visible {}",
+      "  {}: {} entity(ies), visible {}",
       layer.id,
-      layer.name,
       layer.entities.len(),
       layer.visible
     );

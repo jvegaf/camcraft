@@ -291,7 +291,7 @@ fn import_into_document(
   path: Option<&Path>,
   settings: ImportSettings,
 ) -> Result<ActionReport, String> {
-  let previous_job = app.document().job.clone();
+  let previous_job = app.document().board.clone();
   let processed = process_import(parsed, settings);
   let mut document =
     cam_import::into_document(&processed, None).map_err(|error| error.to_string())?;
@@ -306,7 +306,7 @@ fn import_into_document(
   if settings.center {
     center_drawing(&mut document, &job);
   }
-  document.job = job;
+  document.board = job;
   let created_entities: Vec<String> = document
     .entities()
     .map(|entity| entity.id.clone())
@@ -546,7 +546,7 @@ fn stock_for_drawing(document: &cam_model::Document) -> Job {
       bounds = bounds.union(contour.bounds());
     }
   }
-  let mut job = document.job.clone();
+  let mut job = document.board.clone();
   job.width = Length::from_mm(bounds.width() + 2.0 * margin);
   job.height = Length::from_mm(bounds.height() + 2.0 * margin);
   job

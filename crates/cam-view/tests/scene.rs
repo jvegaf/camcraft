@@ -12,9 +12,10 @@ fn document_with(entities: Vec<(&str, cam_geom::Contour)>, visible: bool) -> Doc
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible,
-    role: cam_model::LayerRole::Geometry,
     entities: entities
       .into_iter()
       .map(|(id, contour)| cam_model::Entity {
@@ -22,6 +23,7 @@ fn document_with(entities: Vec<(&str, cam_geom::Contour)>, visible: bool) -> Doc
         kind: cam_model::EntityKind::Contour { contour },
       })
       .collect(),
+    source: cam_model::Provenance::default(),
   });
   document
 }
@@ -131,10 +133,12 @@ fn drawn_geometry_through_a_command_appears_in_the_scene() {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
-    role: cam_model::LayerRole::Geometry,
     entities: Vec::new(),
+    source: cam_model::Provenance::default(),
   });
   let mut app = AppState::new(document);
   let id = app.next_entity_id();

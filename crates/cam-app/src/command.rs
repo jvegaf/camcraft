@@ -496,9 +496,9 @@ impl Command {
             return Err(ModelError::NonPositiveJobDimension { field, value }.into());
           }
         }
-        document.job.width = cam_units::Length::from_mm(*width);
-        document.job.height = cam_units::Length::from_mm(*height);
-        document.job.thickness = cam_units::Length::from_mm(*thickness);
+        document.board.width = cam_units::Length::from_mm(*width);
+        document.board.height = cam_units::Length::from_mm(*height);
+        document.board.thickness = cam_units::Length::from_mm(*thickness);
         Ok(CommandOutcome::default())
       }
       Self::AddRectangle {

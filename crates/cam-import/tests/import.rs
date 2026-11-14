@@ -126,10 +126,10 @@ fn assembly_places_the_geometry_with_its_margin_and_mints_ordered_ids() {
 
   let document = into_document(&imported, None).expect("document");
   assert_eq!(document.layers.len(), 2);
-  assert_eq!(document.layers[0].id, "L1");
-  assert_eq!(document.layers[0].name, "OUTSIDE");
-  assert_eq!(document.layers[1].id, "L2");
-  assert_eq!(document.layers[1].name, "HOLES");
+  assert_eq!(document.layers[0].id, "OUTSIDE");
+  assert_eq!(document.layers[0].role, cam_model::LayerRole::Outline);
+  assert_eq!(document.layers[1].id, "HOLES");
+  assert_eq!(document.layers[1].role, cam_model::LayerRole::Keepout);
   let ids: Vec<&str> = document
     .entities()
     .map(|entity| entity.id.as_str())
@@ -147,8 +147,8 @@ fn assembly_places_the_geometry_with_its_margin_and_mints_ordered_ids() {
     });
   assert!((bounds.min.x - PLACEMENT_MARGIN).abs() < 1e-9);
   assert!((bounds.min.y - PLACEMENT_MARGIN).abs() < 1e-9);
-  assert!((document.job.width.mm() - (bounds.width() + 2.0 * PLACEMENT_MARGIN)).abs() < 1e-9);
-  assert!((document.job.height.mm() - (bounds.height() + 2.0 * PLACEMENT_MARGIN)).abs() < 1e-9);
+  assert!((document.board.width.mm() - (bounds.width() + 2.0 * PLACEMENT_MARGIN)).abs() < 1e-9);
+  assert!((document.board.height.mm() - (bounds.height() + 2.0 * PLACEMENT_MARGIN)).abs() < 1e-9);
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn a_single_layer_import_keeps_every_contour_in_one_named_layer() {
 
   let document = into_document(&imported, Some("Imported")).expect("document");
   assert_eq!(document.layers.len(), 1);
-  assert_eq!(document.layers[0].name, "Imported");
+  assert_eq!(document.layers[0].id, "Imported");
   assert_eq!(document.layers[0].entities.len(), 2);
 }
 

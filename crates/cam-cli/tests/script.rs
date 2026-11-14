@@ -12,7 +12,7 @@ use cam_model::{
   MillingDirection, Operation, Toolpath,
 };
 use cam_store::document::save_document;
-use cam_units::{Length, UnitSystem};
+use cam_units::Length;
 
 fn binary() -> &'static str {
   env!("CARGO_BIN_EXE_cam-cli")
@@ -49,16 +49,16 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
     width: Length::from_mm(200.0),
     height: Length::from_mm(100.0),
     thickness: Length::from_mm(18.0),
-    units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   });
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Parts".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![
       Entity {
         id: "E1".to_owned(),

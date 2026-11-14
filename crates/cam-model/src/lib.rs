@@ -19,13 +19,13 @@
 #![warn(missing_docs)]
 
 use cam_geom::{Bounds, Contour, Point2};
-use cam_units::{Angle, Length, UnitSystem};
+use cam_units::{Angle, Length};
 use serde::{Deserialize, Serialize};
 
 /// The document schema this build writes.
 pub const DOCUMENT_SCHEMA: &str = "camcraft/document@1";
 
-/// Which corner of the job the machine's XY origin sits on.
+/// Which corner of the board the machine's XY origin sits on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OriginCorner {
@@ -34,23 +34,30 @@ pub enum OriginCorner {
   BottomLeft,
   /// Origin at the top-left corner, Y increasing towards the operator.
   TopLeft,
-  /// Origin at the centre of the job.
+  /// Origin at the centre of the board.
   Center,
 }
 
-/// The document frame's relation to the machine frame, for one job (M7 A7, S17).
+/// Which side of the board faces up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoardSideUp {
+  /// The top side faces up.
+  #[default]
+  Top,
+}
+
+/// The document frame's relation to the machine frame, for one board.
 ///
-/// A document's geometry runs from the job's own corner, `(0, 0)` to `(width, height)`, while a
+/// A document's geometry runs from the board's own corner, `(0, 0)` to `(width, height)`, while a
 /// program's moves are in machine coordinates — the frame the selected [`OriginCorner`] puts the
 /// machine's origin in. Two of the three corners make the frames differ, and both differences are exact
-/// isometries: `center` translates the job so its centre is the machine's origin, and `top_left`
+/// isometries: `center` translates the board so its centre is the machine's origin, and `top_left`
 /// reflects Y so distance grows towards the operator.
 ///
 /// This is the **one** definition of that map. The toolpath layer emits with [`Frame::to_machine`], and
 /// the simulation reads a program back into the document frame with [`Frame::from_machine`], so a
-/// program cannot mean one place in G-code and another in the report. M6 recorded the defect that
-/// motivated it: `cam_sim`'s field was in the document frame while the programs it swept were in the
-/// machine frame, so at any corner but `bottom_left` a correct program was reported as gouge and uncut.
+/// program cannot mean one place in G-code and another in the report.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
   corner: OriginCorner,
@@ -59,12 +66,12 @@ pub struct Frame {
 }
 
 impl Frame {
-  /// The frame of `job`, from its origin corner and its size.
-  pub fn of(job: &Job) -> Self {
+  /// The frame of `board`, from its origin corner and its size.
+  pub fn of(board: &Board) -> Self {
     Self {
-      corner: job.origin,
-      width: job.width.mm(),
-      height: job.height.mm(),
+      corner: board.origin,
+      width: board.width.mm(),
+      height: board.height.mm(),
     }
   }
 
@@ -84,9 +91,7 @@ impl Frame {
 
   /// A point in machine coordinates, as the document sees it.
   ///
-  /// The exact inverse of [`Frame::to_machine`], which is what lets the simulation sweep an emitted
-  /// program onto a field built in the document frame. A reflection is its own inverse, so `top_left`
-  /// reads the same in both directions.
+  /// The exact inverse of [`Frame::to_machine`].
   pub fn from_machine(&self, point: Point2) -> Point2 {
     match self.corner {
       OriginCorner::BottomLeft => point,
@@ -101,82 +106,50 @@ impl Frame {
   }
 
   /// Whether the map is a mirror, which reverses the sense of every arc it carries.
-  ///
-  /// A reflection is not just a different position: an arc traversed counter-clockwise in one frame is
-  /// traversed clockwise in the other, so a caller reading a program back into the document frame has
-  /// to flip the arc's direction as well as its points. `center` translates, so it keeps handedness;
-  /// `top_left` reflects, so it does not. It is part of this map rather than the caller's business,
-  /// because a map that silently reverses a path's sense would leave the sweep cutting the mirror
-  /// image of the arc the document asked for.
   pub fn is_reflection(&self) -> bool {
     self.corner == OriginCorner::TopLeft
   }
 }
 
-/// The stock and coordinate setup of the job.
+/// The physical board the document describes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Job {
-  /// Stock size along X.
+pub struct Board {
+  /// Board size along X.
   pub width: Length,
-  /// Stock size along Y.
+  /// Board size along Y.
   pub height: Length,
-  /// Stock thickness, which bounds the maximum cut depth.
+  /// Board thickness.
   pub thickness: Length,
-  /// Unit system the user works in. Metadata only: stored geometry is always millimetres.
-  pub units: UnitSystem,
-  /// Where the machine origin sits on the stock.
+  /// Where the machine origin sits on the board.
   pub origin: OriginCorner,
-  /// Clearance height for rapids between cutting moves.
-  pub safe_z: Length,
-  /// The material the job is asked to cut, naming one the tool library holds cutting data for
-  /// (M11, S1).
-  ///
-  /// Optional and omitted when absent, exactly like `tools_ref`/`postp`/`nesting`: a document whose
-  /// job names no material re-saves byte-identically, which is why the schema tag stays
-  /// `camcraft/document@1` (S3). It is the *selector* and not a rate — the feed, the plunge and the
-  /// spindle speed stay in the library, keyed per material and machine, and a material the library
-  /// has nothing for is refused by name rather than replaced by the tool's own record (S4).
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub material: Option<String>,
+  /// Which side of the board faces up.
+  pub side_up: BoardSideUp,
 }
 
-impl Job {
-  /// This job's document frame against the machine frame.
+impl Board {
+  /// This board's document frame against the machine frame.
   pub fn frame(&self) -> Frame {
     Frame::of(self)
   }
 
-  /// A job with the analysed product's default setup: 1219 x 2438 x 18 mm, 5 mm safe Z.
-  pub fn default_sheet() -> Self {
+  /// A board with a default size and origin.
+  pub fn default_board() -> Self {
     Self {
       width: Length::from_mm(1219.0),
       height: Length::from_mm(2438.0),
       thickness: Length::from_mm(18.0),
-      units: UnitSystem::Mm,
       origin: OriginCorner::BottomLeft,
-      safe_z: Length::from_mm(5.0),
-      material: None,
+      side_up: BoardSideUp::Top,
     }
   }
 
-  /// The stock's surface as a closed contour in document coordinates, from `(0, 0)` to
+  /// Compatibility alias for the former default job.
+  pub fn default_sheet() -> Self {
+    Self::default_board()
+  }
+
+  /// The board's outline as a closed contour in document coordinates, from `(0, 0)` to
   /// `(width, height)`.
-  ///
-  /// The **one** place the job rectangle is built (M6 A6). An inlay's male half clears it with the
-  /// region standing as an island, and `cam-sim` authorises the same rectangle, so both ask here: a
-  /// program and a target that each built their own rectangle would eventually disagree about where the
-  /// stock ends, and a male that cleared past the stock or stopped short of it would be a ruined part
-  /// rather than a visible error.
-  ///
-  /// Document coordinates always run from the job's own corner; the corner *selector* is applied later,
-  /// once, when a program is built, and never here.
-  ///
-  /// # Panics
-  ///
-  /// Panics when `width` or `height` is not a positive, finite length, which cannot describe a
-  /// rectangle. Every caller reaches this through [`Document::validate`] or a grid, both of which
-  /// refuse such a job by name first, and the panic says so rather than returning a degenerate
-  /// contour no strategy could cut.
   pub fn outline(&self) -> Contour {
     Contour::from_points(
       &[
@@ -187,46 +160,65 @@ impl Job {
       ],
       true,
     )
-    .expect("validated job dimensions describe a closed rectangle")
+    .expect("validated board dimensions describe a closed rectangle")
   }
 }
 
+/// Default safe Z used when no board-level safe Z is stored.
+pub const DEFAULT_SAFE_Z_MM: f64 = 5.0;
+
+/// Compatibility alias for the former `Job` type.
+pub type Job = Board;
+
 /// The role a layer plays in a PCB document.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerRole {
   /// Top copper side.
   CopperTop,
   /// Bottom copper side.
   CopperBottom,
-  /// Solder mask, top side.
-  MaskTop,
-  /// Solder mask, bottom side.
-  MaskBottom,
-  /// Silkscreen, top side.
-  SilkTop,
-  /// Silkscreen, bottom side.
-  SilkBottom,
+  /// Solder mask.
+  Mask,
+  /// Silkscreen.
+  Silk,
   /// Board edge, the outline cutout follows.
+  #[default]
   Outline,
   /// Holes and slots.
   Drill,
   /// Areas the tool must not enter.
   Keepout,
-  /// General geometry with no board role, such as a DXF or SVG import.
-  #[default]
-  Geometry,
 }
 
-impl LayerRole {
-  /// Whether a board can have more than one layer with this role.
-  ///
-  /// The board's own layers are singletons — one top copper, one top mask, one outline — so a second
-  /// one is a document that cannot mean anything. Keeps-outs and plain geometry are the exceptions:
-  /// a tool can be kept out of many separate areas, and a drawing can arrive as many layers.
-  fn repeatable(self) -> bool {
-    matches!(self, Self::Keepout | Self::Geometry)
-  }
+/// Which side a layer belongs to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Side {
+  /// Top side.
+  #[default]
+  Top,
+  /// Bottom side.
+  Bottom,
+  /// Both sides.
+  Both,
+}
+
+/// Provenance of a layer's source data.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Provenance {
+  /// Source file name or path.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub file: Option<String>,
+  /// Source format.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub format: Option<String>,
+  /// Source date.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub date: Option<String>,
+  /// Source content hash.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub hash: Option<String>,
 }
 
 /// A named, independently switchable group of geometry.
@@ -234,15 +226,18 @@ impl LayerRole {
 pub struct Layer {
   /// Stable identifier, referenced by toolpaths.
   pub id: String,
-  /// Display name.
-  pub name: String,
-  /// What tells copper from mask from the board edge; `Geometry` is the honest answer for
-  /// geometry with no board role.
+  /// What the layer represents in the board.
   pub role: LayerRole,
+  /// Which side of the board the layer belongs to.
+  pub side: Side,
+  /// Display color as `#RRGGBB`.
+  pub color: String,
   /// Whether the layer is shown and cuttable by default.
   pub visible: bool,
   /// The geometry in this layer.
   pub entities: Vec<Entity>,
+  /// Where the layer's data came from.
+  pub source: Provenance,
 }
 
 /// One piece of geometry.
@@ -462,8 +457,8 @@ pub struct Toolpath {
 pub struct Document {
   /// Schema tag. Must equal [`DOCUMENT_SCHEMA`].
   pub schema: String,
-  /// Stock and coordinate setup.
-  pub job: Job,
+  /// The physical board the document describes.
+  pub board: Board,
   /// Layers of geometry.
   pub layers: Vec<Layer>,
   /// Toolpaths.
@@ -474,12 +469,7 @@ pub struct Document {
   /// Optional post-processor filename, resolved by the store.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub postp: Option<String>,
-  /// Optional nesting section: the authored sheets, the parts, where each instance landed and the
-  /// cost record the report reads (M9, S1-S4).
-  ///
-  /// Optional and top level, exactly like `tools_ref`/`postp`, so a document written before M9 loads
-  /// and re-saves byte-identically: no existing field learns a new meaning, which is why the schema
-  /// tag stays `camcraft/document@1` (invariant 1).
+  /// Optional nesting section.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub nesting: Option<Nesting>,
 }
@@ -969,17 +959,22 @@ pub enum ModelError {
 }
 
 impl Document {
-  /// A new, empty document for `job`.
-  pub fn new(job: Job) -> Self {
+  /// A new, empty document for `board`.
+  pub fn new(board: Board) -> Self {
     Self {
       schema: DOCUMENT_SCHEMA.to_owned(),
-      job,
+      board,
       layers: Vec::new(),
       toolpaths: Vec::new(),
       tools_ref: None,
       postp: None,
       nesting: None,
     }
+  }
+
+  /// Compatibility constructor for the former `Job` type.
+  pub fn with_job(job: Board) -> Self {
+    Self::new(job)
   }
 
   /// Every entity in the document, whatever layer holds it.
@@ -1094,9 +1089,9 @@ impl Document {
     }
 
     for (field, value) in [
-      ("width", self.job.width.mm()),
-      ("height", self.job.height.mm()),
-      ("thickness", self.job.thickness.mm()),
+      ("width", self.board.width.mm()),
+      ("height", self.board.height.mm()),
+      ("thickness", self.board.thickness.mm()),
     ] {
       if value <= 0.0 || !value.is_finite() {
         return Err(ModelError::NonPositiveJobDimension { field, value });
@@ -1190,19 +1185,16 @@ impl Document {
 /// one reading of a placement, so this check and a nester certifying its own output agree by
 /// construction (invariant 2).
 fn check_layers(document: &Document) -> Result<(), ModelError> {
-  // A board has one layer per role; two of them is a document that cannot mean anything, and it is
-  // cheaper to say so here than to let a cutout pick the wrong outline. Ordered by role so the
-  // refusal names the same role whatever order the layers were authored in.
-  let mut seen = std::collections::BTreeMap::new();
+  // Keepout may repeat; other (role, side) combinations must be unique.
+  let mut seen = std::collections::BTreeSet::new();
   for layer in &document.layers {
-    if layer.role.repeatable() {
+    if matches!(layer.role, LayerRole::Keepout) {
       continue;
     }
-    let count = seen.entry(format!("{:?}", layer.role)).or_insert(0u32);
-    *count += 1;
-    if *count > 1 {
+    let key = (layer.role, layer.side);
+    if !seen.insert(key) {
       return Err(ModelError::DuplicateLayerRole {
-        role: format!("{:?}", layer.role),
+        role: format!("{:?}/{:?}", layer.role, layer.side),
       });
     }
   }

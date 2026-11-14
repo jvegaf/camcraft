@@ -106,9 +106,9 @@ fn the_material_dialog_shows_the_three_numbers_it_writes() {
   );
   let report = handle_action(&mut app, &pressed.actions[0]).expect("the job applies");
   assert_eq!(report.label, "set job size");
-  assert_eq!(app.document().job.width.mm(), 600.0);
-  assert_eq!(app.document().job.height.mm(), 400.0);
-  assert_eq!(app.document().job.thickness.mm(), 18.0);
+  assert_eq!(app.document().board.width.mm(), 600.0);
+  assert_eq!(app.document().board.height.mm(), 400.0);
+  assert_eq!(app.document().board.thickness.mm(), 18.0);
 
   // And the dialog is gone, so the next `Continue` cannot write twice.
   let (after, _) = frame_with(&ctx, &mut shell, &mut app);
@@ -122,7 +122,7 @@ fn a_refused_measurement_names_the_number_and_leaves_the_job_alone() {
   let mut shell = Shell::new();
   let _ = open_material_dialog(&ctx, &mut shell, &mut app);
 
-  let before = app.document().job.clone();
+  let before = app.document().board.clone();
   shell.material_size = (0.0, 400.0, 18.0);
   let (output, texts) = frame_with(&ctx, &mut shell, &mut app);
   let sentence = output.drawn.material_refusal.clone();
@@ -147,7 +147,7 @@ fn a_refused_measurement_names_the_number_and_leaves_the_job_alone() {
     pressed.actions
   );
   assert_eq!(
-    app.document().job,
+    app.document().board,
     before,
     "a refused measurement changed the job"
   );
@@ -182,14 +182,14 @@ fn the_rotary_card_says_why_it_cannot_be_chosen_and_writes_nothing() {
     "the reason must name what this document can hold: {reason:?}"
   );
 
-  let before = app.document().job.clone();
+  let before = app.document().board.clone();
   let (pressed, _) = click_material(&ctx, &mut shell, &mut app, &settled, "Rotary");
   assert!(
     pressed.actions.is_empty(),
     "the rotary card wrote something: {:?}",
     pressed.actions
   );
-  assert_eq!(app.document().job, before);
+  assert_eq!(app.document().board, before);
   let (after, _) = frame_with(&ctx, &mut shell, &mut app);
   assert!(
     !after.drawn.material.is_empty(),
@@ -276,7 +276,7 @@ fn cancelling_the_material_dialog_writes_nothing() {
   let mut shell = Shell::new();
   let settled = open_material_dialog(&ctx, &mut shell, &mut app);
 
-  let before = app.document().job.clone();
+  let before = app.document().board.clone();
   let (pressed, _) = click_material(&ctx, &mut shell, &mut app, &settled, "Cancel");
   assert!(
     pressed.actions.is_empty(),
@@ -285,7 +285,7 @@ fn cancelling_the_material_dialog_writes_nothing() {
   );
   let (after, _) = frame_with(&ctx, &mut shell, &mut app);
   assert!(after.drawn.material.is_empty(), "Cancel left the dialog up");
-  assert_eq!(app.document().job, before, "Cancel changed the job");
+  assert_eq!(app.document().board, before, "Cancel changed the job");
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn a_set_job_action_with_a_zero_is_refused_by_the_shell_path_too() {
   // keep answering the same. The RED that mattered is `set_job_refuses_a_dimension_a_stock_cannot_have`
   // in `cam-app`, where the command answered `Ok(())`.
   let mut app = AppState::new(document_with_rectangle());
-  let before = app.document().job.clone();
+  let before = app.document().board.clone();
   let error = handle_action(
     &mut app,
     &UiAction::SetJob {
@@ -308,7 +308,7 @@ fn a_set_job_action_with_a_zero_is_refused_by_the_shell_path_too() {
   .expect_err("a zero width is not a stock size");
   assert!(error.contains("width"), "{error}");
   assert!(error.contains('0'), "the refusal names no number: {error}");
-  assert_eq!(app.document().job, before);
+  assert_eq!(app.document().board, before);
 }
 
 // Covers shell-tools-ref S3: the window creates nothing outside the document's directory, even for a

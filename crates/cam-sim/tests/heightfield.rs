@@ -2,17 +2,15 @@
 
 use cam_model::{Job, OriginCorner};
 use cam_sim::{grid_for, GridError, Heightfield, DEFAULT_CELL, MAX_CELLS};
-use cam_units::{Length, UnitSystem};
+use cam_units::Length;
 
 fn job(width: f64, height: f64, thickness: f64) -> Job {
   Job {
     width: Length::from_mm(width),
     height: Length::from_mm(height),
     thickness: Length::from_mm(thickness),
-    units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 
