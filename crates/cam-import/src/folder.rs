@@ -133,7 +133,6 @@ pub fn import_folder(
       }
       Err(message) => {
         warnings.push(format!("{}: {message}", path.display()));
-        imported.push(grouped);
       }
     }
   }

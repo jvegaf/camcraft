@@ -180,6 +180,56 @@ fn unrecognized_files_are_not_assigned_a_role() {
 }
 
 #[test]
+fn a_recognized_file_that_fails_to_parse_is_warned_but_not_imported() {
+  let dir = temp_dir("failed-layer");
+  // The outline imports, so the folder as a whole succeeds.
+  write_file(
+    &dir,
+    "outline.gbr",
+    &gerber_square(0, 0, 20_000_000, 15_000_000),
+  );
+  // Recognized as top copper by name, but the content is not a Gerber file.
+  write_file(&dir, "top.gbr", "this is not a gerber file\n");
+
+  let result = import_folder(&dir, &ImportOptions::default()).expect("import folder");
+
+  assert!(
+    result
+      .warnings
+      .iter()
+      .any(|warning| warning.contains("top.gbr")),
+    "the failed layer is reported as a warning: {:?}",
+    result.warnings
+  );
+  assert!(
+    result
+      .imported
+      .iter()
+      .all(|file| file.file_name != "top.gbr"),
+    "a layer that failed to parse is not reported as imported: {:?}",
+    result
+      .imported
+      .iter()
+      .map(|file| &file.file_name)
+      .collect::<Vec<_>>()
+  );
+  assert!(
+    result
+      .imported
+      .iter()
+      .any(|file| file.file_name == "outline.gbr"),
+    "the layer that parsed is reported as imported: {:?}",
+    result
+      .imported
+      .iter()
+      .map(|file| &file.file_name)
+      .collect::<Vec<_>>()
+  );
+
+  let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn import_simplified_kicad_folder_as_complete_board_with_correct_roles() {
   let dir = temp_dir("simple-kicad");
   write_simple_kicad_folder(&dir);
