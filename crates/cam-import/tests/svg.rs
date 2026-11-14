@@ -77,6 +77,32 @@ fn assert_bounds(contour: &Contour, min: (f64, f64), max: (f64, f64)) {
   );
 }
 
+/// Bounds that are only as exact as an arc approximation can make them.
+///
+/// An extremum is a point on the curve; a circular arc that approximates a curve reaches it only
+/// up to the chord tolerance the approximation was built with. Asserting the last few decimals of
+/// an approximate bound pins the approximation's floating point, not the shape.
+fn assert_bounds_within(contour: &Contour, min: (f64, f64), max: (f64, f64), tolerance: f64) {
+  let bounds = contour.bounds();
+  for (label, actual, expected) in [
+    (
+      "contour bounds minimum",
+      bounds.min,
+      Point2::new(min.0, min.1),
+    ),
+    (
+      "contour bounds maximum",
+      bounds.max,
+      Point2::new(max.0, max.1),
+    ),
+  ] {
+    assert!(
+      actual.distance_to(expected) <= tolerance,
+      "{label}: expected {expected:?} within {tolerance}, got {actual:?}"
+    );
+  }
+}
+
 /// The y-axis in millimetres, from SVG's y-down page coordinate (D-M3-10).
 ///
 /// [`PAGE`] is 100 mm tall, so `up(y) = 100 - y`: every expectation below writes the flip down
@@ -122,7 +148,7 @@ fn an_ellipse_is_arc_bearing_and_keeps_its_bounds() {
     contour.has_arcs(),
     "an ellipse is approximated by circular arcs, not by a polyline"
   );
-  assert_bounds(contour, (40.0, 45.0), (60.0, 55.0));
+  assert_bounds_within(contour, (40.0, 45.0), (60.0, 55.0), cam_geom::DEFAULT_CHORD);
   assert!(
     (contour.signed_area() - PI * 50.0).abs() < 0.5,
     "ellipse area {} is close to {}",
