@@ -7,7 +7,7 @@ use cam_geom::trim::{self, TrimOutcome};
 use cam_geom::{primitive, Contour, GeomError, Point2};
 use std::f64::consts::PI;
 
-const TOL: f64 = 1.0e-9;
+const TOL: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn line(ax: f64, ay: f64, bx: f64, by: f64) -> Contour {
   primitive::line(Point2::new(ax, ay), Point2::new(bx, by)).expect("valid line")

@@ -27,7 +27,7 @@ use cam_geom::{Contour, GeomError, Point2, Segment};
 use proptest::prelude::*;
 
 /// One nanometre: the tolerance every test here states explicitly.
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 /// The slack the kernel's distance proof allows itself, in millimetres.
 ///
@@ -330,7 +330,7 @@ fn an_over_shrink_is_refused_instead_of_gouging_the_wall() {
 
   // The kernel alone is happy: a 3 mm square inset by 2 mm comes back as a well-formed 1 mm ring,
   // wound the same way as its parent (D-M4-9). This is the M4 defect, pinned here as evidence.
-  let naive = offset_contour(&small, -distance, &OffsetOptions::default())
+  let naive = offset_contour(&small, -distance, &OffsetOptions::standard())
     .expect("the kernel does not see this gouge");
   assert!(!naive.flattened);
   assert_eq!(naive.contour.len(), 4, "a well-formed square ring");
@@ -370,7 +370,7 @@ fn an_offset_wider_than_the_material_is_refused() {
   // Past half the square's width both kernel calls still answer well-formed rings: the wall's offset
   // comes back as a 10 mm square in the middle of the region, each vertex 45 mm from the wall it was
   // supposed to be 55 mm inside.
-  let naive = offset_contour(&outer, -distance, &OffsetOptions::default())
+  let naive = offset_contour(&outer, -distance, &OffsetOptions::standard())
     .expect("the kernel does not see this one either");
   assert!(!naive.flattened);
   assert_eq!(naive.contour.len(), 4);
@@ -388,7 +388,7 @@ fn an_offset_wider_than_the_material_is_refused() {
     );
   }
   assert!(
-    offset_contour(&island, distance, &OffsetOptions::default()).is_ok(),
+    offset_contour(&island, distance, &OffsetOptions::standard()).is_ok(),
     "the island's own growth is a well-formed ring too"
   );
 
@@ -576,12 +576,12 @@ fn a_row_along_a_straight_boundary_is_ambiguous() {
 fn a_row_with_an_unusable_tolerance_is_ambiguous() {
   let material = region(vec![square(Point2::new(0.0, 0.0), 100.0, 100.0)]);
   assert_eq!(
-    material.raster_spans(37.0, 0.0),
+    material.raster_spans(37.0, cam_geom::TolerancePolicy::uniform(0.0)),
     None,
     "nothing to dedupe with"
   );
   assert_eq!(
-    material.raster_spans(37.0, -1.0),
+    material.raster_spans(37.0, cam_geom::TolerancePolicy::uniform(-1.0)),
     None,
     "a negative tolerance"
   );
@@ -649,10 +649,10 @@ fn a_bulging_piece_that_only_its_vertices_could_pass_is_dropped() {
 
   // Reproduce what the proof used to see: the two offsets normalized, with no distance proof at all.
   let naive = region(vec![
-    offset_contour(&outer, -distance, &OffsetOptions::default())
+    offset_contour(&outer, -distance, &OffsetOptions::standard())
       .expect("the wall's inset")
       .contour,
-    offset_contour(&island, distance, &OffsetOptions::default())
+    offset_contour(&island, distance, &OffsetOptions::standard())
       .expect("the island's growth")
       .contour,
   ])

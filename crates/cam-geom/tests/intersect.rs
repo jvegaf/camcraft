@@ -9,7 +9,7 @@ use cam_geom::{Arc, LineSeg, Point2, Segment};
 use proptest::prelude::*;
 use std::f64::consts::{PI, TAU};
 
-const TOL: f64 = 1.0e-9;
+const TOL: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn line(ax: f64, ay: f64, bx: f64, by: f64) -> Segment {
   Segment::Line(LineSeg::new(Point2::new(ax, ay), Point2::new(bx, by)))
@@ -219,7 +219,7 @@ fn two_quarters_of_one_circle_that_share_no_angle_do_not_meet() {
   let west = quarter(Point2::ORIGIN, 5.0, PI);
   let apart = segment_to_segment(east, west, TOL);
   assert!(
-    (apart - 50.0_f64.sqrt()).abs() <= TOL,
+    (apart - 50.0_f64.sqrt()).abs() <= TOL.epsilon,
     "two disjoint quarters of one radius-5 circle are 5*sqrt(2) apart, measured {apart}"
   );
   assert_eq!(
@@ -246,7 +246,7 @@ fn two_quarters_of_one_circle_that_only_touch_meet_at_one_point() {
   let north = quarter(Point2::ORIGIN, 5.0, PI / 2.0);
   match intersect::intersect(east, north, TOL) {
     Intersections::Point(point) => assert!(
-      point.distance_to(Point2::new(0.0, 5.0)) <= TOL,
+      point.distance_to(Point2::new(0.0, 5.0)) <= TOL.epsilon,
       "the quarters share only the angle {}",
       PI / 2.0
     ),
@@ -256,7 +256,7 @@ fn two_quarters_of_one_circle_that_only_touch_meet_at_one_point() {
   let below = quarter(Point2::ORIGIN, 5.0, 3.0 * PI / 2.0);
   match intersect::intersect(below, east, TOL) {
     Intersections::Point(point) => assert!(
-      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL.epsilon,
       "the seam is where the sweeps meet"
     ),
     other => panic!("a shared endpoint across the seam is one point, not {other:?}"),
@@ -278,7 +278,7 @@ fn a_clockwise_quarter_covers_the_angles_it_runs_back_through() {
   let below = arc(Point2::ORIGIN, 5.0, 0.0, -PI / 2.0);
   match intersect::intersect(below, east, TOL) {
     Intersections::Point(point) => assert!(
-      point.distance_to(Point2::new(5.0, 0.0)) <= TOL,
+      point.distance_to(Point2::new(5.0, 0.0)) <= TOL.epsilon,
       "a clockwise and a counter-clockwise quarter from angle 0 touch only at angle 0"
     ),
     other => panic!("two quarters meeting at one angle are one point, not {other:?}"),
@@ -366,7 +366,7 @@ proptest! {
 /// has to arbitrate *the* rule, not a constant of its own, or a disagreement it reports may be
 /// about two unrelated thresholds rather than about the sweeps.
 fn angular_tolerance(radius: f64) -> f64 {
-  TOL / radius + 1.0e-12
+  TOL.epsilon / radius + 1.0e-12
 }
 
 /// Whether `theta` lies on `arc`'s sweep, within `slack` radians of either end.
@@ -478,7 +478,7 @@ fn an_overlap_below_the_tolerance_is_a_point_and_never_nothing() {
     let points = answer.points();
     assert_eq!(points.len(), 1, "got {points:?}");
     assert!(
-      points[0].distance_to(Point2::new(-5.0, 0.0)) <= TOL,
+      points[0].distance_to(Point2::new(-5.0, 0.0)) <= TOL.epsilon,
       "the point must be where the sliver is, got {:?}",
       points[0]
     );
@@ -508,7 +508,7 @@ fn a_tiny_overlap_on_the_seam_is_a_point_on_the_seam() {
       let points = answer.points();
       assert_eq!(points.len(), 1, "got {points:?}");
       assert!(
-        points[0].distance_to(expected) <= TOL,
+        points[0].distance_to(expected) <= TOL.epsilon,
         "the point must be on the seam at {degrees} degrees, not halfway round: got {:?}",
         points[0]
       );

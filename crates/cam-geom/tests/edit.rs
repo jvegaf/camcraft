@@ -126,7 +126,7 @@ fn inserting_on_an_arc_preserves_the_arc_exactly() {
     .expect("the click has a direction");
   let expected = Point2::ORIGIN + direction * 5.0;
   assert!(
-    inserted.is_near(expected, 1.0e-12),
+    inserted.is_near(expected, cam_geom::TolerancePolicy::uniform(1.0e-12)),
     "expected the radial projection {expected:?}, got {inserted:?}"
   );
 }

@@ -16,7 +16,7 @@ use cam_geom::region::Region;
 use cam_geom::{Contour, Point2, Segment};
 
 /// One nanometre: the tolerance every test here states explicitly.
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn point(x: f64, y: f64) -> Point2 {
   Point2::new(x, y)

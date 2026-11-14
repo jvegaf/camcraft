@@ -1,10 +1,10 @@
 //! Behaviour tests for the geometry kernel's primitives, arcs and chaining (A2).
 
-use cam_geom::{
-  chain, Arc, Bounds, Contour, LineSeg, Point2, Segment, Vec2, DEFAULT_TOLERANCE as TOL,
-};
+use cam_geom::{chain, Arc, Bounds, Contour, LineSeg, Point2, Segment, TolerancePolicy, Vec2};
 use proptest::prelude::*;
 use std::f64::consts::{PI, TAU};
+
+const TOL: TolerancePolicy = TolerancePolicy::standard();
 
 fn rect(w: f64, h: f64) -> Contour {
   Contour::from_points(
@@ -51,9 +51,18 @@ fn bounds_expand_and_contains() {
   assert_eq!(bounds.width(), 10.0);
   assert_eq!(bounds.height(), 5.0);
   assert_eq!(bounds.center(), Point2::new(5.0, 2.5));
-  assert!(bounds.contains(Point2::new(10.0, 5.0), 0.0));
-  assert!(!bounds.contains(Point2::new(10.5, 5.0), 0.0));
-  assert!(bounds.contains(Point2::new(10.5, 5.0), 1.0));
+  assert!(bounds.contains(
+    Point2::new(10.0, 5.0),
+    cam_geom::TolerancePolicy::uniform(0.0)
+  ));
+  assert!(!bounds.contains(
+    Point2::new(10.5, 5.0),
+    cam_geom::TolerancePolicy::uniform(0.0)
+  ));
+  assert!(bounds.contains(
+    Point2::new(10.5, 5.0),
+    cam_geom::TolerancePolicy::uniform(1.0)
+  ));
   assert!(Bounds::empty().is_empty());
 }
 
@@ -103,7 +112,7 @@ proptest! {
         tolerance in 0.0005f64..0.2,
     ) {
         let arc = Arc::new(Point2::ORIGIN, radius, 0.3, sweep).expect("valid arc");
-        let points = arc.tessellate(tolerance);
+        let points = arc.tessellate(cam_geom::TolerancePolicy::standard().with_chord(tolerance));
         prop_assert!(points.len() >= 2);
         let steps = points.len() - 1;
         for index in 0..steps {
@@ -171,9 +180,10 @@ fn two_half_arcs_make_a_closed_circle() {
   assert!((contour.signed_area() - expected).abs() < 1.0e-6);
   let segments = contour.segments();
   assert_eq!(segments.len(), 2);
-  assert!(segments[1]
-    .end_point()
-    .is_near(segments[0].start_point(), 1.0e-9));
+  assert!(segments[1].end_point().is_near(
+    segments[0].start_point(),
+    cam_geom::TolerancePolicy::uniform(1.0e-9)
+  ));
 }
 
 #[test]
@@ -281,7 +291,7 @@ proptest! {
         tolerance in 0.001f64..0.05,
     ) {
         let contour = circle(Point2::ORIGIN, radius);
-        let points = contour.tessellate(tolerance);
+        let points = contour.tessellate(cam_geom::TolerancePolicy::standard().with_chord(tolerance));
         let segments: Vec<Segment> = (0..points.len())
             .map(|index| Segment::Line(LineSeg::new(points[index], points[(index + 1) % points.len()])))
             .collect();
@@ -329,8 +339,8 @@ proptest! {
   ) {
     let arc = Arc::new(Point2::new(7.0, -3.0), radius, start_angle, sweep).expect("arc");
     let bounds = arc.bounds();
-    for point in arc.tessellate(0.01) {
-      prop_assert!(bounds.contains(point, 1.0e-9), "{:?} escapes {:?}", point, bounds);
+    for point in arc.tessellate(cam_geom::TolerancePolicy::standard().with_chord(0.01)) {
+      prop_assert!(bounds.contains(point, cam_geom::TolerancePolicy::uniform(1.0e-9)), "{:?} escapes {:?}", point, bounds);
     }
   }
 }

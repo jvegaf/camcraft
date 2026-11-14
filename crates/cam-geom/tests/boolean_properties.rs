@@ -7,7 +7,7 @@ use proptest::prelude::*;
 use std::f64::consts::TAU;
 
 /// Comfortably finer than any feature the generators below can produce, so a refusal is a defect.
-const TOLERANCE: f64 = 1.0e-6;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-6);
 
 fn area(region: &Region) -> f64 {
   region

@@ -139,7 +139,14 @@ fn uniform_scale_doubles_area_and_keeps_arcs() {
     contour,
     lost_arcs,
     approximation_error,
-  } = transform::scale(&circle, 2.0, 2.0, Point2::ORIGIN, 0.01).expect("valid scale");
+  } = transform::scale(
+    &circle,
+    2.0,
+    2.0,
+    Point2::ORIGIN,
+    cam_geom::TolerancePolicy::uniform(0.01),
+  )
+  .expect("valid scale");
   assert_eq!(lost_arcs, 0, "a uniform scale keeps every arc");
   assert_eq!(approximation_error, 0.0, "a uniform scale is exact");
   assert_eq!(contour.len(), 2, "still two arcs");
@@ -155,7 +162,14 @@ fn uniform_scale_doubles_area_and_keeps_arcs() {
 #[test]
 fn negative_uniform_scale_is_a_rotation_and_stays_exact() {
   let circle = primitive::circle(Point2::ORIGIN, 3.0).expect("circle");
-  let outcome = transform::scale(&circle, -1.0, -1.0, Point2::ORIGIN, 0.01).expect("valid scale");
+  let outcome = transform::scale(
+    &circle,
+    -1.0,
+    -1.0,
+    Point2::ORIGIN,
+    cam_geom::TolerancePolicy::uniform(0.01),
+  )
+  .expect("valid scale");
   assert_eq!(outcome.lost_arcs, 0, "a half turn is not an approximation");
   assert!(outcome.contour.has_arcs());
   assert_close(
@@ -168,7 +182,7 @@ fn negative_uniform_scale_is_a_rotation_and_stays_exact() {
 
 #[test]
 fn non_uniform_scale_of_a_circle_reports_lost_arcs() {
-  let tolerance = 0.001;
+  let tolerance = cam_geom::TolerancePolicy::uniform(0.001);
   let circle = primitive::circle(Point2::ORIGIN, 5.0).expect("circle");
   let ScaleOutcome {
     contour,
@@ -186,18 +200,40 @@ fn non_uniform_scale_of_a_circle_reports_lost_arcs() {
   assert!(contour.is_closed(), "closedness survives");
   assert!(contour.is_ccw(), "winding survives");
   assert!(
-    approximation_error <= tolerance,
-    "error {approximation_error} within {tolerance}"
+    approximation_error <= tolerance.chord,
+    "error {approximation_error} within {tolerance:?}"
   );
-  assert_close(contour.bounds().width(), 20.0, 2.0 * tolerance, "width");
-  assert_close(contour.bounds().height(), 10.0, 2.0 * tolerance, "height");
-  assert_close(contour.bounds().center().x, 0.0, tolerance, "centre x");
+  assert_close(
+    contour.bounds().width(),
+    20.0,
+    2.0 * tolerance.chord,
+    "width",
+  );
+  assert_close(
+    contour.bounds().height(),
+    10.0,
+    2.0 * tolerance.chord,
+    "height",
+  );
+  assert_close(
+    contour.bounds().center().x,
+    0.0,
+    tolerance.epsilon,
+    "centre x",
+  );
 }
 
 #[test]
 fn non_uniform_scale_of_a_polygon_is_exact() {
   let rectangle = primitive::rectangle(Point2::ORIGIN, 4.0, 2.0).expect("rectangle");
-  let outcome = transform::scale(&rectangle, 2.0, 1.0, Point2::ORIGIN, 0.001).expect("valid scale");
+  let outcome = transform::scale(
+    &rectangle,
+    2.0,
+    1.0,
+    Point2::ORIGIN,
+    cam_geom::TolerancePolicy::uniform(0.001),
+  )
+  .expect("valid scale");
   assert_eq!(outcome.lost_arcs, 0, "straight segments scale exactly");
   assert_eq!(outcome.approximation_error, 0.0);
   assert_eq!(outcome.contour.len(), 4, "four corners stay four corners");
@@ -208,7 +244,14 @@ fn non_uniform_scale_of_a_polygon_is_exact() {
 fn scale_about_an_anchor_leaves_the_anchor_fixed() {
   let anchor = Point2::new(7.0, -3.0);
   let rectangle = primitive::rectangle(Point2::new(7.0, -3.0), 2.0, 2.0).expect("rectangle");
-  let outcome = transform::scale(&rectangle, 3.0, 3.0, anchor, 0.001).expect("valid scale");
+  let outcome = transform::scale(
+    &rectangle,
+    3.0,
+    3.0,
+    anchor,
+    cam_geom::TolerancePolicy::uniform(0.001),
+  )
+  .expect("valid scale");
   assert_close(
     outcome.contour.bounds().min.x,
     anchor.x,
@@ -228,8 +271,14 @@ fn scale_about_an_anchor_leaves_the_anchor_fixed() {
 fn scale_with_a_zero_factor_is_refused() {
   let rectangle = primitive::rectangle(Point2::ORIGIN, 2.0, 2.0).expect("rectangle");
   for (sx, sy) in [(0.0, 1.0), (1.0, 0.0)] {
-    let error = transform::scale(&rectangle, sx, sy, Point2::ORIGIN, 0.001)
-      .expect_err("a zero factor collapses the shape");
+    let error = transform::scale(
+      &rectangle,
+      sx,
+      sy,
+      Point2::ORIGIN,
+      cam_geom::TolerancePolicy::uniform(0.001),
+    )
+    .expect_err("a zero factor collapses the shape");
     assert!(
       matches!(error, GeomError::InvalidPrimitive { .. }),
       "{sx}/{sy}: {error:?}"
@@ -240,8 +289,14 @@ fn scale_with_a_zero_factor_is_refused() {
 #[test]
 fn scale_refuses_a_non_positive_tolerance() {
   let rectangle = primitive::rectangle(Point2::ORIGIN, 2.0, 2.0).expect("rectangle");
-  let error = transform::scale(&rectangle, 2.0, 1.0, Point2::ORIGIN, 0.0)
-    .expect_err("a tolerance must be positive");
+  let error = transform::scale(
+    &rectangle,
+    2.0,
+    1.0,
+    Point2::ORIGIN,
+    cam_geom::TolerancePolicy::uniform(0.0),
+  )
+  .expect_err("a tolerance must be positive");
   assert!(
     matches!(error, GeomError::InvalidPrimitive { .. }),
     "{error:?}"

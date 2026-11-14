@@ -4,7 +4,7 @@ use cam_geom::boolean::{combine, BooleanOp, Combined};
 use cam_geom::region::Region;
 use cam_geom::{primitive, Contour, Point2, Segment};
 
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Region {
   let contour = Contour::from_points(
@@ -211,11 +211,23 @@ fn a_degenerate_tolerance_is_refused() {
   let a = rect(0.0, 0.0, 1.0, 1.0);
   let b = rect(0.5, 0.5, 1.5, 1.5);
   assert!(
-    combine(&a, &b, BooleanOp::Union, 0.0).is_err(),
+    combine(
+      &a,
+      &b,
+      BooleanOp::Union,
+      cam_geom::TolerancePolicy::uniform(0.0)
+    )
+    .is_err(),
     "zero tolerance"
   );
   assert!(
-    combine(&a, &b, BooleanOp::Union, f64::NAN).is_err(),
+    combine(
+      &a,
+      &b,
+      BooleanOp::Union,
+      cam_geom::TolerancePolicy::uniform(f64::NAN)
+    )
+    .is_err(),
     "NaN tolerance"
   );
 }

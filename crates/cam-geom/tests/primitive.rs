@@ -7,11 +7,11 @@ use cam_geom::{primitive, Arc, Contour, GeomError, Point2, Segment};
 use proptest::prelude::*;
 use std::f64::consts::{PI, TAU};
 
-const EPS: f64 = 1.0e-9;
+const EPS: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
-fn assert_close(actual: f64, expected: f64, tolerance: f64, what: &str) {
+fn assert_close(actual: f64, expected: f64, tolerance: cam_geom::TolerancePolicy, what: &str) {
   assert!(
-    (actual - expected).abs() <= tolerance,
+    (actual - expected).abs() <= tolerance.epsilon,
     "{what}: expected {expected}, got {actual}"
   );
 }
@@ -113,7 +113,12 @@ fn circle_is_exactly_two_half_turn_arcs() {
 #[test]
 fn circle_area_and_perimeter_are_analytic() {
   let contour = primitive::circle(Point2::ORIGIN, 7.5).expect("valid circle");
-  assert_close(contour.signed_area(), PI * 7.5 * 7.5, 1.0e-6, "circle area");
+  assert_close(
+    contour.signed_area(),
+    PI * 7.5 * 7.5,
+    cam_geom::TolerancePolicy::uniform(1.0e-6),
+    "circle area",
+  );
   assert_close(contour.perimeter(), TAU * 7.5, EPS, "circle circumference");
   assert!(contour.is_ccw(), "a drawn circle closes counter-clockwise");
 }
@@ -147,7 +152,7 @@ fn polygon_has_exactly_n_straight_segments() {
   assert_close(
     contour.perimeter(),
     expected_perimeter,
-    1.0e-9,
+    cam_geom::TolerancePolicy::uniform(1.0e-9),
     "polygon perimeter",
   );
 }
@@ -156,8 +161,18 @@ fn polygon_has_exactly_n_straight_segments() {
 fn polygon_rotation_places_the_first_vertex() {
   let contour = primitive::polygon(Point2::ORIGIN, 10.0, 4, PI / 4.0).expect("valid polygon");
   let first = contour.vertices()[0].point;
-  assert_close(first.x, 10.0 * (PI / 4.0).cos(), 1.0e-9, "rotated x");
-  assert_close(first.y, 10.0 * (PI / 4.0).sin(), 1.0e-9, "rotated y");
+  assert_close(
+    first.x,
+    10.0 * (PI / 4.0).cos(),
+    cam_geom::TolerancePolicy::uniform(1.0e-9),
+    "rotated x",
+  );
+  assert_close(
+    first.y,
+    10.0 * (PI / 4.0).sin(),
+    cam_geom::TolerancePolicy::uniform(1.0e-9),
+    "rotated y",
+  );
 }
 
 #[test]
@@ -188,7 +203,12 @@ fn star_alternates_outer_and_inner_vertices() {
   for (index, vertex) in contour.vertices().iter().enumerate() {
     let radius = vertex.point.distance_to(Point2::ORIGIN);
     let expected = if index % 2 == 0 { outer } else { inner };
-    assert_close(radius, expected, 1.0e-9, "star vertex radius");
+    assert_close(
+      radius,
+      expected,
+      cam_geom::TolerancePolicy::uniform(1.0e-9),
+      "star vertex radius",
+    );
   }
 }
 
@@ -214,10 +234,15 @@ fn arc_through_three_points_passes_through_the_middle_one() {
   assert!(!contour.is_closed());
   assert!(contour.has_arcs());
   let arc = contour.segments()[0].as_arc().expect("one arc segment");
-  assert_close(arc.radius(), 5.0, 1.0e-9, "arc radius");
+  assert_close(
+    arc.radius(),
+    5.0,
+    cam_geom::TolerancePolicy::uniform(1.0e-9),
+    "arc radius",
+  );
   let middle = arc.point_at_fraction(0.5);
   assert!(
-    middle.is_near(b, 1.0e-9),
+    middle.is_near(b, cam_geom::TolerancePolicy::uniform(1.0e-9)),
     "the arc's midpoint is the middle point: got {middle:?}"
   );
 }

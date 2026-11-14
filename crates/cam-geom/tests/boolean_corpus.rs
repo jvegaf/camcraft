@@ -12,7 +12,7 @@ use cam_geom::{primitive, Contour, Point2, Segment, Vertex};
 use std::f64::consts::PI;
 
 /// Finer than every feature below, so a refusal is a defect and not a tolerance choice.
-const TOLERANCE: f64 = 1.0e-9;
+const TOLERANCE: cam_geom::TolerancePolicy = cam_geom::TolerancePolicy::uniform(1.0e-9);
 
 fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Region {
   polygon(&[
