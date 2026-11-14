@@ -50,7 +50,7 @@ impl ContourIssues {
 }
 
 /// Inspect a contour for the problems that make it uncuttable.
-pub fn inspect(contour: &Contour, tolerance: f64) -> ContourIssues {
+pub fn inspect(contour: &Contour, tolerance: crate::TolerancePolicy) -> ContourIssues {
   let segments = contour.segments();
   let mut issues = ContourIssues::default();
   if segments.is_empty() {
@@ -66,7 +66,7 @@ pub fn inspect(contour: &Contour, tolerance: f64) -> ContourIssues {
   let closed = contour.is_closed();
   let bounds: Vec<Bounds> = segments.iter().map(|segment| segment.bounds()).collect();
   for (index, segment) in segments.iter().enumerate() {
-    if segment.length() <= tolerance {
+    if segment.length() <= tolerance.epsilon {
       issues.degenerate.push(index);
     }
   }
@@ -114,9 +114,10 @@ fn adjacent(first: usize, second: usize, count: usize, closed: bool) -> bool {
 }
 
 /// True when the two bounding boxes can touch within tolerance.
-fn overlaps(first: Bounds, second: Bounds, tolerance: f64) -> bool {
-  first.min.x - tolerance <= second.max.x
-    && second.min.x - tolerance <= first.max.x
-    && first.min.y - tolerance <= second.max.y
-    && second.min.y - tolerance <= first.max.y
+fn overlaps(first: Bounds, second: Bounds, tolerance: crate::TolerancePolicy) -> bool {
+  let eps = tolerance.epsilon;
+  first.min.x - eps <= second.max.x
+    && second.min.x - eps <= first.max.x
+    && first.min.y - eps <= second.max.y
+    && second.min.y - eps <= first.max.y
 }

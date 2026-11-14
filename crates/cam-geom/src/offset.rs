@@ -21,7 +21,7 @@ use crate::contour::{Contour, Vertex};
 use crate::point::{Point2, Vec2};
 use crate::region::Region;
 use crate::segment::Segment;
-use crate::GeomError;
+use crate::{GeomError, TolerancePolicy};
 
 /// Tuning for [`offset_contour`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,16 +30,23 @@ pub struct OffsetOptions {
   ///
   /// A 90 degree corner needs `sqrt(2)`, a 30 degree corner about `3.9`.
   pub miter_limit: f64,
-  /// Chord tolerance, used for the self-intersection test and for flattening when it triggers.
-  pub tolerance: f64,
+  /// Tolerance policy: chord tolerance drives tessellation/self-intersection/flattening, epsilon
+  /// drives geometric comparisons.
+  pub tolerance: TolerancePolicy,
 }
 
-impl Default for OffsetOptions {
-  fn default() -> Self {
+impl OffsetOptions {
+  /// Options with the given miter limit and tolerance policy.
+  pub const fn new(miter_limit: f64, tolerance: TolerancePolicy) -> Self {
     Self {
-      miter_limit: 4.0,
-      tolerance: 0.001,
+      miter_limit,
+      tolerance,
     }
+  }
+
+  /// The canonical options: miter limit 4 with the standard tolerance policy.
+  pub const fn standard() -> Self {
+    Self::new(4.0, TolerancePolicy::standard())
   }
 }
 
@@ -132,9 +139,8 @@ pub fn offset_contour(
 
   let original_area = contour.signed_area();
   let candidate_area = candidate.signed_area();
-  if candidate_area.signum() != original_area.signum()
-    || candidate_area.abs() <= options.tolerance * options.tolerance
-  {
+  let eps = options.tolerance.epsilon;
+  if candidate_area.signum() != original_area.signum() || candidate_area.abs() <= eps * eps {
     return Err(GeomError::OffsetCollapsed {
       reason: "the offset would invert or eliminate the contour",
     });
@@ -148,7 +154,10 @@ pub fn offset_contour(
   // This is a safety guard, not a topological solution: a full arrangement-based offset with
   // skeleton handling is future work, and refusing loudly is the correct M0 behaviour.
   if signed < 0.0 {
-    let boundary = contour.tessellate(options.tolerance.max(1.0e-6));
+    let guard = TolerancePolicy::standard()
+      .with_chord(options.tolerance.chord.max(1.0e-6))
+      .with_epsilon(options.tolerance.epsilon);
+    let boundary = contour.tessellate(guard);
     let threshold = signed.abs() * 0.5;
     for vertex in candidate.vertices() {
       if distance_to_boundary(vertex.point, &boundary) < threshold {
@@ -159,8 +168,24 @@ pub fn offset_contour(
     }
   }
 
-  let sampled = candidate.tessellate(options.tolerance);
+  let force_flatten = matches!(options.tolerance.arc, crate::ArcPolicy::Flatten { .. });
+  let flatten_chord = match options.tolerance.arc {
+    crate::ArcPolicy::Flatten { chord } => chord,
+    crate::ArcPolicy::Preserve => options.tolerance.chord,
+  };
+  let flatten_policy = options.tolerance.with_chord(flatten_chord);
+
+  let sampled = candidate.tessellate(flatten_policy);
   let Some(cleaned) = remove_self_intersections(&sampled, options.tolerance) else {
+    if force_flatten && candidate.has_arcs() {
+      let flattened = Contour::from_points(&sampled, true)?;
+      warnings.push(OffsetWarning::Flattened);
+      return Ok(Offset {
+        contour: flattened,
+        flattened: true,
+        warnings,
+      });
+    }
     return Ok(Offset {
       contour: candidate,
       flattened: false,
@@ -170,8 +195,9 @@ pub fn offset_contour(
   // The offset crosses itself. The arrangement can cut the candidate against itself and keep the
   // curve, so it is asked first whenever the candidate carries an arc; the sampled cleanup stays as
   // the fallback, because it is the contract this reader had before arrangements were available.
-  if candidate.has_arcs() {
-    if let Some(surviving) = arrangement_resolution(&candidate, options.tolerance) {
+  if !force_flatten && candidate.has_arcs() {
+    let arrangement_tolerance = options.tolerance.with_epsilon(options.tolerance.chord);
+    if let Some(surviving) = arrangement_resolution(&candidate, arrangement_tolerance) {
       return Ok(Offset {
         contour: surviving,
         flattened: false,
@@ -236,7 +262,7 @@ fn offset_segment(
     Segment::Arc(arc) => {
       let radial_sign = if arc.is_ccw() { 1.0 } else { -1.0 };
       let radius = arc.radius() + signed * radial_sign;
-      if radius <= options.tolerance {
+      if radius <= options.tolerance.epsilon {
         return Err(GeomError::OffsetCollapsed {
           reason: "an arc radius would collapse",
         });
@@ -261,7 +287,7 @@ fn choose_join(
   next: &OffsetCurve,
   vertex: Point2,
   limit: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
 ) -> Option<Point2> {
   // Smooth or concentric continuation: the curves already meet, so there is nothing to intersect
   // and nothing to bridge. Without this, offsetting a circle made of two half arcs would try to
@@ -412,7 +438,7 @@ fn trimmed_bulge(
 /// Remove self-intersection loops, keeping the larger loop at each split.
 ///
 /// Returns `None` when the contour is already simple.
-fn remove_self_intersections(points: &[Point2], tolerance: f64) -> Option<Vec<Point2>> {
+fn remove_self_intersections(points: &[Point2], tolerance: TolerancePolicy) -> Option<Vec<Point2>> {
   let mut current = points.to_vec();
   let mut removed = 0;
 
@@ -480,7 +506,7 @@ fn segment_intersection(
   a2: Point2,
   b1: Point2,
   b2: Point2,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
 ) -> Option<Point2> {
   let r = a2 - a1;
   let s = b2 - b1;
@@ -493,8 +519,9 @@ fn segment_intersection(
   let u = base.cross(r) / denominator;
   let r_length = r.length().max(f64::MIN_POSITIVE);
   let s_length = s.length().max(f64::MIN_POSITIVE);
-  let t_slack = tolerance / r_length;
-  let u_slack = tolerance / s_length;
+  let eps = tolerance.epsilon;
+  let t_slack = eps / r_length;
+  let u_slack = eps / s_length;
   if t < -t_slack || t > 1.0 + t_slack || u < -u_slack || u > 1.0 + u_slack {
     return None;
   }
@@ -536,7 +563,7 @@ fn polygon_area(points: &[Point2]) -> f64 {
 /// flattening because the arrangement is an improvement over the sampled cleanup, not the contract:
 /// the contract is that a self-intersecting offset gets cleaned, and the sampled path can still
 /// keep it.
-fn arrangement_resolution(contour: &Contour, tolerance: f64) -> Option<Contour> {
+fn arrangement_resolution(contour: &Contour, tolerance: TolerancePolicy) -> Option<Contour> {
   let Ok(normalized) =
     Region::new(vec![contour.clone()]).and_then(|region| normalize(&region, tolerance))
   else {

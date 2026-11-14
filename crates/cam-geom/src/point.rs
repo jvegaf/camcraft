@@ -25,9 +25,9 @@ impl Point2 {
     (other - self).length()
   }
 
-  /// True when the two points are within `tolerance` of each other.
-  pub fn is_near(self, other: Self, tolerance: f64) -> bool {
-    self.distance_to(other) <= tolerance
+  /// True when the two points are within the policy's epsilon of each other.
+  pub fn is_near(self, other: Self, tolerance: crate::TolerancePolicy) -> bool {
+    self.distance_to(other) <= tolerance.epsilon
   }
 
   /// Linear interpolation towards `other` at parameter `t`.
@@ -299,11 +299,12 @@ impl Bounds {
     )
   }
 
-  /// True when `point` lies inside the box, grown by `tolerance`.
-  pub fn contains(self, point: Point2, tolerance: f64) -> bool {
-    point.x >= self.min.x - tolerance
-      && point.x <= self.max.x + tolerance
-      && point.y >= self.min.y - tolerance
-      && point.y <= self.max.y + tolerance
+  /// True when `point` lies inside the box, grown by the policy's epsilon.
+  pub fn contains(self, point: Point2, tolerance: crate::TolerancePolicy) -> bool {
+    let epsilon = tolerance.epsilon;
+    point.x >= self.min.x - epsilon
+      && point.x <= self.max.x + epsilon
+      && point.y >= self.min.y - epsilon
+      && point.y <= self.max.y + epsilon
   }
 }

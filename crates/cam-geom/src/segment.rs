@@ -209,7 +209,7 @@ impl Segment {
   }
 
   /// Append this segment's samples to `out`, skipping the duplicated start point.
-  pub fn tessellate_into(self, tolerance: f64, out: &mut Vec<Point2>) {
+  pub fn tessellate_into(self, tolerance: crate::TolerancePolicy, out: &mut Vec<Point2>) {
     match self {
       Self::Line(line) => out.push(line.end),
       Self::Arc(arc) => {

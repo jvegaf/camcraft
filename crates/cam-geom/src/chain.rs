@@ -29,7 +29,7 @@ impl Chained {
 /// unused segment whose start *or* end matches the current tail is appended (reversed when it
 /// matched by its end). Determinism matters because the resulting contour order reaches the
 /// G-code (A9).
-pub fn chain(segments: &[Segment], tolerance: f64) -> Chained {
+pub fn chain(segments: &[Segment], tolerance: crate::TolerancePolicy) -> Chained {
   let mut used = vec![false; segments.len()];
   let mut result = Chained::default();
 

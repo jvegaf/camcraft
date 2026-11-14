@@ -109,7 +109,7 @@ fn is_unchainable_error(err: &GeomError) -> bool {
   )
 }
 
-fn odd_degree_points(pieces: &[Segment], tolerance: f64) -> Vec<Point2> {
+fn odd_degree_points(pieces: &[Segment], tolerance: crate::TolerancePolicy) -> Vec<Point2> {
   let mut vertices: Vec<(Point2, usize)> = Vec::new();
   for piece in pieces {
     for point in [piece.start_point(), piece.end_point()] {
@@ -133,7 +133,7 @@ fn odd_degree_points(pieces: &[Segment], tolerance: f64) -> Vec<Point2> {
 fn snap_relevant_to_odd_degree(
   snap: (Point2, Point2),
   odd_points: &[Point2],
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
 ) -> bool {
   let (endpoint, projection) = snap;
   odd_points.iter().any(|point| {
@@ -146,7 +146,7 @@ fn snap_relevant_to_odd_degree(
 
 fn normalize_with(
   region: &Region,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   detect_near_misses: bool,
 ) -> Result<Normalized, GeomError> {
   let mut cuts: Vec<Cut> = Vec::new();
@@ -219,8 +219,11 @@ fn normalize_with(
 }
 
 /// Split every boundary at its crossings, keep the pieces that border material and chain them closed.
-pub fn normalize(region: &Region, tolerance: f64) -> Result<Normalized, GeomError> {
-  if !tolerance.is_finite() || tolerance <= 0.0 {
+pub fn normalize(
+  region: &Region,
+  tolerance: crate::TolerancePolicy,
+) -> Result<Normalized, GeomError> {
+  if !tolerance.epsilon.is_finite() || tolerance.epsilon <= 0.0 {
     return Err(GeomError::EditRefused {
       reason: "normalization needs a positive, finite tolerance",
     });
@@ -240,7 +243,7 @@ fn cut_fractions(
   region: &Region,
   skip_path: usize,
   skip_index: usize,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   re_cut: &mut bool,
   near_miss_snaps: &mut Vec<(Point2, Point2)>,
   detect_near_misses: bool,
@@ -283,7 +286,7 @@ fn push_fractions(
   fractions: &mut Vec<f64>,
   segment: Segment,
   others: impl IntoIterator<Item = Segment>,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   re_cut: &mut bool,
   near_miss_snaps: &mut Vec<(Point2, Point2)>,
   detect_near_misses: bool,
@@ -391,18 +394,23 @@ fn push_fractions(
 /// the middle, and the arrangement must connect them. Points already within `tolerance` are not
 /// near-misses: the intersection logic and vertex welding handle them. The caller must also reject
 /// snaps that would collapse the endpoint's own adjacent segments.
-fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option<(f64, Point2)> {
+fn near_miss_fraction(
+  segment: Segment,
+  point: Point2,
+  tolerance: crate::TolerancePolicy,
+) -> Option<(f64, Point2)> {
   let fraction = fraction_along(segment, point)?;
   if fraction <= FRACTION_EPSILON || fraction >= 1.0 - FRACTION_EPSILON {
     return None;
   }
   let projection = point_at(segment, fraction);
   let distance = point.distance_to(projection);
-  if distance <= tolerance {
+  let eps = tolerance.epsilon;
+  if distance <= eps {
     return None;
   }
   // Absolute cap: avoid welding legitimate clearances far above tolerance on long edges.
-  if distance > tolerance * 1.0e4 {
+  if distance > eps * 1.0e4 {
     return None;
   }
   if projection.is_near(segment.start_point(), tolerance)
@@ -426,7 +434,11 @@ fn near_miss_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option
 ///
 /// A meeting point at an end is not a split: the contour already changes vertex there, and cutting it
 /// would leave a zero-length piece at the end of every shared corner.
-fn interior_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option<f64> {
+fn interior_fraction(
+  segment: Segment,
+  point: Point2,
+  tolerance: crate::TolerancePolicy,
+) -> Option<f64> {
   let fraction = fraction_along(segment, point)?;
   if !(0.0..=1.0).contains(&fraction) {
     return None;
@@ -434,7 +446,7 @@ fn interior_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option<
   if fraction <= FRACTION_EPSILON || fraction >= 1.0 - FRACTION_EPSILON {
     return None;
   }
-  if point.distance_to(point_at(segment, fraction)) > tolerance {
+  if point.distance_to(point_at(segment, fraction)) > tolerance.epsilon {
     return None;
   }
   if point.is_near(segment.start_point(), tolerance)
@@ -446,7 +458,7 @@ fn interior_fraction(segment: Segment, point: Point2, tolerance: f64) -> Option<
 }
 
 /// Sort the cut fractions and drop the ones that are the same place within `tolerance`.
-fn dedup(fractions: &mut [f64], segment: Segment, tolerance: f64) -> Vec<f64> {
+fn dedup(fractions: &mut [f64], segment: Segment, tolerance: crate::TolerancePolicy) -> Vec<f64> {
   fractions.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
   let mut kept: Vec<f64> = Vec::with_capacity(fractions.len());
   for fraction in fractions.iter().copied() {
@@ -534,7 +546,7 @@ fn material_side(
   segment: Segment,
   path: usize,
   region: &Region,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Side, GeomError> {
   let length = segment.length();
@@ -584,7 +596,7 @@ fn material_side(
       // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
       // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
       let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
-      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance.epsilon);
       let mut sliver: Option<bool> = None;
       while probe * 2.0 <= length && probe >= min_probe {
         if let Some((left_point, right_point)) = probe_points(segment, probe) {
@@ -650,7 +662,12 @@ fn probe_points(segment: Segment, distance: f64) -> Option<(Point2, Point2)> {
 /// The piece's own boundary cannot be classified by distance at a probe deliberately close to it, so
 /// its contribution is the winding number there: inside or outside *that* boundary, which is the
 /// parity of one boundary and does not depend on how it happens to be oriented.
-fn material_beside(region: &Region, path: usize, point: Point2, tolerance: f64) -> Option<bool> {
+fn material_beside(
+  region: &Region,
+  path: usize,
+  point: Point2,
+  tolerance: crate::TolerancePolicy,
+) -> Option<bool> {
   enclosed_by(region, Some(path), point, tolerance)
 }
 
@@ -663,7 +680,7 @@ fn enclosed_by(
   region: &Region,
   skip: Option<usize>,
   point: Point2,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
 ) -> Option<bool> {
   let mut enclosed = 0_usize;
   for (index, boundary) in region.boundaries.iter().enumerate() {
@@ -686,7 +703,7 @@ fn enclosed_by(
 fn assemble(
   pieces: &[Segment],
   owners: &[bool],
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   flattened: &mut bool,
   near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Vec<Contour>, GeomError> {
@@ -799,7 +816,7 @@ fn assemble(
 fn vertex_index(
   vertices: &mut Vec<Vertex>,
   point: Point2,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   near_miss_snaps: &[(Point2, Point2)],
   allowed: &[Point2],
 ) -> usize {
@@ -1090,7 +1107,11 @@ fn start_order(pieces: &[Segment], a: usize, b: usize) -> Ordering {
 /// hold would come back as a different arc — or, through the segment builder's own fallback, as a
 /// straight chord. Such a piece is rebuilt here, at the caller's tolerance, and the caller is told
 /// (A8, D-RB-5) instead of being handed geometry that quietly changed shape.
-fn exactly(segment: Segment, tolerance: f64, flattened: &mut bool) -> Vec<Segment> {
+fn exactly(
+  segment: Segment,
+  tolerance: crate::TolerancePolicy,
+  flattened: &mut bool,
+) -> Vec<Segment> {
   let Segment::Arc(arc) = segment else {
     return vec![segment];
   };
@@ -1101,7 +1122,7 @@ fn exactly(segment: Segment, tolerance: f64, flattened: &mut bool) -> Vec<Segmen
   let points = arc.tessellate(tolerance);
   let mut lines: Vec<Segment> = Vec::with_capacity(points.len().saturating_sub(1));
   for window in points.windows(2) {
-    if window[0].is_near(window[1], 0.0) {
+    if window[0].is_near(window[1], crate::TolerancePolicy::uniform(0.0)) {
       continue;
     }
     lines.push(Segment::Line(LineSeg::new(window[0], window[1])));
@@ -1117,14 +1138,14 @@ fn exactly(segment: Segment, tolerance: f64, flattened: &mut bool) -> Vec<Segmen
 }
 
 /// Whether the contour model's bulge round trip reproduces this arc within `tolerance`.
-fn survives_the_bulge(arc: Arc, tolerance: f64) -> bool {
+fn survives_the_bulge(arc: Arc, tolerance: crate::TolerancePolicy) -> bool {
   let Ok(rebuilt) = Arc::from_endpoints_bulge(arc.start_point(), arc.end_point(), arc.bulge())
   else {
     return false;
   };
   let radius_error = (rebuilt.radius() - arc.radius()).abs();
   let sweep_error = (rebuilt.sweep() - arc.sweep()).abs() * arc.radius().max(1.0);
-  radius_error <= tolerance && sweep_error <= tolerance
+  radius_error <= tolerance.epsilon && sweep_error <= tolerance.epsilon
 }
 
 /// Which set operation to keep.
@@ -1194,7 +1215,7 @@ fn combine_with(
   a: &Region,
   b: &Region,
   op: BooleanOp,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   detect_near_misses: bool,
 ) -> Result<Combined, GeomError> {
   // One arrangement over both regions, so no piece ever straddles the predicate's answer: every
@@ -1298,9 +1319,9 @@ pub fn combine(
   a: &Region,
   b: &Region,
   op: BooleanOp,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
 ) -> Result<Combined, GeomError> {
-  if !tolerance.is_finite() || tolerance <= 0.0 {
+  if !tolerance.epsilon.is_finite() || tolerance.epsilon <= 0.0 {
     return Err(GeomError::EditRefused {
       reason: "a set operation needs a positive, finite tolerance",
     });
@@ -1319,7 +1340,7 @@ fn decide(
   a: &Region,
   b: &Region,
   op: BooleanOp,
-  tolerance: f64,
+  tolerance: crate::TolerancePolicy,
   near_miss_snaps: &[(Point2, Point2)],
 ) -> Result<Decision, GeomError> {
   let segment = piece.segment;
@@ -1380,7 +1401,7 @@ fn decide(
       // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
       // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
       let mut probe = PROBE_FLOOR * PROBE_GROWTH.powi(2);
-      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance);
+      let min_probe = (PROBE_FLOOR * 2.0).max(tolerance.epsilon);
       let mut drop_as_sliver = false;
       while probe * 2.0 <= length && probe >= min_probe {
         if let Some((left, right)) = probe_points(segment, probe) {
@@ -1431,8 +1452,11 @@ fn decide(
 /// together with the segment's geometry, so the comparison stays exact-in-tolerance without becoming
 /// a float equality. When the endpoint order is canonicalised, the traversal direction is carried
 /// with the swap (a swapped arc negates its sweep) and the key keeps that directed geometry.
-fn dedup_pieces(pieces: Vec<(Segment, bool)>, tolerance: f64) -> Vec<(Segment, bool)> {
-  let scale = 1.0 / tolerance;
+fn dedup_pieces(
+  pieces: Vec<(Segment, bool)>,
+  tolerance: crate::TolerancePolicy,
+) -> Vec<(Segment, bool)> {
+  let scale = 1.0 / tolerance.epsilon;
   let quantise = |value: f64| (value * scale).round() as i64;
 
   #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -28,6 +28,7 @@ pub mod primitive;
 pub mod region;
 pub mod region_offset;
 mod segment;
+pub mod tolerance;
 pub mod transform;
 pub mod trim;
 pub mod validate;
@@ -39,12 +40,13 @@ pub use contour::{Contour, Vertex};
 pub use distance::segment_to_segment;
 pub use point::{Bounds, Point2, Vec2};
 pub use segment::{LineSeg, NearestPoint, Segment};
+pub use tolerance::{ArcPolicy, Simplify, TolerancePolicy, DEFAULT_CHORD, DEFAULT_EPSILON};
 
 /// Default tolerance for chaining and joining, in millimetres.
 ///
 /// One micrometre: well below any real machine resolution, well above `f64` noise for
 /// job-scale coordinates.
-pub const DEFAULT_TOLERANCE: f64 = 1.0e-6;
+pub const DEFAULT_TOLERANCE: f64 = DEFAULT_EPSILON;
 
 /// Upper bound on tessellation segments for a single arc or curve.
 ///

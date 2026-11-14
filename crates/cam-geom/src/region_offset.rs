@@ -57,21 +57,11 @@ use crate::point::{Bounds, Point2};
 use crate::region::Region;
 use crate::segment::{LineSeg, Segment};
 use crate::winding::{relation, Relation};
-use crate::GeomError;
+use crate::{GeomError, TolerancePolicy};
 
-/// The offset kernel's chord tolerance, in millimetres.
-///
-/// This is [`OffsetOptions::default`]'s tolerance, named once here because the distance proof's slack
-/// is derived from it and both have to move together.
-const OFFSET_CHORD_TOLERANCE: f64 = 0.001;
-
-/// How far an offset vertex may fall short of the distance it claims, in millimetres.
-///
-/// A ring whose self-intersections were removed is flattened to [`OFFSET_CHORD_TOLERANCE`], so its
-/// vertices can sit a chord's sagitta inside the exact offset curve. Two sagittae is the slack M4
-/// chose (`RING_DISTANCE_SLACK` in `pocket.rs`), and it is kept at exactly that value so the region
-/// offset reproduces M4's rings vertex for vertex when the region has no islands (A15).
-const DISTANCE_SLACK: f64 = 2.0 * OFFSET_CHORD_TOLERANCE;
+/// How far an offset vertex may fall short of the distance it claims, as a multiple of the
+/// chord tolerance. Two sagittae keep the distance proof aligned with M4's rings.
+const DISTANCE_SLACK_FACTOR: f64 = 2.0;
 
 /// How much longer than the region's own extent the raster line reaches, in millimetres.
 ///
@@ -117,13 +107,17 @@ impl Region {
   /// cannot chain the offset pieces, or when nothing survives the distance proof. A partially offset
   /// region is never returned, and neither is an empty one: "no material left" is a refusal naming
   /// what collapsed, not a region with no boundaries.
-  pub fn offset(&self, distance: f64, tolerance: f64) -> Result<RegionOffset, GeomError> {
+  pub fn offset(
+    &self,
+    distance: f64,
+    tolerance: TolerancePolicy,
+  ) -> Result<RegionOffset, GeomError> {
     if !distance.is_finite() {
       return Err(GeomError::EditRefused {
         reason: "a region offset needs a finite distance",
       });
     }
-    if !tolerance.is_finite() || tolerance <= 0.0 {
+    if !tolerance.epsilon.is_finite() || tolerance.epsilon <= 0.0 {
       return Err(GeomError::EditRefused {
         reason: "a region offset needs a positive, finite tolerance",
       });
@@ -135,10 +129,7 @@ impl Region {
     }
 
     let depths = nesting_depths(self, tolerance)?;
-    let options = OffsetOptions {
-      tolerance: OFFSET_CHORD_TOLERANCE,
-      ..OffsetOptions::default()
-    };
+    let options = OffsetOptions::new(4.0, tolerance);
     let mut warnings = Vec::new();
     let mut flattened = false;
     let mut boundaries = Vec::with_capacity(self.boundaries.len());
@@ -166,7 +157,12 @@ impl Region {
       warnings.push(OffsetWarning::Flattened);
     }
 
-    let survivors = distance_proof(self, normalized.region.boundaries, distance);
+    let survivors = distance_proof(
+      self,
+      normalized.region.boundaries,
+      distance,
+      tolerance.chord,
+    );
     if survivors.is_empty() {
       return Err(GeomError::EditRefused {
         reason: "a region offset leaves no material: every offset piece is closer to an original boundary than the distance",
@@ -192,11 +188,11 @@ impl Region {
   /// clipped into spans without guessing, so the caller keeps owning its retry, which is the retry
   /// `pocket.rs` already performs. A `y` that is not a number and a tolerance that cannot dedupe are
   /// ambiguous in the same way. An empty `Vec` means the row misses the material entirely.
-  pub fn raster_spans(&self, y: f64, tolerance: f64) -> Option<Vec<(f64, f64)>> {
+  pub fn raster_spans(&self, y: f64, tolerance: TolerancePolicy) -> Option<Vec<(f64, f64)>> {
     if self.boundaries.is_empty() {
       return Some(Vec::new());
     }
-    if !y.is_finite() || !tolerance.is_finite() || tolerance <= 0.0 {
+    if !y.is_finite() || !tolerance.epsilon.is_finite() || tolerance.epsilon <= 0.0 {
       return None;
     }
     let bounds = region_bounds(self);
@@ -224,7 +220,7 @@ impl Region {
     for x in xs {
       if unique
         .last()
-        .map_or(true, |last| (x - last).abs() > tolerance)
+        .map_or(true, |last| (x - last).abs() > tolerance.epsilon)
       {
         unique.push(x);
       }
@@ -241,7 +237,7 @@ impl Region {
 /// Depth is what decides an offset's sign: material inside an even depth, outside an odd one. A
 /// crossing has no depth to speak of — the material boundary is not the boundary list — so it is
 /// refused here, before any offset is computed.
-fn nesting_depths(region: &Region, tolerance: f64) -> Result<Vec<usize>, GeomError> {
+fn nesting_depths(region: &Region, tolerance: TolerancePolicy) -> Result<Vec<usize>, GeomError> {
   let count = region.boundaries.len();
   let mut depths = vec![0_usize; count];
   for first in 0..count {
@@ -300,13 +296,18 @@ fn nesting_depths(region: &Region, tolerance: f64) -> Result<Vec<usize>, GeomErr
 /// A piece is still kept or dropped whole, so a failing piece costs the material of that piece and
 /// never a gouge (D-RB-9's recorded limit). What is gone is the escape hatch: a piece that fails
 /// *any* pair test is dropped, wherever on the piece the closeness happened.
-fn distance_proof(region: &Region, pieces: Vec<Contour>, distance: f64) -> Vec<Contour> {
+fn distance_proof(
+  region: &Region,
+  pieces: Vec<Contour>,
+  distance: f64,
+  chord_tolerance: f64,
+) -> Vec<Contour> {
   let original: Vec<Segment> = region
     .boundaries
     .iter()
     .flat_map(|boundary| boundary.segments())
     .collect();
-  let threshold = distance - DISTANCE_SLACK - distance.abs() * 1.0e-9;
+  let threshold = distance - DISTANCE_SLACK_FACTOR * chord_tolerance - distance.abs() * 1.0e-9;
   pieces
     .into_iter()
     .filter(|piece| proves_distance(&original, piece, threshold))
@@ -322,9 +323,9 @@ fn distance_proof(region: &Region, pieces: Vec<Contour>, distance: f64) -> Vec<C
 /// check point count, no step, and no bound that decides whether a pair has to be looked at.
 fn proves_distance(original: &[Segment], piece: &Contour, threshold: f64) -> bool {
   piece.segments().into_iter().all(|segment| {
-    original
-      .iter()
-      .all(|other| segment_to_segment(segment, *other, 0.0) >= threshold)
+    original.iter().all(|other| {
+      segment_to_segment(segment, *other, crate::TolerancePolicy::uniform(0.0)) >= threshold
+    })
   })
 }
 

@@ -86,7 +86,7 @@ impl Contour {
       } else {
         break;
       };
-      if from.point.is_near(to.point, 0.0) {
+      if from.point.distance_to(to.point) == 0.0 {
         return Err(GeomError::DegenerateArc {
           reason: "consecutive vertices coincide",
         });
@@ -174,8 +174,8 @@ impl Contour {
       .sum()
   }
 
-  /// Sample the contour into points, including arcs at `tolerance` chord error.
-  pub fn tessellate(&self, tolerance: f64) -> Vec<Point2> {
+  /// Sample the contour into points, including arcs at the policy's chord error.
+  pub fn tessellate(&self, tolerance: crate::TolerancePolicy) -> Vec<Point2> {
     let mut points = Vec::new();
     if let Some(first) = self.vertices.first() {
       points.push(first.point);
@@ -183,7 +183,7 @@ impl Contour {
     for segment in self.raw_segments() {
       segment.tessellate_into(tolerance, &mut points);
     }
-    dedup_near(&mut points, tolerance);
+    dedup_near(&mut points, tolerance.epsilon);
     // A closed contour must not repeat its first point at the end: a duplicated vertex becomes a
     // zero-length segment, which downstream reads as a spurious self-intersection.
     if self.closed && points.len() > 2 {
@@ -219,7 +219,12 @@ impl Contour {
 
   /// Bounds of the contour.
   pub fn bounds(&self) -> Bounds {
-    Bounds::from_points(&self.tessellate(crate::DEFAULT_TOLERANCE))
+    self
+      .raw_segments()
+      .into_iter()
+      .fold(Bounds::empty(), |bounds, segment| {
+        bounds.union(segment.bounds())
+      })
   }
 
   /// Distance between the last vertex and the first, if both exist.
@@ -264,7 +269,7 @@ fn segment_between(from: Vertex, to: Vertex) -> Segment {
 fn dedup_near(points: &mut Vec<Point2>, tolerance: f64) {
   let mut write = 0;
   for read in 0..points.len() {
-    if write == 0 || !points[read].is_near(points[write - 1], tolerance) {
+    if write == 0 || points[read].distance_to(points[write - 1]) > tolerance {
       points[write] = points[read];
       write += 1;
     }

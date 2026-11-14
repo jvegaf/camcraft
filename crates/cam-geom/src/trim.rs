@@ -38,7 +38,11 @@ pub struct TrimOutcome {
 ///
 /// [`GeomError::EditRefused`] unless the cutter crosses the target at exactly two usable points. A
 /// tangential touch and a coincident overlap are not usable cut points: neither divides a contour.
-pub fn trim(target: &Contour, cutter: &Contour, tolerance: f64) -> Result<TrimOutcome, GeomError> {
+pub fn trim(
+  target: &Contour,
+  cutter: &Contour,
+  tolerance: crate::TolerancePolicy,
+) -> Result<TrimOutcome, GeomError> {
   let segments = target.segments();
   let cuts = collect_cuts(&segments, cutter, tolerance);
   if cuts.len() != REQUIRED_CUTS {
@@ -117,7 +121,11 @@ impl Position {
   }
 }
 
-fn collect_cuts(segments: &[Segment], cutter: &Contour, tolerance: f64) -> Vec<Position> {
+fn collect_cuts(
+  segments: &[Segment],
+  cutter: &Contour,
+  tolerance: crate::TolerancePolicy,
+) -> Vec<Position> {
   let cutter_segments = cutter.segments();
   let mut cuts: Vec<Position> = Vec::new();
   for (index, segment) in segments.iter().enumerate() {

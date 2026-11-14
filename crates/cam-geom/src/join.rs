@@ -24,7 +24,7 @@ const AMBIGUOUS_ENDS: usize = 3;
 /// [`GeomError::EditRefused`] when the group is empty, holds a closed contour (it has no free ends),
 /// has three or more ends meeting at one point, has more than one candidate continuation at a step,
 /// or does not form exactly one chain.
-pub fn join(contours: &[Contour], tolerance: f64) -> Result<Contour, GeomError> {
+pub fn join(contours: &[Contour], tolerance: crate::TolerancePolicy) -> Result<Contour, GeomError> {
   let Some(first) = contours.first() else {
     return Err(GeomError::EditRefused {
       reason: "there is nothing to join",
@@ -95,7 +95,7 @@ pub fn join(contours: &[Contour], tolerance: f64) -> Result<Contour, GeomError> 
 }
 
 /// True when any free end coincides with two or more other free ends.
-fn has_a_fork(contours: &[Contour], tolerance: f64) -> bool {
+fn has_a_fork(contours: &[Contour], tolerance: crate::TolerancePolicy) -> bool {
   let ends: Vec<Point2> = contours
     .iter()
     .flat_map(|contour| {

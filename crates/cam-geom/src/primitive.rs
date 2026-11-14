@@ -11,6 +11,7 @@ use crate::arc::Arc;
 use crate::contour::{Contour, Vertex};
 use crate::point::Point2;
 use crate::GeomError;
+use crate::TolerancePolicy;
 
 use std::f64::consts::TAU;
 
@@ -225,28 +226,29 @@ impl EllipseApproximation {
   }
 }
 
-/// A counter-clockwise ellipse, approximated by circular arcs within `tolerance`.
+/// A counter-clockwise ellipse, approximated by circular arcs within the policy's chord tolerance.
 ///
 /// An ellipse is not representable by circular arcs, so this is an approximation whose achieved
 /// error is returned rather than hidden (M2 A3). The piece count starts at four — which puts a
-/// vertex on each axis extreme — and doubles until the measured error meets `tolerance` or
+/// vertex on each axis extreme — and doubles until the measured error meets `tolerance.chord` or
 /// [`MAX_ELLIPSE_ARCS`] is reached, in which case the best attempt and its real error come back.
 ///
 /// # Errors
 ///
-/// [`GeomError::InvalidPrimitive`] when either radius is not positive, or when `tolerance` is not
-/// positive.
+/// [`GeomError::InvalidPrimitive`] when either radius is not positive, or when the chord tolerance
+/// is not positive.
 pub fn ellipse(
   center: Point2,
   rx: f64,
   ry: f64,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
 ) -> Result<EllipseApproximation, GeomError> {
+  let chord = tolerance.chord;
   require_positive("the ellipse X radius must be a positive finite number", rx)?;
   require_positive("the ellipse Y radius must be a positive finite number", ry)?;
   require_positive(
     "the ellipse tolerance must be a positive finite number",
-    tolerance,
+    chord,
   )?;
 
   if rx == ry {
@@ -258,14 +260,14 @@ pub fn ellipse(
 
   let mut pieces = MIN_ELLIPSE_ARCS;
   let mut best = ellipse_pieces(center, rx, ry, pieces)?;
-  while best.max_radial_error > tolerance && pieces < MAX_ELLIPSE_ARCS {
+  while best.max_radial_error > chord && pieces < MAX_ELLIPSE_ARCS {
     pieces *= 2;
     let attempt = ellipse_pieces(center, rx, ry, pieces)?;
     let improved = attempt.max_radial_error <= best.max_radial_error;
     if improved {
       best = attempt;
     }
-    if best.max_radial_error <= tolerance {
+    if best.max_radial_error <= chord {
       break;
     }
   }

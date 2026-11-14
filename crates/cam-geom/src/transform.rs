@@ -16,7 +16,7 @@ use crate::arc::Arc;
 use crate::contour::{Contour, Vertex};
 use crate::point::{Point2, Vec2};
 use crate::segment::Segment;
-use crate::GeomError;
+use crate::{GeomError, TolerancePolicy};
 
 /// What a scale produced, including what it cost.
 #[derive(Clone, Debug, PartialEq)]
@@ -97,14 +97,14 @@ pub fn mirror(contour: &Contour, point: Point2, direction: Vec2) -> Result<Conto
 ///
 /// # Errors
 ///
-/// [`GeomError::InvalidPrimitive`] when a factor is zero or not finite, or when `tolerance` is not
-/// positive.
+/// [`GeomError::InvalidPrimitive`] when a factor is zero or not finite, or when the policy's chord
+/// tolerance is not positive.
 pub fn scale(
   contour: &Contour,
   sx: f64,
   sy: f64,
   about: Point2,
-  tolerance: f64,
+  tolerance: TolerancePolicy,
 ) -> Result<ScaleOutcome, GeomError> {
   for (factor, what) in [
     (sx, "the X scale factor must be finite and non-zero"),
@@ -114,7 +114,7 @@ pub fn scale(
       return Err(GeomError::InvalidPrimitive { reason: what });
     }
   }
-  if !tolerance.is_finite() || tolerance <= 0.0 {
+  if !tolerance.chord.is_finite() || tolerance.chord <= 0.0 {
     return Err(GeomError::InvalidPrimitive {
       reason: "the scale tolerance must be a positive finite number",
     });
@@ -137,7 +137,7 @@ pub fn scale(
   // Tessellate in input space at a tolerance tightened by the largest stretch, so the deviation
   // seen in the output never exceeds the tolerance the caller asked for.
   let stretch = sx.abs().max(sy.abs());
-  let input_tolerance = tolerance / stretch;
+  let input_tolerance = tolerance.with_chord(tolerance.chord / stretch);
   let lost_arcs = contour
     .segments()
     .iter()
@@ -184,11 +184,12 @@ fn scale_point(point: Point2, about: Point2, sx: f64, sy: f64) -> Point2 {
   )
 }
 
-/// The largest sagitta the tessellation of any arc in `contour` introduces at `tolerance`.
+/// The largest sagitta the tessellation of any arc in `contour` introduces at the policy's chord
+/// tolerance.
 ///
 /// Measured between each chord and the true arc point halfway along it, so the number reported is
 /// what happened rather than what was requested.
-fn achieved_sagitta(contour: &Contour, tolerance: f64) -> f64 {
+fn achieved_sagitta(contour: &Contour, tolerance: TolerancePolicy) -> f64 {
   let mut worst: f64 = 0.0;
   for segment in contour.segments() {
     let Segment::Arc(arc) = segment else {
@@ -199,7 +200,7 @@ fn achieved_sagitta(contour: &Contour, tolerance: f64) -> f64 {
   worst
 }
 
-fn arc_sagitta(arc: Arc, tolerance: f64) -> f64 {
+fn arc_sagitta(arc: Arc, tolerance: TolerancePolicy) -> f64 {
   let steps = arc.step_count(tolerance);
   if steps == 0 {
     return 0.0;
