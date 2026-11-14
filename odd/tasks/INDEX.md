@@ -57,5 +57,5 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 050 | [w2a-gerber](050-w2a-gerber.md) | delivered | 2026-11-14 | `c5d71c5` |
 | 051 | [w2d-pcb-tool-library](051-w2d-pcb-tool-library.md) | delivered | 2026-11-14 | `d1f79b8` |
 | 052 | [e0-3-tolerance-policy](052-e0-3-tolerance-policy.md) | delivered | 2026-11-14 | `dc5e9da` |
-| 053 | [ci-two-trunks](053-ci-two-trunks.md) | pending | 2026-11-14 | `307ab4d` |
-| 054 | [records-gate](054-records-gate.md) | pending | 2026-11-14 | — |
+| 053 | [ci-two-trunks](053-ci-two-trunks.md) | delivered | 2026-11-14 | `9adfdbd` |
+| 054 | [records-gate](054-records-gate.md) | delivered | 2026-11-14 | `b9a0987` |
