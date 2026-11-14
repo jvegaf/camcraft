@@ -10,7 +10,7 @@ use super::support::*;
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_type_combo_offers_the_six_kinds_in_s4s_order_and_a_choice_reaches_the_draft() {
+fn the_type_combo_offers_the_seven_kinds_in_s4s_order_and_a_choice_reaches_the_draft() {
   let ctx = egui::Context::default();
   let mut app = AppState::new(document_with_toolpath(2));
   let mut shell = Shell::new();
@@ -28,8 +28,9 @@ fn the_type_combo_offers_the_six_kinds_in_s4s_order_and_a_choice_reaches_the_dra
       "V-bit",
       "Engraving",
       "Drill",
+      "Isolation mill",
     ],
-    "S4 fixes these six kinds in this order, and ToolKind::ALL is what the combo iterates"
+    "S4 fixes these seven kinds in this order, and ToolKind::ALL is what the combo iterates"
   );
 
   // The combo is a row labelled `Type` whose box opens the list, so the list that is offered is read from the

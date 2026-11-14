@@ -100,9 +100,9 @@ fn the_tree_groups_the_library_by_kind_and_puts_the_count_in_the_heading() {
       "the tree never drew {heading:?}: {words}"
     );
   }
-  // And the headings are the thing that folds the group, so they are pressable.
-  for kind in ToolKind::ALL {
-    let heading = format!("{} (", kind.label());
+  // And the headings are the thing that folds the group, so every heading the tree drew is pressable.
+  for (family, _) in &opened.drawn.tool_families {
+    let heading = format!("{family} (");
     assert!(
       hits(&opened).iter().any(|word| word.starts_with(&heading)),
       "the {heading} heading is not pressable, so its group cannot fold: {:?}",

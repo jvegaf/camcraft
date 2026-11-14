@@ -4,9 +4,9 @@ use cam_units::{Format, Length};
 /// The shape a tool's cutting end has, which is what the drawing can paint.
 ///
 /// Two vocabularies, and the split is deliberate: [`ToolKind`] is what the operator *called* the tool and
-/// what the library stores; this is what can be *drawn*. Six kinds collapse to four shapes because two
-/// pairs paint identically — an engraving cutter ends flat like an end mill, and a drill ends in a cone to
-/// a point like a V-bit whose flat is zero.
+/// what the library stores; this is what can be *drawn*. Seven kinds collapse to four shapes because
+/// several kinds paint identically — an engraving cutter and an isolation mill both end flat like an end
+/// mill, and a drill ends in a cone to a point like a V-bit whose flat is zero.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ToolFamily {
   /// A straight cutter with a square end.
@@ -23,7 +23,7 @@ impl ToolFamily {
   /// The shape a kind paints as.
   pub fn of(kind: ToolKind) -> ToolFamily {
     match kind {
-      ToolKind::FlatEndMill | ToolKind::Engraving => ToolFamily::Flat,
+      ToolKind::FlatEndMill | ToolKind::Engraving | ToolKind::IsolationMill => ToolFamily::Flat,
       ToolKind::BallNose => ToolFamily::BallNose,
       ToolKind::CornerRadius => ToolFamily::CornerRadius,
       ToolKind::VBit | ToolKind::Drill => ToolFamily::VBit,
@@ -70,6 +70,13 @@ impl ShapeField {
   pub fn of(kind: ToolKind) -> &'static [ShapeField] {
     match kind {
       ToolKind::FlatEndMill => &[
+        ShapeField::Diameter,
+        ShapeField::FluteLength,
+        ShapeField::ShankDiameter,
+        ShapeField::OverallLength,
+        ShapeField::Flutes,
+      ],
+      ToolKind::IsolationMill => &[
         ShapeField::Diameter,
         ShapeField::FluteLength,
         ShapeField::ShankDiameter,

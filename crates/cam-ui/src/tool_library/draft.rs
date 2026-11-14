@@ -170,7 +170,7 @@ impl ToolDraft {
     geometry.tool_type = self.kind.raw();
     let half = geometry.diameter.map(|diameter| diameter.mm() / 2.0);
     match self.kind {
-      ToolKind::FlatEndMill | ToolKind::Engraving => {
+      ToolKind::FlatEndMill | ToolKind::Engraving | ToolKind::IsolationMill => {
         geometry.tip_radius = None;
         geometry.included_angle = None;
         geometry.flat_diameter = None;

@@ -10,10 +10,10 @@ use super::support::*;
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_six_kinds_collapse_to_the_four_shapes_the_drawing_can_paint() {
+fn the_seven_kinds_collapse_to_the_four_shapes_the_drawing_can_paint() {
   // One vocabulary is what the operator called the tool and what the library stores; the other is what can be
-  // painted. `Engraving` ends flat like an end mill and `Drill` ends in a cone like a V-bit, so six kinds are
-  // four shapes and the pairing is stated rather than discovered.
+  // painted. `Engraving` and `IsolationMill` end flat like an end mill and `Drill` ends in a cone like a
+  // V-bit, so seven kinds are four shapes and the pairing is stated rather than discovered.
   assert_eq!(
     ToolKind::ALL.map(ToolFamily::of),
     [
@@ -23,6 +23,7 @@ fn the_six_kinds_collapse_to_the_four_shapes_the_drawing_can_paint() {
       ToolFamily::VBit,
       ToolFamily::Flat,
       ToolFamily::VBit,
+      ToolFamily::Flat,
     ]
   );
   // A pointed tip is the one shape property the form asks about, and the two kinds that have one are the two
