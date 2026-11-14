@@ -15,12 +15,14 @@ use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 
 fn document(layers: &[(&str, Vec<Contour>)]) -> Document {
   let mut document = Document::new(Job::default_sheet());
-  for (index, (name, contours)) in layers.iter().enumerate() {
+  for (index, (_name, contours)) in layers.iter().enumerate() {
     document.layers.push(Layer {
       id: format!("layer-{index}"),
-      name: (*name).to_string(),
-      role: LayerRole::Geometry,
+      role: LayerRole::Outline, /*was Geometry*/
+      side: cam_model::Side::Top,
+      color: "#000000".to_owned(),
       visible: true,
+      source: cam_model::Provenance::default(),
       entities: contours
         .iter()
         .enumerate()

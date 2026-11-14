@@ -2,9 +2,9 @@
 
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  CutoutParams, Document, Entity, EntityKind, FillMethod, IsolationKind, IsolationParams, Job,
-  Layer, LayerRole, MillingDirection, NonCopperClearParams, Operation, PaintParams, PanelizeParams,
-  Tab, TabKind, Toolpath, DOCUMENT_SCHEMA,
+  Board, BoardSideUp, CutoutParams, Document, Entity, EntityKind, FillMethod, IsolationKind,
+  IsolationParams, Layer, LayerRole, MillingDirection, NonCopperClearParams, Operation,
+  PaintParams, PanelizeParams, Provenance, Side, Tab, TabKind, Toolpath, DOCUMENT_SCHEMA,
 };
 use cam_store::document::{load_document, save_document, DocumentFile, DOCUMENT_ENTRY};
 use cam_store::StoreError;
@@ -31,11 +31,12 @@ fn listing(directory: &std::path::Path) -> Vec<String> {
 }
 
 fn sample_document() -> Document {
-  let mut document = Document::new(Job::default_sheet());
+  let mut document = Document::new(Board::default_board());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline,
+    side: Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -52,6 +53,7 @@ fn sample_document() -> Document {
         .expect("rectangle"),
       },
     }],
+    source: Provenance::default(),
   });
   document
 }
@@ -151,11 +153,11 @@ fn saving_over_an_existing_document_replaces_it_without_a_temporary_leftover() {
   let path = scratch("overwrite");
   save_document(&path, &sample_document()).expect("first save");
   let mut second = sample_document();
-  second.job.width = cam_units::Length::from_mm(600.0);
+  second.board.width = cam_units::Length::from_mm(600.0);
   save_document(&path, &second).expect("second save");
 
   let loaded = load_document(&path).expect("loads");
-  assert_eq!(loaded.job.width, cam_units::Length::from_mm(600.0));
+  assert_eq!(loaded.board.width, cam_units::Length::from_mm(600.0));
 
   let leftovers: Vec<_> = std::fs::read_dir(path.parent().expect("parent"))
     .expect("list")
@@ -253,33 +255,33 @@ fn a_legacy_schema_cannot_be_written_through_to_bytes() {
 
 /// A board that uses every layer role and every operation kind.
 ///
-/// The point is coverage of the format, not a real design: ten layers, one closed contour each, and
-/// one toolpath per operation. If the schema changes shape, this stops round-tripping.
+/// The point is coverage of the format, not a real design.
 fn full_board() -> Document {
-  let mut document = Document::new(Job {
+  let mut document = Document::new(Board {
     width: Length::from_mm(60.0),
     height: Length::from_mm(40.0),
     thickness: Length::from_mm(1.6),
-    ..Job::default_sheet()
+    origin: cam_model::OriginCorner::BottomLeft,
+    side_up: BoardSideUp::Top,
   });
-  let roles = [
-    LayerRole::CopperTop,
-    LayerRole::CopperBottom,
-    LayerRole::MaskTop,
-    LayerRole::MaskBottom,
-    LayerRole::SilkTop,
-    LayerRole::SilkBottom,
-    LayerRole::Outline,
-    LayerRole::Drill,
-    LayerRole::Keepout,
-    LayerRole::Geometry,
+  let layers = [
+    (LayerRole::CopperTop, Side::Top),
+    (LayerRole::CopperBottom, Side::Bottom),
+    (LayerRole::Mask, Side::Top),
+    (LayerRole::Mask, Side::Bottom),
+    (LayerRole::Silk, Side::Top),
+    (LayerRole::Silk, Side::Bottom),
+    (LayerRole::Outline, Side::Both),
+    (LayerRole::Drill, Side::Both),
+    (LayerRole::Keepout, Side::Top),
   ];
-  for (index, role) in roles.iter().enumerate() {
+  for (index, (role, side)) in layers.iter().enumerate() {
     let id = format!("L{}", index + 1);
     document.layers.push(Layer {
       id: id.clone(),
-      name: format!("{role:?}"),
       role: *role,
+      side: *side,
+      color: "#000000".to_owned(),
       visible: true,
       entities: vec![Entity {
         id: format!("E{}", index + 1),
@@ -296,6 +298,7 @@ fn full_board() -> Document {
           .expect("rectangle"),
         },
       }],
+      source: Provenance::default(),
     });
   }
 

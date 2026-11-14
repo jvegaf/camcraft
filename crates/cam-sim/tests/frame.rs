@@ -11,7 +11,7 @@ use cam_geom::Point2;
 use cam_model::{Job, OriginCorner};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_sim::{sweep, Heightfield};
-use cam_units::{Length, UnitSystem};
+use cam_units::Length;
 
 /// A sheet that is narrower than it is tall, so a Y reflection is visibly a different place.
 const WIDTH: f64 = 80.0;
@@ -34,10 +34,8 @@ fn job(origin: OriginCorner) -> Job {
     width: Length::from_mm(WIDTH),
     height: Length::from_mm(HEIGHT),
     thickness: Length::from_mm(THICKNESS),
-    units: UnitSystem::Mm,
     origin,
-    safe_z: Length::from_mm(SAFE_Z),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 
@@ -52,7 +50,7 @@ fn tool() -> ToolShape {
 fn program(moves: Vec<Move>) -> MoveStream {
   MoveStream {
     segments: vec![Segment {
-      name: "Arc".to_owned(),
+      name: "arc".to_owned(),
       tool_number: 1,
       tool: tool(),
       feed_rate: 60.0,

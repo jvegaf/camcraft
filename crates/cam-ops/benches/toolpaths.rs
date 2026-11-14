@@ -7,7 +7,7 @@ use cam_ops::params::{
 use cam_ops::peck::DrillHole;
 use cam_ops::shared::ToolSpec;
 use cam_ops::{drill, pocket, profile, DrillRequest, PocketRequest, ProfileRequest};
-use cam_units::{Length, UnitSystem};
+use cam_units::Length;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn job() -> Job {
@@ -15,10 +15,8 @@ fn job() -> Job {
     width: Length::from_mm(100.0),
     height: Length::from_mm(100.0),
     thickness: Length::from_mm(10.0),
-    units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 

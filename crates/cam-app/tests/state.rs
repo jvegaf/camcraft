@@ -24,7 +24,7 @@ fn a_command_changes_the_document_and_marks_it_dirty() {
   app.execute(resize(600.0, 400.0, 12.0)).expect("applies");
 
   assert!(app.is_dirty());
-  assert_eq!(app.document().job.width.mm(), 600.0);
+  assert_eq!(app.document().board.width.mm(), 600.0);
   assert_ne!(app.document_json(), before);
   assert!(app.can_undo());
   assert!(!app.can_redo());
@@ -157,9 +157,11 @@ fn selection_is_ordered_and_unknown_ids_are_dropped() {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
-    name: "Layer".to_owned(),
-    role: cam_model::LayerRole::Geometry,
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![
       cam_model::Entity {
         id: "E2".to_owned(),
@@ -227,9 +229,11 @@ fn entity_ids_continue_after_the_ids_already_in_the_document() {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
-    name: "Layer".to_owned(),
-    role: cam_model::LayerRole::Geometry,
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: (1..=3)
       .map(|index| cam_model::Entity {
         id: format!("E{index}"),
@@ -259,9 +263,11 @@ fn replacing_the_document_also_ressets_the_id_counter() {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
-    name: "Layer".to_owned(),
-    role: cam_model::LayerRole::Geometry,
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![cam_model::Entity {
       id: "E41".to_owned(),
       kind: cam_model::EntityKind::Contour {
@@ -311,9 +317,11 @@ fn replacing_a_document_undoably_keeps_the_previous_one_and_reseeds_the_ids() {
   let mut imported = Document::new(Job::default_sheet());
   imported.layers.push(cam_model::Layer {
     id: "L1".to_owned(),
-    name: "Imported".to_owned(),
-    role: cam_model::LayerRole::Geometry,
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),
       kind: cam_model::EntityKind::Contour {

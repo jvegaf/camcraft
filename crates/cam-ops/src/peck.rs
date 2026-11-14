@@ -138,7 +138,7 @@ pub fn drill(request: &DrillRequest<'_>) -> Result<Drillpath, ToolpathError> {
     drill_index.push(drill);
   }
 
-  let safe_z = request.job.safe_z;
+  let safe_z = cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM);
   let mut moves = Vec::new();
   for head in &heads {
     let at = Point3 {

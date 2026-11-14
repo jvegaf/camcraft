@@ -205,7 +205,11 @@ fn pecks_step_down_and_full_retracts_reach_safe_z() {
     "a 3 mm peck on a 7 mm cut is -3, -6 and the 1 mm remainder at -7"
   );
   for depth in retract_depths(&path.moves) {
-    assert_eq!(depth, job.safe_z.mm(), "full retracts clear the hole");
+    assert_eq!(
+      depth,
+      cam_model::DEFAULT_SAFE_Z_MM,
+      "full retracts clear the hole"
+    );
   }
 }
 
@@ -257,12 +261,12 @@ fn amount_retracts_lift_one_amount_above_the_peck_just_finished() {
   assert!(
     depths[..2]
       .iter()
-      .all(|depth| (depth - job.safe_z.mm()).abs() > 1.0e-9),
+      .all(|depth| (depth - cam_model::DEFAULT_SAFE_Z_MM).abs() > 1.0e-9),
     "an amount retract must not reach safe Z: {depths:?}"
   );
   assert_eq!(
     depths.last().copied(),
-    Some(job.safe_z.mm()),
+    Some(cam_model::DEFAULT_SAFE_Z_MM),
     "the last retract of the hole always reaches safe Z: {depths:?}"
   );
 }
@@ -288,7 +292,10 @@ fn a_zero_peck_depth_cuts_the_hole_in_one_plunge() {
     "rapid, one plunge and one retract: {:?}",
     path.moves
   );
-  assert_eq!(retract_depths(&path.moves), vec![job.safe_z.mm()]);
+  assert_eq!(
+    retract_depths(&path.moves),
+    vec![cam_model::DEFAULT_SAFE_Z_MM]
+  );
 }
 
 #[test]

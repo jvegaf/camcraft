@@ -71,33 +71,33 @@ pub fn export(document: &Document) -> Result<Vec<u8>, ExportError> {
 ///
 /// Every refusal here is a fact the reader would silently drop: it skips a `LAYER` record with no
 /// name, trims every value line it reads, and files entities under a name it has already seen, so an
-/// empty, padded or repeated name would come back as a different document. A non-finite number has no
+/// empty, padded or repeated id would come back as a different document. A non-finite number has no
 /// ASCII DXF spelling at all, and writing one would produce a file that only this writer can read.
 fn refuse_unwritable(document: &Document) -> Result<(), ExportError> {
   let mut seen: Vec<&str> = Vec::with_capacity(document.layers.len());
   for layer in &document.layers {
-    let name = layer.name.as_str();
+    let name = layer.id.as_str();
     if name.trim().is_empty() {
       return Err(refused(
-        "a layer has an empty name and a DXF layer record needs one: the reader skips a nameless \
+        "a layer has an empty id and a DXF layer record needs one: the reader skips a nameless \
          record, so the layer would vanish from the file",
       ));
     }
     if name.trim() != name {
       return Err(refused(format!(
-        "the layer name {name:?} has leading or trailing whitespace, which the reader trims, so the \
-         name would come back changed"
+        "the layer id {name:?} has leading or trailing whitespace, which the reader trims, so the \
+         id would come back changed"
       )));
     }
     if name.chars().any(char::is_control) {
       return Err(refused(format!(
-        "the layer name {name:?} carries a control character, which would break the group-code \
+        "the layer id {name:?} carries a control character, which would break the group-code \
          stream"
       )));
     }
     if seen.contains(&name) {
       return Err(refused(format!(
-        "two layers are named {name:?}: the layer table holds one record per name and the reader \
+        "two layers have the id {name:?}: the layer table holds one record per id and the reader \
          files every entity under the first match"
       )));
     }
@@ -114,7 +114,7 @@ fn refuse_unwritable(document: &Document) -> Result<(), ExportError> {
           return Err(refused(format!(
             "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
              number, which a DXF cannot spell",
-            entity.id, layer.name
+            entity.id, layer.id
           )));
         }
       }
@@ -141,7 +141,7 @@ fn write_layer_table(out: &mut String, document: &Document) {
   pair(out, 70, &document.layers.len().to_string());
   for layer in &document.layers {
     pair(out, 0, "LAYER");
-    pair(out, 2, &layer.name);
+    pair(out, 2, &layer.id);
     pair(out, 70, "0");
     pair(out, 62, &LAYER_COLOUR.to_string());
     pair(out, 6, LAYER_LINETYPE);
@@ -158,7 +158,7 @@ fn write_entities(out: &mut String, document: &Document) {
       // The match has one arm and no wildcard on purpose: a second entity kind must be a decision
       // made here, not a contour silently written as something else.
       match &entity.kind {
-        EntityKind::Contour { contour } => write_polyline(out, &layer.name, contour),
+        EntityKind::Contour { contour } => write_polyline(out, &layer.id, contour),
       }
     }
   }

@@ -33,9 +33,11 @@ fn document(entities: Vec<(&str, Contour)>) -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
+    role: cam_model::LayerRole::Outline,
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
-    role: cam_model::LayerRole::Geometry,
+    source: cam_model::Provenance::default(),
     entities: entities
       .into_iter()
       .map(|(id, contour)| cam_model::Entity {

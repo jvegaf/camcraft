@@ -300,6 +300,6 @@ fn every_palette_chip_is_named_by_its_tooltip() {
 // T12 — the material dialog: the first thing a job defines (S2 S7 S8).
 //
 // The three measurements used to be read-only boxes, and the only way to size a job was `cam-cli`. The
-// dialog the reference draws (`03-26-19`) is now the shell's one writer of `document.job`, and what these
+// dialog the reference draws (`03-26-19`) is now the shell's one writer of `document.board`, and what these
 // tests pin is behaviour: which numbers it shows, which it writes, and what a refused number leaves behind.
 // ---------------------------------------------------------------------------------------------

@@ -25,7 +25,7 @@ impl Shell {
     }
 
     // The stock outline, so the user can see where the material ends.
-    let job = &app.document().job;
+    let job = &app.document().board;
     paint_world_rect(
       &painter,
       canvas,

@@ -13,7 +13,7 @@ use cam_model::{
   MillingDirection, Nesting, NestingPart, NestingPlacement, NestingSheet, Operation, Toolpath,
 };
 use cam_store::document::save_document;
-use cam_units::{Angle, Length, UnitSystem};
+use cam_units::{Angle, Length};
 
 fn binary() -> &'static str {
   env!("CARGO_BIN_EXE_cam-cli")
@@ -46,10 +46,8 @@ fn job() -> Job {
     width: Length::from_mm(200.0),
     height: Length::from_mm(100.0),
     thickness: Length::from_mm(18.0),
-    units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 
@@ -58,17 +56,19 @@ fn job() -> Job {
 fn write_document(
   directory: &Path,
   name: &str,
-  layer: (&str, &str),
+  layer_id: &str,
   entities: &[(&str, f64, f64)],
   toolpaths: Vec<Toolpath>,
   nesting: Option<Nesting>,
 ) -> PathBuf {
   let mut document = Document::new(job());
   document.layers.push(Layer {
-    id: layer.0.to_owned(),
-    name: layer.1.to_owned(),
-    role: LayerRole::Geometry,
+    id: layer_id.to_owned(),
+    role: LayerRole::Outline,
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: entities
       .iter()
       .map(|(id, width, height)| Entity {
@@ -233,8 +233,8 @@ th { background: #eee; }
 </table>
 <h2>Layers</h2>
 <table>
-<tr><th>layer</th><th>name</th><th>visible</th><th>entities</th></tr>
-<tr><td>L1</td><td>Part</td><td>yes</td><td>2</td></tr>
+<tr><th>layer</th><th>role/side</th><th>visible</th><th>entities</th></tr>
+<tr><td>L1</td><td>Outline/Both</td><td>yes</td><td>2</td></tr>
 </table>
 <h2>Toolpaths</h2>
 <h3>TP1 — Outside profile</h3>
@@ -283,7 +283,7 @@ fn golden_document(directory: &Path) -> PathBuf {
   write_document(
     directory,
     "golden.cmc",
-    ("L1", "Part"),
+    "L1",
     &[("E1", 40.0, 30.0), ("E2", 30.0, 20.0)],
     vec![profile_toolpath("TP1", "Outside profile", &["E1"], 1)],
     Some(Nesting {
@@ -355,7 +355,7 @@ fn a_hostile_layer_name_and_entity_id_cannot_inject_markup() {
   let document = write_document(
     &directory,
     "hostile.cmc",
-    ("L1", "R&D <b>\"x\"</b> 'q'"),
+    "R&D <b>\"x\"</b> 'q'",
     &[("<script>alert(1)</script>", 40.0, 30.0)],
     vec![profile_toolpath(
       "TP1",
@@ -369,12 +369,12 @@ fn a_hostile_layer_name_and_entity_id_cannot_inject_markup() {
   let printed = run(&["report", document.to_str().expect("utf8")]);
   assert_eq!(printed.code, 0, "{}", printed.stderr);
 
-  // Every character that can open a tag or end an attribute is escaped, in a name and in an id.
+  // Every character that can open a tag or end an attribute is escaped, in the layer id and in an entity id.
   assert!(
     printed
       .stdout
       .contains("<td>R&amp;D &lt;b&gt;&quot;x&quot;&lt;/b&gt; &#39;q&#39;</td>"),
-    "the layer name is escaped:\n{}",
+    "the layer id is escaped:\n{}",
     printed.stdout
   );
   assert!(
@@ -400,7 +400,7 @@ fn a_document_with_no_toolpath_still_prints_a_sheet_that_says_so() {
   let document = write_document(
     &directory,
     "bare.cmc",
-    ("L1", "Part"),
+    "L1",
     &[("E1", 40.0, 30.0)],
     Vec::new(),
     None,
@@ -441,7 +441,7 @@ fn the_nesting_section_reports_the_utilisation_the_document_derives() {
   let document = write_document(
     &directory,
     "nested.cmc",
-    ("L1", "Part"),
+    "L1",
     &[("E1", 40.0, 30.0)],
     Vec::new(),
     Some(Nesting {
@@ -490,7 +490,7 @@ fn a_document_that_does_not_validate_is_refused_by_name() {
   let document = write_document(
     &directory,
     "broken.cmc",
-    ("L1", "Part"),
+    "L1",
     &[("E1", 40.0, 30.0)],
     vec![profile_toolpath("TP1", "Outside profile", &["E1"], 1)],
     None,

@@ -186,14 +186,14 @@ fn field_table(rows: &[(&'static str, String)]) -> Vec<String> {
 
 /// The job: the stock and coordinate setup the program is cut in.
 fn job_section(document: &Document) -> Vec<String> {
-  let job = &document.job;
+  let job = &document.board;
   let mut lines = vec!["<h2>Job</h2>".to_owned()];
   lines.extend(field_table(&[
     ("width", millimetres(job.width.mm())),
     ("height", millimetres(job.height.mm())),
     ("thickness", millimetres(job.thickness.mm())),
     ("origin", escape_html(origin_label(job.origin))),
-    ("safe Z", millimetres(job.safe_z.mm())),
+    ("safe Z", millimetres(cam_model::DEFAULT_SAFE_Z_MM)),
   ]));
   lines
 }
@@ -211,13 +211,13 @@ fn layer_section(document: &Document) -> Vec<String> {
     .map(|layer| {
       vec![
         escape_html(&layer.id),
-        escape_html(&layer.name),
+        format!("{:?}/{:?}", layer.role, layer.side),
         if layer.visible { "yes" } else { "no" }.to_owned(),
         layer.entities.len().to_string(),
       ]
     })
     .collect();
-  lines.extend(table(&["layer", "name", "visible", "entities"], &rows));
+  lines.extend(table(&["layer", "role/side", "visible", "entities"], &rows));
   lines
 }
 

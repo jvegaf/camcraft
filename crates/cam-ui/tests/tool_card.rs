@@ -45,11 +45,12 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
   document.layers.push(Layer {
     id: "L1".to_owned(),
 
-    name: "Part".to_owned(),
-
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
 
     visible: true,
+    source: cam_model::Provenance::default(),
 
     entities: vec![Entity {
       id: "E1".to_owned(),
@@ -61,13 +62,9 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
   for index in 0..count {
     document.toolpaths.push(Toolpath {
       id: format!("P{}", index + 1),
-
       name: format!("Perfil {:02}", index + 1),
-
       entity_ids: vec!["E1".to_owned()],
-
       tool_number,
-
       operation: cam_model::Operation::Isolation(cam_model::IsolationParams {
         passes: 1,
         overlap: 0.5,
@@ -101,9 +98,7 @@ fn stored_tool(
       name_format: "{Tool Type} ({Diameter|F}{Units Short})".to_owned(),
 
       tool_type: 0,
-
       units: UnitSystem::Mm,
-
       diameter: diameter.map(Length::from_mm),
 
       included_angle: included_angle.map(Angle::from_degrees),

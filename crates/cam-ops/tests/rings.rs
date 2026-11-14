@@ -708,7 +708,7 @@ fn every_cutting_move_is_at_its_pass_depth() {
     &square(100.0),
     &params(PocketStrategy::Offset, 0.0, 4.0, 5.0, 12.0),
   );
-  let safe_z = job().safe_z.mm();
+  let safe_z = cam_model::DEFAULT_SAFE_Z_MM;
   let mut seen_depths = Vec::new();
   for unit in work_units(&path.moves) {
     let depth = plunge_z(&unit);

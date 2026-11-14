@@ -2,9 +2,11 @@
 //!
 //! Importing never mutates a document (D-M3-9): the caller gets a new one, or none at all.
 
+use std::collections::HashSet;
+
 use cam_geom::{transform, Bounds, Vec2};
-use cam_model::{Document, Entity, EntityKind, Job, Layer};
-use cam_units::{Length, UnitSystem};
+use cam_model::{Board, Document, Entity, EntityKind, Layer, LayerRole, Provenance, Side};
+use cam_units::Length;
 
 use crate::{ImportError, Imported};
 
@@ -43,12 +45,11 @@ pub fn into_document(
     PLACEMENT_MARGIN - bounds.min.y,
   );
 
-  let mut job = Job::default_sheet();
-  job.width = Length::from_mm(bounds.width() + 2.0 * PLACEMENT_MARGIN);
-  job.height = Length::from_mm(bounds.height() + 2.0 * PLACEMENT_MARGIN);
-  job.units = UnitSystem::Mm;
+  let mut board = Board::default_board();
+  board.width = Length::from_mm(bounds.width() + 2.0 * PLACEMENT_MARGIN);
+  board.height = Length::from_mm(bounds.height() + 2.0 * PLACEMENT_MARGIN);
 
-  let mut document = Document::new(job);
+  let mut document = Document::new(board);
   let mut entity_number: usize = 1;
 
   let groups: Vec<(String, Vec<cam_geom::Contour>)> = match single_layer {
@@ -67,13 +68,26 @@ pub fn into_document(
       .collect(),
   };
 
+  let mut used_ids: HashSet<String> = HashSet::new();
   for (index, (name, contours)) in groups.into_iter().enumerate() {
+    let role = if index == 0 {
+      LayerRole::Outline
+    } else {
+      LayerRole::Keepout
+    };
+    let layer_id = safe_unique_layer_id(&name, index, &used_ids);
+    used_ids.insert(layer_id.clone());
     let mut layer = Layer {
-      id: format!("L{}", index + 1),
-      name,
+      id: layer_id,
+      role,
+      side: Side::Both,
+      color: "#000000".to_owned(),
       visible: true,
-      role: cam_model::LayerRole::Geometry,
       entities: Vec::new(),
+      source: Provenance {
+        format: Some(imported.format.name().to_owned()),
+        ..Provenance::default()
+      },
     };
     for contour in contours {
       let contour = transform::translate(&contour, offset)
@@ -93,4 +107,38 @@ pub fn into_document(
     .validate()
     .map_err(|error| ImportError::parse_plain(format, error.to_string()))?;
   Ok(document)
+}
+
+/// Produce a layer id that is safe for terminal/stream output and unique in the document.
+///
+/// Imported group names are untrusted: control characters are stripped (terminal injection),
+/// surrounding whitespace is trimmed (export/DXF readers reject it), and an empty or colliding
+/// result falls back to a generated `L{n}`-style id so ids never repeat.
+fn safe_unique_layer_id(
+  name: &str,
+  index: usize,
+  used: &std::collections::HashSet<String>,
+) -> String {
+  let sanitized: String = name.chars().filter(|ch| !ch.is_control()).collect();
+  let trimmed = sanitized.trim();
+  let base = if trimmed.is_empty() {
+    format!("L{}", index + 1)
+  } else {
+    trimmed.to_string()
+  };
+  if !used.contains(&base) {
+    return base;
+  }
+  let fallback = format!("L{}", index + 1);
+  if !used.contains(&fallback) {
+    return fallback;
+  }
+  let mut suffix = 2usize;
+  loop {
+    let candidate = format!("{fallback}_{suffix}");
+    if !used.contains(&candidate) {
+      return candidate;
+    }
+    suffix += 1;
+  }
 }

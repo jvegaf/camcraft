@@ -1,27 +1,23 @@
-//! The document frame's relation to the machine frame, at every origin corner (M7 A7).
+//! The document frame's relation to the machine frame, at every origin corner.
 //!
-//! A document's geometry runs from the job's own corner, `(0, 0)` to `(width, height)`, while a
-//! program's moves are in machine coordinates. [`Frame`] is the one place those two are related, so it
-//! is pinned here on its own: the corner map, its exactness in both directions, and which corners make
-//! it something other than the identity.
+//! A document's geometry runs from the board's own corner, `(0, 0)` to `(width, height)`, while a
+//! program's moves are in machine coordinates. [`Frame`] is the one place those two are related.
 
 use cam_geom::Point2;
-use cam_model::{Frame, Job, OriginCorner};
-use cam_units::{Length, UnitSystem};
+use cam_model::{Board, BoardSideUp, Frame, OriginCorner};
+use cam_units::Length;
 
-/// A sheet that is narrower than it is tall, so a Y reflection is visibly a different place.
+/// A board that is narrower than it is tall, so a Y reflection is visibly a different place.
 const WIDTH: f64 = 80.0;
 const HEIGHT: f64 = 120.0;
 
-fn job(origin: OriginCorner) -> Job {
-  Job {
+fn job(origin: OriginCorner) -> Board {
+  Board {
     width: Length::from_mm(WIDTH),
     height: Length::from_mm(HEIGHT),
     thickness: Length::from_mm(18.0),
-    units: UnitSystem::Mm,
     origin,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: BoardSideUp::Top,
   }
 }
 

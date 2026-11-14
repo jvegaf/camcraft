@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use cam_cli::script::run_script_on;
 use cam_model::{Document, Job, OriginCorner};
-use cam_units::{Length, UnitSystem};
+use cam_units::Length;
 
 /// A scratch directory under `/var/tmp`: `/tmp` is a full tmpfs here, and the name must be one path
 /// segment because this fixture removes what it created.
@@ -31,10 +31,8 @@ fn document() -> Document {
     width: Length::from_mm(200.0),
     height: Length::from_mm(100.0),
     thickness: Length::from_mm(18.0),
-    units: UnitSystem::Mm,
     origin: OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   })
 }
 

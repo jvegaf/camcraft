@@ -42,12 +42,14 @@ fn isolation_params() -> IsolationParams {
 }
 
 fn document_with_operation(operation: Operation) -> Document {
-  let mut document = Document::new(Job::default_sheet());
+  let mut document = Document::new(Board::default_board());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline,
+    side: Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour {
@@ -86,15 +88,16 @@ fn panelize_document(rows: u32, columns: u32) -> Document {
 // --- restored core schema / validation coverage (c3-model S2, S3, S4; M1 L6) ---
 
 #[test]
-fn a_new_document_carries_the_schema_tag_and_millimetre_job() {
-  let document = Document::new(Job::default_sheet());
+fn a_new_document_carries_the_schema_tag_and_board() {
+  let document = Document::new(Board::default_board());
   assert_eq!(document.schema, DOCUMENT_SCHEMA);
   let json = serde_json::to_string(&document).expect("serialises");
   assert!(
     json.contains("\"schema\":\"camcraft/document@1\""),
     "{json}"
   );
-  assert!(json.contains("\"units\":\"mm\""), "{json}");
+  assert!(json.contains("\"board\""), "{json}");
+  assert!(json.contains("\"side_up\":\"top\""), "{json}");
   document.validate().expect("valid empty document");
 }
 
@@ -105,7 +108,7 @@ fn round_trip_is_lossless() {
   let json = serde_json::to_string(&document).expect("serialises");
   let parsed: Document = serde_json::from_str(&json).expect("deserialises");
   assert_eq!(parsed, document);
-  assert_eq!(parsed.job.width, Length::from_mm(1219.0));
+  assert_eq!(parsed.board.width, Length::from_mm(1219.0));
   assert_eq!(parsed.toolpaths.len(), 1);
   let contour = parsed.layers[0].entities[0]
     .kind
@@ -199,7 +202,7 @@ fn a_closed_geometry_operation_on_open_geometry_is_rejected() {
 #[test]
 fn a_zero_or_negative_job_dimension_is_rejected() {
   let mut document = document_with_operation(Operation::Isolation(isolation_params()));
-  document.job.thickness = Length::ZERO;
+  document.board.thickness = Length::ZERO;
   let error = document.validate().expect_err("must reject");
   assert!(
     matches!(
@@ -215,15 +218,16 @@ fn a_zero_or_negative_job_dimension_is_rejected() {
 
 #[test]
 fn deserialising_invalid_geometry_fails_instead_of_producing_it() {
-  let json = r#"{
+  let json = r##"{
     "schema": "camcraft/document@1",
-    "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
-            "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
-    "layers": [{"id": "L1", "name": "L", "role": "geometry", "visible": true, "entities": [
+    "board": {"width": 100.0, "height": 100.0, "thickness": 18.0,
+              "origin": "bottom_left", "side_up": "top"},
+    "layers": [{"id": "L1", "role": "outline", "side": "both", "color": "#000000",
+      "visible": true, "entities": [
       {"id": "E1", "type": "contour", "contour": {"vertices": [{"point": {"x": 0.0, "y": 0.0}, "bulge": 0.0}], "closed": true}}
-    ]}],
+    ], "source": {}}],
     "toolpaths": []
-  }"#;
+  }"##;
   let result: Result<Document, _> = serde_json::from_str(json);
   let error = result.expect_err("a one-vertex contour must not deserialise");
   assert!(
@@ -234,27 +238,27 @@ fn deserialising_invalid_geometry_fails_instead_of_producing_it() {
 
 #[test]
 fn an_unknown_entity_type_is_rejected() {
-  let json = r#"{
+  let json = r##"{
     "schema": "camcraft/document@1",
-    "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
-            "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
-    "layers": [{"id": "L1", "name": "L", "role": "geometry", "visible": true,
-      "entities": [{"id": "E1", "type": "bitmap"}]}],
+    "board": {"width": 100.0, "height": 100.0, "thickness": 18.0,
+              "origin": "bottom_left", "side_up": "top"},
+    "layers": [{"id": "L1", "role": "outline", "side": "both", "color": "#000000",
+      "visible": true, "entities": [{"id": "E1", "type": "bitmap"}], "source": {}}],
     "toolpaths": []
-  }"#;
+  }"##;
   assert!(serde_json::from_str::<Document>(json).is_err());
 }
 
 #[test]
 fn an_unknown_operation_kind_is_a_hard_error() {
-  let json = r#"{
+  let json = r##"{
     "schema": "camcraft/document@1",
-    "job": {"width": 100.0, "height": 100.0, "thickness": 18.0,
-            "units": "mm", "origin": "bottom_left", "safe_z": 5.0},
+    "board": {"width": 100.0, "height": 100.0, "thickness": 18.0,
+              "origin": "bottom_left", "side_up": "top"},
     "layers": [], "toolpaths": [
       {"id": "TP1", "name": "Later", "entity_ids": [], "tool_number": 1,
        "operation": {"kind": "laser_cut"}}]
-  }"#;
+  }"##;
   let error = serde_json::from_str::<Document>(json).expect_err("must not load");
   assert!(error.to_string().contains("laser_cut"), "{error}");
 }
@@ -264,7 +268,7 @@ fn the_job_outline_is_one_rectangle_in_document_coordinates() {
   let job = Job {
     width: Length::from_mm(200.0),
     height: Length::from_mm(100.0),
-    ..Job::default_sheet()
+    ..Board::default_board()
   };
   let outline = job.outline();
   assert!(outline.is_closed());
@@ -281,56 +285,13 @@ fn the_job_outline_is_one_rectangle_in_document_coordinates() {
 }
 
 #[test]
-fn a_document_written_before_nesting_loads_and_re_saves_byte_identically() {
-  let before_m9 = r#"{"schema":"camcraft/document@1","job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0},"layers":[{"id":"L1","name":"Part","role":"geometry","visible":true,"entities":[{"id":"E1","type":"contour","contour":{"vertices":[{"point":{"x":0.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":0.0},"bulge":0.0},{"point":{"x":100.0,"y":100.0},"bulge":0.0},{"point":{"x":0.0,"y":100.0},"bulge":0.0}],"closed":true}}]}],"toolpaths":[]}"#;
-  let document: Document = serde_json::from_str(before_m9).expect("a document written before M9");
-  assert!(document.nesting.is_none(), "no nesting section is present");
-  document.validate().expect("and it still validates");
-  assert_eq!(
-    serde_json::to_string(&document).expect("serialises"),
-    before_m9,
-    "a document written before M9 is re-saved byte for byte"
-  );
-}
-
-#[test]
-fn a_job_without_a_material_serialises_without_the_key() {
-  let document = Document::new(Job::default_sheet());
-  assert!(
-    document.job.material.is_none(),
-    "the default sheet names none"
-  );
+fn a_document_without_nesting_serialises_without_the_key() {
+  let document = Document::new(Board::default_board());
+  assert!(document.nesting.is_none());
   let json = serde_json::to_string(&document).expect("serialises");
-  assert!(
-    json.contains(
-      r#""job":{"width":1219.0,"height":2438.0,"thickness":18.0,"units":"mm","origin":"bottom_left","safe_z":5.0}"#
-    ),
-    "a job with no material is the six keys and nothing else: {json}"
-  );
-  assert!(!json.contains("\"material\""), "the key is omitted: {json}");
-}
-
-#[test]
-fn a_job_with_a_material_round_trips() {
-  let mut document = document_with_operation(Operation::Isolation(isolation_params()));
-  document.job.material = Some("MDF".to_owned());
-  document.validate().expect("a valid document");
-
-  let json = serde_json::to_string(&document).expect("serialises");
-  assert!(json.contains(r#""material":"MDF""#), "{json}");
-
+  assert!(!json.contains("\"nesting\""), "{json}");
   let parsed: Document = serde_json::from_str(&json).expect("deserialises");
-  assert_eq!(parsed.job.material.as_deref(), Some("MDF"));
   assert_eq!(parsed, document);
-  assert_eq!(
-    serde_json::to_string(&parsed).expect("re-serialises"),
-    json,
-    "a job that names a material re-saves byte for byte"
-  );
-  assert_eq!(
-    DOCUMENT_SCHEMA, "camcraft/document@1",
-    "schema is camcraft/document@1"
-  );
 }
 
 // --- PCB operation validators ---
@@ -651,12 +612,14 @@ fn paint_rejects_invalid_overlap_and_cut_depth() {
 // --- nesting (restored from HEAD; nesting validators and types still exist) ---
 
 fn nesting_document() -> Document {
-  let mut document = Document::new(Job::default_sheet());
+  let mut document = Document::new(Board::default_board());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Parts".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline,
+    side: Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: Provenance::default(),
     entities: vec![
       Entity {
         id: "E1".to_owned(),
@@ -938,12 +901,14 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
   };
   for _ in 0..12 {
     let count = 2 + (next() * 8.0) as usize;
-    let mut document = Document::new(Job::default_sheet());
+    let mut document = Document::new(Board::default_board());
     document.layers.push(Layer {
       id: "L1".to_owned(),
-      name: "Parts".to_owned(),
-      role: LayerRole::Geometry,
+      role: LayerRole::Outline,
+      side: Side::Top,
+      color: "#000000".to_owned(),
       visible: true,
+      source: Provenance::default(),
       entities: Vec::new(),
     });
     let mut nesting = Nesting {
@@ -1039,12 +1004,14 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
   };
   for _ in 0..24 {
     let count = 2 + (next() * 6.0) as usize;
-    let mut document = Document::new(Job::default_sheet());
+    let mut document = Document::new(Board::default_board());
     document.layers.push(Layer {
       id: "L1".to_owned(),
-      name: "Parts".to_owned(),
-      role: LayerRole::Geometry,
+      role: LayerRole::Outline,
+      side: Side::Top,
+      color: "#000000".to_owned(),
       visible: true,
+      source: Provenance::default(),
       entities: Vec::new(),
     });
     let mut nesting = Nesting {
@@ -2097,12 +2064,14 @@ fn a_cost_record_exactly_on_the_tolerance_still_loads() {
 /// sheet — 50 000 mm² of material on 200 000 mm² of stock, so utilisation is exactly 0.25 — plus a
 /// second sheet that is authored but named by no placement.
 fn five_parts_on_one_sheet() -> Document {
-  let mut document = Document::new(Job::default_sheet());
+  let mut document = Document::new(Board::default_board());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Parts".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline,
+    side: Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour {
@@ -2423,9 +2392,11 @@ fn two_layers_cannot_claim_the_same_board_role() {
   for id in ["L2", "L3"] {
     document.layers.push(cam_model::Layer {
       id: id.to_owned(),
-      name: format!("copper {id}"),
       role: cam_model::LayerRole::CopperTop,
+      side: Side::Top,
+      color: "#000000".to_owned(),
       visible: true,
+      source: Provenance::default(),
       entities: Vec::new(),
     });
   }
@@ -2438,23 +2409,18 @@ fn two_layers_cannot_claim_the_same_board_role() {
 }
 
 #[test]
-fn keepouts_and_general_geometry_may_repeat() {
+fn keepouts_may_repeat() {
   let mut document = document_with_operation(Operation::Isolation(isolation_params()));
-  for (id, role) in [
-    ("L2", cam_model::LayerRole::Keepout),
-    ("L3", cam_model::LayerRole::Keepout),
-    ("L4", cam_model::LayerRole::Geometry),
-    ("L5", cam_model::LayerRole::Geometry),
-  ] {
+  for (id, side) in [("L2", Side::Top), ("L3", Side::Bottom)] {
     document.layers.push(cam_model::Layer {
       id: id.to_owned(),
-      name: format!("layer {id}"),
-      role,
+      role: cam_model::LayerRole::Keepout,
+      side,
+      color: "#000000".to_owned(),
       visible: true,
+      source: Provenance::default(),
       entities: Vec::new(),
     });
   }
-  document
-    .validate()
-    .expect("keeps-outs and general geometry repeat");
+  document.validate().expect("keep-outs may repeat");
 }

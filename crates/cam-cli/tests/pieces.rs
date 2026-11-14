@@ -13,7 +13,7 @@ use cam_model::{
   NestingSheet,
 };
 use cam_store::document::save_document;
-use cam_units::{Angle, Length, UnitSystem};
+use cam_units::{Angle, Length};
 
 fn binary() -> &'static str {
   env!("CARGO_BIN_EXE_cam-cli")
@@ -46,10 +46,8 @@ fn job() -> Job {
     width: Length::from_mm(400.0),
     height: Length::from_mm(300.0),
     thickness: Length::from_mm(18.0),
-    units: UnitSystem::Mm,
     origin: cam_model::OriginCorner::BottomLeft,
-    safe_z: Length::from_mm(5.0),
-    material: None,
+    side_up: cam_model::BoardSideUp::Top,
   }
 }
 
@@ -65,9 +63,11 @@ fn write_document(
   if !entities.is_empty() {
     document.layers.push(Layer {
       id: "L1".to_owned(),
-      name: "Parts".to_owned(),
-      role: LayerRole::Geometry,
+      role: LayerRole::Outline,
+      side: cam_model::Side::Both,
+      color: "#000000".to_owned(),
       visible: true,
+      source: cam_model::Provenance::default(),
       entities: entities
         .iter()
         .map(|(id, width, height)| Entity {
@@ -216,8 +216,7 @@ fn a_part_list_authors_a_rectangle_and_a_part_per_row() {
   // the row's own exact size.
   let authored = load(&out);
   assert_eq!(authored.layers.len(), 1);
-  assert_eq!(authored.layers[0].id, "L1");
-  assert_eq!(authored.layers[0].name, "Cabinet");
+  assert_eq!(authored.layers[0].id, "Cabinet");
   assert!(authored.layers[0].visible);
   let entities: Vec<(&str, [f64; 4])> = authored.layers[0]
     .entities

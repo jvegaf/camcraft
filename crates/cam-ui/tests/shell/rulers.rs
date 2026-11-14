@@ -195,7 +195,7 @@ fn the_ruler_numbers_are_the_world_coordinates_under_them() {
   let rulers = &output.drawn.rulers;
   let canvas = output.canvas;
   let camera = *app.camera();
-  let job = app.document().job.clone();
+  let job = app.document().board.clone();
   let tolerance = 1.0 / camera.pixels_per_mm();
 
   // The empty document frames the stock, so the middle of the drawing area is the middle of the stock.
@@ -292,9 +292,11 @@ fn a_drawing_centred_on_the_origin_reads_negative_below_it() {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Centred".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),
       kind: cam_model::EntityKind::Contour {

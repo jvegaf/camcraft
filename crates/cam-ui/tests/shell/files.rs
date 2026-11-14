@@ -645,7 +645,7 @@ fn centering_the_drawing_places_it_in_the_middle_of_the_existing_sheet() {
     .expect("the parsed file imports");
 
   assert_eq!(
-    app.document().job,
+    app.document().board,
     sheet,
     "the material the operator already had is kept"
   );
@@ -711,7 +711,7 @@ fn adjusting_the_material_sizes_the_stock_to_the_imported_drawing() {
     .confirm_import(&mut app)
     .expect("the parsed file imports");
 
-  let job = app.document().job.clone();
+  let job = app.document().board.clone();
   assert_eq!(job.width.mm(), 120.0, "100 mm of drawing plus 10 mm a side");
   assert_eq!(job.height.mm(), 80.0, "60 mm of drawing plus 10 mm a side");
   assert_eq!(
@@ -733,7 +733,7 @@ fn without_adjusting_the_material_the_import_keeps_the_sheet_it_replaces() {
   let path = write_dxf(&directory);
   let mut app = AppState::new(document_with_rectangle());
   // The sheet the operator already had: the default 1219 x 2438 sheet of the drawing being replaced.
-  let sheet = app.document().job.clone();
+  let sheet = app.document().board.clone();
   let mut shell = Shell::new();
   shell.import_adjust_material = false;
 
@@ -748,7 +748,7 @@ fn without_adjusting_the_material_the_import_keeps_the_sheet_it_replaces() {
     .expect("the parsed file imports");
 
   assert_eq!(
-    app.document().job,
+    app.document().board,
     sheet,
     "unchecked, the import keeps the material it was offered over"
   );
@@ -771,7 +771,7 @@ fn an_import_at_the_default_options_still_writes_what_the_importer_laid_out() {
     .expect("the fixture parses");
   let laid_out = cam_import::into_document(&parsed, None)
     .expect("the fixture becomes a document")
-    .job;
+    .board;
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
 
@@ -790,7 +790,7 @@ fn an_import_at_the_default_options_still_writes_what_the_importer_laid_out() {
   assert!(!shell.import_join);
   assert!(!shell.import_smooth);
   assert!(shell.import_center);
-  assert_eq!(app.document().job, laid_out);
+  assert_eq!(app.document().board, laid_out);
   assert_eq!(
     shell.status,
     "import file — 2 entities created, 2 contour(s) from part.dxf, 0 curve(s) flattened, 0 skipped"

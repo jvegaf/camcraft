@@ -15,7 +15,7 @@ fn the_layer_dock_reports_every_layer_and_paints_its_name() {
     "the dock must report id, entity count and visibility"
   );
   assert!(
-    joined(&texts).contains("L1 — Part"),
+    joined(&texts).contains("L1 — Outline/Both"),
     "the layer row must be painted: {}",
     joined(&texts)
   );

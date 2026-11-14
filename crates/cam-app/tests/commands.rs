@@ -10,12 +10,19 @@ use cam_units::Length;
 
 fn state_with_layers(layer_ids: &[&str]) -> AppState {
   let mut document = Document::new(Job::default_sheet());
-  for id in layer_ids {
+  for (index, id) in layer_ids.iter().enumerate() {
+    let (role, side) = if index == 0 {
+      (LayerRole::Outline, cam_model::Side::Top)
+    } else {
+      (LayerRole::Keepout, cam_model::Side::Both)
+    };
     document.layers.push(Layer {
       id: (*id).to_owned(),
-      name: (*id).to_owned(),
-      role: LayerRole::Geometry,
+      role,
+      side,
+      color: "#000000".to_owned(),
       visible: true,
+      source: cam_model::Provenance::default(),
       entities: Vec::new(),
     });
   }
@@ -1001,9 +1008,11 @@ fn state_with_entities(ids: &[&str]) -> AppState {
     .collect();
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "L1".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Top,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities,
   });
   AppState::new(document)
@@ -2603,7 +2612,7 @@ fn undoing_a_vertex_edit_restores_the_document_exactly() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The material: the one command that writes `document.job` (T12, S4, S7).
+// The material: the one command that writes `document.board` (T12, S4, S7).
 // ---------------------------------------------------------------------------------------------
 
 /// A `SetJob` carrying a dimension no stock can have is refused, with the number in the sentence.
@@ -2629,7 +2638,7 @@ fn set_job_refuses_a_dimension_a_stock_cannot_have() {
       thickness: if field == "thickness" { bad } else { 18.0 },
     };
     let mut document = Document::new(Job::default_sheet());
-    let before = document.job.clone();
+    let before = document.board.clone();
     let error = command
       .apply(&mut document)
       .expect_err("a stock needs three positive dimensions")
@@ -2642,10 +2651,13 @@ fn set_job_refuses_a_dimension_a_stock_cannot_have() {
       error.contains(number),
       "the refusal does not name the number the caller typed ({number}): {error}"
     );
-    assert_eq!(document.job, before, "a refused job changed the job anyway");
+    assert_eq!(
+      document.board, before,
+      "a refused job changed the job anyway"
+    );
     // The proof that matters: the document still describes a rectangle, so nothing downstream can
     // reach the panic `Job::outline` documents.
-    assert_eq!(document.job.outline(), Job::default_sheet().outline());
+    assert_eq!(document.board.outline(), Job::default_sheet().outline());
   }
 }
 
@@ -2677,7 +2689,7 @@ fn cutout_op() -> Operation {
 fn add_toolpath(toolpath_id: &str, entity_ids: Vec<String>, tool_number: u32) -> Command {
   Command::AddToolpath {
     toolpath_id: toolpath_id.to_owned(),
-    name: format!("{toolpath_id} isolation"),
+    name: toolpath_id.to_owned(),
     entity_ids,
     tool_number,
     operation: isolation_op(),
@@ -2698,7 +2710,7 @@ fn adding_a_toolpath_stores_its_tool_number_and_operation() {
     .first()
     .expect("the toolpath is stored");
   assert_eq!(stored.id, "TP1");
-  assert_eq!(stored.name, "TP1 isolation");
+  assert_eq!(stored.name, "TP1");
   assert_eq!(stored.tool_number, 4);
   assert_eq!(stored.entity_ids, vec![rectangle]);
   assert_eq!(stored.operation, isolation_op());
@@ -2915,7 +2927,7 @@ fn renaming_a_toolpath_to_an_empty_or_blank_name_is_refused_and_writes_nothing()
     assert_eq!(error.to_string(), "a toolpath's name must not be empty");
     assert_eq!(
       app.document().toolpaths[0].name,
-      "TP1 isolation",
+      "TP1",
       "{name:?}: a refused rename leaves the old name standing"
     );
   }
@@ -2928,7 +2940,7 @@ fn renaming_an_absent_toolpath_is_refused_naming_it() {
     &mut app,
     Command::SetToolpathName {
       toolpath_id: "TP9".to_owned(),
-      name: "Roughing pass".to_owned(),
+      name: "Other".to_owned(),
     },
   );
   assert_eq!(
@@ -3021,7 +3033,7 @@ fn the_toolpath_commands_have_human_labels() {
   assert_eq!(
     Command::SetToolpathName {
       toolpath_id: "TP1".to_owned(),
-      name: "Roughing pass".to_owned(),
+      name: "N".to_owned(),
     }
     .label(),
     "set toolpath name"

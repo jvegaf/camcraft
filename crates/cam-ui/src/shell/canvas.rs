@@ -193,7 +193,7 @@ impl Shell {
     let scene = build_scene(app.document(), app.selection());
     let mut bounds = scene.bounds();
     if bounds.is_empty() {
-      let job = &app.document().job;
+      let job = &app.document().board;
       bounds = cam_geom::Bounds::from_points(&[
         Point2::new(0.0, 0.0),
         Point2::new(job.width.mm(), job.height.mm()),

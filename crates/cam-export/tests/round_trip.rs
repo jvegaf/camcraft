@@ -38,9 +38,11 @@ fn page(layers: &[(&str, Vec<Contour>)]) -> Document {
       .collect();
     document.layers.push(Layer {
       id: name.to_string(),
-      name: name.to_string(),
-      role: LayerRole::Geometry,
+      role: LayerRole::Outline, /*was Geometry*/
+      side: cam_model::Side::Top,
+      color: "#000000".to_owned(),
       visible: true,
+      source: cam_model::Provenance::default(),
       entities,
     });
   }
@@ -58,7 +60,7 @@ fn shapes(document: &Document) -> Vec<(String, Vec<Contour>)> {
         .iter()
         .filter_map(|entity| entity.kind.as_contour().cloned())
         .collect();
-      (layer.name.clone(), contours)
+      (layer.id.clone(), contours)
     })
     .collect()
 }

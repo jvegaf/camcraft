@@ -39,7 +39,7 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 032 | [tool-library-app](032-tool-library-app.md) | delivered | 2026-11-10 | `5c469ac` |
 | 033 | [tool-library-editor](033-tool-library-editor.md) | delivered | 2026-11-10 | `81e1058` |
 | 034 | [c1-booleans](034-c1-booleans.md) | delivered | 2026-11-11 | `aee3e5d` |
-| 035 | [c3-model](035-c3-model.md) | in progress | 2026-11-11 | `4795c45` |
+| 035 | [c3-model](035-c3-model.md) | delivered | 2026-11-11 | `9aed8275ac99` |
 | 036 | [gerber-geometry](036-gerber-geometry.md) | delivered | 2026-11-11 | `fc90dda` |
 | 037 | [offset-exact](037-offset-exact.md) | delivered | 2026-11-11 | `79a07c9` |
 | 038 | [start-screen](038-start-screen.md) | delivered | 2026-11-11 | `b745501` |

@@ -10,7 +10,7 @@ every one ended in an artefact demonstrable through `cam-cli`, not a slide.
 
 ## 1. Camcraft roadmap state (F0–F8)
 
-Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md), [045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`) and **2026-11-14** for the merged robustness wave (tasks [046](../tasks/046-e0-2-input-robustness.md), [047](../tasks/047-arrangement-odd-degree-graph.md), `master` `766efe7`), not against these documents: every row
+Audited **2026-11-12** read-only against the worktree and updated **2026-11-13** for the merged instrument wave (tasks [043](../tasks/043-w1b-ci.md), [044](../tasks/044-e0-7-benchmarks.md), [045](../tasks/045-w1a-corpus-parity.md), `master` `c4893be`), **2026-11-14** for the merged robustness wave (tasks [046](../tasks/046-e0-2-input-robustness.md), [047](../tasks/047-arrangement-odd-degree-graph.md), `master` `766efe7`), and **2026-11-14** for the merged C3 board-model slice (task [035](../tasks/035-c3-model.md), `master` `723cb98`), not against these documents: every row
 cites `path:line` evidence that exists today, and a feature is only `✅` when its code is there. The
 test suite was **not** run for this audit, so `✅` means *implemented and covered by named tests*,
 not *green right now*.
@@ -35,7 +35,7 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
-| E1.1 Board model | 🟡 | `cam-model/src/lib.rs:27` `DOCUMENT_SCHEMA = "camcraft/document@1"`; `LayerRole` at `:197` (copper top/bottom, mask, silk, outline, drill, keepout); `Layer { role, … }` at `:237` | **Divergence from the plan**: there is no `c2d/document@3` and no `@2→@3` migration — the schema was *renamed* and legacy `c2d/*` is **rejected** (`cam-model/tests/document.rs:150`, `cam-store/tests/document.rs:139`, `:209`). Per-entity origin metadata is not there. Task [035](../tasks/035-c3-model.md) is still `in progress` (M1 tag/role/reject done) |
+| E1.1 Board model | 🟡 | `cam-model/src/lib.rs:27` `DOCUMENT_SCHEMA = "camcraft/document@1"`; `Document { board, … }` at `:457` with `Board` at `:116` (`width/height/thickness`, `origin: OriginCorner`, `side_up: BoardSideUp::Top`, no `units/safe_z/material`); `Layer` at `:226` `{ id, role, side, color, visible, entities, source: Provenance }`; `LayerRole` at `:175` (7 PCB roles, no generic geometry role) with `Side` at `:199` and `Provenance` at `:209`; legacy `c2d/*` **rejected** (`cam-model/tests/document.rs:150`, `cam-store/tests/document.rs:139`, `:209`); task [035](../tasks/035-c3-model.md) delivered (`723cb98`) | **Divergence from the plan**: there is no `c2d/document@3` and no `@2→@3` migration — the schema was *renamed*, the container is `.cmc`, and legacy `c2d/*` load as unknown schema. Still partial against the broader plan: per-entity origin metadata is not there and `EntityKind` remains `Contour`-only (`cam-model/src/lib.rs:256`); DXF/SVG role/side assignment at import and PCB-specific entity kinds remain follow-ups |
 | E1.2 PCB operations in the model | ✅ | `cam-model/src/lib.rs:432` `Operation::{Isolation, NonCopperClear, Cutout, Paint, Panelize}`; params `:289`–`:429`; validation `:1612`–`:1734`; round-trip `cam-model/tests/document.rs:369` | Behaviour beyond parameters, which is intentional at this stage |
 | E1.3 Fabrication-folder importer | ⬜ | `cam-cli/src/lib.rs:453` — `import takes exactly one input file` | No grouping of a folder into a board by role |
 | E1.4 Gerber parser | 🟡 | `crates/cam-gerber/src/lib.rs:14` `parse`; format/units/polarity `:79`; `image(tolerance)` evaluates the layer `:193` | Still rejected by name with the command index: a `D01` trace with an aperture outside a region, apertures `O`/`RoundRect`, macro-named apertures, and a second `D02` inside `G36/G37`. Task [036](../tasks/036-gerber-geometry.md) delivered `fc90dda`; the limits are listed in its doc |
@@ -109,7 +109,9 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
   with the E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs`. What still blocks
   confident progress is E0.3 (tolerance policy) and E0.6 (FlatCAM baseline); every phase below F0
   still depends on being able to *measure* correctness and speed.
-- **Only E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
+- **E1.1 (board model) landed in S2 literal form with task [035](../tasks/035-c3-model.md)** (`723cb98`),
+  but remains partial overall (no per-entity origin metadata; `EntityKind` still contour-only). **Only
+  E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
   product's thesis — is 0 %.
 
 ### Divergences between the plan and the code (decide, do not drift)
@@ -134,14 +136,16 @@ describe the next parallel slices.
 ### Next slice, from here
 
 Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says. The core instrument set of wave 1
-(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place, and E0.2 input
-robustness is closed by tasks 046/047; what remains of F0 is:
+(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place, E0.2 input
+robustness is closed by tasks 046/047, and the C3 board-model slice (E1.1, S2 literal form) landed with
+task [035](../tasks/035-c3-model.md) (`723cb98`). What remains of F0 is:
 
 1. **E0.3 tolerance policy** — the object E3.2 and E4.2 will need, cheaper to introduce before them.
 2. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
-3. **Close task [035](../tasks/035-c3-model.md)**, which carries the board model, then move toward F2
-   (drilling, cutout) as the first real G-code through `cam-cli`, following the dependency/wave order in
-   [waves.md](waves.md).
+
+With F0 instruments mostly in place and 035 delivered, the next product slices follow the dependency/wave
+order in [waves.md](waves.md), moving toward F2 (drilling, cutout) as the first real G-code through
+`cam-cli` once their prerequisites are met.
 
 ## 2. Pre-pivot milestones (M0–M15, history)
 

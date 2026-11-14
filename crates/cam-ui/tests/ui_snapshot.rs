@@ -70,9 +70,11 @@ fn document_with_toolpath(tool_number: u32) -> Document {
   .expect("rectangle");
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour { contour },
@@ -80,7 +82,7 @@ fn document_with_toolpath(tool_number: u32) -> Document {
   });
   document.toolpaths.push(Toolpath {
     id: "P1".to_owned(),
-    name: "Perfil 01".to_owned(),
+    name: "Profile".to_owned(),
     entity_ids: vec!["E1".to_owned()],
     tool_number,
     operation: Operation::Isolation(IsolationParams {

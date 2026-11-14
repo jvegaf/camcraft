@@ -5,14 +5,16 @@ Definir `camcraft/document@1`: el modelo de placa. Absorbe lo que el barrido no 
 
 ## Specs
 
-**S1 — Se desarrolla contra `dev`; `master` queda quieto.**
+**S1 — Se desarrolla contra `master`.**
 > "vamos a dejar master de lado, desarrollaremos contra dev. continua con C3"
+> Actualización (usuario): "ya no exite dev. ahora es contra master."
 
-**S2 — El schema es nativo de PCB, no aditivo.**
+**S2 — El schema es nativo de PCB, no aditivo (forma literal).**
 > `schema: "camcraft/document@1"`
-> `board: { width, height, thickness, origin, side_up }`
+> `board: { width, height, thickness, origin, side_up }` (reemplaza `job`; sin `units/safe_z/material`; `origin` corner `bottom_left|top_left|center`; `side_up` valor `top`)
 > `layers: [ { id, role: LayerRole, side, color, visible, entities, source: Provenance } ]`
-> `role ∈ { CopperTop, CopperBottom, Mask, Silk, Outline, Drill, Keepout }`
+> `role ∈ { CopperTop, CopperBottom, Mask, Silk, Outline, Drill, Keepout }` (sin variantes por lado ni `Geometry`)
+> `side`: enum separado en todas las capas; `color`: string `#RRGGBB`; `source: Provenance { file, format, date, hash }` (opcionales). DXF/SVG se asigna a un `layer.role` en la importación.
 
 **S3 — Un `.c2d` se rechaza, no se migra (A2 del diseño).**
 > "Extensión `.cmc`. Un `.c2d` de campilot se rechaza como \"schema desconocido\", no se migra."
@@ -35,14 +37,14 @@ independiente dio por buenas.
 
 ## Tasks
 
-| ID | Tarea | Spec | Commit |
-| --- | --- | --- | --- |
-| M1 | Tag `camcraft/document@1`, `LayerRole` en `Layer`, y rechazo de los schemas `c2d/*` sin migración | S2, S3 | — |
-| M2 | Variantes `Operation` de PCB con sus params; salen las once de mecanizado y sus 7 validadores | S2, S4 | — |
-| M3 | Reparar consumidores: `cam-cli` (match de nombres), `cam-sim/target.rs`, `cam-app`, `cam-ui` | S5 | — |
-| M4 | `cam-store`: extensión `.cmc`, validación de load-time con roles, round-trip | S2, S3 | — |
-| E1 | Lector de Excellon: tabla de herramientas, agujeros y slots | S6 | `a6e4d21` |
-| E2 | Dialectos de Excellon: formato de dígitos (`;FILE_FORMAT=i:d`, patrón de ceros) y modo relativo `G91` | S6 | `533dddc`, `d26427b` |
+| ID | Tarea | Spec | Estado | Commit |
+| --- | --- | --- | --- | --- |
+| M1 | Tag `camcraft/document@1` y modelo literal S2 (`Document.board`, `Board`, `Layer`, `Provenance`, roles/side/color/source) con rechazo de schemas `c2d/*` sin migración | S1, S2, S3 | done (uncommitted) | — |
+| M2 | Variantes `Operation` de PCB con sus params; salen las once de mecanizado y sus 7 validadores | S2, S4 | done (preexistente en master, preservado) | — |
+| M3 | Reparar consumidores: `cam-model/store/sim/export/import/post/ops/app/cli/view/ui/desktop` y tests/fixtures al modelo S2 literal | S5 | done (uncommitted) | — |
+| M4 | `cam-store`: `.cmc`, validación/load/round-trip con schema S2 y rechazo `.c2d` | S2, S3 | done (uncommitted) | — |
+| E1 | Lector de Excellon: tabla de herramientas, agujeros y slots | S6 | done | `a6e4d21` |
+| E2 | Dialectos de Excellon: formato de dígitos (`;FILE_FORMAT=i:d`, patrón de ceros) y modo relativo `G91` | S6 | done | `533dddc`, `d26427b` |
 
 ## Log
 
@@ -271,3 +273,27 @@ que el flag estaba haciendo trabajo real en un fixture que no escribi para esta 
 
 **Estado:** 14 tests en cam-excellon, workspace en **1316 passed, 0 failed, 3 ignored**. Con E1 (formato de
 digitos) y E2 (modo relativo) cerrados, los dos dialectos que el crate rechazaba por nombre ya se leen.
+
+**L16** (usuario, 2026-05-XX, decisiones para completar 035 — cita textual de la sesión actual):
+> "1. ya no exite dev. ahora es contra master. 2. hay que llevarlo exactamente a la forma escrita en S2"
+> "1.si, reemplazalo, y elimina units/safe_z/material. el origin de board donde indique S2. 2.side up es valores top 3. elimina MaskTop/MaskBottom/SilkTop/SilkBottom/Geometry. las capas dxf/svg se deben de asignar en el momento de la importacion a un layer.role  4.enum separado para todas las capas 5.si con un string #RRGGBB valdria 6. si, hazlo asi"
+
+**Consecuencias aplicadas:** S1 pasa a “desarrollar contra `master`”. S2 se implementa en la forma literal pedida: `Document.board` reemplaza `job` (sin `units/safe_z/material`), `board.side_up` valor `top`; `Layer` pasa a `{ id, role, side, color, visible, entities, source: Provenance }` con `role ∈ { CopperTop, CopperBottom, Mask, Silk, Outline, Drill, Keepout }` (sin variantes por lado ni `Geometry`), `side` como enum separado en todas las capas, `color` string `#RRGGBB`, `source: Provenance { file, format, date, hash }` (opcionales). DXF/SVG: se asigna `layer.role` en la importación (sin rol genérico). `origin` de `board` se conserva como el corner de origen del documento (valores existentes `bottom_left|top_left|center`) al ser el indicado por el campo en S2.
+
+**L17** (sesión 2026-11-14, avance de implementación S2 literal — sin commit aún, árbol con cambios sin commitear):
+- `cam-model`: `Document.board` (sin `units/safe_z/material`), `BoardSideUp::Top`, `OriginCorner` conservado; `Layer { id, role, side, color, visible, entities, source: Provenance }` sin `name`; `LayerRole` reducido a `CopperTop,CopperBottom,Mask,Silk,Outline,Drill,Keepout`; `Side { Top, Bottom, Both }`; `Provenance { file, format, date, hash }` opcionales; `DEFAULT_SAFE_Z_MM`; validación de dimensiones en `board` y unicidad por `(role, side)` salvo `Keepout`; `Frame::of(&Board)`. Tests de `cam-model` compilando.
+- `cam-store`: carga/validación/round-trip adaptados al nuevo schema; tests de `cam-store` compilando (incluye rechazo `c2d` y `.cmc`).
+- Lectores PCB: `cam-excellon` y `cam-gerber` restaurados/compilando (sin cambios de S2 requeridos en su API interna).
+- Consumidores tocados en esta pasada: `cam-sim`, `cam-export`, `cam-import` (libs), y arreglos parciales en `cam-ops`, `cam-post`, `cam-cli`, `cam-app`, `cam-view`, `cam-ui`, `cam-desktop` (migración `.job`→`.board`, `layer.name` eliminado, `safe_z` por defecto, campos de `Layer`/`ToolGeometry`, etc.).
+- **Pendiente para cerrar 035:** terminar de compilar/arreglar `cam-cli`, `cam-ops`, `cam-app`, `cam-view`, `cam-ui`, `cam-desktop` y sus tests/fixtures; definir/ajustar comportamiento de `safe_z` donde antes venía de `job`; confirmar asignación de `layer.role/side/color/source` en importación DXF/SVG según S2/L16; actualizar tabla de Tasks con commits; correr `just check` verde; actualizar `odd/tasks/INDEX.md` a `delivered` y registrar commit final. Estado actual: **en progreso, no entregada**.
+
+**L18** (sesión 2026-11-14, review nativa + corrección acotada, sin commit):
+- Se inició review nativa del candidato inicial `sha256:0eecf8af…` (linaje `review-25e0b39d9107259c`, ordinary, lentes `risk/readability/reliability`): reviewers+refuter ejecutados; estado `correction_required` con hallazgos corroborados (CLI `--layer` ignorado en `pieces`, import multi-grupo con `(Outline,Both)` duplicado y pérdida de identidad, lectura de `units` forzada a mm en tools, fixtures/tests con `Layer.name` y campos S2 faltantes).
+- Plan de corrección (150 líneas diff) aplicado: `pieces` usa `--layer` como id de capa; `cam-import` asigna ids/roles únicos por grupo y `source.format`; `cam-store/tools` decodifica `units`; ajustes en tests/fixtures (`cam-cli`, `cam-ui` input/tool_card/toolpath_list, `cam-sim` heightfield/sweep, `cam-import/tests`).
+- Validación dirigida ejecutada y rechazada → linaje `escalated` por regresiones de compilación introducidas en la corrección (`cam-ui/tests/toolpath_list.rs` `click_row` referenciando `name` removido; helpers `write_document` en `cam-cli/tests/{pieces,printsheet}.rs` con firma/call sites desalineados). Se corrigieron esas regresiones (REG-001/002/003) y `Toolpath.name` faltante en tests CLI; `cam-import` y `cam-cli` (lib) avanzan, pero el workspace sigue sin compilar/`just check` verde. Candidato corregido actual sin revisar: `sha256:a2b9058916c1b79e72cfa9a57ae47e7314cceb3b84ed2bafea18df39423410d5` (decisión de review diferida a pedido).
+
+**L19** (sesión 2026-11-14, completar 035 — implementación S2 literal y workspace verde, sin commit):
+- Implementado el modelo literal S2 en `cam-model`: `schema = "camcraft/document@1"`, `Document.board` (reemplaza `job`) con `Board { width, height, thickness, origin, side_up }` (`BoardSideUp::Top`, `OriginCorner` conservado), `type Job = Board`, `DEFAULT_SAFE_Z_MM`; `Layer { id, role, side, color, visible, entities, source: Provenance }` sin `name`; `LayerRole::{CopperTop,CopperBottom,Mask,Silk,Outline,Drill,Keepout}`; `Side::{Top,Bottom,Both}`; `Provenance { file, format, date, hash }`; validación de dimensiones y unicidad por `(role, side)` salvo `Keepout`.
+- Adaptados `cam-store` (`.cmc`, load/save/validación/round-trip, rechazo `.c2d`), `cam-sim`, `cam-export` (DXF/SVG por `layer.id`), `cam-import` (documento S2, capas por grupo con `id`/rol/side/color/source), `cam-post`, `cam-ops`, `cam-app`, `cam-cli` (inspect/printsheet/pieces/tools adaptados a S2 y `default safe Z`), `cam-view`, `cam-ui` y `cam-desktop`, junto con tests, fixtures y benches afectados (incl. `Segment.name`, `MoveStream.safe_z/home`, `Toolpath.name`, `ToolGeometry.units`, helpers/expectativas de UI/CLI/printsheet/export).
+- Decisiones de adaptación S2: `pieces --layer` usa el id de capa; import multi-grupo preserva id de grupo (o `L{n}`) con rol/side no colisionante y `source.format`; DXF/SVG exportan por `layer.id`; printsheet/listados y UI muestran capa por id y rol/side; `safe_z` eliminado de `Board` se sustituye por `DEFAULT_SAFE_Z_MM` donde aplica; `units` de tools se decodifica desde store.
+- Gates locales en verde (worktree `tasks/035`, sin commit): `cargo fmt --all -- --check` OK, `cargo clippy --workspace --all-targets -- -D warnings` OK, `cargo test --workspace` OK (workspace completo). `INDEX.md` no modificado (actualización de entrega corresponde a quien mergea, per AGENTS). Listo para lanzar review nativa del candidato actual.

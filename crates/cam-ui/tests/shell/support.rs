@@ -13,9 +13,11 @@ pub(crate) fn document_with_rectangle() -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities: vec![cam_model::Entity {
       id: "E1".to_owned(),
       kind: cam_model::EntityKind::Contour {
@@ -359,9 +361,11 @@ pub(crate) fn document_with_squares(count: usize) -> Document {
   let mut document = Document::new(Job::default_sheet());
   document.layers.push(Layer {
     id: "L1".to_owned(),
-    name: "Part".to_owned(),
-    role: LayerRole::Geometry,
+    role: LayerRole::Outline, /*was Geometry*/
+    side: cam_model::Side::Both,
+    color: "#000000".to_owned(),
     visible: true,
+    source: cam_model::Provenance::default(),
     entities,
   });
   document
@@ -375,7 +379,7 @@ pub(crate) fn document_with_toolpath(count: usize, tool_number: u32) -> Document
   let mut document = document_with_squares(count);
   document.toolpaths.push(Toolpath {
     id: "P1".to_owned(),
-    name: "Profile 01".to_owned(),
+    name: "Profile".to_owned(),
     entity_ids: vec!["S0".to_owned()],
     tool_number,
     operation: Operation::Isolation(IsolationParams {

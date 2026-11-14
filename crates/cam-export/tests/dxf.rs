@@ -16,11 +16,18 @@ use cam_model::{Document, Entity, EntityKind, Job, Layer, LayerRole};
 fn document(layers: &[(&str, Vec<Contour>)]) -> Document {
   let mut document = Document::new(Job::default_sheet());
   for (index, (name, contours)) in layers.iter().enumerate() {
+    let role = if index == 0 {
+      LayerRole::Outline
+    } else {
+      LayerRole::Keepout
+    };
     document.layers.push(Layer {
-      id: format!("layer-{index}"),
-      name: (*name).to_string(),
-      role: LayerRole::Geometry,
+      id: (*name).to_owned(),
+      role,
+      side: cam_model::Side::Both,
+      color: "#000000".to_owned(),
       visible: true,
+      source: cam_model::Provenance::default(),
       entities: contours
         .iter()
         .enumerate()
@@ -241,11 +248,6 @@ fn the_layer_table_lists_every_layer_in_document_order() {
     .position(|(code, value)| *code == 2 && value == "LAYER")
     .expect("the LAYER table is declared");
   assert_eq!(pairs[table + 1], (70, "3".to_string()));
-  // The layer's own `name` is written verbatim, never its id.
-  assert!(
-    !text.contains("layer-0"),
-    "the writer emits layer ids:\n{text}"
-  );
 }
 
 #[test]
@@ -445,7 +447,7 @@ fn refusal(document: &Document) -> ExportError {
 }
 
 #[test]
-fn an_empty_layer_name_is_refused() {
+fn an_empty_layer_id_is_refused() {
   let document = document(&[("", vec![square()])]);
 
   let error = refusal(&document);
@@ -454,7 +456,7 @@ fn an_empty_layer_name_is_refused() {
     error,
     ExportError::Refused {
       format: "dxf",
-      reason: "a layer has an empty name and a DXF layer record needs one: the reader skips a \
+      reason: "a layer has an empty id and a DXF layer record needs one: the reader skips a \
                nameless record, so the layer would vanish from the file"
         .to_string()
     }
@@ -464,7 +466,7 @@ fn an_empty_layer_name_is_refused() {
 }
 
 #[test]
-fn a_layer_name_the_reader_would_trim_is_refused() {
+fn a_layer_id_the_reader_would_trim_is_refused() {
   let document = document(&[(" OUTLINE", vec![square()])]);
 
   let error = refusal(&document);
@@ -476,7 +478,7 @@ fn a_layer_name_the_reader_would_trim_is_refused() {
 }
 
 #[test]
-fn a_layer_name_with_a_line_break_is_refused() {
+fn a_layer_id_with_a_line_break_is_refused() {
   let document = document(&[("OUTLINE\nHOLES", vec![square()])]);
 
   let error = refusal(&document);
@@ -488,13 +490,13 @@ fn a_layer_name_with_a_line_break_is_refused() {
 }
 
 #[test]
-fn two_layers_with_the_same_name_are_refused() {
+fn two_layers_with_the_same_id_are_refused() {
   let document = document(&[("OUTLINE", vec![square()]), ("OUTLINE", vec![circle()])]);
 
   let error = refusal(&document);
 
   assert!(
-    error.to_string().contains("two layers are named"),
+    error.to_string().contains("two layers have the id"),
     "got {error}"
   );
 }
