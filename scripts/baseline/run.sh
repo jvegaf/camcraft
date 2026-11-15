@@ -85,7 +85,7 @@ if [ -n "${BASELINE_BOARDS:-}" ]; then
 fi
 
 echo "== measuring $CORPUS"
-# `/usr/bin/python3` and not `$PYTHON` on purpose: these two scripts are ordinary Python and must not run
+# `python3` from PATH and not `$PYTHON` on purpose: these scripts are ordinary Python and must not run
 # inside the FlatCAM environment, which is the thing being measured.
 if ! /usr/bin/env python3 "$ROOT/scripts/baseline/collect.py" "$CORPUS" "$PYTHON" "${BOARDS[@]+"${BOARDS[@]}"}" \
   >"$WORK/measured.json"; then
