@@ -109,8 +109,18 @@ def main() -> int:
     on_disk = sorted(path.name for path in corpus.iterdir() if path.is_dir())
     if on_disk != sorted(EXPECTED_BOARDS):
         problems.append(f"corpus: boards on disk are {on_disk} and the fixed corpus is {sorted(EXPECTED_BOARDS)}")
-    if sorted(boards) != on_disk:
-        problems.append(f"corpus: measured boards are {sorted(boards)} and the corpus holds {on_disk}")
+    # A run may be narrowed on purpose (`BASELINE_BOARDS`, for working on the instrument). What it
+    # measured must still be a subset of the fixed corpus, and the boards it did not measure are reported
+    # rather than counted as agreement: a run that measured nothing must never read as a clean corpus.
+    unknown = sorted(slug for slug in boards if slug not in EXPECTED_BOARDS)
+    if unknown:
+        problems.append(f"corpus: measured boards {unknown} are not in the fixed corpus")
+    if not boards:
+        # Not a narrowed run but an empty one: nothing was measured, so nothing can have matched.
+        problems.append("corpus: the run measured no board at all, which is not a clean corpus")
+    skipped = sorted(slug for slug in EXPECTED_BOARDS if slug not in boards)
+    if skipped:
+        print(f"  not measured in this run: {', '.join(skipped)}", file=sys.stderr)
 
     for slug in sorted(boards):
         golden_path = baseline / f"{slug}.json"

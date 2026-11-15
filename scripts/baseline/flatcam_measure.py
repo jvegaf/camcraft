@@ -26,6 +26,7 @@ Three things here are not obvious and are the reason this file exists rather tha
 import argparse
 import json
 import os
+import re
 import resource
 import sys
 import time
@@ -81,6 +82,26 @@ def boot():
 def run_tcl(fc, command):
     """Run one line in FlatCAM's shell, which is the surface FlatCAM documents for scripting."""
     return fc.shell.exec_command(command, no_echo=True)
+
+
+def tcl_word(value):
+    """One argument for the Tcl shell, quoted so it can neither split nor substitute.
+
+    Paths and object names reach the command line, and the shell splits on whitespace and substitutes
+    `$`, `[` and `\\` unless they are escaped. An unquoted corpus path with a space in it would open
+    nothing and be recorded as a refusal — a measurement that never happened.
+    """
+    text = str(value).replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("[", "\\[")
+    return '"' + text + '"'
+
+
+def safe_name(stem):
+    """The object name this measurement uses, whatever the file was called.
+
+    FlatCAM's collection is keyed by name and the name is also reused in later commands, so the stem is
+    reduced to characters that survive the round trip instead of being trusted verbatim.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", stem)
 
 
 def object_named(fc, name):
@@ -206,9 +227,9 @@ def zero_operation(status):
 
 def open_artefact(fc, path, stem):
     """Open one artefact and time it. Returns the object, or None when FlatCAM refused the file."""
-    command = 'open_excellon "%s" -outname %s' if path.endswith(".drl") else 'open_gerber "%s" -outname %s'
+    command = "open_excellon %s -outname %s" if path.endswith(".drl") else "open_gerber %s -outname %s"
     started = time.perf_counter()
-    run_tcl(fc, command % (path, stem))
+    run_tcl(fc, command % (tcl_word(path), tcl_word(stem)))
     seconds = time.perf_counter() - started
     return object_named(fc, stem), seconds
 
@@ -239,8 +260,14 @@ def measure_isolation(fc, path, stem, options):
     # folds the passes into one geometry, which is the isolation job a person actually sends.
     run_tcl(
         fc,
-        "isolate %s -dia %s -passes %d -overlap %s -iso_type 2 -combine True -outname %s_iso"
-        % (stem, options["dia"], options["passes"], options["overlap"], stem),
+        "isolate %s -dia %s -passes %d -overlap %s -iso_type 2 -combine True -outname %s"
+        % (
+            tcl_word(stem),
+            options["dia"],
+            options["passes"],
+            options["overlap"],
+            tcl_word(safe_name(stem) + "_iso"),
+        ),
     )
     # FlatCAM names the isolation object itself (it appends a suffix when the name is taken), so the
     # result is read from the collection's own diff instead of from the name that was asked for.
@@ -254,22 +281,24 @@ def measure_isolation(fc, path, stem, options):
         return {**zero_operation("refused"), "seconds": time.perf_counter() - started}
     totals = {"moves": 0, "cut_moves": 0, "travel_moves": 0, "path_mm": 0.0}
     for index, (origin, _geometry) in enumerate(geometries):
-        job = "%s_iso%d_cnc" % (stem, index)
+        job = safe_name("%s_iso%d_cnc" % (stem, index))
         run_tcl(
             fc,
             "cncjob %s -dia %s -z_cut %s -z_move %s -feedrate %s -outname %s"
             % (
-                origin,
+                tcl_word(origin),
                 options["dia"],
                 options["z_cut"],
                 options["z_move"],
                 options["feedrate"],
-                job,
+                tcl_word(job),
             ),
         )
         cnc = object_named(fc, job)
         if cnc is None:
-            continue
+            # A CNC job that was asked for and did not appear is a failed measurement, not a zero one:
+            # skipping it would put a total nobody produced into the golden and call it `measured`.
+            return {**zero_operation("error"), "seconds": time.perf_counter() - started}
         counted = moves_of(cnc)
         totals["moves"] += counted["moves"]
         totals["cut_moves"] += counted["cut_moves"]
@@ -288,12 +317,20 @@ def measure_drill(fc, path, stem, options):
     # use"), which would record a move count no machine would ever run for a multi-tool board.
     run_tcl(
         fc,
-        "drillcncjob %s -drillz %s -travelz %s -feedrate_z %s -toolchangez %s -toolchangexy 0,0 -outname %s_cnc"
-        % (stem, options["drill_z"], options["travel_z"], options["feedrate_z"], options["toolchange_z"], stem),
+        "drillcncjob %s -drillz %s -travelz %s -feedrate_z %s -toolchangez %s -toolchangexy 0,0 -outname %s"
+        % (
+            tcl_word(stem),
+            options["drill_z"],
+            options["travel_z"],
+            options["feedrate_z"],
+            options["toolchange_z"],
+            tcl_word(safe_name(stem) + "_cnc"),
+        ),
     )
     cnc = object_named(fc, "%s_cnc" % stem)
     if cnc is None:
-        return {**zero_operation("refused"), "seconds": time.perf_counter() - started}
+        # Same rule as isolation: a drill job that was asked for and did not appear is not a zero.
+        return {**zero_operation("error"), "seconds": time.perf_counter() - started}
     return {"status": "measured", **moves_of(cnc), "seconds": time.perf_counter() - started}
 
 
@@ -317,7 +354,7 @@ def main():
     if not os.path.isfile(path):
         print(json.dumps({"status": "error", "reason": "no such artefact: %s" % path}))
         return 2
-    stem = os.path.splitext(os.path.basename(path))[0]
+    stem = safe_name(os.path.splitext(os.path.basename(path))[0])
     mill = {
         "dia": options.dia,
         "passes": options.passes,
