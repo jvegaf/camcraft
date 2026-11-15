@@ -8,6 +8,10 @@
 # is verified.
 #
 # Skipped work says so, with the reason. A hook that silently checks nothing is worse than no hook.
+#
+# CI runs the full `gate` on every push to `dev`, so clippy and tests are scoped to the crates the
+# push touches when that can be determined; a root Cargo.toml/Cargo.lock change, or Rust outside a
+# workspace crate, falls back to the whole workspace. `PRE_PUSH_FULL=1` forces the workspace-wide run.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -41,24 +45,71 @@ fi
 run_clippy=false
 run_tests=false
 run_parity=false
+scope_workspace=false
+crates=()
 
-echo "$changed" | grep -qE '\.rs$|^Cargo\.(toml|lock)$' && { run_clippy=true; run_tests=true; }
+# Workspace clippy/tests matter when the pushed Rust lives in a workspace crate or when the
+# workspace manifests change. Rust outside crates/ (e.g. scripts/parity/measure) is handled by its
+# own gate below, not by `cargo --workspace`.
+if echo "$changed" | grep -qE '^Cargo\.(toml|lock)$'; then
+  run_clippy=true
+  run_tests=true
+  scope_workspace=true
+fi
+
+if echo "$changed" | grep -qE '^crates/.+\.rs$|^crates/.+/Cargo\.toml$'; then
+  run_clippy=true
+  run_tests=true
+  while IFS= read -r dir; do
+    [ -n "$dir" ] && crates+=("$dir")
+  done < <(echo "$changed" | sed -n 's#^crates/\([^/]*\)/.*#\1#p' | sort -u)
+fi
+
 echo "$changed" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)' && run_parity=true
+
+if [ "${PRE_PUSH_FULL:-}" = "1" ] && { $run_clippy || $run_tests; }; then
+  scope_workspace=true
+fi
+
+# No recognised crate names means the Rust change is not a workspace crate (or only root files were
+# matched above); fall back so we never silently skip the check.
+if { $run_clippy || $run_tests; } && ! $scope_workspace && [ ${#crates[@]} -eq 0 ]; then
+  scope_workspace=true
+fi
 
 echo "pre-push: pushing $(echo "$changed" | wc -l | tr -d ' ') changed file(s) over $range"
 
+pkg_args=()
+scope_label="workspace"
+if ! $scope_workspace && [ ${#crates[@]} -gt 0 ]; then
+  for c in "${crates[@]}"; do
+    pkg_args+=(-p "$c")
+  done
+  scope_label="crate(s): ${crates[*]}"
+fi
+
 if $run_clippy; then
-  echo "pre-push: clippy -D warnings"
-  cargo clippy --workspace --all-targets -- -D warnings
+  if [ "$scope_label" = "workspace" ]; then
+    echo "pre-push: clippy -D warnings (workspace)"
+    cargo clippy --workspace --all-targets -- -D warnings
+  else
+    echo "pre-push: clippy -D warnings ($scope_label)"
+    cargo clippy "${pkg_args[@]}" --all-targets -- -D warnings
+  fi
 else
-  echo "pre-push: clippy skipped (no Rust or manifest changed)"
+  echo "pre-push: clippy skipped (no workspace Rust or manifest changed)"
 fi
 
 if $run_tests; then
-  echo "pre-push: cargo test --workspace"
-  cargo test --workspace
+  if [ "$scope_label" = "workspace" ]; then
+    echo "pre-push: cargo test (workspace)"
+    cargo test --workspace
+  else
+    echo "pre-push: cargo test ($scope_label)"
+    cargo test "${pkg_args[@]}"
+  fi
 else
-  echo "pre-push: tests skipped (no Rust or manifest changed)"
+  echo "pre-push: tests skipped (no workspace Rust or manifest changed)"
 fi
 
 if $run_parity; then
@@ -67,3 +118,4 @@ if $run_parity; then
 else
   echo "pre-push: parity skipped (nothing pushed can move what the corpus measures)"
 fi
+

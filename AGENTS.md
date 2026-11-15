@@ -4,7 +4,7 @@
 - **`dev` es el tronco de desarrollo.** Todo el trabajo integrado llega ahí; los pushes a `dev` corren los gates baratos (`gate` siempre, `parity` sólo si el push toca parsers, kernel, corpus o arnés).
 - **`master` es sólo releases.** Se mueve únicamente por PR desde `dev`, con tag (`v0.X.0`), y está protegida: `gate`, `parity` y `bench` son checks requeridos. No pushees directo a `master`.
 - El flujo completo, con los comandos de release, está en `odd/roadmap/workflow.md`.
-- **Instalá los hooks una vez por clon:** `just hooks` (pre-commit: fmt, links de docs, build del medidor de paridad; pre-push: clippy, tests y `parity` cuando el push puede moverlo).
+- **Instalá los hooks una vez por clon:** `just hooks` (pre-commit: fmt, links de docs, build del medidor de paridad; pre-push: clippy y tests de los crates tocados por el push —o de todo el workspace si cambian `Cargo.toml`/`Cargo.lock` de raíz, cambia Rust fuera de `crates/`, o se fuerza con `PRE_PUSH_FULL=1`— y `parity` cuando el push puede moverlo).
 
 ## Desarrollo en worktrees (obligatorio para trabajo paralelo)
 - **Un agente = un worktree = una tarea.** Trabajá siempre en un worktree dedicado para la tarea que tomaste de `odd/tasks/INDEX.md`. Las ramas de tarea salen de `dev`, no de `master`.

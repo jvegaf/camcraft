@@ -62,8 +62,12 @@ something a local command would have caught:
 - **`pre-commit`** (about a second): `cargo fmt --check` when a Rust file is staged, `check-docs.sh` when
   a markdown file is staged, and the parity measurer's build when the harness or a parser moved — that
   crate lives outside the workspace, so nothing else compiles it before CI does.
-- **`pre-push`** (minutes, on demand): `clippy -D warnings` and `cargo test --workspace` when the pushed
-  range touches Rust, and `scripts/parity/run.sh` when it touches what the corpus measures.
+- **`pre-push`** (minutes, on demand): `clippy -D warnings` and `cargo test` for the crates the pushed
+  range touches when the scope can be determined (falling back to `--workspace` when root
+  `Cargo.toml`/`Cargo.lock` changes, when Rust changes outside `crates/`, or with `PRE_PUSH_FULL=1`),
+  and `scripts/parity/run.sh` when it touches what the corpus measures. CI still runs the full `gate`
+  on every push to `dev`, so the hook catches crate-local breaks early without repeating the whole
+  workspace on every push.
 
 They are **not** the gate. `scripts/check.sh` is the gate and CI runs it; a hook can be skipped with
 `git commit --no-verify`, and any hook that took as long as the gate would be. A skipped step in
