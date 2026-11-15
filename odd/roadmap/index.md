@@ -27,7 +27,7 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 | E0.3 One tolerance policy | ✅ | `cam-geom/src/tolerance.rs:44` `TolerancePolicy` (`chord`, `epsilon`, `arc`, `simplify`) with `ArcPolicy`/`Simplify`, defaults and constructors/helpers; reexported in `cam-geom/src/lib.rs:43` and `DEFAULT_TOLERANCE` derived from `DEFAULT_EPSILON` (`:49`). Public geometry operations across `cam-geom/src` and workspace consumers take explicit `TolerancePolicy`; policy/literal guard `crates/cam-geom/tests/tolerance_policy.rs` (7 tests). Task [052](../tasks/052-e0-3-tolerance-policy.md) delivered `c62b135` (slices `1d170da`, `720285d`, `525f0b9`, reviewed) | — |
 | E0.4 Geometric parity harness | ✅ | `scripts/parity/run.sh`, `compare.py`, `collect.py`, `measure/` (`scripts/parity/README.md`); corpus-shape/fixture guard `crates/cam-geom/tests/parity.rs:1`; committed `parity.json` goldens per board under `fixtures/corpus/`, re-pinned **2026-11-14** after the W2 importers changed what the tree measures; the measurer is built by `just check` (`scripts/check.sh`, last gate) because it lives outside the workspace and nothing else compiled it, which is how a `f64`→`TolerancePolicy` signature change reached CI unnoticed; local gate `just parity` (`justfile:79`) and CI job `parity` (`.github/workflows/ci.yml:38`); task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — (polygon/area/point-count comparison against reference geometry, as implemented by the harness). **Known limitation recorded in the goldens**: of the 54 corpus artefacts, 12 parse, 24 are still refused, and **18 exceed the harness' 20 s bound** and are pinned as `timeout` — those layers parse but the kernel does not finish evaluating them, which the harness records instead of hanging CI. Twenty seconds was measured and rejected — those two layers oscillate either side of it — so the bound is 30 s. **Deferred until the board UI (E6.x) is complete**: a per-artefact bound (a short bound for the layers that never terminate, a longer one for the layers the golden records as terminating) takes the run from ten minutes to about five and makes the result deterministic, but it moves `timeout_seconds` from a per-board field to a per-artefact one, which is a schema change to the goldens that has to travel `dev` → `master` behind its own review and a single re-pin |
 | E0.5 Board corpus | ✅ | 6 boards under `fixtures/corpus/` (`kicad-2l-simple`, `kicad-4l-pours`, `kicad-large-pours`, `substitute-altium`, `substitute-eagle`, `substitute-easyeda`) carrying fabrication roles/artifacts, `provenance.json` and `parity.json`; fixed set asserted in `crates/cam-geom/tests/parity.rs:18`; task [045](../tasks/045-w1a-corpus-parity.md) delivered `56ee332` | — |
-| E0.6 FlatCAM baseline | ⬜ | No baseline table or script under `scripts/`, `odd/reports/`, `crates/` | Nothing measured to compare against |
+| E0.6 FlatCAM baseline | ✅ | `scripts/baseline/` measures the corpus with FlatCAM-Plus 1.3.6 in its own Python (offscreen, one process per artefact and per operation so a hang is bounded by `timeout`), pins one golden per board under `fixtures/baseline/` and checks them with `just baseline` (`run.sh`, `collect.py`, `flatcam_measure.py`, `compare.py`, `pin.py`); the table, its limits and the agreement table are [flatcam-baseline](../reports/flatcam-baseline.md). Baseline of 2026-11-15: **51 of 54 artefacts read, 3 refused, 0 timeouts**, worst layer 43.05 s and 2.85 GB, isolation 3004 moves in 14.53 s and drilling 4359 moves in 3.03 s across the six boards; task [059](../tasks/059-e0-6-flatcam-baseline.md) | — |
 | E0.7 Benchmarks | ✅ | `criterion` workspace dep (`Cargo.toml:64`, `crates/cam-geom/Cargo.toml:17`, `crates/cam-ops/Cargo.toml:17`); benches `crates/cam-geom/benches/kernel.rs`, `crates/cam-ops/benches/toolpaths.rs`; committed baselines under `crates/cam-geom/benches/baselines/` and `crates/cam-ops/benches/baselines/`; regression scripts `crates/cam-geom/benches/check_regression.sh`, `crates/cam-ops/benches/check_regression.sh`; `just bench` (`justfile:87`) and CI job `bench` on pushes to `master` (`.github/workflows/ci.yml:61`, hardware-coupled comparison, not a shared-runner threshold gate); task [044](../tasks/044-e0-7-benchmarks.md) delivered `cfb7feb` | — |
 | E0.8 CI | ✅ | `.github/workflows/ci.yml` is a two-trunk workflow: pushes to `dev` run `gate` (`fmt`/`clippy`/docs/tests via `scripts/check.sh`) plus `parity` only when the push touches a parser, the kernel, the corpus or the harness, and pull requests to `master` run `gate`, `parity` and `bench` always. `master` is protected with those three names as required checks, `strict` on, admins enforced, no force-push; releases are a PR from `dev` plus an annotated tag (`odd/roadmap/workflow.md`). `just hooks` installs `.githooks/pre-commit` (fmt, docs links, measurer build) and `.githooks/pre-push` (clippy, tests, and the measurement when the pushed range can move it), which is what lets `dev` trust them for the expensive gates. Task [043](../tasks/043-w1b-ci.md) delivered `612a285`; the two-trunk split landed afterwards | — (the bench comparison stays hardware-coupled, see E0.7) |
 
@@ -107,8 +107,10 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
   parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI). Input robustness (E0.2) is closed by
   tasks [046](../tasks/046-e0-2-input-robustness.md) and [047](../tasks/047-arrangement-odd-degree-graph.md),
   with the E0.2 oracle corpus in `crates/cam-geom/tests/boolean_corpus.rs`. W3/E0.3 tolerance policy is
-  now in place (task [052](../tasks/052-e0-3-tolerance-policy.md)); what still blocks confident progress in F0 is
-  E0.6 (FlatCAM baseline). Every phase below F0 still depends on being able to *measure* correctness and speed.
+  now in place (task [052](../tasks/052-e0-3-tolerance-policy.md)), and E0.6 (FlatCAM baseline) landed with task
+  [059](../tasks/059-e0-6-flatcam-baseline.md): **F0's instrument set is complete**, and the baseline answered
+  the question it existed for — FlatCAM reads 51 of the 54 corpus artefacts with no timeout, so the eighteen
+  layers the tree cannot finish are the kernel's defect and not a property of the corpus.
 - **E1.1 (board model) landed in S2 literal form with task [035](../tasks/035-c3-model.md)** (`723cb98`),
   but remains partial overall (no per-entity origin metadata; `EntityKind` still contour-only). **Only
   E1.2 is fully done of all F1 items**. F1–F3 remain mostly partial/absent in behavior; F4 — the
@@ -135,14 +137,15 @@ describe the next parallel slices.
 
 ### Next slice, from here
 
-Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says. The core instrument set of wave 1
-(E0.4 parity harness, E0.5 corpus, E0.7 benchmarks, E0.8 CI) is now in place, E0.2 input
-robustness is closed by tasks 046/047, the C3 board-model slice (E1.1, S2 literal form) landed with
-task [035](../tasks/035-c3-model.md) (`723cb98`), and W3/E0.3 tolerance policy landed with task [052](../tasks/052-e0-3-tolerance-policy.md). What remains of F0 is:
+Instruments before product, as `docs/ROADMAP_CAMCRAFT.md` §15 says, and **F0's instrument set is complete**:
+the parity harness (E0.4), the corpus (E0.5), the benchmarks (E0.7), CI (E0.8), input robustness (E0.2, tasks
+046/047), the tolerance policy (E0.3, task 052) and the FlatCAM baseline (E0.6, task
+[059](../tasks/059-e0-6-flatcam-baseline.md)). The C3 board-model slice (E1.1, S2 literal form) landed with
+task [035](../tasks/035-c3-model.md) (`723cb98`).
 
-1. **E0.6 FlatCAM baseline** — measure and record a baseline to compare against.
-
-With F0 instruments mostly in place and 035 delivered, the next product slices follow the dependency/wave
+The baseline sets the order of what follows: FlatCAM reads 51 of the 54 corpus artefacts in 215.84 s, while
+the tree reads 12 and cannot finish 18, so the readers of F1 (E1.4 Gerber, E1.7 import report) are what now
+stands between the corpus and F2's first real G-code. The next product slices follow the dependency/wave
 order in [waves.md](waves.md), moving toward F2 (drilling, cutout) as the first real G-code through
 `cam-cli` once their prerequisites are met.
 
