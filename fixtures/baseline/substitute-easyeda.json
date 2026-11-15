@@ -1,0 +1,108 @@
+{
+  "artefacts": {
+    "bottom": {
+      "contour_area_mm2": 10905.052687717267,
+      "peak_rss_kb": 1221856,
+      "polygons": 175,
+      "seconds": 7.622851319996698,
+      "status": "parsed",
+      "vertices": 169580
+    },
+    "drill": {
+      "features": 165,
+      "peak_rss_kb": 503276,
+      "seconds": 0.2825390840007458,
+      "status": "parsed",
+      "tools": 7
+    },
+    "mask-bottom": {
+      "contour_area_mm2": 434.09931744646065,
+      "peak_rss_kb": 519680,
+      "polygons": 165,
+      "seconds": 0.42577498099853983,
+      "status": "parsed",
+      "vertices": 65353
+    },
+    "mask-top": {
+      "contour_area_mm2": 434.09931744646065,
+      "peak_rss_kb": 519752,
+      "polygons": 165,
+      "seconds": 0.42505453000194393,
+      "status": "parsed",
+      "vertices": 65353
+    },
+    "outline": {
+      "contour_area_mm2": 16114.898810050488,
+      "peak_rss_kb": 505052,
+      "polygons": 2,
+      "seconds": 0.2887737140044919,
+      "status": "parsed",
+      "vertices": 1230
+    },
+    "silk-bottom": {
+      "contour_area_mm2": 0.0,
+      "peak_rss_kb": 501836,
+      "polygons": 0,
+      "seconds": 0.07733332100178814,
+      "status": "refused",
+      "vertices": 0
+    },
+    "silk-top": {
+      "contour_area_mm2": 1759.9946593572126,
+      "peak_rss_kb": 1028716,
+      "polygons": 586,
+      "seconds": 2.4015379400007077,
+      "status": "parsed",
+      "vertices": 744952
+    },
+    "top": {
+      "contour_area_mm2": 556.5608836108054,
+      "peak_rss_kb": 551484,
+      "polygons": 188,
+      "seconds": 0.5573978809989057,
+      "status": "parsed",
+      "vertices": 103419
+    }
+  },
+  "environment": {
+    "flatcam": "1.3.6",
+    "platform": "offscreen",
+    "python": "3.14.4",
+    "shapely": "2.2.0"
+  },
+  "operation_parameters": {
+    "drill": {
+      "drill_z": -1.8,
+      "feedrate_z": 60.0,
+      "toolchange_z": 30.0,
+      "travel_z": 2.0
+    },
+    "isolation": {
+      "dia": 0.2,
+      "feedrate": 100.0,
+      "overlap": 15.0,
+      "passes": 2,
+      "z_cut": -0.1,
+      "z_move": 2.0
+    }
+  },
+  "operations": {
+    "drill": {
+      "cut_moves": 165,
+      "moves": 338,
+      "path_mm": 3935.97866601623,
+      "seconds": 0.37569991200143704,
+      "status": "measured",
+      "travel_moves": 173
+    },
+    "isolation": {
+      "cut_moves": 156,
+      "moves": 313,
+      "path_mm": 2831.9322541153306,
+      "seconds": 1.1541784049986745,
+      "status": "measured",
+      "travel_moves": 157
+    }
+  },
+  "timeout_seconds": 300
+}
