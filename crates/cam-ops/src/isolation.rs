@@ -69,11 +69,10 @@ pub struct IsolationPath {
 /// original copper region, not accumulated from the previous pass, so the distance of every pass is
 /// exact and independent.
 ///
-/// Passes whose offset leaves no material (the distance is larger than the clearance around the
-/// copper, so the kernel refuses or returns no boundaries) are omitted rather than treated as an
-/// error, because later passes are farther away and a layer may admit some passes but not all of
-/// them. A request that produces no pass at all is refused as a collapsed offset so the caller knows
-/// the tool does not fit.
+/// Passes whose offset leaves no material because the distance is larger than the clearance around
+/// the copper are omitted rather than treated as an error, because later passes are farther away and
+/// a layer may admit some passes but not all of them. A request that produces no pass at all is
+/// refused as a collapsed offset so the caller knows the tool does not fit.
 ///
 /// `direction` sets the milling direction of the emitted paths (climb or conventional). Contours are
 /// oriented with the cut material on the appropriate side for the requested direction.
@@ -82,7 +81,7 @@ pub struct IsolationPath {
 ///
 /// Returns an error when `tool_diameter` is not positive, when `passes` is zero, when `overlap` is
 /// not in `[0, 1)`, when the copper region cannot be offset for the first pass, or when the kernel
-/// reports a geometric error.
+/// reports a geometric or tolerance error that is not an exhausted-clearance case for a later pass.
 pub fn isolation_passes(
   copper: &Region,
   tool_diameter: f64,
@@ -113,7 +112,8 @@ pub fn isolation_passes(
     let offset = match copper.offset(-distance, tolerance) {
       Ok(offset) => offset,
       Err(err) if index == 0 => return Err(err),
-      Err(_) => break,
+      Err(err) if is_clearance_exhausted(&err) => break,
+      Err(err) => return Err(err),
     };
     let flattened = offset.flattened;
     if offset.region.boundaries.is_empty() {
@@ -150,6 +150,20 @@ pub fn isolation_passes(
 /// stepover of `dia * (1 - overlap)` further out for each subsequent pass.
 pub fn pass_distance(tool_diameter: f64, index: usize, overlap: f64) -> f64 {
   tool_diameter * ((2 * index + 1) as f64 / 2.0) - (index as f64) * overlap * tool_diameter
+}
+
+/// Whether an offset error means this pass cannot fit around the copper (clearance exhausted),
+/// rather than a malformed or unresolvable geometry.
+fn is_clearance_exhausted(err: &GeomError) -> bool {
+  match err {
+    GeomError::EditRefused { reason } => {
+      reason.contains("leaves no material")
+        || reason.contains("collapsed an enclosing boundary")
+        || reason.contains("collapsed a hole boundary")
+    }
+    GeomError::OffsetCollapsed { .. } => true,
+    _ => false,
+  }
 }
 
 /// Orient the contours of an offset pass for the requested milling direction.
