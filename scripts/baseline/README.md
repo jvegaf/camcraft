@@ -26,7 +26,9 @@ instead of comparing across versions.
 A full run boots FlatCAM once per artefact and once per operation — sixty-six processes, about eight
 seconds of boot each — so it takes roughly ten minutes. `BASELINE_BOARDS=kicad-2l-simple` narrows it to
 one board while working on the instrument; `--update` refuses to take that filter, because a partial
-re-pin would leave the other goldens describing another FlatCAM.
+re-pin would leave the other goldens describing another FlatCAM. A narrowed run compares only the boards
+it measured, names the ones it skipped on stderr, and treats a run that measured **nothing** as a
+divergence rather than a clean corpus.
 
 ## What it measures
 
@@ -65,6 +67,12 @@ The cost of booting FlatCAM (~8 s) is measured and reported per run, and never a
 is the price of the instrument, not of the measured work.
 
 ## What the comparison checks — and what it deliberately does not
+
+A re-pin also refuses an incomplete run: if any artefact or operation came back `error` or `timeout`, the
+whole set is left untouched, because a record that says "the harness did not see this" is not a
+measurement and must never replace one. Each golden is staged beside its target, renamed only after all
+of them are staged, and the old bytes are put back if a rename fails, so the pinned set is either the
+old version or the new one and never a mix of both.
 
 Checked exactly: every `status`, every count (`polygons`, `vertices`, `tools`, `features`, `moves`,
 `cut_moves`, `travel_moves`), `path_mm` and `contour_area_mm2` within a **relative** `1e-9` (E0.4's
