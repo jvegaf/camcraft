@@ -11,18 +11,24 @@
 //! Every command's logic lives in a function that its argument-parsing arm calls, and the scripted
 //! command language (`script`) calls the same functions (M10 invariant 1), so no behaviour has a
 //! second implementation.
+//!
+//! Command implementations live in [`commands`], one module per command, so adding a new command
+//! (for example `drill` or `cutout` in ola 4) means adding a file under `commands/` and registering
+//! it in the dispatcher without editing unrelated command code.
 
+pub mod commands;
 pub mod pieces;
 pub mod printsheet;
 pub mod script;
+
+// Preserve the historical crate-root API used by `script`, `pieces`, `printsheet`, tests, and the
+// binary. Command implementations moved to `commands/*`; shared helpers remain here.
+pub use commands::validate::report as validate_report;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cam_model::{Document, NestingPart, NestingSheet};
-use cam_post::parse_post;
-use cam_store::document::DocumentFile;
-use cam_store::tools::{CuttingData, ToolGeometry, ToolLibrary};
 use cam_units::Format;
 
 const HELP: &str = "\
@@ -131,10 +137,6 @@ impl Failure {
   }
 }
 
-/// Write a report to the sink its caller chose: the one way a report leaves this crate.
-///
-/// `print!` panics when its own write fails, which a caller holding a buffer should never inherit, so a
-/// sink that refuses the bytes becomes a refusal instead.
 /// A short label for an operation kind, for reports.
 pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str {
   match operation {
@@ -146,6 +148,10 @@ pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str 
   }
 }
 
+/// Write a report to the sink its caller chose: the one way a report leaves this crate.
+///
+/// `print!` panics when its own write fails, which a caller holding a buffer should never inherit, so a
+/// sink that refuses the bytes becomes a refusal instead.
 pub(crate) fn write_report(sink: &mut dyn Write, report: &str) -> Result<(), Failure> {
   sink
     .write_all(report.as_bytes())
@@ -165,16 +171,16 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
 
   let rest = &arguments[1..];
   match command.as_str() {
-    "validate" => validate(rest),
-    "inspect" => inspect(rest),
-    "postp" => postp(rest),
-    "import" => import_command(rest),
-    "export" => export_command(rest),
-    "check" => check(rest),
+    "validate" => commands::validate::run(rest),
+    "inspect" => commands::inspect::run(rest),
+    "postp" => commands::postp::run(rest),
+    "import" => commands::import::run(rest),
+    "export" => commands::export::run(rest),
+    "check" => commands::check::run(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
     "report" => printsheet::report_command(rest),
-    "tools" => tools(rest),
+    "tools" => commands::tools::run(rest),
     "script" => script::script_command(rest),
     other => Err(Failure::input(format!(
       "unknown command {other:?}; see --help"
@@ -203,6 +209,8 @@ pub fn open(path: &Path) -> Result<Document, Failure> {
   Ok(file.document)
 }
 
+use cam_store::document::DocumentFile;
+
 /// An invalid document is either a schema problem or an invariant problem; the messages differ in
 /// meaning and the exit code has to as well.
 pub fn classify_invalid(path: &Path, error: &cam_store::StoreError) -> Failure {
@@ -212,274 +220,6 @@ pub fn classify_invalid(path: &Path, error: &cam_store::StoreError) -> Failure {
   } else {
     Failure::input(format!("{}: {text}", path.display()))
   }
-}
-
-pub fn validate(rest: &[String]) -> Result<(), Failure> {
-  let path = only_path(rest, "validate")?;
-  let document = open(&path)?;
-  print!("{}", validate_report(&document));
-  Ok(())
-}
-
-/// The report `cam-cli validate` prints for a document that loaded.
-///
-/// The script's `validate` command prints this same report for the document it holds, so a scripted
-/// run and a command-line run describe a document in one sentence, not two (M10 invariant 1).
-pub fn validate_report(document: &Document) -> String {
-  format!(
-    "valid: {} layer(s), {} entity(ies), {} toolpath(s)\n",
-    document.layers.len(),
-    document.entities().count(),
-    document.toolpaths.len()
-  )
-}
-
-pub fn inspect(rest: &[String]) -> Result<(), Failure> {
-  let path = only_path(rest, "inspect")?;
-  let document = open(&path)?;
-  println!("schema: {}", document.schema);
-  println!(
-    "job: {:.3} x {:.3} x {:.3} mm, origin {:?}, default safe Z {:.3} mm",
-    document.board.width.mm(),
-    document.board.height.mm(),
-    document.board.thickness.mm(),
-    document.board.origin,
-    cam_model::DEFAULT_SAFE_Z_MM
-  );
-  println!("layers: {}", document.layers.len());
-  for layer in &document.layers {
-    println!(
-      "  {}: {} entity(ies), visible {}",
-      layer.id,
-      layer.entities.len(),
-      layer.visible
-    );
-  }
-  println!("toolpaths: {}", document.toolpaths.len());
-  let mut total_length = 0.0;
-  for entity in document.entities() {
-    if let Some(contour) = entity.kind.as_contour() {
-      total_length += contour.perimeter();
-    }
-  }
-  println!("geometry length: {total_length:.3} mm");
-  Ok(())
-}
-
-pub fn check(rest: &[String]) -> Result<(), Failure> {
-  let path = only_path(rest, "check")?;
-  let document = open(&path)?;
-
-  // Findings are collected with the entity id and the entity's own issue order, then sorted by
-  // id, so the report is stable whatever order the layers happen to be in.
-  let mut findings: Vec<(String, usize, String)> = Vec::new();
-  for entity in document.entities() {
-    let Some(contour) = entity.kind.as_contour() else {
-      continue;
-    };
-    let issues = cam_geom::validate::inspect(contour, cam_geom::TolerancePolicy::standard());
-    let mut order = 0;
-    if let Some(gap) = issues.open {
-      findings.push((
-        entity.id.clone(),
-        order,
-        format!("{} open: gap {gap:.4} mm", entity.id),
-      ));
-      order += 1;
-    }
-    for intersection in &issues.intersections {
-      findings.push((
-        entity.id.clone(),
-        order,
-        format!(
-          "{} self-intersection at {:.3}, {:.3} (segments {}, {})",
-          entity.id,
-          intersection.point.x,
-          intersection.point.y,
-          intersection.first,
-          intersection.second
-        ),
-      ));
-      order += 1;
-    }
-    for index in &issues.degenerate {
-      findings.push((
-        entity.id.clone(),
-        order,
-        format!("{} degenerate segment {index}", entity.id),
-      ));
-      order += 1;
-    }
-  }
-
-  if findings.is_empty() {
-    println!("all vectors valid");
-    return Ok(());
-  }
-
-  findings.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-  for (_, _, line) in &findings {
-    println!("{line}");
-  }
-  Err(Failure::vectors(format!(
-    "{} vector issue(s) found",
-    findings.len()
-  )))
-}
-
-/// Write the document's geometry back out as DXF or SVG.
-///
-/// The inverse of `import`, and deliberately as small: it reads one document, asks `cam-export` for the
-/// bytes and writes them, or prints them. It takes no layer, no tolerance and no toolpath flag, because
-/// what goes out is what the document holds (M12 S2, S5). What it *does* refuse, and the writer with it:
-/// a format this build does not write (named, never guessed from an extension), a DXF layer name the
-/// reader would silently alter or drop (empty, padded, carrying a control character, duplicated) and an
-/// SVG of a document with no geometry to derive a page from. `--out` may not be the document being read,
-/// and the write lands whole or not at all.
-pub fn export_command(rest: &[String]) -> Result<(), Failure> {
-  let mut document_path: Option<PathBuf> = None;
-  let mut format: Option<cam_export::Format> = None;
-  let mut out: Option<PathBuf> = None;
-
-  let mut index = 0;
-  while index < rest.len() {
-    match rest[index].as_str() {
-      "--format" => {
-        let value = option_value(rest, index, "--format")?;
-        format = Some(
-          cam_export::Format::from_name(value)
-            .ok_or_else(|| Failure::input(format!("export writes dxf or svg, not {value:?}")))?,
-        );
-        index += 2;
-      }
-      "--out" => {
-        out = Some(PathBuf::from(option_value(rest, index, "--out")?));
-        index += 2;
-      }
-      other if other.starts_with('-') => {
-        return Err(Failure::input(format!("unknown export option {other:?}")))
-      }
-      other => {
-        if document_path.is_some() {
-          return Err(Failure::input("export takes exactly one document"));
-        }
-        document_path = Some(PathBuf::from(other));
-        index += 1;
-      }
-    }
-  }
-
-  let document_path =
-    document_path.ok_or_else(|| Failure::input("export requires a document path"))?;
-  let format = format.ok_or_else(|| Failure::input("export requires --format dxf or svg"))?;
-  let document = open(&document_path)?;
-  let bytes = cam_export::export_bytes(&document, format)
-    .map_err(|error| Failure::input(format!("{}: {error}", document_path.display())))?;
-
-  match out {
-    Some(path) => {
-      // Writing over the document we just read would destroy it and report success, so the two paths are
-      // compared canonically rather than by spelling (review-a7e624d841d3d0c6's R4-SAME-PATH, R3-001).
-      let destination = path.canonicalize().unwrap_or_else(|_| path.clone());
-      if destination
-        == document_path
-          .canonicalize()
-          .unwrap_or_else(|_| document_path.clone())
-      {
-        return Err(Failure::input(format!(
-          "export --out must not be the document it reads: {}",
-          path.display()
-        )));
-      }
-      // Whole or not at all: a truncated `.dxf` beside a live document is worse than a refusal
-      // (R4-ATOMIC-OUT). The temporary sits beside the destination so the rename stays on one filesystem.
-      let temporary = path.with_extension(format!(
-        "{}.tmp",
-        path
-          .extension()
-          .map(|extension| extension.to_string_lossy().into_owned())
-          .unwrap_or_default()
-      ));
-      std::fs::write(&temporary, &bytes)
-        .map_err(|error| Failure::input(format!("{}: {error}", temporary.display())))?;
-      std::fs::rename(&temporary, &path).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
-        Failure::input(format!("{}: {error}", path.display()))
-      })?;
-      eprintln!("wrote {} ({} bytes)", path.display(), bytes.len());
-    }
-    None => {
-      // `print!` panics on a closed pipe, which turns `export | head` into exit 101 and a backtrace
-      // instead of a failure a script can read (R4-STDOUT-PANIC).
-      let mut stdout = std::io::stdout().lock();
-      stdout
-        .write_all(&bytes)
-        .and_then(|()| stdout.flush())
-        .map_err(|error| Failure::input(format!("cannot write to stdout: {error}")))?;
-    }
-  }
-  Ok(())
-}
-
-pub fn import_command(rest: &[String]) -> Result<(), Failure> {
-  let mut input: Option<PathBuf> = None;
-  let mut out: Option<PathBuf> = None;
-  let mut layer: Option<String> = None;
-  let mut options = cam_import::ImportOptions::default();
-
-  let mut index = 0;
-  while index < rest.len() {
-    match rest[index].as_str() {
-      "--out" => {
-        out = Some(PathBuf::from(option_value(rest, index, "--out")?));
-        index += 2;
-      }
-      "--layer" => {
-        layer = Some(option_value(rest, index, "--layer")?.to_string());
-        index += 2;
-      }
-      "--tolerance" => {
-        options.tolerance = number(rest, index, "--tolerance")?;
-        index += 2;
-      }
-      other if other.starts_with('-') => {
-        return Err(Failure::input(format!("unknown import option {other:?}")))
-      }
-      other => {
-        if input.is_some() {
-          return Err(Failure::input("import takes exactly one input file"));
-        }
-        input = Some(PathBuf::from(other));
-        index += 1;
-      }
-    }
-  }
-
-  let input = input.ok_or_else(|| Failure::input("import requires an input file"))?;
-  if options.tolerance <= 0.0 {
-    return Err(Failure::input(
-      "--tolerance must be a positive length in mm",
-    ));
-  }
-
-  let imported = cam_import::import_path(&input, &options)
-    .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
-  let document = cam_import::into_document(&imported, layer.as_deref())
-    .map_err(|error| Failure::input(format!("{}: {error}", input.display())))?;
-
-  if let Some(path) = &out {
-    cam_store::document::save_document(path, &document)
-      .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
-    eprintln!(
-      "wrote {} layer(s), {} entity(ies) to {}",
-      document.layers.len(),
-      document.entities().count(),
-      path.display()
-    );
-  }
-
-  print!("{}", imported.report.render());
-  Ok(())
 }
 
 /// The value that follows an option.
@@ -496,277 +236,6 @@ pub fn number(rest: &[String], index: usize, name: &str) -> Result<f64, Failure>
   value
     .parse::<f64>()
     .map_err(|_| Failure::input(format!("{name} expects a number, got {value:?}")))
-}
-
-pub fn postp(rest: &[String]) -> Result<(), Failure> {
-  let Some(subcommand) = rest.first() else {
-    return Err(Failure::input("postp requires a subcommand: validate"));
-  };
-  if subcommand != "validate" {
-    return Err(Failure::input(format!(
-      "unknown postp subcommand {subcommand:?}; expected validate"
-    )));
-  }
-  let path = only_path(&rest[1..], "postp validate")?;
-  let text = std::fs::read_to_string(&path)
-    .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
-  let post =
-    parse_post(&text).map_err(|error| Failure::post(format!("{}: {error}", path.display())))?;
-  println!("post: {}", post.post_name);
-  println!("extension: {}", post.file_extension);
-  println!("units: {:?}", post.units);
-  println!("variables: {}", post.variables.len());
-  println!("blocks: {}", post.blocks.len());
-  Ok(())
-}
-
-pub fn tools(rest: &[String]) -> Result<(), Failure> {
-  let Some(subcommand) = rest.first() else {
-    return Err(Failure::input("tools requires a subcommand: list or add"));
-  };
-  match subcommand.as_str() {
-    "list" => {
-      let path = only_path(&rest[1..], "tools list")?;
-      let library = ToolLibrary::open(&path).map_err(|error| Failure::input(error.to_string()))?;
-      for tool in library
-        .tools()
-        .map_err(|error| Failure::input(error.to_string()))?
-      {
-        println!(
-          "T{} {} diameter {:.3} mm",
-          tool.cutting.tool_number.unwrap_or(0),
-          cam_store::tools::render_name(&tool.geometry.name_format, "Tool", &tool.geometry)
-            .unwrap_or_else(|_| tool.geometry.id.clone()),
-          tool.geometry.diameter.unwrap_or_default().mm()
-        );
-      }
-      Ok(())
-    }
-    "add" => {
-      let mut path = None;
-      let mut id = None;
-      let mut diameter = None;
-      let mut number = None;
-      let mut name_format = String::from("{Tool Type} ({Diameter|F}{Units Short})");
-      let mut kind = cam_store::tools::ToolKind::FlatEndMill;
-      let mut kind_explicit = false;
-      let mut flutes: u32 = 2;
-      let mut included_angle = None;
-      let mut flat_diameter = None;
-      let mut tip_radius = None;
-      let mut flute_length = None;
-      let mut shank_diameter = None;
-      let mut overall_length = None;
-      let mut feed: Option<f64> = Some(100.0);
-      let mut plunge: Option<f64> = Some(30.0);
-      let mut spindle: Option<u32> = Some(18_000);
-      let mut stepdown = Some(cam_units::Length::from_mm(6.0));
-      let mut stepover = None;
-      let mut index = 0;
-      while index < rest.len() - 1 {
-        let argument = &rest[index + 1];
-        match argument.as_str() {
-          "--id" => {
-            id = rest.get(index + 2).cloned();
-            index += 2;
-          }
-          "--diameter" => {
-            diameter = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok());
-            index += 2;
-          }
-          "--number" => {
-            number = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<u32>().ok());
-            index += 2;
-          }
-          "--name-format" => {
-            if let Some(value) = rest.get(index + 2) {
-              name_format = value.clone();
-            }
-            index += 2;
-          }
-          "--kind" => {
-            let Some(value) = rest.get(index + 2) else {
-              return Err(Failure::input("--kind requires a value"));
-            };
-            kind = cam_store::tools::ToolKind::from_slug(value)
-              .ok_or_else(|| Failure::input(format!("unknown tool kind {value:?}")))?;
-            kind_explicit = true;
-            index += 2;
-          }
-          "--flutes" => {
-            flutes = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<u32>().ok())
-              .ok_or_else(|| Failure::input("--flutes requires an integer value"))?;
-            index += 2;
-          }
-          "--included-angle" => {
-            included_angle = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Angle::from_degrees);
-            if included_angle.is_none() {
-              return Err(Failure::input("--included-angle requires a number"));
-            }
-            index += 2;
-          }
-          "--flat-diameter" => {
-            flat_diameter = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Length::from_mm);
-            if flat_diameter.is_none() {
-              return Err(Failure::input("--flat-diameter requires a number"));
-            }
-            index += 2;
-          }
-          "--tip-radius" => {
-            tip_radius = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Length::from_mm);
-            if tip_radius.is_none() {
-              return Err(Failure::input("--tip-radius requires a number"));
-            }
-            index += 2;
-          }
-          "--flute-length" => {
-            flute_length = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Length::from_mm);
-            if flute_length.is_none() {
-              return Err(Failure::input("--flute-length requires a number"));
-            }
-            index += 2;
-          }
-          "--shank-diameter" => {
-            shank_diameter = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Length::from_mm);
-            if shank_diameter.is_none() {
-              return Err(Failure::input("--shank-diameter requires a number"));
-            }
-            index += 2;
-          }
-          "--overall-length" => {
-            overall_length = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(cam_units::Length::from_mm);
-            if overall_length.is_none() {
-              return Err(Failure::input("--overall-length requires a number"));
-            }
-            index += 2;
-          }
-          "--feed" => {
-            feed = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(Some)
-              .ok_or_else(|| Failure::input("--feed requires a number"))?;
-            index += 2;
-          }
-          "--plunge" => {
-            plunge = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(Some)
-              .ok_or_else(|| Failure::input("--plunge requires a number"))?;
-            index += 2;
-          }
-          "--spindle" => {
-            spindle = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<u32>().ok())
-              .map(Some)
-              .ok_or_else(|| Failure::input("--spindle requires an integer value"))?;
-            index += 2;
-          }
-          "--stepdown" => {
-            stepdown = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(|value| Some(cam_units::Length::from_mm(value)))
-              .ok_or_else(|| Failure::input("--stepdown requires a number"))?;
-            index += 2;
-          }
-          "--stepover" => {
-            stepover = rest
-              .get(index + 2)
-              .and_then(|value| value.parse::<f64>().ok())
-              .map(|value| Some(cam_units::Length::from_mm(value)))
-              .ok_or_else(|| Failure::input("--stepover requires a number"))?;
-            index += 2;
-          }
-          other if !other.starts_with('-') && path.is_none() => {
-            path = Some(PathBuf::from(other));
-            index += 1;
-          }
-          other => {
-            return Err(Failure::input(format!(
-              "unknown tools add option {other:?}"
-            )))
-          }
-        }
-      }
-      let path = path.ok_or_else(|| Failure::input("tools add requires a library path"))?;
-      let id = id.ok_or_else(|| Failure::input("tools add requires --id"))?;
-      let diameter = diameter.ok_or_else(|| Failure::input("tools add requires --diameter"))?;
-      let number = number.ok_or_else(|| Failure::input("tools add requires --number"))?;
-
-      let library = ToolLibrary::open(&path).map_err(|error| Failure::input(error.to_string()))?;
-      let tool = cam_store::tools::StoredTool {
-        geometry: ToolGeometry {
-          id: id.clone(),
-          name_format,
-          tool_type: kind.raw(),
-          units: cam_units::UnitSystem::Mm,
-          diameter: Some(cam_units::Length::from_mm(diameter)),
-          included_angle,
-          flat_diameter,
-          num_flutes: Some(flutes),
-          flute_length,
-          tip_radius,
-          shank_diameter,
-          overall_length,
-          custom_attributes: None,
-        },
-        cutting: CuttingData {
-          id: format!("{id}-cut"),
-          rate_units: cam_units::UnitSystem::Mm,
-          feed_rate: feed,
-          plunge_rate: plunge,
-          spindle_speed: spindle,
-          stepdown,
-          stepover,
-          clear_stepover: None,
-          tool_number: Some(number),
-          notes: None,
-        },
-      };
-      library
-        .save_tool(&tool)
-        .map_err(|error| Failure::input(error.to_string()))?;
-      if kind_explicit {
-        println!(
-          "added {id} as T{number} with a {diameter} mm diameter ({})",
-          kind.slug()
-        );
-      } else {
-        println!("added {id} as T{number} with a {diameter} mm diameter");
-      }
-      Ok(())
-    }
-    other => Err(Failure::input(format!(
-      "unknown tools subcommand {other:?}; expected list or add"
-    ))),
-  }
 }
 
 /// The next free `S{n}` sheet id: the `next_toolpath_id` scan, from `len + 1` upwards, so a document
