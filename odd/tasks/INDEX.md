@@ -60,3 +60,5 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 053 | [ci-two-trunks](053-ci-two-trunks.md) | delivered | 2026-11-14 | `9adfdbd` |
 | 054 | [records-gate](054-records-gate.md) | delivered | 2026-11-14 | `b9a0987` |
 | 055 | [cam-cli-command-modules](055-cam-cli-command-modules.md) | delivered | 2026-11-15 | `a8f9faa` |
+| 056 | [w4a-drill](056-w4a-drill.md) | delivered | 2026-11-15 | `b324e3c` |
+| 057 | [w4b-cutout-program](057-w4b-cutout-program.md) | delivered | 2026-11-15 | `e045c43` |
