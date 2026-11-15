@@ -59,3 +59,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 052 | [e0-3-tolerance-policy](052-e0-3-tolerance-policy.md) | delivered | 2026-11-14 | `dc5e9da` |
 | 053 | [ci-two-trunks](053-ci-two-trunks.md) | delivered | 2026-11-14 | `9adfdbd` |
 | 054 | [records-gate](054-records-gate.md) | delivered | 2026-11-14 | `b9a0987` |
+| 055 | [cam-cli-command-modules](055-cam-cli-command-modules.md) | delivered | 2026-11-15 | `a8f9faa` |
