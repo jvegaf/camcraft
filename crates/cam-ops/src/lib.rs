@@ -11,7 +11,7 @@ pub mod peck;
 pub mod rings;
 pub mod shared;
 
-pub use follow::{profile, ProfileRequest};
+pub use follow::{cutout, profile, CutoutRequest, ProfileRequest};
 pub use params::{
   DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
 };

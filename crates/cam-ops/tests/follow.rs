@@ -1,9 +1,9 @@
 //! Behaviour tests for the profile toolpath (A2, A6).
 
 use cam_geom::{Contour, Point2};
-use cam_model::{Job, OriginCorner, Tab};
+use cam_model::{CutoutParams, Job, OriginCorner, Tab, TabKind};
 use cam_move::{Move, Point3};
-use cam_ops::{profile, ProfileRequest, ToolSpec, ToolpathError};
+use cam_ops::{cutout, profile, CutoutRequest, ProfileRequest, ToolSpec, ToolpathError};
 use cam_ops::{ProfileParams, ProfileSide};
 use cam_units::Length;
 
@@ -524,4 +524,188 @@ fn out_of_range_tab_positions_are_refused() {
     matches!(error, ToolpathError::TabOutOfRange { .. }),
     "{error:?}"
   );
+}
+
+fn cutout_params(
+  margin: f64,
+  cut_depth: f64,
+  pass_depth: f64,
+  tabs: Vec<Tab>,
+  tab_kind: TabKind,
+) -> CutoutParams {
+  CutoutParams {
+    margin: Length::from_mm(margin),
+    tabs,
+    tab_kind,
+    pass_depth: Length::from_mm(pass_depth),
+    cut_depth: Length::from_mm(cut_depth),
+    cut_interiors: false,
+  }
+}
+
+fn small_board() -> Job {
+  Job {
+    width: Length::from_mm(100.0),
+    height: Length::from_mm(50.0),
+    thickness: Length::from_mm(1.6),
+    origin: OriginCorner::BottomLeft,
+    side_up: cam_model::BoardSideUp::Top,
+  }
+}
+
+#[test]
+fn cutout_profiles_the_board_outline_on_the_outside() {
+  let job = small_board();
+  let outline = job.outline();
+  let params = cutout_params(0.0, 6.0, 6.0, Vec::new(), TabKind::Straight);
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  let points = cutting_points(&moves, -6.0);
+  let (min_x, min_y, max_x, max_y) = bounds_of(&points);
+  // 100x50 mm board: outside cut with a 6 mm tool offsets by 3 mm.
+  assert!((min_x + 3.0).abs() < 1.0e-6, "min_x {min_x}");
+  assert!((min_y + 3.0).abs() < 1.0e-6, "min_y {min_y}");
+  assert!((max_x - 103.0).abs() < 1.0e-6, "max_x {max_x}");
+  assert!((max_y - 53.0).abs() < 1.0e-6, "max_y {max_y}");
+}
+
+#[test]
+fn cutout_applies_margin_outside_the_board_outline() {
+  let job = small_board();
+  let outline = job.outline();
+  let params = cutout_params(2.0, 6.0, 6.0, Vec::new(), TabKind::Straight);
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  let (min_x, _, max_x, _) = bounds_of(&cutting_points(&moves, -6.0));
+  // 3 mm tool radius + 2 mm margin outside the 0..100 board.
+  assert!((min_x + 5.0).abs() < 1.0e-6, "min_x {min_x}");
+  assert!((max_x - 105.0).abs() < 1.0e-6, "max_x {max_x}");
+}
+
+#[test]
+fn cutout_with_zero_pass_depth_makes_a_single_pass() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(0.0, 4.0, 0.0, Vec::new(), TabKind::Straight);
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  assert_eq!(plunge_depths(&moves), vec![-4.0]);
+}
+
+#[test]
+fn cutout_chunks_depth_into_passes() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(0.0, 5.0, 2.0, Vec::new(), TabKind::Straight);
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  assert_eq!(plunge_depths(&moves), vec![-2.0, -4.0, -5.0]);
+}
+
+#[test]
+fn cutout_tabs_lift_to_keep_the_piece_held() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(
+    0.0,
+    6.0,
+    3.0,
+    vec![Tab {
+      position: 0.25,
+      width: Length::from_mm(10.0),
+      height: Length::from_mm(2.0),
+    }],
+    TabKind::Straight,
+  );
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  // Passes at -3 and -6; the tab keeps material from -4 upwards, so the final pass lifts by 2 mm.
+  let lifted: Vec<f64> = moves
+    .iter()
+    .filter(|movement| matches!(movement, Move::Feed { .. } | Move::Arc { .. }))
+    .map(|movement| movement.destination().z.mm())
+    .filter(|z| (z - -4.0).abs() < 1.0e-9)
+    .collect();
+  assert_eq!(
+    lifted,
+    vec![-4.0, -4.0],
+    "the final pass lifts over the tab to leave the bridge"
+  );
+  assert_eq!(plunge_depths(&moves), vec![-3.0, -6.0]);
+}
+
+#[test]
+fn cutout_mouse_bite_tabs_leave_a_bridge_gap_in_the_profile() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(
+    0.0,
+    6.0,
+    3.0,
+    vec![Tab {
+      position: 0.25,
+      width: Length::from_mm(10.0),
+      height: Length::from_mm(2.0),
+    }],
+    TabKind::MouseBites,
+  );
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  let lifted: Vec<f64> = moves
+    .iter()
+    .filter(|movement| matches!(movement, Move::Feed { .. } | Move::Arc { .. }))
+    .map(|movement| movement.destination().z.mm())
+    .filter(|z| (z - -4.0).abs() < 1.0e-9)
+    .collect();
+  assert!(
+    lifted.len() >= 2,
+    "mouse-bite tabs keep the bridge in the profile path"
+  );
+}
+
+#[test]
+fn cutout_cuts_multiple_contours_in_sequence() {
+  let job = Job::default_sheet();
+  let outer = rectangle(100.0, 50.0);
+  let inner = rectangle(20.0, 10.0);
+  let params = cutout_params(0.0, 2.0, 2.0, Vec::new(), TabKind::Straight);
+  let moves = cutout(&CutoutRequest {
+    contours: &[outer, inner],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+  // Each contour produces its own pass cycle (one plunge at -2 mm).
+  assert_eq!(plunge_depths(&moves), vec![-2.0, -2.0]);
 }
