@@ -48,6 +48,16 @@ COMMANDS:
         --format <name>       dxf or svg (required)
         --out <path>          Write the file here instead of stdout
     check <document>          Report open and self-intersecting vectors
+    drill <excellon>          Drill from an Excellon table: group by tool, order deterministically,
+                              and emit G-code with hit and tool-change counts
+        --post <file>         Post-processor (.pp) to emit with (required)
+        --cut-depth <mm>      Total cut depth below the surface (required)
+        --peck-depth <mm>     Peck depth; 0 cuts in one plunge (default 0)
+        --start-depth <mm>    Depth at which cutting begins (default 0)
+        --retract <mode>      full or an amount in mm above each peck (default full)
+        --slot-mode <mode>    drill or trajectory for slot features (default drill)
+        --job <document>      Document whose board/origin maps coordinates
+        --out <path>          Write the G-code to a file instead of stdout
     parts <document>          Author nesting parts: --csv <file> from a four-column list, or
                               --entity <id> --instances <n> [--id <id>] [--name <name>] for one part;
                               --out <path> writes the document elsewhere
@@ -177,6 +187,7 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "import" => commands::import::run(rest),
     "export" => commands::export::run(rest),
     "check" => commands::check::run(rest),
+    "drill" => commands::drill::run(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
     "report" => printsheet::report_command(rest),

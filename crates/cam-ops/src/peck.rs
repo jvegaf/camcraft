@@ -222,15 +222,21 @@ struct Tour {
 /// order the entities happened to be listed in.
 const TIE: f64 = 1.0e-9;
 
-/// Nearest-neighbour tour from the lowest-Y-then-lowest-X hole, by scanning the holes every step.
+/// Fixed improvement budget for 2-opt, counted in deterministic passes.
+///
+/// An iteration budget (not time) keeps the result byte-for-byte identical across runs (E2.2).
+const TWO_OPT_PASSES: usize = 64;
+
+/// Nearest-neighbour tour from the lowest-Y-then-lowest-X hole, improved by 2-opt.
 ///
 /// Ordering is decided on the document centre the user drew, so "lowest y" means what the drawing
 /// shows whatever the job's origin corner is; the travel figure is measured in machine space, which
-/// the origin transform translates or flips without changing any distance.
+/// the origin transform translates or flips without changing any distance. The nearest-neighbour
+/// base is then improved by a 2-opt pass with a fixed iteration budget so identical inputs produce
+/// identical tours.
 fn tour(holes: &[DrillHole], machine: &[Point2]) -> Tour {
   let mut visited = vec![false; holes.len()];
   let mut order = Vec::with_capacity(holes.len());
-  let mut travel = 0.0;
 
   // Lowest y, then lowest x, then entity id: the seed is a property of the geometry, not of the
   // document's listing order.
@@ -250,7 +256,6 @@ fn tour(holes: &[DrillHole], machine: &[Point2]) -> Tour {
   }
   visited[current] = true;
 
-  let mut previous = Point2::new(0.0, 0.0);
   for step in 0..holes.len() {
     if step > 0 {
       let mut nearest: Option<usize> = None;
@@ -276,12 +281,81 @@ fn tour(holes: &[DrillHole], machine: &[Point2]) -> Tour {
       current = nearest.expect("holes are left to visit inside the tour");
       visited[current] = true;
     }
-    travel += previous.distance_to(machine[current]);
-    previous = machine[current];
     order.push(current);
   }
 
+  two_opt(&mut order, machine);
+  let travel = path_travel(&order, machine);
   Tour { order, travel }
+}
+
+/// Total XY travel from the machine origin through the holes in `order`.
+fn path_travel(order: &[usize], machine: &[Point2]) -> f64 {
+  let mut travel = 0.0;
+  let mut previous = Point2::new(0.0, 0.0);
+  for &index in order {
+    travel += previous.distance_to(machine[index]);
+    previous = machine[index];
+  }
+  travel
+}
+
+/// Improve an open path from the machine origin with a fixed-budget 2-opt.
+///
+/// The path is `(origin) -> order[0] -> ... -> order[n-1]`. Reversing `order[i..=k]` replaces the
+/// edges `(a, order[i])` and `(order[k], b)` with `(a, order[k])` and `(order[i], b)` where `a` is
+/// the origin when `i == 0` and `b` is absent when `k` is the last element. Determinism comes from a
+/// fixed pass budget and a fixed scan order.
+fn two_opt(order: &mut [usize], machine: &[Point2]) {
+  let n = order.len();
+  if n < 3 {
+    return;
+  }
+  let origin = Point2::new(0.0, 0.0);
+  for _ in 0..TWO_OPT_PASSES {
+    let mut improved = false;
+    let mut i = 0;
+    while i < n.saturating_sub(1) {
+      let a = if i == 0 {
+        origin
+      } else {
+        machine[order[i - 1]]
+      };
+      let b = machine[order[i]];
+      let mut k = i + 1;
+      while k < n {
+        let c = machine[order[k]];
+        let current = a.distance_to(b)
+          + if k + 1 < n {
+            c.distance_to(machine[order[k + 1]])
+          } else {
+            0.0
+          };
+        let candidate = a.distance_to(c)
+          + if k + 1 < n {
+            b.distance_to(machine[order[k + 1]])
+          } else {
+            0.0
+          };
+        if candidate + TIE < current {
+          order[i..=k].reverse();
+          improved = true;
+          // Restart scan from the same i so the new arrangement is considered; this stays within
+          // the fixed pass budget.
+          break;
+        }
+        k += 1;
+      }
+      if !improved || k >= n {
+        i += 1;
+      } else {
+        // an improvement at (i,k) reversed the segment; continue scanning from i
+      }
+    }
+    if !improved {
+      break;
+    }
+  }
 }
 
 /// The centre of a contour that is a circle, or `None` when it is any other shape.

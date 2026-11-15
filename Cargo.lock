@@ -692,11 +692,13 @@ dependencies = [
 name = "cam-cli"
 version = "0.0.1"
 dependencies = [
+ "cam-excellon",
  "cam-export",
  "cam-geom",
  "cam-import",
  "cam-model",
  "cam-move",
+ "cam-ops",
  "cam-post",
  "cam-sim",
  "cam-store",
@@ -795,6 +797,7 @@ dependencies = [
 name = "cam-ops"
 version = "0.0.1"
 dependencies = [
+ "cam-excellon",
  "cam-geom",
  "cam-model",
  "cam-move",
