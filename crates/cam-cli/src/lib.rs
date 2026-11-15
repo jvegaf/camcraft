@@ -1,5 +1,5 @@
-//! Headless pipeline: `validate`, `inspect`, `import`, `export`, `check`, `postp validate`, `tools`,
-//! `parts`, `cutlist`, `report` and `script`.
+//! Headless pipeline: `validate`, `inspect`, `import`, `export`, `check`, `drill`, `cutout`,
+//! `program`, `postp validate`, `tools`, `parts`, `cutlist`, `report` and `script`.
 //!
 //! This binary is the verification surface of the whole application: every behaviour that matters
 //! must be reachable here, because a behaviour that only exists in a window cannot be tested.
@@ -58,6 +58,29 @@ COMMANDS:
         --slot-mode <mode>    drill or trajectory for slot features (default drill)
         --job <document>      Document whose board/origin maps coordinates
         --out <path>          Write the G-code to a file instead of stdout
+    cutout <document>         Cut the board out of the stock along its outline toolpaths, with the
+                              tabs the document asks for; a report, or a program with --post
+        --diameter <mm>       Diameter of the tool that cuts it (required)
+        --post <file>         Post-processor (.pp); without it only the report is printed
+        --out <path>          Write the G-code to a file instead of stdout
+        --tool <number>       Tool number carried by the emitted segments (default 1)
+        --feed <mm/min>       Cutting feed rate (default 100)
+        --plunge <mm/min>     Plunge rate (default 30)
+        --spindle <rpm>       Spindle speed (default 18000)
+    program <document>        One board program: the Excellon drills first, then the cutout
+        --drill <file.drl>    Excellon drill file (required)
+        --post <file>         Post-processor (.pp) to emit with (required)
+        --cut-depth <mm>      Drilling depth below the surface (required)
+        --diameter <mm>       Diameter of the tool that cuts the board out (required)
+        --peck-depth <mm>     Drill peck depth; 0 cuts in one plunge (default 0)
+        --start-depth <mm>    Depth at which drilling begins (default 0)
+        --retract <mode>      full or an amount in mm above each peck (default full)
+        --slot-mode <mode>    drill or trajectory for slot features (default drill)
+        --out <path>          Write the G-code to a file instead of stdout
+        --tool <number>       Tool number carried by the cutout segments (default 1)
+        --feed <mm/min>       Cutting feed rate (default 100)
+        --plunge <mm/min>     Plunge rate (default 30)
+        --spindle <rpm>       Spindle speed (default 18000)
     parts <document>          Author nesting parts: --csv <file> from a four-column list, or
                               --entity <id> --instances <n> [--id <id>] [--name <name>] for one part;
                               --out <path> writes the document elsewhere
@@ -187,6 +210,8 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "import" => commands::import::run(rest),
     "export" => commands::export::run(rest),
     "check" => commands::check::run(rest),
+    "cutout" => commands::cutout::run(rest),
+    "program" => commands::cutout::program(rest),
     "drill" => commands::drill::run(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
