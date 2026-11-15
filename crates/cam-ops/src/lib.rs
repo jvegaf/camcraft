@@ -7,6 +7,7 @@
 
 pub mod excellon_drill;
 pub mod follow;
+pub mod isolation;
 pub mod params;
 pub mod peck;
 pub mod penetration;
@@ -18,6 +19,7 @@ pub use excellon_drill::{
   ToolResolver,
 };
 pub use follow::{cutout, profile, CutoutRequest, ProfileRequest};
+pub use isolation::{isolation_passes, pass_distance, unite_copper, IsolationPass, IsolationPath};
 pub use params::{
   DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
 };
