@@ -262,6 +262,8 @@ fn program_drills_then_cuts_the_board_out() {
     "1.6",
     "--diameter",
     "2.0",
+    "--tool",
+    "3",
   ]);
   assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
 
@@ -346,5 +348,59 @@ fn cutout_refuses_a_drilling_flag_it_does_not_honour() {
     stderr(&output).contains("unknown cutout option"),
     "{}",
     stderr(&output)
+  );
+}
+
+#[test]
+fn out_without_a_post_is_refused_rather_than_silently_writing_nothing() {
+  let directory = scratch("out-without-post");
+  let document = write_document(&directory, &document(Vec::new()));
+  let destination = directory.join("board.nc");
+
+  let output = run(&[
+    "cutout",
+    document.to_string_lossy().as_ref(),
+    "--diameter",
+    "2.0",
+    "--out",
+    destination.to_string_lossy().as_ref(),
+  ]);
+  assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+  assert!(
+    stderr(&output).contains("needs --post"),
+    "{}",
+    stderr(&output)
+  );
+  assert!(
+    !destination.exists(),
+    "a refused run must not leave a program behind"
+  );
+}
+
+#[test]
+fn program_refuses_a_cutout_tool_the_drill_table_already_claims() {
+  let directory = scratch("tool-collision");
+  let document = write_document(&directory, &document(Vec::new()));
+  let drill = write_drill(&directory);
+  let post = directory.join("post.pp");
+  std::fs::write(&post, POST).expect("post writes");
+
+  let output = run(&[
+    "program",
+    document.to_string_lossy().as_ref(),
+    "--drill",
+    drill.to_string_lossy().as_ref(),
+    "--post",
+    post.to_string_lossy().as_ref(),
+    "--cut-depth",
+    "1.6",
+    "--diameter",
+    "2.0",
+  ]);
+  assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+  let message = stderr(&output);
+  assert!(
+    message.contains("--tool 1") && message.contains("drill tool"),
+    "the refusal names the colliding tool: {message}"
   );
 }

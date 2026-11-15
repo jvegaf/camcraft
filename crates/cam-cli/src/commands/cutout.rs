@@ -185,6 +185,15 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
   let (diameter, runs) = cutout_runs(&document, &flags)?;
 
   let Some(post_path) = flags.post.clone() else {
+    // `--out` names the file the program is written to, so without `--post` there is no program and
+    // nothing to write: accepting the flag and creating no file is a run that reports success and
+    // leaves the caller with a stale program from some earlier attempt.
+    if flags.out.is_some() {
+      return Err(Failure::input(
+        "cutout --out writes the program, so it needs --post: without a post-processor the run \
+         prints a report and writes no file",
+      ));
+    }
     let mut report = String::new();
     for run in &runs {
       report.push_str(&format!(
@@ -254,6 +263,22 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
   };
   let plan = plan_excellon_drill(&excellon, &resolver, &job, flags.slot_mode)
     .map_err(|error| Failure::input(format!("{}: {error}", drill_path.display())))?;
+
+  // The cutout is a different tool from every drill, and the Excellon table already claims its
+  // numbers. A program whose cutout reuses a drill's number emits no tool change there, so the
+  // outline is cut with the drill bit while the run reports success.
+  if plan
+    .groups
+    .iter()
+    .any(|group| group.excellon_tool == flags.tool_number)
+  {
+    return Err(Failure::input(format!(
+      "--tool {} is a drill tool in this Excellon file: the cutout needs a tool number the file \
+       does not use, because a program that cuts the outline with a drill bit reports success and \
+       ruins the board",
+      flags.tool_number
+    )));
+  }
 
   let (diameter, runs) = cutout_runs(&document, &flags)?;
 

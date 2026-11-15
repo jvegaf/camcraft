@@ -310,7 +310,16 @@ fn route_slots(
         },
       });
       if !last {
-        moves.push(Move::Rapid { to: at_from });
+        // Back to the slot's start at the height this peck just retracted to. A rapid to `at_from`
+        // as it stands would climb to safe Z while it travels in XY, so the cutter would leave the
+        // material diagonally at rapid rate instead of lifting out first -- the one move a program
+        // must never contain.
+        moves.push(Move::Rapid {
+          to: Point3 {
+            z: retract_z,
+            ..at_from
+          },
+        });
       }
     }
     order.push(slot.entity.clone());
