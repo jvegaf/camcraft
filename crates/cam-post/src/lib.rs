@@ -40,6 +40,11 @@ use std::collections::BTreeMap;
 pub use emit::{emit, EmitError, Emitted, ProgramMeta};
 pub use parser::parse_post;
 
+/// Built-in GRBL post-processor (millimetres), authored for this project.
+///
+/// This definition is project data, not vendored from any third-party source.
+pub const GRBL_POST: &str = include_str!("../posts/grbl.pp");
+
 /// The unit system a post-processor expects in its output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PostUnits {

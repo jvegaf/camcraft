@@ -5,13 +5,19 @@
 
 #![warn(missing_docs)]
 
+pub mod excellon_drill;
 pub mod follow;
 pub mod params;
 pub mod peck;
+pub mod penetration;
 pub mod rings;
 pub mod shared;
 
-pub use follow::{profile, ProfileRequest};
+pub use excellon_drill::{
+  plan_excellon_drill, ExcellonDrillPlan, ExcellonToolPlan, ExcellonToolSetup, SlotMode,
+  ToolResolver,
+};
+pub use follow::{cutout, profile, CutoutRequest, ProfileRequest};
 pub use params::{
   DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
 };

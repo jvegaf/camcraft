@@ -597,3 +597,35 @@ fn a_non_positive_tool_diameter_is_refused() {
     "{error:?}"
   );
 }
+
+#[test]
+fn two_opt_improves_a_nearest_neighbour_tour_with_a_fixed_budget() {
+  // Nearest-neighbour (seed at lowest y, then greedy by entity on ties) produces the crossing tour
+  // d, b, a, c; 2-opt with a fixed iteration budget must shorten it deterministically.
+  let holes = vec![
+    hole("a", 10.0, 0.0),
+    hole("b", 30.0, 5.0),
+    hole("c", 10.0, 10.0),
+    hole("d", 30.0, -5.0),
+  ];
+  let path = run(&holes, &params(0.0, RetractMode::Full, 7.0), &job());
+
+  // Nearest-neighbour travel: origin->d (30.41) + d->b (10) + b->a (20.62) + a->c (10) = 71.03 mm.
+  let nn_travel = Point2::new(0.0, 0.0).distance_to(Point2::new(30.0, -5.0))
+    + Point2::new(30.0, -5.0).distance_to(Point2::new(30.0, 5.0))
+    + Point2::new(30.0, 5.0).distance_to(Point2::new(10.0, 0.0))
+    + Point2::new(10.0, 0.0).distance_to(Point2::new(10.0, 10.0));
+  assert!(
+    path.rapid_length.mm() + 1.0e-9 < nn_travel,
+    "2-opt must improve the nearest-neighbour tour: got {} mm, nn {} mm, order {:?}",
+    path.rapid_length.mm(),
+    nn_travel,
+    path.order
+  );
+
+  // Deterministic: identical input produces identical order and travel.
+  let again = run(&holes, &params(0.0, RetractMode::Full, 7.0), &job());
+  assert_eq!(path.order, again.order);
+  assert_eq!(path.moves, again.moves);
+  assert_eq!(path.rapid_length, again.rapid_length);
+}

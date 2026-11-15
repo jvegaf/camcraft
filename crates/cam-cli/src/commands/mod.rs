@@ -4,6 +4,8 @@
 //! `lib.rs` into a merge bottleneck (ola 4 preparation).
 
 pub mod check;
+pub mod cutout;
+pub mod drill;
 pub mod export;
 pub mod import;
 pub mod inspect;

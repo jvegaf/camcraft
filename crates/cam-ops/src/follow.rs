@@ -1,7 +1,7 @@
 //! Profile (follow) machining: cut along a contour with side offset, leads and tabs.
 
 use cam_geom::{Contour, Point2, Segment};
-use cam_model::{Job, Tab};
+use cam_model::{CutoutParams, Job, Tab};
 
 use crate::params::{ProfileParams, ProfileSide};
 use cam_move::{Move, Point3};
@@ -23,6 +23,66 @@ pub struct ProfileRequest<'a> {
   pub tool: &'a ToolSpec,
   /// Job setup, used to map document coordinates onto machine coordinates.
   pub job: &'a Job,
+}
+
+/// Everything a board cutout needs.
+#[derive(Clone, Copy, Debug)]
+pub struct CutoutRequest<'a> {
+  /// The closed contours to cut (board outline and, when requested, interior outlines).
+  pub contours: &'a [Contour],
+  /// Cutout parameters as the document describes them.
+  pub params: &'a CutoutParams,
+  /// The tool doing the cutting.
+  pub tool: &'a ToolSpec,
+  /// Job setup, used to map document coordinates onto machine coordinates.
+  pub job: &'a Job,
+}
+
+/// Compute the moves for a board cutout.
+///
+/// Each contour is cut as an outside profile, offset by `params.margin`, in passes down to
+/// `params.cut_depth`. Tabs hold the part in place on passes that would otherwise cut them free.
+/// A `pass_depth` of zero cuts in a single pass.
+///
+/// Mouse-bite tabs leave the same bridge gap in the profile path as straight tabs (the part stays
+/// held); drilling the bite perforations themselves is a separate operation.
+pub fn cutout(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
+  let params = request.params;
+  if params.cut_depth.mm() <= 0.0 {
+    return Err(ToolpathError::InvalidDepthRange {
+      cut_depth: params.cut_depth.mm(),
+      start_depth: 0.0,
+    });
+  }
+  if params.pass_depth.mm() < 0.0 {
+    return Err(ToolpathError::InvalidPassDepth);
+  }
+  let pass_depth = if params.pass_depth.mm() <= 0.0 {
+    params.cut_depth
+  } else {
+    params.pass_depth
+  };
+  let profile_params = ProfileParams {
+    side: ProfileSide::Outside,
+    allowance: params.margin,
+    pass_depth,
+    start_depth: Length::ZERO,
+    cut_depth: params.cut_depth,
+    lead_in: Length::ZERO,
+    lead_out: Length::ZERO,
+    tabs: params.tabs.clone(),
+  };
+  let mut moves = Vec::new();
+  for contour in request.contours {
+    let mut contour_moves = profile(&ProfileRequest {
+      contour,
+      params: &profile_params,
+      tool: request.tool,
+      job: request.job,
+    })?;
+    moves.append(&mut contour_moves);
+  }
+  Ok(moves)
 }
 
 /// Compute the moves for a profile cut.
