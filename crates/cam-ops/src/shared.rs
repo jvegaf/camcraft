@@ -88,6 +88,12 @@ pub enum ToolpathError {
   /// A drill bank was described with no drills, or with drills that overlap.
   #[error("drill bank needs at least one drill and a positive pitch")]
   InvalidBank,
+  /// An Excellon feature referenced a tool number that is not in the file's table.
+  #[error("Excellon tool T{tool} is not defined in the tool table")]
+  UnknownExcellonTool {
+    /// The missing Excellon tool number.
+    tool: u32,
+  },
   /// A chamfer was given an included angle with no finite tangent.
   ///
   /// The document model refuses an impossible angle for a stored toolpath, but a caller that hands the
