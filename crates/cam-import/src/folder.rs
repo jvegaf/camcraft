@@ -11,7 +11,7 @@ use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
 use cam_model::{Board, Document, Entity, EntityKind, Layer, LayerRole, Provenance, Side};
 use cam_units::Length;
 
-use crate::{ImportError, PLACEMENT_MARGIN};
+use crate::{ImportError, ImportReport, PLACEMENT_MARGIN};
 
 /// The role and side assigned to one fabrication file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +67,12 @@ pub struct FolderImport {
   /// failed to parse, geometry this reader could not represent faithfully, and so on. Every one of
   /// them names the file it belongs to.
   pub warnings: Vec<String>,
+  /// What the import produced, and every construct it skipped instead of turning into geometry.
+  ///
+  /// A skipped construct is one shape of one file, reported with the file it came from and the
+  /// command inside it. This is the folder's version of the per-file report
+  /// [`crate::Imported::report`]: nothing is dropped without an entry here.
+  pub report: ImportReport,
 }
 
 /// Scan `dir` and import it as a PCB board.
@@ -88,6 +94,7 @@ pub fn import_folder(
   let mut imported: Vec<GroupedFile> = Vec::new();
   let mut unrecognized: Vec<PathBuf> = Vec::new();
   let mut warnings: Vec<String> = Vec::new();
+  let mut report = ImportReport::new("folder", options.tolerance);
   let mut pending: Vec<(GroupedFile, ParsedLayer)> = Vec::new();
 
   for path in entries {
@@ -119,7 +126,14 @@ pub fn import_folder(
       continue;
     };
 
-    match parse_layer(&path, &bytes, role, options.tolerance, &mut warnings) {
+    match parse_layer(
+      &path,
+      &bytes,
+      role,
+      options.tolerance,
+      &mut warnings,
+      &mut report,
+    ) {
       Ok(Some(parsed)) => {
         pending.push((grouped.clone(), parsed));
         imported.push(grouped);
@@ -158,6 +172,7 @@ pub fn import_folder(
     imported,
     unrecognized,
     warnings,
+    report,
   })
 }
 
@@ -518,8 +533,10 @@ fn parse_layer(
   role: BoardRole,
   tolerance: f64,
   warnings: &mut Vec<String>,
+  report: &mut ImportReport,
 ) -> Result<Option<ParsedLayer>, String> {
   let text = String::from_utf8_lossy(bytes);
+  let source = path.display().to_string();
   let ext = path
     .extension()
     .and_then(|s| s.to_str())
@@ -530,10 +547,11 @@ fn parse_layer(
     matches!(role.role, LayerRole::Drill) || matches!(ext.as_str(), "drl" | "xln" | "exc");
 
   let contours = if is_drill {
-    parse_drill(&text, &path.display().to_string(), warnings)?
+    parse_drill(&text, &source, warnings)?
   } else {
-    parse_gerber(&text, tolerance)?
+    parse_gerber(&text, tolerance, &source, report)?
   };
+  report.contours += contours.len();
 
   if contours.is_empty() {
     return Ok(None);
@@ -552,11 +570,26 @@ fn parse_layer(
   }))
 }
 
-fn parse_gerber(text: &str, tolerance: f64) -> Result<Vec<Contour>, String> {
+// A malformed construct in a Gerber layer does not lose the layer: the reader skips that construct
+// and says which one, so the rest of the copper still imports. The location names the file first,
+// because the report belongs to the whole folder and `command 7` alone would not say whose.
+fn parse_gerber(
+  text: &str,
+  tolerance: f64,
+  source: &str,
+  report: &mut ImportReport,
+) -> Result<Vec<Contour>, String> {
   let gerber = cam_gerber::parse(text).map_err(|e| e.to_string())?;
-  let region = gerber
-    .image(cam_geom::TolerancePolicy::uniform(tolerance))
+  let (region, skipped) = gerber
+    .image_reporting(cam_geom::TolerancePolicy::uniform(tolerance))
     .map_err(|e| e.to_string())?;
+  for skip in skipped {
+    report.skip(
+      skip.construct,
+      skip.reason,
+      Some(format!("{source}: {}", skip.location)),
+    );
+  }
   Ok(region.boundaries)
 }
 
