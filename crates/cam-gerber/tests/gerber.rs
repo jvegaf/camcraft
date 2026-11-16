@@ -1259,3 +1259,40 @@ fn a_macro_aperture_draw_with_polygon_outline_matches_corpus_shape() {
     "above the swept triangle is not material"
   );
 }
+
+#[test]
+fn a_pour_layer_with_several_clears_measures_its_material_area() {
+  // E1.5's criterion asks for area **and** polygon count in a layer with clears. The corpus carries
+  // no such layer (0 of 54 artefacts), so the measurable artefact is this fixture: one dark pour,
+  // two clear keepouts and one clear flash, with the expected numbers exact rather than sampled.
+  let gerber = parse(include_str!(
+    "../../../fixtures/gerber/pour-with-clears.gbr"
+  ))
+  .expect("fixture parses");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(
+    image.boundaries.len(),
+    4,
+    "the pour plus three holes: {:?}",
+    image.boundaries
+  );
+  // Material is the largest ring minus every other one: 200 - 60 - 4 - pi.
+  let areas: Vec<f64> = image
+    .boundaries
+    .iter()
+    .map(|boundary| boundary.signed_area().abs())
+    .collect();
+  let largest = areas.iter().cloned().fold(f64::MIN, f64::max);
+  let total: f64 = areas.iter().sum();
+  let material = 2.0 * largest - total;
+  let expected = 136.0 - std::f64::consts::PI;
+  assert!(
+    (material - expected).abs() < 1.0e-6,
+    "material area {material} != {expected}"
+  );
+  // The clear flash removed material: its centre is outside the image.
+  assert!(
+    !image.contains(cam_geom::Point2::new(2.0, 8.0), TOLERANCE),
+    "the clear flash is a hole in the pour"
+  );
+}
