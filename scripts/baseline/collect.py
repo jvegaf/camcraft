@@ -252,12 +252,16 @@ def main() -> int:
     if not os.access(python, os.X_OK):
         print(f"ERROR: {python} is not executable; point FLATCAM_PYTHON at FlatCAM's interpreter", file=sys.stderr)
         return 2
+    requested: list[str] = []
+    corpus_resolved = corpus.resolve()
     for board in boards:
-        if not (corpus / board).is_dir():
+        candidate = (corpus / board).resolve()
+        if candidate.parent != corpus_resolved or not candidate.is_dir():
             print(f"ERROR: {board} is not a board of {corpus}", file=sys.stderr)
             return 2
+        requested.append(candidate.name)
 
-    measured, failures, boots = document(corpus, python, script, boards)
+    measured, failures, boots = document(corpus, python, script, requested)
     rendered = json.dumps(measured, indent=2, sort_keys=True)
     print(rendered)
     if out is not None:
