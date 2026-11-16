@@ -99,6 +99,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" "${{ github.sha }}")
           echo "Changed files:"; echo "$changed"
+          # Aligned with the local hooks: anything that can move the measurement or its harness.
           if echo "$changed" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)'; then
             echo "The measurement runs: the push touches a parser, the kernel, the corpus or the harness."
             echo "run=true" >> "$GITHUB_OUTPUT"

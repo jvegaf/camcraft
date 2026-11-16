@@ -16,3 +16,4 @@
 # Stray downloads that land in the tree and would pollute a review scope
 *.m4a*
 *.ytdl
+__pycache__

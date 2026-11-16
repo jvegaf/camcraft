@@ -35,10 +35,12 @@ if echo "$staged" | grep -qE '\.md$'; then
   ./scripts/check-docs.sh
 fi
 
-if echo "$staged" | grep -qE '^(scripts/parity/|crates/cam-(gerber|excellon|geom|import)/|Cargo\.(toml|lock)$)'; then
+if echo "$staged" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)'; then
   echo "pre-commit: the parity measurer still compiles"
   # The same command the last gate in `scripts/check.sh` runs, so the two cannot disagree about how
-  # the harness is built.
-  CARGO_TARGET_DIR="${TMPDIR:-/tmp}/camcraft-parity-measure-target" \
+  # the harness is built. A stable target dir lets repeated local checks reuse the compilation.
+  # The pattern is aligned with the parity scope: anything that can move the measurement can also
+  # move the harness that measures it.
+  CARGO_TARGET_DIR="$root/target/parity-measure-check" \
     cargo build --quiet --locked --manifest-path scripts/parity/measure/Cargo.toml
 fi

@@ -20,25 +20,56 @@ cd "$root"
 remote=${1:-origin}
 url=${2:-}
 
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
-if [ -n "$upstream" ] && git rev-parse --verify --quiet "$upstream" >/dev/null; then
-  base="$upstream"
-else
-  # No upstream yet (a branch's first push): compare with the trunk it will be merged into.
-  base=$(git rev-parse --verify --quiet 'origin/dev' || git rev-parse --verify --quiet 'origin/master' || true)
+zero_sha='0000000000000000000000000000000000000000'
+ranges=()
+have_any=false
+
+# Git passes the refs being pushed on stdin: "<local ref> <local sha> <remote ref> <remote sha>".
+# Derive the range from those refs so a new branch or a missing upstream does not collapse into the
+# whole gate when the remote already tells us what is new.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+  # Deleting a remote ref pushes no commits to verify here.
+  if [ "$local_sha" = "$zero_sha" ]; then
+    continue
+  fi
+
+  if [ "$remote_sha" != "$zero_sha" ] && git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    base="$remote_sha"
+  else
+    upstream=$(git for-each-ref --format='%(upstream:short)' "$local_ref" 2>/dev/null || true)
+    if [ -n "$upstream" ] && git rev-parse --verify --quiet "$upstream" >/dev/null; then
+      base="$upstream"
+    else
+      # No remote-tracking ref yet (a branch's first push): compare with the trunk it will be
+      # merged into, preferring the target remote when it is known locally.
+      base=$(git rev-parse --verify --quiet "refs/remotes/${remote}/dev" 2>/dev/null \
+          || git rev-parse --verify --quiet "refs/remotes/${remote}/master" 2>/dev/null \
+          || git rev-parse --verify --quiet 'origin/dev' 2>/dev/null \
+          || git rev-parse --verify --quiet 'origin/master' 2>/dev/null \
+          || true)
+    fi
+  fi
+
+  if [ -z "${base:-}" ]; then
+    echo "pre-push: no base to diff against for $local_ref; running the whole gate."
+    ./scripts/check.sh
+    exit $?
+  fi
+
+  ranges+=("$base..$local_sha")
+  have_any=true
+done
+
+if ! $have_any; then
+  echo "pre-push: nothing to push."
+  exit 0
 fi
 
-if [ -z "${base:-}" ]; then
-  echo "pre-push: no base to diff against; running the whole gate."
-  ./scripts/check.sh
-  exit $?
-fi
-
-range="$base..HEAD"
-changed=$(git diff --name-only "$range")
+changed=$(for r in "${ranges[@]}"; do git diff --name-only "$r"; done | sort -u)
 
 if [ -z "$changed" ]; then
-  echo "pre-push: nothing to push ($range is empty)."
+  echo "pre-push: nothing to push ($(printf '%s ' "${ranges[@]}")is empty)."
   exit 0
 fi
 
@@ -77,7 +108,7 @@ if { $run_clippy || $run_tests; } && ! $scope_workspace && [ ${#crates[@]} -eq 0
   scope_workspace=true
 fi
 
-echo "pre-push: pushing $(echo "$changed" | wc -l | tr -d ' ') changed file(s) over $range"
+echo "pre-push: pushing $(echo "$changed" | wc -l | tr -d ' ') changed file(s) over $(printf '%s ' "${ranges[@]}")"
 
 pkg_args=()
 scope_label="workspace"

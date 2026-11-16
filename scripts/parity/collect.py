@@ -30,6 +30,7 @@ Keys are sorted and floats are written with Python's shortest round-trip repr, s
 the same thing produce the same bytes.
 """
 
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -49,7 +50,21 @@ FLATTEN_TOLERANCE_MM = 0.001
 # in `.github/workflows/ci.yml`).
 #
 # The bound is recorded in every golden, so changing it is a change to review, never a silent retune.
-TIMEOUT_SECONDS = 30
+# `CAMCRAFT_PARITY_TIMEOUT_SECONDS` overrides it for local experiments; comparisons against committed
+# goldens will only match when the recorded bound matches.
+def timeout_seconds() -> int:
+    override = os.environ.get("CAMCRAFT_PARITY_TIMEOUT_SECONDS")
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    return 30
+
+
+TIMEOUT_SECONDS = timeout_seconds()
 
 ROLES = (
     "top",
@@ -115,16 +130,73 @@ def measure(binary: Path, artefact: Path) -> tuple[dict, str]:
     return measured, reason
 
 
-def document(corpus: Path, binary: Path) -> dict:
+def worker_count() -> int:
+    """Bounded parallelism for the per-artefact measurer processes.
+
+    Each artefact runs in its own process with a fixed timeout, so a handful of workers cuts the wall
+    time of a corpus run substantially without changing what is measured. The cap keeps a local push
+    from saturating the machine. `CAMCRAFT_PARITY_JOBS` overrides the default when set to a positive
+    integer (capped at 8).
+    """
+    jobs = min(os.cpu_count() or 1, 4)
+    override = os.environ.get("CAMCRAFT_PARITY_JOBS")
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                jobs = value
+        except ValueError:
+            pass
+    return max(1, min(jobs, 8))
+
+
+def assumed_timeout(artefact: Path) -> dict:
+    kind = "tools" if artefact.suffix == ".drl" else "polygons"
+    zero = {"tools": 0, "features": 0} if kind == "tools" else {
+        "polygons": 0,
+        "contour_area_mm2": 0.0,
+        "points": 0,
+    }
+    return {"status": "timeout", **zero}
+
+
+def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) -> dict:
+    workers = worker_count()
     boards = {}
     for board in sorted(path for path in corpus.iterdir() if path.is_dir()):
+        items = list(artefacts_of(board).items())
+        skipped = known_timeouts(board) if assume_known_timeouts else set()
+        to_measure = [(role, artefact) for role, artefact in items if role not in skipped]
         measured = {}
-        for role, artefact in artefacts_of(board).items():
-            value, reason = measure(binary, artefact)
-            measured[role] = value
+        reasons = {}
+
+        for role, artefact in items:
+            if role in skipped:
+                measured[role] = assumed_timeout(artefact)
+                reasons[role] = (artefact, "assumed timeout (pinned in golden; skipped)")
+
+        if to_measure:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(measure, binary, artefact): (role, artefact)
+                    for role, artefact in to_measure
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    role, artefact = futures[future]
+                    value, reason = future.result()
+                    measured[role] = value
+                    reasons[role] = (artefact, reason)
+
+        ordered = {}
+        for role, artefact in items:
+            ordered[role] = measured[role]
+            artefact_path, reason = reasons[role]
             if reason:
-                print(f"  {board.name}/{artefact.name}: {value['status']} — {reason}", file=sys.stderr)
-        boards[board.name] = measured
+                print(
+                    f"  {board.name}/{artefact_path.name}: {ordered[role]['status']} — {reason}",
+                    file=sys.stderr,
+                )
+        boards[board.name] = ordered
     return {
         "flatten_tolerance_mm": FLATTEN_TOLERANCE_MM,
         "timeout_seconds": TIMEOUT_SECONDS,
@@ -132,11 +204,40 @@ def document(corpus: Path, binary: Path) -> dict:
     }
 
 
+def known_timeouts(board: Path) -> set[str]:
+    """Artefacts whose committed golden is already a timeout.
+
+    Skipping them is an opt-in local speedup: it cannot discover that a layer now finishes, so it must
+    never be used when pinning goldens.
+    """
+    golden_path = board / "parity.json"
+    if not golden_path.is_file():
+        return set()
+    try:
+        golden = json.loads(golden_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    artefacts = golden.get("artefacts", {})
+    return {role for role, value in artefacts.items() if value.get("status") == "timeout"}
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: collect.py <corpus-root> <parity-measure>", file=sys.stderr)
+    args = [a for a in sys.argv[1:] if a != "--"]
+    assume_known = False
+    positional = []
+    for arg in args:
+        if arg == "--assume-known-timeouts":
+            assume_known = True
+        elif arg.startswith("--"):
+            print(f"usage: collect.py [--assume-known-timeouts] <corpus-root> <parity-measure>", file=sys.stderr)
+            return 2
+        else:
+            positional.append(arg)
+
+    if len(positional) != 2:
+        print("usage: collect.py [--assume-known-timeouts] <corpus-root> <parity-measure>", file=sys.stderr)
         return 2
-    corpus, binary = Path(sys.argv[1]), Path(sys.argv[2])
+    corpus, binary = Path(positional[0]), Path(positional[1])
     if not corpus.is_dir():
         print(f"ERROR: {corpus} is not a corpus directory", file=sys.stderr)
         return 2
@@ -144,7 +245,7 @@ def main() -> int:
         print(f"ERROR: {binary} is not executable; build it first", file=sys.stderr)
         return 2
 
-    measured = document(corpus, binary)
+    measured = document(corpus, binary, assume_known_timeouts=assume_known)
     print(json.dumps(measured, indent=2, sort_keys=True))
     parsed = sum(
         1
