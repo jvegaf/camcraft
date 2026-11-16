@@ -556,6 +556,18 @@ impl Gerber {
       }
     }
 
+    // A region broken mid-construction that never received `G37` (file ended inside it, or the
+    // stream ran out): report it here, the same way `RegionEnd` would have, so a truncated file
+    // does not lose its geometry silently. A region still open but not broken is a different,
+    // structural case the stream never closes; it is left alone rather than guessed at.
+    if let Some((reason, location)) = broken_region {
+      skipped.push(Skipped {
+        construct: "a region".to_string(),
+        reason,
+        location,
+      });
+    }
+
     Ok((image, skipped))
   }
 }
