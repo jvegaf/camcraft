@@ -76,15 +76,26 @@ to regenerate the measurer's lock file and commit the diff:
 cargo update --manifest-path scripts/parity/measure/Cargo.toml
 ```
 
-## What the corpus measures today (re-pinned 2026-11-14)
+## What the corpus measures today (re-pinned 2026-11-16, task 060)
 
-The W2 importers changed what the tree makes of the corpus, so the goldens were re-pinned. The shape of
-the current measurement is worth stating once, because it is the baseline every later change is compared
-against — of the **54 artefacts**: 12 are `parsed`, 24 are still `refused`, and **18 are `timeout`**.
+The W2 importers changed what the tree makes of the corpus, so the goldens were re-pinned; E1.7 then
+changed it again and they were re-pinned a second time. The shape of the current measurement is worth
+stating once, because it is the baseline every later change is compared against — of the **54
+artefacts**: 17 are `parsed`, 15 are still `refused`, and **22 are `timeout`**.
 
-Those 18 are the important line. They are not the layers the reader rejects: they are layers W2a/W2b
-now *accept* and hand to the geometry kernel, which does not finish evaluating them inside the harness'
-20 s bound, down from 30 s: at ten the run takes four minutes but loses two `substitute-easyeda`
+**What the E1.7 re-pin changed, and why it was not a regression.** The diff was classified with the
+rules below, and nothing that was already `parsed` moved a single number. Five `outline` layers went
+`refused` → `parsed` with real geometry (`kicad-2l-simple` 10.26 mm²/8 polygons, `kicad-4l-pours`
+28.52 mm²/7, `kicad-large-pours` 35.82 mm²/1, `substitute-altium` 129.78 mm²/1, `substitute-eagle`
+21.28 mm²/21), and four layers went `refused` → `timeout` (`kicad-2l-simple` bottom, mask-bottom and
+silk-bottom, `substitute-eagle/bottom`). One cause explains both moves: a Gerber layer that used to be
+refused whole over a construct it could not build (an arc whose centre cannot be derived, a region
+that is not a valid region) now imports the rest, so the reader accepts the layer (`parsed`) or hands
+it to a kernel that does not finish (`timeout`). The cost is honest and visible: four more 30 s bounds.
+
+Those 22 are the important line. They are not the layers the reader rejects: they are layers the
+reader now *accepts* and hands to the geometry kernel, which does not finish evaluating them inside the
+harness' 20 s bound, down from 30 s: at ten the run takes four minutes but loses two `substitute-easyeda`
 layers that do terminate between ten and thirty, so twenty is the largest saving that keeps every
 measurement. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
 moved from "the reader says no" to "the kernel does not finish", and `timeout` is the harness recording

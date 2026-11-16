@@ -24,10 +24,10 @@
       "status": "refused"
     },
     "outline": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 35.82078097246085,
+      "points": 30,
+      "polygons": 1,
+      "status": "parsed"
     },
     "silk-bottom": {
       "contour_area_mm2": 12.388840172240187,

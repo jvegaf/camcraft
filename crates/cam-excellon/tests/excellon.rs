@@ -171,6 +171,33 @@ fn selecting_a_tool_the_header_never_defined_is_refused() {
 }
 
 #[test]
+fn a_hole_after_an_undefined_tool_loses_the_whole_file_not_just_that_hole() {
+  // E1.7 (task 060, S2/S6): Gerber skips a broken construct, Excellon does not. A hole that is not
+  // drilled reaches the machine unnoticed, so the file is refused whole — and the control case in
+  // the same test proves the refusal comes from the undefined tool, not from the rest of the file.
+  let header = "M48\nMETRIC\nT1C1.0\n%\nT1\nX1.0Y1.0\nX2.0Y2.0\n";
+
+  let control =
+    parse(&format!("{header}M30\n")).expect("without the undefined tool the file is fine");
+  assert_eq!(
+    control.features.len(),
+    2,
+    "the two holes the file does name"
+  );
+
+  let error = parse(&format!("{header}T3\nX3.0Y3.0\nM30\n"))
+    .expect_err("a feature naming an undefined tool refuses the file");
+  assert!(
+    matches!(error, ExcellonError::UnknownTool { tool: 3, .. }),
+    "{error:?}"
+  );
+  assert!(
+    error.to_string().contains("not in this file's table"),
+    "the message names the reason: {error}"
+  );
+}
+
+#[test]
 fn a_coordinate_without_units_has_no_scale_and_is_refused() {
   let error = parse("M48\nT1C1.0\n%\nT1\nX1.0Y1.0\n").expect_err("no units are declared");
   assert!(

@@ -46,6 +46,21 @@ pub enum GerberError {
   },
 }
 
+/// One construct the image builder could not turn into geometry.
+///
+/// This is the Gerber side of `cam_import::ImportReport::skip`: `cam-gerber` sits below
+/// `cam-import` and cannot depend on it, so it reports skips with its own record and the importer
+/// converts them. A report that is empty means the whole file became geometry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Skipped {
+  /// What was skipped, as the file names it (`a flash of aperture 10`, `a region`, `an arc`).
+  pub construct: String,
+  /// Why it could not be built, without the `line N:` prefix an error carries.
+  pub reason: String,
+  /// Where it is in the command stream (`command 7`).
+  pub location: String,
+}
+
 /// Zero suppression mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZeroSuppression {
@@ -179,21 +194,49 @@ enum Interpolation {
 }
 
 impl Gerber {
-  /// Evaluate the parsed command stream into one image region.
+  /// Evaluate the parsed command stream into one image region, discarding the skip report.
+  ///
+  /// Use [`Gerber::image_reporting`] when a caller must know what was left out: this method is the
+  /// one to call when the geometry is all that matters, and it returns exactly what that method
+  /// returns for the same file.
+  ///
+  /// # Errors
+  ///
+  /// Same as [`Gerber::image_reporting`].
+  pub fn image(&self, tolerance: TolerancePolicy) -> Result<Region, GerberError> {
+    self.image_reporting(tolerance).map(|(region, _)| region)
+  }
+
+  /// Evaluate the parsed command stream into one image region, and report what it skipped.
   ///
   /// Dark material is unioned in and clear material is subtracted, in command order. A file that
   /// yields no material returns an empty [`Region`] (`Region::new(Vec::new())` is valid).
   ///
+  /// A construct whose *own shape* cannot be built is skipped and reported in the returned vector:
+  /// a flash of an aperture whose parameters do not describe a shape, a draw whose aperture cannot
+  /// be swept, and a region that is not a valid region. What is skipped is always one construct,
+  /// never part of one: a region with a broken edge goes in whole, because closing the gap would
+  /// hand back a polygon that looks plausible and is not the file's.
+  ///
   /// # Errors
   ///
-  /// Returns [`GerberError::Unsupported`] naming the command index for any construct this pass
-  /// cannot build yet (`Flash`, a draw outside a region, an arc whose centre cannot be derived, or
-  /// a region with fewer than three segments). `Command` carries no source line number, so the
-  /// refusal reports the command index in `what` and uses `0` for `line`.
-  pub fn image(&self, tolerance: TolerancePolicy) -> Result<Region, GerberError> {
+  /// Returns [`GerberError`] naming the command index for anything that leaves the rest of the file
+  /// without a meaning: a draw or flash before any aperture was selected, an aperture the file
+  /// never defined, a structural error in the region nesting, or a boolean that the kernel refused.
+  /// `Command` carries no source line number, so refusals and skips name the command index and use
+  /// `0` for `line`.
+  pub fn image_reporting(
+    &self,
+    tolerance: TolerancePolicy,
+  ) -> Result<(Region, Vec<Skipped>), GerberError> {
     let mut current: Option<Point2> = None;
     let mut polarity = Polarity::Dark;
     let mut selected_aperture: Option<u32> = None;
+    let mut skipped: Vec<Skipped> = Vec::new();
+    // The region being drawn, when one of its edges could not be built: (reason, location). The
+    // region is finished at `G37` and reported whole there; until then no segment joins it, so no
+    // partial polygon is ever assembled.
+    let mut broken_region: Option<(String, String)> = None;
     // Start empty: no boundaries means no material (membership is vacuously outside).
     let mut image = Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
       line: 0,
@@ -213,11 +256,16 @@ impl Gerber {
           selected_aperture = Some(code);
         }
         Command::Move { to } => {
-          if in_region {
+          if in_region && broken_region.is_none() {
             // A move inside a region closes the contour drawn so far and starts another one of the
             // same region: that is what a D02 between G36 and G37 means, and a region may have as
             // many contours as it likes.
-            close_boundary(&mut region_segments, &mut region_boundaries, index)?;
+            // A contour that cannot close takes the region with it: the contour is one boundary of
+            // the same polygon, so losing it silently would change the copper.
+            if let Err(error) = close_boundary(&mut region_segments, &mut region_boundaries, index)
+            {
+              broken_region = Some((reason_of(&error), format!("command {index}")));
+            }
           }
           current = Some(to);
         }
@@ -231,6 +279,7 @@ impl Gerber {
           in_region = true;
           region_segments.clear();
           region_boundaries.clear();
+          broken_region = None;
         }
         Command::RegionEnd => {
           if !in_region {
@@ -239,19 +288,46 @@ impl Gerber {
               what: format!("command {index}: a region ends outside a region"),
             });
           }
-          close_boundary(&mut region_segments, &mut region_boundaries, index)?;
-          if region_boundaries.is_empty() {
+          let mut broken = broken_region.take();
+          if broken.is_none() {
+            if let Err(error) = close_boundary(&mut region_segments, &mut region_boundaries, index)
+            {
+              broken = Some((reason_of(&error), format!("command {index}")));
+            }
+          }
+          // A region with no contour at all is a different thing from a region that could not be
+          // built: the file said "here is a shape" and drew nothing, which is a file this reader
+          // will not guess about.
+          if broken.is_none() && region_boundaries.is_empty() {
             return Err(GerberError::Unsupported {
               line: 0,
               what: format!("command {index}: a region closes with no contour"),
             });
           }
-          let region =
-            Region::new(region_boundaries.clone()).map_err(|error| GerberError::Invalid {
-              line: 0,
-              what: format!("command {index}: the region is not valid: {error}"),
-            })?;
-          image = apply_region(image, &region, polarity, tolerance, index)?;
+          let region = match broken {
+            Some(_) => None,
+            None => match Region::new(region_boundaries.clone()) {
+              Ok(region) => Some(region),
+              Err(error) => {
+                broken = Some((
+                  format!("the region is not valid: {error}"),
+                  format!("command {index}"),
+                ));
+                None
+              }
+            },
+          };
+          match (region, broken) {
+            (Some(region), _) => {
+              image = apply_region(image, &region, polarity, tolerance, index)?;
+            }
+            (None, Some((reason, location))) => skipped.push(Skipped {
+              construct: "a region".to_string(),
+              reason,
+              location,
+            }),
+            (None, None) => unreachable!("a region that neither built nor broke"),
+          }
           in_region = false;
           region_segments.clear();
           region_boundaries.clear();
@@ -268,7 +344,9 @@ impl Gerber {
                 what: format!("command {index}: a zero-length line in a region"),
               });
             }
-            region_segments.push(Segment::Line(LineSeg::new(from, to)));
+            if broken_region.is_none() {
+              region_segments.push(Segment::Line(LineSeg::new(from, to)));
+            }
           } else {
             // Outside a region a draw is a stroke: the aperture dragged from one end to the other.
             let code = selected_aperture.ok_or(GerberError::NoApertureSelected { line: 0 })?;
@@ -278,8 +356,14 @@ impl Gerber {
                 aperture: code,
               },
             )?;
-            let stroke = stroke_of(from, to, aperture, code, &self.macros, tolerance, index)?;
-            image = apply_region(image, &stroke, polarity, tolerance, index)?;
+            match stroke_of(from, to, aperture, code, &self.macros, tolerance, index) {
+              Ok(stroke) => image = apply_region(image, &stroke, polarity, tolerance, index)?,
+              Err(error) => skipped.push(Skipped {
+                construct: format!("a draw with aperture {code}"),
+                reason: reason_of(&error),
+                location: format!("command {index}"),
+              }),
+            }
           }
           current = Some(to);
         }
@@ -288,23 +372,44 @@ impl Gerber {
           offset,
           clockwise,
         } => {
-          if !in_region {
-            return Err(GerberError::Unsupported {
-              line: 0,
-              what: format!("command {index}: an arc outside a region"),
-            });
-          }
           let from = current.ok_or(GerberError::Unsupported {
             line: 0,
             what: format!("command {index}: an arc without a current point"),
           })?;
-          let arc = arc_from_gerber(from, to, offset, clockwise).map_err(|reason| {
-            GerberError::Unsupported {
-              line: 0,
-              what: format!("command {index}: {reason}"),
+          match arc_from_gerber(from, to, offset, clockwise) {
+            Ok(arc) => {
+              if in_region {
+                if broken_region.is_none() {
+                  region_segments.push(Segment::Arc(arc));
+                }
+              } else {
+                // An arc outside a region is a stroke, and this reader does not sweep arcs. What is
+                // lost is that arc's own geometry; the point it ends on is named by the file, so
+                // the position after it is not in doubt and the rest of the layer still means what
+                // it says.
+                skipped.push(Skipped {
+                  construct: "an arc".to_string(),
+                  reason: format!("command {index}: a stroke along an arc is not supported"),
+                  location: format!("command {index}"),
+                });
+              }
             }
-          })?;
-          region_segments.push(Segment::Arc(arc));
+            Err(reason) => {
+              let reason = format!("command {index}: {reason}");
+              let location = format!("command {index}");
+              if in_region {
+                // The arc is one edge of a polygon in progress: its absence changes the shape, so
+                // the region is what gets reported, and it is reported where it broke.
+                broken_region = Some((reason, location));
+              } else {
+                skipped.push(Skipped {
+                  construct: "an arc".to_string(),
+                  reason,
+                  location,
+                });
+              }
+            }
+          }
           current = Some(to);
         }
         Command::Flash { at } => {
@@ -318,36 +423,39 @@ impl Gerber {
                 line: 0,
                 aperture: code,
               })?;
-          let shape = match aperture.template.as_str() {
-            "C" => {
-              let diameter =
-                aperture
-                  .parameters
-                  .first()
-                  .copied()
-                  .ok_or_else(|| GerberError::Unsupported {
+          // Every failure inside this block belongs to this one flash: the closure is what lets a
+          // `?` in here mean "this construct is lost" instead of "the file is lost".
+          let built = (|| -> Result<Region, GerberError> {
+            Ok(match aperture.template.as_str() {
+              "C" => {
+                let diameter =
+                  aperture
+                    .parameters
+                    .first()
+                    .copied()
+                    .ok_or_else(|| GerberError::Unsupported {
+                      line: 0,
+                      what: format!(
+                        "command {index}: a flash of aperture {code} template C without a diameter"
+                      ),
+                    })?;
+                // A circular aperture is the disc of radius d/2 centred at the flash point.
+                let contour =
+                  primitive::circle(at, diameter / 2.0).map_err(|error| GerberError::Invalid {
                     line: 0,
                     what: format!(
-                      "command {index}: a flash of aperture {code} template C without a diameter"
-                    ),
-                  })?;
-              // A circular aperture is the disc of radius d/2 centred at the flash point.
-              let contour =
-                primitive::circle(at, diameter / 2.0).map_err(|error| GerberError::Invalid {
-                  line: 0,
-                  what: format!(
                     "command {index}: the flash of aperture {code} template C is not valid: {error}"
                   ),
-                })?;
-              Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
-                line: 0,
-                what: format!(
+                  })?;
+                Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+                  line: 0,
+                  what: format!(
                   "command {index}: the flash of aperture {code} template C is not valid: {error}"
                 ),
-              })?
-            }
-            "R" => {
-              let width = aperture.parameters.first().copied().ok_or_else(|| {
+                })?
+              }
+              "R" => {
+                let width = aperture.parameters.first().copied().ok_or_else(|| {
                 GerberError::Unsupported {
                   line: 0,
                   what: format!(
@@ -355,7 +463,7 @@ impl Gerber {
                   ),
                 }
               })?;
-              let height = aperture.parameters.get(1).copied().ok_or_else(|| {
+                let height = aperture.parameters.get(1).copied().ok_or_else(|| {
                 GerberError::Unsupported {
                   line: 0,
                   what: format!(
@@ -363,26 +471,26 @@ impl Gerber {
                   ),
                 }
               })?;
-              // Gerber flashes a rectangle centred on the point; cam_geom::primitive::rectangle
-              // takes the lower-left corner, so translate by half the size.
-              let corner = Point2::new(at.x - width / 2.0, at.y - height / 2.0);
-              let contour = primitive::rectangle(corner, width, height).map_err(|error| {
-                GerberError::Invalid {
-                  line: 0,
-                  what: format!(
+                // Gerber flashes a rectangle centred on the point; cam_geom::primitive::rectangle
+                // takes the lower-left corner, so translate by half the size.
+                let corner = Point2::new(at.x - width / 2.0, at.y - height / 2.0);
+                let contour = primitive::rectangle(corner, width, height).map_err(|error| {
+                  GerberError::Invalid {
+                    line: 0,
+                    what: format!(
                     "command {index}: the flash of aperture {code} template R is not valid: {error}"
                   ),
-                }
-              })?;
-              Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
-                line: 0,
-                what: format!(
+                  }
+                })?;
+                Region::new(vec![contour]).map_err(|error| GerberError::Invalid {
+                  line: 0,
+                  what: format!(
                   "command {index}: the flash of aperture {code} template R is not valid: {error}"
                 ),
-              })?
-            }
-            "O" => {
-              let width = aperture.parameters.first().copied().ok_or_else(|| {
+                })?
+              }
+              "O" => {
+                let width = aperture.parameters.first().copied().ok_or_else(|| {
                 GerberError::Unsupported {
                   line: 0,
                   what: format!(
@@ -390,7 +498,7 @@ impl Gerber {
                   ),
                 }
               })?;
-              let height = aperture.parameters.get(1).copied().ok_or_else(|| {
+                let height = aperture.parameters.get(1).copied().ok_or_else(|| {
                 GerberError::Unsupported {
                   line: 0,
                   what: format!(
@@ -398,22 +506,22 @@ impl Gerber {
                   ),
                 }
               })?;
-              obround_region(at, width, height, tolerance, index, "a flash")?
-            }
-            template => {
-              // A template that names a macro is that macro's shapes, placed at the flash point:
-              // the macro's coordinates are relative to its own origin, which a flash moves.
-              let Some(definition) = self.macros.iter().find(|defined| defined.name == template)
-              else {
-                return Err(GerberError::Unsupported {
-                  line: 0,
-                  what: format!("command {index}: a flash of template {template}"),
-                });
-              };
-              let local = macro_region(definition, &aperture.parameters, tolerance, index)?;
-              let mut boundaries = Vec::with_capacity(local.boundaries.len());
-              for boundary in &local.boundaries {
-                boundaries.push(
+                obround_region(at, width, height, tolerance, index, "a flash")?
+              }
+              template => {
+                // A template that names a macro is that macro's shapes, placed at the flash point:
+                // the macro's coordinates are relative to its own origin, which a flash moves.
+                let Some(definition) = self.macros.iter().find(|defined| defined.name == template)
+                else {
+                  return Err(GerberError::Unsupported {
+                    line: 0,
+                    what: format!("command {index}: a flash of template {template}"),
+                  });
+                };
+                let local = macro_region(definition, &aperture.parameters, tolerance, index)?;
+                let mut boundaries = Vec::with_capacity(local.boundaries.len());
+                for boundary in &local.boundaries {
+                  boundaries.push(
                   cam_geom::transform::translate(boundary, cam_geom::Vec2::new(at.x, at.y))
                     .map_err(|error| GerberError::Invalid {
                       line: 0,
@@ -422,13 +530,25 @@ impl Gerber {
                       ),
                     })?,
                 );
-              }
-              Region::new(boundaries).map_err(|error| GerberError::Invalid {
-                line: 0,
-                what: format!(
+                }
+                Region::new(boundaries).map_err(|error| GerberError::Invalid {
+                  line: 0,
+                  what: format!(
                   "command {index}: the flash of macro {template:?} is not a valid region: {error}"
                 ),
-              })?
+                })?
+              }
+            })
+          })();
+          let shape = match built {
+            Ok(shape) => shape,
+            Err(error) => {
+              skipped.push(Skipped {
+                construct: format!("a flash of aperture {code}"),
+                reason: reason_of(&error),
+                location: format!("command {index}"),
+              });
+              continue;
             }
           };
           image = apply_region(image, &shape, polarity, tolerance, index)?;
@@ -436,7 +556,18 @@ impl Gerber {
       }
     }
 
-    Ok(image)
+    Ok((image, skipped))
+  }
+}
+
+/// The reason inside an error, without the `line N:` prefix it carries.
+///
+/// A skip is already reported where it happened (`command 7`), so repeating the prefix that the
+/// image pass always fills with `0` would be noise in every entry.
+fn reason_of(error: &GerberError) -> String {
+  match error {
+    GerberError::Unsupported { what, .. } | GerberError::Invalid { what, .. } => what.clone(),
+    other => other.to_string(),
   }
 }
 

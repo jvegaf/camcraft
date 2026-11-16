@@ -229,6 +229,76 @@ fn a_recognized_file_that_fails_to_parse_is_warned_but_not_imported() {
   let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn a_gerber_region_that_cannot_be_built_is_reported_and_the_rest_of_the_layer_imports() {
+  // E1.7 (task 060, S2/S7a) at the folder level: a construct inside a Gerber layer is skipped with
+  // its construct, reason and location, and the layer is not lost. The location names the file,
+  // because a folder import reads many and `command 6` alone would not say whose.
+  let dir = temp_dir("broken-gerber-region");
+  write_file(
+    &dir,
+    "outline.gbr",
+    &gerber_square(0, 0, 20_000_000, 15_000_000),
+  );
+  // A 10x10 square, then a second region whose arc has no derivable centre (I and J are zero).
+  write_file(
+    &dir,
+    "top.gbr",
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\nD10*\n%LPD*%\n\
+     X000000000Y000000000D02*\nG36*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     X012000000Y000000000D02*\nG36*\nG03*\n\
+     X013000000Y010000000I000000000J000000000D01*\n\
+     G01*\nX013000000Y000000000D01*\nX012000000Y000000000D01*\nG37*\nM02*\n",
+  );
+
+  let result = import_folder(&dir, &ImportOptions::default()).expect("the folder still imports");
+
+  assert_eq!(
+    result.report.skipped.len(),
+    1,
+    "{:?}",
+    result.report.skipped
+  );
+  let skipped = &result.report.skipped[0];
+  assert_eq!(skipped.construct, "a region");
+  let location = skipped.location.as_deref().unwrap_or_default();
+  assert!(
+    location.contains("top.gbr"),
+    "the location names the file: {location}"
+  );
+  assert!(
+    location.contains("command"),
+    "the location names the command: {location}"
+  );
+  assert!(
+    skipped.reason.contains("centre cannot be derived"),
+    "the reason names what failed: {}",
+    skipped.reason
+  );
+  assert!(
+    result.report.render().contains("top.gbr"),
+    "the rendered report names the file: {}",
+    result.report.render()
+  );
+
+  let copper = result
+    .document
+    .layers
+    .iter()
+    .find(|layer| layer.role == LayerRole::CopperTop)
+    .expect("the top copper layer survives the broken region");
+  assert_eq!(
+    copper.entities.len(),
+    1,
+    "the valid square is still the layer's geometry: {:?}",
+    copper.entities
+  );
+
+  let _ = fs::remove_dir_all(&dir);
+}
+
 fn drill_entity_count(result: &cam_import::FolderImport) -> usize {
   result
     .document
