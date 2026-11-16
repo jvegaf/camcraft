@@ -85,6 +85,12 @@ bench:
   ./crates/cam-geom/benches/check_regression.sh --noplot
   ./crates/cam-ops/benches/check_regression.sh --noplot
 
+# E0.6: measure the corpus with FlatCAM-Plus and fail on any divergence from the committed baseline.
+# Needs FlatCAM's own Python environment: `FLATCAM_PYTHON=~/Code/FlatCAM-Plus/.venv/bin/python
+# just baseline`. It never runs in CI (see scripts/baseline/README.md) and `--update` is never a gate.
+baseline:
+  ./scripts/baseline/run.sh
+
 # Build the workspace in debug.
 build:
   cargo build --workspace

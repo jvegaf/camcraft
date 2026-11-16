@@ -1,0 +1,124 @@
+{
+  "artefacts": {
+    "bottom": {
+      "contour_area_mm2": 4711.9839021304415,
+      "peak_rss_kb": 1779448,
+      "polygons": 393,
+      "seconds": 22.20601193499897,
+      "status": "parsed",
+      "vertices": 326422
+    },
+    "drill": {
+      "features": 445,
+      "peak_rss_kb": 504196,
+      "seconds": 0.372441728002741,
+      "status": "parsed",
+      "tools": 12
+    },
+    "inner1": {
+      "contour_area_mm2": 2875.064785391945,
+      "peak_rss_kb": 662812,
+      "polygons": 406,
+      "seconds": 2.360248431999935,
+      "status": "parsed",
+      "vertices": 257981
+    },
+    "inner2": {
+      "contour_area_mm2": 6543.262680212484,
+      "peak_rss_kb": 629800,
+      "polygons": 297,
+      "seconds": 1.9717098330002045,
+      "status": "parsed",
+      "vertices": 166980
+    },
+    "mask-bottom": {
+      "contour_area_mm2": 684.1680514707105,
+      "peak_rss_kb": 529308,
+      "polygons": 620,
+      "seconds": 0.5170084499986842,
+      "status": "parsed",
+      "vertices": 86974
+    },
+    "mask-top": {
+      "contour_area_mm2": 355.7354244595617,
+      "peak_rss_kb": 510032,
+      "polygons": 62,
+      "seconds": 0.32174566000321647,
+      "status": "parsed",
+      "vertices": 19707
+    },
+    "outline": {
+      "contour_area_mm2": 13410.65897207306,
+      "peak_rss_kb": 515804,
+      "polygons": 2,
+      "seconds": 0.325179110004683,
+      "status": "parsed",
+      "vertices": 9320
+    },
+    "silk-bottom": {
+      "contour_area_mm2": 969.1526495417575,
+      "peak_rss_kb": 2246300,
+      "polygons": 1252,
+      "seconds": 17.934668193003745,
+      "status": "parsed",
+      "vertices": 1702544
+    },
+    "silk-top": {
+      "contour_area_mm2": 353.09088819170756,
+      "peak_rss_kb": 649288,
+      "polygons": 119,
+      "seconds": 1.5125496119944728,
+      "status": "parsed",
+      "vertices": 158514
+    },
+    "top": {
+      "contour_area_mm2": 5691.245226833736,
+      "peak_rss_kb": 1116584,
+      "polygons": 194,
+      "seconds": 5.935552839000593,
+      "status": "parsed",
+      "vertices": 174001
+    }
+  },
+  "environment": {
+    "flatcam": "1.3.6",
+    "platform": "offscreen",
+    "python": "3.14.4",
+    "shapely": "2.2.0"
+  },
+  "operation_parameters": {
+    "drill": {
+      "drill_z": -1.8,
+      "feedrate_z": 60.0,
+      "toolchange_z": 30.0,
+      "travel_z": 2.0
+    },
+    "isolation": {
+      "dia": 0.2,
+      "feedrate": 100.0,
+      "overlap": 15.0,
+      "passes": 2,
+      "z_cut": -0.1,
+      "z_move": 2.0
+    }
+  },
+  "operations": {
+    "drill": {
+      "cut_moves": 439,
+      "moves": 889,
+      "path_mm": 6035.288592766616,
+      "seconds": 0.6686264259988093,
+      "status": "measured",
+      "travel_moves": 450
+    },
+    "isolation": {
+      "cut_moves": 187,
+      "moves": 375,
+      "path_mm": 2223.867488616539,
+      "seconds": 1.47247210599744,
+      "status": "measured",
+      "travel_moves": 188
+    }
+  },
+  "timeout_seconds": 300
+}
