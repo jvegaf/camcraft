@@ -1001,21 +1001,28 @@ fn a_move_inside_a_region_starts_another_contour() {
 }
 
 #[test]
-fn a_contour_with_fewer_than_three_segments_is_refused() {
-  // A move one segment into a contour cannot close a shape, so it is refused by name rather than
-  // handed to the kernel to fail in its own words.
-  let error = parse(
-    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nD10*\nG36*\n\
+fn a_contour_with_fewer_than_three_segments_takes_its_region_with_it() {
+  // A move one segment into a contour cannot close a shape. E1.7: it is not approximated and not
+  // handed to the kernel to fail in its own words — the region is skipped whole and reported, and
+  // the rest of the layer stands.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nD10*\nG36*\n\
      X000000000Y000000000D02*\nX010000000Y000000000D01*\n\
-     X000000000Y010000000D02*\nG37*\nM02*\n",
-  )
-  .expect("fixture parses")
-  .image(TOLERANCE)
-  .expect_err("a one-segment contour cannot close");
-  let text = format!("{error}");
+     X000000000Y010000000D02*\nG37*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let (image, skipped) = gerber
+    .image_reporting(TOLERANCE)
+    .expect("one unusable region does not refuse the file");
   assert!(
-    text.contains("fewer than three"),
-    "the refusal says why: {text}"
+    image.boundaries.is_empty(),
+    "the region contributes nothing: {:?}",
+    image.boundaries
+  );
+  assert_eq!(skipped.len(), 1, "{skipped:?}");
+  assert_eq!(skipped[0].construct, "a region");
+  assert!(
+    skipped[0].reason.contains("fewer than three"),
+    "the skip says why: {}",
+    skipped[0].reason
   );
 }
 
@@ -1187,20 +1194,27 @@ fn a_flash_of_a_macro_aperture_is_placed_at_the_flash_point() {
 }
 
 #[test]
-fn a_macro_aperture_draw_with_curved_edges_is_refused_naming_the_macro() {
-  // A macro whose shape has arcs (a circle here) cannot be swept without flattening, so the
-  // refusal names the macro rather than approximating the trace.
-  let error = parse(
-    "%FSLAX36Y36*%\n%MOMM*%\n%AMPad*\n1,1,2.0,0,0*%\n%ADD10Pad*%\nD10*\n\
-     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n",
-  )
-  .expect("fixture parses")
-  .image(TOLERANCE)
-  .expect_err("a curved macro stroke is not swept");
-  let text = format!("{error}");
+fn a_macro_aperture_draw_with_curved_edges_is_skipped_naming_the_macro() {
+  // A macro whose shape has arcs (a circle here) cannot be swept without flattening. E1.7: the
+  // stroke is skipped and reported by the macro's name rather than approximated, and the file still
+  // imports.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%AMPad*\n1,1,2.0,0,0*%\n%ADD10Pad*%\nD10*\n\
+     X000000000Y000000000D02*\nG01*\nX010000000Y000000000D01*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let (image, skipped) = gerber
+    .image_reporting(TOLERANCE)
+    .expect("one unsweepable stroke does not refuse the file");
   assert!(
-    text.contains("Pad") && text.contains("curved"),
-    "the refusal names the macro and why it cannot be swept: {text}"
+    image.boundaries.is_empty(),
+    "the stroke contributes nothing: {:?}",
+    image.boundaries
+  );
+  assert_eq!(skipped.len(), 1, "{skipped:?}");
+  assert_eq!(skipped[0].construct, "a draw with aperture 10");
+  assert!(
+    skipped[0].reason.contains("Pad") && skipped[0].reason.contains("curved"),
+    "the skip names the macro and why it cannot be swept: {}",
+    skipped[0].reason
   );
 }
 
@@ -1294,5 +1308,143 @@ fn a_pour_layer_with_several_clears_measures_its_material_area() {
   assert!(
     !image.contains(cam_geom::Point2::new(2.0, 8.0), TOLERANCE),
     "the clear flash is a hole in the pour"
+  );
+}
+
+// E1.7 (task 060, S7a): a construct whose own shape cannot be built is skipped and reported with
+// where it was, and the rest of the layer still becomes geometry.
+
+#[test]
+fn a_region_with_an_arc_whose_centre_cannot_be_derived_is_skipped_whole_and_reported() {
+  // The second region's arc has an offset of zero, so no centre and no radius can be derived. The
+  // arc is one edge of that region's polygon, so the region goes in whole rather than closing the
+  // gap: the first region is untouched, and the report says which command broke the second.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n%LPD*%\n\
+     X000000000Y000000000D02*\nG36*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     X030000000Y000000000D02*\nG36*\nG03*\n\
+     X040000000Y010000000I000000000J000000000D01*\n\
+     G01*\nX040000000Y000000000D01*\nX030000000Y000000000D01*\nG37*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let arc_index = gerber
+    .commands
+    .iter()
+    .position(|command| matches!(command, Command::Arc { .. }))
+    .expect("the fixture has an arc");
+
+  let (image, skipped) = gerber
+    .image_reporting(TOLERANCE)
+    .expect("the file is not refused: one broken region does not lose the layer");
+
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "only the valid region is geometry: {:?}",
+    image.boundaries
+  );
+  let bounds = image.boundaries[0].bounds();
+  assert!(
+    (bounds.max.x - 10.0).abs() < 1.0e-9 && (bounds.max.y - 10.0).abs() < 1.0e-9,
+    "the surviving region is the 10x10 square: {bounds:?}"
+  );
+
+  assert_eq!(
+    skipped.len(),
+    1,
+    "exactly one construct is skipped: {skipped:?}"
+  );
+  let skip = &skipped[0];
+  assert_eq!(skip.construct, "a region", "{}", skip.construct);
+  assert_eq!(
+    skip.location,
+    format!("command {arc_index}"),
+    "{}",
+    skip.location
+  );
+  assert!(
+    skip.reason.contains("centre cannot be derived"),
+    "the reason names what failed: {}",
+    skip.reason
+  );
+}
+
+#[test]
+fn an_arc_stroke_outside_a_region_is_skipped_and_the_rest_of_the_layer_imports() {
+  // An arc outside a region is a stroked arc, which this reader does not sweep. What is lost is
+  // that arc; the file names the point it ends on, so the position after it is not in doubt and the
+  // two flashes still land where the file says.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     X000000000Y000000000D03*\nX000000000Y000000000D02*\nG75*\nG03*\n\
+     X010000000Y010000000I010000000J000000000D01*\n\
+     X030000000Y000000000D03*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let arc_index = gerber
+    .commands
+    .iter()
+    .position(|command| matches!(command, Command::Arc { .. }))
+    .expect("the fixture has an arc");
+
+  let (image, skipped) = gerber.image_reporting(TOLERANCE).expect("image builds");
+
+  assert_eq!(
+    image.boundaries.len(),
+    2,
+    "both flashes are geometry: {:?}",
+    image.boundaries
+  );
+  assert!(
+    image.contains(cam_geom::Point2::new(30.0, 0.0), TOLERANCE),
+    "the flash after the arc is still placed where the file says"
+  );
+  assert_eq!(skipped.len(), 1, "one arc is skipped: {skipped:?}");
+  assert_eq!(skipped[0].construct, "an arc");
+  assert_eq!(skipped[0].location, format!("command {arc_index}"));
+}
+
+#[test]
+fn a_flash_of_an_aperture_without_a_shape_is_skipped_and_reported() {
+  // Template C with no diameter describes no shape. The flash cannot be built, so it is skipped and
+  // named with the aperture code; the flash that follows still lands.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C*%\n%ADD11C,1.0*%\n\
+     D10*\nX000000000Y000000000D03*\n\
+     D11*\nX010000000Y000000000D03*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let (image, skipped) = gerber.image_reporting(TOLERANCE).expect("image builds");
+
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "the valid flash is geometry: {:?}",
+    image.boundaries
+  );
+  assert_eq!(skipped.len(), 1, "one flash is skipped: {skipped:?}");
+  assert_eq!(skipped[0].construct, "a flash of aperture 10");
+  assert!(
+    skipped[0].reason.contains("without a diameter"),
+    "the reason names what was missing: {}",
+    skipped[0].reason
+  );
+}
+
+#[test]
+fn a_fully_valid_layer_reports_nothing_and_image_matches_the_reporting_pass() {
+  // S7b: the happy case changes nothing. `image` is the pass every existing caller uses, so it must
+  // return exactly the geometry of `image_reporting` for a file that skips nothing.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\nD10*\n\
+     X000000000Y000000000D02*\nG36*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let plain = gerber.image(TOLERANCE).expect("image builds");
+  let (reported, skipped) = gerber.image_reporting(TOLERANCE).expect("image builds");
+
+  assert!(
+    skipped.is_empty(),
+    "a valid layer skips nothing: {skipped:?}"
+  );
+  assert_eq!(
+    plain.boundaries, reported.boundaries,
+    "the reporting pass returns the same polygons"
   );
 }
