@@ -62,4 +62,5 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 055 | [cam-cli-command-modules](055-cam-cli-command-modules.md) | delivered | 2026-11-15 | `a8f9faa` |
 | 056 | [w4a-drill](056-w4a-drill.md) | delivered | 2026-11-15 | `b324e3c` |
 | 057 | [w4b-cutout-program](057-w4b-cutout-program.md) | delivered | 2026-11-15 | `e045c43` |
+| 058 | [w4c-isolation](058-w4c-isolation.md) | delivered | 2026-11-15 | `e91882b` |
 | 059 | [e0-6-flatcam-baseline](059-e0-6-flatcam-baseline.md) | delivered | 2026-11-15 | `0520db8` |
