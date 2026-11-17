@@ -557,7 +557,7 @@ fn material_side(
     });
   }
   let base = (length * PROBE_STEP).max(PROBE_FLOOR);
-  let mut first_definitive: Option<Side> = None;
+  let mut samples: Vec<(Side, usize)> = Vec::with_capacity(PROBE_TRIES);
   for attempt in 0..PROBE_TRIES {
     let distance = base * PROBE_GROWTH.powi(attempt as i32);
     if distance * 2.0 > length {
@@ -576,13 +576,81 @@ fn material_side(
       _ => None,
     };
     if let Some(side) = side {
-      match first_definitive {
-        None => first_definitive = Some(side),
-        Some(prev) if prev != side => break,
-        _ => break,
-      }
+      samples.push((side, attempt));
     }
   }
+  let first_definitive = if samples.is_empty() {
+    None
+  } else {
+    let counts_for = |samples: &[(Side, usize)]| {
+      let mut c = [0_u32; 4];
+      for (s, _) in samples {
+        let idx = match s {
+          Side::Left => 0,
+          Side::Right => 1,
+          Side::Both => 2,
+          Side::Neither => 3,
+        };
+        c[idx] += 1;
+      }
+      c
+    };
+    let total = samples.len();
+    let filtered: Vec<(Side, usize)> = if total <= 2 {
+      samples.clone()
+    } else {
+      let counts = counts_for(&samples);
+      let kept: Vec<(Side, usize)> = samples
+        .iter()
+        .copied()
+        .filter(|(s, _)| {
+          let idx = match s {
+            Side::Left => 0,
+            Side::Right => 1,
+            Side::Both => 2,
+            Side::Neither => 3,
+          };
+          counts[idx] > 1
+        })
+        .collect();
+      if kept.is_empty() {
+        samples.clone()
+      } else {
+        kept
+      }
+    };
+    let counts = counts_for(&filtered);
+    let mut best = filtered[0].0;
+    let mut best_count = 0_u32;
+    let mut best_attempt = usize::MAX;
+    for (s, attempt) in &filtered {
+      let idx = match s {
+        Side::Left => 0,
+        Side::Right => 1,
+        Side::Both => 2,
+        Side::Neither => 3,
+      };
+      let count = counts[idx];
+      let priority = |s: Side| match s {
+        // On a genuine tie prefer a boundary classification over dropping a piece.
+        Side::Left | Side::Right => 1_u8,
+        Side::Both | Side::Neither => 0,
+      };
+      let better = if count != best_count {
+        count > best_count
+      } else if priority(*s) != priority(best) {
+        priority(*s) > priority(best)
+      } else {
+        *attempt < best_attempt
+      };
+      if better {
+        best = *s;
+        best_count = count;
+        best_attempt = *attempt;
+      }
+    }
+    Some(best)
+  };
   if let Some(side) = first_definitive {
     // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
     // a close probe detects it (both sides the same locally). Only run this guard on pieces
@@ -1679,8 +1747,8 @@ fn combine_with_indexed(
   }
 
   let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
-  for piece in pieces {
-    match decide_indexed(piece, ia, ib, op, tolerance, &near_miss_snaps)? {
+  for piece in &pieces {
+    match decide_indexed(*piece, ia, ib, op, tolerance, &near_miss_snaps)? {
       Decision::Keep => survivors.push((piece.segment, piece.from_a)),
       Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
       Decision::Drop => {}
@@ -1768,7 +1836,7 @@ fn decide_indexed(
   let skip_a = if piece.from_a { Some(piece.path) } else { None };
   let skip_b = if piece.from_a { None } else { Some(piece.path) };
   let base = (length * PROBE_STEP).max(PROBE_FLOOR);
-  let mut first_definitive: Option<Decision> = None;
+  let mut samples: Vec<(Decision, usize)> = Vec::with_capacity(PROBE_TRIES);
   for attempt in 0..PROBE_TRIES {
     let distance = base * PROBE_GROWTH.powi(attempt as i32);
     if distance * 2.0 > length {
@@ -1794,17 +1862,78 @@ fn decide_indexed(
       (false, true) => Decision::Reverse,
       _ => Decision::Drop,
     };
-    match first_definitive {
-      None => first_definitive = Some(decision),
-      Some(prev) if prev != decision => {
-        // A nearer probe can be numerically unstable at very small distances
-        // (e.g. winding of the skipped boundary). Prefer the farther, stable answer.
-        first_definitive = Some(decision);
-        break;
-      }
-      _ => break,
-    }
+    samples.push((decision, attempt));
   }
+  let first_definitive = if samples.is_empty() {
+    None
+  } else {
+    let counts_for = |samples: &[(Decision, usize)]| {
+      let mut c = [0_u32; 3];
+      for (d, _) in samples {
+        let idx = match d {
+          Decision::Keep => 0,
+          Decision::Reverse => 1,
+          Decision::Drop => 2,
+        };
+        c[idx] += 1;
+      }
+      c
+    };
+    let total = samples.len();
+    let filtered: Vec<(Decision, usize)> = if total <= 2 {
+      samples.clone()
+    } else {
+      let counts = counts_for(&samples);
+      let kept: Vec<(Decision, usize)> = samples
+        .iter()
+        .copied()
+        .filter(|(d, _)| {
+          let idx = match d {
+            Decision::Keep => 0,
+            Decision::Reverse => 1,
+            Decision::Drop => 2,
+          };
+          counts[idx] > 1
+        })
+        .collect();
+      if kept.is_empty() {
+        samples.clone()
+      } else {
+        kept
+      }
+    };
+    let counts = counts_for(&filtered);
+    let mut best = filtered[0].0;
+    let mut best_count = 0_u32;
+    let mut best_attempt = usize::MAX;
+    for (d, attempt) in &filtered {
+      let idx = match d {
+        Decision::Keep => 0,
+        Decision::Reverse => 1,
+        Decision::Drop => 2,
+      };
+      let count = counts[idx];
+      let priority = |d: Decision| match d {
+        // Keeping a boundary avoids opening the arrangement; on a genuine tie prefer it.
+        Decision::Keep => 2_u8,
+        Decision::Reverse => 1,
+        Decision::Drop => 0,
+      };
+      let better = if count != best_count {
+        count > best_count
+      } else if priority(*d) != priority(best) {
+        priority(*d) > priority(best)
+      } else {
+        *attempt < best_attempt
+      };
+      if better {
+        best = *d;
+        best_count = count;
+        best_attempt = *attempt;
+      }
+    }
+    Some(best)
+  };
   if let Some(decision) = first_definitive {
     // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
     // a close probe detects it (both sides the same locally). Only run this guard on pieces

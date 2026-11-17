@@ -54,10 +54,10 @@
       "status": "timeout"
     },
     "top": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 2477.272596691578,
+      "points": 48739,
+      "polygons": 643,
+      "status": "parsed"
     }
   },
   "flatten_tolerance_mm": 0.001,

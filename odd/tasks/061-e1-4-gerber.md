@@ -53,17 +53,15 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   arrangement revisits a piece, so its pieces cannot be chained closed` (T3), no por tiempo.
   `boolean_index` (11.352 comparaciones), fmt, clippy y `cargo test -p cam-geom` completos en verde.
   No alcanza 30 s ni el criterio: quedan T3 (correctitud) y T4 (evaluación por capa).
-- **T3** — `cam-geom`: el cierre del recorrido de caras. Quince capas del corpus morían con
-  `the arrangement revisits a piece, so its pieces cannot be chained closed`. Causa raíz (repro mínimo
-  `/tmp/masktop_fail.gbr`, trazo + relleno `G36` del mismo contorno en `kicad-2l-simple/mask-top`): en
-  `decide_indexed` la sonda más cercana podía dar un resultado definitivo pero numéricamente inestable y
-  la más lejana el correcto; al discrepar se conservaba el primero y se descartaba una pieza de borde.
-  Se prefiere el resultado definitivo más lejano/estable. Regresión `boolean_stroke_fill_overlap`.
-  Varias capas ahora miden o avanzan (`mask-bottom` de `kicad-large-pours` parsea en 7.2 s, 246 polígonos;
-  `mask-top` de `kicad-2l-simple` parsea; `mask-top` de `kicad-4l-pours` produce 567 polígonos pero en
-  ~113 s; `silk-bottom` de `kicad-4l-pours` no terminó en 900 s), y los goldens parseados/estados se
-  re-pinearon bajo el límite de 30 s del arnés. Correctitud y tiempo no cerrados en todo el corpus:
-  sigue T4. Specs: S2, S3.
+- **T3** — `cam-geom`: recorrido de caras / `revisits a piece`. Dos causas corregidas: (1) `decide_indexed`
+  prefería la sonda cercana e inestable ante desacuerdo (`boolean_stroke_fill_overlap`); (2) la
+  clasificación por sondeo ahora recoge todas las distancias definitivas, descarta outliers únicos y
+  elige por mayoría (con desempate que preserva frontera y cercanía) en `decide_indexed`/`material_side`,
+  evitando perder la pieza-puente del caso silk (`boolean_silk_union_probe`, `substitute-easyeda/silk-top`:
+  559 polígonos, 22.7 s). Bajo 30 s pasan a `parsed` `substitute-easyeda/silk-top` (559), `kicad-large-pours/silk-top`
+  (376), `substitute-altium/top` (643); a `timeout` `substitute-eagle/silk-bottom`, `substitute-easyeda/bottom`.
+  **Sigue abierto**: `kicad-4l-pours/silk-top` (`revisits a piece`) y `kicad-2l-simple/top` (cmd 1441, lote
+  falla y caída secuencial). Specs: S2, S3.
 - **T4** — `cam-gerber`: estrategia de evaluación (un arreglo por capa / por tanda de polaridad en lugar de
   3900 `combine` secuenciales; la opción 2 elegida). Implementado en parte: los constructos oscuros
   consecutivos se unen en árbol balanceado y se aplican de una vez (`union_all` + `pending_dark`), con
@@ -134,21 +132,25 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   un índice local `RegionIndex` en `crates/cam-geom/src/boolean.rs` sin tocar la representación ni la
   API de `Region`. `kicad-2l-simple/top.gbr` pasa de >300 s a **68.8 s** y falla con `revisits a piece`
   (cmd 1441). fmt, clippy y `cargo test -p cam-geom` completos en verde.
-- **L10 (T3, fix de la sonda inestable).** Repro mínimo: `/tmp/masktop_fail.gbr` (cuatro regiones
-  `G36/G37` de `kicad-2l-simple/mask-top` más una quinta que traza un contorno cerrado y luego lo
-  rellena con `G36`) fallaba en el comando 63. Causa: en `decide_indexed`, ante dos sondas con
-  resultado definitivo pero en desacuerdo, se conservaba la primera (más cercana, inestable por el
-  winding de la frontera saltada) y se descartaba la segunda (más lejana, estable); eso eliminaba una
-  pieza del borde (arco de unión exterior, vértices de grado 1) y el recorrido la revisitaba. Fix:
-  preferir el resultado definitivo más lejano. Regresión `boolean_stroke_fill_overlap` (trazo cerrado +
-  relleno `G36` del mismo contorno ⇒ 5 fronteras, 0 salteados). Bajo el límite de 30 s del arnés los
-  estados cambian así: `refused`→`parsed` `kicad-2l-simple/mask-top` (126/3516/140.74),
-  `kicad-large-pours/mask-bottom` (246/15568/839.72), `kicad-large-pours/mask-top` (245/15560/836.04),
-  `substitute-eagle/mask-top` (62/2094/355.73); `refused`→`timeout` `kicad-4l-pours/mask-top`,
-  `kicad-4l-pours/silk-bottom`, `kicad-4l-pours/top`, `substitute-altium/bottom`. Varios artefactos ya
-  `parsed` cambian de medida y se re-pinean (`kicad-4l-pours/outline` 7→8, 28.52→35.35 mm²;
-  `kicad-large-pours/outline` 1→2; `substitute-altium/outline` 1→2; `substitute-eagle/outline` 21→20,
-  etc.), coherente con clasificaciones de sondeo más estables. Fuera del límite: `kicad-4l-pours/mask-top`
-  produce 567 polígonos en ~113 s y `silk-bottom` no terminó en 900 s. `cargo test -p cam-geom`, fmt,
-  clippy y `--test parity` en verde. T3 reduce el bloqueo pero no lo cierra en todo el corpus; T4
-  (arreglo por capa, opción 2) sigue siendo necesario para el tiempo.
+- **L10 (T3, sonda inestable, commit `8ab4fd5`).** Repro `/tmp/masktop_fail.gbr`: ante sondas definitivas
+  en desacuerdo se conservaba la cercana (inestable) y se descartaba la lejana (estable), eliminando una
+  pieza de borde. Fix: preferir el resultado definitivo más lejano. Regresión `boolean_stroke_fill_overlap`.
+  Re-pines bajo 30 s: `refused`→`parsed` `kicad-2l-simple/mask-top`, `kicad-large-pours/mask-bottom`,
+  `kicad-large-pours/mask-top`, `substitute-eagle/mask-top`; `refused`→`timeout` `kicad-4l-pours/mask-top`,
+  `kicad-4l-pours/silk-bottom`, `kicad-4l-pours/top`, `substitute-altium/bottom`; varios `parsed`
+  re-medidos por la clasificación más estable. T3 seguía abierto.
+- **L11 (T4 batching parcial, commit `d4c2aed`).** Uniones oscuras consecutivas en árbol balanceado con
+  caída secuencial si el lote falla (`cam-gerber`). `kicad-4l-pours/mask-top` 113 s→2.55 s (parsed). El
+  lote de `kicad-2l-simple/top` falla («a surviving piece begins and ends at the same point») y la caída
+  vuelve a ~73 s con `revisits a piece` (cmd 1441).
+- **L12 (T3, hueco en el grafo por sondeo, silk).** Repro `/tmp/silk24.gbr` (`substitute-easyeda/silk-top`,
+  23 líneas ok, 24 falla): el grafo superviviente quedaba con dos vértices de grado 1 (~0.024 mm de
+  separación) porque una pieza-puente se clasificaba mal por desacuerdo transitorio de sondas. Fix en
+  `decide_indexed`/`material_side`: reunir las distancias definitivas, descartar outliers únicos y elegir
+  por mayoría con desempate que preserva frontera y cercanía. Regresión `boolean_silk_union_probe` (seed
+  proptest de thin-sliver añadida). Bajo 30 s: `refused`→`parsed` `substitute-easyeda/silk-top`
+  (559/22603/1322.34, 22.7 s), `kicad-large-pours/silk-top` (376/13742/5066.31), `substitute-altium/top`
+  (643/48739/2477.27); `refused`→`timeout` `substitute-eagle/silk-bottom`, `substitute-easyeda/bottom`.
+  `cargo test -p cam-geom` completo, fmt, clippy y `--test parity` (518 s) en verde. Corpus: **25 parsed,
+  28 timeout, 1 refused** (`kicad-4l-pours/silk-top`, sigue `revisits a piece`). Persisten abiertos T3 en
+  `kicad-2l-simple/top` (cmd 1441) y T4/timeouts.
