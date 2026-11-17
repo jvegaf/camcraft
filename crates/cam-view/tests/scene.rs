@@ -21,6 +21,7 @@ fn document_with(entities: Vec<(&str, cam_geom::Contour)>, visible: bool) -> Doc
       .map(|(id, contour)| cam_model::Entity {
         id: id.to_owned(),
         kind: cam_model::EntityKind::Contour { contour },
+        source: cam_model::Provenance::default(),
       })
       .collect(),
     source: cam_model::Provenance::default(),

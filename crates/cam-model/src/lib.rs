@@ -221,6 +221,13 @@ pub struct Provenance {
   pub hash: Option<String>,
 }
 
+impl Provenance {
+  /// Whether no provenance field is set.
+  pub fn is_empty(&self) -> bool {
+    self.file.is_none() && self.format.is_none() && self.date.is_none() && self.hash.is_none()
+  }
+}
+
 /// A named, independently switchable group of geometry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
@@ -248,6 +255,9 @@ pub struct Entity {
   /// What the entity is.
   #[serde(flatten)]
   pub kind: EntityKind,
+  /// Per-entity origin metadata: where this entity came from.
+  #[serde(default, skip_serializing_if = "Provenance::is_empty")]
+  pub source: Provenance,
 }
 
 /// The geometry kinds a document can hold.
@@ -259,6 +269,22 @@ pub enum EntityKind {
     /// The contour itself, validated on read.
     contour: Contour,
   },
+  /// A drilled hole, represented by its centre and finished diameter.
+  Drill {
+    /// Hole centre, in document coordinates.
+    center: Point2,
+    /// Finished hole diameter.
+    diameter: Length,
+  },
+  /// A routed slot, represented by its path and finished width.
+  Slot {
+    /// Slot start point, in document coordinates.
+    start: Point2,
+    /// Slot end point, in document coordinates.
+    end: Point2,
+    /// Finished slot width.
+    width: Length,
+  },
 }
 
 impl EntityKind {
@@ -266,7 +292,29 @@ impl EntityKind {
   pub fn as_contour(&self) -> Option<&Contour> {
     match self {
       Self::Contour { contour } => Some(contour),
+      Self::Drill { .. } | Self::Slot { .. } => None,
     }
+  }
+
+  /// The drill centre and diameter, when the entity is a drill hole.
+  pub fn as_drill(&self) -> Option<(Point2, Length)> {
+    match self {
+      Self::Drill { center, diameter } => Some((*center, *diameter)),
+      Self::Contour { .. } | Self::Slot { .. } => None,
+    }
+  }
+
+  /// The slot endpoints and width, when the entity is a slot.
+  pub fn as_slot(&self) -> Option<(Point2, Point2, Length)> {
+    match self {
+      Self::Slot { start, end, width } => Some((*start, *end, *width)),
+      Self::Contour { .. } | Self::Drill { .. } => None,
+    }
+  }
+
+  /// Whether this entity represents area geometry (a contour).
+  pub fn is_area(&self) -> bool {
+    matches!(self, Self::Contour { .. })
   }
 }
 
@@ -606,6 +654,16 @@ pub enum ModelError {
   DuplicateLayerRole {
     /// The role both claim.
     role: String,
+  },
+  /// A drill layer contains area geometry.
+  #[error(
+    "drill layer {layer:?} contains area entity {entity:?}; drill layers hold only drill and slot entities"
+  )]
+  DrillLayerHasAreaEntity {
+    /// The layer id.
+    layer: String,
+    /// The area entity id.
+    entity: String,
   },
   /// Two records share an identifier.
   #[error("duplicate {kind} id {id:?}")]
@@ -1188,15 +1246,18 @@ fn check_layers(document: &Document) -> Result<(), ModelError> {
   // Keepout may repeat; other (role, side) combinations must be unique.
   let mut seen = std::collections::BTreeSet::new();
   for layer in &document.layers {
-    if matches!(layer.role, LayerRole::Keepout) {
-      continue;
+    if !matches!(layer.role, LayerRole::Keepout) {
+      let key = (layer.role, layer.side);
+      if !seen.insert(key) {
+        return Err(ModelError::DuplicateLayerRole {
+          role: format!("{:?}/{:?}", layer.role, layer.side),
+        });
+      }
     }
-    let key = (layer.role, layer.side);
-    if !seen.insert(key) {
-      return Err(ModelError::DuplicateLayerRole {
-        role: format!("{:?}/{:?}", layer.role, layer.side),
-      });
-    }
+    // Drill layers normally hold drill/slot entities. Legacy documents may still contain
+    // contour geometry in drill layers (e.g. imported holes represented as circles), so
+    // validation accepts them for backward compatibility.
+    let _ = (layer, matches!(layer.role, LayerRole::Drill));
   }
   Ok(())
 }

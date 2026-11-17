@@ -64,12 +64,14 @@ fn document() -> Document {
         kind: EntityKind::Contour {
           contour: rectangle(40.0, 30.0),
         },
+        source: cam_model::Provenance::default(),
       },
       Entity {
         id: "E2".to_owned(),
         kind: EntityKind::Contour {
           contour: rectangle(30.0, 20.0),
         },
+        source: cam_model::Provenance::default(),
       },
     ],
   });

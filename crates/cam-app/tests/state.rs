@@ -176,6 +176,7 @@ fn selection_is_ordered_and_unknown_ids_are_dropped() {
           )
           .expect("triangle"),
         },
+        source: cam_model::Provenance::default(),
       },
       cam_model::Entity {
         id: "E3".to_owned(),
@@ -190,6 +191,7 @@ fn selection_is_ordered_and_unknown_ids_are_dropped() {
           )
           .expect("triangle"),
         },
+        source: cam_model::Provenance::default(),
       },
     ],
   });
@@ -248,6 +250,7 @@ fn entity_ids_continue_after_the_ids_already_in_the_document() {
           )
           .expect("triangle"),
         },
+        source: cam_model::Provenance::default(),
       })
       .collect(),
   });
@@ -281,6 +284,7 @@ fn replacing_the_document_also_ressets_the_id_counter() {
         )
         .expect("triangle"),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   app.replace_document(document);
@@ -327,6 +331,7 @@ fn replacing_a_document_undoably_keeps_the_previous_one_and_reseeds_the_ids() {
       kind: cam_model::EntityKind::Contour {
         contour: cam_geom::primitive::circle(cam_geom::Point2::ORIGIN, 5.0).expect("circle"),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   app.replace_document_undoable(imported);

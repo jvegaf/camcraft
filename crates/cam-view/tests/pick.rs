@@ -43,6 +43,7 @@ fn document(entities: Vec<(&str, Contour)>) -> Document {
       .map(|(id, contour)| cam_model::Entity {
         id: id.to_owned(),
         kind: cam_model::EntityKind::Contour { contour },
+        source: cam_model::Provenance::default(),
       })
       .collect(),
   });

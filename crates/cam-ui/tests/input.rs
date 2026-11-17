@@ -43,6 +43,7 @@ fn document() -> Document {
       kind: cam_model::EntityKind::Contour {
         contour: rectangle(0.0, 0.0, 100.0, 60.0),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document

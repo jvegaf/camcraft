@@ -58,6 +58,7 @@ fn write_document(directory: &Path, contour: Contour, tools_ref: Option<&str>) -
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour { contour },
+      source: cam_model::Provenance::default(),
     }],
   });
   document.toolpaths.push(Toolpath {
@@ -554,6 +555,7 @@ fn write_vectors(directory: &Path, name: &str, contours: Vec<Contour>) -> PathBu
       .map(|(index, contour)| Entity {
         id: format!("E{}", index + 1),
         kind: EntityKind::Contour { contour },
+        source: cam_model::Provenance::default(),
       })
       .collect(),
   });

@@ -65,12 +65,14 @@ fn write_document(directory: &Path, parts: &[(&str, &[&str], usize)]) -> PathBuf
         kind: EntityKind::Contour {
           contour: rectangle_contour(40.0, 30.0),
         },
+        source: cam_model::Provenance::default(),
       },
       Entity {
         id: "E2".to_owned(),
         kind: EntityKind::Contour {
           contour: rectangle_contour(30.0, 20.0),
         },
+        source: cam_model::Provenance::default(),
       },
     ],
   });

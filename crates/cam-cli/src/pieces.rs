@@ -195,6 +195,7 @@ pub(crate) fn author_parts(target: &mut Document, args: &PartsArgs) -> Result<St
       kind: EntityKind::Contour {
         contour: rectangle(row.width, row.height)?,
       },
+      source: cam_model::Provenance::default(),
     });
     let nesting = document.nesting.get_or_insert_with(Nesting::default);
     let id = fresh_part_id(&nesting.parts);

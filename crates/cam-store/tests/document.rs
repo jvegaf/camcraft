@@ -4,7 +4,7 @@ use cam_geom::{Contour, Point2};
 use cam_model::{
   Board, BoardSideUp, CutoutParams, Document, Entity, EntityKind, FillMethod, IsolationKind,
   IsolationParams, Layer, LayerRole, MillingDirection, NonCopperClearParams, Operation,
-  PaintParams, PanelizeParams, Provenance, Side, Tab, TabKind, Toolpath, DOCUMENT_SCHEMA,
+  PaintParams, PanelizeParams, Side, Tab, TabKind, Toolpath, DOCUMENT_SCHEMA,
 };
 use cam_store::document::{load_document, save_document, DocumentFile, DOCUMENT_ENTRY};
 use cam_store::StoreError;
@@ -52,8 +52,9 @@ fn sample_document() -> Document {
         )
         .expect("rectangle"),
       },
+      source: cam_model::Provenance::default(),
     }],
-    source: Provenance::default(),
+    source: cam_model::Provenance::default(),
   });
   document
 }
@@ -277,6 +278,26 @@ fn full_board() -> Document {
   ];
   for (index, (role, side)) in layers.iter().enumerate() {
     let id = format!("L{}", index + 1);
+    let entity_id = format!("E{}", index + 1);
+    let kind = if matches!(role, LayerRole::Drill) {
+      EntityKind::Drill {
+        center: Point2::new(10.0, 7.5),
+        diameter: Length::from_mm(0.8),
+      }
+    } else {
+      EntityKind::Contour {
+        contour: Contour::from_points(
+          &[
+            Point2::new(0.0, 0.0),
+            Point2::new(20.0, 0.0),
+            Point2::new(20.0, 15.0),
+            Point2::new(0.0, 15.0),
+          ],
+          true,
+        )
+        .expect("rectangle"),
+      }
+    };
     document.layers.push(Layer {
       id: id.clone(),
       role: *role,
@@ -284,21 +305,11 @@ fn full_board() -> Document {
       color: "#000000".to_owned(),
       visible: true,
       entities: vec![Entity {
-        id: format!("E{}", index + 1),
-        kind: EntityKind::Contour {
-          contour: Contour::from_points(
-            &[
-              Point2::new(0.0, 0.0),
-              Point2::new(20.0, 0.0),
-              Point2::new(20.0, 15.0),
-              Point2::new(0.0, 15.0),
-            ],
-            true,
-          )
-          .expect("rectangle"),
-        },
+        id: entity_id,
+        kind,
+        source: cam_model::Provenance::default(),
       }],
-      source: Provenance::default(),
+      source: cam_model::Provenance::default(),
     });
   }
 

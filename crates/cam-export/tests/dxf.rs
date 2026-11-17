@@ -36,6 +36,7 @@ fn document(layers: &[(&str, Vec<Contour>)]) -> Document {
           kind: EntityKind::Contour {
             contour: contour.clone(),
           },
+          source: cam_model::Provenance::default(),
         })
         .collect(),
     });

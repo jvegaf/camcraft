@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use cam_geom::{primitive, Bounds, Contour, Point2, Vec2};
+use cam_geom::{Bounds, Point2, Vec2};
 use cam_model::{Board, Document, Entity, EntityKind, Layer, LayerRole, Provenance, Side};
 use cam_units::Length;
 
@@ -179,7 +179,7 @@ pub fn import_folder(
 #[derive(Debug, Clone)]
 struct ParsedLayer {
   role: BoardRole,
-  contours: Vec<Contour>,
+  kinds: Vec<EntityKind>,
   provenance: Provenance,
 }
 
@@ -546,14 +546,14 @@ fn parse_layer(
   let is_drill =
     matches!(role.role, LayerRole::Drill) || matches!(ext.as_str(), "drl" | "xln" | "exc");
 
-  let contours = if is_drill {
+  let kinds = if is_drill {
     parse_drill(&text, &source, warnings)?
   } else {
     parse_gerber(&text, tolerance, &source, report)?
   };
-  report.contours += contours.len();
+  report.contours += kinds.len();
 
-  if contours.is_empty() {
+  if kinds.is_empty() {
     return Ok(None);
   }
 
@@ -565,7 +565,7 @@ fn parse_layer(
 
   Ok(Some(ParsedLayer {
     role,
-    contours,
+    kinds,
     provenance,
   }))
 }
@@ -578,7 +578,7 @@ fn parse_gerber(
   tolerance: f64,
   source: &str,
   report: &mut ImportReport,
-) -> Result<Vec<Contour>, String> {
+) -> Result<Vec<EntityKind>, String> {
   let gerber = cam_gerber::parse(text).map_err(|e| e.to_string())?;
   let (region, skipped) = gerber
     .image_reporting(cam_geom::TolerancePolicy::uniform(tolerance))
@@ -590,16 +590,22 @@ fn parse_gerber(
       Some(format!("{source}: {}", skip.location)),
     );
   }
-  Ok(region.boundaries)
+  Ok(
+    region
+      .boundaries
+      .into_iter()
+      .map(|contour| EntityKind::Contour { contour })
+      .collect(),
+  )
 }
 
 fn parse_drill(
   text: &str,
   source: &str,
   warnings: &mut Vec<String>,
-) -> Result<Vec<Contour>, String> {
+) -> Result<Vec<EntityKind>, String> {
   let excellon = cam_excellon::parse(text).map_err(|e| e.to_string())?;
-  let mut contours = Vec::new();
+  let mut kinds = Vec::new();
   let tools = excellon.tools;
   for feature in &excellon.features {
     match *feature {
@@ -607,31 +613,41 @@ fn parse_drill(
         let Some(diameter) = tool_diameter(&tools, tool) else {
           return Err(undefined_tool(tool));
         };
-        let radius = (diameter / 2.0).max(0.001);
-        let contour = primitive::circle(at, radius).map_err(|e| e.to_string())?;
-        contours.push(contour);
+        let diameter = diameter.max(0.002);
+        kinds.push(EntityKind::Drill {
+          center: at,
+          diameter: Length::from_mm(diameter),
+        });
       }
       cam_excellon::Feature::Slot { tool, from, to } => {
         let Some(diameter) = tool_diameter(&tools, tool) else {
           return Err(undefined_tool(tool));
         };
-        let radius = (diameter / 2.0).max(0.001);
-        if let Some(contour) = slot_contour(from, to, radius) {
-          contours.push(contour);
-        } else {
-          // A slot that starts and ends in the same place is a drill hit: the tool's circle at that
-          // point is the exact geometry, not an approximation, so it is imported and reported.
+        let diameter = diameter.max(0.002);
+        let dx = to.x - from.x;
+        let dy = to.y - from.y;
+        if (dx * dx + dy * dy).sqrt() < 1e-9 {
+          // A slot that starts and ends in the same place is a drill hit: the tool's centre at
+          // that point is the exact geometry, not an approximation, so it is imported and reported.
           warnings.push(format!(
             "{source}: a zero-length slot is imported as a {diameter:.3} mm hole"
           ));
           let mid = Point2::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
-          let contour = primitive::circle(mid, radius).map_err(|e| e.to_string())?;
-          contours.push(contour);
+          kinds.push(EntityKind::Drill {
+            center: mid,
+            diameter: Length::from_mm(diameter),
+          });
+        } else {
+          kinds.push(EntityKind::Slot {
+            start: from,
+            end: to,
+            width: Length::from_mm(diameter),
+          });
         }
       }
     }
   }
-  Ok(contours)
+  Ok(kinds)
 }
 
 /// The error a feature that names a tool the file never defines reports.
@@ -650,36 +666,6 @@ fn tool_diameter(tools: &[cam_excellon::Tool], number: u32) -> Option<f64> {
     .map(|t| t.diameter.mm())
 }
 
-fn slot_contour(from: Point2, to: Point2, radius: f64) -> Option<Contour> {
-  let dx = to.x - from.x;
-  let dy = to.y - from.y;
-  let len = (dx * dx + dy * dy).sqrt();
-  if len < 1e-9 {
-    return None;
-  }
-  let ux = dx / len;
-  let uy = dy / len;
-  // perpendicular to (ux,uy): (-uy, ux)
-  let px = -uy * radius;
-  let py = ux * radius;
-  // CCW stadium: from+perp, to+perp (line), semicircle around to to to-perp, to-perp, from-perp (line), semicircle around from
-  let a = Point2::new(from.x + px, from.y + py);
-  let b = Point2::new(to.x + px, to.y + py);
-  let c = Point2::new(to.x - px, to.y - py);
-  let d = Point2::new(from.x - px, from.y - py);
-  // semicircle bulge = 1.0
-  Contour::new(
-    vec![
-      cam_geom::Vertex::corner(a),
-      cam_geom::Vertex::new(b, 1.0),
-      cam_geom::Vertex::corner(c),
-      cam_geom::Vertex::new(d, 1.0),
-    ],
-    true,
-  )
-  .ok()
-}
-
 fn assemble_document(
   layers: &[(GroupedFile, ParsedLayer)],
   _tolerance: f64,
@@ -688,8 +674,8 @@ fn assemble_document(
   let mut all_bounds = Bounds::empty();
   let mut outline_bounds = Bounds::empty();
   for (_, parsed) in layers {
-    for contour in &parsed.contours {
-      let b = contour.bounds();
+    for kind in &parsed.kinds {
+      let b = entity_kind_bounds(kind);
       all_bounds = all_bounds.union(b);
       if matches!(parsed.role.role, LayerRole::Outline) {
         outline_bounds = outline_bounds.union(b);
@@ -720,7 +706,7 @@ fn assemble_document(
   let mut document = Document::new(board);
   let mut entity_counter: usize = 1;
 
-  for (grouped, parsed) in layers {
+  for (_grouped, parsed) in layers {
     let key = (parsed.role.role, parsed.role.side);
     let li = if let Some((idx, _)) = document
       .layers
@@ -744,13 +730,13 @@ fn assemble_document(
       document.layers.len() - 1
     };
 
-    let _ = grouped;
-    for contour in &parsed.contours {
-      let contour = cam_geom::transform::translate(contour, offset)
+    for kind in &parsed.kinds {
+      let kind = translate_entity_kind(kind, offset)
         .map_err(|e| ImportError::parse_plain("folder", e.to_string()))?;
       document.layers[li].entities.push(Entity {
         id: format!("E{entity_counter}"),
-        kind: EntityKind::Contour { contour },
+        kind,
+        source: parsed.provenance.clone(),
       });
       entity_counter += 1;
     }
@@ -763,6 +749,48 @@ fn assemble_document(
     .map_err(|e| ImportError::parse_plain("folder", e.to_string()))?;
 
   Ok(document)
+}
+
+fn entity_kind_bounds(kind: &EntityKind) -> Bounds {
+  match kind {
+    EntityKind::Contour { contour } => contour.bounds(),
+    EntityKind::Drill { center, diameter } => {
+      let r = diameter.mm() / 2.0;
+      Bounds::empty()
+        .include(Point2::new(center.x - r, center.y - r))
+        .include(Point2::new(center.x + r, center.y + r))
+    }
+    EntityKind::Slot { start, end, width } => {
+      let r = width.mm() / 2.0;
+      let mut bounds = Bounds::empty();
+      for point in [start, end] {
+        bounds = bounds
+          .include(Point2::new(point.x - r, point.y - r))
+          .include(Point2::new(point.x + r, point.y + r));
+      }
+      bounds
+    }
+  }
+}
+
+fn translate_entity_kind(
+  kind: &EntityKind,
+  offset: Vec2,
+) -> Result<EntityKind, cam_geom::GeomError> {
+  match kind {
+    EntityKind::Contour { contour } => Ok(EntityKind::Contour {
+      contour: cam_geom::transform::translate(contour, offset)?,
+    }),
+    EntityKind::Drill { center, diameter } => Ok(EntityKind::Drill {
+      center: Point2::new(center.x + offset.x, center.y + offset.y),
+      diameter: *diameter,
+    }),
+    EntityKind::Slot { start, end, width } => Ok(EntityKind::Slot {
+      start: Point2::new(start.x + offset.x, start.y + offset.y),
+      end: Point2::new(end.x + offset.x, end.y + offset.y),
+      width: *width,
+    }),
+  }
 }
 
 fn default_layer_id(role: LayerRole, side: Side) -> String {
