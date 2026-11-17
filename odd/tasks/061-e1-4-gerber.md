@@ -79,3 +79,36 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   un pour real del corpus. E1.4 no se cierra sin tocar `cam-geom`, que es la espina serial del plan
   (`odd/roadmap/waves.md`: «Nadie más toca `cam-geom/src/` en esa ventana»). Esta tarea lo reclama
   entera y no se paraleliza con ningún otro agente.
+- **L5 (T1 hecho, commit `420b2cb`).** `parse` deja de exigir apertura para un `D01`/`D02` dentro de
+  `G36/G37` (`in_region` en el parser). Verde `cam-gerber` 52 tests, dos nuevos: la regla y la
+  regresión de que un `D01` fuera de región sigue exigiéndola. Efecto sobre el corpus: los dos
+  artefactos que morían en `parse` ahora mueren en `image` con la misma razón del kernel que las
+  otras trece capas, así que **ningún número de paridad mejora todavía**: los 15 rechazos son, ahora
+  sí todos, el mismo defecto del kernel.
+- **L6 (medición de T2, y por qué no se cerró).** Tres experimentos, en este orden:
+  1. **Unión balanceada contra secuencial** (200 cuadrados disjuntos, kernel real): secuencial
+     **8.69 s**, balanceada **0.28 s** (31×). A 3900 constructos, balanceada sola sigue siendo
+     ~100 s: no alcanza para el límite de 30 s de S5.
+  2. **Asignaciones y caja envolvente en el arreglo** (aplanar `Contour::segments` una vez por
+     operación + descartar pares cuyas cajas no se tocan): `kicad-2l-simple/top` pasó de 35.9 s a
+     **34.9 s**. Nada. Revertido: un cambio sin ganancia medida es ruido para el review.
+  3. **Costo de la pertenencia**: `Region::contains` escala lineal con las fronteras y cada paso es
+     caro — 100 fronteras → 17.7 µs por sonda, 400 → 65.9 µs, 1600 → **245 µs**. Un `combine` pregunta
+     dos veces por lado por cada pieza, así que un arreglo de 1600 fronteras cuesta ~2 s **por
+     constructo**, y la imagen acumulada crece con cada constructo: el total es cuadrático en el
+     tamaño de la capa. Ese es el muro, y está en `Region`, no en `cam-gerber`.
+- **L7 (la decisión que queda abierta, con las tres salidas medidas).** Ninguna es un ajuste:
+  1. **Indexar `Region`** (grilla o árbol dentro de la estructura): mata el costo por sonda, pero
+     `Region` se construye con literal `Region { boundaries }` en todo el workspace, así que el
+     índice obliga a tocar cada sitio de construcción — la mayor ganancia y la mayor superficie.
+  2. **Arreglo k-ario en el kernel**: generalizar `combine` a una sola pasada sobre todos los
+     constructos de una misma polaridad (`combine_all`), de modo que una capa sea **un** arreglo en
+     vez de 3900. Sin índice el arreglo único sigue siendo cuadrático pero **una sola vez**: con
+     ~4000 segmentos son ~0.5 s de intersecciones y ~2 s de pertenencia, dentro del límite de S5.
+     Es la salida más chica que alcanza, y no cambia la representación de `Region`.
+  3. **Reordenar el roadmap**: dejar E1.4 en 🟡 y hacer F2 (taladrado y cutout) primero, que ya
+     tiene G-code real. El corpus queda como está: 17 medidos, 22 sin terminar.
+- **L8 (por qué no se sigue sin decisión).** Las tres salidas cambian `cam-geom`, la espina serial que
+  `odd/roadmap/waves.md` prohíbe compartir y que la fila E0.1 da por cerrada. Elegir cuál cambia el
+  orden de las olas y lo que el roadmap puede seguir afirmando, y eso lo decide el humano, no la
+  medición. T3 (el cierre del recorrido de caras) queda pendiente y es independiente de cuál se elija.
