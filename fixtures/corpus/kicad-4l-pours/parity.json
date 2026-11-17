@@ -51,7 +51,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "top": {
       "contour_area_mm2": 0.0,

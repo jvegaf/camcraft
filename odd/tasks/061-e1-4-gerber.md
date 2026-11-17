@@ -143,14 +143,19 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   caída secuencial si el lote falla (`cam-gerber`). `kicad-4l-pours/mask-top` 113 s→2.55 s (parsed). El
   lote de `kicad-2l-simple/top` falla («a surviving piece begins and ends at the same point») y la caída
   vuelve a ~73 s con `revisits a piece` (cmd 1441).
-- **L12 (T3, hueco en el grafo por sondeo, silk).** Repro `/tmp/silk24.gbr` (`substitute-easyeda/silk-top`,
-  23 líneas ok, 24 falla): el grafo superviviente quedaba con dos vértices de grado 1 (~0.024 mm de
-  separación) porque una pieza-puente se clasificaba mal por desacuerdo transitorio de sondas. Fix en
-  `decide_indexed`/`material_side`: reunir las distancias definitivas, descartar outliers únicos y elegir
-  por mayoría con desempate que preserva frontera y cercanía. Regresión `boolean_silk_union_probe` (seed
-  proptest de thin-sliver añadida). Bajo 30 s: `refused`→`parsed` `substitute-easyeda/silk-top`
-  (559/22603/1322.34, 22.7 s), `kicad-large-pours/silk-top` (376/13742/5066.31), `substitute-altium/top`
-  (643/48739/2477.27); `refused`→`timeout` `substitute-eagle/silk-bottom`, `substitute-easyeda/bottom`.
-  `cargo test -p cam-geom` completo, fmt, clippy y `--test parity` (518 s) en verde. Corpus: **25 parsed,
-  28 timeout, 1 refused** (`kicad-4l-pours/silk-top`, sigue `revisits a piece`). Persisten abiertos T3 en
-  `kicad-2l-simple/top` (cmd 1441) y T4/timeouts.
+- **L12 (T3, hueco por sondeo, silk, commit `346723a`).** Repro `/tmp/silk24.gbr`: pieza-puente mal
+  clasificada por desacuerdo transitorio de sondas dejaba dos vértices de grado 1. Fix: reunir
+  distancias definitivas, descartar outliers únicos y elegir por mayoría con desempate que preserva
+  frontera/cercanía (`boolean_silk_union_probe`). Bajo 30 s: `refused`→`parsed` `substitute-easyeda/silk-top`,
+  `kicad-large-pours/silk-top`, `substitute-altium/top`; `refused`→`timeout` `substitute-eagle/silk-bottom`,
+  `substitute-easyeda/bottom`.
+- **L13 (T3, near-miss punta a punta, silk-top de kicad-4l-pours).** Repro aislado: unir la imagen de
+  las 370 primeras líneas de `kicad-4l-pours/silk-top.gbr` con el trazo D10 de la línea 371 (cápsula
+  horizontal 7 mm, y=-126.7). El extremo de una pieza existente y el inicio de la cápsula quedaban a
+  ~1.42 µm (> ε=1 µm), fuera de soldadura por tolerancia y sin snap de near-miss (proyección no
+  interior), rompiendo el grafo (`revisits a piece`). Fix: en la detección de near-miss (reintento)
+  registrar snaps punta-a-punta entre extremos de segmento dentro de 2·ε. El repro aislado y el prefijo
+  fallido ahora combinan; la capa completa ya no es `refused` pero es muy lenta (>180 s / 44 s a 20k
+  líneas) y queda pineada `timeout` bajo 30 s. `cargo test -p cam-geom` completo, fmt, clippy y
+  `--test parity` (565 s) en verde. Corpus: **25 parsed, 29 timeout, 0 refused**. Persisten T3 en
+  `kicad-2l-simple/top` (cmd 1441) y T4/rendimiento (timeouts).

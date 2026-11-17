@@ -350,10 +350,22 @@ fn push_fractions(
         Some(f) => endpoint.distance_to(point_at(segment, f)),
         None => continue,
       };
+      let own_len = endpoint.distance_to(other_end);
+      // Endpoint-to-endpoint near-miss: the endpoint is close to an endpoint of `segment`
+      // (beyond epsilon but within a small multiple), forming a tip-to-tip junction that
+      // vertex welding missed. Record a direct snap between the two endpoints.
+      let eps = tolerance.epsilon;
+      if projection_distance > eps && projection_distance <= eps * 2.0 {
+        for seg_end in [segment.start_point(), segment.end_point()] {
+          let d = endpoint.distance_to(seg_end);
+          if d > eps && d <= eps * 2.0 {
+            near_miss_snaps.push((endpoint, seg_end));
+          }
+        }
+      }
       // A near-miss junction arises from a micro-edge perturbation: the endpoint's own adjacent
       // segment must be short relative to the projection gap. Normal vertices of separate closed
       // contours have adjacent edges much longer than a small gap and must not be snapped.
-      let own_len = endpoint.distance_to(other_end);
       if own_len > projection_distance * 10.0 {
         continue;
       }
