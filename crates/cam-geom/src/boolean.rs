@@ -1796,7 +1796,12 @@ fn decide_indexed(
     };
     match first_definitive {
       None => first_definitive = Some(decision),
-      Some(prev) if prev != decision => break,
+      Some(prev) if prev != decision => {
+        // A nearer probe can be numerically unstable at very small distances
+        // (e.g. winding of the skipped boundary). Prefer the farther, stable answer.
+        first_definitive = Some(decision);
+        break;
+      }
       _ => break,
     }
   }

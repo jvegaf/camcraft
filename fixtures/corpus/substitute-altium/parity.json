@@ -4,7 +4,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "drill": {
       "features": 526,
@@ -36,9 +36,9 @@
       "status": "timeout"
     },
     "outline": {
-      "contour_area_mm2": 129.7755932741884,
-      "points": 54,
-      "polygons": 1,
+      "contour_area_mm2": 28800.20157018279,
+      "points": 40,
+      "polygons": 2,
       "status": "parsed"
     },
     "silk-bottom": {

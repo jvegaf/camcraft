@@ -33,19 +33,19 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "outline": {
-      "contour_area_mm2": 28.52269557127773,
-      "points": 126,
-      "polygons": 7,
+      "contour_area_mm2": 35.35354955291203,
+      "points": 144,
+      "polygons": 8,
       "status": "parsed"
     },
     "silk-bottom": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     },
     "silk-top": {
       "contour_area_mm2": 0.0,
@@ -57,7 +57,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "timeout"
     }
   },
   "flatten_tolerance_mm": 0.001,

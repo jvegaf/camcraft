@@ -47,21 +47,23 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
 - **T2** — `cam-geom`: medir dónde se va el tiempo al evaluar una capa de cobre del corpus y volver
   indexado el camino caliente del arreglo, de modo que `kicad-2l-simple/top` (3900 constructos,
   FlatCAM 4.97 s, área 482.21 mm²) termine dentro del límite de S5. Specs: S2, S3, S5.
-  **En curso**: índice local `RegionIndex` (grilla uniforme sobre segmentos, `Bounds::overlaps` añadido en
-  `point.rs` sólo como ayuda) dentro de `boolean.rs` — corte por candidatos y pertenencia indexada en
-  `combine_with_indexed`/`decide_indexed`, `Region` sin campos ni API nueva. Resultado medido:
-  `kicad-2l-simple/top` pasa de no terminar en 300 s a **68.8 s** (release, measurer/probe) y falla con
-  `the arrangement revisits a piece, so its pieces cannot be chained closed` (comando 1441), no por
-  tiempo. `cam-geom` verde en `boolean_index` (11.352 comparaciones de pertenencia, 5 regiones), fmt y
-  clippy; la suite completa se está corriendo para cerrar la verificación antes de commitear. T2 solo no
-  alcanza el límite de 30 s ni el criterio de éxito: queda T3 (correctitud) y, para el tiempo, la
-  estrategia de evaluación por capa (opción 2).
-- **T3** — `cam-geom`: el cierre del recorrido de caras. Quince capas del corpus mueren con
-  `the arrangement revisits a piece, so its pieces cannot be chained closed` (el conteo sube a 15 tras
-  T1). El error persiste aun con el reintento por casi-contacto (`detect_near_misses`) y aparece ya en
-  capas pequeñas y rápidas: `kicad-2l-simple/mask-top` falla en el comando 63 en ~8 ms, `kicad-4l-pours/mask-top`
-  en el 10 en ~1 ms, `kicad-large-pours/mask-bottom` en el 99 en ~0.4 s. Es el bloqueo de correctitud
-  inmediato: sin esto las capas no miden aunque terminen a tiempo. Specs: S2, S3.
+  Hecho (`b6f6643`): índice local `RegionIndex` (grilla uniforme) dentro de `boolean.rs` — corte por
+  candidatos y pertenencia indexada en `combine_with_indexed`/`decide_indexed`, `Region` sin campos ni
+  API nueva. `kicad-2l-simple/top` pasa de >300 s a **68.8 s** y falla con `command 1441: ... the
+  arrangement revisits a piece, so its pieces cannot be chained closed` (T3), no por tiempo.
+  `boolean_index` (11.352 comparaciones), fmt, clippy y `cargo test -p cam-geom` completos en verde.
+  No alcanza 30 s ni el criterio: quedan T3 (correctitud) y T4 (evaluación por capa).
+- **T3** — `cam-geom`: el cierre del recorrido de caras. Quince capas del corpus morían con
+  `the arrangement revisits a piece, so its pieces cannot be chained closed`. Causa raíz (repro mínimo
+  `/tmp/masktop_fail.gbr`, trazo + relleno `G36` del mismo contorno en `kicad-2l-simple/mask-top`): en
+  `decide_indexed` la sonda más cercana podía dar un resultado definitivo pero numéricamente inestable y
+  la más lejana el correcto; al discrepar se conservaba el primero y se descartaba una pieza de borde.
+  Se prefiere el resultado definitivo más lejano/estable. Regresión `boolean_stroke_fill_overlap`.
+  Varias capas ahora miden o avanzan (`mask-bottom` de `kicad-large-pours` parsea en 7.2 s, 246 polígonos;
+  `mask-top` de `kicad-2l-simple` parsea; `mask-top` de `kicad-4l-pours` produce 567 polígonos pero en
+  ~113 s; `silk-bottom` de `kicad-4l-pours` no terminó en 900 s), y los goldens parseados/estados se
+  re-pinearon bajo el límite de 30 s del arnés. Correctitud y tiempo no cerrados en todo el corpus:
+  sigue T4. Specs: S2, S3.
 - **T4** — `cam-gerber`: estrategia de evaluación (un arreglo por capa / por tanda de polaridad en lugar de
   3900 `combine` secuenciales; la opción 2 elegida) sólo si T2+T3 dejan capas por encima del límite; la
   decisión la toma la medición, no la intuición. T2 bajó `kicad-2l-simple/top` a 68.8 s pero rechazado:
@@ -125,14 +127,25 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   `odd/roadmap/waves.md` prohíbe compartir y que la fila E0.1 da por cerrada. Elegir cuál cambia el
   orden de las olas y lo que el roadmap puede seguir afirmando, y eso lo decide el humano, no la
   medición. T3 (el cierre del recorrido de caras) queda pendiente y es independiente de cuál se elija.
-- **L9 (decisión: opción 2, y T2 en árbol).** El humano eligió la opción 2 (arreglo k-ario / una pasada
-  por capa). T2 entregó un índice local `RegionIndex` en `crates/cam-geom/src/boolean.rs` (grilla
-  uniforme, `combine_with_indexed`/`decide_indexed`) sin tocar la representación ni la API de `Region`.
-  `crates/cam-geom/tests/boolean_index.rs` prueba la equivalencia de pertenencia (11.352 comparaciones,
-  5 regiones, bordes y huecos rectos y con arcos) y el caso de cajas lejanas. Medición:
-  `kicad-2l-simple/top.gbr` pasa de >300 s (timeout) a **68.8 s** y falla con
-  `command 1441: polarity could not be applied: edit refused: the arrangement revisits a piece, so its
-  pieces cannot be chained closed` — termina, pero no mide y no entra en 30 s. `cargo fmt --all --check`,
-  `cargo clippy -p cam-geom --all-targets -- -D warnings` y `cargo test -p cam-geom` completos en verde
-  (0 fallos). T3 queda como bloqueo de correctitud (15 capas; repros rápidos `kicad-2l-simple/mask-top`
-  cmd 63 ~8 ms, `kicad-4l-pours/mask-top` cmd 10 ~1 ms) y T4 como la palanca de tiempo que falta.
+- **L9 (decisión: opción 2, y T2 en árbol, commit `b6f6643`).** El humano eligió la opción 2. T2 entregó
+  un índice local `RegionIndex` en `crates/cam-geom/src/boolean.rs` sin tocar la representación ni la
+  API de `Region`. `kicad-2l-simple/top.gbr` pasa de >300 s a **68.8 s** y falla con `revisits a piece`
+  (cmd 1441). fmt, clippy y `cargo test -p cam-geom` completos en verde.
+- **L10 (T3, fix de la sonda inestable).** Repro mínimo: `/tmp/masktop_fail.gbr` (cuatro regiones
+  `G36/G37` de `kicad-2l-simple/mask-top` más una quinta que traza un contorno cerrado y luego lo
+  rellena con `G36`) fallaba en el comando 63. Causa: en `decide_indexed`, ante dos sondas con
+  resultado definitivo pero en desacuerdo, se conservaba la primera (más cercana, inestable por el
+  winding de la frontera saltada) y se descartaba la segunda (más lejana, estable); eso eliminaba una
+  pieza del borde (arco de unión exterior, vértices de grado 1) y el recorrido la revisitaba. Fix:
+  preferir el resultado definitivo más lejano. Regresión `boolean_stroke_fill_overlap` (trazo cerrado +
+  relleno `G36` del mismo contorno ⇒ 5 fronteras, 0 salteados). Bajo el límite de 30 s del arnés los
+  estados cambian así: `refused`→`parsed` `kicad-2l-simple/mask-top` (126/3516/140.74),
+  `kicad-large-pours/mask-bottom` (246/15568/839.72), `kicad-large-pours/mask-top` (245/15560/836.04),
+  `substitute-eagle/mask-top` (62/2094/355.73); `refused`→`timeout` `kicad-4l-pours/mask-top`,
+  `kicad-4l-pours/silk-bottom`, `kicad-4l-pours/top`, `substitute-altium/bottom`. Varios artefactos ya
+  `parsed` cambian de medida y se re-pinean (`kicad-4l-pours/outline` 7→8, 28.52→35.35 mm²;
+  `kicad-large-pours/outline` 1→2; `substitute-altium/outline` 1→2; `substitute-eagle/outline` 21→20,
+  etc.), coherente con clasificaciones de sondeo más estables. Fuera del límite: `kicad-4l-pours/mask-top`
+  produce 567 polígonos en ~113 s y `silk-bottom` no terminó en 900 s. `cargo test -p cam-geom`, fmt,
+  clippy y `--test parity` en verde. T3 reduce el bloqueo pero no lo cierra en todo el corpus; T4
+  (arreglo por capa, opción 2) sigue siendo necesario para el tiempo.
