@@ -22,12 +22,13 @@
 //! a piece whose arc the contour model's bulge cannot hold — and it is reported, never hidden.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::f64::consts::TAU;
 
 use crate::arc::Arc;
 use crate::contour::Contour;
 use crate::intersect::{intersect, Intersections};
-use crate::point::{Point2, Vec2};
+use crate::point::{Bounds, Point2, Vec2};
 use crate::region::{Normalized, Region};
 use crate::segment::{LineSeg, Segment};
 use crate::winding::{classify, winding_number, Membership};
@@ -1200,6 +1201,347 @@ struct Piece {
   segment: Segment,
 }
 
+/// One segment of an operand region, kept with its boundary identity for indexed queries.
+#[derive(Clone, Copy, Debug)]
+struct IndexedSeg {
+  /// Boundary index in the source region.
+  boundary: usize,
+  /// Segment index within that boundary's segment list, for self-skip identity.
+  index: usize,
+  /// The segment geometry.
+  segment: Segment,
+  /// Axis-aligned bounds of the segment.
+  bounds: Bounds,
+}
+
+/// All segments of one boundary, precomputed once so membership probes need no contour rebuilds.
+#[derive(Clone, Debug)]
+struct BoundaryIndex {
+  segments: Vec<Segment>,
+  bounds: Bounds,
+}
+
+/// Uniform grid over operand segments, local to a single boolean operation.
+#[derive(Clone, Debug)]
+struct SegmentGrid {
+  cell_size: f64,
+  origin: Point2,
+  cells: HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl SegmentGrid {
+  /// Build a grid over `segments`, inserting each by its bounds expanded by `margin`.
+  fn build(segments: &[IndexedSeg], overall: Bounds, margin: f64) -> Self {
+    let count = segments.len().max(1) as f64;
+    let width = (overall.max.x - overall.min.x).abs().max(1.0);
+    let height = (overall.max.y - overall.min.y).abs().max(1.0);
+    let area_cell = (width * height / count).sqrt();
+    let cell_size = area_cell.clamp(0.5, 50.0).max(margin.max(1.0e-6));
+    let mut grid = Self {
+      cell_size,
+      origin: overall.min,
+      cells: HashMap::new(),
+    };
+    for (id, seg) in segments.iter().enumerate() {
+      let b = seg.bounds.expand(margin);
+      let (min_cx, min_cy) = grid.cell(b.min.x, b.min.y);
+      let (max_cx, max_cy) = grid.cell(b.max.x, b.max.y);
+      for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+          grid.cells.entry((cx, cy)).or_default().push(id);
+        }
+      }
+    }
+    grid
+  }
+
+  fn cell(&self, x: f64, y: f64) -> (i32, i32) {
+    let cx = ((x - self.origin.x) / self.cell_size).floor() as i32;
+    let cy = ((y - self.origin.y) / self.cell_size).floor() as i32;
+    (cx, cy)
+  }
+
+  /// Visit segment ids whose inserted bounds overlap `query` (expanded bounds query).
+  fn query_bounds(&self, query: Bounds, mut visit: impl FnMut(usize)) {
+    if self.cells.is_empty() {
+      return;
+    }
+    let (min_cx, min_cy) = self.cell(query.min.x, query.min.y);
+    let (max_cx, max_cy) = self.cell(query.max.x, query.max.y);
+    for cx in min_cx..=max_cx {
+      for cy in min_cy..=max_cy {
+        if let Some(ids) = self.cells.get(&(cx, cy)) {
+          for &id in ids {
+            visit(id);
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Acceleration structure over one operand region, built once per boolean combination.
+///
+/// Used internally by [`combine`] for the cut phase and membership probes, and exposed so tests
+/// can prove the indexed membership answer equals [`Region::contains`](crate::region::Region::contains).
+pub struct RegionIndex {
+  boundaries: Vec<BoundaryIndex>,
+  segments: Vec<IndexedSeg>,
+  grid: SegmentGrid,
+}
+
+impl RegionIndex {
+  /// Build the index over every segment of every boundary in `region`.
+  pub fn build(region: &Region, tolerance: crate::TolerancePolicy) -> Self {
+    let mut boundaries = Vec::with_capacity(region.boundaries.len());
+    let mut segments = Vec::new();
+    let mut overall = Bounds::empty();
+    for (b_idx, contour) in region.boundaries.iter().enumerate() {
+      let segs = contour.segments();
+      let mut b_bounds = Bounds::empty();
+      for (s_idx, &segment) in segs.iter().enumerate() {
+        let bounds = segment.bounds();
+        b_bounds = b_bounds.union(bounds);
+        overall = overall.union(bounds);
+        segments.push(IndexedSeg {
+          boundary: b_idx,
+          index: s_idx,
+          segment,
+          bounds,
+        });
+      }
+      boundaries.push(BoundaryIndex {
+        segments: segs,
+        bounds: b_bounds,
+      });
+    }
+    if overall.is_empty() {
+      overall = Bounds {
+        min: Point2::new(0.0, 0.0),
+        max: Point2::new(0.0, 0.0),
+      };
+    }
+    let margin = tolerance.epsilon.max(1.0e-9);
+    let grid = SegmentGrid::build(&segments, overall, margin);
+    Self {
+      boundaries,
+      segments,
+      grid,
+    }
+  }
+
+  /// Whether `point` is material, equivalent to
+  /// [`Region::contains`](crate::region::Region::contains): a point within `tolerance` of any
+  /// boundary is not material, otherwise parity of winding over the boundaries decides.
+  pub fn contains(&self, point: Point2, tolerance: crate::TolerancePolicy) -> bool {
+    if self.boundaries.is_empty() {
+      return false;
+    }
+    let mut enclosed = 0_usize;
+    for (index, boundary) in self.boundaries.iter().enumerate() {
+      match self.classify_boundary(index, boundary, point, tolerance.epsilon) {
+        Membership::OnBoundary => return false,
+        Membership::Inside => enclosed += 1,
+        Membership::Outside => {}
+      }
+    }
+    enclosed % 2 == 1
+  }
+
+  /// Membership test equivalent to [`enclosed_by`], but using precomputed segments and spatial
+  /// filtering for the boundary-distance check. Winding/parity semantics are preserved exactly.
+  fn enclosed_by(
+    &self,
+    skip: Option<usize>,
+    point: Point2,
+    tolerance: crate::TolerancePolicy,
+  ) -> Option<bool> {
+    let eps = tolerance.epsilon;
+    let mut enclosed = 0_usize;
+    for (index, boundary) in self.boundaries.iter().enumerate() {
+      if Some(index) == skip {
+        // Same rule as the non-indexed path: parity of the boundary's winding number, without the
+        // on-boundary short-circuit used for non-skipped boundaries.
+        if !point_inside_bounds(boundary.bounds, point, 0.0) {
+          continue;
+        }
+        if winding_number_of_segments(&boundary.segments, point).rem_euclid(2) == 1 {
+          enclosed += 1;
+        }
+        continue;
+      }
+      match self.classify_boundary(index, boundary, point, eps) {
+        Membership::OnBoundary => return None,
+        Membership::Inside => enclosed += 1,
+        Membership::Outside => {}
+      }
+    }
+    Some(enclosed % 2 == 1)
+  }
+
+  fn classify_boundary(
+    &self,
+    boundary_index: usize,
+    boundary: &BoundaryIndex,
+    point: Point2,
+    eps: f64,
+  ) -> Membership {
+    // A point within tolerance of any segment of this boundary is on it.
+    if self.near_boundary(boundary_index, point, eps) {
+      return Membership::OnBoundary;
+    }
+    // Outside the contour's bounds (and not on it) means outside the contour.
+    if !point_inside_bounds(boundary.bounds, point, 0.0) {
+      return Membership::Outside;
+    }
+    if winding_number_of_segments(&boundary.segments, point) == 0 {
+      Membership::Outside
+    } else {
+      Membership::Inside
+    }
+  }
+
+  /// True if `point` is within `eps` of any segment of `boundary_index`.
+  fn near_boundary(&self, boundary_index: usize, point: Point2, eps: f64) -> bool {
+    let query = Bounds {
+      min: Point2::new(point.x, point.y),
+      max: Point2::new(point.x, point.y),
+    }
+    .expand(eps);
+    let mut found = false;
+    self.grid.query_bounds(query, |id| {
+      if found {
+        return;
+      }
+      let seg = self.segments[id];
+      if seg.boundary != boundary_index {
+        return;
+      }
+      if seg
+        .bounds
+        .expand(eps)
+        .contains(point, crate::TolerancePolicy::uniform(0.0))
+        && seg.segment.distance_to_point(point) <= eps
+      {
+        found = true;
+      }
+    });
+    found
+  }
+}
+
+/// Point inside (or on edge of) bounds, with an optional outward expansion.
+fn point_inside_bounds(bounds: Bounds, point: Point2, expand: f64) -> bool {
+  if bounds.is_empty() {
+    return false;
+  }
+  point.x >= bounds.min.x - expand
+    && point.x <= bounds.max.x + expand
+    && point.y >= bounds.min.y - expand
+    && point.y <= bounds.max.y + expand
+}
+
+/// Winding number of a closed contour given as precomputed segments, same angle-sum algorithm as
+/// [`crate::winding::winding_number`].
+fn winding_number_of_segments(segments: &[Segment], point: Point2) -> i32 {
+  if segments.is_empty() {
+    return 0;
+  }
+  let total: f64 = segments
+    .iter()
+    .map(|segment| winding_contribution(*segment, point))
+    .sum();
+  (total / TAU).round() as i32
+}
+
+/// The angle one segment subtends at `point`, mirroring `crate::winding::contribution`.
+fn winding_contribution(segment: Segment, point: Point2) -> f64 {
+  match segment {
+    Segment::Line(line) => {
+      let from = line.start - point;
+      let to = line.end - point;
+      if from.length_squared() == 0.0 || to.length_squared() == 0.0 {
+        0.0
+      } else {
+        from.cross(to).atan2(from.dot(to))
+      }
+    }
+    Segment::Arc(arc) => arc_winding_contribution(arc, point),
+  }
+}
+
+/// Arc winding contribution, mirroring `crate::winding::arc_contribution` and its helpers.
+fn arc_winding_contribution(arc: Arc, point: Point2) -> f64 {
+  use std::f64::consts::PI;
+  let centre = arc.center();
+  let radius = arc.radius();
+  let height = point.y - centre.y;
+
+  let mut cuts = vec![0.0_f64, 1.0];
+  let remaining = radius * radius - height * height;
+  if remaining > 0.0 {
+    let half_chord = remaining.sqrt();
+    for x in [centre.x - half_chord, centre.x + half_chord] {
+      let angle = height.atan2(x - centre.x);
+      if let Some(fraction) = fraction_at_angle_arc(arc, angle) {
+        if fraction > 1.0e-12 && fraction < 1.0 - 1.0e-12 {
+          cuts.push(fraction);
+        }
+      }
+    }
+  }
+  cuts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+  cuts.dedup_by(|a, b| (*a - *b).abs() <= 1.0e-12);
+
+  let mut total = 0.0;
+  for window in cuts.windows(2) {
+    let (from, to) = (window[0], window[1]);
+    if to - from <= 1.0e-12 {
+      continue;
+    }
+    let start = arc.point_at_fraction(from) - point;
+    let end = arc.point_at_fraction(to) - point;
+    let middle = arc.point_at_fraction((from + to) * 0.5) - point;
+    let below = middle.y < 0.0;
+    total += branch_angle_vec(end, below, PI) - branch_angle_vec(start, below, PI);
+  }
+  total
+}
+
+fn fraction_at_angle_arc(arc: Arc, angle: f64) -> Option<f64> {
+  let sweep = arc.sweep();
+  let magnitude = sweep.abs();
+  let start = arc.start_angle();
+  let travelled = if sweep >= 0.0 {
+    (angle - start).rem_euclid(TAU)
+  } else {
+    (start - angle).rem_euclid(TAU)
+  };
+  if travelled > magnitude {
+    return None;
+  }
+  Some(travelled / magnitude)
+}
+
+fn branch_angle_vec(vector: Vec2, below: bool, pi: f64) -> f64 {
+  if vector.length_squared() == 0.0 {
+    return 0.0;
+  }
+  let on_line = vector.y.abs() <= 1.0e-9 * vector.length();
+  if on_line {
+    return match (below, vector.x > 0.0) {
+      (true, true) => TAU,
+      (_, true) => 0.0,
+      (_, false) => pi,
+    };
+  }
+  if below && vector.y < 0.0 {
+    let angle = vector.angle();
+    return if angle < 0.0 { angle + TAU } else { angle };
+  }
+  vector.angle()
+}
+
 /// Where a piece goes in the result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Decision {
@@ -1211,9 +1553,11 @@ enum Decision {
   Drop,
 }
 
-fn combine_with(
-  a: &Region,
-  b: &Region,
+fn combine_with_indexed(
+  _a: &Region,
+  _b: &Region,
+  ia: &RegionIndex,
+  ib: &RegionIndex,
   op: BooleanOp,
   tolerance: crate::TolerancePolicy,
   detect_near_misses: bool,
@@ -1225,53 +1569,118 @@ fn combine_with(
   // Near-miss junctions are detected only on retry after an unchainable arrangement, so
   // legitimate gaps in well-formed arrangements are never snapped.
   let mut near_miss_snaps: Vec<(Point2, Point2)> = Vec::new();
-  for (from_a, region, other) in [(true, a, b), (false, b, a)] {
-    for (path, boundary) in region.boundaries.iter().enumerate() {
-      for (index, segment) in boundary.segments().into_iter().enumerate() {
-        let mut fractions = vec![0.0_f64, 1.0];
-        for (sibling_path, sibling) in region.boundaries.iter().enumerate() {
-          let others = sibling
-            .segments()
-            .into_iter()
-            .enumerate()
-            .filter(|(other_index, _)| !(sibling_path == path && *other_index == index))
-            .map(|(_, segment)| segment);
+
+  let mut stamp_a = vec![0u32; ia.segments.len()];
+  let mut stamp_b = vec![0u32; ib.segments.len()];
+  let mut stamp: u32 = 1;
+
+  let sides = [(true, ia, ib), (false, ib, ia)];
+  for (from_a, own, foreign) in sides {
+    let (own_stamp, foreign_stamp) = if from_a {
+      (&mut stamp_a, &mut stamp_b)
+    } else {
+      (&mut stamp_b, &mut stamp_a)
+    };
+    for seg in &own.segments {
+      let segment = seg.segment;
+      let mut fractions = vec![0.0_f64, 1.0];
+
+      // Cut against siblings in the same region, excluding the segment itself.
+      if detect_near_misses {
+        for other in &own.segments {
+          if other.boundary == seg.boundary && other.index == seg.index {
+            continue;
+          }
           push_fractions(
             &mut fractions,
             segment,
-            others,
+            std::iter::once(other.segment),
             tolerance,
             &mut re_cut,
             &mut near_miss_snaps,
             detect_near_misses,
           );
         }
-        for foreign in other.boundaries.iter() {
+      } else {
+        stamp = stamp.wrapping_add(1);
+        if stamp == 0 {
+          own_stamp.fill(0);
+          stamp = 1;
+        }
+        let query = segment.bounds().expand(tolerance.epsilon);
+        own.grid.query_bounds(query, |id| {
+          if own_stamp[id] == stamp {
+            return;
+          }
+          own_stamp[id] = stamp;
+          let other = own.segments[id];
+          if other.boundary == seg.boundary && other.index == seg.index {
+            return;
+          }
           push_fractions(
             &mut fractions,
             segment,
-            foreign.segments(),
+            std::iter::once(other.segment),
+            tolerance,
+            &mut re_cut,
+            &mut near_miss_snaps,
+            detect_near_misses,
+          );
+        });
+      }
+
+      // Cut against every segment of the other region.
+      if detect_near_misses {
+        for other in &foreign.segments {
+          push_fractions(
+            &mut fractions,
+            segment,
+            std::iter::once(other.segment),
             tolerance,
             &mut re_cut,
             &mut near_miss_snaps,
             detect_near_misses,
           );
         }
-        let fractions = dedup(&mut fractions, segment, tolerance);
-        for piece in split_at(segment, &fractions)? {
-          pieces.push(Piece {
-            from_a,
-            path,
-            segment: piece,
-          });
+      } else {
+        stamp = stamp.wrapping_add(1);
+        if stamp == 0 {
+          foreign_stamp.fill(0);
+          stamp = 1;
         }
+        let query = segment.bounds().expand(tolerance.epsilon);
+        foreign.grid.query_bounds(query, |id| {
+          if foreign_stamp[id] == stamp {
+            return;
+          }
+          foreign_stamp[id] = stamp;
+          let other = foreign.segments[id];
+          push_fractions(
+            &mut fractions,
+            segment,
+            std::iter::once(other.segment),
+            tolerance,
+            &mut re_cut,
+            &mut near_miss_snaps,
+            detect_near_misses,
+          );
+        });
+      }
+
+      let fractions = dedup(&mut fractions, segment, tolerance);
+      for piece in split_at(segment, &fractions)? {
+        pieces.push(Piece {
+          from_a,
+          path: seg.boundary,
+          segment: piece,
+        });
       }
     }
   }
 
   let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
   for piece in pieces {
-    match decide(piece, a, b, op, tolerance, &near_miss_snaps)? {
+    match decide_indexed(piece, ia, ib, op, tolerance, &near_miss_snaps)? {
       Decision::Keep => survivors.push((piece.segment, piece.from_a)),
       Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
       Decision::Drop => {}
@@ -1327,18 +1736,22 @@ pub fn combine(
     });
   }
 
-  match combine_with(a, b, op, tolerance, false) {
+  let ia = RegionIndex::build(a, tolerance);
+  let ib = RegionIndex::build(b, tolerance);
+  match combine_with_indexed(a, b, &ia, &ib, op, tolerance, false) {
     Ok(result) => Ok(result),
-    Err(err) if is_unchainable_error(&err) => combine_with(a, b, op, tolerance, true),
+    Err(err) if is_unchainable_error(&err) => {
+      combine_with_indexed(a, b, &ia, &ib, op, tolerance, true)
+    }
     Err(err) => Err(err),
   }
 }
 
 /// Decide where a piece goes by asking the predicate on both of its sides.
-fn decide(
+fn decide_indexed(
   piece: Piece,
-  a: &Region,
-  b: &Region,
+  a: &RegionIndex,
+  b: &RegionIndex,
   op: BooleanOp,
   tolerance: crate::TolerancePolicy,
   near_miss_snaps: &[(Point2, Point2)],
@@ -1365,10 +1778,10 @@ fn decide(
       break;
     };
     let memberships = (
-      enclosed_by(a, skip_a, left, tolerance),
-      enclosed_by(b, skip_b, left, tolerance),
-      enclosed_by(a, skip_a, right, tolerance),
-      enclosed_by(b, skip_b, right, tolerance),
+      a.enclosed_by(skip_a, left, tolerance),
+      b.enclosed_by(skip_b, left, tolerance),
+      a.enclosed_by(skip_a, right, tolerance),
+      b.enclosed_by(skip_b, right, tolerance),
     );
     let (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) = memberships else {
       // A probe landed within some boundary's band; step farther out and ask again.
@@ -1406,10 +1819,10 @@ fn decide(
       while probe * 2.0 <= length && probe >= min_probe {
         if let Some((left, right)) = probe_points(segment, probe) {
           let memberships = (
-            enclosed_by(a, skip_a, left, tolerance),
-            enclosed_by(b, skip_b, left, tolerance),
-            enclosed_by(a, skip_a, right, tolerance),
-            enclosed_by(b, skip_b, right, tolerance),
+            a.enclosed_by(skip_a, left, tolerance),
+            b.enclosed_by(skip_b, left, tolerance),
+            a.enclosed_by(skip_a, right, tolerance),
+            b.enclosed_by(skip_b, right, tolerance),
           );
           match memberships {
             (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) => {

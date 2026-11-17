@@ -47,12 +47,25 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
 - **T2** — `cam-geom`: medir dónde se va el tiempo al evaluar una capa de cobre del corpus y volver
   indexado el camino caliente del arreglo, de modo que `kicad-2l-simple/top` (3900 constructos,
   FlatCAM 4.97 s, área 482.21 mm²) termine dentro del límite de S5. Specs: S2, S3, S5.
-- **T3** — `cam-geom`: el cierre del recorrido de caras. Trece capas del corpus mueren con
-  `the arrangement revisits a piece, so its pieces cannot be chained closed`; el recorrido tiene que
-  cerrarlas, o rechazar por una razón que nombre el constructo. Specs: S2, S3.
-- **T4** — `cam-gerber`: estrategia de evaluación (partición por grilla / unión por lotes) sólo si
-  T2+T3 dejan capas por encima del límite; la decisión la toma la medición, no la intuición.
-  Specs: S2, S3, S5.
+  **En curso**: índice local `RegionIndex` (grilla uniforme sobre segmentos, `Bounds::overlaps` añadido en
+  `point.rs` sólo como ayuda) dentro de `boolean.rs` — corte por candidatos y pertenencia indexada en
+  `combine_with_indexed`/`decide_indexed`, `Region` sin campos ni API nueva. Resultado medido:
+  `kicad-2l-simple/top` pasa de no terminar en 300 s a **68.8 s** (release, measurer/probe) y falla con
+  `the arrangement revisits a piece, so its pieces cannot be chained closed` (comando 1441), no por
+  tiempo. `cam-geom` verde en `boolean_index` (11.352 comparaciones de pertenencia, 5 regiones), fmt y
+  clippy; la suite completa se está corriendo para cerrar la verificación antes de commitear. T2 solo no
+  alcanza el límite de 30 s ni el criterio de éxito: queda T3 (correctitud) y, para el tiempo, la
+  estrategia de evaluación por capa (opción 2).
+- **T3** — `cam-geom`: el cierre del recorrido de caras. Quince capas del corpus mueren con
+  `the arrangement revisits a piece, so its pieces cannot be chained closed` (el conteo sube a 15 tras
+  T1). El error persiste aun con el reintento por casi-contacto (`detect_near_misses`) y aparece ya en
+  capas pequeñas y rápidas: `kicad-2l-simple/mask-top` falla en el comando 63 en ~8 ms, `kicad-4l-pours/mask-top`
+  en el 10 en ~1 ms, `kicad-large-pours/mask-bottom` en el 99 en ~0.4 s. Es el bloqueo de correctitud
+  inmediato: sin esto las capas no miden aunque terminen a tiempo. Specs: S2, S3.
+- **T4** — `cam-gerber`: estrategia de evaluación (un arreglo por capa / por tanda de polaridad en lugar de
+  3900 `combine` secuenciales; la opción 2 elegida) sólo si T2+T3 dejan capas por encima del límite; la
+  decisión la toma la medición, no la intuición. T2 bajó `kicad-2l-simple/top` a 68.8 s pero rechazado:
+  aun corrigiendo T3 hará falta recortar ~39 s para entrar en 30 s. Specs: S2, S3, S5.
 - **T5** — `scripts/parity/`: comparación contra el oráculo FlatCAM (`fixtures/baseline/`) por
   artefacto, re-pin de los goldens con lo medido, y actualización de la fila E1.4 del roadmap con los
   números reales. Specs: S2, S3, S4.
@@ -112,3 +125,14 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   `odd/roadmap/waves.md` prohíbe compartir y que la fila E0.1 da por cerrada. Elegir cuál cambia el
   orden de las olas y lo que el roadmap puede seguir afirmando, y eso lo decide el humano, no la
   medición. T3 (el cierre del recorrido de caras) queda pendiente y es independiente de cuál se elija.
+- **L9 (decisión: opción 2, y T2 en árbol).** El humano eligió la opción 2 (arreglo k-ario / una pasada
+  por capa). T2 entregó un índice local `RegionIndex` en `crates/cam-geom/src/boolean.rs` (grilla
+  uniforme, `combine_with_indexed`/`decide_indexed`) sin tocar la representación ni la API de `Region`.
+  `crates/cam-geom/tests/boolean_index.rs` prueba la equivalencia de pertenencia (11.352 comparaciones,
+  5 regiones, bordes y huecos rectos y con arcos) y el caso de cajas lejanas. Medición:
+  `kicad-2l-simple/top.gbr` pasa de >300 s (timeout) a **68.8 s** y falla con
+  `command 1441: polarity could not be applied: edit refused: the arrangement revisits a piece, so its
+  pieces cannot be chained closed` — termina, pero no mide y no entra en 30 s. `cargo fmt --all --check`,
+  `cargo clippy -p cam-geom --all-targets -- -D warnings` y `cargo test -p cam-geom` completos en verde
+  (0 fallos). T3 queda como bloqueo de correctitud (15 capas; repros rápidos `kicad-2l-simple/mask-top`
+  cmd 63 ~8 ms, `kicad-4l-pours/mask-top` cmd 10 ~1 ms) y T4 como la palanca de tiempo que falta.
