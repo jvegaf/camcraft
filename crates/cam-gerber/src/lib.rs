@@ -1461,6 +1461,10 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
   let mut y: Option<f64> = None;
   let mut selected_aperture: Option<u32> = None;
   let mut interpolation = Interpolation::Linear;
+  // A region is filled between its own boundary, so a `D01`/`D02` inside `G36`/`G37` has no aperture
+  // to name: KiCad's polygon pours go straight from the aperture table into `G36*` and would be
+  // refused whole. Outside a region a draw is a stroke, and that is where the selection is required.
+  let mut in_region = false;
 
   for (index, raw) in text.lines().enumerate() {
     let line = index as u32 + 1;
@@ -1555,10 +1559,12 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
       }
       if stmt == "G36" {
         commands.push(Command::RegionBegin);
+        in_region = true;
         continue;
       }
       if stmt == "G37" {
         commands.push(Command::RegionEnd);
+        in_region = false;
         continue;
       }
       if stmt == "M02" {
@@ -1612,8 +1618,9 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
         if let Some(d) = parsed.d {
           match d {
             1..=3 => {
-              let ap = selected_aperture.ok_or(GerberError::NoApertureSelected { line })?;
-              let _ = ap;
+              if !in_region {
+                selected_aperture.ok_or(GerberError::NoApertureSelected { line })?;
+              }
               let pt = current_point(x, y, line)?;
               if d == 1 {
                 if interpolation == Interpolation::Linear {

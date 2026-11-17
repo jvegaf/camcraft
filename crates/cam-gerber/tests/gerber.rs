@@ -267,6 +267,40 @@ fn refuses_d03_with_no_aperture_selected_naming_its_line() {
 }
 
 #[test]
+fn refuses_d01_outside_a_region_with_no_aperture_selected_naming_its_line() {
+  // A draw outside a region is a stroke swept by the selected aperture, so the selection is
+  // required there. Only a region draws without one (E1.4, task 061).
+  let err = parse("%FSLAX46Y46*%\n%MOMM*%\nX0Y0D01*\n").expect_err("no aperture");
+  assert!(
+    matches!(err, GerberError::NoApertureSelected { line: 3 }),
+    "{err:?}"
+  );
+}
+
+#[test]
+fn a_region_filled_before_any_aperture_is_selected_needs_no_aperture() {
+  // KiCad emits a polygon pour as a G36/G37 region with no `Dnn*` selection in front of it, because
+  // a region is filled between its own boundary and has no aperture: the file defines the table and
+  // then goes straight to `G36*`. Requiring a selection there refuses two corpus mask layers whole.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\nG01*\n\
+     G36*\nX000000000Y000000000D02*\n\
+     X010000000Y000000000D01*\nX010000000Y010000000D01*\n\
+     X000000000Y010000000D01*\nX000000000Y000000000D01*\n\
+     G37*\nM02*\n",
+  )
+  .expect("a region needs no aperture");
+  let image = gerber.image(TOLERANCE).expect("image builds");
+  assert_eq!(image.boundaries.len(), 1, "one boundary");
+  assert!(image.boundaries[0].is_closed(), "the boundary is closed");
+  let bounds = image.boundaries[0].bounds();
+  assert!((bounds.min.x - 0.0).abs() < 1.0e-9, "min x {bounds:?}");
+  assert!((bounds.min.y - 0.0).abs() < 1.0e-9, "min y {bounds:?}");
+  assert!((bounds.max.x - 10.0).abs() < 1.0e-9, "max x {bounds:?}");
+  assert!((bounds.max.y - 10.0).abs() < 1.0e-9, "max y {bounds:?}");
+}
+
+#[test]
 fn refuses_d99_undefined_aperture_naming_its_line() {
   let text = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1.0*%\nD99*\n";
   let err = parse(text).expect_err("undefined aperture");
