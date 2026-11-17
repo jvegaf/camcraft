@@ -65,9 +65,12 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   re-pinearon bajo el límite de 30 s del arnés. Correctitud y tiempo no cerrados en todo el corpus:
   sigue T4. Specs: S2, S3.
 - **T4** — `cam-gerber`: estrategia de evaluación (un arreglo por capa / por tanda de polaridad en lugar de
-  3900 `combine` secuenciales; la opción 2 elegida) sólo si T2+T3 dejan capas por encima del límite; la
-  decisión la toma la medición, no la intuición. T2 bajó `kicad-2l-simple/top` a 68.8 s pero rechazado:
-  aun corrigiendo T3 hará falta recortar ~39 s para entrar en 30 s. Specs: S2, S3, S5.
+  3900 `combine` secuenciales; la opción 2 elegida). Implementado en parte: los constructos oscuros
+  consecutivos se unen en árbol balanceado y se aplican de una vez (`union_all` + `pending_dark`), con
+  caída secuencial si el lote falla. Ganancia medida: `kicad-4l-pours/mask-top` 113 s → **2.55 s** (567
+  polígonos). `kicad-2l-simple/top` cae a ~0.59 s al unir el lote pero ese lote falla en el kernel
+  («a surviving piece begins and ends at the same point») y la caída secuencial vuelve a ~73 s con
+  `revisits a piece` (cmd 1441). Correctitud/tiempo siguen abiertos en capas duras. Specs: S2, S3, S5.
 - **T5** — `scripts/parity/`: comparación contra el oráculo FlatCAM (`fixtures/baseline/`) por
   artefacto, re-pin de los goldens con lo medido, y actualización de la fila E1.4 del roadmap con los
   números reales. Specs: S2, S3, S4.

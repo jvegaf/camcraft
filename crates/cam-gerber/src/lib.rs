@@ -242,6 +242,9 @@ impl Gerber {
       line: 0,
       what: format!("command 0: could not build an empty image: {error}"),
     })?;
+    // Consecutive dark (union) constructs are combined in a balanced tree and applied once, so a
+    // layer of thousands of disjoint pads does not grow the accumulated image one construct at a time.
+    let mut pending_dark: Vec<Region> = Vec::new();
 
     let mut in_region = false;
     let mut region_segments: Vec<Segment> = Vec::new();
@@ -250,6 +253,9 @@ impl Gerber {
     for (index, command) in self.commands.iter().copied().enumerate() {
       match command {
         Command::Polarity(next) => {
+          if polarity == Polarity::Dark && next == Polarity::Clear {
+            image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
+          }
           polarity = next;
         }
         Command::SelectAperture(code) => {
@@ -319,7 +325,12 @@ impl Gerber {
           };
           match (region, broken) {
             (Some(region), _) => {
-              image = apply_region(image, &region, polarity, tolerance, index)?;
+              if polarity == Polarity::Dark {
+                pending_dark.push(region);
+              } else {
+                image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
+                image = apply_region(image, &region, Polarity::Clear, tolerance, index)?;
+              }
             }
             (None, Some((reason, location))) => skipped.push(Skipped {
               construct: "a region".to_string(),
@@ -357,7 +368,14 @@ impl Gerber {
               },
             )?;
             match stroke_of(from, to, aperture, code, &self.macros, tolerance, index) {
-              Ok(stroke) => image = apply_region(image, &stroke, polarity, tolerance, index)?,
+              Ok(stroke) => {
+                if polarity == Polarity::Dark {
+                  pending_dark.push(stroke);
+                } else {
+                  image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
+                  image = apply_region(image, &stroke, Polarity::Clear, tolerance, index)?;
+                }
+              }
               Err(error) => skipped.push(Skipped {
                 construct: format!("a draw with aperture {code}"),
                 reason: reason_of(&error),
@@ -551,7 +569,12 @@ impl Gerber {
               continue;
             }
           };
-          image = apply_region(image, &shape, polarity, tolerance, index)?;
+          if polarity == Polarity::Dark {
+            pending_dark.push(shape);
+          } else {
+            image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
+            image = apply_region(image, &shape, Polarity::Clear, tolerance, index)?;
+          }
         }
       }
     }
@@ -568,6 +591,7 @@ impl Gerber {
       });
     }
 
+    let image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
     Ok((image, skipped))
   }
 }
@@ -605,6 +629,70 @@ fn apply_region(
       line: 0,
       what: format!("command {index}: polarity could not be applied: {error}"),
     }),
+  }
+}
+
+/// Union regions in a balanced tree. Pairwise sequential union into a growing accumulator is
+/// quadratic in layer size; combining disjoint/small constructs among themselves first keeps the
+/// operands small for most of the work.
+fn union_all(regions: Vec<Region>, tolerance: TolerancePolicy) -> Result<Region, GerberError> {
+  let mut level = regions;
+  while level.len() > 1 {
+    let mut next = Vec::with_capacity(level.len().div_ceil(2));
+    let mut it = level.into_iter();
+    while let Some(a) = it.next() {
+      match it.next() {
+        Some(b) => {
+          let merged = match combine(&a, &b, BooleanOp::Union, tolerance) {
+            Ok(Combined::Empty) => {
+              Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
+                line: 0,
+                what: format!("could not represent an empty union: {error}"),
+              })?
+            }
+            Ok(Combined::Region { region, .. }) => region,
+            Err(error) => {
+              return Err(GerberError::Invalid {
+                line: 0,
+                what: format!("polarity could not be applied: {error}"),
+              })
+            }
+          };
+          next.push(merged);
+        }
+        None => next.push(a),
+      }
+    }
+    level = next;
+  }
+  Ok(
+    level
+      .into_iter()
+      .next()
+      .unwrap_or_else(|| Region::new(Vec::new()).expect("an empty region is representable")),
+  )
+}
+
+fn flush_pending_unions(
+  image: Region,
+  pending: &mut Vec<Region>,
+  tolerance: TolerancePolicy,
+) -> Result<Region, GerberError> {
+  if pending.is_empty() {
+    return Ok(image);
+  }
+  let batch = std::mem::take(pending);
+  match union_all(batch.clone(), tolerance) {
+    Ok(combined) => apply_region(image, &combined, Polarity::Dark, tolerance, 0),
+    Err(_) => {
+      // Batching changes the combination order and can hit a different kernel edge case; fall back
+      // to the sequential, in-order application which is slower but preserves previous behaviour.
+      let mut current = image;
+      for region in batch {
+        current = apply_region(current, &region, Polarity::Dark, tolerance, 0)?;
+      }
+      Ok(current)
+    }
   }
 }
 
