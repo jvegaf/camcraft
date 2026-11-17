@@ -105,10 +105,14 @@ pub fn export(document: &Document) -> Result<Vec<u8>, ExportError> {
   ));
   for layer in &document.layers {
     for entity in &layer.entities {
-      // The match has one arm and no wildcard on purpose: a second entity kind must be a decision
-      // made here, not a contour silently written as something else.
       match &entity.kind {
         EntityKind::Contour { contour } => write_path(&mut out, contour, &page),
+        EntityKind::Drill { center, diameter } => {
+          write_circle_path(&mut out, *center, diameter.mm() / 2.0, &page)
+        }
+        EntityKind::Slot { start, end, width } => {
+          write_slot_path(&mut out, *start, *end, width.mm() / 2.0, &page)
+        }
       }
     }
   }
@@ -125,16 +129,47 @@ pub fn export(document: &Document) -> Result<Vec<u8>, ExportError> {
 fn refuse_unwritable(document: &Document) -> Result<(), ExportError> {
   for layer in &document.layers {
     for entity in &layer.entities {
-      let EntityKind::Contour { contour } = &entity.kind;
-      for vertex in contour.vertices() {
-        let finite =
-          vertex.point.x.is_finite() && vertex.point.y.is_finite() && vertex.bulge.is_finite();
-        if !finite {
-          return Err(refused(format!(
-            "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
-             number, which an SVG cannot spell",
-            entity.id, layer.id
-          )));
+      match &entity.kind {
+        EntityKind::Contour { contour } => {
+          for vertex in contour.vertices() {
+            let finite =
+              vertex.point.x.is_finite() && vertex.point.y.is_finite() && vertex.bulge.is_finite();
+            if !finite {
+              return Err(refused(format!(
+                "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
+                 number, which an SVG cannot spell",
+                entity.id, layer.id
+              )));
+            }
+          }
+        }
+        EntityKind::Drill { center, diameter } => {
+          if !center.x.is_finite()
+            || !center.y.is_finite()
+            || !diameter.mm().is_finite()
+            || diameter.mm() <= 0.0
+          {
+            return Err(refused(format!(
+              "entity {:?} on layer {:?} carries a coordinate or diameter that is not a finite \
+               positive number, which an SVG cannot spell",
+              entity.id, layer.id
+            )));
+          }
+        }
+        EntityKind::Slot { start, end, width } => {
+          if !start.x.is_finite()
+            || !start.y.is_finite()
+            || !end.x.is_finite()
+            || !end.y.is_finite()
+            || !width.mm().is_finite()
+            || width.mm() <= 0.0
+          {
+            return Err(refused(format!(
+              "entity {:?} on layer {:?} carries a coordinate or width that is not a finite \
+               positive number, which an SVG cannot spell",
+              entity.id, layer.id
+            )));
+          }
         }
       }
     }
@@ -204,10 +239,27 @@ fn geometry_bounds(document: &Document) -> Bounds {
   let mut bounds = Bounds::empty();
   for layer in &document.layers {
     for entity in &layer.entities {
-      let EntityKind::Contour { contour } = &entity.kind;
-      for segment in contour.segments() {
-        let segment = segment.bounds();
-        bounds = bounds.include(segment.min).include(segment.max);
+      match &entity.kind {
+        EntityKind::Contour { contour } => {
+          for segment in contour.segments() {
+            let segment = segment.bounds();
+            bounds = bounds.include(segment.min).include(segment.max);
+          }
+        }
+        EntityKind::Drill { center, diameter } => {
+          let r = diameter.mm() / 2.0;
+          bounds = bounds
+            .include(Point2::new(center.x - r, center.y - r))
+            .include(Point2::new(center.x + r, center.y + r));
+        }
+        EntityKind::Slot { start, end, width } => {
+          let r = width.mm() / 2.0;
+          for point in [start, end] {
+            bounds = bounds
+              .include(Point2::new(point.x - r, point.y - r))
+              .include(Point2::new(point.x + r, point.y + r));
+          }
+        }
       }
     }
   }
@@ -296,6 +348,73 @@ fn flag(value: bool) -> char {
   } else {
     '0'
   }
+}
+
+/// One drill hole as a circular path.
+fn write_circle_path(out: &mut String, center: Point2, radius: f64, page: &Page) {
+  if radius <= 0.0 || !radius.is_finite() {
+    return;
+  }
+  let right = page.place(Point2::new(center.x + radius, center.y));
+  let left = page.place(Point2::new(center.x - radius, center.y));
+  let r = number(radius);
+  out.push_str(&format!(
+    "  <path d=\"M {} {} A {r} {r} 0 1 0 {} {} A {r} {r} 0 1 0 {} {} Z\"/>\n",
+    number(right.x),
+    number(right.y),
+    number(left.x),
+    number(left.y),
+    number(right.x),
+    number(right.y),
+  ));
+}
+
+/// One slot as a stadium path (or a circle when degenerate).
+fn write_slot_path(out: &mut String, start: Point2, end: Point2, radius: f64, page: &Page) {
+  if radius <= 0.0 || !radius.is_finite() {
+    return;
+  }
+  let dx = end.x - start.x;
+  let dy = end.y - start.y;
+  let len = (dx * dx + dy * dy).sqrt();
+  if len < 1e-9 {
+    let mid = Point2::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+    write_circle_path(out, mid, radius, page);
+    return;
+  }
+
+  let Some(contour) = slot_contour(start, end, radius) else {
+    return;
+  };
+  write_path(out, &contour, page);
+}
+
+/// The stadium contour for a slot, matching the historical import/export shape.
+fn slot_contour(from: Point2, to: Point2, radius: f64) -> Option<Contour> {
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  let len = (dx * dx + dy * dy).sqrt();
+  if len < 1e-9 {
+    return None;
+  }
+  let ux = dx / len;
+  let uy = dy / len;
+  let px = -uy * radius;
+  let py = ux * radius;
+  let a = Point2::new(from.x + px, from.y + py);
+  let b = Point2::new(to.x + px, to.y + py);
+  let c = Point2::new(to.x - px, to.y - py);
+  let d = Point2::new(from.x - px, from.y - py);
+  Contour::new(
+    vec![
+      cam_geom::Vertex::corner(a),
+      cam_geom::Vertex::new(b, 1.0),
+      cam_geom::Vertex::corner(c),
+      cam_geom::Vertex::new(d, 1.0),
+    ],
+    true,
+  )
+  .ok()
 }
 
 /// A refusal in this module's format.

@@ -43,6 +43,8 @@ COMMANDS:
     import <input>            Import DXF or SVG into a new document
         --out <path>          Write the document here; without it the report goes to stdout
         --layer <name>        Put every imported contour in one layer with this name
+        --role <role>         Assign imported layers a board role (copper_top, copper_bottom, mask, silk, outline, drill, keepout)
+        --side <side>         Assign imported layers a side (top, bottom, both)
         --tolerance <mm>      Flattening tolerance for curves (default 0.01)
     export <document>         Write the document's geometry back out as DXF or SVG
         --format <name>       dxf or svg (required)

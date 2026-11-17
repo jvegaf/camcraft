@@ -311,6 +311,7 @@ fn a_drawing_centred_on_the_origin_reads_negative_below_it() {
         )
         .expect("rectangle"),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   let mut app = AppState::new(document);

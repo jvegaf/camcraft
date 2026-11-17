@@ -32,6 +32,7 @@ pub(crate) fn document_with_rectangle() -> Document {
         )
         .expect("rectangle"),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document
@@ -355,6 +356,7 @@ pub(crate) fn document_with_squares(count: usize) -> Document {
           )
           .expect("square"),
         },
+        source: cam_model::Provenance::default(),
       }
     })
     .collect();

@@ -61,6 +61,7 @@ fn document(tabs: Vec<Tab>) -> Document {
       kind: EntityKind::Contour {
         contour: board_contour(60.0, 40.0),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document.toolpaths.push(Toolpath {

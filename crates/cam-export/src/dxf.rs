@@ -106,16 +106,47 @@ fn refuse_unwritable(document: &Document) -> Result<(), ExportError> {
 
   for layer in &document.layers {
     for entity in &layer.entities {
-      let EntityKind::Contour { contour } = &entity.kind;
-      for vertex in contour.vertices() {
-        let finite =
-          vertex.point.x.is_finite() && vertex.point.y.is_finite() && vertex.bulge.is_finite();
-        if !finite {
-          return Err(refused(format!(
-            "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
-             number, which a DXF cannot spell",
-            entity.id, layer.id
-          )));
+      match &entity.kind {
+        EntityKind::Contour { contour } => {
+          for vertex in contour.vertices() {
+            let finite =
+              vertex.point.x.is_finite() && vertex.point.y.is_finite() && vertex.bulge.is_finite();
+            if !finite {
+              return Err(refused(format!(
+                "entity {:?} on layer {:?} carries a coordinate or a bulge that is not a finite \
+                 number, which a DXF cannot spell",
+                entity.id, layer.id
+              )));
+            }
+          }
+        }
+        EntityKind::Drill { center, diameter } => {
+          if !center.x.is_finite()
+            || !center.y.is_finite()
+            || !diameter.mm().is_finite()
+            || diameter.mm() <= 0.0
+          {
+            return Err(refused(format!(
+              "entity {:?} on layer {:?} carries a coordinate or diameter that is not a finite \
+               positive number, which a DXF cannot spell",
+              entity.id, layer.id
+            )));
+          }
+        }
+        EntityKind::Slot { start, end, width } => {
+          if !start.x.is_finite()
+            || !start.y.is_finite()
+            || !end.x.is_finite()
+            || !end.y.is_finite()
+            || !width.mm().is_finite()
+            || width.mm() <= 0.0
+          {
+            return Err(refused(format!(
+              "entity {:?} on layer {:?} carries a coordinate or width that is not a finite \
+               positive number, which a DXF cannot spell",
+              entity.id, layer.id
+            )));
+          }
         }
       }
     }
@@ -150,15 +181,19 @@ fn write_layer_table(out: &mut String, document: &Document) {
   end_section(out);
 }
 
-/// The `ENTITIES` section: one `LWPOLYLINE` per contour, in layer order.
+/// The `ENTITIES` section: one `LWPOLYLINE` per contour and one `CIRCLE` per drill, in layer order.
 fn write_entities(out: &mut String, document: &Document) {
   section(out, "ENTITIES");
   for layer in &document.layers {
     for entity in &layer.entities {
-      // The match has one arm and no wildcard on purpose: a second entity kind must be a decision
-      // made here, not a contour silently written as something else.
       match &entity.kind {
         EntityKind::Contour { contour } => write_polyline(out, &layer.id, contour),
+        EntityKind::Drill { center, diameter } => {
+          write_circle(out, &layer.id, *center, diameter.mm() / 2.0)
+        }
+        EntityKind::Slot { start, end, width } => {
+          write_slot(out, &layer.id, *start, *end, width.mm() / 2.0)
+        }
       }
     }
   }
@@ -181,6 +216,62 @@ fn write_polyline(out: &mut String, layer: &str, contour: &Contour) {
     number(out, 20, vertex.point.y);
     number(out, 42, vertex.bulge);
   }
+}
+
+/// One drill hole as a circle.
+fn write_circle(out: &mut String, layer: &str, center: cam_geom::Point2, radius: f64) {
+  pair(out, 0, "CIRCLE");
+  pair(out, 8, layer);
+  number(out, 10, center.x);
+  number(out, 20, center.y);
+  number(out, 40, radius);
+}
+
+/// One slot as a closed stadium polyline (or a circle when degenerate).
+fn write_slot(
+  out: &mut String,
+  layer: &str,
+  start: cam_geom::Point2,
+  end: cam_geom::Point2,
+  radius: f64,
+) {
+  let dx = end.x - start.x;
+  let dy = end.y - start.y;
+  let len = (dx * dx + dy * dy).sqrt();
+  if len < 1e-9 {
+    let mid = cam_geom::Point2::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+    write_circle(out, layer, mid, radius);
+    return;
+  }
+  let ux = dx / len;
+  let uy = dy / len;
+  let px = -uy * radius;
+  let py = ux * radius;
+  let a = cam_geom::Point2::new(start.x + px, start.y + py);
+  let b = cam_geom::Point2::new(end.x + px, end.y + py);
+  let c = cam_geom::Point2::new(end.x - px, end.y - py);
+  let d = cam_geom::Point2::new(start.x - px, start.y - py);
+
+  pair(out, 0, "LWPOLYLINE");
+  pair(out, 8, layer);
+  pair(out, 90, "4");
+  pair(out, 70, &FLAG_CLOSED.to_string());
+
+  number(out, 10, a.x);
+  number(out, 20, a.y);
+  number(out, 42, 0.0);
+
+  number(out, 10, b.x);
+  number(out, 20, b.y);
+  number(out, 42, 1.0);
+
+  number(out, 10, c.x);
+  number(out, 20, c.y);
+  number(out, 42, 0.0);
+
+  number(out, 10, d.x);
+  number(out, 20, d.y);
+  number(out, 42, 1.0);
 }
 
 // ---------------------------------------------------------------------------------------------

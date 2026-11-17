@@ -56,6 +56,7 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
       id: "E1".to_owned(),
 
       kind: EntityKind::Contour { contour },
+      source: cam_model::Provenance::default(),
     }],
   });
 

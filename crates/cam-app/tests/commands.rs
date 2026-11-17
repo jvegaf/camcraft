@@ -1010,6 +1010,7 @@ fn state_with_entities(ids: &[&str]) -> AppState {
         contour: primitive::rectangle(Point2::new(n as f64 * 20.0, 0.0), 10.0, 10.0)
           .expect("the test fixture rectangle is valid"),
       },
+      source: cam_model::Provenance::default(),
     })
     .collect();
   document.layers.push(Layer {

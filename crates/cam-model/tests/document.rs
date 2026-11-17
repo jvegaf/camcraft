@@ -49,12 +49,13 @@ fn document_with_operation(operation: Operation) -> Document {
     side: Side::Top,
     color: "#000000".to_owned(),
     visible: true,
-    source: Provenance::default(),
+    source: cam_model::Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour {
         contour: square(100.0),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document.toolpaths.push(Toolpath {
@@ -619,19 +620,21 @@ fn nesting_document() -> Document {
     side: Side::Top,
     color: "#000000".to_owned(),
     visible: true,
-    source: Provenance::default(),
+    source: cam_model::Provenance::default(),
     entities: vec![
       Entity {
         id: "E1".to_owned(),
         kind: EntityKind::Contour {
           contour: square(100.0),
         },
+        source: cam_model::Provenance::default(),
       },
       Entity {
         id: "E2".to_owned(),
         kind: EntityKind::Contour {
           contour: rectangle(200.0, 50.0, Point2::new(300.0, 300.0)),
         },
+        source: cam_model::Provenance::default(),
       },
     ],
   });
@@ -908,7 +911,7 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
       side: Side::Top,
       color: "#000000".to_owned(),
       visible: true,
-      source: Provenance::default(),
+      source: cam_model::Provenance::default(),
       entities: Vec::new(),
     });
     let mut nesting = Nesting {
@@ -933,6 +936,7 @@ fn the_pruned_overlap_check_names_the_same_pair_a_naive_scan_would() {
         kind: EntityKind::Contour {
           contour: square(size),
         },
+        source: cam_model::Provenance::default(),
       });
       nesting.parts.push(NestingPart {
         id: part.clone(),
@@ -1011,7 +1015,7 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
       side: Side::Top,
       color: "#000000".to_owned(),
       visible: true,
-      source: Provenance::default(),
+      source: cam_model::Provenance::default(),
       entities: Vec::new(),
     });
     let mut nesting = Nesting {
@@ -1033,6 +1037,7 @@ fn the_pruned_overlap_check_agrees_with_an_unpruned_scan_at_the_tolerance_scale(
         kind: EntityKind::Contour {
           contour: square(size),
         },
+        source: cam_model::Provenance::default(),
       });
       nesting.parts.push(NestingPart {
         id: part.clone(),
@@ -1166,6 +1171,7 @@ fn a_placement_is_refused_when_its_part_has_no_positive_area_footprint() {
       contour: Contour::from_points(&[Point2::new(0.0, 0.0), Point2::new(100.0, 0.0)], true)
         .expect("a closed two-vertex line is a legal contour"),
     },
+    source: cam_model::Provenance::default(),
   });
   let nesting = document.nesting.as_mut().expect("a section");
   nesting.parts[0].entity_ids = vec!["E-flat".to_owned()];
@@ -1298,12 +1304,14 @@ fn a_pair_whose_boxes_meet_but_whose_material_only_touches_is_accepted() {
         )
         .expect("an L is a legal contour"),
       },
+      source: cam_model::Provenance::default(),
     },
     Entity {
       id: "E-tab".to_owned(),
       kind: EntityKind::Contour {
         contour: square(10.0),
       },
+      source: cam_model::Provenance::default(),
     },
   ];
   let nesting = document.nesting.as_mut().expect("a section");
@@ -1485,12 +1493,14 @@ fn a_wide_placement_does_not_drag_every_narrow_one_into_the_overlap_check() {
       kind: EntityKind::Contour {
         contour: rectangle(100_000.0, 10.0, Point2::ORIGIN),
       },
+      source: cam_model::Provenance::default(),
     },
     Entity {
       id: "E-small".to_owned(),
       kind: EntityKind::Contour {
         contour: square(10.0),
       },
+      source: cam_model::Provenance::default(),
     },
   ];
   {
@@ -1560,6 +1570,7 @@ fn a_document_of_wide_strips_is_not_charged_the_cell_duplication() {
     kind: EntityKind::Contour {
       contour: rectangle(100_000.0, BAND, Point2::ORIGIN),
     },
+    source: cam_model::Provenance::default(),
   }];
   {
     let nesting = document.nesting.as_mut().expect("a section");
@@ -1609,6 +1620,7 @@ fn a_far_away_placement_on_one_sheet_does_not_collapse_another_sheets_cells() {
     kind: EntityKind::Contour {
       contour: square(10.0),
     },
+    source: cam_model::Provenance::default(),
   }];
   {
     let nesting = document.nesting.as_mut().expect("a section");
@@ -2071,12 +2083,13 @@ fn five_parts_on_one_sheet() -> Document {
     side: Side::Top,
     color: "#000000".to_owned(),
     visible: true,
-    source: Provenance::default(),
+    source: cam_model::Provenance::default(),
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour {
         contour: square(100.0),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document.nesting = Some(Nesting {
@@ -2396,7 +2409,7 @@ fn two_layers_cannot_claim_the_same_board_role() {
       side: Side::Top,
       color: "#000000".to_owned(),
       visible: true,
-      source: Provenance::default(),
+      source: cam_model::Provenance::default(),
       entities: Vec::new(),
     });
   }
@@ -2418,9 +2431,118 @@ fn keepouts_may_repeat() {
       side,
       color: "#000000".to_owned(),
       visible: true,
-      source: Provenance::default(),
+      source: cam_model::Provenance::default(),
       entities: Vec::new(),
     });
   }
   document.validate().expect("keep-outs may repeat");
+}
+
+#[test]
+fn drill_and_slot_entity_kinds_round_trip_with_source_metadata() {
+  let mut document = Document::new(Board::default_board());
+  document.layers.push(Layer {
+    id: "L-drill".to_owned(),
+    role: LayerRole::Drill,
+    side: Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: Provenance {
+      file: Some("holes.drl".to_owned()),
+      format: Some("excellon".to_owned()),
+      ..Provenance::default()
+    },
+    entities: vec![
+      Entity {
+        id: "D1".to_owned(),
+        kind: EntityKind::Drill {
+          center: Point2::new(10.0, 20.0),
+          diameter: Length::from_mm(0.8),
+        },
+        source: Provenance {
+          file: Some("holes.drl".to_owned()),
+          format: Some("excellon".to_owned()),
+          hash: Some("abc123".to_owned()),
+          ..Provenance::default()
+        },
+      },
+      Entity {
+        id: "S1".to_owned(),
+        kind: EntityKind::Slot {
+          start: Point2::new(30.0, 40.0),
+          end: Point2::new(50.0, 40.0),
+          width: Length::from_mm(1.2),
+        },
+        source: Provenance::default(),
+      },
+    ],
+  });
+  document.validate().expect("valid drill document");
+  let json = serde_json::to_string(&document).expect("serialises");
+  assert!(json.contains("\"type\":\"drill\""), "{json}");
+  assert!(json.contains("\"type\":\"slot\""), "{json}");
+  assert!(json.contains("\"source\""), "{json}");
+  let parsed: Document = serde_json::from_str(&json).expect("deserialises");
+  assert_eq!(parsed, document);
+  assert_eq!(
+    parsed.layers[0].entities[0].kind.as_drill(),
+    Some((Point2::new(10.0, 20.0), Length::from_mm(0.8)))
+  );
+  assert_eq!(
+    parsed.layers[0].entities[1].kind.as_slot(),
+    Some((
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      Length::from_mm(1.2)
+    ))
+  );
+  assert_eq!(
+    parsed.layers[0].entities[0].source.file.as_deref(),
+    Some("holes.drl")
+  );
+}
+
+#[test]
+fn a_drill_layer_accepts_legacy_contour_entities() {
+  let mut document = Document::new(Board::default_board());
+  document.layers.push(Layer {
+    id: "L-drill".to_owned(),
+    role: LayerRole::Drill,
+    side: Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities: vec![Entity {
+      id: "E1".to_owned(),
+      kind: EntityKind::Contour {
+        contour: square(10.0),
+      },
+      source: Provenance::default(),
+    }],
+  });
+  document
+    .validate()
+    .expect("legacy contour entities in drill layers remain valid");
+}
+
+#[test]
+fn entity_source_metadata_defaults_when_absent() {
+  let json = r##"{
+    "schema": "camcraft/document@1",
+    "board": {"width": 100.0, "height": 100.0, "thickness": 1.6,
+              "origin": "bottom_left", "side_up": "top"},
+    "layers": [{"id": "L1", "role": "outline", "side": "both", "color": "#000000",
+      "visible": true, "entities": [
+        {"id": "E1", "type": "contour", "contour": {"vertices": [
+          {"point": {"x": 0.0, "y": 0.0}, "bulge": 0.0},
+          {"point": {"x": 10.0, "y": 0.0}, "bulge": 0.0},
+          {"point": {"x": 10.0, "y": 10.0}, "bulge": 0.0},
+          {"point": {"x": 0.0, "y": 10.0}, "bulge": 0.0}
+        ], "closed": true}}
+      ], "source": {}}],
+    "toolpaths": []
+  }"##;
+  let document: Document = serde_json::from_str(json).expect("deserialises");
+  assert!(document.layers[0].entities[0].source.is_empty());
+  document.validate().expect("valid");
 }

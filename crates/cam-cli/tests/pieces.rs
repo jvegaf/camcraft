@@ -75,6 +75,7 @@ fn write_document(
           kind: EntityKind::Contour {
             contour: rectangle_contour(*width, *height),
           },
+          source: cam_model::Provenance::default(),
         })
         .collect(),
     });

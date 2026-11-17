@@ -78,6 +78,7 @@ fn document_with_toolpath(tool_number: u32) -> Document {
     entities: vec![Entity {
       id: "E1".to_owned(),
       kind: EntityKind::Contour { contour },
+      source: cam_model::Provenance::default(),
     }],
   });
   document.toolpaths.push(Toolpath {

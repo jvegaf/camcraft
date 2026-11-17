@@ -5,8 +5,8 @@ use std::path::Path;
 
 use cam_geom::{primitive, Contour, Point2};
 use cam_import::{
-  detect, into_document, Format, ImportError, ImportOptions, ImportReport, Imported, ImportedLayer,
-  PLACEMENT_MARGIN,
+  detect, into_document, into_document_with, Format, ImportError, ImportOptions, ImportReport,
+  Imported, ImportedLayer, PLACEMENT_MARGIN,
 };
 
 fn report_with_counts() -> ImportReport {
@@ -186,4 +186,37 @@ fn an_imported_contour_survives_its_document_round_trip() {
   let text = serde_json::to_string(&contour).expect("serialise");
   let back: Contour = serde_json::from_str(&text).expect("deserialise");
   assert_eq!(contour, back);
+}
+
+#[test]
+fn dxf_svg_import_can_assign_role_and_side() {
+  let imported = Imported {
+    format: Format::Dxf,
+    layers: vec![ImportedLayer {
+      name: "Copper".to_string(),
+      contours: vec![Contour::from_points(
+        &[
+          Point2::new(0.0, 0.0),
+          Point2::new(10.0, 0.0),
+          Point2::new(10.0, 10.0),
+          Point2::new(0.0, 10.0),
+        ],
+        true,
+      )
+      .expect("square")],
+    }],
+    report: ImportReport::new("dxf", 0.01),
+  };
+  let document = into_document_with(
+    &imported,
+    None,
+    Some(cam_model::LayerRole::CopperTop),
+    Some(cam_model::Side::Top),
+  )
+  .expect("document");
+  assert_eq!(document.layers.len(), 1);
+  assert_eq!(document.layers[0].role, cam_model::LayerRole::CopperTop);
+  assert_eq!(document.layers[0].side, cam_model::Side::Top);
+  assert_eq!(document.layers[0].entities.len(), 1);
+  assert!(document.layers[0].entities[0].source.format.is_some());
 }

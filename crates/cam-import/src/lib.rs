@@ -21,7 +21,7 @@ pub mod svg;
 mod document;
 mod report;
 
-pub use document::{into_document, PLACEMENT_MARGIN};
+pub use document::{into_document, into_document_with, PLACEMENT_MARGIN};
 pub use folder::{detect_role, import_folder, BoardRole, Detection, FolderImport, GroupedFile};
 pub use report::{ImportReport, Skipped};
 

@@ -22,9 +22,25 @@ pub const PLACEMENT_MARGIN: f64 = 10.0;
 /// translated so its bounds start at `(PLACEMENT_MARGIN, PLACEMENT_MARGIN)`. Layers become `L1..Ln`
 /// and entities `E1..En` in the source order; when `single_layer` is given, every contour lands in
 /// one layer with that name.
+///
+/// Role and side default to the legacy heuristic (first layer `Outline`, others `Keepout`, all
+/// `Both`) unless assigned explicitly via [`into_document_with`].
 pub fn into_document(
   imported: &Imported,
   single_layer: Option<&str>,
+) -> Result<Document, ImportError> {
+  into_document_with(imported, single_layer, None, None)
+}
+
+/// Build a document from an import, assigning an explicit layer role and/or side.
+///
+/// When `role` or `side` is provided, it applies to every imported layer/group; otherwise the
+/// legacy heuristic is used (first layer `Outline`, others `Keepout`, all `Both`).
+pub fn into_document_with(
+  imported: &Imported,
+  single_layer: Option<&str>,
+  role: Option<LayerRole>,
+  side: Option<Side>,
 ) -> Result<Document, ImportError> {
   let format = imported.format.name();
   let mut bounds = Bounds::empty();
@@ -68,19 +84,37 @@ pub fn into_document(
       .collect(),
   };
 
+  if let Some(explicit_role) = role {
+    if matches!(explicit_role, LayerRole::Drill) {
+      return Err(ImportError::parse_plain(
+        format,
+        "cannot assign the drill role to imported DXF/SVG contour geometry; \
+         drill layers hold only drill and slot entities",
+      ));
+    }
+    if !matches!(explicit_role, LayerRole::Keepout) && groups.len() > 1 {
+      return Err(ImportError::parse_plain(
+        format,
+        "cannot assign one non-keepout role to multiple imported layers; \
+         use --layer to import a single layer or import layers separately",
+      ));
+    }
+  }
+
   let mut used_ids: HashSet<String> = HashSet::new();
   for (index, (name, contours)) in groups.into_iter().enumerate() {
-    let role = if index == 0 {
+    let assigned_role = role.unwrap_or(if index == 0 {
       LayerRole::Outline
     } else {
       LayerRole::Keepout
-    };
+    });
+    let assigned_side = side.unwrap_or(Side::Both);
     let layer_id = safe_unique_layer_id(&name, index, &used_ids);
     used_ids.insert(layer_id.clone());
     let mut layer = Layer {
       id: layer_id,
-      role,
-      side: Side::Both,
+      role: assigned_role,
+      side: assigned_side,
       color: "#000000".to_owned(),
       visible: true,
       entities: Vec::new(),
@@ -95,6 +129,10 @@ pub fn into_document(
       layer.entities.push(Entity {
         id: format!("E{entity_number}"),
         kind: EntityKind::Contour { contour },
+        source: Provenance {
+          format: Some(imported.format.name().to_owned()),
+          ..Provenance::default()
+        },
       });
       entity_number += 1;
     }

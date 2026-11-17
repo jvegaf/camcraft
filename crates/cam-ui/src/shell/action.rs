@@ -383,8 +383,24 @@ fn process_import(parsed: &cam_import::Imported, settings: ImportSettings) -> ca
 fn center_drawing(document: &mut cam_model::Document, job: &Job) {
   let mut bounds = cam_geom::Bounds::empty();
   for entity in document.entities() {
-    if let Some(contour) = entity.kind.as_contour() {
-      bounds = bounds.union(contour.bounds());
+    match &entity.kind {
+      cam_model::EntityKind::Contour { contour } => {
+        bounds = bounds.union(contour.bounds());
+      }
+      cam_model::EntityKind::Drill { center, diameter } => {
+        let r = diameter.mm() / 2.0;
+        bounds = bounds
+          .include(Point2::new(center.x - r, center.y - r))
+          .include(Point2::new(center.x + r, center.y + r));
+      }
+      cam_model::EntityKind::Slot { start, end, width } => {
+        let r = width.mm() / 2.0;
+        for point in [start, end] {
+          bounds = bounds
+            .include(Point2::new(point.x - r, point.y - r))
+            .include(Point2::new(point.x + r, point.y + r));
+        }
+      }
     }
   }
   if bounds.is_empty() {
@@ -400,9 +416,19 @@ fn center_drawing(document: &mut cam_model::Document, job: &Job) {
   }
   for layer in &mut document.layers {
     for entity in &mut layer.entities {
-      let cam_model::EntityKind::Contour { contour } = &mut entity.kind;
-      if let Ok(moved) = cam_geom::transform::translate(contour, delta) {
-        *contour = moved;
+      match &mut entity.kind {
+        cam_model::EntityKind::Contour { contour } => {
+          if let Ok(moved) = cam_geom::transform::translate(contour, delta) {
+            *contour = moved;
+          }
+        }
+        cam_model::EntityKind::Drill { center, .. } => {
+          *center = Point2::new(center.x + delta.x, center.y + delta.y);
+        }
+        cam_model::EntityKind::Slot { start, end, .. } => {
+          *start = Point2::new(start.x + delta.x, start.y + delta.y);
+          *end = Point2::new(end.x + delta.x, end.y + delta.y);
+        }
       }
     }
   }

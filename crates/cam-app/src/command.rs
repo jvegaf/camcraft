@@ -906,9 +906,15 @@ fn resolve_sites(
 }
 
 /// The contour at a resolved site.
-fn contour_at(document: &Document, (layer_index, entity_index): EntitySite) -> &Contour {
-  let EntityKind::Contour { contour } = &document.layers[layer_index].entities[entity_index].kind;
-  contour
+fn contour_at(
+  document: &Document,
+  (layer_index, entity_index): EntitySite,
+) -> Result<&Contour, CommandError> {
+  let entity = &document.layers[layer_index].entities[entity_index];
+  entity
+    .kind
+    .as_contour()
+    .ok_or_else(|| CommandError::Geometry(format!("entity {:?} is not a contour", entity.id)))
 }
 
 fn replace_contour_at(
@@ -917,6 +923,151 @@ fn replace_contour_at(
   contour: Contour,
 ) {
   document.layers[layer_index].entities[entity_index].kind = EntityKind::Contour { contour };
+}
+
+fn replace_kind_at(
+  document: &mut Document,
+  (layer_index, entity_index): EntitySite,
+  kind: EntityKind,
+) {
+  document.layers[layer_index].entities[entity_index].kind = kind;
+}
+
+fn entity_kind_bounds(kind: &EntityKind) -> Bounds {
+  match kind {
+    EntityKind::Contour { contour } => contour.bounds(),
+    EntityKind::Drill { center, diameter } => {
+      let r = diameter.mm() / 2.0;
+      Bounds::empty()
+        .include(Point2::new(center.x - r, center.y - r))
+        .include(Point2::new(center.x + r, center.y + r))
+    }
+    EntityKind::Slot { start, end, width } => {
+      let r = width.mm() / 2.0;
+      let mut bounds = Bounds::empty();
+      for point in [start, end] {
+        bounds = bounds
+          .include(Point2::new(point.x - r, point.y - r))
+          .include(Point2::new(point.x + r, point.y + r));
+      }
+      bounds
+    }
+  }
+}
+
+fn mirror_point(point: Point2, axis_point: Point2, axis_dir: Vec2) -> Result<Point2, CommandError> {
+  let len_sq = axis_dir.x * axis_dir.x + axis_dir.y * axis_dir.y;
+  if !len_sq.is_finite() || len_sq == 0.0 {
+    return Err(CommandError::Geometry(
+      "a mirror axis needs a direction with a non-zero length".to_owned(),
+    ));
+  }
+  let vx = point.x - axis_point.x;
+  let vy = point.y - axis_point.y;
+  let t = (vx * axis_dir.x + vy * axis_dir.y) / len_sq;
+  let proj = Point2::new(axis_point.x + t * axis_dir.x, axis_point.y + t * axis_dir.y);
+  Ok(Point2::new(2.0 * proj.x - point.x, 2.0 * proj.y - point.y))
+}
+
+fn transform_kind(
+  transform: &Transform,
+  kind: &EntityKind,
+) -> Result<(EntityKind, usize), CommandError> {
+  match kind {
+    EntityKind::Contour { contour } => {
+      let (contour, lost) = apply_transform(transform, contour)?;
+      Ok((EntityKind::Contour { contour }, lost))
+    }
+    EntityKind::Drill { center, diameter } => match transform {
+      Transform::Translate { delta } => Ok((
+        EntityKind::Drill {
+          center: center.translated(*delta),
+          diameter: *diameter,
+        },
+        0,
+      )),
+      Transform::Rotate { radians, about } => Ok((
+        EntityKind::Drill {
+          center: center.rotated_about(*about, *radians),
+          diameter: *diameter,
+        },
+        0,
+      )),
+      Transform::Mirror { point, direction } => Ok((
+        EntityKind::Drill {
+          center: mirror_point(*center, *point, *direction)?,
+          diameter: *diameter,
+        },
+        0,
+      )),
+      Transform::Scale { sx, sy, about, .. } => {
+        if (sx.abs() - sy.abs()).abs() > 1e-9 {
+          return Err(CommandError::Geometry(
+            "cannot non-uniformly scale a drill entity".to_owned(),
+          ));
+        }
+        let scale = sx.abs();
+        Ok((
+          EntityKind::Drill {
+            center: Point2::new(
+              about.x + (center.x - about.x) * *sx,
+              about.y + (center.y - about.y) * *sy,
+            ),
+            diameter: cam_units::Length::from_mm(diameter.mm() * scale),
+          },
+          0,
+        ))
+      }
+    },
+    EntityKind::Slot { start, end, width } => match transform {
+      Transform::Translate { delta } => Ok((
+        EntityKind::Slot {
+          start: start.translated(*delta),
+          end: end.translated(*delta),
+          width: *width,
+        },
+        0,
+      )),
+      Transform::Rotate { radians, about } => Ok((
+        EntityKind::Slot {
+          start: start.rotated_about(*about, *radians),
+          end: end.rotated_about(*about, *radians),
+          width: *width,
+        },
+        0,
+      )),
+      Transform::Mirror { point, direction } => Ok((
+        EntityKind::Slot {
+          start: mirror_point(*start, *point, *direction)?,
+          end: mirror_point(*end, *point, *direction)?,
+          width: *width,
+        },
+        0,
+      )),
+      Transform::Scale { sx, sy, about, .. } => {
+        if (sx.abs() - sy.abs()).abs() > 1e-9 {
+          return Err(CommandError::Geometry(
+            "cannot non-uniformly scale a slot entity".to_owned(),
+          ));
+        }
+        let scale = sx.abs();
+        Ok((
+          EntityKind::Slot {
+            start: Point2::new(
+              about.x + (start.x - about.x) * *sx,
+              about.y + (start.y - about.y) * *sy,
+            ),
+            end: Point2::new(
+              about.x + (end.x - about.x) * *sx,
+              about.y + (end.y - about.y) * *sy,
+            ),
+            width: cam_units::Length::from_mm(width.mm() * scale),
+          },
+          0,
+        ))
+      }
+    },
+  }
 }
 
 fn geometry_error(error: cam_geom::GeomError) -> CommandError {
@@ -1025,17 +1176,18 @@ fn transform_entities(
   validate_transform(transform)?;
   let sites = resolve_sites(document, entity_ids)?;
 
-  // Every contour is transformed before any of them is stored, so a refusal part way through
+  // Every entity is transformed before any of them is stored, so a refusal part way through
   // leaves the selection untouched instead of half moved.
   let mut planned = Vec::with_capacity(sites.len());
   let mut lost_arcs = 0;
   for site in sites {
-    let (contour, lost) = apply_transform(transform, contour_at(document, site))?;
+    let kind = document.layers[site.0].entities[site.1].kind.clone();
+    let (new_kind, lost) = transform_kind(transform, &kind)?;
     lost_arcs += lost;
-    planned.push((site, contour));
+    planned.push((site, new_kind));
   }
-  for (site, contour) in planned {
-    replace_contour_at(document, site, contour);
+  for (site, kind) in planned {
+    replace_kind_at(document, site, kind);
   }
   Ok(CommandOutcome {
     lost_arcs,
@@ -1058,33 +1210,33 @@ fn array_copy(
   require_finite("array Y spacing", dy)?;
   // Zero is refused: it would mint `E0`, which the drawing counter never produces.
   require_selection(entity_ids)?;
-  let sources: Vec<(EntitySite, Contour)> = resolve_sites(document, entity_ids)?
+  let sources: Vec<(EntitySite, EntityKind)> = resolve_sites(document, entity_ids)?
     .into_iter()
-    .map(|site| (site, contour_at(document, site).clone()))
+    .map(|site| (site, document.layers[site.0].entities[site.1].kind.clone()))
     .collect();
 
   // Plan the whole grid — ids and geometry — before storing any of it, so an id taken late in the
   // run refuses the command instead of leaving the first copies behind (M2 A12).
-  let mut planned: Vec<(usize, String, Contour)> = Vec::new();
+  let mut planned: Vec<(usize, String, EntityKind)> = Vec::new();
   let mut minted = 0;
   for row in 0..rows {
     for column in 0..columns {
       let delta = Vec2::new(column as f64 * dx, row as f64 * dy);
-      for (site, contour) in &sources {
+      for (site, kind) in &sources {
         let id = minted_entity_id(first_entity_index, minted);
         minted += 1;
         ensure_id_is_free(document, &id)?;
-        let copy = transform::translate(contour, delta).map_err(geometry_error)?;
+        let (copy, _) = transform_kind(&Transform::Translate { delta }, kind)?;
         planned.push((site.0, id, copy));
       }
     }
   }
 
   let created: Vec<String> = planned.iter().map(|(_, id, _)| id.clone()).collect();
-  for (layer_index, id, contour) in planned {
+  for (layer_index, id, kind) in planned {
     // Reuse the drawing path's insert so a copy is stored exactly like a drawn entity.
     let layer_id = document.layers[layer_index].id.clone();
-    push_entity(document, &layer_id, &id, contour)?;
+    push_entity_kind(document, &layer_id, &id, kind)?;
   }
   Ok(CommandOutcome {
     created_entities: created,
@@ -1112,23 +1264,21 @@ fn align_entities(
   require_selection(entity_ids)?;
   let sites = resolve_sites(document, entity_ids)?;
   // The target is the selection's own combined bounds, computed before anything moves.
-  let combined = sites
-    .iter()
-    .map(|site| contour_at(document, *site).bounds())
-    .reduce(Bounds::union)
-    .unwrap_or_default();
+  let mut combined = Bounds::empty();
+  for site in &sites {
+    let kind = &document.layers[site.0].entities[site.1].kind;
+    combined = combined.union(entity_kind_bounds(kind));
+  }
 
   let mut planned = Vec::with_capacity(sites.len());
   for site in sites {
-    let contour = contour_at(document, site);
-    let delta = alignment_offset(mode, combined, contour.bounds());
-    planned.push((
-      site,
-      transform::translate(contour, delta).map_err(geometry_error)?,
-    ));
+    let kind = document.layers[site.0].entities[site.1].kind.clone();
+    let delta = alignment_offset(mode, combined, entity_kind_bounds(&kind));
+    let (moved, _) = transform_kind(&Transform::Translate { delta }, &kind)?;
+    planned.push((site, moved));
   }
-  for (site, contour) in planned {
-    replace_contour_at(document, site, contour);
+  for (site, kind) in planned {
+    replace_kind_at(document, site, kind);
   }
   Ok(CommandOutcome::default())
 }
@@ -1175,7 +1325,7 @@ fn offset_entity(
 ) -> Result<CommandOutcome, CommandError> {
   require_finite("offset distance", distance)?;
   let site = resolve_site(document, entity_id)?;
-  let source = contour_at(document, site).clone();
+  let source = contour_at(document, site)?.clone();
   let id = minted_entity_id(first_entity_index, 0);
   ensure_id_is_free(document, &id)?;
 
@@ -1202,8 +1352,8 @@ fn join_entities(
   let sites = resolve_sites(document, entity_ids)?;
   let contours: Vec<Contour> = sites
     .iter()
-    .map(|site| contour_at(document, *site).clone())
-    .collect();
+    .map(|site| contour_at(document, *site).cloned())
+    .collect::<Result<Vec<_>, _>>()?;
 
   // The kernel builds and validates the whole chain before anything is written, so an ambiguous
   // group refuses with nothing removed and nothing replaced.
@@ -1227,8 +1377,8 @@ fn trim_entity(
   require_positive("trim tolerance", tolerance.epsilon)?;
   let target_site = resolve_site(document, target_id)?;
   let cutter_site = resolve_site(document, cutter_id)?;
-  let target = contour_at(document, target_site).clone();
-  let cutter = contour_at(document, cutter_site).clone();
+  let target = contour_at(document, target_site)?.clone();
+  let cutter = contour_at(document, cutter_site)?.clone();
 
   let trimmed = trim(&target, &cutter, tolerance).map_err(geometry_error)?;
 
@@ -1259,7 +1409,7 @@ fn edit_vertex(
   edit: VertexEdit,
 ) -> Result<CommandOutcome, CommandError> {
   let site = resolve_site(document, entity_id)?;
-  let contour = contour_at(document, site);
+  let contour = contour_at(document, site)?;
   let edited = match edit {
     VertexEdit::Move { index, to } => {
       require_finite_point("vertex position", to)?;
@@ -1298,6 +1448,20 @@ fn push_entity(
   entity_id: &str,
   contour: Contour,
 ) -> Result<(), CommandError> {
+  push_entity_kind(
+    document,
+    layer_id,
+    entity_id,
+    EntityKind::Contour { contour },
+  )
+}
+
+fn push_entity_kind(
+  document: &mut Document,
+  layer_id: &str,
+  entity_id: &str,
+  kind: EntityKind,
+) -> Result<(), CommandError> {
   let layer = document
     .layers
     .iter_mut()
@@ -1305,7 +1469,8 @@ fn push_entity(
     .ok_or_else(|| CommandError::UnknownLayer(layer_id.to_owned()))?;
   layer.entities.push(Entity {
     id: entity_id.to_owned(),
-    kind: EntityKind::Contour { contour },
+    kind,
+    source: cam_model::Provenance::default(),
   });
   Ok(())
 }

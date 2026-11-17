@@ -37,6 +37,7 @@ fn document_with_rectangle() -> Document {
         )
         .expect("rectangle"),
       },
+      source: cam_model::Provenance::default(),
     }],
   });
   document
