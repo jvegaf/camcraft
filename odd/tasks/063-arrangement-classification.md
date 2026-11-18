@@ -202,3 +202,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `boolean_silk_union_probe`, `boolean_stroke_fill_overlap`, `boolean_acceleration_regression`,
   `boolean_operations`. Falta validar suite completa de `cam-geom`, paridad y los dos rechazos
   completos (S3) antes de cerrar T3.
+
+- **L14 (T3, cierre de extremos de grado 1 en reintento).** Tras la reparación far-flip, el reintento
+  de `/tmp/top_r1.gbr` (asm 5026) queda con 110 vértices de grado 1 y 0 de grado 3: pares de extremos
+  colgantes a ~1.4 µm (√2·ε) sin arista de unión (p. ej. `seg2613` termina en `(154.798049,-108.156033)`
+  y `seg2612` empieza en `(154.798050,-108.156034)` yendo en sentido opuesto). Acotado al mismo camino
+  de recuperación, cuando el grafo es sólo grado 1/2 se sueldan pares de extremos grado-1 dentro de
+  4·ε al punto medio y se reensambla. Resultado: `/tmp/top_r1.gbr` produce imagen
+  (`image ok in ~118 s: polygons=111, skipped=83`; persiste un trazo rechazado en comando 704
+  `revisits a piece` y arcos no soportados). Booleanos dirigidos verdes (`boolean_index`,
+  `boolean_silk_union_probe`, `boolean_stroke_fill_overlap`, `boolean_acceleration_regression`,
+  `boolean_operations`). Pendiente: capa completa `kicad-2l-simple/top.gbr`,
+  `substitute-easyeda/bottom.gbr` (S3), suite completa/paridad y verificar que la soldadura acotada no
+  altere geometría fuera de estos reintentos.

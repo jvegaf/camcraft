@@ -2024,6 +2024,31 @@ fn combine_with_indexed(
               });
             }
             Err(e) => {
+              let mut vertices: Vec<(Point2, usize)> = Vec::new();
+              for seg in &s2 {
+                for point in [seg.start_point(), seg.end_point()] {
+                  if let Some(idx) = vertices
+                    .iter()
+                    .position(|(v, _)| v.is_near(point, tolerance))
+                  {
+                    vertices[idx].1 += 1;
+                  } else {
+                    vertices.push((point, 1));
+                  }
+                }
+              }
+              let mut d1 = 0usize;
+              let mut d2 = 0usize;
+              let mut d3 = 0usize;
+              let mut d4p = 0usize;
+              for (_, d) in &vertices {
+                match *d {
+                  1 => d1 += 1,
+                  2 => d2 += 1,
+                  3 => d3 += 1,
+                  _ => d4p += 1,
+                }
+              }
               if trace_repair {
                 use std::io::Write as _;
                 if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -2032,6 +2057,199 @@ fn combine_with_indexed(
                   .open("/tmp/trace_063_repair.log")
                 {
                   let _ = writeln!(f, "REPAIR_FAIL segs={} err={:?}", s2.len(), e);
+                  let _ = writeln!(
+                    f,
+                    "  vertices={} deg1={} deg2={} deg3={} deg4+={}",
+                    vertices.len(),
+                    d1,
+                    d2,
+                    d3,
+                    d4p
+                  );
+                  let mut shown = 0;
+                  for (_vi, (v, d)) in vertices.iter().enumerate() {
+                    if *d != 2 && shown < 20 {
+                      let _ = writeln!(f, "  ODD/NON2 ({:.9},{:.9}) deg={}", v.x, v.y, d);
+                      let mut count = 0usize;
+                      for (si, seg) in s2.iter().enumerate() {
+                        if seg.start_point().is_near(*v, tolerance)
+                          || seg.end_point().is_near(*v, tolerance)
+                        {
+                          let sp = seg.start_point();
+                          let ep = seg.end_point();
+                          let at_start = sp.is_near(*v, tolerance);
+                          let _ = writeln!(
+                            f,
+                            "    seg{} {} ({:.9},{:.9})->({:.9},{:.9})",
+                            si,
+                            if at_start { "START" } else { "END" },
+                            sp.x,
+                            sp.y,
+                            ep.x,
+                            ep.y
+                          );
+                          count += 1;
+                          if count >= 6 {
+                            break;
+                          }
+                        }
+                      }
+                      shown += 1;
+                    }
+                  }
+                }
+              }
+              // If the repaired set has only degree-1/degree-2 vertices (open chains with micro-gaps),
+              // try to snap close degree-1 endpoint pairs to each other and reassemble.
+              if matches!(e, GeomError::EditRefused { .. }) && d3 == 0 && d4p == 0 && d1 >= 2 {
+                let mut s3 = s2.clone();
+                let d1_points: Vec<Point2> = vertices
+                  .iter()
+                  .filter(|(_, d)| *d == 1)
+                  .map(|(p, _)| *p)
+                  .collect();
+                let join_limit = tolerance.epsilon * 4.0;
+                let mut changed = false;
+                for i in 0..d1_points.len() {
+                  let p1 = d1_points[i];
+                  let mut best_j = None;
+                  let mut best_d = f64::INFINITY;
+                  for j in 0..d1_points.len() {
+                    if i == j {
+                      continue;
+                    }
+                    let d = p1.distance_to(d1_points[j]);
+                    if d > 0.0 && d <= join_limit && d < best_d {
+                      best_d = d;
+                      best_j = Some(j);
+                    }
+                  }
+                  if let Some(j) = best_j {
+                    let q = d1_points[j];
+                    let target = Point2::new((p1.x + q.x) * 0.5, (p1.y + q.y) * 0.5);
+                    for seg in s3.iter_mut() {
+                      let sp = seg.start_point();
+                      let ep = seg.end_point();
+                      if sp.is_near(p1, tolerance) && !sp.is_near(target, tolerance) {
+                        match *seg {
+                          Segment::Line(_) => {
+                            *seg = Segment::Line(LineSeg::new(target, ep));
+                            changed = true;
+                          }
+                          Segment::Arc(arc) => {
+                            let vs = target - arc.center();
+                            let ve = ep - arc.center();
+                            let new_start = vs.y.atan2(vs.x);
+                            let new_end = ve.y.atan2(ve.x);
+                            let mut sweep = if arc.sweep() >= 0.0 {
+                              let mut s = new_end - new_start;
+                              while s <= 0.0 {
+                                s += std::f64::consts::TAU;
+                              }
+                              while s > std::f64::consts::TAU {
+                                s -= std::f64::consts::TAU;
+                              }
+                              s
+                            } else {
+                              let mut s = new_end - new_start;
+                              while s >= 0.0 {
+                                s -= std::f64::consts::TAU;
+                              }
+                              while s < -std::f64::consts::TAU {
+                                s += std::f64::consts::TAU;
+                              }
+                              s
+                            };
+                            let _ = new_start;
+                            if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
+                              *seg = Segment::Arc(a);
+                              changed = true;
+                            }
+                          }
+                        }
+                      } else if ep.is_near(p1, tolerance) && !ep.is_near(target, tolerance) {
+                        match *seg {
+                          Segment::Line(_) => {
+                            *seg = Segment::Line(LineSeg::new(sp, target));
+                            changed = true;
+                          }
+                          Segment::Arc(arc) => {
+                            let vs = sp - arc.center();
+                            let ve = target - arc.center();
+                            let new_start = vs.y.atan2(vs.x);
+                            let new_end = ve.y.atan2(ve.x);
+                            let sweep = if arc.sweep() >= 0.0 {
+                              let mut s = new_end - new_start;
+                              while s <= 0.0 {
+                                s += std::f64::consts::TAU;
+                              }
+                              while s > std::f64::consts::TAU {
+                                s -= std::f64::consts::TAU;
+                              }
+                              s
+                            } else {
+                              let mut s = new_end - new_start;
+                              while s >= 0.0 {
+                                s -= std::f64::consts::TAU;
+                              }
+                              while s < -std::f64::consts::TAU {
+                                s += std::f64::consts::TAU;
+                              }
+                              s
+                            };
+                            if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
+                              *seg = Segment::Arc(a);
+                              changed = true;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                if changed {
+                  let mut repaired_snaps3 = near_miss_snaps.clone();
+                  let odd3 = odd_degree_points(&s3, tolerance);
+                  if odd3.is_empty() {
+                    repaired_snaps3.clear();
+                  } else if !repaired_snaps3.is_empty() {
+                    repaired_snaps3
+                      .retain(|snap| snap_relevant_to_odd_degree(*snap, &odd3, tolerance));
+                  }
+                  let mut flattened = false;
+                  let valid_snaps = filter_valid_snaps(&s3, &repaired_snaps3);
+                  if let Ok(boundaries) =
+                    assemble(&s3, &o2, tolerance, &mut flattened, &valid_snaps)
+                  {
+                    if trace_repair {
+                      use std::io::Write as _;
+                      if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open("/tmp/trace_063_repair.log")
+                      {
+                        let _ = writeln!(
+                          f,
+                          "REPAIR_JOIN_OK segs={} bounds={}",
+                          s3.len(),
+                          boundaries.len()
+                        );
+                      }
+                    }
+                    return Ok(Combined::Region {
+                      region: Region { boundaries },
+                      flattened,
+                    });
+                  } else if trace_repair {
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                      .create(true)
+                      .append(true)
+                      .open("/tmp/trace_063_repair.log")
+                    {
+                      let _ = writeln!(f, "REPAIR_JOIN_FAIL segs={}", s3.len());
+                    }
+                  }
                 }
               }
             }
