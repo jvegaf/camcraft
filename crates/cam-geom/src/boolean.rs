@@ -1894,6 +1894,19 @@ fn combine_with_indexed(
   // inputs that share a boundary produce exactly that -- identical regions, or a hole touching the
   // outer edge along a segment -- so identical pieces are kept once.
   let survivors = dedup_pieces(survivors, tolerance);
+  // A piece no longer than the welding distance has no representable length here: its two ends weld
+  // to the same vertex. Neither keeping it (it collapses into a point) nor dropping it (it leaves the
+  // junction degree three, which the walk then revisits) is right. The right operation is a
+  // *contraction*: remove the piece and identify its ends, so the neighbours it joined still meet.
+  let mut contracted: Vec<(Segment, bool)> = Vec::with_capacity(survivors.len());
+  for (segment, owner) in survivors {
+    if segment.length() <= tolerance.epsilon * 2.0 {
+      near_miss_snaps.push((segment.start_point(), segment.end_point()));
+    } else {
+      contracted.push((segment, owner));
+    }
+  }
+  let survivors = contracted;
   if survivors.is_empty() {
     return Ok(Combined::Empty);
   }

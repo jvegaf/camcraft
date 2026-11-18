@@ -241,3 +241,21 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   extremos caen dentro de ε de un vértice ajeno. El arreglo correcto es que el corte no genere ese trozo
   (fundir la fracción de corte con el vértice existente que está a menos de ε), no descartarlo después.
   Queda como el próximo paso de T3, junto con `kicad-2l-simple/top`.
+- **L21 (T3, contracción de aristas sub-tolerancia + diagnóstico del resto).** Aceptado e implementado en
+  `combine_with_indexed`: toda pieza superviviente con longitud ≤ 2·ε se **quita y se registra como snap
+  entre sus dos extremos** (`near_miss_snaps`), o sea se *contrae*: los vecinos que unía se reconectan a
+  través del vértice identificado. Es la única de cinco variantes que preserva la topología — conservarla
+  la colapsa («begins and ends at the same point»), descartarla abre el grado del vértice y da
+  «revisits a piece», fundir fracciones de corte o deduplicar aristas a 2·ε no cambia el resultado,
+  y preferir `Drop` en el empate de sondas sólo mueve el síntoma. `cargo test -p cam-geom` completo:
+  **exit 0, 287 passed, 0 failed**. Repro mínimo `/tmp/bot_12797.gbr`: de rechazo a parseo.
+- **L22 (T3, causa del rechazo restante, medida).** La capa completa sigue rechazando, y la
+  instrumentación del punto de falla dice por qué: **no** son vértices de grado 3 sino de **grado 1**,
+  extremos abiertos a pocos ε entre sí. Ejemplo: `V2254 (93.129430,-88.588638)` y
+  `V2256 (93.129426,-88.588638)`, **4·ε** de separación, uno con `P2253` y el otro con `P2254`; un combine
+  anterior tenía **234** vértices no-manifold. Con grado 1 el recorrido no tiene continuación y vuelve
+  sobre la misma pieza: eso es el `revisits`. No es error de redondeo (coordenadas ~100 mm en f64 dan
+  ~2e-14): los huecos son de **varios múltiplos de ε**, o sea del tamaño del cuanto de coordenada del
+  propio archivo (`%FSLAX46Y46`, 6 decimales = 1e-6 mm). La regla de near-miss actual corta en 2·ε, así
+  que estos huecos no se sueldan. Cerrarlos exige una **decisión de política**: qué distancia de unión
+  declara el kernel, y con qué justificación. No se resuelve con otro parche local.
