@@ -169,3 +169,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   Esto empuja T3 hacia una regla que no permita que sondas lejanas conviertan en frontera una pieza cuyos
   vecinos inmediatos y sondas cercanas la declaran interior, pero hay que acotarla para no degradar casos
   donde la sonda lejana sí es la correcta.
+
+- **L11 (T3, heurística candidata probada y revertida).** Se probó `decide_indexed` con “si las dos
+  sondas definitivas más cercanas coinciden, usarlas; si no, mayoría”: en `/tmp/top_r1.gbr` clasifica 3216
+  como `Drop` (coincide con sondas cercanas y con el conector interior) y corrige la topología local
+  `b0/top` igual que L10; el archivo completo aún falla (`revisits a piece`), por lo que hay más roturas.
+  Pasaron `boolean_index`, `boolean_silk_union_probe`, `boolean_stroke_fill_overlap`,
+  `boolean_acceleration_regression`, `boolean_operations` (16). No se corrió la suite completa de
+  `cam-geom` ni paridad. La regla es coherente con la evidencia (las sondas lejanas de 3216 cruzan otra
+  geometría) pero falta validar contra `boolean_properties/corpus/parity` y contra los casos que
+  motivaron la preferencia por sondas lejanas en 346723a antes de adoptarla.
