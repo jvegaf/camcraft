@@ -215,3 +215,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `boolean_operations`). Pendiente: capa completa `kicad-2l-simple/top.gbr`,
   `substitute-easyeda/bottom.gbr` (S3), suite completa/paridad y verificar que la soldadura acotada no
   altere geometría fuera de estos reintentos.
+
+- **L15 (T4 medición, capas completas S3).** Con `bedb58e` (reparación far-flip + soldadura grado-1↔grado-1
+  ≤ 4·ε en reintento), probe de las dos capas objetivo:
+  - `fixtures/corpus/kicad-2l-simple/top.gbr`: `parse ok in 2.52 ms`, `IMAGE-ERR after 117.69 s` —
+    `edit refused: the arrangement revisits a piece, so its pieces cannot be chained closed`. El prefijo
+    `/tmp/top_r1.gbr` (primera región G36/G37) sí produce imagen (L14), por lo que el rechazo completo
+    proviene de otra región/combinar de la capa o de un defecto no cubierto.
+  - `fixtures/corpus/substitute-easyeda/bottom.gbr`: `parse ok in 7.52 ms`, `IMAGE-ERR after 32.02 s` —
+    mismo rechazo. Tiempo distinto al observado antes (~356 s), pero el resultado sigue siendo fallo a
+    terminación (sin `image ok`).
+  S3 sigue sin cumplirse para ambas capas. Próximo paso: localizar en qué región/`combine` falla cada
+  capa completa (traza/instrumentación acotada por capa) para distinguir si comparten el patrón far-flip
+  + extremos abiertos ya reparado o si son causas distintas.
