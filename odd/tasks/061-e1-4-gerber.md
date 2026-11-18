@@ -278,3 +278,10 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   `decide_indexed`. No es soldadura ni umbral: es clasificación. `substitute-easyeda/bottom` también
   sigue rechazando. **Corrección de un reporte anterior:** el prefijo `/tmp/bot_12797.gbr` nunca pasó;
   lo que se veía era `parse ok` seguido del timeout, no un `image ok`.
+- **L24 (T3 cerrado por derivación).** La familia de fallos de arreglo que quedaba en T3 no se resuelve en
+  esta tarea: pasa a la [063](063-arrangement-classification.md) (clasificación de piezas). Motivo: el
+  defecto está localizado en **una pieza de 0.208 mm descartada** por `decide_indexed`, no en la medición,
+  la soldadura ni el corte, y la 061 ya falsificó siete variantes de esas tres (L21–L23). Con eso, T3 de
+  061 queda en lo que sí cerró —apertura dentro de `G36`, índice local, sondas estables, snapa
+  punta-a-punta, dedup geométrico, corte sin slivers y contracción de aristas sub-tolerancia— y los dos
+  rechazos restantes (`kicad-2l-simple/top`, `substitute-easyeda/bottom`) se siguen midiendo en la 063.
