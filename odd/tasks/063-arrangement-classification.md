@@ -255,3 +255,9 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   margen mínimo (`4·ε + 1e-12`) el combine ya no falla rápido en ~34 s, pero la capa completa pasa a
   correr >300 s (en curso al registrar), lo que sugiere que ese combine se repara y el procesamiento
   continúa a etapas posteriores (pendiente de medir a terminación o nuevo fallo).
+
+- **L18 (T4, bottom con margen de emparejado).** `fixtures/corpus/substitute-easyeda/bottom.gbr` con
+  `9d98491` (margen `4·ε + 1e-12`): supera el fallo rápido previo (~34 s) pero agota `timeout 600` sin
+  `image ok` ni `IMAGE-ERR` (`parse ok`, `EXIT=124` del timeout). No es éxito (S6); indica que los
+  combines de 4 hojas se reparan y el procesamiento avanza, pero queda un cuello de rendimiento o un caso
+  patológico posterior. S3 sigue sin cumplirse para bottom.
