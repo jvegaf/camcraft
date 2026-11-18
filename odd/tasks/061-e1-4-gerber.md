@@ -212,3 +212,13 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   conteos (`polygons`) no se comparan como fallo, sólo se reportan, igual que `compare.py` ya hace con
   `vertices` frente a `points`. Se delega el instrumento (`scripts/parity/`, `fixtures/corpus/`),
   disjunto del worker de T3 que sigue en `crates/`.
+- **L19 (alcance de T5 recortado por decisión).** El humano decidió que la **reconstrucción del contorno
+  de placa** no se hace dentro de esta tarea: pasa a la [062](062-board-outline-contour.md). Motivo
+  medido: en `kicad-2l-simple`, `kicad-4l-pours` y `substitute-eagle` el `outline` son segmentos sueltos
+  con huecos de hasta 23.4 mm, así que cerrarlos no es una tolerancia de unión sino derivar un polígono
+  nuevo; las otras tres placas cierran con hueco 0.0 mm y **ya coinciden exactas** con FlatCAM, lo que
+  prueba que la medición es comparable cuando el contorno cierra. Con eso, T5 en esta tarea queda
+  limitada a las divergencias de **cobre, máscara y silk**, que sí son su alcance: `kicad-large-pours/silk-top`
+  (0.419), `substitute-easyeda/silk-top` (0.249), `kicad-4l-pours/mask-top` (0.0224) — dos de ellas
+  justamente capas que dejaron de rechazar por el fix de mayoría de sondas, así que hay que verificar si
+  ese fix cambió geometría para «dejar de fallar» en vez de para acertar.
