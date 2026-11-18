@@ -86,3 +86,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   contradice la hipótesis de L3 ("la descartó `decide_indexed`"): la clasificación la conserva y el
   defecto —si sigue produciendo grado 3 y grado 1 en esos extremos— está después de `decide_indexed`
   (ensamblado, soldadura de vértices, deduplicación o contracción), no en la decisión misma.
+
+- **L5 (investigación posterior a T1, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr` = primera `G36/G37` de
+  `kicad-2l-simple/top.gbr`).** La pieza de S2 **no se pierde en la clasificación ni en la poda**: llega a
+  ensamblado como `seg=(148.699500,-87.652139294)->(148.699500,-87.443774000)` (invertida), sobrevive a
+  `dedup_pieces` y a la contracción en las dos pasadas. En ensamblado se le asignan `start=1114` en el
+  vértice superior (grado 3: piezas 1112, 3216, 3217) y `end=3223` en el inferior (grado 1: sólo 3216),
+  pero **existe otro vértice en las mismas coordenadas del inferior**, `VERTEX 820 (148.699500,-87.443774000)`
+  con grado 2 (piezas 817, 818). El extremo inferior de la pieza quedó en un vértice distinto al de los
+  otros tramos que llegan a ese punto, por lo que el contorno no cierra. **Conclusión:** el defecto no
+  está en `decide_indexed` (T1 lo falsifica) sino en la identidad/fusión de vértices en ensamblado: un
+  mismo punto geométrico termina representado por dos vértices. T2 debe partir de esto, no de la regla de
+  sondas. Se añadió una guarda defensiva en `vertex_index` (segunda búsqueda por cercanía espacial antes
+  de crear), que no elimina el duplicado observado; la causa del fallo de fusión sigue abierta.

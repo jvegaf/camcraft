@@ -937,6 +937,14 @@ fn vertex_index(
     if let Some(index) = found {
       return index;
     }
+    // Defensive: a point that is_near an existing vertex must never create a duplicate, even if the
+    // grid lookup missed it (e.g. a boundary case in cell assignment).
+    if let Some(index) = vertices
+      .iter()
+      .position(|vertex| vertex.point.is_near(point, tolerance))
+    {
+      return index;
+    }
     let index = vertices.len();
     vertices.push(Vertex {
       point,
@@ -950,6 +958,13 @@ fn vertex_index(
     vertex.point.is_near(point, tolerance)
       || points_identified(vertex.point, point, near_miss_snaps, allowed)
   }) {
+    return index;
+  }
+  // Defensive: spatial nearness wins even if the snap/identification search above somehow missed it.
+  if let Some(index) = vertices
+    .iter()
+    .position(|vertex| vertex.point.is_near(point, tolerance))
+  {
     return index;
   }
   let index = vertices.len();
