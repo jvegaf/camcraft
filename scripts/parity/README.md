@@ -36,6 +36,25 @@ the tolerances exactly. That epsilon is E0.4's and it is relative because the ar
 sum of hundreds of terms — an absolute epsilon would be a different rule for a small board and a large
 one.
 
+### Comparing against FlatCAM
+
+`scripts/parity/compare-flatcam.py` reads the two committed JSON files — this tree's goldens and
+`fixtures/baseline/`, which task 059 pinned from a real FlatCAM-Plus run — and reports, per artefact,
+where the two disagree. It measures nothing, so it needs no FlatCAM environment.
+
+Its rules: `status` compares exactly; `polygons` is reported and never failed, because FlatCAM flattens
+every arc in Shapely while this tree keeps arcs native and the two therefore count different things; an
+artefact measured on only one side is listed as not comparable and never as agreement.
+
+`contour_area_mm2` is the one field where the comparison has to be read with care, and the reason is in
+the section above: the field is the **sum of absolute contour areas**, so a boundary with a hole inside
+it contributes twice, while FlatCAM reports the material area. Where the two metrics coincide the areas
+agree to about `1e-4`; where a layer is drawn as a closed ring the tree's number is a different
+quantity and the comparison is not meaningful. The script uses a relative `1e-3`, which is loose enough
+to absorb arc flattening (observed `<= 9e-5`) and tight enough to still fail every genuine geometric
+divergence in the corpus (`>= 2.2e-3`), but a divergence it reports on an `outline` should be read as
+"these are different quantities" until a hole-aware material area exists (D2 / G0.2).
+
 **What this is not.** It is not parity against FlatCAM. D5 asks for an external oracle and that is a
 different instrument with its own cost; what this harness compares against is the tree's own recorded
 output over a fixed corpus, which is what "runs in CI over the minimum corpus and fails on divergence"
