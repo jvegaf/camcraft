@@ -222,3 +222,22 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   (0.419), `substitute-easyeda/silk-top` (0.249), `kicad-4l-pours/mask-top` (0.0224) — dos de ellas
   justamente capas que dejaron de rechazar por el fix de mayoría de sondas, así que hay que verificar si
   ese fix cambió geometría para «dejar de fallar» en vez de para acertar.
+- **L20 (T3, `substitute-easyeda/bottom`: causa raíz hallada, arreglo no aceptado).** El worker aisló la
+  causa con números: una pieza superviviente tenía sus dos extremos a ~1.0·ε de un **mismo vértice**
+  existente (p. ej. `(152.368635,-124.837519)`) aunque los extremos entre sí distan ~1.414·ε, así que
+  `vertex_index` los soldaba al mismo vértice, `start == end` y `assemble` rechazaba con «a surviving
+  piece begins and ends at the same point». Eso explica el síntoma; el diagnóstico se acepta.
+  **El arreglo no.** Dos variantes, mismo resultado:
+  1. worker: `filter_valid_snaps` con tolerancia + en `assemble` reasignar el extremo a otro vértice o
+     **descartar el sliver** y seguir; el repro pasó de «begins and ends at the same point» a
+     **`revisits a piece`** (~277 s), o sea el rechazo se movió, no se resolvió; además la regresión sólo
+     afirmaba la *ausencia de un mensaje* (acepta cualquier otro error) y tardaba 288 s en release y
+     ~1400 s en debug, y la capa pasó de 78 s a 279 s y `kicad-2l-simple/top` de 107 s a 170 s.
+  2. alternativa propia, en la capa correcta: descartar piezas con longitud ≤ 2·ε entre los
+     supervivientes y antes de `assemble` (`is_tolerance_sliver`). Verificado con el mismo repro
+     `/tmp/bot_12797.gbr`: **también** termina en `revisits a piece` (~139 s).
+  Conclusión medida: **el sliver es portante**. Sacarlo abre el arreglo y el recorrido revisita, así que
+  el problema no está en el ensamblado sino en el **corte**: se está creando un trozo de ~2·ε cuyos dos
+  extremos caen dentro de ε de un vértice ajeno. El arreglo correcto es que el corte no genere ese trozo
+  (fundir la fracción de corte con el vértice existente que está a menos de ε), no descartarlo después.
+  Queda como el próximo paso de T3, junto con `kicad-2l-simple/top`.
