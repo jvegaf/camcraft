@@ -115,3 +115,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   real es un defecto topológico del conjunto de piezas que sobrevive a ese combine** (un extremo sin pareja
   en `b0` y una T en `top`), no un fallo de fusión de vértices ni un descarte de la pieza 3216. Falta
   determinar qué pieza que debería cerrar en `b0` falta o quedó mal cortada en asm 5025.
+
+- **L7 (T2, piezas de entrada a `assemble` en las pasadas clave, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`,
+  evidencia `odd/tasks/evidence/063-t2-pieces-asm5025.log`).** En **asm 4131** (2099, 55) `b0` es unión
+  cerrada: pieza 817 `b0=(148.6995,-87.443774) -> (148.712003,-87.380915)` y pieza 818
+  `(148.6995,-88.032744) -> b0`. En **asm 5025** (4497, 55) no hay ninguna pieza que empiece o termine en
+  `b0` salvo 3216 `(top=148.6995,-87.652139 -> b0)`; la continuación que en 4131 salía de `b0` hacia arriba
+  se desvía por `x=148.7` (`top -> 1112 -> (148.7,-87.638) -> 1113 -> (148.7,-87.441) -> 3215 ->
+  (148.711543,-87.383227)`), dejando `b0` de grado 1 y `top` de grado 3. **Decisión T2 (evidencia, sin
+  código):** la rotura no es fusión de vértices (L6) ni clasificación de 3216 (L4/T1); es el **conjunto de
+  piezas supervivientes** de asm 5025: topológicamente no encadenable (extremo abierto en `b0`, unión en T
+  en `top`). La corrección debe venir de por qué ese combine produce esa partición/corte (qué pieza que
+  cerraría en `b0` falta o se recortó hacia el desvío `x=148.7`) —ya no de sondas ni de soldadura— y hay
+  que localizarla comparando el grafo de piezas de 4131 frente al de 5025 alrededor de `b0/top`.
