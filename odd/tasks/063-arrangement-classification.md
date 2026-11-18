@@ -157,3 +157,15 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `x=148.7`) es, por tanto, consecuencia directa de descartar ese conector de 2.563 µm: sin él, 3216 no
   tiene pareja en `b0`. T3 debe decidir si ese `Drop` unánime a escala sub-longitud es geométricamente
   correcto para el union o un falso interior, y fijar la regla/regresión mínima.
+
+- **L10 (T3, experimento controlado, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`, evidencia
+  `odd/tasks/evidence/063-t3-force-drop-3216.log`).** Forzando a `Drop` la pieza 3216
+  (`b0->top`, 208 µm, `from_a=false path=0`) en asm 5025/5026, el vértice en `b0` desaparece y `top` pasa
+  a grado 2 (`3217↔1112`), o sea la cinta se cierra por `1112,1113,3215`. El archivo completo sigue
+  fallando con `revisits a piece`, así que esta no es la única rotura, pero el defecto local queda
+  resuelto. Lectura geométrica: el conector de 2.563 µm es interior en todo su rango alcanzable (Drop
+  correcto); 3216 sólo se vuelve `Reverse` en sondas lejanas (~0.53–8.5 mm, decenas de veces su longitud)
+  mientras a rango cercano es `Drop` — las sondas lejanas cruzan otra geometría y contradicen lo local.
+  Esto empuja T3 hacia una regla que no permita que sondas lejanas conviertan en frontera una pieza cuyos
+  vecinos inmediatos y sondas cercanas la declaran interior, pero hay que acotarla para no degradar casos
+  donde la sonda lejana sí es la correcta.
