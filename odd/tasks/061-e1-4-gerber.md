@@ -149,13 +149,16 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   frontera/cercanía (`boolean_silk_union_probe`). Bajo 30 s: `refused`→`parsed` `substitute-easyeda/silk-top`,
   `kicad-large-pours/silk-top`, `substitute-altium/top`; `refused`→`timeout` `substitute-eagle/silk-bottom`,
   `substitute-easyeda/bottom`.
-- **L13 (T3, near-miss punta a punta, silk-top de kicad-4l-pours).** Repro aislado: unir la imagen de
-  las 370 primeras líneas de `kicad-4l-pours/silk-top.gbr` con el trazo D10 de la línea 371 (cápsula
-  horizontal 7 mm, y=-126.7). El extremo de una pieza existente y el inicio de la cápsula quedaban a
-  ~1.42 µm (> ε=1 µm), fuera de soldadura por tolerancia y sin snap de near-miss (proyección no
-  interior), rompiendo el grafo (`revisits a piece`). Fix: en la detección de near-miss (reintento)
-  registrar snaps punta-a-punta entre extremos de segmento dentro de 2·ε. El repro aislado y el prefijo
-  fallido ahora combinan; la capa completa ya no es `refused` pero es muy lenta (>180 s / 44 s a 20k
-  líneas) y queda pineada `timeout` bajo 30 s. `cargo test -p cam-geom` completo, fmt, clippy y
-  `--test parity` (565 s) en verde. Corpus: **25 parsed, 29 timeout, 0 refused**. Persisten T3 en
-  `kicad-2l-simple/top` (cmd 1441) y T4/rendimiento (timeouts).
+- **L13 (T3, near-miss punta a punta, commit `55f5fd7`).** Repro aislado (prefijo de
+  `kicad-4l-pours/silk-top` + trazo línea 371): extremos a ~1.42 µm (> ε) sin snap interior rompían el
+  grafo. Fix: en el reintento de near-miss registrar snaps punta-a-punta entre extremos dentro de 2·ε.
+  La capa ya no es `refused` pero es lenta (>180 s) y queda `timeout`. Corpus: **25 parsed, 29 timeout,
+  0 refused**.
+- **L14 (T3, `kicad-2l-simple/top`, en curso).** Repro: primer `G36/G37` (`/tmp/top_r1.gbr`, 2175
+  segmentos de relleno) falla en las uniones progresivas: vértices de grado 3 por aristas casi
+  duplicadas (mismo par de vértices, arcos desplazados ~1 µm, p.ej. `P701`/`P2275`). `dedup_pieces`
+  pasa a comparar equivalencia geométrica orientada dentro de tolerancia (extremos y forma) para
+  eliminar slivers casi duplicados; `cargo test -p cam-geom` (boolean_operations/properties/silk/overlap),
+  fmt y clippy en verde. El repro del primer relleno sigue fallando (ahora `the arrangement is finer
+  than the tolerance can resolve` sobre una pieza de ~2.8 µm, ~144 s), así que `kicad-2l-simple/top`
+  permanece sin resolver. Persisten T4 (29 timeouts) y T5.

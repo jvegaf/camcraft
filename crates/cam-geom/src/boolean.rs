@@ -2007,56 +2007,54 @@ fn decide_indexed(
 ///
 /// Two pieces are the same edge only when they are the same curve traversed the same way. Sharing
 /// endpoints is not enough: two semicircles of the same circle meet at the same seam points but are
-/// different curves, and both must survive. The key is therefore the quantised oriented endpoints
-/// together with the segment's geometry, so the comparison stays exact-in-tolerance without becoming
-/// a float equality. When the endpoint order is canonicalised, the traversal direction is carried
-/// with the swap (a swapped arc negates its sweep) and the key keeps that directed geometry.
+/// different curves, and both must survive. Pieces whose oriented endpoints and geometry agree
+/// within tolerance are treated as duplicates to avoid non-manifold slivers from near-coincident
+/// representations.
 fn dedup_pieces(
   pieces: Vec<(Segment, bool)>,
   tolerance: crate::TolerancePolicy,
 ) -> Vec<(Segment, bool)> {
-  let scale = 1.0 / tolerance.epsilon;
-  let quantise = |value: f64| (value * scale).round() as i64;
+  let tol = tolerance.epsilon;
+  let same_point = |a: crate::point::Point2, b: crate::point::Point2| a.distance_to(b) <= tol;
 
-  #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-  enum GeometryKey {
-    Line,
-    Arc {
-      center_x: i64,
-      center_y: i64,
-      radius: i64,
-      sweep: i64,
-    },
-  }
-  type PieceKey = ((i64, i64), (i64, i64), GeometryKey);
-
-  let mut seen: std::collections::BTreeSet<PieceKey> = std::collections::BTreeSet::new();
-  let mut kept = Vec::with_capacity(pieces.len());
-  for (piece, owner) in pieces {
-    let start = piece.start_point();
-    let end = piece.end_point();
-    let mut from = (quantise(start.x), quantise(start.y));
-    let mut to = (quantise(end.x), quantise(end.y));
-    let mut swapped = false;
-    if to < from {
-      std::mem::swap(&mut from, &mut to);
-      swapped = true;
+  let equiv = |a: Segment, b: Segment| -> bool {
+    let same_dir =
+      same_point(a.start_point(), b.start_point()) && same_point(a.end_point(), b.end_point());
+    let opp_dir =
+      same_point(a.start_point(), b.end_point()) && same_point(a.end_point(), b.start_point());
+    if !same_dir && !opp_dir {
+      return false;
     }
-    let geometry = match piece {
-      Segment::Line(_) => GeometryKey::Line,
-      Segment::Arc(arc) => {
-        let sweep = if swapped { -arc.sweep() } else { arc.sweep() };
-        GeometryKey::Arc {
-          center_x: quantise(arc.center().x),
-          center_y: quantise(arc.center().y),
-          radius: quantise(arc.radius()),
-          sweep: quantise(sweep),
+    match (a, b) {
+      (Segment::Line(_), Segment::Line(_)) => true,
+      (Segment::Arc(a1), Segment::Arc(a2)) => {
+        let sweep2 = if same_dir { a2.sweep() } else { -a2.sweep() };
+        if a1.center().distance_to(a2.center()) <= tol
+          && (a1.radius() - a2.radius()).abs() <= tol
+          && (a1.sweep() - sweep2).abs() * a1.radius().max(1.0) <= tol
+        {
+          return true;
         }
+        let b_cmp = if same_dir {
+          Segment::Arc(a2)
+        } else {
+          Segment::Arc(a2.reversed())
+        };
+        let a_seg = Segment::Arc(a1);
+        same_point(point_at(a_seg, 0.25), point_at(b_cmp, 0.25))
+          && same_point(point_at(a_seg, 0.5), point_at(b_cmp, 0.5))
+          && same_point(point_at(a_seg, 0.75), point_at(b_cmp, 0.75))
       }
-    };
-    if seen.insert((from, to, geometry)) {
-      kept.push((piece, owner));
+      _ => false,
     }
+  };
+
+  let mut kept: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
+  for (piece, owner) in pieces {
+    if kept.iter().any(|(k, _)| equiv(piece, *k)) {
+      continue;
+    }
+    kept.push((piece, owner));
   }
   kept
 }
