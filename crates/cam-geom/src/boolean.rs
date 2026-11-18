@@ -1979,18 +1979,57 @@ fn decide_indexed(
       reason: "a zero-length piece cannot be classified",
     });
   }
+  // 063 T1 instrument: the missing 0.208 mm piece on kicad-2l-simple/top.
+  let trace_063 = std::env::var_os("CAMCRAFT_TRACE_063").is_some() && {
+    let va = Point2::new(148.699500, -87.652139294);
+    let vb = Point2::new(148.699500, -87.443774000);
+    let s = segment.start_point();
+    let e = segment.end_point();
+    let near = 0.02_f64;
+    (s.distance_to(va) < near && e.distance_to(vb) < near)
+      || (s.distance_to(vb) < near && e.distance_to(va) < near)
+  };
   // A piece's own boundary is skipped on its own side, exactly as the single-region walk does; the
   // other region's boundaries are all consulted.
   let skip_a = if piece.from_a { Some(piece.path) } else { None };
   let skip_b = if piece.from_a { None } else { Some(piece.path) };
   let base = (length * PROBE_STEP).max(PROBE_FLOOR);
   let mut samples: Vec<(Decision, usize)> = Vec::with_capacity(PROBE_TRIES);
+  let mut trace_lines: Vec<String> = Vec::new();
+  if trace_063 {
+    trace_lines.push(format!(
+      "PIECE from_a={} path={:?} len={:.12} s=({:.9},{:.9}) e=({:.9},{:.9}) op={:?} skip_a={:?} skip_b={:?} base={:.6e}",
+      piece.from_a,
+      piece.path,
+      length,
+      segment.start_point().x,
+      segment.start_point().y,
+      segment.end_point().x,
+      segment.end_point().y,
+      op,
+      skip_a,
+      skip_b,
+      base,
+    ));
+  }
   for attempt in 0..PROBE_TRIES {
     let distance = base * PROBE_GROWTH.powi(attempt as i32);
     if distance * 2.0 > length {
+      if trace_063 {
+        trace_lines.push(format!(
+          "  attempt={} distance={:.6e} STOP distance*2>len",
+          attempt, distance
+        ));
+      }
       break;
     }
     let Some((left, right)) = probe_points(segment, distance) else {
+      if trace_063 {
+        trace_lines.push(format!(
+          "  attempt={} distance={:.6e} STOP no-probe-points",
+          attempt, distance
+        ));
+      }
       break;
     };
     let memberships = (
@@ -2001,6 +2040,12 @@ fn decide_indexed(
     );
     let (Some(left_a), Some(left_b), Some(right_a), Some(right_b)) = memberships else {
       // A probe landed within some boundary's band; step farther out and ask again.
+      if trace_063 {
+        trace_lines.push(format!(
+          "  attempt={} distance={:.6e} BAND memberships={:?} left=({:.9},{:.9}) right=({:.9},{:.9})",
+          attempt, distance, memberships, left.x, left.y, right.x, right.y
+        ));
+      }
       continue;
     };
     let left_inside = op.holds(left_a, left_b);
@@ -2010,6 +2055,12 @@ fn decide_indexed(
       (false, true) => Decision::Reverse,
       _ => Decision::Drop,
     };
+    if trace_063 {
+      trace_lines.push(format!(
+        "  attempt={} distance={:.6e} left_a={:?} left_b={:?} right_a={:?} right_b={:?} left_in={} right_in={} => {:?}",
+        attempt, distance, left_a, left_b, right_a, right_b, left_inside, right_inside, decision
+      ));
+    }
     samples.push((decision, attempt));
   }
   let first_definitive = if samples.is_empty() {
@@ -2080,6 +2131,12 @@ fn decide_indexed(
         best_attempt = *attempt;
       }
     }
+    if trace_063 {
+      trace_lines.push(format!(
+        "  samples={:?} filtered={:?} counts(K,R,D)={:?} => {:?}",
+        samples, filtered, counts, best
+      ));
+    }
     Some(best)
   };
   if let Some(decision) = first_definitive {
@@ -2092,6 +2149,12 @@ fn decide_indexed(
         || segment.start_point() == *projection
         || segment.end_point() == *projection
     });
+    if trace_063 {
+      trace_lines.push(format!(
+        "  definitive={:?} adjacent_to_snap={}",
+        decision, is_adjacent_to_snap
+      ));
+    }
     if is_adjacent_to_snap && matches!(decision, Decision::Keep | Decision::Reverse) {
       // Probe close to detect a thin sliver. Try smaller distances if a close probe suggests a
       // sliver, to avoid misclassifying a narrow valid feature that the probe stepped past.
@@ -2112,15 +2175,30 @@ fn decide_indexed(
               let right_inside = op.holds(right_a, right_b);
               if left_inside == right_inside {
                 drop_as_sliver = true;
+                if trace_063 {
+                  trace_lines.push(format!("  sliver-probe={:.6e} same-side => drop", probe));
+                }
                 probe /= PROBE_GROWTH;
                 continue;
               } else {
                 drop_as_sliver = false;
+                if trace_063 {
+                  trace_lines.push(format!(
+                    "  sliver-probe={:.6e} different-side => keep-decision",
+                    probe
+                  ));
+                }
                 break;
               }
             }
             _ => {
               drop_as_sliver = false;
+              if trace_063 {
+                trace_lines.push(format!(
+                  "  sliver-probe={:.6e} band => keep-decision",
+                  probe
+                ));
+              }
               break;
             }
           }
@@ -2129,10 +2207,52 @@ fn decide_indexed(
         }
       }
       if drop_as_sliver {
+        if trace_063 {
+          use std::io::Write as _;
+          if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/trace_063.log")
+          {
+            for line in &trace_lines {
+              let _ = writeln!(f, "{}", line);
+            }
+            let _ = writeln!(f, "  FINAL=Drop (sliver guard)");
+            let _ = writeln!(f, "---");
+          }
+        }
         return Ok(Decision::Drop);
       }
     }
+    if trace_063 {
+      use std::io::Write as _;
+      if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/trace_063.log")
+      {
+        for line in &trace_lines {
+          let _ = writeln!(f, "{}", line);
+        }
+        let _ = writeln!(f, "  FINAL={:?}", decision);
+        let _ = writeln!(f, "---");
+      }
+    }
     return Ok(decision);
+  }
+  if trace_063 {
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+      .create(true)
+      .append(true)
+      .open("/tmp/trace_063.log")
+    {
+      for line in &trace_lines {
+        let _ = writeln!(f, "{}", line);
+      }
+      let _ = writeln!(f, "  FINAL=Err(finer than tolerance)");
+      let _ = writeln!(f, "---");
+    }
   }
   Err(GeomError::EditRefused {
     reason: "the arrangement is finer than the tolerance can resolve",

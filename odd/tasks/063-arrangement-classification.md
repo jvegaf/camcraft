@@ -66,3 +66,23 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   los huecos de pocos ε, quedan 2 vértices no-manifold, uno de grado 3 y otro de grado 1, a 0.208 mm, que
   es el patrón de una pieza faltante (S2, S3). El intento de reparación por umbral se abandonó porque rompe
   una capa pineada como `parsed` (S4).
+
+- **L4 (T1, instrumento y evidencia, `CAMCRAFT_TRACE_063=1`, `fixtures/corpus/kicad-2l-simple/top.gbr`).**
+  La pieza medida es `from_a=false path=0 len=0.208365294025 s=(148.699500,-87.443774000)
+  e=(148.699500,-87.652139294) op=Union skip_a=None skip_b=Some(0)` — exactamente los dos extremos de S2.
+  En las dos pasadas del `combine` (la segunda es el reintento con detección de cuasi-contactos, tras
+  `revisits`) la clasificación es la misma:
+  - intento 0, distancia 2.083653e-6: `left_a=true left_b=false right_a=true right_b=true`,
+    `left_in=true right_in=true` => `Drop`.
+  - intento 1, distancia 3.333845e-5: idem => `Drop`.
+  - intento 2, distancia 5.334152e-4: `left_a=false left_b=false right_a=true right_b=true`,
+    `left_in=false right_in=true` => `Reverse`.
+  - intento 3, distancia 8.534642e-3: idem => `Reverse`.
+  - intento 4: se detiene (`distance*2>len`).
+  Muestras `[(Drop,0),(Drop,1),(Reverse,2),(Reverse,3)]`, filtradas iguales (ningún conteo es 1),
+  `counts(K,R,D)=[0,2,2]`, decisión definitiva `Reverse` por prioridad ante el empate (`Reverse` > `Drop`,
+  `Keep` no aparece), sin guarda de sliver (`adjacent_to_snap=false`). **La pieza no se descarta: se
+  conserva invertida.** La traza completa está en `odd/tasks/evidence/063-t1-simple-top-gap.log`. Esto
+  contradice la hipótesis de L3 ("la descartó `decide_indexed`"): la clasificación la conserva y el
+  defecto —si sigue produciendo grado 3 y grado 1 en esos extremos— está después de `decide_indexed`
+  (ensamblado, soldadura de vértices, deduplicación o contracción), no en la decisión misma.
