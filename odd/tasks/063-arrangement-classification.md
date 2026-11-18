@@ -99,3 +99,19 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   mismo punto geométrico termina representado por dos vértices. T2 debe partir de esto, no de la regla de
   sondas. Se añadió una guarda defensiva en `vertex_index` (segunda búsqueda por cercanía espacial antes
   de crear), que no elimina el duplicado observado; la causa del fallo de fusión sigue abierta.
+
+- **L6 (T2, traza correlacionada por llamada a `assemble`, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`,
+  evidencia `odd/tasks/evidence/063-t2-vid-top-r1.log`).** La lectura de L5 estaba mal correlacionada entre
+  pasadas: no hay dos vértices en el mismo punto dentro de la misma `assemble`. Lo que ocurre es:
+  - **asm 4131** (2099 piezas, 55 snaps) y **4132** (99 snaps): un único vértice 820 en
+    `(148.6995,-87.443774)` con grado 2 (pieza 817 `b0 -> 148.712003,-87.380915`, pieza 818
+    `148.6995,-88.032744 -> b0`). Topología local correcta.
+  - **asm 5025** (4497 piezas, 55 snaps, la pasada que contiene la pieza 3216) y **5026** (4527, 99): un
+    único vértice 3223/3253 en `b0` con **grado 1** (sólo pieza 3216/3246 `top -> b0`), y el vértice
+    1114/1133 en `top = (148.6995,-87.652139294)` con **grado 3** (piezas 1112, 3216, 3217 /
+    `148.6995,-88.032744 -> top`). No hay otro vértice en `b0` y nada más llega a `b0`.
+  Comparando 4131 con 5025, el corte cambió: donde 4131 tenía `(-88.033)->b0->(destino alto)`, 5025 tiene
+  `(-88.033)->top` (3217) y `top->b0` (3216), dejando `b0` abierto y `top` como unión en T. **La causa
+  real es un defecto topológico del conjunto de piezas que sobrevive a ese combine** (un extremo sin pareja
+  en `b0` y una T en `top`), no un fallo de fusión de vértices ni un descarte de la pieza 3216. Falta
+  determinar qué pieza que debería cerrar en `b0` falta o quedó mal cortada en asm 5025.
