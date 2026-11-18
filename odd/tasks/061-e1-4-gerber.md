@@ -154,11 +154,12 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   grafo. Fix: en el reintento de near-miss registrar snaps punta-a-punta entre extremos dentro de 2·ε.
   La capa ya no es `refused` pero es lenta (>180 s) y queda `timeout`. Corpus: **25 parsed, 29 timeout,
   0 refused**.
-- **L14 (T3, `kicad-2l-simple/top`, en curso).** Repro: primer `G36/G37` (`/tmp/top_r1.gbr`, 2175
-  segmentos de relleno) falla en las uniones progresivas: vértices de grado 3 por aristas casi
-  duplicadas (mismo par de vértices, arcos desplazados ~1 µm, p.ej. `P701`/`P2275`). `dedup_pieces`
-  pasa a comparar equivalencia geométrica orientada dentro de tolerancia (extremos y forma) para
-  eliminar slivers casi duplicados; `cargo test -p cam-geom` (boolean_operations/properties/silk/overlap),
-  fmt y clippy en verde. El repro del primer relleno sigue fallando (ahora `the arrangement is finer
-  than the tolerance can resolve` sobre una pieza de ~2.8 µm, ~144 s), así que `kicad-2l-simple/top`
-  permanece sin resolver. Persisten T4 (29 timeouts) y T5.
+- **L14 (T3, `kicad-2l-simple/top`, commit `84de02f` + fix de corte).** Repro: primer `G36/G37`
+  (`/tmp/top_r1.gbr`) fallaba por vértices de grado 3 (aristas casi duplicadas, p.ej. `P701`/`P2275`)
+  y luego por `the arrangement is finer than the tolerance can resolve` en una pieza de ~2.8 µm.
+  `dedup_pieces` compara equivalencia geométrica orientada dentro de tolerancia; además
+  `interior_fraction` rechaza cortes que dejarían piezas extremas ≤ 3·ε para no generar slivers
+  inclasificables. `kicad-2l-simple/top` ya no rechaza (no `IMAGE-ERR`) pero no completa bajo 30 s
+  (ni 180 s en prueba) y sigue pineado `timeout` — correcto pero lento (T4). Boolean tests
+  (operations/properties/silk/overlap), fmt y clippy en verde. Corpus: **25 parsed, 29 timeout,
+  0 refused**. Persisten T4 y T5.

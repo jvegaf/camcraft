@@ -459,11 +459,18 @@ fn interior_fraction(
   if fraction <= FRACTION_EPSILON || fraction >= 1.0 - FRACTION_EPSILON {
     return None;
   }
-  if point.distance_to(point_at(segment, fraction)) > tolerance.epsilon {
+  let at = point_at(segment, fraction);
+  if point.distance_to(at) > tolerance.epsilon {
     return None;
   }
   if point.is_near(segment.start_point(), tolerance)
     || point.is_near(segment.end_point(), tolerance)
+  {
+    return None;
+  }
+  // Avoid creating sliver pieces shorter than the tolerance can reliably classify.
+  if at.distance_to(segment.start_point()) <= tolerance.epsilon * 3.0
+    || at.distance_to(segment.end_point()) <= tolerance.epsilon * 3.0
   {
     return None;
   }
