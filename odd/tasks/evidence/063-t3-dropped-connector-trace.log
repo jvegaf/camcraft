@@ -1,0 +1,60 @@
+PIECE from_a=true path=67 len=0.196745756698 s=(148.700000000,-87.638006000) e=(148.700000000,-87.441260243) op=Union skip_a=Some(67) skip_b=None base=1.967458e-6
+  attempt=0 distance=1.967458e-6 left_a=true left_b=false right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=1 distance=3.147932e-5 left_a=true left_b=false right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=2 distance=5.036691e-4 left_a=true left_b=true right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=3 distance=8.058706e-3 left_a=true left_b=true right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=4 distance=1.289393e-1 STOP distance*2>len
+  samples=[(Keep, 0), (Keep, 1), (Keep, 2), (Keep, 3)] filtered=[(Keep, 0), (Keep, 1), (Keep, 2), (Keep, 3)] counts(K,R,D)=[4, 0, 0] => Keep
+  definitive=Keep adjacent_to_snap=false
+  FINAL=Keep
+---
+PIECE from_a=false path=0 len=0.002563000729 s=(148.700000000,-87.441260243) e=(148.699500000,-87.443774000) op=Union skip_a=None skip_b=Some(0) base=2.563001e-8
+  attempt=0 distance=2.563001e-8 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=1 distance=4.100801e-7 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=2 distance=6.561282e-6 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=3 distance=1.049805e-4 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=4 distance=1.679688e-3 STOP distance*2>len
+  samples=[(Drop, 0), (Drop, 1), (Drop, 2), (Drop, 3)] filtered=[(Drop, 0), (Drop, 1), (Drop, 2), (Drop, 3)] counts(K,R,D)=[0, 0, 4] => Drop
+  definitive=Drop adjacent_to_snap=false
+  FINAL=Drop
+---
+PIECE from_a=false path=0 len=0.208365294025 s=(148.699500000,-87.443774000) e=(148.699500000,-87.652139294) op=Union skip_a=None skip_b=Some(0) base=2.083653e-6
+  attempt=0 distance=2.083653e-6 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=1 distance=3.333845e-5 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=2 distance=5.334152e-4 left_a=false left_b=false right_a=true right_b=true left_in=false right_in=true => Reverse
+  attempt=3 distance=8.534642e-3 left_a=false left_b=false right_a=true right_b=true left_in=false right_in=true => Reverse
+  attempt=4 distance=1.365543e-1 STOP distance*2>len
+  samples=[(Drop, 0), (Drop, 1), (Reverse, 2), (Reverse, 3)] filtered=[(Drop, 0), (Drop, 1), (Reverse, 2), (Reverse, 3)] counts(K,R,D)=[0, 2, 2] => Reverse
+  definitive=Reverse adjacent_to_snap=false
+  FINAL=Reverse
+---
+PIECE from_a=true path=67 len=0.196745756698 s=(148.700000000,-87.638006000) e=(148.700000000,-87.441260243) op=Union skip_a=Some(67) skip_b=None base=1.967458e-6
+  attempt=0 distance=1.967458e-6 left_a=true left_b=false right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=1 distance=3.147932e-5 left_a=true left_b=false right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=2 distance=5.036691e-4 left_a=true left_b=true right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=3 distance=8.058706e-3 left_a=true left_b=true right_a=false right_b=false left_in=true right_in=false => Keep
+  attempt=4 distance=1.289393e-1 STOP distance*2>len
+  samples=[(Keep, 0), (Keep, 1), (Keep, 2), (Keep, 3)] filtered=[(Keep, 0), (Keep, 1), (Keep, 2), (Keep, 3)] counts(K,R,D)=[4, 0, 0] => Keep
+  definitive=Keep adjacent_to_snap=false
+  FINAL=Keep
+---
+PIECE from_a=false path=0 len=0.002563000729 s=(148.700000000,-87.441260243) e=(148.699500000,-87.443774000) op=Union skip_a=None skip_b=Some(0) base=2.563001e-8
+  attempt=0 distance=2.563001e-8 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=1 distance=4.100801e-7 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=2 distance=6.561282e-6 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=3 distance=1.049805e-4 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=4 distance=1.679688e-3 STOP distance*2>len
+  samples=[(Drop, 0), (Drop, 1), (Drop, 2), (Drop, 3)] filtered=[(Drop, 0), (Drop, 1), (Drop, 2), (Drop, 3)] counts(K,R,D)=[0, 0, 4] => Drop
+  definitive=Drop adjacent_to_snap=false
+  FINAL=Drop
+---
+PIECE from_a=false path=0 len=0.208365294025 s=(148.699500000,-87.443774000) e=(148.699500000,-87.652139294) op=Union skip_a=None skip_b=Some(0) base=2.083653e-6
+  attempt=0 distance=2.083653e-6 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=1 distance=3.333845e-5 left_a=true left_b=false right_a=true right_b=true left_in=true right_in=true => Drop
+  attempt=2 distance=5.334152e-4 left_a=false left_b=false right_a=true right_b=true left_in=false right_in=true => Reverse
+  attempt=3 distance=8.534642e-3 left_a=false left_b=false right_a=true right_b=true left_in=false right_in=true => Reverse
+  attempt=4 distance=1.365543e-1 STOP distance*2>len
+  samples=[(Drop, 0), (Drop, 1), (Reverse, 2), (Reverse, 3)] filtered=[(Drop, 0), (Drop, 1), (Reverse, 2), (Reverse, 3)] counts(K,R,D)=[0, 2, 2] => Reverse
+  definitive=Reverse adjacent_to_snap=false
+  FINAL=Reverse
+---

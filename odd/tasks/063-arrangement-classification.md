@@ -139,3 +139,21 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   manifold en esa zona (T en `top`, hoja en `b0`) y la pregunta de T3 pasa a ser qué decisión de
   clasificación/corte de ese combine produjo la cinta y dejó sin pareja el extremo en `b0`, comparando las
   piezas fuente (origen `from_a/path`) de 4131 y 5025.
+
+- **L9 (T3, origen y decisión de la cinta en asm 5025, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`,
+  evidencias `odd/tasks/evidence/063-t3-decide-combines-part-1.log`, `odd/tasks/evidence/063-t3-decide-combines-part-2.log`, `odd/tasks/evidence/063-t3-decide-combines-part-3.log`, `odd/tasks/evidence/063-t3-decide-combines-part-4.log`, `odd/tasks/evidence/063-t3-decide-combines-part-5.log`, `odd/tasks/evidence/063-t3-decide-combines-part-6.log`,
+  `odd/tasks/evidence/063-t3-dropped-connector-trace.log`).** En `combine 5025` (from_a=false, path=0) el
+  tramo `817` de 4131 (`(148.712003,-87.380915) -> b0`) queda partido y decidido así:
+  `(148.711543,-87.383227) -> (148.7,-87.441260)` **Reverse** (3215),
+  `(148.7,-87.441260) -> b0` len 0.002563 mm **Drop**,
+  `b0 -> top(148.6995,-87.652139)` len 0.208365 mm **Reverse** (3216),
+  `top -> (148.6995,-88.032744)` **Reverse** (3217); de path=67 se conservan
+  `top -> (148.7,-87.638006)` **Keep** (1112), `(148.7,-87.638006) -> (148.7,-87.441260)` **Keep** (1113),
+  `(148.711543,-87.383227) -> (148.719411,-87.369828)` **Keep** (1114). La pieza **descartada** que cerraría
+  la cinta es `(148.7,-87.441260) -> b0` (2.563 µm): sus 4 sondas alcanzables dan
+  `left_a=true,left_b=false,right_a=true,right_b=true` (`left_in=true,right_in=true`) ⇒ `Drop` unánime
+  (no alcanza un radio con lados distintos, `distance*2>len` en el intento 4). La pieza 3216 (`b0->top`)
+  da `Drop,Drop,Reverse,Reverse` ⇒ `Reverse`. La cinta abierta (hoja en `b0`, T en `top`, desvío por
+  `x=148.7`) es, por tanto, consecuencia directa de descartar ese conector de 2.563 µm: sin él, 3216 no
+  tiene pareja en `b0`. T3 debe decidir si ese `Drop` unánime a escala sub-longitud es geométricamente
+  correcto para el union o un falso interior, y fijar la regla/regresión mínima.
