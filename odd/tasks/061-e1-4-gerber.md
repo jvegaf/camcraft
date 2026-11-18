@@ -154,12 +154,28 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   grafo. Fix: en el reintento de near-miss registrar snaps punta-a-punta entre extremos dentro de 2·ε.
   La capa ya no es `refused` pero es lenta (>180 s) y queda `timeout`. Corpus: **25 parsed, 29 timeout,
   0 refused**.
-- **L14 (T3, `kicad-2l-simple/top`, commit `84de02f` + fix de corte).** Repro: primer `G36/G37`
-  (`/tmp/top_r1.gbr`) fallaba por vértices de grado 3 (aristas casi duplicadas, p.ej. `P701`/`P2275`)
-  y luego por `the arrangement is finer than the tolerance can resolve` en una pieza de ~2.8 µm.
-  `dedup_pieces` compara equivalencia geométrica orientada dentro de tolerancia; además
-  `interior_fraction` rechaza cortes que dejarían piezas extremas ≤ 3·ε para no generar slivers
-  inclasificables. `kicad-2l-simple/top` ya no rechaza (no `IMAGE-ERR`) pero no completa bajo 30 s
-  (ni 180 s en prueba) y sigue pineado `timeout` — correcto pero lento (T4). Boolean tests
-  (operations/properties/silk/overlap), fmt y clippy en verde. Corpus: **25 parsed, 29 timeout,
-  0 refused**. Persisten T4 y T5.
+- **L14 (T3, `kicad-2l-simple/top`, commits `84de02f` y `ae1965e`).** Repro: primer `G36/G37`
+  (`/tmp/top_r1.gbr`) fallaba por vértices de grado 3 (aristas casi duplicadas) y luego por
+  `the arrangement is finer than the tolerance can resolve` en una pieza de ~2.8 µm. `dedup_pieces`
+  compara equivalencia geométrica orientada dentro de tolerancia; `interior_fraction` rechaza cortes
+  que dejarían piezas ≤ 3·ε de un extremo. **Corrección de L13/L14:** la capa se había declarado
+  «ya no rechaza» porque la sonda se cortaba por timeout antes del error. Corriendo a terminación
+  completa sigue terminando en `refused` (`revisits a piece`) a ~107 s; lo que se ganó es que falle
+  más rápido. T3 no está cerrado para esa capa (ver L15).
+- **L15 (T4, perfil y aceleración, worker).** Perfil por fases (timers temporales, `perf` no disponible):
+  para `kicad-2l-simple/top` **decide 60.3%**, assemble 23.6%, dedup 11.8%, cut 4.2%; para
+  `kicad-4l-pours/silk-top` decide 52.1%, assemble 35.8%; para `substitute-eagle/silk-bottom`
+  decide 46.4%, assemble 43.2%. Aceleraciones semánticamente neutras en `cam-geom/src/boolean.rs`:
+  grilla de fronteras candidatas y pre-chequeo por caja en `classify_boundary`/`contains`/`enclosed_by`,
+  búsqueda espacial de vértices en `assemble`/`vertex_index` (match determinista de índice mínimo) y
+  índice de extremos en `dedup_pieces` (elimina el O(n²)). Regresión `boolean_acceleration_regression`
+  (unión de 128 fronteras disjuntas y resta de 64 agujeros con pertenencia y área exactas).
+  `kicad-2l-simple/top` 249.6 s→107.7 s (**2.3x**) pero sigue `refused`; `kicad-4l-pours/silk-top` y
+  `substitute-eagle/silk-bottom` siguen >300 s. `cargo test -p cam-geom` (287), `-p cam-gerber` (52),
+  fmt y clippy verdes. **Conclusión del perfil: el costo dominante es la clasificación por sondas
+  sobre arreglos que crecen, no el índice; bajarlo más requiere cambiar la estrategia de evaluación**
+  (no micro-tuning).
+- **L16 (estado real de correctitud, no visible en dorados).** Corriendo a terminación, además de
+  `kicad-2l-simple/top` (`revisits a piece`) también `substitute-easyeda/bottom` termina `refused`
+  (`a surviving piece begins and ends at the same point`). Ambos están pineados `timeout` en el arnés,
+  que oculta el rechazo. T3 se reabre para esos dos casos.

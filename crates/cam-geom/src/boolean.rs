@@ -800,6 +800,8 @@ fn assemble(
     .flat_map(|piece| [piece.start_point(), piece.end_point()])
     .collect();
   let mut vertices: Vec<Vertex> = Vec::new();
+  let mut vertex_grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+  let cell = tolerance.epsilon.max(1.0e-12);
   for (index, piece) in pieces.iter().enumerate() {
     if piece.length() <= 0.0 {
       return Err(GeomError::EditRefused {
@@ -808,15 +810,19 @@ fn assemble(
     }
     let start = vertex_index(
       &mut vertices,
+      &mut vertex_grid,
       piece.start_point(),
       tolerance,
+      cell,
       near_miss_snaps,
       &allowed,
     );
     let end = vertex_index(
       &mut vertices,
+      &mut vertex_grid,
       piece.end_point(),
       tolerance,
+      cell,
       near_miss_snaps,
       &allowed,
     );
@@ -903,22 +909,58 @@ fn assemble(
 /// vertex already present through surviving endpoints.
 fn vertex_index(
   vertices: &mut Vec<Vertex>,
+  vertex_grid: &mut HashMap<(i64, i64), Vec<usize>>,
   point: Point2,
   tolerance: crate::TolerancePolicy,
+  cell: f64,
   near_miss_snaps: &[(Point2, Point2)],
   allowed: &[Point2],
 ) -> usize {
+  if near_miss_snaps.is_empty() {
+    let cx = (point.x / cell).floor() as i64;
+    let cy = (point.y / cell).floor() as i64;
+    let mut found: Option<usize> = None;
+    for dx in -1..=1 {
+      for dy in -1..=1 {
+        if let Some(bucket) = vertex_grid.get(&(cx + dx, cy + dy)) {
+          for &index in bucket {
+            if vertices[index].point.is_near(point, tolerance) {
+              found = Some(match found {
+                Some(prev) if prev < index => prev,
+                _ => index,
+              });
+            }
+          }
+        }
+      }
+    }
+    if let Some(index) = found {
+      return index;
+    }
+    let index = vertices.len();
+    vertices.push(Vertex {
+      point,
+      ends: Vec::new(),
+    });
+    vertex_grid.entry((cx, cy)).or_default().push(index);
+    return index;
+  }
+
   if let Some(index) = vertices.iter().position(|vertex| {
     vertex.point.is_near(point, tolerance)
       || points_identified(vertex.point, point, near_miss_snaps, allowed)
   }) {
     return index;
   }
+  let index = vertices.len();
   vertices.push(Vertex {
     point,
     ends: Vec::new(),
   });
-  vertices.len() - 1
+  let cx = (point.x / cell).floor() as i64;
+  let cy = (point.y / cell).floor() as i64;
+  vertex_grid.entry((cx, cy)).or_default().push(index);
+  index
 }
 
 /// Drop snaps that would collapse a surviving piece: if a piece has one endpoint at `from` and the
@@ -1375,6 +1417,9 @@ pub struct RegionIndex {
   boundaries: Vec<BoundaryIndex>,
   segments: Vec<IndexedSeg>,
   grid: SegmentGrid,
+  boundary_grid: HashMap<(i32, i32), Vec<usize>>,
+  boundary_cell_size: f64,
+  boundary_origin: Point2,
 }
 
 impl RegionIndex {
@@ -1410,10 +1455,38 @@ impl RegionIndex {
     }
     let margin = tolerance.epsilon.max(1.0e-9);
     let grid = SegmentGrid::build(&segments, overall, margin);
+
+    let b_count = boundaries.len().max(1) as f64;
+    let width = (overall.max.x - overall.min.x).abs().max(1.0);
+    let height = (overall.max.y - overall.min.y).abs().max(1.0);
+    let area_cell = (width * height / b_count).sqrt();
+    let boundary_cell_size = area_cell.clamp(0.5, 100.0).max(margin.max(1.0e-6));
+    let boundary_origin = overall.min;
+    let mut boundary_grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+    let b_cell = |x: f64, y: f64| -> (i32, i32) {
+      (
+        ((x - boundary_origin.x) / boundary_cell_size).floor() as i32,
+        ((y - boundary_origin.y) / boundary_cell_size).floor() as i32,
+      )
+    };
+    for (index, boundary) in boundaries.iter().enumerate() {
+      let b = boundary.bounds.expand(margin);
+      let (min_cx, min_cy) = b_cell(b.min.x, b.min.y);
+      let (max_cx, max_cy) = b_cell(b.max.x, b.max.y);
+      for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+          boundary_grid.entry((cx, cy)).or_default().push(index);
+        }
+      }
+    }
+
     Self {
       boundaries,
       segments,
       grid,
+      boundary_grid,
+      boundary_cell_size,
+      boundary_origin,
     }
   }
 
@@ -1425,14 +1498,19 @@ impl RegionIndex {
       return false;
     }
     let mut enclosed = 0_usize;
-    for (index, boundary) in self.boundaries.iter().enumerate() {
-      match self.classify_boundary(index, boundary, point, tolerance.epsilon) {
-        Membership::OnBoundary => return false,
-        Membership::Inside => enclosed += 1,
-        Membership::Outside => {}
-      }
-    }
-    enclosed % 2 == 1
+    self
+      .for_candidate_boundaries(point, tolerance.epsilon, |index, boundary| {
+        match self.classify_boundary(index, boundary, point, tolerance.epsilon) {
+          Membership::OnBoundary => Err(()),
+          Membership::Inside => {
+            enclosed += 1;
+            Ok(())
+          }
+          Membership::Outside => Ok(()),
+        }
+      })
+      .is_ok()
+      && enclosed % 2 == 1
   }
 
   /// Membership test equivalent to [`enclosed_by`], but using precomputed segments and spatial
@@ -1445,25 +1523,57 @@ impl RegionIndex {
   ) -> Option<bool> {
     let eps = tolerance.epsilon;
     let mut enclosed = 0_usize;
-    for (index, boundary) in self.boundaries.iter().enumerate() {
+    let result = self.for_candidate_boundaries(point, eps, |index, boundary| {
       if Some(index) == skip {
         // Same rule as the non-indexed path: parity of the boundary's winding number, without the
         // on-boundary short-circuit used for non-skipped boundaries.
         if !point_inside_bounds(boundary.bounds, point, 0.0) {
-          continue;
+          return Ok(());
         }
         if winding_number_of_segments(&boundary.segments, point).rem_euclid(2) == 1 {
           enclosed += 1;
         }
-        continue;
+        return Ok(());
       }
       match self.classify_boundary(index, boundary, point, eps) {
-        Membership::OnBoundary => return None,
-        Membership::Inside => enclosed += 1,
-        Membership::Outside => {}
+        Membership::OnBoundary => Err(()),
+        Membership::Inside => {
+          enclosed += 1;
+          Ok(())
+        }
+        Membership::Outside => Ok(()),
+      }
+    });
+    result.ok().map(|()| enclosed % 2 == 1)
+  }
+
+  fn for_candidate_boundaries(
+    &self,
+    point: Point2,
+    eps: f64,
+    mut visit: impl FnMut(usize, &BoundaryIndex) -> Result<(), ()>,
+  ) -> Result<(), ()> {
+    if self.boundaries.is_empty() {
+      return Ok(());
+    }
+    let cx = ((point.x - self.boundary_origin.x) / self.boundary_cell_size).floor() as i32;
+    let cy = ((point.y - self.boundary_origin.y) / self.boundary_cell_size).floor() as i32;
+    let extra = ((eps / self.boundary_cell_size).ceil() as i32).max(0);
+    let mut stamp = vec![false; self.boundaries.len()];
+    for dx in -extra..=extra {
+      for dy in -extra..=extra {
+        if let Some(ids) = self.boundary_grid.get(&(cx + dx, cy + dy)) {
+          for &id in ids {
+            if stamp[id] {
+              continue;
+            }
+            stamp[id] = true;
+            visit(id, &self.boundaries[id])?;
+          }
+        }
       }
     }
-    Some(enclosed % 2 == 1)
+    Ok(())
   }
 
   fn classify_boundary(
@@ -1473,12 +1583,18 @@ impl RegionIndex {
     point: Point2,
     eps: f64,
   ) -> Membership {
+    let in_expanded = point_inside_bounds(boundary.bounds, point, eps);
+    if !in_expanded {
+      return Membership::Outside;
+    }
+    let in_tight = point_inside_bounds(boundary.bounds, point, 0.0);
     // A point within tolerance of any segment of this boundary is on it.
     if self.near_boundary(boundary_index, point, eps) {
       return Membership::OnBoundary;
     }
-    // Outside the contour's bounds (and not on it) means outside the contour.
-    if !point_inside_bounds(boundary.bounds, point, 0.0) {
+    // Outside the contour's bounds (and not on it) means outside the contour; a point in the
+    // margin band cannot be inside the contour, so the winding test is unnecessary.
+    if !in_tight {
       return Membership::Outside;
     }
     if winding_number_of_segments(&boundary.segments, point) == 0 {
@@ -2022,6 +2138,10 @@ fn dedup_pieces(
   tolerance: crate::TolerancePolicy,
 ) -> Vec<(Segment, bool)> {
   let tol = tolerance.epsilon;
+  let cell = tol.max(1.0e-12);
+  let key = |p: crate::point::Point2| -> (i64, i64) {
+    ((p.x / cell).floor() as i64, (p.y / cell).floor() as i64)
+  };
   let same_point = |a: crate::point::Point2, b: crate::point::Point2| a.distance_to(b) <= tol;
 
   let equiv = |a: Segment, b: Segment| -> bool {
@@ -2056,11 +2176,37 @@ fn dedup_pieces(
     }
   };
 
+  type EndpointPairKey = ((i64, i64), (i64, i64));
+  let mut index: HashMap<EndpointPairKey, Vec<usize>> = HashMap::new();
   let mut kept: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
   for (piece, owner) in pieces {
-    if kept.iter().any(|(k, _)| equiv(piece, *k)) {
+    let sc = key(piece.start_point());
+    let ec = key(piece.end_point());
+    let mut duplicate = false;
+    'search: for dsx in -1..=1 {
+      for dsy in -1..=1 {
+        for dex in -1..=1 {
+          for dey in -1..=1 {
+            let sk = (sc.0 + dsx, sc.1 + dsy);
+            let ek = (ec.0 + dex, ec.1 + dey);
+            if let Some(candidates) = index.get(&(sk, ek)) {
+              for &ki in candidates {
+                if equiv(piece, kept[ki].0) {
+                  duplicate = true;
+                  break 'search;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if duplicate {
       continue;
     }
+    let idx = kept.len();
+    index.entry((sc, ec)).or_default().push(idx);
+    index.entry((ec, sc)).or_default().push(idx);
     kept.push((piece, owner));
   }
   kept
