@@ -128,3 +128,14 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   en `top`). La corrección debe venir de por qué ese combine produce esa partición/corte (qué pieza que
   cerraría en `b0` falta o se recortó hacia el desvío `x=148.7`) —ya no de sondas ni de soldadura— y hay
   que localizarla comparando el grafo de piezas de 4131 frente al de 5025 alrededor de `b0/top`.
+
+- **L8 (T2, vecindad de `b0/top` en asm 5025, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`, evidencia
+  `odd/tasks/evidence/063-t2-pieces-near.log`).** En 5025 el borde no pasa por `b0`: sube por `x=148.6995`
+  hasta `top` (3217), se parte en `top` hacia `b0` por 3216 (hoja muerta, grado 1) y hacia
+  `(148.7,-87.638)` por 1112, sigue por `x=148.7` (1113) y vuelve a la cadena alta por 3215 →
+  `(148.711543,-87.383227)` (≈ el punto al que 817 llegaba en 4131). Se forma así una cinta abierta de
+  ~0.0005 mm de ancho entre `x=148.6995` y `x=148.7` (`3216,1112,1113,3215`) con `b0` colgando; en 4131
+  ese tramo era el vértice simple `818→b0→817`. El conjunto superviviente de 5025 es, por tanto, no
+  manifold en esa zona (T en `top`, hoja en `b0`) y la pregunta de T3 pasa a ser qué decisión de
+  clasificación/corte de ese combine produjo la cinta y dejó sin pareja el extremo en `b0`, comparando las
+  piezas fuente (origen `from_a/path`) de 4131 y 5025.
