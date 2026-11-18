@@ -189,3 +189,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   distinguir “sondas lejanas espurias por cruzar otra frontera” (3216) de “sondas cercanas engañosas”
   (silk-top) sin una señal geométrica adicional (p. ej. adyacencia a arista interior descartada que deja
   un extremo sin pareja, o coherencia con el grado del vértice resultante).
+
+- **L13 (T3, reparación acotada en reintento).** En el reintento por arreglo no encadenable
+  (`detect_near_misses=true`), `combine_with_indexed` descarta piezas frontera *far-flip*: las dos
+  sondas definitivas más cercanas concuerdan en `Drop` pero sondas más lejanas (que pueden cruzar
+  otra frontera) invirtieron la clasificación a `Keep/Reverse`. Se intenta ensamblar el conjunto
+  reparado antes de fallar. En `/tmp/top_r1.gbr` esto identifica y descarta exactamente 3216
+  (`b0->top`, 0.208 mm) en el reintento, pero el ensamblado reparado sigue en `revisits a piece`
+  (4526 segmentos, mismo resultado que L10 al forzar 3216): la capa completa tiene otros defectos no
+  cubiertos por este patrón. `substitute-easyeda/silk-top.gbr` sigue parseando (la reparación no se
+  activa sin reintento no encadenable). Booleanos dirigidos verdes: `boolean_index`,
+  `boolean_silk_union_probe`, `boolean_stroke_fill_overlap`, `boolean_acceleration_regression`,
+  `boolean_operations`. Falta validar suite completa de `cam-geom`, paridad y los dos rechazos
+  completos (S3) antes de cerrar T3.

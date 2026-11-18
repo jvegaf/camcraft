@@ -1896,11 +1896,15 @@ fn combine_with_indexed(
     }
   }
 
-  let mut survivors: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
+  let mut survivors: Vec<(Segment, bool, bool)> = Vec::with_capacity(pieces.len());
   for piece in &pieces {
-    match decide_indexed(*piece, ia, ib, op, tolerance, &near_miss_snaps)? {
-      Decision::Keep => survivors.push((piece.segment, piece.from_a)),
-      Decision::Reverse => survivors.push((piece.segment.reversed(), piece.from_a)),
+    let (decision, far_flip_boundary) =
+      decide_indexed(*piece, ia, ib, op, tolerance, &near_miss_snaps)?;
+    match decision {
+      Decision::Keep => survivors.push((piece.segment, piece.from_a, far_flip_boundary)),
+      Decision::Reverse => {
+        survivors.push((piece.segment.reversed(), piece.from_a, far_flip_boundary))
+      }
       Decision::Drop => {}
     }
   }
@@ -1913,25 +1917,141 @@ fn combine_with_indexed(
   // to the same vertex. Neither keeping it (it collapses into a point) nor dropping it (it leaves the
   // junction degree three, which the walk then revisits) is right. The right operation is a
   // *contraction*: remove the piece and identify its ends, so the neighbours it joined still meet.
-  let mut contracted: Vec<(Segment, bool)> = Vec::with_capacity(survivors.len());
-  for (segment, owner) in survivors {
+  let mut contracted: Vec<(Segment, bool, bool)> = Vec::with_capacity(survivors.len());
+  for (segment, owner, far_flip) in survivors {
     if segment.length() <= tolerance.epsilon * 2.0 {
       near_miss_snaps.push((segment.start_point(), segment.end_point()));
     } else {
-      contracted.push((segment, owner));
+      contracted.push((segment, owner, far_flip));
     }
   }
   let survivors = contracted;
   if survivors.is_empty() {
     return Ok(Combined::Empty);
   }
-  let (segments, owners): (Vec<Segment>, Vec<bool>) = survivors.into_iter().unzip();
+  let mut segments: Vec<Segment> = Vec::with_capacity(survivors.len());
+  let mut owners: Vec<bool> = Vec::with_capacity(survivors.len());
+  let mut far_flips: Vec<bool> = Vec::with_capacity(survivors.len());
+  for (s, o, f) in survivors {
+    segments.push(s);
+    owners.push(o);
+    far_flips.push(f);
+  }
   if detect_near_misses && !near_miss_snaps.is_empty() {
     let odd_points = odd_degree_points(&segments, tolerance);
     if odd_points.is_empty() {
       near_miss_snaps.clear();
     } else {
       near_miss_snaps.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd_points, tolerance));
+    }
+  }
+  // 063: when retrying an unchainable arrangement, a boundary piece whose two closest probes agreed
+  // on Drop but farther probes flipped it to Keep/Reverse can leave a dangling leaf where an adjacent
+  // interior piece was correctly dropped (asm 5025/top_r1: b0->top). Drop such far-flip boundary
+  // pieces incident to odd-degree vertices and try assembling the repaired set.
+  if detect_near_misses {
+    let odd_points = odd_degree_points(&segments, tolerance);
+    let trace_repair = std::env::var_os("CAMCRAFT_TRACE_063").is_some();
+    if !odd_points.is_empty() {
+      // In the retry recovery, drop all far-flip boundary pieces: their two closest probes agreed
+      // the piece is interior, but farther probes (which can cross unrelated boundaries) flipped the
+      // classification. Restricting to odd-degree incidence is insufficient when multiple such
+      // pieces or other defects coexist.
+      let mut drop_idx = vec![false; segments.len()];
+      let mut any = false;
+      for (i, _seg) in segments.iter().enumerate() {
+        if far_flips[i] {
+          drop_idx[i] = true;
+          any = true;
+          if trace_repair {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+              .create(true)
+              .append(true)
+              .open("/tmp/trace_063_repair.log")
+            {
+              let s = segments[i].start_point();
+              let e = segments[i].end_point();
+              let _ = writeln!(
+                f,
+                "REPAIR_DROP i={} s=({:.9},{:.9}) e=({:.9},{:.9}) odd={}",
+                i,
+                s.x,
+                s.y,
+                e.x,
+                e.y,
+                odd_points.len()
+              );
+            }
+          }
+        }
+      }
+      if any {
+        let mut s2 = Vec::with_capacity(segments.len());
+        let mut o2 = Vec::with_capacity(segments.len());
+        for i in 0..segments.len() {
+          if !drop_idx[i] {
+            s2.push(segments[i]);
+            o2.push(owners[i]);
+          }
+        }
+        if !s2.is_empty() {
+          let mut repaired_snaps = near_miss_snaps.clone();
+          let repaired_odd = odd_degree_points(&s2, tolerance);
+          if repaired_odd.is_empty() {
+            repaired_snaps.clear();
+          } else if !repaired_snaps.is_empty() {
+            repaired_snaps
+              .retain(|snap| snap_relevant_to_odd_degree(*snap, &repaired_odd, tolerance));
+          }
+          let mut flattened = false;
+          let valid_snaps = filter_valid_snaps(&s2, &repaired_snaps);
+          match assemble(&s2, &o2, tolerance, &mut flattened, &valid_snaps) {
+            Ok(boundaries) => {
+              if trace_repair {
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                  .create(true)
+                  .append(true)
+                  .open("/tmp/trace_063_repair.log")
+                {
+                  let _ = writeln!(f, "REPAIR_OK segs={} bounds={}", s2.len(), boundaries.len());
+                }
+              }
+              return Ok(Combined::Region {
+                region: Region { boundaries },
+                flattened,
+              });
+            }
+            Err(e) => {
+              if trace_repair {
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                  .create(true)
+                  .append(true)
+                  .open("/tmp/trace_063_repair.log")
+                {
+                  let _ = writeln!(f, "REPAIR_FAIL segs={} err={:?}", s2.len(), e);
+                }
+              }
+            }
+          }
+        }
+      } else if trace_repair && far_flips.iter().any(|f| *f) {
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+          .create(true)
+          .append(true)
+          .open("/tmp/trace_063_repair.log")
+        {
+          let _ = writeln!(
+            f,
+            "REPAIR_SKIP odd={} far_flips={} none_incident",
+            odd_points.len(),
+            far_flips.iter().filter(|f| **f).count()
+          );
+        }
+      }
     }
   }
   let mut flattened = false;
@@ -1986,7 +2106,7 @@ fn decide_indexed(
   op: BooleanOp,
   tolerance: crate::TolerancePolicy,
   near_miss_snaps: &[(Point2, Point2)],
-) -> Result<Decision, GeomError> {
+) -> Result<(Decision, bool), GeomError> {
   let segment = piece.segment;
   let length = segment.length();
   if length <= 0.0 {
@@ -2154,6 +2274,8 @@ fn decide_indexed(
     }
     Some(best)
   };
+  let far_flip =
+    samples.len() >= 2 && samples[0].0 == Decision::Drop && samples[1].0 == Decision::Drop;
   if let Some(decision) = first_definitive {
     // A boundary at normal scale may straddle a thin sliver created by a near-miss junction;
     // a close probe detects it (both sides the same locally). Only run this guard on pieces
@@ -2236,7 +2358,7 @@ fn decide_indexed(
             let _ = writeln!(f, "---");
           }
         }
-        return Ok(Decision::Drop);
+        return Ok((Decision::Drop, false));
       }
     }
     if trace_063 {
@@ -2249,11 +2371,19 @@ fn decide_indexed(
         for line in &trace_lines {
           let _ = writeln!(f, "{}", line);
         }
-        let _ = writeln!(f, "  FINAL={:?}", decision);
+        let _ = writeln!(
+          f,
+          "  FINAL={:?} far_flip_boundary={}",
+          decision,
+          far_flip && matches!(decision, Decision::Keep | Decision::Reverse)
+        );
         let _ = writeln!(f, "---");
       }
     }
-    return Ok(decision);
+    return Ok((
+      decision,
+      far_flip && matches!(decision, Decision::Keep | Decision::Reverse),
+    ));
   }
   if trace_063 {
     use std::io::Write as _;
@@ -2282,9 +2412,9 @@ fn decide_indexed(
 /// within tolerance are treated as duplicates to avoid non-manifold slivers from near-coincident
 /// representations.
 fn dedup_pieces(
-  pieces: Vec<(Segment, bool)>,
+  pieces: Vec<(Segment, bool, bool)>,
   tolerance: crate::TolerancePolicy,
-) -> Vec<(Segment, bool)> {
+) -> Vec<(Segment, bool, bool)> {
   let tol = tolerance.epsilon;
   let cell = tol.max(1.0e-12);
   let key = |p: crate::point::Point2| -> (i64, i64) {
@@ -2326,8 +2456,8 @@ fn dedup_pieces(
 
   type EndpointPairKey = ((i64, i64), (i64, i64));
   let mut index: HashMap<EndpointPairKey, Vec<usize>> = HashMap::new();
-  let mut kept: Vec<(Segment, bool)> = Vec::with_capacity(pieces.len());
-  for (piece, owner) in pieces {
+  let mut kept: Vec<(Segment, bool, bool)> = Vec::with_capacity(pieces.len());
+  for (piece, owner, far_flip) in pieces {
     let sc = key(piece.start_point());
     let ec = key(piece.end_point());
     let mut duplicate = false;
@@ -2355,7 +2485,7 @@ fn dedup_pieces(
     let idx = kept.len();
     index.entry((sc, ec)).or_default().push(idx);
     index.entry((ec, sc)).or_default().push(idx);
-    kept.push((piece, owner));
+    kept.push((piece, owner, far_flip));
   }
   kept
 }
