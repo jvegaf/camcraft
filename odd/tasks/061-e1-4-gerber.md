@@ -179,3 +179,36 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   `kicad-2l-simple/top` (`revisits a piece`) también `substitute-easyeda/bottom` termina `refused`
   (`a surviving piece begins and ends at the same point`). Ambos están pineados `timeout` en el arnés,
   que oculta el rechazo. T3 se reabre para esos dos casos.
+- **L17 (T5 adelantado: el árbol no coincide con el oráculo).** `fixtures/baseline/` **es** el oráculo
+  FlatCAM (lo escribe `scripts/baseline/pin.py` desde una corrida de FlatCAM-Plus; sus 3 `refused`
+  cierran con «FlatCAM lee 51 de 54»), así que la comparación de T5 se puede hacer sin esperar T4:
+  es leer dos JSON. Comparados los 24 artefactos con medición en ambos lados (`status`, `polygons`,
+  `contour_area_mm2`): **1 de 24 coincide** en área a `rel 1e-9`; 18 de 24 coinciden en polígonos.
+  Se agrupan en tres familias:
+  1. **`outline` (3 placas, `rel` ≈ 0.99).** FlatCAM mide el *área encerrada* por el contorno
+     (`kicad-2l-simple` 1210.58, `kicad-4l-pours` 16790.50, `substitute-eagle` 13410.66 mm²); el árbol
+     mide la **línea dibujada** (10.26, 35.35, 29.92 mm²; 8, 8 y 20 polígonos frente a 2). No es un
+     bug: son dos definiciones distintas de «outline». Hay que decidir cuál es la regla comparable
+     antes de re-pinear, no ajustar el número.
+  2. **Máscaras, deriva chica (`rel` 5.6e-5 … 8.96e-5).** `kicad-2l-simple/mask-top`,
+     `kicad-4l-pours/mask-bottom`, `kicad-large-pours/mask-top/bottom`, `substitute-eagle/mask-top`,
+     `substitute-easyeda/mask-top/bottom`: polígonos idénticos y área que difiere muy poco. Es
+     consistente con el aplanado de arcos de Shapely frente a los arcos nativos del árbol (la nota de
+     tolerancia de arcos del roadmap), pero **`1e-9` relativo no es la regla adecuada para arcos** y
+     hoy hace fallar la comparación. Falta declarar la tolerancia por artefacto.
+  3. **Diferencias reales de geometría.** `kicad-large-pours/silk-top` (395 vs 376 polígonos,
+     8712.90 vs 5066.31 mm², `rel` 0.42), `substitute-easyeda/silk-top` (586 vs 559, `rel` 0.25),
+     `kicad-4l-pours/mask-top` (mismos 567 polígonos pero `rel` 0.022), `substitute-altium/top`
+     (634 vs 643, `rel` 7.8e-4), `kicad-large-pours/silk-bottom` (`rel` 2.9e-5). Estas sí son
+     divergencias que el árbol tiene que explicar o corregir.
+  Conclusión para el orden del trabajo: **T4 (tiempo) no es la brecha principal**. Los 29 `timeout`
+  no tienen medición que comparar, pero los que **sí** miden ya discrepan del oráculo, así que acelerar
+  antes de cerrar la paridad optimiza capas cuyo resultado todavía no es el correcto.
+- **L18 (decisiones del humano sobre T5).** Dos decisiones que fijan la regla de paridad: (1) el
+  `outline` se mide **como lo mide FlatCAM**, es decir el **área encerrada** por el contorno, no el área
+  del trazo dibujado; (2) **se acepta tolerancia** de área por artefacto/rol en vez del `1e-9` relativo
+  actual. La tolerancia se ancla en lo medido: la deriva por aplanado de arcos es ≤ 9.0e-5 y las
+  divergencias reales del corpus son ≥ 2.2e-3, así que `1e-3` relativo separa unas de otras; los
+  conteos (`polygons`) no se comparan como fallo, sólo se reportan, igual que `compare.py` ya hace con
+  `vertices` frente a `points`. Se delega el instrumento (`scripts/parity/`, `fixtures/corpus/`),
+  disjunto del worker de T3 que sigue en `crates/`.
