@@ -241,3 +241,17 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
     no elimina las T-junctions del primer caso. S3 sigue abierto; hay que localizar los `combine`
     concretos (región/comando) y caracterizar causas (T-junction vs extremos abiertos no emparejables
     dentro de 4·ε o con topología distinta).
+
+- **L17 (T4, diagnóstico corregido bottom).** Con traza refinada (intento near-miss, a/b, reintento explícito)
+  y prueba de tolerancia de emparejado:
+  - `a_bounds=1 b_bounds=1, near_miss=false, segs=10, d3=4, far_flips=2` falla en primer intento pero el
+    reintento de ese combine tiene éxito (no produce fallo final); el reintento/rescate del camino nm=true
+    lo resuelve.
+  - `a_bounds=1 b_bounds=1`: ambos intentos terminan en `segs=42, d1=4, d2=40, d3=0, far_flips=0`.
+  - `a_bounds=113 b_bounds=1`: ambos intentos terminan en `segs=2274, d1=4, d2=2272, d3=0, far_flips=0`.
+  En los dos casos de extremos abiertos hay dos pares de hojas: uno a 1.414·ε y otro a
+  4.000000004·ε (4·ε + ruido de coma flotante) — mismo punto crítico observado en L22
+  (`93.129430/-88.588638` vs `93.129426/-88.588638`). El límite `4·ε` estricto no lo emparejaba; con
+  margen mínimo (`4·ε + 1e-12`) el combine ya no falla rápido en ~34 s, pero la capa completa pasa a
+  correr >300 s (en curso al registrar), lo que sugiere que ese combine se repara y el procesamiento
+  continúa a etapas posteriores (pendiente de medir a terminación o nuevo fallo).

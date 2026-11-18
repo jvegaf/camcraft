@@ -2050,7 +2050,8 @@ fn combine_with_indexed(
         .filter(|(_, d)| *d == 1)
         .map(|(p, _)| *p)
         .collect();
-      let join_limit = tolerance.epsilon * 4.0;
+      // Allow a tiny margin for floating-point noise (e.g. 4*epsilon + ~1 ULP).
+      let join_limit = tolerance.epsilon * 4.0 + 1e-12;
       let mut changed = false;
       for i in 0..d1_points.len() {
         let p1 = d1_points[i];
