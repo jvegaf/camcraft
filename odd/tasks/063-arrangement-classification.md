@@ -179,3 +179,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `cam-geom` ni paridad. La regla es coherente con la evidencia (las sondas lejanas de 3216 cruzan otra
   geometría) pero falta validar contra `boolean_properties/corpus/parity` y contra los casos que
   motivaron la preferencia por sondas lejanas en 346723a antes de adoptarla.
+
+- **L12 (T3, heurística cercana descartada).** La regla “si las dos sondas definitivas más cercanas
+  coinciden, usarlas; si no, mayoría” corrige 3216 en `/tmp/top_r1.gbr` y pasa los booleanos dirigidos
+  (índice, silk_union_probe, stroke_fill_overlap, acceleration_regression, operations), pero **rompe**
+  `fixtures/corpus/substitute-easyeda/silk-top.gbr` en 1.5 s con `revisits a piece` (caso que 346723a
+  dejó parseado, 559 polígonos). Revertida. La regla no puede adoptarse tal cual: hay piezas donde el
+  par cercano concuerda y aun así la clasificación correcta es la lejana/mayoritaria. Sigue abierto cómo
+  distinguir “sondas lejanas espurias por cruzar otra frontera” (3216) de “sondas cercanas engañosas”
+  (silk-top) sin una señal geométrica adicional (p. ej. adyacencia a arista interior descartada que deja
+  un extremo sin pareja, o coherencia con el grado del vértice resultante).
