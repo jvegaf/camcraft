@@ -1948,21 +1948,217 @@ fn combine_with_indexed(
   // 063: when retrying an unchainable arrangement, a boundary piece whose two closest probes agreed
   // on Drop but farther probes flipped it to Keep/Reverse can leave a dangling leaf where an adjacent
   // interior piece was correctly dropped (asm 5025/top_r1: b0->top). Drop such far-flip boundary
-  // pieces incident to odd-degree vertices and try assembling the repaired set.
+  // pieces, then if the graph is pure open chains (degree-1/2) snap close degree-1 pairs.
   if detect_near_misses {
-    let odd_points = odd_degree_points(&segments, tolerance);
     let trace_repair = std::env::var_os("CAMCRAFT_TRACE_063").is_some();
-    if !odd_points.is_empty() {
-      // In the retry recovery, drop all far-flip boundary pieces: their two closest probes agreed
-      // the piece is interior, but farther probes (which can cross unrelated boundaries) flipped the
-      // classification. Restricting to odd-degree incidence is insufficient when multiple such
-      // pieces or other defects coexist.
-      let mut drop_idx = vec![false; segments.len()];
-      let mut any = false;
-      for (i, _seg) in segments.iter().enumerate() {
-        if far_flips[i] {
-          drop_idx[i] = true;
-          any = true;
+    let any_far_flip = far_flips.iter().any(|f| *f);
+    if any_far_flip {
+      let mut s2 = Vec::with_capacity(segments.len());
+      let mut o2 = Vec::with_capacity(segments.len());
+      let mut f2 = Vec::with_capacity(segments.len());
+      for i in 0..segments.len() {
+        if !far_flips[i] {
+          s2.push(segments[i]);
+          o2.push(owners[i]);
+          f2.push(false);
+        } else if trace_repair {
+          use std::io::Write as _;
+          if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/trace_063_repair.log")
+          {
+            let s = segments[i].start_point();
+            let e = segments[i].end_point();
+            let _ = writeln!(
+              f,
+              "REPAIR_DROP i={} s=({:.9},{:.9}) e=({:.9},{:.9})",
+              i, s.x, s.y, e.x, e.y
+            );
+          }
+        }
+      }
+      if !s2.is_empty() {
+        let mut repaired_snaps = near_miss_snaps.clone();
+        let repaired_odd = odd_degree_points(&s2, tolerance);
+        if repaired_odd.is_empty() {
+          repaired_snaps.clear();
+        } else if !repaired_snaps.is_empty() {
+          repaired_snaps
+            .retain(|snap| snap_relevant_to_odd_degree(*snap, &repaired_odd, tolerance));
+        }
+        let mut flattened = false;
+        let valid_snaps = filter_valid_snaps(&s2, &repaired_snaps);
+        match assemble(&s2, &o2, tolerance, &mut flattened, &valid_snaps) {
+          Ok(boundaries) => {
+            if trace_repair {
+              use std::io::Write as _;
+              if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("/tmp/trace_063_repair.log")
+              {
+                let _ = writeln!(f, "REPAIR_OK segs={} bounds={}", s2.len(), boundaries.len());
+              }
+            }
+            return Ok(Combined::Region {
+              region: Region { boundaries },
+              flattened,
+            });
+          }
+          Err(_) => {
+            // Adopt the far-flip-repaired set as the working baseline.
+            segments = s2;
+            owners = o2;
+            far_flips = f2;
+          }
+        }
+      }
+    }
+
+    // If the current set has only degree-1/degree-2 vertices (open chains with micro-gaps),
+    // try to snap close degree-1 endpoint pairs to each other and reassemble.
+    let mut vertices: Vec<(Point2, usize)> = Vec::new();
+    for seg in &segments {
+      for point in [seg.start_point(), seg.end_point()] {
+        if let Some(idx) = vertices
+          .iter()
+          .position(|(v, _)| v.is_near(point, tolerance))
+        {
+          vertices[idx].1 += 1;
+        } else {
+          vertices.push((point, 1));
+        }
+      }
+    }
+    let mut d1 = 0usize;
+    let mut d2 = 0usize;
+    let mut d3 = 0usize;
+    let mut d4p = 0usize;
+    for (_, d) in &vertices {
+      match *d {
+        1 => d1 += 1,
+        2 => d2 += 1,
+        3 => d3 += 1,
+        _ => d4p += 1,
+      }
+    }
+    if d3 == 0 && d4p == 0 && d1 >= 2 {
+      let mut s3 = segments.clone();
+      let d1_points: Vec<Point2> = vertices
+        .iter()
+        .filter(|(_, d)| *d == 1)
+        .map(|(p, _)| *p)
+        .collect();
+      let join_limit = tolerance.epsilon * 4.0;
+      let mut changed = false;
+      for i in 0..d1_points.len() {
+        let p1 = d1_points[i];
+        let mut best_j = None;
+        let mut best_d = f64::INFINITY;
+        for j in 0..d1_points.len() {
+          if i == j {
+            continue;
+          }
+          let d = p1.distance_to(d1_points[j]);
+          if d > 0.0 && d <= join_limit && d < best_d {
+            best_d = d;
+            best_j = Some(j);
+          }
+        }
+        if let Some(j) = best_j {
+          let q = d1_points[j];
+          let target = Point2::new((p1.x + q.x) * 0.5, (p1.y + q.y) * 0.5);
+          for seg in s3.iter_mut() {
+            let sp = seg.start_point();
+            let ep = seg.end_point();
+            if sp.is_near(p1, tolerance) && !sp.is_near(target, tolerance) {
+              match *seg {
+                Segment::Line(_) => {
+                  *seg = Segment::Line(LineSeg::new(target, ep));
+                  changed = true;
+                }
+                Segment::Arc(arc) => {
+                  let vs = target - arc.center();
+                  let ve = ep - arc.center();
+                  let new_start = vs.y.atan2(vs.x);
+                  let new_end = ve.y.atan2(ve.x);
+                  let sweep = if arc.sweep() >= 0.0 {
+                    let mut s = new_end - new_start;
+                    while s <= 0.0 {
+                      s += std::f64::consts::TAU;
+                    }
+                    while s > std::f64::consts::TAU {
+                      s -= std::f64::consts::TAU;
+                    }
+                    s
+                  } else {
+                    let mut s = new_end - new_start;
+                    while s >= 0.0 {
+                      s -= std::f64::consts::TAU;
+                    }
+                    while s < -std::f64::consts::TAU {
+                      s += std::f64::consts::TAU;
+                    }
+                    s
+                  };
+                  if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
+                    *seg = Segment::Arc(a);
+                    changed = true;
+                  }
+                }
+              }
+            } else if ep.is_near(p1, tolerance) && !ep.is_near(target, tolerance) {
+              match *seg {
+                Segment::Line(_) => {
+                  *seg = Segment::Line(LineSeg::new(sp, target));
+                  changed = true;
+                }
+                Segment::Arc(arc) => {
+                  let vs = sp - arc.center();
+                  let ve = target - arc.center();
+                  let new_start = vs.y.atan2(vs.x);
+                  let new_end = ve.y.atan2(ve.x);
+                  let sweep = if arc.sweep() >= 0.0 {
+                    let mut s = new_end - new_start;
+                    while s <= 0.0 {
+                      s += std::f64::consts::TAU;
+                    }
+                    while s > std::f64::consts::TAU {
+                      s -= std::f64::consts::TAU;
+                    }
+                    s
+                  } else {
+                    let mut s = new_end - new_start;
+                    while s >= 0.0 {
+                      s -= std::f64::consts::TAU;
+                    }
+                    while s < -std::f64::consts::TAU {
+                      s += std::f64::consts::TAU;
+                    }
+                    s
+                  };
+                  if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
+                    *seg = Segment::Arc(a);
+                    changed = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if changed {
+        let mut repaired_snaps3 = near_miss_snaps.clone();
+        let odd3 = odd_degree_points(&s3, tolerance);
+        if odd3.is_empty() {
+          repaired_snaps3.clear();
+        } else if !repaired_snaps3.is_empty() {
+          repaired_snaps3.retain(|snap| snap_relevant_to_odd_degree(*snap, &odd3, tolerance));
+        }
+        let mut flattened = false;
+        let valid_snaps = filter_valid_snaps(&s3, &repaired_snaps3);
+        if let Ok(boundaries) = assemble(&s3, &owners, tolerance, &mut flattened, &valid_snaps) {
           if trace_repair {
             use std::io::Write as _;
             if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -1970,311 +2166,79 @@ fn combine_with_indexed(
               .append(true)
               .open("/tmp/trace_063_repair.log")
             {
-              let s = segments[i].start_point();
-              let e = segments[i].end_point();
               let _ = writeln!(
                 f,
-                "REPAIR_DROP i={} s=({:.9},{:.9}) e=({:.9},{:.9}) odd={}",
-                i,
-                s.x,
-                s.y,
-                e.x,
-                e.y,
-                odd_points.len()
+                "REPAIR_JOIN_OK segs={} bounds={}",
+                s3.len(),
+                boundaries.len()
               );
             }
           }
+          return Ok(Combined::Region {
+            region: Region { boundaries },
+            flattened,
+          });
         }
-      }
-      if any {
-        let mut s2 = Vec::with_capacity(segments.len());
-        let mut o2 = Vec::with_capacity(segments.len());
-        for i in 0..segments.len() {
-          if !drop_idx[i] {
-            s2.push(segments[i]);
-            o2.push(owners[i]);
+        if trace_repair {
+          use std::io::Write as _;
+          if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/trace_063_repair.log")
+          {
+            let _ = writeln!(f, "REPAIR_JOIN_FAIL segs={}", s3.len());
           }
-        }
-        if !s2.is_empty() {
-          let mut repaired_snaps = near_miss_snaps.clone();
-          let repaired_odd = odd_degree_points(&s2, tolerance);
-          if repaired_odd.is_empty() {
-            repaired_snaps.clear();
-          } else if !repaired_snaps.is_empty() {
-            repaired_snaps
-              .retain(|snap| snap_relevant_to_odd_degree(*snap, &repaired_odd, tolerance));
-          }
-          let mut flattened = false;
-          let valid_snaps = filter_valid_snaps(&s2, &repaired_snaps);
-          match assemble(&s2, &o2, tolerance, &mut flattened, &valid_snaps) {
-            Ok(boundaries) => {
-              if trace_repair {
-                use std::io::Write as _;
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                  .create(true)
-                  .append(true)
-                  .open("/tmp/trace_063_repair.log")
-                {
-                  let _ = writeln!(f, "REPAIR_OK segs={} bounds={}", s2.len(), boundaries.len());
-                }
-              }
-              return Ok(Combined::Region {
-                region: Region { boundaries },
-                flattened,
-              });
-            }
-            Err(e) => {
-              let mut vertices: Vec<(Point2, usize)> = Vec::new();
-              for seg in &s2 {
-                for point in [seg.start_point(), seg.end_point()] {
-                  if let Some(idx) = vertices
-                    .iter()
-                    .position(|(v, _)| v.is_near(point, tolerance))
-                  {
-                    vertices[idx].1 += 1;
-                  } else {
-                    vertices.push((point, 1));
-                  }
-                }
-              }
-              let mut d1 = 0usize;
-              let mut d2 = 0usize;
-              let mut d3 = 0usize;
-              let mut d4p = 0usize;
-              for (_, d) in &vertices {
-                match *d {
-                  1 => d1 += 1,
-                  2 => d2 += 1,
-                  3 => d3 += 1,
-                  _ => d4p += 1,
-                }
-              }
-              if trace_repair {
-                use std::io::Write as _;
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                  .create(true)
-                  .append(true)
-                  .open("/tmp/trace_063_repair.log")
-                {
-                  let _ = writeln!(f, "REPAIR_FAIL segs={} err={:?}", s2.len(), e);
-                  let _ = writeln!(
-                    f,
-                    "  vertices={} deg1={} deg2={} deg3={} deg4+={}",
-                    vertices.len(),
-                    d1,
-                    d2,
-                    d3,
-                    d4p
-                  );
-                  let mut shown = 0;
-                  for (_vi, (v, d)) in vertices.iter().enumerate() {
-                    if *d != 2 && shown < 20 {
-                      let _ = writeln!(f, "  ODD/NON2 ({:.9},{:.9}) deg={}", v.x, v.y, d);
-                      let mut count = 0usize;
-                      for (si, seg) in s2.iter().enumerate() {
-                        if seg.start_point().is_near(*v, tolerance)
-                          || seg.end_point().is_near(*v, tolerance)
-                        {
-                          let sp = seg.start_point();
-                          let ep = seg.end_point();
-                          let at_start = sp.is_near(*v, tolerance);
-                          let _ = writeln!(
-                            f,
-                            "    seg{} {} ({:.9},{:.9})->({:.9},{:.9})",
-                            si,
-                            if at_start { "START" } else { "END" },
-                            sp.x,
-                            sp.y,
-                            ep.x,
-                            ep.y
-                          );
-                          count += 1;
-                          if count >= 6 {
-                            break;
-                          }
-                        }
-                      }
-                      shown += 1;
-                    }
-                  }
-                }
-              }
-              // If the repaired set has only degree-1/degree-2 vertices (open chains with micro-gaps),
-              // try to snap close degree-1 endpoint pairs to each other and reassemble.
-              if matches!(e, GeomError::EditRefused { .. }) && d3 == 0 && d4p == 0 && d1 >= 2 {
-                let mut s3 = s2.clone();
-                let d1_points: Vec<Point2> = vertices
-                  .iter()
-                  .filter(|(_, d)| *d == 1)
-                  .map(|(p, _)| *p)
-                  .collect();
-                let join_limit = tolerance.epsilon * 4.0;
-                let mut changed = false;
-                for i in 0..d1_points.len() {
-                  let p1 = d1_points[i];
-                  let mut best_j = None;
-                  let mut best_d = f64::INFINITY;
-                  for j in 0..d1_points.len() {
-                    if i == j {
-                      continue;
-                    }
-                    let d = p1.distance_to(d1_points[j]);
-                    if d > 0.0 && d <= join_limit && d < best_d {
-                      best_d = d;
-                      best_j = Some(j);
-                    }
-                  }
-                  if let Some(j) = best_j {
-                    let q = d1_points[j];
-                    let target = Point2::new((p1.x + q.x) * 0.5, (p1.y + q.y) * 0.5);
-                    for seg in s3.iter_mut() {
-                      let sp = seg.start_point();
-                      let ep = seg.end_point();
-                      if sp.is_near(p1, tolerance) && !sp.is_near(target, tolerance) {
-                        match *seg {
-                          Segment::Line(_) => {
-                            *seg = Segment::Line(LineSeg::new(target, ep));
-                            changed = true;
-                          }
-                          Segment::Arc(arc) => {
-                            let vs = target - arc.center();
-                            let ve = ep - arc.center();
-                            let new_start = vs.y.atan2(vs.x);
-                            let new_end = ve.y.atan2(ve.x);
-                            let mut sweep = if arc.sweep() >= 0.0 {
-                              let mut s = new_end - new_start;
-                              while s <= 0.0 {
-                                s += std::f64::consts::TAU;
-                              }
-                              while s > std::f64::consts::TAU {
-                                s -= std::f64::consts::TAU;
-                              }
-                              s
-                            } else {
-                              let mut s = new_end - new_start;
-                              while s >= 0.0 {
-                                s -= std::f64::consts::TAU;
-                              }
-                              while s < -std::f64::consts::TAU {
-                                s += std::f64::consts::TAU;
-                              }
-                              s
-                            };
-                            let _ = new_start;
-                            if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
-                              *seg = Segment::Arc(a);
-                              changed = true;
-                            }
-                          }
-                        }
-                      } else if ep.is_near(p1, tolerance) && !ep.is_near(target, tolerance) {
-                        match *seg {
-                          Segment::Line(_) => {
-                            *seg = Segment::Line(LineSeg::new(sp, target));
-                            changed = true;
-                          }
-                          Segment::Arc(arc) => {
-                            let vs = sp - arc.center();
-                            let ve = target - arc.center();
-                            let new_start = vs.y.atan2(vs.x);
-                            let new_end = ve.y.atan2(ve.x);
-                            let sweep = if arc.sweep() >= 0.0 {
-                              let mut s = new_end - new_start;
-                              while s <= 0.0 {
-                                s += std::f64::consts::TAU;
-                              }
-                              while s > std::f64::consts::TAU {
-                                s -= std::f64::consts::TAU;
-                              }
-                              s
-                            } else {
-                              let mut s = new_end - new_start;
-                              while s >= 0.0 {
-                                s -= std::f64::consts::TAU;
-                              }
-                              while s < -std::f64::consts::TAU {
-                                s += std::f64::consts::TAU;
-                              }
-                              s
-                            };
-                            if let Ok(a) = Arc::new(arc.center(), arc.radius(), new_start, sweep) {
-                              *seg = Segment::Arc(a);
-                              changed = true;
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                if changed {
-                  let mut repaired_snaps3 = near_miss_snaps.clone();
-                  let odd3 = odd_degree_points(&s3, tolerance);
-                  if odd3.is_empty() {
-                    repaired_snaps3.clear();
-                  } else if !repaired_snaps3.is_empty() {
-                    repaired_snaps3
-                      .retain(|snap| snap_relevant_to_odd_degree(*snap, &odd3, tolerance));
-                  }
-                  let mut flattened = false;
-                  let valid_snaps = filter_valid_snaps(&s3, &repaired_snaps3);
-                  if let Ok(boundaries) =
-                    assemble(&s3, &o2, tolerance, &mut flattened, &valid_snaps)
-                  {
-                    if trace_repair {
-                      use std::io::Write as _;
-                      if let Ok(mut f) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open("/tmp/trace_063_repair.log")
-                      {
-                        let _ = writeln!(
-                          f,
-                          "REPAIR_JOIN_OK segs={} bounds={}",
-                          s3.len(),
-                          boundaries.len()
-                        );
-                      }
-                    }
-                    return Ok(Combined::Region {
-                      region: Region { boundaries },
-                      flattened,
-                    });
-                  } else if trace_repair {
-                    use std::io::Write as _;
-                    if let Ok(mut f) = std::fs::OpenOptions::new()
-                      .create(true)
-                      .append(true)
-                      .open("/tmp/trace_063_repair.log")
-                    {
-                      let _ = writeln!(f, "REPAIR_JOIN_FAIL segs={}", s3.len());
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      } else if trace_repair && far_flips.iter().any(|f| *f) {
-        use std::io::Write as _;
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-          .create(true)
-          .append(true)
-          .open("/tmp/trace_063_repair.log")
-        {
-          let _ = writeln!(
-            f,
-            "REPAIR_SKIP odd={} far_flips={} none_incident",
-            odd_points.len(),
-            far_flips.iter().filter(|f| **f).count()
-          );
         }
       }
     }
   }
+
   let mut flattened = false;
   let valid_snaps = filter_valid_snaps(&segments, &near_miss_snaps);
-  let boundaries = assemble(&segments, &owners, tolerance, &mut flattened, &valid_snaps)?;
+  let boundaries = match assemble(&segments, &owners, tolerance, &mut flattened, &valid_snaps) {
+    Ok(b) => b,
+    Err(e) => {
+      if std::env::var_os("CAMCRAFT_TRACE_FAIL").is_some() {
+        let mut vertices: Vec<(Point2, usize)> = Vec::new();
+        for seg in &segments {
+          for point in [seg.start_point(), seg.end_point()] {
+            if let Some(idx) = vertices
+              .iter()
+              .position(|(v, _)| v.is_near(point, tolerance))
+            {
+              vertices[idx].1 += 1;
+            } else {
+              vertices.push((point, 1));
+            }
+          }
+        }
+        let mut d1 = 0usize;
+        let mut d2 = 0usize;
+        let mut d3 = 0usize;
+        let mut d4p = 0usize;
+        for (_, d) in &vertices {
+          match *d {
+            1 => d1 += 1,
+            2 => d2 += 1,
+            3 => d3 += 1,
+            _ => d4p += 1,
+          }
+        }
+        eprintln!(
+          "  FINAL_FAIL segs={} vertices={} deg1={} deg2={} deg3={} deg4+={} far_flips={} err={:?}",
+          segments.len(),
+          vertices.len(),
+          d1,
+          d2,
+          d3,
+          d4p,
+          far_flips.iter().filter(|f| **f).count(),
+          e
+        );
+      }
+      return Err(e);
+    }
+  };
   Ok(Combined::Region {
     region: Region { boundaries },
     flattened,
@@ -2310,7 +2274,19 @@ pub fn combine(
   match combine_with_indexed(a, b, &ia, &ib, op, tolerance, false) {
     Ok(result) => Ok(result),
     Err(err) if is_unchainable_error(&err) => {
-      combine_with_indexed(a, b, &ia, &ib, op, tolerance, true)
+      let res = combine_with_indexed(a, b, &ia, &ib, op, tolerance, true);
+      if std::env::var_os("CAMCRAFT_TRACE_FAIL").is_some() {
+        if let Err(ref e) = res {
+          eprintln!(
+            "COMBINE_FAIL a_bounds={} b_bounds={} op={:?} err={:?}",
+            a.boundaries.len(),
+            b.boundaries.len(),
+            op,
+            e
+          );
+        }
+      }
+      res
     }
     Err(err) => Err(err),
   }

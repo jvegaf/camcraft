@@ -228,3 +228,16 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   S3 sigue sin cumplirse para ambas capas. Próximo paso: localizar en qué región/`combine` falla cada
   capa completa (traza/instrumentación acotada por capa) para distinguir si comparten el patrón far-flip
   + extremos abiertos ya reparado o si son causas distintas.
+
+- **L16 (T4, diagnóstico bottom).** Con traza `CAMCRAFT_TRACE_FAIL` y refactor de reparación (adoptar el
+  conjunto sin piezas far-flip como base aunque falle el ensamblado, antes del intento final), los fallos
+  finales de `substitute-easyeda/bottom.gbr` muestran:
+  - `a_bounds=1 b_bounds=1 op=Union`: estados finales observados con T-junctions
+    (`segs=10 vertices=8 deg1=0 deg2=4 deg3=4 deg4+=0 far_flips=2`) y con extremos abiertos
+    (`segs=42 vertices=44 deg1=4 deg2=40 deg3=0 deg4+=0 far_flips=0`).
+  - `a_bounds=113 b_bounds=1 op=Union`: `segs=2274 vertices=2276 deg1=4 deg2=40?` no, `deg1=4 deg2=2272
+    deg3=0 deg4+=0 far_flips=0` (repetido). La soldadura de pares grado-1 no aplica en grafos con
+    grado 3 y, cuando aplica, no basta o no se alcanza el caso acotado actual. La reparación far-flip sola
+    no elimina las T-junctions del primer caso. S3 sigue abierto; hay que localizar los `combine`
+    concretos (región/comando) y caracterizar causas (T-junction vs extremos abiertos no emparejables
+    dentro de 4·ε o con topología distinta).
