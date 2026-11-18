@@ -259,3 +259,22 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   propio archivo (`%FSLAX46Y46`, 6 decimales = 1e-6 mm). La regla de near-miss actual corta en 2·ε, así
   que estos huecos no se sueldan. Cerrarlos exige una **decisión de política**: qué distancia de unión
   declara el kernel, y con qué justificación. No se resuelve con otro parche local.
+- **L23 (T3, seis variantes más falsificadas; estado real).** Con la unión medida (los huecos abiertos
+  están a `8.60·ε = √74·ε` y `11.18·ε = √125·ε`, o sea el redondeo de 6 decimales sobre geometría a 45°)
+  se probaron y **descartaron** por medición:
+  1. soldar **todos** los vértices a 16·ε: reduce los no-manifold de 234 a 2 en `kicad-2l-simple/top`
+     pero **rompe** `substitute-eagle/outline` (pineado `parsed`) con `revisits a piece`, porque puede
+     fusionar vértices interiores y crear grado 3;
+  2. fusionar **fracciones de corte** a 16·ε: es el culpable concreto del fallo anterior;
+  3. snaps punta-a-punta a 16·ε: sin efecto en el fallo restante;
+  4. `dedup_pieces` y guarda de `interior_fraction` a 16·ε: sin efecto / rompe topología al saltear cortes;
+  5. umbral de contracción a 16·ε: sin efecto;
+  6. reparación quirúrgica `join_open_ends` (unir sólo pares de grado 1 dentro de la distancia de unión,
+     que no puede crear uniones impares): parity verde (4 passed) pero **no** arregla
+     `kicad-2l-simple/top`, que sigue en `revisits a piece`.
+  **Estado real y localizado.** En `kicad-2l-simple/top` quedan exactamente dos vértices no-manifold:
+  uno de **grado 3** en `(148.699500,-87.652139294)` y uno de **grado 1** en `(148.699500,-87.443774000)`,
+  a **0.208 mm** — longitud geométrica real, 208.365·ε. Falta **una pieza** entre ellos: la descartó
+  `decide_indexed`. No es soldadura ni umbral: es clasificación. `substitute-easyeda/bottom` también
+  sigue rechazando. **Corrección de un reporte anterior:** el prefijo `/tmp/bot_12797.gbr` nunca pasó;
+  lo que se veía era `parse ok` seguido del timeout, no un `image ok`.
