@@ -261,3 +261,11 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `image ok` ni `IMAGE-ERR` (`parse ok`, `EXIT=124` del timeout). No es éxito (S6); indica que los
   combines de 4 hojas se reparan y el procesamiento avanza, pero queda un cuello de rendimiento o un caso
   patológico posterior. S3 sigue sin cumplirse para bottom.
+
+- **L19 (T4, kicad-2l-simple/top completo).** Con `9d98491`, `fixtures/corpus/kicad-2l-simple/top.gbr`
+  produce imagen: `image ok in 21.01 s: polygons=107, skipped=83` (persiste el trazo rechazado de
+  apertura 28 en comando 704 `revisits a piece` y arcos de trazo no soportados). La capa ya no falla a
+  terminación por el arreglo de regiones (antes `IMAGE-ERR ~117.7 s`, L15); el prefijo `top_r1` ya
+  imagenaba (L14). S3 queda satisfecho para `kicad-2l-simple/top` en cuanto a parseo/imagen a terminación
+  (con omisiones preexistentes/no soportadas), sujeto a verificación de geometría/paridad (S4, T5).
+  `substitute-easyeda/bottom.gbr` sigue sin completar (timeout 600 s, L18).
