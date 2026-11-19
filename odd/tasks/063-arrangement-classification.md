@@ -269,3 +269,12 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   imagenaba (L14). S3 queda satisfecho para `kicad-2l-simple/top` en cuanto a parseo/imagen a terminación
   (con omisiones preexistentes/no soportadas), sujeto a verificación de geometría/paridad (S4, T5).
   `substitute-easyeda/bottom.gbr` sigue sin completar (timeout 600 s, L18).
+
+- **L20 (T4, medición kicad-2l-simple/top).** Medición del artefacto con el measurer de paridad:
+  `status=parsed, contour_area_mm2=477.73819038600953, points=8556, polygons=107` (21.01 s en probe;
+  <30 s). Golden actual: `status=timeout`. Baseline FlatCAM: `status=parsed,
+  contour_area_mm2=482.2125158364497, polygons=36, vertices=78680`. Diferencia de área relativa
+  ~0.00928 (>0.001) y polígonos/estructura distintos (107 vs 36; 83 omisiones en probe, incl. trazo
+  comando 704 rechazado por `revisits a piece` y arcos no soportados). Estado: pasa a completar e
+  iguala status con FlatCAM, pero el área no está dentro de tolerancia 1e-3; no se re-pinea golden en
+  este paso (requiere validación S4/S6, decisión sobre divergencia y no mezclar con `--assume-known-timeouts`).
