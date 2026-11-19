@@ -225,11 +225,13 @@ fn a_refused_artefact_is_pinned_without_geometry() {
         .as_str()
         .unwrap_or_else(|| panic!("{where_}: no status"));
       // `error` is a *measurement* failure - a crash, an allocation failure - and a golden that recorded
-      // one has pinned the crash instead of the corpus. It is refused here on purpose: the only statuses
-      // a golden may hold are the three that answer "what did the reader make of this file?".
+      // one has pinned the crash instead of the corpus. It is refused here on purpose: the statuses a
+      // golden may hold answer "what did the reader make of this file?" (`parsed`, `refused`,
+      // `timeout`) or, deliberately, "this artefact is not checked now" (`skipped`, a budget-closure
+      // record carried through without measuring).
       assert!(
-        matches!(status, "parsed" | "refused" | "timeout"),
-        "{where_}: status {status:?} is not one of parsed, refused or timeout; a golden never pins a measurer failure"
+        matches!(status, "parsed" | "refused" | "timeout" | "skipped"),
+        "{where_}: status {status:?} is not one of parsed, refused, timeout or skipped; a golden never pins a measurer failure"
       );
 
       for field in ["polygons", "points", "tools", "features"] {

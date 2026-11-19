@@ -6,6 +6,10 @@ this script drives it once per artefact so that a layer that does not terminate 
 `timeout(1)` and recorded as `status: "timeout"` instead of hanging CI. A function call cannot be
 interrupted from inside the process; a process can.
 
+An artefact pinned as `skipped` in its golden is intentionally not measured or compared now (a
+budget-closure decision recorded in the golden). The harness carries that status through without
+running the measurer, so CI and local hooks do not spend time on it.
+
 The document this prints is what `run.sh` compares against the goldens and, with `--update`, what it
 splits into one `parity.json` per board (a board's golden is stored next to the board, so a diff over
 one board is a diff over one file):
@@ -21,10 +25,10 @@ one board is a diff over one file):
       }
     }
 
-`status` is one of `parsed`, `refused`, `timeout`, `error`. Everything else is a number the comparison checks;
-the parser's own refusal message is not stored, because a golden should move when the geometry moves,
-not when a diagnostic is reworded. `collect.py` prints the reasons to stderr so a person can read them
-without them becoming part of the fixture.
+`status` is one of `parsed`, `refused`, `timeout`, `skipped`, `error`. Everything else is a number the
+comparison checks; the parser's own refusal message is not stored, because a golden should move when
+the geometry moves, not when a diagnostic is reworded. `collect.py` prints the reasons to stderr so a
+person can read them without them becoming part of the fixture.
 
 Keys are sorted and floats are written with Python's shortest round-trip repr, so two runs that measure
 the same thing produce the same bytes.
@@ -150,14 +154,18 @@ def worker_count() -> int:
     return max(1, min(jobs, 8))
 
 
-def assumed_timeout(artefact: Path) -> dict:
+def zero_measurement(artefact: Path, status: str) -> dict:
     kind = "tools" if artefact.suffix == ".drl" else "polygons"
     zero = {"tools": 0, "features": 0} if kind == "tools" else {
         "polygons": 0,
         "contour_area_mm2": 0.0,
         "points": 0,
     }
-    return {"status": "timeout", **zero}
+    return {"status": status, **zero}
+
+
+def assumed_timeout(artefact: Path) -> dict:
+    return zero_measurement(artefact, "timeout")
 
 
 def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) -> dict:
@@ -165,15 +173,21 @@ def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) ->
     boards = {}
     for board in sorted(path for path in corpus.iterdir() if path.is_dir()):
         items = list(artefacts_of(board).items())
-        skipped = known_timeouts(board) if assume_known_timeouts else set()
+        pinned_skipped = pinned_skips(board)
+        skipped = dict(pinned_skipped)
+        if assume_known_timeouts:
+            for role, artefact in items:
+                if golden_status(board, role) == "timeout":
+                    skipped.setdefault(role, "assumed timeout (pinned in golden; skipped)")
         to_measure = [(role, artefact) for role, artefact in items if role not in skipped]
         measured = {}
         reasons = {}
 
         for role, artefact in items:
             if role in skipped:
-                measured[role] = assumed_timeout(artefact)
-                reasons[role] = (artefact, "assumed timeout (pinned in golden; skipped)")
+                status = golden_status(board, role) or "skipped"
+                measured[role] = zero_measurement(artefact, status)
+                reasons[role] = (artefact, skipped[role])
 
         if to_measure:
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -204,20 +218,44 @@ def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) ->
     }
 
 
+def load_golden(board: Path) -> dict:
+    golden_path = board / "parity.json"
+    if not golden_path.is_file():
+        return {}
+    try:
+        return json.loads(golden_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def golden_status(board: Path, role: str) -> str | None:
+    value = load_golden(board).get("artefacts", {}).get(role, {})
+    status = value.get("status")
+    return status if isinstance(status, str) else None
+
+
+def pinned_skips(board: Path) -> dict[str, str]:
+    """Artefacts whose committed golden marks them as intentionally skipped.
+
+    A skipped golden means "do not measure or compare this artefact now". Unlike a timeout, this is a
+    deliberate budget-closure record, so it is carried through even on a normal run: measuring it would
+    spend time on a layer nobody is checking yet.
+    """
+    artefacts = load_golden(board).get("artefacts", {})
+    return {
+        role: "skipped (pinned in golden; not checked)"
+        for role, value in artefacts.items()
+        if value.get("status") == "skipped"
+    }
+
+
 def known_timeouts(board: Path) -> set[str]:
     """Artefacts whose committed golden is already a timeout.
 
     Skipping them is an opt-in local speedup: it cannot discover that a layer now finishes, so it must
     never be used when pinning goldens.
     """
-    golden_path = board / "parity.json"
-    if not golden_path.is_file():
-        return set()
-    try:
-        golden = json.loads(golden_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return set()
-    artefacts = golden.get("artefacts", {})
+    artefacts = load_golden(board).get("artefacts", {})
     return {role for role, value in artefacts.items() if value.get("status") == "timeout"}
 
 

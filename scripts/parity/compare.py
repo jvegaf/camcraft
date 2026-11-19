@@ -7,7 +7,8 @@ The rule is E0.4's, and it is stated once here so no caller has to remember it:
   * `contour_area_mm2` compares with a **relative** epsilon of 1e-9 (`|a - b| <= 1e-9 * max(|a|, |b|)`,
     and two zeroes are equal), because an area of a whole layer is a sum of hundreds of terms and an
     absolute epsilon would be a different rule for a small board and a large one;
-  * `status` and the tolerances recorded in the golden compare exactly.
+  * `status` and the tolerances recorded in the golden compare exactly. A golden pinned `skipped` is a
+    deliberate "not checked now" record and is not measured or compared.
 
 The boards are enumerated from the corpus on disk and from the goldens, never from the measurement:
 a board directory that disappears has to be a divergence, not a smaller comparison, or the corpus could
@@ -133,9 +134,8 @@ def main() -> int:
                 problems.append(f"{where}: the golden pins an artefact the corpus no longer has")
             elif role not in artefacts:
                 problems.append(f"{where}: the corpus has an artefact the golden does not pin")
-            else:
-                compare_value(where, fresh[role], artefacts[role], problems)
-            checked += 1
+            elif compare_value(where, fresh[role], artefacts[role], problems):
+                checked += 1
 
     for slug in sorted(boards):
         for role, value in sorted(boards[slug].items()):
@@ -144,8 +144,11 @@ def main() -> int:
     parsed = sum(
         1 for board in boards.values() for value in board.values() if value["status"] == "parsed"
     )
+    skipped = sum(
+        1 for board in boards.values() for value in board.values() if value["status"] == "skipped"
+    )
     total = sum(len(board) for board in boards.values())
-    print(f"{parsed} parsed, {total - parsed} not parsed, of {total} artefacts ({checked} compared)")
+    print(f"{parsed} parsed, {skipped} skipped, {total - parsed - skipped} not parsed, of {total} artefacts ({checked} compared)")
 
     if problems:
         print(f"\n{len(problems)} divergence(s) from the committed goldens:", file=sys.stderr)

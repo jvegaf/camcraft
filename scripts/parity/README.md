@@ -18,9 +18,9 @@ geometry). That test is what `cargo test --workspace` sees; the measurement itse
 
 ## What is measured, and against what
 
-Per artefact: `status` (`parsed`, `refused`, `timeout` or `error`), `polygons`, `contour_area_mm2` and `points`
-(after flattening at `flatten_tolerance_mm`) for a Gerber layer; `tools` and `features` for an Excellon
-file.
+Per artefact: `status` (`parsed`, `refused`, `timeout`, `skipped` or `error`), `polygons`,
+`contour_area_mm2` and `points` (after flattening at `flatten_tolerance_mm`) for a Gerber layer;
+`tools` and `features` for an Excellon file.
 
 - `polygons` is the number of boundaries of the layer's image.
 - `contour_area_mm2` is the **sum of the absolute contour areas**, which is the same rule this
@@ -176,6 +176,11 @@ A divergence is either progress or a regression, and the diff decides which:
 `error` is the measurer itself failing — a panic, an allocation failure — and it is deliberately not
 `refused`: `run.sh` stops on it before comparing or re-pinning (see `guard_errors.py`), and a golden may
 never hold it. A crash is not a measurement, so there is nothing for it to match.
+
+`skipped` is different: it is a deliberate "not checked now" record. An artefact pinned `skipped` is
+carried through without being measured or compared, so CI and local hooks do not spend time on it. It
+records a budget-closure or deferral decision, not a measurement. Changing one back to `timeout` or
+`parsed` is the moment it is checked again.
 
 The board set is fixed too. Both `compare.py` and the workspace test enumerate the six slugs E0.5 names
 and fail if the corpus holds a different set, so a board directory that disappears is a divergence

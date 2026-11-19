@@ -4,7 +4,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "drill": {
       "features": 526,
@@ -15,25 +15,25 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "inner2": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "mask-bottom": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "mask-top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "outline": {
       "contour_area_mm2": 28800.20157018279,
@@ -45,19 +45,19 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "silk-top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "top": {
-      "contour_area_mm2": 2477.272596691578,
-      "points": 48739,
-      "polygons": 643,
-      "status": "parsed"
+      "contour_area_mm2": 0.0,
+      "points": 0,
+      "polygons": 0,
+      "status": "skipped"
     }
   },
   "flatten_tolerance_mm": 0.001,

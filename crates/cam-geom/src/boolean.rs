@@ -2037,13 +2037,13 @@ fn combine_with_indexed(
       }
     }
     let mut d1 = 0usize;
-    let mut d2 = 0usize;
+    let mut _d2 = 0usize;
     let mut d3 = 0usize;
     let mut d4p = 0usize;
     for (_, d) in &vertices {
       match *d {
         1 => d1 += 1,
-        2 => d2 += 1,
+        2 => _d2 += 1,
         3 => d3 += 1,
         _ => d4p += 1,
       }
@@ -2058,15 +2058,14 @@ fn combine_with_indexed(
       // Allow a tiny margin for floating-point noise (e.g. 4*epsilon + ~1 ULP).
       let join_limit = tolerance.epsilon * 4.0 + 1e-12;
       let mut changed = false;
-      for i in 0..d1_points.len() {
-        let p1 = d1_points[i];
+      for (i, &p1) in d1_points.iter().enumerate() {
         let mut best_j = None;
         let mut best_d = f64::INFINITY;
-        for j in 0..d1_points.len() {
+        for (j, &p2) in d1_points.iter().enumerate() {
           if i == j {
             continue;
           }
-          let d = p1.distance_to(d1_points[j]);
+          let d = p1.distance_to(p2);
           if d > 0.0 && d <= join_limit && d < best_d {
             best_d = d;
             best_j = Some(j);
