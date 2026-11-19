@@ -285,3 +285,9 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   061 queda en lo que sí cerró —apertura dentro de `G36`, índice local, sondas estables, snapa
   punta-a-punta, dedup geométrico, corte sin slivers y contracción de aristas sub-tolerancia— y los dos
   rechazos restantes (`kicad-2l-simple/top`, `substitute-easyeda/bottom`) se siguen midiendo en la 063.
+
+## Estado actual (handoff, sesión 063)
+
+- **063 (arrangement classification, separado):** ver `odd/tasks/063-arrangement-classification.md` para evidencia y cierre detallado. Resumen: `kicad-2l-simple/top.gbr` imagena (21.01 s, 477.74 mm², 107 pol, 83 skips) pero difiere de FlatCAM ~0.93% y su golden sigue en timeout (S4/S6 pendientes de validación/re-pin honesto). `substitute-easyeda/bottom.gbr` ya no falla rápido pero agota 600 s por un reintento patológico `~segs=10301–10333, d1=1084, d3=8, far_flips=1` (S3 abierto); bisección acota el disparador a la interacción de la región 12800–12819 con 12822–12841 y geometría posterior. Fixes de reintento commiteados (`1f83b01`, `bedb58e`, `267a1b2`, `9d98491`, scoped a retry).
+- **Pendiente para E1.4:** cerrar S3/S4/S6 de 063 con causa y validación, correr suite completa `cam-geom`+paridad, triar divergencias silk/mask de 061 T5 (0.419/0.25/0.0224/7.8e-4), resolver 062 T1 (contornos), y aplicar estrategia de entrega (rama muy por encima del corte). No actualizar `odd/roadmap/index.md` hasta satisfacer el criterio de salida.
+- `Risk: none` para este apunte documental.
