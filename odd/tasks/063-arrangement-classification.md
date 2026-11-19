@@ -298,3 +298,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   correlacione `combine` con el contexto de aplicación (p. ej. índice de operación/región en
   `cam-gerber` o contador global consistente) o un bisección por prefijo del archivo para acotar el
   comando que dispara ese estado.
+
+- **L23 (T4, bisección del disparador en bottom).** Bisección por prefijo de
+  `fixtures/corpus/substitute-easyeda/bottom.gbr` (16317 líneas, con marcador `PATHOLOGICAL_MARKER` en
+  reintento de arreglo >5k segmentos o >200 hojas): 12237 ok, 12622 ok, 12766 ok, 12814 patológico,
+  13007/13777/15317 patológico, 16317 timeout. Frontera en [12766, 12814]; la línea 12814 es
+  `X131618427Y-113844149D01*` dentro de un contorno de región que cierra en G37 (12819) —secuencia local
+  12810–12819: `...D01*` (12810-12814) seguidos de `D01*` (12815-12818) y `G37*` (12819). El prefijo que
+  incluye 12814 dispara el combine patológico (`segs=10301, d1=1084, d3=8, far_flips=1`); falta reducir a
+  un repro mínimo (prefijo+cierre de región/M02) y correlacionar con el contorno/comando que introduce la
+  topología rota.
