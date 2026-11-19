@@ -333,3 +333,26 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   `12841: G37*`. Combinar el estado tras 12800–12819 con esta región produce el arreglo patológico
   (~10k segmentos, 1084 hojas, 8 grado-3, 1 far-flip); sigue reducir a repro mínimo (preambulo+aperturas
   necesarias+estas dos regiones) e inspeccionar la geometría/topología de la interacción.
+
+## Estado de cierre (progreso y pendiente)
+
+### Progreso (evidencia)
+
+- **`fixtures/corpus/kicad-2l-simple/top.gbr` (S3, terminación):** pasa de `IMAGE-ERR/timeout` a `image ok 21.01 s, polygons=107, points=8556, contour_area_mm2=477.73819038600953` (L19-L20). Golden sigue `status: "timeout"` (`fixtures/corpus/kicad-2l-simple/parity.json`); FlatCAM `482.2125158364497 mm², 36 polígonos, 78680 vértices` → diferencia relativa de área ~0.00928 (>1e-3), estructura distinta y 83 operaciones saltadas (incl. trazo apertura 28 cmd 704 `revisits a piece`, arcos no soportados). No se re-pinó el golden.
+- **`fixtures/corpus/substitute-easyeda/bottom.gbr` (S3, sin completar):** deja de fallar rápido en ~32–34 s; con margen de soldadura 4·ε+1e-12 (`9d98491`) progresa pero agota `timeout 600 s` sin `image ok`/`IMAGE-ERR` (`parse ok`, RC=124, L18). La traza ubica el atasco en un reintento de combine `a=1 b=1` con arreglo patológico `~segs=10301–10333, vertices≈10839–10871, deg1=1084, deg2=9747–9779, deg3=8, far_flips=1`, `revisits a piece` (L21-L22,L24).
+- **Fixes de reintento (scoped a `detect_near_misses=true`):** `1f83b01` descarta piezas far-flip (par cercano `[Drop,Drop]`, decisión final `Keep/Reverse`); `bedb58e` suelda pares grado-1 en grafos puros grado 1/2 dentro de `4·ε` al punto medio; `267a1b2` adopta el conjunto sin far-flips como base; `9d98491` usa `4·ε + 1e-12` para ruido FP. Resuelven `/tmp/top_r1.gbr` y permiten imagen de `kicad-2l-simple/top`; no cierran `bottom`.
+- **Diagnóstico de bottom:** combines pequeños recuperables (`segs=10, d3=4, far_flips=2`; `segs=42, d1=4` con par 1.414·ε; `segs=2274, d1=4` con par 4.000000004·ε) ya se reparan (L17-L21). Bisección por prefijo: frontera cruda [12766,12814], línea 12814 `X131618427Y-113844149D01*` en G36 12800–12819 (L23). Cierres correctos de esa región aislada son sanos; el fallo real aparece al combinar con geometría posterior. Bisección por fronteras G37: `12819 ok`, `12841 timeout` (primera mala), posteriores muestreadas hasta 16315 timeoutean; región gatillo `12822(G36)–12841(G37)` (20 líneas, L25).
+- **Heurística cercana rechazada:** “dos probes definitivos más cercanos si coinciden, si no mayoría” regresa `substitute-easyeda/silk-top.gbr` a `IMAGE-ERR ... revisits a piece` (L12, revertida). No repetir.
+- **Regresión controlada conocida:** `substitute-easyeda/silk-top.gbr` sigue parseable en los estados verificados.
+
+### Falta por arreglar (para cerrar 063/E1.4 donde aplique)
+
+1. **`bottom.gbr` S3 (bloqueante):** construir repro mínimo (preambulo/aperturas + estado hasta 12819 o subconjunto mínimo que preserve el fallo + región 12822–12841) e instrumentar el combine de la interacción para explicar por qué se generan ~10k segmentos, 1084 hojas y 8 vértices de grado 3. Con causa: corregir clasificación/cortes/ensamblado o tratar el costo/topología de forma acotada y correcta (no subir umbrales para enmascarar). Mitigar con fallo rápido diagnosticado evita el cuelgue pero no completa S3.
+2. **`kicad-2l-simple/top` S4/S6:** determinar si 477.74 mm² / 107 polígonos / 83 skips son geométricamente correctos frente a FlatCAM (482.21 mm², 36 pol) y la línea de arcos/trazo saltado; decidir re-pin honesto del golden (respetando 30 s, sin `--assume-known-timeouts` con `--update`) o documentar divergencia con evidencia.
+3. **Validación (T5 parcial de 063, criterio de no regresión):** `cargo fmt --all --check`, clippy relevante, `cargo test -p cam-geom` completo (incl. `boolean_properties`, `boolean_corpus`, suites lentas), `cargo test -p cam-gerber` si aplica, y paridad/corpus para artefactos impactados. No se corrió la suite completa de `cam-geom` en esta sesión.
+4. **061 T5 (cobre/máscara/seda, fuera de 063 pero pendiente de E1.4):** triar divergencias FlatCAM reales — `kicad-large-pours/silk-top` rel 0.419, `substitute-easyeda/silk-top` rel 0.25, `kicad-4l-pours/mask-top` rel 0.0224, `substitute-altium/top` rel 7.8e-4 — distinguir corrección de regresión (`346723a`) y fijar o justificar con evidencia.
+5. **062 T1 (separado):** decidir regla de derivación de contorno para contornos con huecos 0.9–23.4 mm (claim/worktree propio).
+6. **Entrega/registros:** rama `feat/E1.4` con 85 commits desde `origin/master` (~23830 líneas autoradas según avisos de commit), por encima del corte de ~400 líneas — aplicar estrategia de entrega/cortes antes de más commits. Mantener `odd/tasks/061-e1-4-gerber.md`, `063-arrangement-classification.md`, espejos y memoria Engram alineados; `scripts/check-records.sh`/`just check` según corresponda. Actualizar `odd/roadmap/index.md` solo cuando el criterio de salida de E1.4 se satisfaga.
+
+### Riesgo (línea)
+`Risk: none` para los cambios de documentación de esta sesión; los cambios de código de 063 previos tocan clasificación/ensamblado booleano compartido (ítem 3, contratos/uso compartido) y requieren la validación completa de (3) antes de darlos por cerrados.
