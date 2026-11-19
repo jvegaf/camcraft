@@ -308,3 +308,14 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   incluye 12814 dispara el combine patológico (`segs=10301, d1=1084, d3=8, far_flips=1`); falta reducir a
   un repro mínimo (prefijo+cierre de región/M02) y correlacionar con el contorno/comando que introduce la
   topología rota.
+
+- **L24 (T4, acotación adicional del disparador).** Con traza temporal en reintentos: el prefijo crudo
+  hasta 12814 (región G36 12800 sin cerrar) reproduce el combine patológico
+  (`segs=10333, vertices=10871, deg1=1084, deg2=9779, deg3=8, far_flips=1`, timeout 300 s), mientras que
+  los mismos prefijos cerrados correctamente (`...12813+G37+M02`, `...12814+G37+M02`, `...12819+M02`)
+  completan rápido (RC=0). El disparador observado en bisección cruda ([12766,12814], línea 12814
+  `X131618427Y-113844149D01*` dentro de 12800–12819) depende del cierre/contexto: la región 12800–12819
+  aislada es sana, y el caso patológico del archivo completo surge de su interacción con geometría
+  posterior (tras 12819 hay regiones G36/G37 sucesivas 12822–12841, 12844–12862, …). Falta bisección por
+  fronteras de región (con cierre correcto) para identificar la región/comando posterior que, combinado
+  con 12800–12819, produce el arreglo de ~10k segmentos.
