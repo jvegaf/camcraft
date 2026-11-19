@@ -1949,7 +1949,12 @@ fn combine_with_indexed(
   // on Drop but farther probes flipped it to Keep/Reverse can leave a dangling leaf where an adjacent
   // interior piece was correctly dropped (asm 5025/top_r1: b0->top). Drop such far-flip boundary
   // pieces, then if the graph is pure open chains (degree-1/2) snap close degree-1 pairs.
-  if detect_near_misses {
+  // Bound retry-repair work: on severely broken arrangements (e.g. 10k+ segments, 1k+ degree-1 leaves)
+  // the extra repair/assemble passes can stall for minutes with no convergence, turning a bounded
+  // unchainable failure into prolonged processing. Skip repair when the arrangement is pathological.
+  const RETRY_REPAIR_MAX_SEGMENTS: usize = 6000;
+  const RETRY_REPAIR_MAX_DEGREE1: usize = 256;
+  if detect_near_misses && segments.len() <= RETRY_REPAIR_MAX_SEGMENTS {
     let trace_repair = std::env::var_os("CAMCRAFT_TRACE_063").is_some();
     let any_far_flip = far_flips.iter().any(|f| *f);
     if any_far_flip {
@@ -2043,7 +2048,7 @@ fn combine_with_indexed(
         _ => d4p += 1,
       }
     }
-    if d3 == 0 && d4p == 0 && d1 >= 2 {
+    if d3 == 0 && d4p == 0 && d1 >= 2 && d1 <= RETRY_REPAIR_MAX_DEGREE1 {
       let mut s3 = segments.clone();
       let d1_points: Vec<Point2> = vertices
         .iter()
