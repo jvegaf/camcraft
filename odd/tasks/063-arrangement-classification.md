@@ -319,3 +319,17 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   posterior (tras 12819 hay regiones G36/G37 sucesivas 12822–12841, 12844–12862, …). Falta bisección por
   fronteras de región (con cierre correcto) para identificar la región/comando posterior que, combinado
   con 12800–12819, produce el arreglo de ~10k segmentos.
+
+- **L25 (T4, bisección por fronteras G37).** Bisección binaria sobre cierres G37 (prefijo hasta G37 +
+  `M02*`, timeout 180 s como patológico): 12819 ok, **12841 timeout** (primera frontera mala), y todas las
+  posteriores muestreadas hasta 16315 timeoutean. La región siguiente a 12800–12819 es `12822(G36)–12841(G37)`
+  (20 líneas):
+  `12822: G36*`, `12823: X132972661Y-118832433D02*`, `12824: G01*`, `12825: X133170047Y-118502003D01*`,
+  `12826: X133178866Y-118499746D01*`, `12827: X133188538Y-118503737D01*`, `12828: X133554337Y-118957565D01*`,
+  `12829: X133556660Y-118965797D01*`, `12830: X133553653Y-118972888D01*`, `12831: X133172029Y-119462373D01*`,
+  `12832: X133164092Y-119466427D01*`, `12833: X133157673Y-119466076D01*`, `12834: X132452865Y-119192740D01*`,
+  `12835: X132448322Y-119186459D01*`, `12836: X132448036Y-119178717D01*`, `12837: X132463787Y-118837736D01*`,
+  `12838: X132469643Y-118830872D01*`, `12839: X132477318Y-118828480D01*`, `12840: X132972661Y-118832433D01*`,
+  `12841: G37*`. Combinar el estado tras 12800–12819 con esta región produce el arreglo patológico
+  (~10k segmentos, 1084 hojas, 8 grado-3, 1 far-flip); sigue reducir a repro mínimo (preambulo+aperturas
+  necesarias+estas dos regiones) e inspeccionar la geometría/topología de la interacción.
