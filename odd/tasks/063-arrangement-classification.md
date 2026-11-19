@@ -278,3 +278,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   comando 704 rechazado por `revisits a piece` y arcos no soportados). Estado: pasa a completar e
   iguala status con FlatCAM, pero el área no está dentro de tolerancia 1e-3; no se re-pinea golden en
   este paso (requiere validación S4/S6, decisión sobre divergencia y no mezclar con `--assume-known-timeouts`).
+
+- **L21 (T4, causa de timeout en bottom).** Traza de progreso (`COMBINE_START`/reintentos/fallos) sobre
+  `substitute-easyeda/bottom.gbr`: tras superar los combines de 4 hojas (L17–L18), el procesamiento llega
+  a un combine `a=1 b=1` cuyo reintento opera sobre un arreglo severamente roto
+  (`segs=10301, vertices=10839, deg1=1084, deg2=9747, deg3=8, far_flips=1`) y no avanza (sigue en
+  reintento tras varios minutos; la corrida trazada no completa en 300 s). El timeout de 600 s (L18)
+  se explica por este combine patológico: la reparación acotada no aplica (hay grado 3, 1084 hojas lejos
+  de emparejarse en 4·ε, 1 far-flip insuficiente) y el coste de cortar/clasificar/ensamblar domina. Cerrar
+  S3 para bottom requiere o bien producir un arreglo bien formado antes de este punto (clasificación/
+  cortes) o bien un tratamiento de rendimiento/topología para arreglos de este tamaño y grado.
