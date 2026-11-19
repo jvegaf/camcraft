@@ -288,3 +288,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   de emparejarse en 4·ε, 1 far-flip insuficiente) y el coste de cortar/clasificar/ensamblar domina. Cerrar
   S3 para bottom requiere o bien producir un arreglo bien formado antes de este punto (clasificación/
   cortes) o bien un tratamiento de rendimiento/topología para arreglos de este tamaño y grado.
+
+- **L22 (T4, intento de aislar el combine patológico).** Se intentó instrumentar `combine`/`FINAL_FAIL`
+  para registrar conteos de segmentos de entrada y detectar el caso patológico en vivo; la instrumentación
+  no compiló (campos inexistentes en `RegionIndex`) y la corrida de verificación usó el binario previo,
+  reproduciendo el mismo timeout 360 s con el fallo final
+  `segs=10301, vertices=10839, deg1=1084, deg2=9747, deg3=8, far_flips=1, a=1, b=1` en reintento. El
+  origen Gerber (región/comando) del combine que lo produce sigue sin aislar: hace falta una traza que
+  correlacione `combine` con el contexto de aplicación (p. ej. índice de operación/región en
+  `cam-gerber` o contador global consistente) o un bisección por prefijo del archivo para acotar el
+  comando que dispara ese estado.
