@@ -19,7 +19,8 @@ use cam_model::MillingDirection;
 ///
 /// Overlapping copper boundaries are merged by set union so the result describes the area the copper
 /// actually covers, not a stack of separate shapes. Boundaries that cross or touch are resolved by the
-/// same normalization the boolean engine uses.
+/// same normalization the boolean engine uses. A contour whose winding is opposite (negative signed
+/// area, a hole boundary in a resolved region) is subtracted so the material region is preserved.
 ///
 /// An empty input produces an empty region, which is the copper of a layer with no copper.
 ///
@@ -30,10 +31,16 @@ use cam_model::MillingDirection;
 pub fn unite_copper(contours: &[Contour], tolerance: TolerancePolicy) -> Result<Region, GeomError> {
   let mut united = Region::new(Vec::new())?;
   for contour in contours {
+    let subtractive = contour.signed_area() < 0.0;
     let piece = Region::new(vec![contour.clone()])?
       .normalize(tolerance)?
       .region;
-    united = match combine(&united, &piece, BooleanOp::Union, tolerance)? {
+    let op = if subtractive {
+      BooleanOp::Difference
+    } else {
+      BooleanOp::Union
+    };
+    united = match combine(&united, &piece, op, tolerance)? {
       Combined::Empty => Region::new(Vec::new())?,
       Combined::Region { region, .. } => region,
     };

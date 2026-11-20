@@ -799,6 +799,7 @@ version = "0.0.1"
 dependencies = [
  "cam-excellon",
  "cam-geom",
+ "cam-gerber",
  "cam-model",
  "cam-move",
  "cam-sim",

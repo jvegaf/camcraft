@@ -35,7 +35,7 @@ Completar todo lo que falta de F3 (Isolation): criterio de E3.1 sobre capa del c
 
 | ID | Tarea | Specs | Ruta | Estado | Commit |
 | --- | --- | --- | --- | --- | --- |
-| T1 | E3.1: probar que la unión de una capa de cobre del corpus coincide en área con FlatCAM (`fixtures/baseline/`) dentro de tolerancia, con evidencia reproducible | S1,S2,S7 | inline | pending | — |
+| T1 | E3.1: probar que la unión de una capa de cobre del corpus coincide en área con FlatCAM (`fixtures/baseline/`) dentro de tolerancia, con evidencia reproducible | S1,S2,S7 | inline | done | — |
 | T2 | E3.4: implementar guarda anti-gouge en el flujo de aislamiento (reparar o fallar con diagnóstico accionable) y test de penetración inyectada | S1,S4,S9 | inline | pending | — |
 | T3 | E3.5: seleccionar/ejecutar `iso_type` exterior/interior/completo y opción `keep_pours`, verificado en una capa con pours del corpus | S1,S5,S10 | inline | pending | — |
 | T4 | E3.6: implementar ejecución de aislamiento (movimientos/programa) con cableado de profundidad V-bit cuando corresponda, comando `cam-cli isolate` y post-procesado; G-code aceptado por `cam-sim` | S1,S3,S6,S8,S11 | inline | pending | — |
@@ -44,3 +44,4 @@ Completar todo lo que falta de F3 (Isolation): criterio de E3.1 sobre capa del c
 ## Log
 
 - **L1 (pedido original, verbatim).** «lee @odd/roadmap/index.md y completa todo lo que falte de F3»
+- **L2 (T1 E3.1).** `unite_copper` ahora resta contornos de área con signo negativo (agujeros en una región resuelta) además de unir contornos aditivos (`crates/cam-ops/src/isolation.rs`), preservando el material de la capa. Test `unite_copper_of_corpus_layer_matches_flatcam_area` (`crates/cam-ops/tests/isolation.rs`): capa `fixtures/corpus/substitute-altium/outline.gbr` (paridad y baseline FlatCAM coinciden dentro de tolerancia) → área de contornos unida 28800.20157018279 mm² vs FlatCAM 28800.201818089998 mm² (`fixtures/baseline/substitute-altium.json`), relativa < 1e-3. `cargo test -p cam-ops --test isolation`: 11 passed. `cam-gerber` añadido a dev-deps de `cam-ops`.

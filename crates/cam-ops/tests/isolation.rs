@@ -78,6 +78,50 @@ fn unite_copper_keeps_disjoint_contours() {
   assert_eq!(copper.boundaries.len(), 2, "two separate copper areas");
 }
 
+// --- E3.1: corpus/FlatCAM criterion (S2, S7) ---
+
+/// Sum of absolute boundary areas, the contour-area metric used by the parity harness and the
+/// FlatCAM baseline (`fixtures/baseline/README.md`, `scripts/parity/measure/src/main.rs`).
+fn contour_area(region: &Region) -> f64 {
+  region
+    .boundaries
+    .iter()
+    .map(|boundary| boundary.signed_area().abs())
+    .sum()
+}
+
+fn close_relative(actual: f64, expected: f64, relative: f64) -> bool {
+  let scale = expected.abs().max(actual.abs()).max(1.0e-12);
+  (actual - expected).abs() <= relative * scale
+}
+
+#[test]
+fn unite_copper_of_corpus_layer_matches_flatcam_area() {
+  // S2/S7: la unión de una capa del corpus coincide en área con FlatCAM dentro de tolerancia.
+  // Corpus layer: substitute-altium outline (fixtures/corpus/substitute-altium/outline.gbr).
+  // FlatCAM reference: fixtures/baseline/substitute-altium.json artefacts.outline.contour_area_mm2.
+  // This tree's parity golden (fixtures/corpus/substitute-altium/parity.json) agrees with FlatCAM
+  // for this layer within tolerance, so the united contour area (sum of absolute boundary areas,
+  // the metric shared by parity and baseline) is compared against FlatCAM's value.
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let gerber_path = root.join("fixtures/corpus/substitute-altium/outline.gbr");
+  let text = std::fs::read_to_string(&gerber_path)
+    .unwrap_or_else(|e| panic!("read {}: {e}", gerber_path.display()));
+  let gerber = cam_gerber::parse(&text).expect("parse outline.gbr");
+  let image = gerber
+    .image(TolerancePolicy::uniform(1.0e-6))
+    .expect("image outline.gbr");
+
+  let copper = unite_copper(&image.boundaries, TOLERANCE).expect("unite corpus layer");
+  let actual = contour_area(&copper);
+  let flatcam = 28800.201818089998_f64; // fixtures/baseline/substitute-altium.json artefacts.outline
+
+  assert!(
+    close_relative(actual, flatcam, 1.0e-3),
+    "united contour area {actual} mm² differs from FlatCAM {flatcam} mm²"
+  );
+}
+
 // --- E3.2: pass distance formula ---
 
 #[test]

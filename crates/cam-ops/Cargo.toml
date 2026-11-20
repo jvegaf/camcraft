@@ -15,6 +15,7 @@ cam-excellon.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+cam-gerber.workspace = true
 cam-sim.workspace = true
 criterion.workspace = true
 
