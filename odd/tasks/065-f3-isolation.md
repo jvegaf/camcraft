@@ -39,7 +39,7 @@ Completar todo lo que falta de F3 (Isolation): criterio de E3.1 sobre capa del c
 | T2 | E3.4: implementar guarda anti-gouge en el flujo de aislamiento (reparar o fallar con diagnóstico accionable) y test de penetración inyectada | S1,S4,S9 | inline | done | 0416525 |
 | T3 | E3.5: seleccionar/ejecutar `iso_type` exterior/interior/completo y opción `keep_pours`, verificado en una capa con pours del corpus | S1,S5,S10 | inline | done | f794f0e |
 | T4 | E3.6: implementar ejecución de aislamiento (movimientos/programa) con cableado de profundidad V-bit cuando corresponda, comando `cam-cli isolate` y post-procesado; G-code aceptado por `cam-sim` | S1,S3,S6,S8,S11 | inline | done | e987296 |
-| T5 | Actualizar `odd/roadmap/index.md` (F3 completo) y verificar (fmt, clippy, tests relevantes) | S1-S11 | inline | done | — |
+| T5 | Actualizar `odd/roadmap/index.md` (F3 completo) y verificar (fmt, clippy, tests relevantes) | S1-S11 | inline | done | 1297a64 |
 
 ## Log
 
