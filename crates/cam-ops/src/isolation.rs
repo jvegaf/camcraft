@@ -13,10 +13,12 @@
 use cam_geom::boolean::{combine, BooleanOp, Combined};
 use cam_geom::region::Region;
 use cam_geom::{Contour, GeomError, TolerancePolicy};
-use cam_model::{IsolationKind, MillingDirection};
+use cam_model::{IsolationKind, Job, MillingDirection};
+use cam_move::{Move, Point3};
+use cam_units::Length;
 
 use crate::penetration;
-use crate::shared::ToolpathError;
+use crate::shared::{machine_point, push_horizontal, ToolpathError};
 
 /// The copper of one layer, united into a single region (E3.1).
 ///
@@ -181,8 +183,9 @@ pub fn isolation_passes_with_kind(
           contours.push(contour);
         }
       }
-      Err(err) if is_hole_collapse_error(&err)
-        && matches!(kind, IsolationKind::Exterior | IsolationKind::Full) =>
+      Err(err)
+        if is_hole_collapse_error(&err)
+          && matches!(kind, IsolationKind::Exterior | IsolationKind::Full) =>
       {
         // Some holes collapsed growing copper outward; get exterior from holes-filled region and
         // interior per-hole (skipping collapsed holes).
@@ -255,9 +258,6 @@ pub fn isolation_passes_with_kind(
     passes: result_passes,
   })
 }
-
-
-
 
 /// Interior isolation paths computed per hole boundary when full-region offset collapses holes.
 ///
@@ -449,8 +449,156 @@ fn is_clearance_exhausted(err: &GeomError) -> bool {
 fn orient_contours(contours: Vec<Contour>, direction: MillingDirection) -> Vec<Contour> {
   match direction {
     MillingDirection::Conventional => contours,
-    MillingDirection::Climb => contours.into_iter().map(|contour| contour.reverse()).collect(),
+    MillingDirection::Climb => contours
+      .into_iter()
+      .map(|contour| contour.reverse())
+      .collect(),
   }
+}
+
+/// Generate machining moves for isolation passes (E3.6).
+///
+/// Computes isolation paths for `copper` with the given parameters, verifies the anti-gouge guard
+/// against the protected copper region, and emits moves: for each pass contour, rapid to safe Z,
+/// plunge to `cut_depth`, feed along the contour, and retract to safe Z.
+///
+/// `protected_copper` is the copper that must remain (typically the united copper region). The
+/// swept cut is approximated as the isolation path contours buffered by `tool_diameter / 2` for the
+/// anti-gouge check.
+///
+/// # Errors
+///
+/// Returns a geometric/toolpath error if paths cannot be computed, or [`ToolpathError::IsolationGouge`]
+/// if the anti-gouge guard detects penetration above [`penetration::PENETRATION_THRESHOLD`].
+pub fn isolation_moves(
+  copper: &Region,
+  tool_diameter: f64,
+  passes: u32,
+  overlap: f64,
+  direction: MillingDirection,
+  kind: IsolationKind,
+  keep_pours: bool,
+  cut_depth: f64,
+  tolerance: TolerancePolicy,
+  job: &Job,
+  protected_copper: &Region,
+) -> Result<Vec<Move>, ToolpathError> {
+  if !cut_depth.is_finite() || cut_depth <= 0.0 {
+    return Err(ToolpathError::InvalidDepthRange {
+      cut_depth,
+      start_depth: 0.0,
+    });
+  }
+  let path = isolation_passes_with_kind(
+    copper,
+    tool_diameter,
+    passes,
+    overlap,
+    direction,
+    kind,
+    keep_pours,
+    tolerance,
+  )
+  .map_err(|err| ToolpathError::OffsetCollapsed {
+    reason: err.to_string(),
+  })?;
+
+  // Anti-gouge guard (E3.4): check swept cut (paths buffered by tool radius) against protected copper.
+  let tool_radius = tool_diameter / 2.0;
+  let swept = swept_cut_region(&path, tool_radius, tolerance).map_err(|err| {
+    ToolpathError::OffsetCollapsed {
+      reason: format!("anti-gouge guard could not build swept cut: {err}"),
+    }
+  })?;
+  check_isolation_anti_gouge(
+    &swept,
+    protected_copper,
+    tolerance,
+    penetration::PENETRATION_THRESHOLD,
+  )?;
+
+  let safe_z = Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM);
+  let z = -cut_depth;
+  let mut moves = Vec::new();
+  for pass in &path.passes {
+    for contour in &pass.contours {
+      let segments = contour.segments();
+      let Some(first) = segments.first() else {
+        continue;
+      };
+      let start = first.start_point();
+      let start_m = machine_point(job, start);
+      moves.push(Move::Rapid {
+        to: Point3 {
+          x: Length::from_mm(start_m.x),
+          y: Length::from_mm(start_m.y),
+          z: safe_z,
+        },
+      });
+      moves.push(Move::Feed {
+        to: Point3 {
+          x: Length::from_mm(start_m.x),
+          y: Length::from_mm(start_m.y),
+          z: Length::from_mm(z),
+        },
+      });
+      for segment in &segments {
+        let to = segment.end_point();
+        push_horizontal(&mut moves, job, *segment, segment.start_point(), to, z);
+      }
+      let end_m = moves.last().map(|m| m.destination()).unwrap_or(Point3 {
+        x: Length::from_mm(start_m.x),
+        y: Length::from_mm(start_m.y),
+        z: Length::from_mm(z),
+      });
+      moves.push(Move::Retract {
+        to: Point3 {
+          x: end_m.x,
+          y: end_m.y,
+          z: safe_z,
+        },
+      });
+    }
+  }
+  Ok(moves)
+}
+
+/// Approximate swept cut region: isolation path contours buffered by tool radius.
+///
+/// For each path contour, the tool sweeps a ring of width `2 * tool_radius` around the centerline.
+/// This is approximated as `offset(contour, -tool_radius) \\ offset(contour, +tool_radius)`.
+fn swept_cut_region(
+  path: &IsolationPath,
+  tool_radius: f64,
+  tolerance: TolerancePolicy,
+) -> Result<Region, GeomError> {
+  let mut swept = Region::new(Vec::new())?;
+  for pass in &path.passes {
+    for contour in &pass.contours {
+      let contour_region = Region::new(vec![contour.clone()])?
+        .normalize(tolerance)?
+        .region;
+      let outer = match contour_region.offset(-tool_radius, tolerance) {
+        Ok(o) => o.region,
+        Err(err) if is_clearance_exhausted(&err) => continue,
+        Err(err) => return Err(err),
+      };
+      let ring = match contour_region.offset(tool_radius, tolerance) {
+        Ok(inner) => match combine(&outer, &inner.region, BooleanOp::Difference, tolerance)? {
+          Combined::Empty => outer,
+          Combined::Region { region, .. } => region,
+        },
+        // Inward offset collapsed: the whole outer buffer is swept.
+        Err(err) if is_clearance_exhausted(&err) => outer,
+        Err(err) => return Err(err),
+      };
+      swept = match combine(&swept, &ring, BooleanOp::Union, tolerance)? {
+        Combined::Empty => Region::new(Vec::new())?,
+        Combined::Region { region, .. } => region,
+      };
+    }
+  }
+  Ok(swept)
 }
 
 /// Anti-gouge guard (E3.4): fail when the swept isolation cut penetrates protected copper.
@@ -476,11 +624,9 @@ pub fn check_isolation_anti_gouge(
   if protected_area_mm2 <= 0.0 {
     return Ok(());
   }
-  let overlap_area_mm2 =
-    penetration::intersection_area(swept_cut, protected_copper, tolerance).map_err(|err| {
-      ToolpathError::OffsetCollapsed {
-        reason: format!("anti-gouge guard could not measure penetration: {err}"),
-      }
+  let overlap_area_mm2 = penetration::intersection_area(swept_cut, protected_copper, tolerance)
+    .map_err(|err| ToolpathError::OffsetCollapsed {
+      reason: format!("anti-gouge guard could not measure penetration: {err}"),
     })?;
   let ratio = overlap_area_mm2 / protected_area_mm2;
   if ratio > threshold {

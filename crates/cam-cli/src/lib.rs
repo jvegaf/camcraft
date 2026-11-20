@@ -69,6 +69,17 @@ COMMANDS:
         --feed <mm/min>       Cutting feed rate (default 100)
         --plunge <mm/min>     Plunge rate (default 30)
         --spindle <rpm>       Spindle speed (default 18000)
+    isolate <document>        Route isolation for the document's Isolation toolpaths: unite copper,
+                              compute passes by iso_type/keep_pours, guard against gouge, emit G-code
+        --diameter <mm>       Isolation tool diameter/effective width (required)
+        --post <file>         Post-processor (.pp); without it only the report is printed
+        --out <path>          Write the G-code to a file instead of stdout
+        --tool <number>       Tool number carried by the emitted segments (default 1)
+        --feed <mm/min>       Cutting feed rate (default 100)
+        --plunge <mm/min>     Plunge rate (default 30)
+        --spindle <rpm>       Spindle speed (default 18000)
+        --vbit-angle <deg>    V-bit included angle to derive cut depth (with --vbit-tip)
+        --vbit-tip <mm>       V-bit tip/flat diameter to derive cut depth (with --vbit-angle)
     program <document>        One board program: the Excellon drills first, then the cutout
         --drill <file.drl>    Excellon drill file (required)
         --post <file>         Post-processor (.pp) to emit with (required)
@@ -215,6 +226,7 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "cutout" => commands::cutout::run(rest),
     "program" => commands::cutout::program(rest),
     "drill" => commands::drill::run(rest),
+    "isolate" => commands::isolate::run(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
     "report" => printsheet::report_command(rest),

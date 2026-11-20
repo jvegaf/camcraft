@@ -2,8 +2,8 @@
 
 use cam_geom::region::Region;
 use cam_geom::{Contour, Point2, TolerancePolicy};
-use cam_model::MillingDirection;
 use cam_model::IsolationKind;
+use cam_model::MillingDirection;
 use cam_ops::penetration::PENETRATION_THRESHOLD;
 use cam_ops::{
   check_isolation_anti_gouge, isolation_passes, isolation_passes_with_kind, pass_distance,
@@ -127,8 +127,6 @@ fn unite_copper_of_corpus_layer_matches_flatcam_area() {
   );
 }
 
-
-
 // --- E3.4: anti-gouge guard ---
 
 #[test]
@@ -171,8 +169,6 @@ fn non_penetrating_cut_passes_anti_gouge_guard() {
     .expect("no penetration");
 }
 
-
-
 // --- E3.5: iso_type and keep_pours selector ---
 
 #[test]
@@ -192,7 +188,10 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
     .expect("image top.gbr");
 
   let has_holes = image.boundaries.iter().any(|b| b.signed_area() < 0.0);
-  assert!(has_holes, "pours corpus layer must have interior clearances");
+  assert!(
+    has_holes,
+    "pours corpus layer must have interior clearances"
+  );
 
   // Extract one pour from the corpus layer: an outer boundary that contains at least one hole.
   let tol = TolerancePolicy::uniform(1.0e-6);
@@ -203,13 +202,11 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
       .iter()
       .filter(|b| b.signed_area() < 0.0)
       .filter(|b| {
-        b.vertices()
-          .first()
-          .is_some_and(|v| {
-            Region::new(vec![(*outer).clone()])
-              .map(|r| r.contains(v.point, tol))
-              .unwrap_or(false)
-          })
+        b.vertices().first().is_some_and(|v| {
+          Region::new(vec![(*outer).clone()])
+            .map(|r| r.contains(v.point, tol))
+            .unwrap_or(false)
+        })
       })
       .cloned()
       .collect();
@@ -220,7 +217,11 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
     boundaries.extend(holes);
     if let Ok(r) = Region::new(boundaries).and_then(|r| r.normalize(tol).map(|n| n.region)) {
       // pick a pour that is not degenerate and has a reasonable size for offsetting
-      let area = r.boundaries.iter().map(|b| b.signed_area().abs()).sum::<f64>();
+      let area = r
+        .boundaries
+        .iter()
+        .map(|b| b.signed_area().abs())
+        .sum::<f64>();
       if area > 1.0 {
         pour_copper = Some(r);
         break;
@@ -281,12 +282,21 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
     .contours
     .iter()
     .all(|c| c.signed_area() < 0.0);
-  assert!(ext_all_outer, "exterior isolation keeps only outer copper boundaries");
-  assert!(int_all_inner, "interior isolation keeps only hole/clearance boundaries");
+  assert!(
+    ext_all_outer,
+    "exterior isolation keeps only outer copper boundaries"
+  );
+  assert!(
+    int_all_inner,
+    "interior isolation keeps only hole/clearance boundaries"
+  );
 
   let full_count = full.passes[0].contours.len();
   let sum = exterior.passes[0].contours.len() + interior.passes[0].contours.len();
-  assert_eq!(full_count, sum, "full isolation is exterior plus interior paths");
+  assert_eq!(
+    full_count, sum,
+    "full isolation is exterior plus interior paths"
+  );
 
   // keep_pours omits interior paths inside pour areas (outers that contain holes).
   let interior_keep = isolation_passes_with_kind(
