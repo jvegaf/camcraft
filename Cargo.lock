@@ -801,6 +801,7 @@ dependencies = [
  "cam-geom",
  "cam-model",
  "cam-move",
+ "cam-sim",
  "cam-units",
  "criterion",
  "thiserror 2.0.21",

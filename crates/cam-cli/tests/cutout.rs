@@ -304,6 +304,108 @@ fn program_drills_then_cuts_the_board_out() {
     assert!(z >= 0.0, "a rapid reaches below the surface: {line}");
   }
 
+  // E2.3/E2.5: the emitted programme is also accepted by cam-sim as a collision-free move stream.
+  let doc = cam_store::document::load_document(&document).expect("document loads");
+  let drill_text = std::fs::read_to_string(&drill).expect("drill loads");
+  let excellon = cam_excellon::parse(&drill_text).expect("drill parses");
+  struct Resolver;
+  impl cam_ops::excellon_drill::ToolResolver for Resolver {
+    fn resolve(
+      &self,
+      tool: &cam_excellon::Tool,
+    ) -> Result<cam_ops::excellon_drill::ExcellonToolSetup, cam_ops::ToolpathError> {
+      Ok(cam_ops::excellon_drill::ExcellonToolSetup {
+        excellon_tool: tool.number,
+        tool: cam_ops::ToolSpec {
+          number: tool.number,
+          diameter: tool.diameter,
+          included_angle: None,
+          feed_rate: 100.0,
+          plunge_rate: 30.0,
+          spindle_speed: 18_000,
+        },
+        params: cam_ops::DrillParams {
+          peck_depth: Length::ZERO,
+          retract: cam_ops::RetractMode::Full,
+          start_depth: Length::ZERO,
+          cut_depth: Length::from_mm(1.6),
+          bank: None,
+        },
+      })
+    }
+  }
+  let plan = cam_ops::excellon_drill::plan_excellon_drill(
+    &excellon,
+    &Resolver,
+    &doc.board,
+    cam_ops::excellon_drill::SlotMode::Drill,
+  )
+  .expect("drill plan");
+  let mut stream = cam_move::MoveStream::new(
+    Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    Point2::new(0.0, 0.0),
+  );
+  for group in &plan.groups {
+    if group.moves.is_empty() {
+      continue;
+    }
+    stream.segments.push(cam_move::Segment {
+      name: format!("Drill T{}", group.excellon_tool),
+      tool_number: group.excellon_tool,
+      tool: cam_move::ToolShape::cylinder(group.diameter.unwrap_or_else(|| Length::from_mm(1.0))),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 18_000,
+      moves: group.moves.clone(),
+    });
+  }
+  for toolpath in &doc.toolpaths {
+    let Operation::Cutout(params) = &toolpath.operation else {
+      continue;
+    };
+    let contours: Vec<_> = toolpath
+      .entity_ids
+      .iter()
+      .map(|id| {
+        doc
+          .entity(id)
+          .and_then(|entity| entity.kind.as_contour())
+          .expect("contour")
+          .clone()
+      })
+      .collect();
+    let moves = cam_ops::cutout(&cam_ops::CutoutRequest {
+      contours: &contours,
+      params,
+      tool: &cam_ops::ToolSpec {
+        number: 3,
+        diameter: Length::from_mm(2.0),
+        included_angle: None,
+        feed_rate: 100.0,
+        plunge_rate: 30.0,
+        spindle_speed: 18_000,
+      },
+      job: &doc.board,
+    })
+    .expect("cutout moves");
+    stream.segments.push(cam_move::Segment {
+      name: toolpath.name.clone(),
+      tool_number: 3,
+      tool: cam_move::ToolShape::cylinder(Length::from_mm(2.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 18_000,
+      moves,
+    });
+  }
+  let mut field = cam_sim::Heightfield::new(&doc.board, Length::from_mm(1.0)).expect("field fits");
+  let removal = cam_sim::sweep::apply(&stream, &mut field);
+  assert!(
+    removal.crashes.is_empty(),
+    "the complete board programme must simulate without collision: {:?}",
+    removal.crashes
+  );
+
   let report = stderr(&output);
   assert!(report.contains("3 drill hit(s)"), "{report}");
   assert!(report.contains("2 tool(s)"), "{report}");

@@ -172,6 +172,7 @@ struct CutoutRun {
   name: String,
   contours: usize,
   moves: Vec<Move>,
+  mouse_bite_moves: Vec<Move>,
 }
 
 /// `cam-cli cutout <document>`: the document's own cutout, reported or emitted.
@@ -196,14 +197,28 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
     }
     let mut report = String::new();
     for run in &runs {
-      report.push_str(&format!(
-        "cutout {}: {} contour(s), {} move(s)\n",
-        run.name,
-        run.contours,
-        run.moves.len()
-      ));
+      let bite_moves = run.mouse_bite_moves.len();
+      if bite_moves > 0 {
+        report.push_str(&format!(
+          "cutout {}: {} contour(s), {} move(s), {} mouse-bite drill move(s)\n",
+          run.name,
+          run.contours,
+          run.moves.len(),
+          bite_moves
+        ));
+      } else {
+        report.push_str(&format!(
+          "cutout {}: {} contour(s), {} move(s)\n",
+          run.name,
+          run.contours,
+          run.moves.len()
+        ));
+      }
     }
-    let moves: usize = runs.iter().map(|run| run.moves.len()).sum();
+    let moves: usize = runs
+      .iter()
+      .map(|run| run.moves.len() + run.mouse_bite_moves.len())
+      .sum();
     report.push_str(&format!(
       "cutout: {} toolpath(s), {} move(s)\n",
       runs.len(),
@@ -217,6 +232,9 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
     Point2::new(0.0, 0.0),
   );
   for run in &runs {
+    if !run.mouse_bite_moves.is_empty() {
+      stream.segments.push(mouse_bite_segment(run, &flags));
+    }
     stream.segments.push(cutout_segment(run, &flags, diameter));
   }
   emit_program(&stream, &post_path, flags.out.as_deref(), &path)
@@ -292,10 +310,27 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
     }
   }
   for run in &runs {
+    if !run.mouse_bite_moves.is_empty() {
+      stream.segments.push(mouse_bite_segment(run, &flags));
+    }
     stream.segments.push(cutout_segment(run, &flags, diameter));
   }
 
-  let cutout_moves: usize = runs.iter().map(|run| run.moves.len()).sum();
+  let cutout_moves: usize = runs
+    .iter()
+    .map(|run| run.moves.len() + run.mouse_bite_moves.len())
+    .sum();
+  let drill_moves = stream.move_count() - cutout_moves;
+  let bite_hits: usize = runs
+    .iter()
+    .map(|run| {
+      run
+        .mouse_bite_moves
+        .iter()
+        .filter(|m| matches!(m, Move::Feed { .. }))
+        .count()
+    })
+    .sum();
   let mut report = String::new();
   report.push_str(&format!(
     "program: {} drill hit(s) in {} tool(s), {} tool change(s)\n",
@@ -307,9 +342,12 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
     "program: {} cutout toolpath(s), {} move(s)\n  {} drill move(s), {} cutout move(s)\n",
     runs.len(),
     stream.move_count(),
-    stream.move_count() - cutout_moves,
+    drill_moves,
     cutout_moves
   ));
+  if bite_hits > 0 {
+    report.push_str(&format!("  {} mouse-bite perforation(s)\n", bite_hits));
+  }
   write_report(&mut std::io::stderr(), &report)?;
 
   emit_program(&stream, &post_path, flags.out.as_deref(), &path)
@@ -361,17 +399,21 @@ fn cutout_runs(document: &Document, flags: &Flags) -> Result<(f64, Vec<CutoutRun
         toolpath.id
       )));
     }
-    let moves = cutout(&CutoutRequest {
+    let request = CutoutRequest {
       contours: &contours,
       params,
       tool: &tool,
       job: &document.board,
-    })
-    .map_err(|error| Failure::input(format!("cutout toolpath {:?}: {error}", toolpath.id)))?;
+    };
+    let moves = cutout(&request)
+      .map_err(|error| Failure::input(format!("cutout toolpath {:?}: {error}", toolpath.id)))?;
+    let mouse_bite_moves = cam_ops::mouse_bite_drills(&request)
+      .map_err(|error| Failure::input(format!("cutout toolpath {:?}: {error}", toolpath.id)))?;
     runs.push(CutoutRun {
       name: toolpath.name.clone(),
       contours: contours.len(),
       moves,
+      mouse_bite_moves,
     });
   }
 
@@ -393,6 +435,19 @@ fn cutout_segment(run: &CutoutRun, flags: &Flags, diameter: f64) -> Segment {
     plunge_rate: flags.plunge,
     spindle_speed: flags.spindle,
     moves: run.moves.clone(),
+  }
+}
+
+/// The emitter's segment for mouse-bite perforations drilled along a cutout's tabs.
+fn mouse_bite_segment(run: &CutoutRun, flags: &Flags) -> Segment {
+  Segment {
+    name: format!("{} mouse-bites", run.name),
+    tool_number: flags.tool_number.saturating_add(100),
+    tool: ToolShape::cylinder(Length::from_mm(0.8)),
+    feed_rate: flags.feed,
+    plunge_rate: flags.plunge,
+    spindle_speed: flags.spindle,
+    moves: run.mouse_bite_moves.clone(),
   }
 }
 

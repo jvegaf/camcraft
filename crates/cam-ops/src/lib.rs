@@ -18,7 +18,7 @@ pub use excellon_drill::{
   plan_excellon_drill, ExcellonDrillPlan, ExcellonToolPlan, ExcellonToolSetup, SlotMode,
   ToolResolver,
 };
-pub use follow::{cutout, profile, CutoutRequest, ProfileRequest};
+pub use follow::{cutout, mouse_bite_drills, profile, CutoutRequest, ProfileRequest};
 pub use isolation::{
   isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm, IsolationPass,
   IsolationPath,

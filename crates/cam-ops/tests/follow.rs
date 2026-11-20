@@ -660,7 +660,7 @@ fn cutout_tabs_lift_to_keep_the_piece_held() {
 }
 
 #[test]
-fn cutout_mouse_bite_tabs_leave_a_bridge_gap_in_the_profile() {
+fn cutout_mouse_bite_tabs_cut_through_and_drill_perforations() {
   let job = Job::default_sheet();
   let outline = job.outline();
   let params = cutout_params(
@@ -674,13 +674,14 @@ fn cutout_mouse_bite_tabs_leave_a_bridge_gap_in_the_profile() {
     }],
     TabKind::MouseBites,
   );
-  let moves = cutout(&CutoutRequest {
+  let request = CutoutRequest {
     contours: &[outline],
     params: &params,
     tool: &tool(),
     job: &job,
-  })
-  .expect("cutout computes");
+  };
+  let moves = cutout(&request).expect("cutout computes");
+  // The routing path cuts through at full depth: no lift over the tab span.
   let lifted: Vec<f64> = moves
     .iter()
     .filter(|movement| matches!(movement, Move::Feed { .. } | Move::Arc { .. }))
@@ -688,9 +689,31 @@ fn cutout_mouse_bite_tabs_leave_a_bridge_gap_in_the_profile() {
     .filter(|z| (z - -4.0).abs() < 1.0e-9)
     .collect();
   assert!(
-    lifted.len() >= 2,
-    "mouse-bite tabs keep the bridge in the profile path"
+    lifted.is_empty(),
+    "mouse-bite tabs are held by drilled perforations, not by lifting the profile: {lifted:?}"
   );
+
+  let drills = cam_ops::mouse_bite_drills(&request).expect("mouse-bite drills compute");
+  assert!(
+    !drills.is_empty(),
+    "mouse-bite tabs must produce perforation drill moves"
+  );
+  let plunges = drills
+    .iter()
+    .filter(|movement| matches!(movement, Move::Feed { to } if (to.z.mm() - -6.0).abs() < 1.0e-9))
+    .count();
+  assert!(
+    plunges >= 2,
+    "a 10 mm tab span should produce several perforation holes, got {plunges}"
+  );
+  for movement in &drills {
+    if let Move::Rapid { to } = movement {
+      assert!(
+        to.z.mm() >= 0.0,
+        "drill rapids must stay at or above the surface: {movement:?}"
+      );
+    }
+  }
 }
 
 #[test]
@@ -708,4 +731,119 @@ fn cutout_cuts_multiple_contours_in_sequence() {
   .expect("cutout computes");
   // Each contour produces its own pass cycle (one plunge at -2 mm).
   assert_eq!(plunge_depths(&moves), vec![-2.0, -2.0]);
+}
+
+#[test]
+fn cutout_with_tabs_simulates_without_collision() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(
+    0.0,
+    job.thickness.mm(),
+    0.8,
+    vec![
+      Tab {
+        position: 0.1,
+        width: Length::from_mm(6.0),
+        height: Length::from_mm(0.6),
+      },
+      Tab {
+        position: 0.6,
+        width: Length::from_mm(6.0),
+        height: Length::from_mm(0.6),
+      },
+    ],
+    TabKind::Straight,
+  );
+  let moves = cutout(&CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  })
+  .expect("cutout computes");
+
+  let stream = cam_move::MoveStream {
+    segments: vec![cam_move::Segment {
+      name: "cutout".to_owned(),
+      tool_number: 1,
+      tool: cam_move::ToolShape::cylinder(tool().diameter),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 18_000,
+      moves,
+    }],
+    safe_z: Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    home: cam_geom::Point2::new(0.0, 0.0),
+  };
+
+  let mut field = cam_sim::Heightfield::new(&job, Length::from_mm(1.0)).expect("field fits");
+  let removal = cam_sim::sweep::apply(&stream, &mut field);
+  assert!(
+    removal.crashes.is_empty(),
+    "a cutout with tabs must not rapid into the stock: {:?}",
+    removal.crashes
+  );
+  assert!(
+    removal.moves > 0,
+    "the simulation must walk the cutout moves"
+  );
+}
+
+#[test]
+fn cutout_with_mouse_bite_tabs_simulates_without_collision() {
+  let job = Job::default_sheet();
+  let outline = job.outline();
+  let params = cutout_params(
+    0.0,
+    job.thickness.mm(),
+    0.8,
+    vec![Tab {
+      position: 0.25,
+      width: Length::from_mm(8.0),
+      height: Length::from_mm(0.6),
+    }],
+    TabKind::MouseBites,
+  );
+  let request = CutoutRequest {
+    contours: &[outline],
+    params: &params,
+    tool: &tool(),
+    job: &job,
+  };
+  let moves = cutout(&request).expect("cutout computes");
+  let drills = cam_ops::mouse_bite_drills(&request).expect("mouse-bite drills compute");
+
+  let stream = cam_move::MoveStream {
+    segments: vec![
+      cam_move::Segment {
+        name: "mouse-bites".to_owned(),
+        tool_number: 101,
+        tool: cam_move::ToolShape::cylinder(Length::from_mm(0.8)),
+        feed_rate: 100.0,
+        plunge_rate: 30.0,
+        spindle_speed: 18_000,
+        moves: drills,
+      },
+      cam_move::Segment {
+        name: "cutout".to_owned(),
+        tool_number: 1,
+        tool: cam_move::ToolShape::cylinder(tool().diameter),
+        feed_rate: 100.0,
+        plunge_rate: 30.0,
+        spindle_speed: 18_000,
+        moves,
+      },
+    ],
+    safe_z: Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    home: cam_geom::Point2::new(0.0, 0.0),
+  };
+
+  let mut field = cam_sim::Heightfield::new(&job, Length::from_mm(1.0)).expect("field fits");
+  let removal = cam_sim::sweep::apply(&stream, &mut field);
+  assert!(
+    removal.crashes.is_empty(),
+    "a mouse-bite tab cutout with perforation drills must not rapid into the stock: {:?}",
+    removal.crashes
+  );
 }

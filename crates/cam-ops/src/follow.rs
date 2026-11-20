@@ -1,7 +1,7 @@
 //! Profile (follow) machining: cut along a contour with side offset, leads and tabs.
 
 use cam_geom::{Contour, Point2, Segment};
-use cam_model::{CutoutParams, Job, Tab};
+use cam_model::{CutoutParams, Job, Tab, TabKind};
 
 use crate::params::{ProfileParams, ProfileSide};
 use cam_move::{Move, Point3};
@@ -44,8 +44,9 @@ pub struct CutoutRequest<'a> {
 /// `params.cut_depth`. Tabs hold the part in place on passes that would otherwise cut them free.
 /// A `pass_depth` of zero cuts in a single pass.
 ///
-/// Mouse-bite tabs leave the same bridge gap in the profile path as straight tabs (the part stays
-/// held); drilling the bite perforations themselves is a separate operation.
+/// Mouse-bite tabs cut the profile through at full depth and hold the board by drilled perforation
+/// bridges along the tab span; the perforation drills themselves are returned by
+/// [`mouse_bite_drills`].
 pub fn cutout(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
   let params = request.params;
   if params.cut_depth.mm() <= 0.0 {
@@ -62,6 +63,11 @@ pub fn cutout(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
   } else {
     params.pass_depth
   };
+  let routing_tabs = if params.tab_kind == TabKind::MouseBites {
+    Vec::new()
+  } else {
+    params.tabs.clone()
+  };
   let profile_params = ProfileParams {
     side: ProfileSide::Outside,
     allowance: params.margin,
@@ -70,7 +76,7 @@ pub fn cutout(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
     cut_depth: params.cut_depth,
     lead_in: Length::ZERO,
     lead_out: Length::ZERO,
-    tabs: params.tabs.clone(),
+    tabs: routing_tabs,
   };
   let mut moves = Vec::new();
   for contour in request.contours {
@@ -83,6 +89,139 @@ pub fn cutout(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
     moves.append(&mut contour_moves);
   }
   Ok(moves)
+}
+
+/// Compute the drilling moves for mouse-bite tab perforations.
+///
+/// Returns no moves when `tab_kind` is not [`TabKind::MouseBites`] or when there are no tabs. Holes
+/// are placed along the offset cut path at each tab span so that bridges between holes hold the
+/// board while the outline is cut through. Default perforation geometry uses 0.8 mm holes on a
+/// 1.6 mm pitch, clamped to fit each tab span.
+pub fn mouse_bite_drills(request: &CutoutRequest<'_>) -> Result<Vec<Move>, ToolpathError> {
+  let params = request.params;
+  if params.tab_kind != TabKind::MouseBites || params.tabs.is_empty() {
+    return Ok(Vec::new());
+  }
+  if params.cut_depth.mm() <= 0.0 {
+    return Err(ToolpathError::InvalidDepthRange {
+      cut_depth: params.cut_depth.mm(),
+      start_depth: 0.0,
+    });
+  }
+  let lateral = lateral_offset_profile(ProfileSide::Outside, params.margin, request.tool);
+  let safe_z = cam_units::Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM);
+  let mut moves = Vec::new();
+  for contour in request.contours {
+    let cut = offset_cut(contour, lateral)?;
+    let centres = mouse_bite_centres(&cut, &params.tabs);
+    for centre in centres {
+      let at = machine_point(request.job, centre);
+      moves.push(Move::Rapid {
+        to: Point3 {
+          x: Length::from_mm(at.x),
+          y: Length::from_mm(at.y),
+          z: safe_z,
+        },
+      });
+      moves.push(Move::Feed {
+        to: Point3 {
+          x: Length::from_mm(at.x),
+          y: Length::from_mm(at.y),
+          z: Length::from_mm(-params.cut_depth.mm()),
+        },
+      });
+      moves.push(Move::Retract {
+        to: Point3 {
+          x: Length::from_mm(at.x),
+          y: Length::from_mm(at.y),
+          z: safe_z,
+        },
+      });
+    }
+  }
+  Ok(moves)
+}
+
+/// The offset cut contour for a profile/cutout side and allowance.
+fn offset_cut(contour: &Contour, lateral: Length) -> Result<Contour, ToolpathError> {
+  if lateral.mm() == 0.0 {
+    return Ok(contour.clone());
+  }
+  Ok(
+    cam_geom::offset::offset_contour(
+      contour,
+      lateral.mm(),
+      &cam_geom::offset::OffsetOptions::standard(),
+    )
+    .map_err(|error| ToolpathError::OffsetCollapsed {
+      reason: error.to_string(),
+    })?
+    .contour,
+  )
+}
+
+fn lateral_offset_profile(side: ProfileSide, allowance: Length, tool: &ToolSpec) -> Length {
+  let radius = tool.diameter.mm() / 2.0;
+  match side {
+    ProfileSide::On => Length::ZERO,
+    ProfileSide::Outside => Length::from_mm(radius + allowance.mm()),
+    ProfileSide::Inside => Length::from_mm(-(radius + allowance.mm())),
+  }
+}
+
+/// Hole centres along the cut contour for each tab span, in contour coordinates.
+fn mouse_bite_centres(contour: &Contour, tabs: &[Tab]) -> Vec<Point2> {
+  let segments = contour.segments();
+  let lengths: Vec<f64> = segments.iter().map(|segment| segment.length()).collect();
+  let total: f64 = lengths.iter().sum();
+  if total <= 0.0 {
+    return Vec::new();
+  }
+  let spans = tab_spans(tabs, total);
+  let mut centres = Vec::new();
+  const HOLE_DIAMETER: f64 = 0.8;
+  const PITCH: f64 = 1.6;
+  for span in &spans {
+    let span_length = (span.end - span.start).max(0.0);
+    if span_length <= 1.0e-9 {
+      continue;
+    }
+    let count = if span_length <= HOLE_DIAMETER {
+      1
+    } else {
+      ((span_length / PITCH).round() as usize).max(2)
+    };
+    for index in 0..count {
+      let along = if count == 1 {
+        (span.start + span.end) * 0.5
+      } else {
+        span.start + span_length * index as f64 / (count as f64 - 1.0)
+      };
+      if let Some(point) = point_along_contour(&segments, &lengths, along) {
+        centres.push(point);
+      }
+    }
+  }
+  centres
+}
+
+fn point_along_contour(segments: &[Segment], lengths: &[f64], along: f64) -> Option<Point2> {
+  let mut remaining = along;
+  for (segment, length) in segments.iter().zip(lengths.iter()) {
+    if remaining <= *length
+      || (segment == segments.last().unwrap() && remaining <= *length + 1.0e-9)
+    {
+      let fraction = if *length <= 0.0 {
+        0.0
+      } else {
+        (remaining / *length).clamp(0.0, 1.0)
+      };
+      let (point, _) = piece_endpoints(*segment, fraction, fraction);
+      return Some(point);
+    }
+    remaining -= *length;
+  }
+  segments.last().map(|segment| segment.end_point())
 }
 
 /// Compute the moves for a profile cut.
