@@ -74,17 +74,16 @@ pub struct IsolationPath {
   pub passes: Vec<IsolationPass>,
 }
 
-/// Compute the isolation passes around `copper` (E3.2, E3.5).
+/// Compute the isolation passes around `copper` (E3.2).
 ///
 /// For each pass `i` in `0..passes` the copper region is offset by
 /// `tool_diameter * ((2*i + 1) / 2) - i * overlap * tool_diameter`. The offset is taken from the
 /// original copper region, not accumulated from the previous pass, so the distance of every pass is
 /// exact and independent.
 ///
-/// `kind` selects which isolation paths to emit: [`IsolationKind::Exterior`] offsets outward from
-/// copper (clearing around copper exteriors), [`IsolationKind::Interior`] offsets inward (clearing
-/// inside copper, around holes/clearances), and [`IsolationKind::Full`] emits both. When
-/// `keep_pours` is true, interior paths that fall inside copper pour areas are omitted.
+/// This function emits full isolation (`Exterior` and `Interior`) and does not keep pours; it is
+/// equivalent to [`isolation_passes_with_kind`] with [`IsolationKind::Full`] and `keep_pours = false`.
+/// Use [`isolation_passes_with_kind`] to select `iso_type` or to preserve pours (E3.5).
 ///
 /// Passes whose offset leaves no material because the distance is larger than the clearance are
 /// omitted rather than treated as an error once at least one pass has been produced.
@@ -206,7 +205,7 @@ pub fn isolation_passes_with_kind(
           }
         }
         if matches!(kind, IsolationKind::Interior | IsolationKind::Full) {
-          for contour in interior_boundaries_per_hole(copper, distance, tolerance) {
+          for contour in interior_boundaries_per_hole(copper, distance, tolerance)? {
             if keep_pours && contour_inside_any_pour(&contour, &pours) {
               continue;
             }
@@ -260,33 +259,49 @@ pub fn isolation_passes_with_kind(
 /// Interior isolation paths computed per hole boundary when full-region offset collapses holes.
 ///
 /// Shrinks each hole (filled region of the hole contour) by `distance` so the path lies inside the
-/// original hole, `distance` away from its edge (outside the copper material). Collapsed holes are
-/// skipped.
+/// original hole, `distance` away from its edge (outside the copper material). Exhausted/collapsed
+/// holes are skipped; unexpected geometric errors are reported instead of silently omitting paths.
+///
+/// # Errors
+///
+/// Returns an error when a hole boundary cannot be represented, normalized, or offset for reasons
+/// other than exhausted clearance or hole collapse.
 fn interior_boundaries_per_hole(
   copper: &Region,
   distance: f64,
   tolerance: TolerancePolicy,
-) -> Vec<Contour> {
+) -> Result<Vec<Contour>, GeomError> {
   let mut contours = Vec::new();
   for boundary in &copper.boundaries {
     if boundary.signed_area() >= 0.0 {
       continue;
     }
-    let hole = match Region::new(vec![boundary.clone()]) {
-      Ok(r) => r,
-      Err(_) => continue,
-    };
+    let hole = Region::new(vec![boundary.clone()]).map_err(|_| GeomError::EditRefused {
+      reason:
+        "could not recover an interior isolation path for a hole boundary during hole-collapse recovery",
+    })?;
     let hole = match hole.normalize(tolerance) {
       Ok(n) => n.region,
-      Err(_) => continue,
+      Err(err) if is_clearance_exhausted(&err) || is_hole_collapse_error(&err) => continue,
+      Err(_) => {
+        return Err(GeomError::EditRefused {
+          reason:
+            "could not normalize a hole boundary while recovering interior isolation after hole collapse",
+        });
+      }
     };
     match hole.offset(distance, tolerance) {
       Ok(offset) => contours.extend(offset.region.boundaries),
       Err(err) if is_clearance_exhausted(&err) || is_hole_collapse_error(&err) => {}
-      Err(_) => {}
+      Err(_) => {
+        return Err(GeomError::EditRefused {
+          reason:
+            "could not compute an interior isolation path for a hole boundary during hole-collapse recovery",
+        });
+      }
     }
   }
-  contours
+  Ok(contours)
 }
 
 fn is_hole_collapse_error(err: &GeomError) -> bool {

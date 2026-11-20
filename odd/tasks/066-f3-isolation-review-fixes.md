@@ -22,13 +22,17 @@ Atender las correcciones/hallazgos indicados por los reviewers de la revisión R
 
 | ID | Tarea | Specs | Ruta | Estado | Commit |
 | --- | --- | --- | --- | --- | --- |
-| T1 | Corregir doc de `isolation_passes` para reflejar su contrato real (delegación sin `kind`/`keep_pours`) y aclarar el API | S1,S2,S3 | inline | pending | — |
-| T2 | Ajustar test `isolate_emits_gcode_accepted_by_camsim` para que valide la salida emitida y no solo un stream reconstruido aparte | S1,S2,S4 | inline | pending | — |
-| T3 | Hacer la escritura de `--out` robusta ante concurrencia/sobrescritura usando nombre temporal único/seguro | S1,S2,S5 | inline | pending | — |
-| T4 | Evitar descarte silencioso de errores inesperados en recuperación por colapso de huecos (`interior_boundaries_per_hole`), con diagnóstico observable | S1,S2,S6 | inline | pending | — |
+| T1 | Corregir doc de `isolation_passes` para reflejar su contrato real (delegación sin `kind`/`keep_pours`) y aclarar el API | S1,S2,S3 | inline | done | — |
+| T2 | Ajustar test `isolate_emits_gcode_accepted_by_camsim` para que valide la salida emitida y no solo un stream reconstruido aparte | S1,S2,S4 | inline | done | — |
+| T3 | Hacer la escritura de `--out` robusta ante concurrencia/sobrescritura usando nombre temporal único/seguro | S1,S2,S5 | inline | done | — |
+| T4 | Evitar descarte silencioso de errores inesperados en recuperación por colapso de huecos (`interior_boundaries_per_hole`), con diagnóstico observable | S1,S2,S6 | inline | done | — |
 | T5 | Verificar (fmt, clippy, tests relevantes), actualizar este documento y preparar entrega | S1-S6 | inline | pending | — |
 
 ## Log
 
 - **L1 (pedido original, verbatim).** «ahora crea la tarea 066 y haz las correciones que te indico los reviewers»
 - **L2 (pedido original, verbatim).** «todas»
+- **L3 (T1, R2-001).** Doc de `isolation_passes` en `crates/cam-ops/src/isolation.rs` actualizada: describe el contrato real (aislamiento completo, sin `keep_pours`, delega en `isolation_passes_with_kind` con `Full`/`false`) y remite a `isolation_passes_with_kind` para `iso_type`/`keep_pours`.
+- **L4 (T2, R2-002).** `isolate_emits_gcode_accepted_by_camsim` (`crates/cam-cli/tests/isolate.rs`) ahora valida la salida emitida comparando el G-code escrito por la CLI con la emisión esperada del stream de aislamiento (mismo post/meta/parámetros) y, además, verifica aceptación por `cam-sim` sin crashes.
+- **L5 (T3, R4-F001).** Escritura de `--out` en `crates/cam-cli/src/commands/isolate.rs` usa archivo temporal único (sufijo con pid y timestamp) para evitar colisiones entre ejecuciones concurrentes al mismo destino.
+- **L6 (T4, R4-F002).** `interior_boundaries_per_hole` (`crates/cam-ops/src/isolation.rs`) devuelve `Result` y ya no descarta en silencio errores inesperados de construcción/normalización/offset: huecos agotados/colapsados se omiten, errores inesperados fallan con diagnóstico accionable; el caller propaga el error.

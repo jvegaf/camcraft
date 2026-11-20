@@ -11,6 +11,7 @@ use cam_model::{
   MillingDirection, Operation, Toolpath,
 };
 use cam_move::{MoveStream, Segment, ToolShape};
+use cam_post::{emit, parse_post, ProgramMeta};
 use cam_store::document::save_document;
 use cam_units::Length;
 
@@ -136,8 +137,8 @@ fn isolate_emits_gcode_accepted_by_camsim() {
     },
   );
   let document_path = write_document(&directory, &doc);
-  let post = directory.join("post.pp");
-  std::fs::write(&post, POST).expect("post writes");
+  let post_path = directory.join("post.pp");
+  std::fs::write(&post_path, POST).expect("post writes");
   let out_path = directory.join("isolate.nc");
 
   let output = run(&[
@@ -146,15 +147,15 @@ fn isolate_emits_gcode_accepted_by_camsim() {
     "--diameter",
     "1.0",
     "--post",
-    post.to_str().unwrap(),
+    post_path.to_str().unwrap(),
     "--out",
     out_path.to_str().unwrap(),
   ]);
   assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
   let program = std::fs::read_to_string(&out_path).expect("gcode written");
-  assert!(!program.trim().is_empty(), "program must not be empty");
 
-  // Acceptance by cam-sim (E3.6): the isolation move stream simulates without collision/crash.
+  // Validate emitted output: CLI output must equal emission of the isolation move stream for this
+  // document/params through the same post-processor and metadata.
   let copper = cam_ops::unite_copper(
     &[rectangle(30.0, 30.0, 20.0, 20.0)],
     cam_geom::TolerancePolicy::uniform(1.0e-6),
@@ -187,6 +188,18 @@ fn isolate_emits_gcode_accepted_by_camsim() {
     spindle_speed: 18_000,
     moves,
   });
+  let post = parse_post(POST).expect("post parses");
+  let meta = ProgramMeta {
+    file_name: document_path
+      .file_name()
+      .map(|name| name.to_string_lossy().into_owned())
+      .unwrap_or_else(|| document_path.display().to_string()),
+    file_path: document_path.display().to_string(),
+  };
+  let emitted = emit(&post, &stream, &meta).expect("emit");
+  assert_eq!(program, emitted.text, "CLI must emit the expected G-code");
+
+  // Acceptance by cam-sim (E3.6): the emitted isolation move stream simulates without collision/crash.
   let mut field = cam_sim::Heightfield::new(&doc.board, Length::from_mm(0.5)).expect("field");
   let removal = cam_sim::sweep::apply(&stream, &mut field);
   assert!(

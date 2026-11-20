@@ -275,9 +275,21 @@ fn emit_program(
 
   match out {
     Some(destination) => {
-      let mut temporary_name = destination.as_os_str().to_owned();
-      temporary_name.push(".tmp");
-      let temporary = std::path::PathBuf::from(temporary_name);
+      let unique = format!(
+        "tmp.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+          .duration_since(std::time::UNIX_EPOCH)
+          .map(|d| d.as_nanos())
+          .unwrap_or(0)
+      );
+      let temporary = destination.with_extension(
+        destination
+          .extension()
+          .and_then(|ext| ext.to_str())
+          .map(|ext| format!("{ext}.{unique}"))
+          .unwrap_or(unique),
+      );
       std::fs::write(&temporary, emitted.text.as_bytes())
         .map_err(|error| Failure::input(format!("{}: {error}", temporary.display())))?;
       std::fs::rename(&temporary, destination).map_err(|error| {
