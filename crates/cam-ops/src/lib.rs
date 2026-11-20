@@ -20,8 +20,8 @@ pub use excellon_drill::{
 };
 pub use follow::{cutout, mouse_bite_drills, profile, CutoutRequest, ProfileRequest};
 pub use isolation::{
-  isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm, IsolationPass,
-  IsolationPath,
+  check_isolation_anti_gouge, isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm,
+  IsolationPass, IsolationPath,
 };
 pub use params::{
   DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,

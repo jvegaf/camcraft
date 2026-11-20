@@ -3,7 +3,11 @@
 use cam_geom::region::Region;
 use cam_geom::{Contour, Point2, TolerancePolicy};
 use cam_model::MillingDirection;
-use cam_ops::{isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm};
+use cam_ops::penetration::PENETRATION_THRESHOLD;
+use cam_ops::{
+  check_isolation_anti_gouge, isolation_passes, pass_distance, unite_copper,
+  vbit_isolation_depth_mm,
+};
 
 const TOLERANCE: TolerancePolicy = TolerancePolicy::uniform(1.0e-9);
 
@@ -120,6 +124,50 @@ fn unite_copper_of_corpus_layer_matches_flatcam_area() {
     close_relative(actual, flatcam, 1.0e-3),
     "united contour area {actual} mm² differs from FlatCAM {flatcam} mm²"
   );
+}
+
+
+
+// --- E3.4: anti-gouge guard ---
+
+#[test]
+fn injected_penetration_fails_isolation_with_actionable_diagnosis() {
+  // S4: inyectar un caso de penetración hace fallar la operación con mensaje accionable.
+  let protected = Region::new(vec![rect(0.0, 0.0, 10.0, 10.0)]).expect("protected copper");
+  // Swept cut fully inside protected copper -> large penetration.
+  let swept = Region::new(vec![rect(2.0, 2.0, 7.0, 7.0)]).expect("swept cut");
+
+  let err = check_isolation_anti_gouge(&swept, &protected, TOLERANCE, PENETRATION_THRESHOLD)
+    .expect_err("penetration must be refused");
+
+  let message = err.to_string();
+  assert!(
+    message.contains("isolation anti-gouge"),
+    "diagnosis names the guard: {message}"
+  );
+  assert!(
+    message.contains("penetrates protected copper"),
+    "diagnosis states the problem: {message}"
+  );
+  assert!(
+    message.contains("ratio") && message.contains("threshold"),
+    "diagnosis reports measured ratio and threshold: {message}"
+  );
+  assert!(
+    message.contains("reduce tool diameter")
+      || message.contains("increase isolation clearance")
+      || message.contains("adjust isolation parameters"),
+    "diagnosis is actionable: {message}"
+  );
+}
+
+#[test]
+fn non_penetrating_cut_passes_anti_gouge_guard() {
+  let protected = Region::new(vec![rect(0.0, 0.0, 10.0, 10.0)]).expect("protected copper");
+  // Swept cut entirely outside protected copper.
+  let swept = Region::new(vec![rect(20.0, 20.0, 25.0, 25.0)]).expect("swept cut");
+  check_isolation_anti_gouge(&swept, &protected, TOLERANCE, PENETRATION_THRESHOLD)
+    .expect("no penetration");
 }
 
 // --- E3.2: pass distance formula ---

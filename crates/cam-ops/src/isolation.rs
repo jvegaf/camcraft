@@ -15,6 +15,9 @@ use cam_geom::region::{Region, RegionOffset};
 use cam_geom::{Contour, GeomError, TolerancePolicy};
 use cam_model::MillingDirection;
 
+use crate::penetration;
+use crate::shared::ToolpathError;
+
 /// The copper of one layer, united into a single region (E3.1).
 ///
 /// Overlapping copper boundaries are merged by set union so the result describes the area the copper
@@ -243,6 +246,47 @@ fn orient_pass(offset: RegionOffset, direction: MillingDirection) -> Vec<Contour
       .map(|contour| contour.reverse())
       .collect(),
   }
+}
+
+/// Anti-gouge guard (E3.4): fail when the swept isolation cut penetrates protected copper.
+///
+/// `swept_cut` is the tool's swept region (the area removed by the isolation cut, e.g. cut paths
+/// buffered by tool radius). `protected_copper` is the copper that must remain. When the penetration
+/// ratio `intersection(swept_cut, protected_copper) / area(protected_copper)` exceeds `threshold`,
+/// the operation is refused with an actionable diagnosis.
+///
+/// # Errors
+///
+/// Returns [`ToolpathError::IsolationGouge`] with the measured ratio, threshold, overlap and
+/// protected area when penetration exceeds the threshold, so the caller can report what to change.
+/// Returns [`ToolpathError::OffsetCollapsed`] (as a geometric refusal) is not used here; geometric
+/// errors from intersection/area computation are mapped into an actionable refusal.
+pub fn check_isolation_anti_gouge(
+  swept_cut: &Region,
+  protected_copper: &Region,
+  tolerance: TolerancePolicy,
+  threshold: f64,
+) -> Result<(), ToolpathError> {
+  let protected_area_mm2 = penetration::region_area(protected_copper);
+  if protected_area_mm2 <= 0.0 {
+    return Ok(());
+  }
+  let overlap_area_mm2 =
+    penetration::intersection_area(swept_cut, protected_copper, tolerance).map_err(|err| {
+      ToolpathError::OffsetCollapsed {
+        reason: format!("anti-gouge guard could not measure penetration: {err}"),
+      }
+    })?;
+  let ratio = overlap_area_mm2 / protected_area_mm2;
+  if ratio > threshold {
+    return Err(ToolpathError::IsolationGouge {
+      ratio,
+      threshold,
+      protected_area_mm2,
+      overlap_area_mm2,
+    });
+  }
+  Ok(())
 }
 
 #[cfg(test)]

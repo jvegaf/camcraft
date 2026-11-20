@@ -359,6 +359,23 @@ pub enum ToolpathError {
     /// Id of the offending island.
     island: String,
   },
+  /// An isolation cut would gouge protected copper beyond the allowed penetration threshold.
+  #[error(
+    "isolation anti-gouge: swept cut penetrates protected copper (ratio {ratio:.3e}, threshold \
+     {threshold:.3e}, overlap {overlap_area_mm2:.6} mm² over {protected_area_mm2:.6} mm² of \
+     protected copper): reduce tool diameter, increase isolation clearance/passes distance, or \
+     adjust isolation parameters so the tool stays clear of copper"
+  )]
+  IsolationGouge {
+    /// Penetration ratio (overlap area / protected copper area).
+    ratio: f64,
+    /// Threshold above which penetration is refused.
+    threshold: f64,
+    /// Protected copper area, in square millimetres.
+    protected_area_mm2: f64,
+    /// Intersection area between swept cut and protected copper, in square millimetres.
+    overlap_area_mm2: f64,
+  },
   /// A strategy refused the toolpath it was handed.
   ///
   /// The strategy's own refusal is the cause and keeps its wording; this states which toolpath asked
