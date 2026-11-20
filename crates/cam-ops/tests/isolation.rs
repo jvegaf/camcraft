@@ -3,7 +3,7 @@
 use cam_geom::region::Region;
 use cam_geom::{Contour, Point2, TolerancePolicy};
 use cam_model::MillingDirection;
-use cam_ops::{isolation_passes, pass_distance, unite_copper};
+use cam_ops::{isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm};
 
 const TOLERANCE: TolerancePolicy = TolerancePolicy::uniform(1.0e-9);
 
@@ -229,4 +229,34 @@ fn milling_direction_changes_contour_orientation_not_geometry() {
       }
     }
   }
+}
+
+#[test]
+fn catalogue_vbit_produces_expected_isolation_depth() {
+  // E1.8 / E3.3: una V-bit de 30° y 0.2 mm de punta da profundidad calculada.
+  // For a catalogue V-bit (30° included angle, 0.2 mm tip/flat diameter), the isolation
+  // depth to achieve an effective isolation width equal to tip + 2*tan(15°) mm is 1.0 mm.
+  let included_angle_deg = 30.0_f64;
+  let tip_diameter_mm = 0.2_f64;
+  let target_isolation_diameter_mm = tip_diameter_mm + 2.0 * (15.0_f64.to_radians()).tan();
+
+  let depth = vbit_isolation_depth_mm(
+    target_isolation_diameter_mm,
+    included_angle_deg,
+    tip_diameter_mm,
+  )
+  .expect("catalogue V-bit depth");
+
+  assert!(
+    (depth - 1.0).abs() < 1.0e-12,
+    "expected isolation depth 1.0 mm, got {depth} mm for target {target_isolation_diameter_mm} mm"
+  );
+
+  // At the tip width, expected depth is zero.
+  let tip_depth =
+    vbit_isolation_depth_mm(tip_diameter_mm, included_angle_deg, tip_diameter_mm).unwrap();
+  assert!(tip_depth.abs() < 1.0e-12, "tip depth {tip_depth}");
+
+  // Cannot cut narrower than the tip.
+  assert!(vbit_isolation_depth_mm(0.1, included_angle_deg, tip_diameter_mm).is_err());
 }

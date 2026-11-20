@@ -152,6 +152,62 @@ pub fn pass_distance(tool_diameter: f64, index: usize, overlap: f64) -> f64 {
   tool_diameter * ((2 * index + 1) as f64 / 2.0) - (index as f64) * overlap * tool_diameter
 }
 
+/// Depth a V-bit must cut to produce a given isolation width (E3.3, E1.8).
+///
+/// A V-bit with included angle `included_angle_deg` and tip flat diameter `tip_diameter_mm` cuts an
+/// effective width of `tip_diameter_mm + 2 * depth * tan(included_angle_deg / 2)` at `depth` below the
+/// tip. This function returns the depth that produces `target_diameter_mm` as that effective isolation
+/// width.
+///
+/// `target_diameter_mm` is the isolation tool diameter/width to achieve (for example the
+/// `tool_diameter` used by [`isolation_passes`]). All lengths are in millimetres and the angle is in
+/// degrees.
+///
+/// # Errors
+///
+/// Returns an error when the angle or diameters are not finite, when the included angle is not in
+/// `(0, 180)` degrees, when diameters are negative, or when `target_diameter_mm` is smaller than
+/// `tip_diameter_mm` (a V-bit cannot cut narrower than its tip).
+pub fn vbit_isolation_depth_mm(
+  target_diameter_mm: f64,
+  included_angle_deg: f64,
+  tip_diameter_mm: f64,
+) -> Result<f64, GeomError> {
+  if !target_diameter_mm.is_finite()
+    || !included_angle_deg.is_finite()
+    || !tip_diameter_mm.is_finite()
+  {
+    return Err(GeomError::EditRefused {
+      reason:
+        "a V-bit isolation depth needs finite target diameter, included angle, and tip diameter",
+    });
+  }
+  if !(included_angle_deg > 0.0 && included_angle_deg < 180.0) {
+    return Err(GeomError::EditRefused {
+      reason: "a V-bit isolation depth needs an included angle in (0, 180) degrees",
+    });
+  }
+  if target_diameter_mm < 0.0 || tip_diameter_mm < 0.0 {
+    return Err(GeomError::EditRefused {
+      reason: "a V-bit isolation depth needs non-negative diameters",
+    });
+  }
+  if target_diameter_mm + 1.0e-12 < tip_diameter_mm {
+    return Err(GeomError::EditRefused {
+      reason: "a V-bit cannot cut an isolation width smaller than its tip diameter",
+    });
+  }
+  let half_angle_rad = (included_angle_deg * 0.5).to_radians();
+  let slope = 2.0 * half_angle_rad.tan();
+  if slope <= 0.0 || !slope.is_finite() {
+    return Err(GeomError::EditRefused {
+      reason: "a V-bit isolation depth needs a valid included angle",
+    });
+  }
+  let depth = (target_diameter_mm - tip_diameter_mm).max(0.0) / slope;
+  Ok(depth)
+}
+
 /// Whether an offset error means this pass cannot fit around the copper (clearance exhausted),
 /// rather than a malformed or unresolvable geometry.
 fn is_clearance_exhausted(err: &GeomError) -> bool {
@@ -193,5 +249,21 @@ mod tests {
     assert!((pass_distance(d, 0, overlap) - 0.5).abs() < 1.0e-12);
     assert!((pass_distance(d, 1, overlap) - 1.0).abs() < 1.0e-12);
     assert!((pass_distance(d, 2, overlap) - 1.5).abs() < 1.0e-12);
+  }
+
+  #[test]
+  fn vbit_isolation_depth_for_30deg_tip_0_2mm() {
+    // E3.3 / E1.8: 30° V-bit with 0.2 mm tip. Effective width w(d) = tip + 2*d*tan(15°),
+    // so depth for target width w is (w - tip) / (2*tan(15°)).
+    // For target width 0.2 + 2*tan(15°) the expected depth is 1.0 mm.
+    let included_angle_deg = 30.0;
+    let tip_diameter_mm = 0.2;
+    let target_diameter_mm = 0.2 + 2.0 * (15.0_f64.to_radians()).tan();
+    let depth =
+      vbit_isolation_depth_mm(target_diameter_mm, included_angle_deg, tip_diameter_mm).unwrap();
+    assert!(
+      (depth - 1.0).abs() < 1.0e-12,
+      "depth {depth} for target {target_diameter_mm}"
+    );
   }
 }

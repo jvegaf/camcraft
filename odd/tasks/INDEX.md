@@ -68,3 +68,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 061 | [e1-4-gerber](061-e1-4-gerber.md) | delivered | 2026-11-17 | `957692c` |
 | 062 | [board-outline-contour](062-board-outline-contour.md) | delivered | 2026-11-18 | `957692c` |
 | 063 | [arrangement-classification](063-arrangement-classification.md) | delivered | 2026-11-18 | `957692c` |
+| 064 | [e1-8-vbit-isolation-depth](064-e1-8-vbit-isolation-depth.md) | in progress | 2026-11-18 | — |

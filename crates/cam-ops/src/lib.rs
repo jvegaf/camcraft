@@ -19,7 +19,10 @@ pub use excellon_drill::{
   ToolResolver,
 };
 pub use follow::{cutout, profile, CutoutRequest, ProfileRequest};
-pub use isolation::{isolation_passes, pass_distance, unite_copper, IsolationPass, IsolationPath};
+pub use isolation::{
+  isolation_passes, pass_distance, unite_copper, vbit_isolation_depth_mm, IsolationPass,
+  IsolationPath,
+};
 pub use params::{
   DrillBank, DrillParams, PocketParams, PocketStrategy, ProfileParams, ProfileSide, RetractMode,
 };
