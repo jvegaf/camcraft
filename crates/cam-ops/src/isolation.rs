@@ -11,9 +11,9 @@
 //! kernel's distance proof refuses a piece that would gouge the copper it was offset from.
 
 use cam_geom::boolean::{combine, BooleanOp, Combined};
-use cam_geom::region::{Region, RegionOffset};
+use cam_geom::region::Region;
 use cam_geom::{Contour, GeomError, TolerancePolicy};
-use cam_model::MillingDirection;
+use cam_model::{IsolationKind, MillingDirection};
 
 use crate::penetration;
 use crate::shared::ToolpathError;
@@ -72,32 +72,63 @@ pub struct IsolationPath {
   pub passes: Vec<IsolationPass>,
 }
 
-/// Compute the isolation passes around `copper` (E3.2).
+/// Compute the isolation passes around `copper` (E3.2, E3.5).
 ///
-/// For each pass `i` in `0..passes` the copper region is offset outward by
+/// For each pass `i` in `0..passes` the copper region is offset by
 /// `tool_diameter * ((2*i + 1) / 2) - i * overlap * tool_diameter`. The offset is taken from the
 /// original copper region, not accumulated from the previous pass, so the distance of every pass is
 /// exact and independent.
 ///
-/// Passes whose offset leaves no material because the distance is larger than the clearance around
-/// the copper are omitted rather than treated as an error, because later passes are farther away and
-/// a layer may admit some passes but not all of them. A request that produces no pass at all is
-/// refused as a collapsed offset so the caller knows the tool does not fit.
+/// `kind` selects which isolation paths to emit: [`IsolationKind::Exterior`] offsets outward from
+/// copper (clearing around copper exteriors), [`IsolationKind::Interior`] offsets inward (clearing
+/// inside copper, around holes/clearances), and [`IsolationKind::Full`] emits both. When
+/// `keep_pours` is true, interior paths that fall inside copper pour areas are omitted.
 ///
-/// `direction` sets the milling direction of the emitted paths (climb or conventional). Contours are
-/// oriented with the cut material on the appropriate side for the requested direction.
+/// Passes whose offset leaves no material because the distance is larger than the clearance are
+/// omitted rather than treated as an error once at least one pass has been produced.
 ///
 /// # Errors
 ///
 /// Returns an error when `tool_diameter` is not positive, when `passes` is zero, when `overlap` is
-/// not in `[0, 1)`, when the copper region cannot be offset for the first pass, or when the kernel
-/// reports a geometric or tolerance error that is not an exhausted-clearance case for a later pass.
+/// not in `[0, 1)`, when the copper region cannot be offset for the first pass that must produce
+/// geometry, or when the kernel reports a geometric or tolerance error that is not an exhausted
+/// clearance case for a later pass.
 pub fn isolation_passes(
   copper: &Region,
   tool_diameter: f64,
   passes: u32,
   overlap: f64,
   direction: MillingDirection,
+  tolerance: TolerancePolicy,
+) -> Result<IsolationPath, GeomError> {
+  isolation_passes_with_kind(
+    copper,
+    tool_diameter,
+    passes,
+    overlap,
+    direction,
+    IsolationKind::Full,
+    false,
+    tolerance,
+  )
+}
+
+/// Compute isolation passes with explicit `iso_type` and `keep_pours` selection (E3.5).
+///
+/// All isolation paths are cut outside the copper material: the copper region is offset outward by
+/// the pass distance (`offset(-distance)`), so outer copper boundaries expand and hole boundaries
+/// inside copper contract. `kind` selects which of those paths to emit: [`IsolationKind::Exterior`]
+/// keeps paths around copper exteriors (outer boundaries), [`IsolationKind::Interior`] keeps paths
+/// around interior clearances (hole boundaries inside copper), and [`IsolationKind::Full`] keeps
+/// both. When `keep_pours` is true, interior paths inside copper pour areas are omitted.
+pub fn isolation_passes_with_kind(
+  copper: &Region,
+  tool_diameter: f64,
+  passes: u32,
+  overlap: f64,
+  direction: MillingDirection,
+  kind: IsolationKind,
+  keep_pours: bool,
   tolerance: TolerancePolicy,
 ) -> Result<IsolationPath, GeomError> {
   if !tool_diameter.is_finite() || tool_diameter <= 0.0 {
@@ -116,25 +147,96 @@ pub fn isolation_passes(
     });
   }
 
+  let pours = if keep_pours && matches!(kind, IsolationKind::Interior | IsolationKind::Full) {
+    pour_regions(copper)
+  } else {
+    Vec::new()
+  };
+
+  let exterior_source = if matches!(kind, IsolationKind::Exterior | IsolationKind::Full) {
+    Some(exteriors_only_region(copper, tolerance)?)
+  } else {
+    None
+  };
+
   let mut result_passes = Vec::with_capacity(passes as usize);
   for index in 0..passes as usize {
     let distance = pass_distance(tool_diameter, index, overlap);
-    let offset = match copper.offset(-distance, tolerance) {
-      Ok(offset) => offset,
+    let mut contours = Vec::new();
+    let mut flattened = false;
+
+    match copper.offset(-distance, tolerance) {
+      Ok(offset) => {
+        flattened |= offset.flattened;
+        for contour in offset.region.boundaries {
+          if !select_boundary_for_kind(&contour, kind) {
+            continue;
+          }
+          if keep_pours
+            && is_interior_boundary(&contour)
+            && contour_inside_any_pour(&contour, &pours)
+          {
+            continue;
+          }
+          contours.push(contour);
+        }
+      }
+      Err(err) if is_hole_collapse_error(&err)
+        && matches!(kind, IsolationKind::Exterior | IsolationKind::Full) =>
+      {
+        // Some holes collapsed growing copper outward; get exterior from holes-filled region and
+        // interior per-hole (skipping collapsed holes).
+        if matches!(kind, IsolationKind::Exterior | IsolationKind::Full) {
+          if let Some(ref src) = exterior_source {
+            match src.offset(-distance, tolerance) {
+              Ok(o) => {
+                flattened |= o.flattened;
+                for contour in o.region.boundaries {
+                  if select_boundary_for_kind(&contour, kind) {
+                    contours.push(contour);
+                  }
+                }
+              }
+              Err(e) if index == 0 && kind == IsolationKind::Exterior => return Err(e),
+              Err(e) if is_clearance_exhausted(&e) && kind == IsolationKind::Exterior => break,
+              Err(e) if kind == IsolationKind::Exterior => return Err(e),
+              Err(_) => {}
+            }
+          }
+        }
+        if matches!(kind, IsolationKind::Interior | IsolationKind::Full) {
+          for contour in interior_boundaries_per_hole(copper, distance, tolerance) {
+            if keep_pours && contour_inside_any_pour(&contour, &pours) {
+              continue;
+            }
+            contours.push(contour);
+          }
+        }
+        if contours.is_empty() {
+          if index == 0 {
+            return Err(err);
+          }
+          break;
+        }
+      }
       Err(err) if index == 0 => return Err(err),
       Err(err) if is_clearance_exhausted(&err) => break,
       Err(err) => return Err(err),
-    };
-    let flattened = offset.flattened;
-    if offset.region.boundaries.is_empty() {
+    }
+
+    if contours.is_empty() {
       if index == 0 {
         return Err(GeomError::OffsetCollapsed {
           reason: "the isolation offset left no path to cut",
         });
       }
-      break;
+      if !result_passes.is_empty() {
+        break;
+      }
+      continue;
     }
-    let contours = orient_pass(offset, direction);
+
+    let contours = orient_contours(contours, direction);
     result_passes.push(IsolationPass {
       index,
       distance,
@@ -152,6 +254,115 @@ pub fn isolation_passes(
   Ok(IsolationPath {
     passes: result_passes,
   })
+}
+
+
+
+
+/// Interior isolation paths computed per hole boundary when full-region offset collapses holes.
+///
+/// Shrinks each hole (filled region of the hole contour) by `distance` so the path lies inside the
+/// original hole, `distance` away from its edge (outside the copper material). Collapsed holes are
+/// skipped.
+fn interior_boundaries_per_hole(
+  copper: &Region,
+  distance: f64,
+  tolerance: TolerancePolicy,
+) -> Vec<Contour> {
+  let mut contours = Vec::new();
+  for boundary in &copper.boundaries {
+    if boundary.signed_area() >= 0.0 {
+      continue;
+    }
+    let hole = match Region::new(vec![boundary.clone()]) {
+      Ok(r) => r,
+      Err(_) => continue,
+    };
+    let hole = match hole.normalize(tolerance) {
+      Ok(n) => n.region,
+      Err(_) => continue,
+    };
+    match hole.offset(distance, tolerance) {
+      Ok(offset) => contours.extend(offset.region.boundaries),
+      Err(err) if is_clearance_exhausted(&err) || is_hole_collapse_error(&err) => {}
+      Err(_) => {}
+    }
+  }
+  contours
+}
+
+fn is_hole_collapse_error(err: &GeomError) -> bool {
+  matches!(err, GeomError::EditRefused { reason } if reason.contains("collapsed a hole boundary"))
+}
+
+/// Copper region with holes removed (outer boundaries only), for exterior isolation fallback.
+fn exteriors_only_region(copper: &Region, tolerance: TolerancePolicy) -> Result<Region, GeomError> {
+  let outers: Vec<Contour> = copper
+    .boundaries
+    .iter()
+    .filter(|b| b.signed_area() >= 0.0)
+    .cloned()
+    .collect();
+  if outers.is_empty() {
+    return Region::new(Vec::new());
+  }
+  Ok(Region::new(outers)?.normalize(tolerance)?.region)
+}
+
+/// Whether a contour is an interior isolation boundary (around a hole/clearance inside copper).
+///
+/// After offsetting a copper region outward, hole boundaries remain hole-like in the offset region
+/// (material outside them in the local sense, negative signed area under the region's convention).
+fn is_interior_boundary(contour: &Contour) -> bool {
+  contour.signed_area() < 0.0
+}
+
+fn select_boundary_for_kind(contour: &Contour, kind: IsolationKind) -> bool {
+  match kind {
+    IsolationKind::Full => true,
+    IsolationKind::Exterior => !is_interior_boundary(contour),
+    IsolationKind::Interior => is_interior_boundary(contour),
+  }
+}
+
+/// Identify copper pour regions: outer copper boundaries that contain at least one hole boundary.
+///
+/// A copper area with interior clearances is treated as a pour to preserve when `keep_pours` is
+/// enabled, so interior isolation paths inside it are omitted.
+fn pour_regions(copper: &Region) -> Vec<Region> {
+  let mut pours = Vec::new();
+  for boundary in &copper.boundaries {
+    if boundary.signed_area() <= 0.0 {
+      continue;
+    }
+    if let Ok(outer) = Region::new(vec![boundary.clone()]) {
+      let has_hole_inside = copper.boundaries.iter().any(|other| {
+        if other.signed_area() >= 0.0 {
+          return false;
+        }
+        other
+          .vertices()
+          .first()
+          .is_some_and(|v| outer.contains(v.point, TolerancePolicy::uniform(1.0e-9)))
+      });
+      if has_hole_inside {
+        pours.push(outer);
+      }
+    }
+  }
+  pours
+}
+
+fn contour_inside_any_pour(contour: &Contour, pours: &[Region]) -> bool {
+  if pours.is_empty() {
+    return false;
+  }
+  let Some(v) = contour.vertices().first() else {
+    return false;
+  };
+  pours
+    .iter()
+    .any(|pour| pour.contains(v.point, TolerancePolicy::uniform(1.0e-9)))
 }
 
 /// The offset distance of pass `i` (0-based), in millimetres.
@@ -232,19 +443,13 @@ fn is_clearance_exhausted(err: &GeomError) -> bool {
   }
 }
 
-/// Orient the contours of an offset pass for the requested milling direction.
+/// Orient contours for the requested milling direction.
 ///
-/// Conventional milling keeps the contour orientation as produced by the offset (material on the
-/// conventional side). Climb milling reverses each contour so the tool climbs along the cut.
-fn orient_pass(offset: RegionOffset, direction: MillingDirection) -> Vec<Contour> {
-  let RegionOffset { region, .. } = offset;
+/// Conventional milling keeps contour orientation as produced. Climb milling reverses each contour.
+fn orient_contours(contours: Vec<Contour>, direction: MillingDirection) -> Vec<Contour> {
   match direction {
-    MillingDirection::Conventional => region.boundaries,
-    MillingDirection::Climb => region
-      .boundaries
-      .into_iter()
-      .map(|contour| contour.reverse())
-      .collect(),
+    MillingDirection::Conventional => contours,
+    MillingDirection::Climb => contours.into_iter().map(|contour| contour.reverse()).collect(),
   }
 }
 

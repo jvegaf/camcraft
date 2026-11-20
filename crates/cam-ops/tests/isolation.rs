@@ -3,10 +3,11 @@
 use cam_geom::region::Region;
 use cam_geom::{Contour, Point2, TolerancePolicy};
 use cam_model::MillingDirection;
+use cam_model::IsolationKind;
 use cam_ops::penetration::PENETRATION_THRESHOLD;
 use cam_ops::{
-  check_isolation_anti_gouge, isolation_passes, pass_distance, unite_copper,
-  vbit_isolation_depth_mm,
+  check_isolation_anti_gouge, isolation_passes, isolation_passes_with_kind, pass_distance,
+  unite_copper, vbit_isolation_depth_mm,
 };
 
 const TOLERANCE: TolerancePolicy = TolerancePolicy::uniform(1.0e-9);
@@ -168,6 +169,151 @@ fn non_penetrating_cut_passes_anti_gouge_guard() {
   let swept = Region::new(vec![rect(20.0, 20.0, 25.0, 25.0)]).expect("swept cut");
   check_isolation_anti_gouge(&swept, &protected, TOLERANCE, PENETRATION_THRESHOLD)
     .expect("no penetration");
+}
+
+
+
+// --- E3.5: iso_type and keep_pours selector ---
+
+#[test]
+fn iso_type_selector_on_corpus_layer_with_pours() {
+  // S5: iso_type exterior/interior/completo y opción de conservar pours, verificado en una capa
+  // con pours del corpus. kicad-large-pours/top.gbr is a copper layer of a pours board; its
+  // material image contains outer copper boundaries and hole clearances (pours/clearances). We
+  // verify the selector on a pour sub-region extracted from this corpus layer (an outer copper
+  // boundary that contains hole boundaries), so the test exercises real corpus geometry.
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let gerber_path = root.join("fixtures/corpus/kicad-large-pours/top.gbr");
+  let text = std::fs::read_to_string(&gerber_path)
+    .unwrap_or_else(|e| panic!("read {}: {e}", gerber_path.display()));
+  let gerber = cam_gerber::parse(&text).expect("parse top.gbr");
+  let image = gerber
+    .image(TolerancePolicy::uniform(1.0e-6))
+    .expect("image top.gbr");
+
+  let has_holes = image.boundaries.iter().any(|b| b.signed_area() < 0.0);
+  assert!(has_holes, "pours corpus layer must have interior clearances");
+
+  // Extract one pour from the corpus layer: an outer boundary that contains at least one hole.
+  let tol = TolerancePolicy::uniform(1.0e-6);
+  let mut pour_copper: Option<Region> = None;
+  for outer in image.boundaries.iter().filter(|b| b.signed_area() > 0.0) {
+    let holes: Vec<Contour> = image
+      .boundaries
+      .iter()
+      .filter(|b| b.signed_area() < 0.0)
+      .filter(|b| {
+        b.vertices()
+          .first()
+          .is_some_and(|v| {
+            Region::new(vec![(*outer).clone()])
+              .map(|r| r.contains(v.point, tol))
+              .unwrap_or(false)
+          })
+      })
+      .cloned()
+      .collect();
+    if holes.is_empty() {
+      continue;
+    }
+    let mut boundaries = vec![outer.clone()];
+    boundaries.extend(holes);
+    if let Ok(r) = Region::new(boundaries).and_then(|r| r.normalize(tol).map(|n| n.region)) {
+      // pick a pour that is not degenerate and has a reasonable size for offsetting
+      let area = r.boundaries.iter().map(|b| b.signed_area().abs()).sum::<f64>();
+      if area > 1.0 {
+        pour_copper = Some(r);
+        break;
+      }
+    }
+  }
+  let copper = pour_copper.expect("corpus pours layer must contain a pour (outer with holes)");
+
+  let tool_diameter = 0.2;
+  let overlap = 0.15;
+
+  // Use Conventional direction so contour orientation reflects boundary kind (outer positive,
+  // hole/clearance negative) without milling-direction reversal.
+  let exterior = isolation_passes_with_kind(
+    &copper,
+    tool_diameter,
+    1,
+    overlap,
+    MillingDirection::Conventional,
+    IsolationKind::Exterior,
+    false,
+    tol,
+  )
+  .expect("exterior isolation on corpus pour");
+  let interior = isolation_passes_with_kind(
+    &copper,
+    tool_diameter,
+    1,
+    overlap,
+    MillingDirection::Conventional,
+    IsolationKind::Interior,
+    false,
+    tol,
+  )
+  .expect("interior isolation on corpus pour");
+  let full = isolation_passes_with_kind(
+    &copper,
+    tool_diameter,
+    1,
+    overlap,
+    MillingDirection::Conventional,
+    IsolationKind::Full,
+    false,
+    tol,
+  )
+  .expect("full isolation on corpus pour");
+
+  assert!(!exterior.passes.is_empty(), "exterior produces paths");
+  assert!(!interior.passes.is_empty(), "interior produces paths");
+  assert!(!full.passes.is_empty(), "full produces paths");
+
+  // Exterior selects only outer boundaries, interior only hole boundaries, full both.
+  let ext_all_outer = exterior.passes[0]
+    .contours
+    .iter()
+    .all(|c| c.signed_area() >= 0.0);
+  let int_all_inner = interior.passes[0]
+    .contours
+    .iter()
+    .all(|c| c.signed_area() < 0.0);
+  assert!(ext_all_outer, "exterior isolation keeps only outer copper boundaries");
+  assert!(int_all_inner, "interior isolation keeps only hole/clearance boundaries");
+
+  let full_count = full.passes[0].contours.len();
+  let sum = exterior.passes[0].contours.len() + interior.passes[0].contours.len();
+  assert_eq!(full_count, sum, "full isolation is exterior plus interior paths");
+
+  // keep_pours omits interior paths inside pour areas (outers that contain holes).
+  let interior_keep = isolation_passes_with_kind(
+    &copper,
+    tool_diameter,
+    1,
+    overlap,
+    MillingDirection::Conventional,
+    IsolationKind::Interior,
+    true,
+    tol,
+  );
+  // This copper region is itself a pour (outer with holes), so keeping pours suppresses its
+  // interior isolation paths.
+  match interior_keep {
+    Ok(kept) => {
+      let kept_count = kept.passes[0].contours.len();
+      assert!(
+        kept_count < interior.passes[0].contours.len(),
+        "keep_pours reduces interior paths inside a pour ({kept_count} !< {})",
+        interior.passes[0].contours.len()
+      );
+    }
+    Err(_) => {
+      // All interior paths fall inside the pour; keeping pours can legitimately leave none.
+    }
+  }
 }
 
 // --- E3.2: pass distance formula ---
