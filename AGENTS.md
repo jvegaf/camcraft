@@ -8,8 +8,8 @@
 
 ## Desarrollo en worktrees (obligatorio para trabajo paralelo)
 - **Un agente = un worktree = una tarea.** Trabajá siempre en un worktree dedicado para la tarea que tomaste de `odd/tasks/INDEX.md`. Las ramas de tarea salen de `dev`, no de `master`.
-- **Los worktrees los crea el humano con herdr**, no este repo: la ruta configurada es `~/.herdr/worktrees/<slug>`. La receta `just worktree N` sólo explica cómo pedirlo; no crea nada, y no hay `.worktrees/` en uso.
-- **Brama dedicada.** Usá `feat/NNN-<slug>` (o convención acordada) para cada tarea.
+- **Worktrees dentro del repo.** `just worktree N` crea `.worktrees/N` con la rama `feat/N-<slug>` (derivada del documento `odd/tasks/N-*.md`). Trabajá desde ahí (`cd .worktrees/N`); los scripts resuelven el árbol con `git worktree list`, así que la ubicación registrada es la que vale. `.worktrees/` está ignorado por git.
+- **Rama dedicada.** Usá `feat/NNN-<slug>` (o convención acordada) para cada tarea.
 - **Declará tus superficies antes de reclamar.** El documento de la tarea lleva un bloque:
 
   ```markdown

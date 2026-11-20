@@ -136,12 +136,40 @@ build-locked:
   cargo build --workspace --locked
 
 
-# Worktrees for parallel agent work are created by herdr (~/.herdr/worktrees); this recipe explains.
+# Create an in-repo worktree for task N: `.worktrees/<N>` on branch `feat/<N>-<slug>`.
+# Run it from the primary tree; then `cd .worktrees/<N>` and `just claim <N>`.
 worktree N:
-  @echo "Worktrees are created by herdr, not by this recipe."
-  @echo "Create one for task {{N}} at ~/.herdr/worktrees/<slug> on branch feat/{{N}}-<slug>,"
-  @echo "then from inside it run: just claim {{N}}"
-  @echo "Scripts resolve the tree from 'git worktree list', so any location works."
+  #!/usr/bin/env bash
+  set -euo pipefail
+  N="{{N}}"
+  MAIN=$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')
+  cd "$MAIN"
+  TASKFILE=$(ls odd/tasks/"$N"-*.md 2>/dev/null | head -1 || true)
+  if [ -z "$TASKFILE" ] && [[ "$N" =~ ^[0-9]+$ ]]; then
+    PAD=$(printf '%03d' "$((10#$N))")
+    TASKFILE=$(ls odd/tasks/"$PAD"-*.md 2>/dev/null | head -1 || true)
+    [ -n "$TASKFILE" ] && N="$PAD"
+  fi
+  if [ -z "$TASKFILE" ]; then
+    echo "ERROR: No task document for $N in odd/tasks/." >&2
+    exit 1
+  fi
+  SLUG=$(basename "$TASKFILE" .md)
+  SLUG=${SLUG#"$N"-}
+  DIR=".worktrees/$N"
+  BRANCH="feat/$N-$SLUG"
+  if [ -e "$DIR" ]; then
+    echo "ERROR: $DIR already exists. Use it, or remove it before recreating." >&2
+    exit 1
+  fi
+  mkdir -p .worktrees
+  if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+    git worktree add "$DIR" "$BRANCH"
+  else
+    git worktree add "$DIR" -b "$BRANCH"
+  fi
+  echo "Created $DIR on $BRANCH"
+  echo "Next: cd $DIR && just claim $N"
 
 # Claim a task for this worktree, by the paths in its `## Surfaces` block (not by crate).
 claim N:

@@ -157,10 +157,10 @@ that reads a KiCad export end to end. The readers are tested; nothing calls them
 
 ## Desarrollo paralelo con agentes (worktrees)
 
-Cada agente trabaja en su propio worktree aislado, una tarea por agente:
+Cada agente trabaja en su propio worktree aislado dentro del repo, una tarea por agente:
 
 ```bash
-just worktree N        # crea .worktrees/N y rama feat/N-slug
+just worktree N        # crea .worktrees/N y la rama feat/N-<slug>
 cd .worktrees/N
 just claim N           # reclama la tarea (evita colisiones)
 # ... trabajar ...

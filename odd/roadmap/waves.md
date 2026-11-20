@@ -13,10 +13,9 @@ el grafo de dependencias. Donde hay dependencia técnica no hay ola: hay serie.
 
 ## 1. Reglas de juego
 
-1. **Un agente = un worktree = un claim.** Los worktrees los crea el humano desde `herdr` bajo
-   `~/.herdr/worktrees/`; el tooling no crea ninguno y no asume `.worktrees/`. El claim se toma
-   desde el worktree, con `just claim N`, y `scripts/claim-task.sh` compara **superficies**, no
-   crates.
+1. **Un agente = un worktree = un claim.** `just worktree N` crea el worktree dentro del repo, en
+   `.worktrees/N`, con la rama `feat/N-<slug>`. El claim se toma desde ese worktree, con
+   `just claim N`, y `scripts/claim-task.sh` compara **superficies**, no crates.
 2. **La tarea declara sus superficies antes de empezar.** Un bloque `## Surfaces` en el documento de
    la tarea, con paths o globs relativos al repo. Sin ese bloque, el claim cae al modo viejo (tokens
    `crates/<name>` en el texto) y avisa.
@@ -157,11 +156,11 @@ escribe. Cabe como ola 2c de un agente, con superficie `crates/cam-export/` y el
 ## 8. Cómo se abre cada ola, en concreto
 
 ```bash
-# 1. El humano crea el worktree desde herdr (no con `just worktree`).
-#    Ruta: ~/.herdr/worktrees/<slug>, rama feat/<NNN>-<slug>.
+# 1. Crea el worktree dentro del repo (desde el árbol primario).
+just worktree 042       # crea .worktrees/042 y la rama feat/042-<slug>
 
 # 2. Desde ese worktree, el agente reclama la tarea.
-cd ~/.herdr/worktrees/<slug>
+cd .worktrees/042
 just claim 042          # falla si otra tarea ya reclamó una superficie superpuesta
 
 # 3. Trabaja, y antes de pedir merge:

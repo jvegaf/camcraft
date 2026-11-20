@@ -64,7 +64,8 @@ Cuatro bloques, siempre en este orden:
 ## Worktrees y reclamo de tareas (obligatorio para desarrollo paralelo)
 
 - **Un agente = un worktree = una tarea.** Cada tarea tomada de `tasks/INDEX.md` debe trabajarse en su propio git worktree (fuera del árbol principal), en una rama dedicada (`feat/NNN-<slug>`).
+- **Crear el worktree en el repo.** `just worktree N` crea `.worktrees/N` y la rama `feat/N-<slug>` a partir del documento de la tarea; entrá con `cd .worktrees/N`.
 - **Reclamar antes de editar.** Antes del primer write, reclamá la tarea (marcala `in progress` en `tasks/INDEX.md`, registrá branch/worktree/crates en `tasks/.claims/NNN.json` o mecanismo equivalente). Si ya está reclamada por otra sesión/agente, no la tomes.
 - **Acotar por paquete.** Registrá los crates afectados en el claim para evitar solapamientos entre tareas en paralelo.
-- **Usar los recipes.** `just worktree N`, `just claim N`, `just release N` (cuando estén disponibles). Validación obligatoria: `just check-worktree` debe pasar.
+- **Usar los recipes.** `just worktree N`, `just claim N`, `just release N`. Validación obligatoria: `just check-worktree` debe pasar.
 - **Liberar al entregar.** Al pasar la tarea a `delivered`, liberá el claim y coordiná merge/cleanup según corresponda.
