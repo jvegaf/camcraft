@@ -184,11 +184,8 @@ pub fn isolation_passes_with_kind(
           contours.push(contour);
         }
       }
-      Err(err)
-        if is_hole_collapse_error(&err)
-          && matches!(kind, IsolationKind::Exterior | IsolationKind::Full) =>
-      {
-        // Some holes collapsed growing copper outward; get exterior from holes-filled region and
+      Err(err) if is_hole_collapse_error(&err) => {
+        // Some holes collapsed growing copper outward; get exterior from holes-filled region and/or
         // interior per-hole (skipping collapsed holes).
         if matches!(kind, IsolationKind::Exterior | IsolationKind::Full) {
           if let Some(ref src) = exterior_source {
