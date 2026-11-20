@@ -364,3 +364,9 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   (timeout patológico, combine ~10k segmentos/región 12822–12841) ni S4/S6 de `kicad-2l-simple/top`
   (imagena pero diverge ~0.93% vs FlatCAM y su golden era timeout, no re-pineado): quedan pendientes de
   causa/validación/re-pin honesto cuando se retome. T4/T5 de 063 siguen abiertos en lo sustantivo.
+- **L27 (registro de entrega parcial, commit de referencia `957692c`).** Se registra el cierre **parcial
+  por presupuesto** de 063 para entrega: el índice la marcará `delivered` con alcance parcial explícito
+  (decisión del responsable). Hecho: T1–T3 con evidencia/reparaciones acotadas en reintento, `top_r1` y
+  `kicad-2l-simple/top` a imagen, diagnóstico acotado de `bottom` (región gatillo 12822–12841), fix de C8
+  (acotar retry-repair) incorporado y revisado. Pendiente: S3 (`bottom`), S4/S6/T4/T5 (validación y
+  re-pin honesto de `top`), suite/paridad completa. `Risk: none` (registro documental).

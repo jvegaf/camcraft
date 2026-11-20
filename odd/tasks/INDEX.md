@@ -65,3 +65,6 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 058 | [w4c-isolation](058-w4c-isolation.md) | delivered | 2026-11-15 | `e91882b` |
 | 059 | [e0-6-flatcam-baseline](059-e0-6-flatcam-baseline.md) | delivered | 2026-11-15 | `0520db8` |
 | 060 | [e1-7-import-report](060-e1-7-import-report.md) | delivered | 2026-11-16 | `027d7ed00b67` |
+| 061 | [e1-4-gerber](061-e1-4-gerber.md) | delivered | 2026-11-17 | `957692c` |
+| 062 | [board-outline-contour](062-board-outline-contour.md) | delivered | 2026-11-18 | `957692c` |
+| 063 | [arrangement-classification](063-arrangement-classification.md) | delivered | 2026-11-18 | `957692c` |

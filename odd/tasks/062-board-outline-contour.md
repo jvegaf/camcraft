@@ -71,3 +71,9 @@ paso.
   2026-11-18: 18 artefactos coinciden, 36 divergen; de las divergencias, 29 son artefactos que el árbol
   todavía no puede medir (`timeout`) y 6 son geometría real, de las cuales **3 son de outline** y son las
   que esta tarea toma. Las otras 3 (silk y máscara) quedan en la 061.
+- **L5 (registro de entrega parcial, commit de referencia `957692c`).** Se registra el cierre **parcial
+  por presupuesto** de 062 para entrega: el índice la marcará `delivered` con alcance parcial explícito
+  (decisión del responsable). Hecho: tarea abierta con evidencia/regla motivadora (S2–S6) y comparación
+  instrumentada disponible. Pendiente: T1–T4 (definir regla de contorno para huecos 0.9–23.4 mm, derivar
+  contorno por rol, medir las 6 placas contra FlatCAM y re-pinear outlines/roadmap). `Risk: none`
+  (registro documental).

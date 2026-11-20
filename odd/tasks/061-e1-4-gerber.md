@@ -306,3 +306,9 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   contorno), validación completa de suite/paridad impactada y RDD/entrega según lo solicitado.
   `Risk: item 3 (changing shared code that unrequested behavior also uses — cam-geom boolean; parity
   harness semantics)` para el commit técnico de este cierre.
+- **L26 (registro de entrega parcial, commit de referencia `957692c`).** Se registra el cierre **parcial
+  por presupuesto** de 061 para entrega: el índice la marcará `delivered` con alcance parcial explícito
+  (decisión del responsable). Hecho: parser/kernel/paridad avanzados (T1–T4 parciales, T3 derivado a 063),
+  cobertura RDD por candidatos del rango, C7d spliteado y C8 corregido/revisado e incorporado en `dev`.
+  Pendiente: 063 S3/S4/S6, 061 T5 (divergencias silk/máscara), 062 T1, validación completa y re-pins
+  honestos; E1.4 **no** cumple su criterio de salida. `Risk: none` (registro documental).
