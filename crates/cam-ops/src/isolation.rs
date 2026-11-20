@@ -123,6 +123,7 @@ pub fn isolation_passes(
 /// keeps paths around copper exteriors (outer boundaries), [`IsolationKind::Interior`] keeps paths
 /// around interior clearances (hole boundaries inside copper), and [`IsolationKind::Full`] keeps
 /// both. When `keep_pours` is true, interior paths inside copper pour areas are omitted.
+#[allow(clippy::too_many_arguments)]
 pub fn isolation_passes_with_kind(
   copper: &Region,
   tool_diameter: f64,
@@ -470,6 +471,7 @@ fn orient_contours(contours: Vec<Contour>, direction: MillingDirection) -> Vec<C
 ///
 /// Returns a geometric/toolpath error if paths cannot be computed, or [`ToolpathError::IsolationGouge`]
 /// if the anti-gouge guard detects penetration above [`penetration::PENETRATION_THRESHOLD`].
+#[allow(clippy::too_many_arguments)]
 pub fn isolation_moves(
   copper: &Region,
   tool_diameter: f64,
