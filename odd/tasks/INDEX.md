@@ -70,3 +70,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 063 | [arrangement-classification](063-arrangement-classification.md) | delivered | 2026-11-18 | `957692c` |
 | 064 | [e1-8-vbit-isolation-depth](064-e1-8-vbit-isolation-depth.md) | delivered | 2026-11-18 | `91f368f` |
 | 065 | [f3-isolation](065-f3-isolation.md) | delivered | 2026-11-20 | `e2b3d7b` |
+| 066 | [f3-isolation-review-fixes](066-f3-isolation-review-fixes.md) | delivered | 2026-11-20 | `09ea04a` |
