@@ -9,8 +9,12 @@ publish.workspace = true
 [dependencies]
 cam-geom.workspace = true
 cam-model.workspace = true
+cam-units.workspace = true
 
 [dev-dependencies]
 # The round trip is the only honest acceptance test a writer can have: this crate writes, `cam-import`
 # reads, and the two must agree. Test-only, so the writer keeps no production edge on the reader.
+cam-gerber.workspace = true
+cam-excellon.workspace = true
 cam-import.workspace = true
+cam-units.workspace = true

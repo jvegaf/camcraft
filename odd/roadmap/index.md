@@ -76,11 +76,11 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
-| E5.1 FlatCAM dialect catalogue | 🟡 | `.pp` parser/emitter with byte goldens: `cam-post/src/lib.rs:27`, `:137`, `:268`; fixtures `cam-post/tests/fixtures/post_inch.pp`, `post_mm.pp` | The GRBL/Marlin/Repetier dialect **data** |
+| E5.1 FlatCAM dialect catalogue | ✅ | `.pp` parser/emitter with byte goldens: `cam-post/src/lib.rs`, `parser.rs`, `emit.rs`; built-in dialect data `crates/cam-post/posts/grbl.pp`, `marlin.pp`, `repetier.pp` exposed as `GRBL_POST`/`MARLIN_POST`/`REPETIER_POST` (`crates/cam-post/src/lib.rs`); golden byte a byte por dialecto en `crates/cam-post/tests/grbl.rs`, `marlin.rs`, `repetier.rs`. Task [068](../tasks/068-e5-1-e5-5-dialects-writers.md) | — |
 | E5.2 `exc_areas` and travel routing | ⬜ | `grep -rn "exc_areas\|exclusion" crates` → 0 | Model field, routing around it, and its simulation check |
 | E5.3 Autolevelling | ⬜ | `grep -rn autolev crates` → 0; `cam-move` still carries fixed Z | Height map plus arc and long-move segmentation as a stream transform |
 | E5.4 `toolchange_style` | ⬜ | `grep -rn toolchange_style crates` → 0 | The enum replacing name matching |
-| E5.5 Gerber/Excellon writers | ⬜ | `cam-export/src/lib.rs:67`, `:123` — DXF and SVG only | Both writers and their round-trip proof against `cam-gerber`/`cam-excellon` |
+| E5.5 Gerber/Excellon writers | ✅ | Writers in `crates/cam-export/src/gerber.rs` (RS-274X G36/G37, G01/G02/G03, FSLAX46Y46 MM) and `crates/cam-export/src/excellon.rs` (M48/METRIC, tool table, holes/slots), wired in `crates/cam-export/src/lib.rs` (`Format::{Gerber,Excellon}`, `export_bytes`); round-trip against `cam-gerber`/`cam-excellon` in `crates/cam-export/tests/gerber_round_trip.rs` (4 tests) and `excellon_round_trip.rs` (3 tests). Task [068](../tasks/068-e5-1-e5-5-dialects-writers.md) | — |
 
 ### F6 — Board UI, F7 — extension, F8 — hardening
 

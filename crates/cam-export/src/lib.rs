@@ -17,6 +17,8 @@
 #![warn(missing_docs)]
 
 pub mod dxf;
+pub mod excellon;
+pub mod gerber;
 pub mod svg;
 
 use cam_model::Document;
@@ -28,6 +30,10 @@ pub enum Format {
   Dxf,
   /// Scalable Vector Graphics, XML form.
   Svg,
+  /// Gerber RS-274X, an image layer.
+  Gerber,
+  /// Excellon drill data.
+  Excellon,
 }
 
 impl Format {
@@ -36,6 +42,8 @@ impl Format {
     match self {
       Self::Dxf => "dxf",
       Self::Svg => "svg",
+      Self::Gerber => "gerber",
+      Self::Excellon => "excellon",
     }
   }
 
@@ -44,6 +52,8 @@ impl Format {
     match self {
       Self::Dxf => "dxf",
       Self::Svg => "svg",
+      Self::Gerber => "gbr",
+      Self::Excellon => "drl",
     }
   }
 
@@ -52,6 +62,8 @@ impl Format {
     match extension.to_ascii_lowercase().as_str() {
       "dxf" => Some(Self::Dxf),
       "svg" => Some(Self::Svg),
+      "gbr" | "ger" | "gtl" | "gbl" | "gto" | "gbo" | "gts" | "gbs" | "gko" => Some(Self::Gerber),
+      "drl" | "xln" | "exc" => Some(Self::Excellon),
       _ => None,
     }
   }
@@ -59,7 +71,7 @@ impl Format {
   /// The format a `--format` value names, case-insensitively, or `None` when nothing here writes it.
   pub fn from_name(name: &str) -> Option<Self> {
     let wanted = name.trim();
-    [Self::Dxf, Self::Svg]
+    [Self::Dxf, Self::Svg, Self::Gerber, Self::Excellon]
       .into_iter()
       .find(|format| format.name().eq_ignore_ascii_case(wanted))
   }
@@ -102,6 +114,8 @@ pub fn export_bytes(document: &Document, format: Format) -> Result<Vec<u8>, Expo
   match format {
     Format::Dxf => dxf::export(document),
     Format::Svg => svg::export(document),
+    Format::Gerber => gerber::export(document),
+    Format::Excellon => excellon::export(document),
   }
 }
 
@@ -115,6 +129,10 @@ mod tests {
     assert_eq!(Format::Dxf.extension(), "dxf");
     assert_eq!(Format::Svg.name(), "svg");
     assert_eq!(Format::Svg.extension(), "svg");
+    assert_eq!(Format::Gerber.name(), "gerber");
+    assert_eq!(Format::Gerber.extension(), "gbr");
+    assert_eq!(Format::Excellon.name(), "excellon");
+    assert_eq!(Format::Excellon.extension(), "drl");
   }
 
   #[test]
@@ -123,6 +141,10 @@ mod tests {
     assert_eq!(Format::from_extension("dxf"), Some(Format::Dxf));
     assert_eq!(Format::from_extension("SVG"), Some(Format::Svg));
     assert_eq!(Format::from_extension("svg"), Some(Format::Svg));
+    assert_eq!(Format::from_extension("GBR"), Some(Format::Gerber));
+    assert_eq!(Format::from_extension("gbr"), Some(Format::Gerber));
+    assert_eq!(Format::from_extension("DRL"), Some(Format::Excellon));
+    assert_eq!(Format::from_extension("drl"), Some(Format::Excellon));
     assert_eq!(Format::from_extension("step"), None);
     assert_eq!(Format::from_extension(""), None);
   }
