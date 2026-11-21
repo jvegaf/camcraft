@@ -34,23 +34,60 @@ use crate::shared::{machine_point, push_horizontal, ToolpathError};
 /// Returns the first geometric error reported by normalization or union: a boundary that cannot be
 /// made into a region, a tolerance that cannot resolve the arrangement, or a union the engine refuses.
 pub fn unite_copper(contours: &[Contour], tolerance: TolerancePolicy) -> Result<Region, GeomError> {
-  let mut united = Region::new(Vec::new())?;
+  let mut additive = Vec::new();
+  let mut subtractive = Vec::new();
   for contour in contours {
-    let subtractive = contour.signed_area() < 0.0;
     let piece = Region::new(vec![contour.clone()])?
       .normalize(tolerance)?
       .region;
-    let op = if subtractive {
-      BooleanOp::Difference
+    if contour.signed_area() < 0.0 {
+      subtractive.push(piece);
     } else {
-      BooleanOp::Union
-    };
-    united = match combine(&united, &piece, op, tolerance)? {
+      additive.push(piece);
+    }
+  }
+
+  let mut united = balanced_union(additive, tolerance)?;
+  if !subtractive.is_empty() {
+    let holes = balanced_union(subtractive, tolerance)?;
+    united = match combine(&united, &holes, BooleanOp::Difference, tolerance)? {
       Combined::Empty => Region::new(Vec::new())?,
       Combined::Region { region, .. } => region,
     };
   }
   Ok(united)
+}
+
+fn balanced_union(
+  mut regions: Vec<Region>,
+  tolerance: TolerancePolicy,
+) -> Result<Region, GeomError> {
+  if regions.is_empty() {
+    return Region::new(Vec::new());
+  }
+  while regions.len() > 1 {
+    let mut next = Vec::with_capacity(regions.len().div_ceil(2));
+    let mut it = regions.into_iter();
+    while let Some(a) = it.next() {
+      match it.next() {
+        Some(b) => {
+          let merged = match combine(&a, &b, BooleanOp::Union, tolerance)? {
+            Combined::Empty => Region::new(Vec::new())?,
+            Combined::Region { region, .. } => region,
+          };
+          next.push(merged);
+        }
+        None => next.push(a),
+      }
+    }
+    regions = next;
+  }
+  Ok(
+    regions
+      .into_iter()
+      .next()
+      .unwrap_or(Region::new(Vec::new())?),
+  )
 }
 
 /// One isolation pass: the offset geometry at a given distance from the copper.

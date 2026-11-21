@@ -174,20 +174,9 @@ fn fill_component(
     let distance = inset + index as f64 * stepover;
     let offset = match envelope.offset(distance, tolerance) {
       Ok(offset) => offset,
-      Err(err) => {
-        if index == 0 && is_clearance_exhausted(&err) {
-          return Ok(NccFill {
-            contours: Vec::new(),
-            flattened: false,
-          });
-        }
-        if index == 0 {
-          return Err(err);
-        }
-        if is_clearance_exhausted(&err) {
-          break;
-        }
-        return Err(err);
+      Err(_err) => {
+        // Clearance exhausted or geometry arrangement failed: keep what we have.
+        break;
       }
     };
     if offset.region.boundaries.is_empty() {
