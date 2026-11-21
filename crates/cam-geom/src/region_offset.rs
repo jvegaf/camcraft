@@ -81,6 +81,19 @@ pub struct RegionOffset {
   pub warnings: Vec<OffsetWarning>,
 }
 
+fn is_collapse_error(err: &GeomError) -> bool {
+  match err {
+    GeomError::OffsetCollapsed { .. } => true,
+    GeomError::EditRefused { reason } => {
+      let r = reason.to_ascii_lowercase();
+      r.contains("collaps")
+        || r.contains("no material")
+        || r.contains("no ring")
+        || r.contains("exhausted")
+    }
+    _ => false,
+  }
+}
 impl Region {
   /// Move every boundary the way that grows the material (A6).
   ///
@@ -139,10 +152,11 @@ impl Region {
       let signed = if depth % 2 == 0 { -distance } else { distance };
       let offset = match offset_contour(boundary, signed, &options) {
         Ok(offset) => offset,
-        Err(_) => {
+        Err(err) if is_collapse_error(&err) => {
           // A boundary that collapses under offset simply disappears.
           continue;
         }
+        Err(err) => return Err(err),
       };
       flattened |= offset.flattened;
       warnings.extend(offset.warnings);

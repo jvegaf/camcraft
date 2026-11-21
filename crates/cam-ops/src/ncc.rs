@@ -174,8 +174,14 @@ fn fill_component(
     let distance = inset + index as f64 * stepover;
     let offset = match envelope.offset(distance, tolerance) {
       Ok(offset) => offset,
-      Err(_err) => {
-        // Clearance exhausted or geometry arrangement failed: keep what we have.
+      Err(err) => {
+        if is_clearance_exhausted(&err) {
+          break;
+        }
+        if index == 0 {
+          return Err(err);
+        }
+        // Non-clearance geometry error after progress: keep what we have.
         break;
       }
     };

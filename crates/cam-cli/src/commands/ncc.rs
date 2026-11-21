@@ -256,12 +256,21 @@ fn ncc_runs(document: &Document, diameter: f64) -> Result<(Vec<NccRun>, usize), 
     let fill_region = cam_geom::region::Region::new(raw_fill.contours.clone())
       .and_then(|r| r.normalize(tolerance).map(|n| n.region))
       .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
-    let clipped_region = if keep_out.boundaries.is_empty() {
+    let clip_keepout = if keep_out.boundaries.is_empty() {
+      keep_out.clone()
+    } else {
+      let tool_radius = diameter / 2.0;
+      keep_out
+        .offset(-tool_radius, tolerance)
+        .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
+        .region
+    };
+    let clipped_region = if clip_keepout.boundaries.is_empty() {
       fill_region
     } else {
       match cam_geom::boolean::combine(
         &fill_region,
-        &keep_out,
+        &clip_keepout,
         cam_geom::boolean::BooleanOp::Difference,
         tolerance,
       )
