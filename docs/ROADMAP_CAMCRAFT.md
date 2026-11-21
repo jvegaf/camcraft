@@ -151,15 +151,17 @@ cobre denso, la salida es mejorar el cleanup del offset (arrangement-based) **an
 **Objetivo.** La operación que define la promesa del producto. **Nada de esto se escribe antes de
 que `E0.6`+`E0.7` estén en verde**, porque sin baseline la promesa no es medible.
 
-| ID | Tarea | Tamaño | Criterio de salida |
-| --- | --- | --- | --- |
-| E4.1 | Envolvente de no-cobre a partir del cobre unido, con margen y offset (dirección "a la izquierda" del material, semántica de FlatCAM) | **M** | Cobertura del área de no-cobre dentro de tolerancia en el corpus |
-| E4.2 | Algoritmo estándar de relleno por offsets concéntricos sobre región con islas | **L** | Sin gouge ni áreas sin limpiar en el corpus |
-| E4.3 | Índice espacial (`rstar` o grilla propia) para intersección y vecindad durante el relleno | **M** | Tiempo de E4.2 baja de forma medible contra la versión ingenua (se guarda el número) |
-| E4.4 | Paralelismo por isla con `rayon` | **L** | Speedup medido en la placa grande; salida **determinista** byte a byte |
-| E4.5 | Rest machining entre herramientas (grueso→fino), reusando la región restante | **L** | Dos herramientas cubren el área sin recortes redundantes; medido |
-| E4.6 | Métodos alternativos: seed y lines | **M** | Los tres métodos producen salida válida |
-| E4.7 | Benchmark publicado de NCC vs FlatCAM en la placa grande | **S** | **Hito 3: NCC más rápida que FlatCAM en la placa grande**, reproducible desde CI |
+| ID | Tarea | Tamaño | Criterio de salida | Estado |
+| --- | --- | --- | --- | --- |
+| E4.1 | Envolvente de no-cobre a partir del cobre unido, con margen y offset (dirección "a la izquierda" del material, semántica de FlatCAM) | **M** | Cobertura del área de no-cobre dentro de tolerancia en el corpus | 🟡 |
+| E4.2 | Algoritmo estándar de relleno por offsets concéntricos sobre región con islas | **L** | Sin gouge ni áreas sin limpiar en el corpus | 🟡 |
+| E4.3 | Índice espacial (`rstar` o grilla propia) para intersección y vecindad durante el relleno | **M** | Tiempo de E4.2 baja de forma medible contra la versión ingenua (se guarda el número) | 🟡 |
+| E4.4 | Paralelismo por isla con `rayon` | **L** | Speedup medido en la placa grande; salida **determinista** byte a byte | 🟡 |
+| E4.5 | Rest machining entre herramientas (grueso→fino), reusando la región restante | **L** | Dos herramientas cubren el área sin recortes redundantes; medido | 🟡 |
+| E4.6 | Métodos alternativos: seed y lines | **M** | Los tres métodos producen salida válida | 🟡 |
+| E4.7 | Benchmark publicado de NCC vs FlatCAM en la placa grande | **S** | **Hito 3: NCC más rápida que FlatCAM en la placa grande**, reproducible desde CI | 🟡 |
+
+> Estado F4 (2026-11-16): núcleo E4.1-E4.6 implementado en `cam-ops` (envelope, rings/seed/lines, grid index, rayon determinista, rest machining) con tests; comando CLI `cam-cli ncc` cableado. Falta cerrar E4.7 con baseline NCC FlatCAM publicado/reproducible en CI (Hito 3) e integración final app/sim/documento según haga falta. Ver `odd/tasks/067-f4-non-copper-clear.md` y `odd/reports/f4-ncc-benchmark.md`.
 
 **Riesgo de F4.** Es la fase donde el paralelismo puede romper el determinismo (orden no
 determinista de reducción). La mitigación es reducir con orden estable siempre, y test de igualdad
