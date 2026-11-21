@@ -137,13 +137,13 @@ impl Region {
       // Even depth: material lies inside this boundary, so it shrinks. Odd depth: the boundary is a
       // hole, material lies outside it, and it has to grow for the material to recede from it.
       let signed = if depth % 2 == 0 { -distance } else { distance };
-      let offset = offset_contour(boundary, signed, &options).map_err(|_| GeomError::EditRefused {
-        reason: if depth % 2 == 0 {
-          "a region offset collapsed an enclosing boundary: the distance is larger than the material it encloses"
-        } else {
-          "a region offset collapsed a hole boundary: the distance is larger than the hole it encloses"
-        },
-      })?;
+      let offset = match offset_contour(boundary, signed, &options) {
+        Ok(offset) => offset,
+        Err(_) => {
+          // A boundary that collapses under offset simply disappears.
+          continue;
+        }
+      };
       flattened |= offset.flattened;
       warnings.extend(offset.warnings);
       boundaries.push(offset.contour);
