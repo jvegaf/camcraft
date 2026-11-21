@@ -33,7 +33,7 @@ Completar dos ítems de F5 (PCB G-code): E5.1 catálogo de dialectos `.pp` con g
 | T2 | E5.5: escritor Excellon en `cam-export` — tabla de herramientas, hits/slots, unidades/formato, tests unitarios y round-trip contra `cam-excellon` dentro de tolerancia | S1,S2,S3,S5,S7 | inline | done | — |
 | T3 | E5.5: cableado de formato/exportación en `cam-export` (Format/errores/docs) y cobertura de round-trip integrada; verificación focal | S1,S5,S7 | inline | done | — |
 | T4 | E5.1: añadir dialectos Marlin y Repetier como datos `.pp` en `crates/cam-post/posts/`, con golden test byte a byte por dialecto; confirmar GRBL cubierto por golden | S1,S2,S3,S4,S6,S8 | inline | done | — |
-| T5 | Actualizar `odd/roadmap/index.md` y `docs/ROADMAP_CAMCRAFT.md` con el estado honesto de E5.1/E5.5; verificación, registro y cierre | S1-S8 | inline | in_progress | — |
+| T5 | Actualizar `odd/roadmap/index.md` y `docs/ROADMAP_CAMCRAFT.md` con el estado honesto de E5.1/E5.5; verificación, registro y cierre | S1-S8 | inline | done | — |
 
 ## Log
 

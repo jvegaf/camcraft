@@ -45,6 +45,16 @@ pub use parser::parse_post;
 /// This definition is project data, not vendored from any third-party source.
 pub const GRBL_POST: &str = include_str!("../posts/grbl.pp");
 
+/// Built-in Marlin post-processor (millimetres), authored for this project.
+///
+/// This definition is project data, not vendored from any third-party source.
+pub const MARLIN_POST: &str = include_str!("../posts/marlin.pp");
+
+/// Built-in Repetier post-processor (millimetres), authored for this project.
+///
+/// This definition is project data, not vendored from any third-party source.
+pub const REPETIER_POST: &str = include_str!("../posts/repetier.pp");
+
 /// The unit system a post-processor expects in its output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PostUnits {
