@@ -26,8 +26,14 @@ pub fn route_stream_around_exc_areas(
       cam_move::ToolShape::VBit { flat_diameter, .. } => flat_diameter.mm(),
     }
     .max(0.0);
-    let (moves, end) =
-      route_travel_around_exc_areas(&seg.moves, current, exc_areas, clearance, tolerance)?;
+    let (moves, end) = route_travel_around_exc_areas_with_tool(
+      &seg.moves,
+      current,
+      exc_areas,
+      clearance,
+      Some(seg.tool),
+      tolerance,
+    )?;
     seg.moves = moves;
     current = end;
   }
@@ -45,16 +51,28 @@ pub fn route_travel_around_exc_areas(
   clearance_mm: f64,
   tolerance: TolerancePolicy,
 ) -> Result<(Vec<Move>, Point3), ToolpathError> {
+  route_travel_around_exc_areas_with_tool(moves, start, exc_areas, clearance_mm, None, tolerance)
+}
+
+/// Like `route_travel_around_exc_areas` but computes VBit clearance at travel Z.
+pub fn route_travel_around_exc_areas_with_tool(
+  moves: &[Move],
+  start: Point3,
+  exc_areas: &[Region],
+  clearance_mm: f64,
+  tool: Option<cam_move::ToolShape>,
+  tolerance: TolerancePolicy,
+) -> Result<(Vec<Move>, Point3), ToolpathError> {
   if exc_areas.is_empty() {
     let end = moves.last().map(|m| m.destination()).unwrap_or(start);
     return Ok((moves.to_vec(), end));
   }
-  let radius = (clearance_mm / 2.0).max(0.0);
   let mut out = Vec::with_capacity(moves.len());
   let mut current = start;
   for mv in moves {
     match *mv {
       Move::Rapid { to } | Move::Retract { to } => {
+        let radius = effective_radius(tool, clearance_mm, current.z.mm(), to.z.mm());
         let detour = detour_travel(current, to, exc_areas, radius, tolerance)?;
         for p in detour {
           out.push(match *mv {
@@ -71,6 +89,17 @@ pub fn route_travel_around_exc_areas(
     }
   }
   Ok((out, current))
+}
+
+fn effective_radius(tool: Option<cam_move::ToolShape>, clearance_mm: f64, z0: f64, z1: f64) -> f64 {
+  let base = (clearance_mm / 2.0).max(0.0);
+  match tool {
+    Some(t @ cam_move::ToolShape::VBit { .. }) => {
+      let z = z0.max(z1).max(0.0);
+      (t.radius_at(z) * 2.0 / 2.0).max(base)
+    }
+    _ => base,
+  }
 }
 
 fn detour_travel(
@@ -181,7 +210,8 @@ fn segment_hits_region(
     return true;
   }
   let len = a.distance_to(b);
-  let steps = ((len / 0.5).ceil() as usize).clamp(2, 64);
+  let step = (radius * 0.5).max(0.05);
+  let steps = ((len / step).ceil() as usize).max(2);
   for i in 1..steps {
     let t = i as f64 / steps as f64;
     let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
