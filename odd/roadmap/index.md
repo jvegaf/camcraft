@@ -77,9 +77,9 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
 | E5.1 FlatCAM dialect catalogue | ✅ | `.pp` parser/emitter with byte goldens: `cam-post/src/lib.rs`, `parser.rs`, `emit.rs`; built-in dialect data `crates/cam-post/posts/grbl.pp`, `marlin.pp`, `repetier.pp` exposed as `GRBL_POST`/`MARLIN_POST`/`REPETIER_POST` (`crates/cam-post/src/lib.rs`); golden byte a byte por dialecto en `crates/cam-post/tests/grbl.rs`, `marlin.rs`, `repetier.rs`. Task [068](../tasks/068-e5-1-e5-5-dialects-writers.md) | — |
-| E5.2 `exc_areas` and travel routing | ⬜ | `grep -rn "exc_areas\|exclusion" crates` → 0 | Model field, routing around it, and its simulation check |
+| E5.2 `exc_areas` and travel routing | ✅ | `Document.exc_areas: Vec<Region>` (serde default) in `crates/cam-model/src/lib.rs`; travel reroute in `crates/cam-ops/src/exc_travel.rs` wired into isolate/cutout/program/ncc emit paths; sim collision check in `crates/cam-sim/src/sweep.rs::apply_with_exc_areas`. Acceptance tests: travel deviation and routed sim no-collision. Task [069](../tasks/069-e5-2-e5-4-exc-areas-toolchange-style.md) | — |
 | E5.3 Autolevelling | ⬜ | `grep -rn autolev crates` → 0; `cam-move` still carries fixed Z | Height map plus arc and long-move segmentation as a stream transform |
-| E5.4 `toolchange_style` | ⬜ | `grep -rn toolchange_style crates` → 0 | The enum replacing name matching |
+| E5.4 `toolchange_style` | ✅ | `ToolchangeStyle` enum + `TOOLCHANGE_STYLE` directive in `crates/cam-post/src/lib.rs`/`parser.rs`; style-aware emit in `crates/cam-post/src/emit.rs`; Marlin/Repetier posts declare style with special-M6 toolchange goldens. Task [069](../tasks/069-e5-2-e5-4-exc-areas-toolchange-style.md) | — |
 | E5.5 Gerber/Excellon writers | ✅ | Writers in `crates/cam-export/src/gerber.rs` (RS-274X G36/G37, G01/G02/G03, FSLAX46Y46 MM) and `crates/cam-export/src/excellon.rs` (M48/METRIC, tool table, holes/slots), wired in `crates/cam-export/src/lib.rs` (`Format::{Gerber,Excellon}`, `export_bytes`); round-trip against `cam-gerber`/`cam-excellon` in `crates/cam-export/tests/gerber_round_trip.rs` (4 tests) and `excellon_round_trip.rs` (3 tests). Task [068](../tasks/068-e5-1-e5-5-dialects-writers.md) | — |
 
 ### F6 — Board UI, F7 — extension, F8 — hardening

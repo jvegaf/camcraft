@@ -31,9 +31,11 @@
 | T2 | S2,S4 | inline | 3d4c012 | done | Add `exc_areas: Vec<Region>` to Document (serde default, backcompat) and model/validation plumbing |
 | T3 | S2,S4 | inline | — | pending | Implement travel routing around exc_areas for Rapid/Retract moves and wire into G-code-producing paths before emit/sim |
 | T4 | S2,S4 | inline | — | pending | Extend simulation/collision checks for travel across exclusion areas; add tests proving travel deviates and sim has no collision |
-| T5 | S2,S3 | inline | — | pending | Update roadmap/docs status and task evidence; run focused checks |
+| T5 | S2,S3 | inline | (pending) | done | Update roadmap/docs status and task evidence; run focused checks |
 
 ## Log
+
+- **L7** (assistant): T5 updated roadmap/docs for E5.2/E5.4; focused tests passed (cam-post, cam-model, cam-ops, cam-sim). Clippy clean on touched crates.
 
 - **L6** (assistant): T3/T4 added exc_travel routing (Rapid/Retract detours around exc_areas, per-segment tool clearance), wired into isolate/cutout/program/ncc CLI emit paths, extended cam-sim with apply_with_exc_areas collision checks, and added acceptance tests for deviation and no-collision.
 
