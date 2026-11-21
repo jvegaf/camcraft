@@ -178,7 +178,7 @@ fi
 while IFS=$'\t' read -r number slug; do
   [ -n "${number:-}" ] || continue
   echo "task $number: memory for '$slug'"
-  found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1)
+  found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1 || true)
   if echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
     echo "  ✓ $found"
   else
@@ -190,7 +190,7 @@ done <<<"$memory_rows"
 if [ -n "${history_rows:-}" ] && command -v engram >/dev/null 2>&1 && engram ps 2>/dev/null | grep -q "running"; then
   while IFS=$'\t' read -r number slug; do
     [ -n "${number:-}" ] || continue
-    found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1)
+    found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1 || true)
     if ! echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
       echo "engram: ADVISORY — task $number ($slug) was delivered with no memory; backfill it when touched"
     fi
