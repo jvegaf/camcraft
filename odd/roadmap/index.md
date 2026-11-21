@@ -69,7 +69,8 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
-| E4.1–E4.7 | ⬜ | Only the model: `NonCopperClearParams` (`cam-model/src/lib.rs:357`) and `FillMethod::{Lines, Grid, Rings}` (`:289`) as data; `grep -rn rayon Cargo.toml crates` → 0, `grep -rn "rstar\|kdtree"` → 0, no `rest machining` | Envelope, concentric fill, spatial index, parallel fill, rest machining, seed/lines methods, and the published FlatCAM comparison — the whole phase, and the product's performance thesis with it |
+| E4.1–E4.6 | 🟡 | `cam-ops/src/ncc.rs`: `non_copper_envelope`, `ncc_fill_rings/lines/seed`, `ncc_rest_region`, `ncc_moves`; `ncc_index.rs` `SpatialGrid` (9.53x vs naive, medido); rayon por islas con merge determinista (byte a byte 1/2/4 threads); fill-board-then-clip en CLI. `cam-cli ncc` cableado. Tests `crates/cam-ops/tests/ncc.rs` (14 passed, 4 ignored). Task [067](../tasks/067-f4-non-copper-clear.md). | Integración app/sim profunda si aplica, pulido de semántica (contour/connect), y verificación completa de workspace/CI |
+| E4.7 Hito 3 | ✅ | `odd/reports/f4-ncc-benchmark.md`: `kicad-large-pours/top.gbr`, tool 1.0, overlap 50%, standard, all. FlatCAM 49.87s/222 paths; camcraft release 2.09s/826 clipped boundaries (~23.9x). Reproducible con `cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_pours -- --ignored --nocapture`. | — |
 
 ### F5 — PCB G-code
 
