@@ -4,129 +4,123 @@ use cam_geom::region::Region;
 use cam_geom::{Point2, TolerancePolicy};
 use cam_move::{Move, Point3};
 
+use crate::ToolpathError;
+
 /// Reroute Rapid/Retract moves in a stream so travel does not cross exclusion areas.
 ///
-/// Uses each segment's tool diameter as clearance inflation.
+/// Uses each segment's tool diameter as clearance inflation. Carries position across segments from
+/// the stream home so first moves and segment boundaries are checked (S2).
 pub fn route_stream_around_exc_areas(
   stream: &cam_move::MoveStream,
   exc_areas: &[Region],
   tolerance: TolerancePolicy,
-) -> cam_move::MoveStream {
+) -> Result<cam_move::MoveStream, ToolpathError> {
   if exc_areas.is_empty() {
-    return stream.clone();
+    return Ok(stream.clone());
   }
   let mut out = stream.clone();
+  let mut current = Point3::new(stream.home.x, stream.home.y, stream.safe_z.mm());
   for seg in &mut out.segments {
     let clearance = match seg.tool {
       cam_move::ToolShape::Cylinder { diameter } => diameter.mm(),
       cam_move::ToolShape::VBit { flat_diameter, .. } => flat_diameter.mm(),
     }
     .max(0.0);
-    seg.moves = route_travel_around_exc_areas(&seg.moves, exc_areas, clearance, tolerance);
+    let (moves, end) =
+      route_travel_around_exc_areas(&seg.moves, current, exc_areas, clearance, tolerance)?;
+    seg.moves = moves;
+    current = end;
   }
-  out
+  Ok(out)
 }
 
 /// Reroute Rapid/Retract moves so travel does not cross exclusion areas.
 ///
-/// `clearance_mm` inflates exclusion boundaries for tool safety. Returns moves with
-/// detour rapids inserted when a straight travel crosses an exclusion.
+/// `clearance_mm` is the tool diameter; detection uses half of it as radial clearance. Returns
+/// routed moves and the final position. Returns error if no safe detour exists (S2).
 pub fn route_travel_around_exc_areas(
   moves: &[Move],
+  start: Point3,
   exc_areas: &[Region],
   clearance_mm: f64,
   tolerance: TolerancePolicy,
-) -> Vec<Move> {
+) -> Result<(Vec<Move>, Point3), ToolpathError> {
   if exc_areas.is_empty() {
-    return moves.to_vec();
+    let end = moves.last().map(|m| m.destination()).unwrap_or(start);
+    return Ok((moves.to_vec(), end));
   }
+  let radius = (clearance_mm / 2.0).max(0.0);
   let mut out = Vec::with_capacity(moves.len());
-  let mut current = None::<Point3>;
+  let mut current = start;
   for mv in moves {
     match *mv {
       Move::Rapid { to } | Move::Retract { to } => {
-        if let Some(from) = current {
-          let detour = detour_travel(from, to, exc_areas, clearance_mm, tolerance);
-          for p in detour {
-            out.push(match *mv {
-              Move::Retract { .. } => Move::Retract { to: p },
-              _ => Move::Rapid { to: p },
-            });
-          }
-        } else {
-          out.push(*mv);
+        let detour = detour_travel(current, to, exc_areas, radius, tolerance)?;
+        for p in detour {
+          out.push(match *mv {
+            Move::Retract { .. } => Move::Retract { to: p },
+            _ => Move::Rapid { to: p },
+          });
         }
-        current = Some(to);
+        current = to;
       }
       other => {
-        current = Some(other.destination());
+        current = other.destination();
         out.push(other);
       }
     }
   }
-  out
+  Ok((out, current))
 }
 
 fn detour_travel(
   from: Point3,
   to: Point3,
   exc_areas: &[Region],
-  clearance_mm: f64,
+  radius: f64,
   tolerance: TolerancePolicy,
-) -> Vec<Point3> {
+) -> Result<Vec<Point3>, ToolpathError> {
   let a = Point2::new(from.x.mm(), from.y.mm());
   let b = Point2::new(to.x.mm(), to.y.mm());
-  if !crosses_any(a, b, exc_areas, tolerance) {
-    return vec![to];
+  if !crosses_any(a, b, exc_areas, radius, tolerance) {
+    return Ok(vec![to]);
   }
-  // Try detours through inflated boundary vertices of intersected regions.
   let mut candidates: Vec<Vec<Point2>> = Vec::new();
   for region in exc_areas {
-    if !segment_hits_region(a, b, region, tolerance) {
+    if !segment_hits_region(a, b, region, radius, tolerance) {
       continue;
     }
     for boundary in &region.boundaries {
-      let verts = inflated_vertices(boundary, clearance_mm.max(0.0));
+      let verts = inflated_vertices(boundary, radius.max(0.1) + 0.5);
       if verts.len() < 2 {
         continue;
       }
-      // Try routing around boundary in both directions as single waypoint chains.
-      // Simple heuristic: try each inflated vertex as a single waypoint.
       for v in &verts {
         candidates.push(vec![*v]);
       }
-      // Try two-vertex detours along boundary.
       for w in verts.windows(2) {
         candidates.push(vec![w[0], w[1]]);
       }
-      // try wrap-around pair
       if let (Some(first), Some(last)) = (verts.first(), verts.last()) {
         candidates.push(vec![*last, *first]);
       }
     }
-  }
-  // Also try axis-aligned bbox corners of intersected regions inflated.
-  for region in exc_areas {
-    if !segment_hits_region(a, b, region, tolerance) {
-      continue;
-    }
     if let Some(bounds) = region_bounds(region) {
-      let m = clearance_mm.max(0.1);
-      let corners = [
+      let m = radius.max(0.1) + 1.0;
+      for c in [
         Point2::new(bounds.0 - m, bounds.1 - m),
         Point2::new(bounds.2 + m, bounds.1 - m),
         Point2::new(bounds.2 + m, bounds.3 + m),
         Point2::new(bounds.0 - m, bounds.3 + m),
-      ];
-      for c in &corners {
-        candidates.push(vec![*c]);
+      ] {
+        candidates.push(vec![c]);
       }
     }
   }
 
   let mut best: Option<(f64, Vec<Point2>)> = None;
   for path in candidates {
-    if path_crosses_any(a, &path, b, exc_areas, tolerance) {
+    if path_crosses_any(a, &path, b, exc_areas, radius, tolerance) {
       continue;
     }
     let len = path_length(a, &path, b);
@@ -134,36 +128,47 @@ fn detour_travel(
       best = Some((len, path));
     }
   }
-
-  if let Some((_, path)) = best {
+  let chosen = best
+    .map(|(_, p)| p)
+    .or_else(|| coarse_escape(a, b, exc_areas, tolerance, radius));
+  if let Some(path) = chosen {
     let mut out: Vec<Point3> = path
       .into_iter()
       .map(|p| Point3::new(p.x, p.y, from.z.mm()))
       .collect();
     out.push(Point3::new(to.x.mm(), to.y.mm(), to.z.mm()));
-    return out;
+    return Ok(out);
   }
 
-  // Fallback: lift over safe by routing through bbox corner with largest clearance - still better to
-  // return original? No, acceptance says must deviate and sim no collision. Try a coarse grid escape.
-  if let Some(path) = coarse_escape(a, b, exc_areas, tolerance, clearance_mm) {
-    let mut out: Vec<Point3> = path
-      .into_iter()
-      .map(|p| Point3::new(p.x, p.y, from.z.mm()))
-      .collect();
-    out.push(Point3::new(to.x.mm(), to.y.mm(), to.z.mm()));
-    return out;
-  }
-
-  vec![to]
+  Err(ToolpathError::UnroutableTravel {
+    from_x: a.x,
+    from_y: a.y,
+    to_x: b.x,
+    to_y: b.y,
+    clearance_mm: radius * 2.0,
+  })
 }
 
-fn crosses_any(a: Point2, b: Point2, exc_areas: &[Region], tol: TolerancePolicy) -> bool {
-  exc_areas.iter().any(|r| segment_hits_region(a, b, r, tol))
+fn crosses_any(
+  a: Point2,
+  b: Point2,
+  exc_areas: &[Region],
+  radius: f64,
+  tol: TolerancePolicy,
+) -> bool {
+  exc_areas
+    .iter()
+    .any(|r| segment_hits_region(a, b, r, radius, tol))
 }
 
-fn segment_hits_region(a: Point2, b: Point2, region: &Region, tol: TolerancePolicy) -> bool {
-  if point_in_region(a, region, tol) || point_in_region(b, region, tol) {
+fn segment_hits_region(
+  a: Point2,
+  b: Point2,
+  region: &Region,
+  radius: f64,
+  tol: TolerancePolicy,
+) -> bool {
+  if point_too_close(a, region, radius, tol) || point_too_close(b, region, radius, tol) {
     return true;
   }
   for boundary in &region.boundaries {
@@ -171,15 +176,26 @@ fn segment_hits_region(a: Point2, b: Point2, region: &Region, tol: TolerancePoli
       return true;
     }
   }
-  // midpoint check catches cases where segment passes through region without crossing boundary in sampling
   let mid = Point2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-  point_in_region(mid, region, tol)
+  if point_too_close(mid, region, radius, tol) {
+    return true;
+  }
+  let len = a.distance_to(b);
+  let steps = ((len / 0.5).ceil() as usize).clamp(2, 64);
+  for i in 1..steps {
+    let t = i as f64 / steps as f64;
+    let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    if point_too_close(p, region, radius, tol) {
+      return true;
+    }
+  }
+  false
 }
 
-fn point_in_region(p: Point2, region: &Region, tol: TolerancePolicy) -> bool {
+fn point_too_close(p: Point2, region: &Region, radius: f64, tol: TolerancePolicy) -> bool {
   region
     .distance_to_boundary(p, tol)
-    .map(|d| d.inside)
+    .map(|d| d.inside || d.distance < radius)
     .unwrap_or(false)
 }
 
@@ -239,16 +255,17 @@ fn path_crosses_any(
   path: &[Point2],
   b: Point2,
   exc_areas: &[Region],
+  radius: f64,
   tol: TolerancePolicy,
 ) -> bool {
   let mut prev = a;
   for p in path {
-    if crosses_any(prev, *p, exc_areas, tol) {
+    if crosses_any(prev, *p, exc_areas, radius, tol) {
       return true;
     }
     prev = *p;
   }
-  crosses_any(prev, b, exc_areas, tol)
+  crosses_any(prev, b, exc_areas, radius, tol)
 }
 
 fn path_length(a: Point2, path: &[Point2], b: Point2) -> f64 {
@@ -258,8 +275,7 @@ fn path_length(a: Point2, path: &[Point2], b: Point2) -> f64 {
     len += prev.distance_to(*p);
     prev = *p;
   }
-  len += prev.distance_to(b);
-  len
+  len + prev.distance_to(b)
 }
 
 fn inflated_vertices(boundary: &cam_geom::Contour, clearance: f64) -> Vec<Point2> {
@@ -310,20 +326,16 @@ fn coarse_escape(
   b: Point2,
   exc_areas: &[Region],
   tol: TolerancePolicy,
-  clearance: f64,
+  radius: f64,
 ) -> Option<Vec<Point2>> {
-  // Try a ring of points around the midpoint at increasing radii.
   let mid = Point2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
   let base = a.distance_to(b).max(1.0);
-  for &r in &[base * 0.5, base, base * 2.0, base * 4.0] {
-    for k in 0..16 {
-      let ang = (k as f64) * std::f64::consts::TAU / 16.0;
+  for &r in &[base * 0.5, base, base * 2.0, base * 4.0, base * 8.0] {
+    for k in 0..24 {
+      let ang = (k as f64) * std::f64::consts::TAU / 24.0;
       let p = Point2::new(mid.x + r * ang.cos(), mid.y + r * ang.sin());
       let path = vec![p];
-      if !path_crosses_any(a, &path, b, exc_areas, tol)
-        && !point_in_region(p, &Region { boundaries: vec![] }, tol)
-      {
-        let _ = clearance;
+      if !path_crosses_any(a, &path, b, exc_areas, radius, tol) {
         return Some(path);
       }
     }
@@ -335,6 +347,8 @@ fn coarse_escape(
 mod tests {
   use super::*;
   use cam_geom::{Contour, Point2};
+  use cam_move::{Move, MoveStream, Segment, ToolShape};
+  use cam_units::Length;
 
   fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> Region {
     Region::new(vec![Contour::from_points(
@@ -361,7 +375,14 @@ mod tests {
         to: Point3::new(5.0, 0.0, 5.0),
       },
     ];
-    let out = route_travel_around_exc_areas(&moves, &exc, 1.0, TolerancePolicy::default());
+    let (out, _) = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 5.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap();
     assert_eq!(out.len(), 2);
   }
 
@@ -376,19 +397,99 @@ mod tests {
         to: Point3::new(10.0, 0.0, 5.0),
       },
     ];
-    let out = route_travel_around_exc_areas(&moves, &exc, 0.5, TolerancePolicy::default());
+    let (out, _) = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 5.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap();
     assert!(out.len() >= 3, "should insert detour points");
-    // no segment should cross exc area
     let tol = TolerancePolicy::default();
     let mut prev = Point2::new(0.0, 0.0);
     for mv in &out {
       let to = mv.destination();
       let b = Point2::new(to.x.mm(), to.y.mm());
       assert!(
-        !segment_hits_region(prev, b, &exc[0], tol),
+        !segment_hits_region(prev, b, &exc[0], 0.5, tol),
         "detour still crosses"
       );
       prev = b;
+    }
+  }
+
+  #[test]
+  fn first_move_from_known_start_is_routed() {
+    let exc = [square(4.0, -1.0, 6.0, 1.0)];
+    let moves = vec![Move::Rapid {
+      to: Point3::new(10.0, 0.0, 5.0),
+    }];
+    let (out, _) = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 5.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap();
+    assert!(out.len() >= 2);
+  }
+
+  #[test]
+  fn unroutable_travel_returns_error() {
+    // endpoint inside exclusion -> cannot be collision-free
+    let exc = [square(9.0, -1.0, 11.0, 1.0)];
+    let moves = vec![Move::Rapid {
+      to: Point3::new(10.0, 0.0, 5.0),
+    }];
+    let err = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 5.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(err, ToolpathError::UnroutableTravel { .. }));
+  }
+
+  #[test]
+  fn stream_routing_carries_position_across_segments() {
+    let exc = [square(4.0, -1.0, 6.0, 1.0)];
+    let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(0.0, 0.0));
+    stream.segments.push(Segment {
+      name: "a".to_owned(),
+      tool_number: 1,
+      tool: ToolShape::cylinder(Length::from_mm(1.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 1000,
+      moves: vec![Move::Rapid {
+        to: Point3::new(0.0, 0.0, 5.0),
+      }],
+    });
+    stream.segments.push(Segment {
+      name: "b".to_owned(),
+      tool_number: 1,
+      tool: ToolShape::cylinder(Length::from_mm(1.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 1000,
+      moves: vec![Move::Rapid {
+        to: Point3::new(10.0, 0.0, 5.0),
+      }],
+    });
+    let routed = route_stream_around_exc_areas(&stream, &exc, TolerancePolicy::default()).unwrap();
+    let tol = TolerancePolicy::default();
+    let mut prev = Point2::new(0.0, 0.0);
+    for seg in &routed.segments {
+      for mv in &seg.moves {
+        let to = mv.destination();
+        let b = Point2::new(to.x.mm(), to.y.mm());
+        assert!(!segment_hits_region(prev, b, &exc[0], 0.5, tol));
+        prev = b;
+      }
     }
   }
 }

@@ -241,7 +241,8 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
     &stream,
     &document.exc_areas,
     cam_geom::TolerancePolicy::default(),
-  );
+  )
+  .map_err(|e| Failure::input(format!("{e}")))?;
   emit_program(&stream, &post_path, flags.out.as_deref(), &path)
 }
 
@@ -324,7 +325,8 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
     &stream,
     &document.exc_areas,
     cam_geom::TolerancePolicy::default(),
-  );
+  )
+  .map_err(|e| Failure::input(format!("{e}")))?;
 
   let cutout_moves: usize = runs
     .iter()

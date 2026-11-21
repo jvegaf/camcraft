@@ -74,15 +74,24 @@ pub fn apply_with_exc_areas(
         crash.move_index = index;
         removal.crashes.push(crash);
       }
-      if !exc_areas.is_empty()
-        && matches!(movement, Move::Rapid { .. } | Move::Retract { .. })
-        && travel_crosses_exc_areas(origin, movement.destination(), exc_areas, tolerance)
-      {
-        removal.crashes.push(Crash {
-          toolpath: segment.name.clone(),
-          move_index: index,
-          at: movement.destination(),
-        });
+      if !exc_areas.is_empty() && matches!(movement, Move::Rapid { .. } | Move::Retract { .. }) {
+        let radius = match tool {
+          ToolShape::Cylinder { diameter } => diameter.mm() / 2.0,
+          ToolShape::VBit { flat_diameter, .. } => flat_diameter.mm() / 2.0,
+        };
+        if travel_crosses_exc_areas(
+          origin,
+          movement.destination(),
+          exc_areas,
+          radius.max(0.0),
+          tolerance,
+        ) {
+          removal.crashes.push(Crash {
+            toolpath: segment.name.clone(),
+            move_index: index,
+            at: movement.destination(),
+          });
+        }
       }
       removal.moves += 1;
       from = Some(movement.destination());
@@ -95,21 +104,30 @@ fn travel_crosses_exc_areas(
   from: Point3,
   to: Point3,
   exc_areas: &[Region],
+  radius: f64,
   tol: TolerancePolicy,
 ) -> bool {
   let a = Point2::new(from.x.mm(), from.y.mm());
   let b = Point2::new(to.x.mm(), to.y.mm());
-  exc_areas.iter().any(|r| segment_hits_region(a, b, r, tol))
+  exc_areas
+    .iter()
+    .any(|r| segment_hits_region(a, b, r, radius, tol))
 }
 
-fn segment_hits_region(a: Point2, b: Point2, region: &Region, tol: TolerancePolicy) -> bool {
-  let inside = |p: Point2| {
+fn segment_hits_region(
+  a: Point2,
+  b: Point2,
+  region: &Region,
+  radius: f64,
+  tol: TolerancePolicy,
+) -> bool {
+  let too_close = |p: Point2| {
     region
       .distance_to_boundary(p, tol)
-      .map(|d| d.inside)
+      .map(|d| d.inside || d.distance < radius)
       .unwrap_or(false)
   };
-  if inside(a) || inside(b) {
+  if too_close(a) || too_close(b) {
     return true;
   }
   for boundary in &region.boundaries {
@@ -127,8 +145,16 @@ fn segment_hits_region(a: Point2, b: Point2, region: &Region, tol: TolerancePoli
       }
     }
   }
-  let mid = Point2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-  inside(mid)
+  let len = a.distance_to(b);
+  let steps = ((len / 0.5).ceil() as usize).clamp(2, 64);
+  for i in 0..=steps {
+    let t = i as f64 / steps as f64;
+    let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    if too_close(p) {
+      return true;
+    }
+  }
+  false
 }
 
 fn segments_intersect(a: Point2, b: Point2, c: Point2, d: Point2) -> bool {

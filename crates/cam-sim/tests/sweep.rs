@@ -793,7 +793,8 @@ fn rapid_crossing_exc_area_is_reported_as_collision_and_routed_travel_is_clean()
     "crossing travel must be reported as collision"
   );
 
-  let routed = cam_ops::route_stream_around_exc_areas(&stream, &exc, TolerancePolicy::default());
+  let routed =
+    cam_ops::route_stream_around_exc_areas(&stream, &exc, TolerancePolicy::default()).unwrap();
   let mut hf2 = field(30.0, 0.5);
   let removal2 = apply_with_exc_areas(&routed, &mut hf2, &exc, TolerancePolicy::default());
   assert!(
