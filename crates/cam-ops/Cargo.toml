@@ -13,6 +13,7 @@ cam-move.workspace = true
 cam-model.workspace = true
 cam-excellon.workspace = true
 thiserror.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 cam-gerber.workspace = true

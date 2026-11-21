@@ -805,6 +805,7 @@ dependencies = [
  "cam-sim",
  "cam-units",
  "criterion",
+ "rayon",
  "thiserror 2.0.21",
 ]
 
