@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
+use cam_geom::region::Region;
 use cam_geom::{Bounds, Contour, Point2};
 use cam_units::{Angle, Length};
 use serde::{Deserialize, Serialize};
@@ -520,6 +521,10 @@ pub struct Document {
   /// Optional nesting section.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub nesting: Option<Nesting>,
+  /// Exclusion areas: travel moves must not cross these regions (E5.2, S2/S4).
+  /// Document coordinates. Empty by default for backward compatibility.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub exc_areas: Vec<Region>,
 }
 
 /// The nesting section of a document (M9, S1-S4).
@@ -692,6 +697,16 @@ pub enum ModelError {
   /// Geometry stored in the document failed the kernel's validation.
   #[error("invalid geometry: {0}")]
   InvalidGeometry(String),
+  /// An exclusion area is not well-formed.
+  #[error("exc_areas[{index}] boundary {boundary} is invalid: {reason}")]
+  InvalidExcArea {
+    /// Index in document.exc_areas.
+    index: usize,
+    /// Boundary index within the region.
+    boundary: usize,
+    /// Why it is invalid.
+    reason: String,
+  },
   /// A cutting toolpath was assigned an open contour.
   #[error("toolpath {toolpath:?} needs closed geometry, entity {entity:?} is open")]
   OpenContourNotCuttable {
@@ -1026,6 +1041,7 @@ impl Document {
       toolpaths: Vec::new(),
       tools_ref: None,
       postp: None,
+      exc_areas: Vec::new(),
       nesting: None,
     }
   }
@@ -1219,11 +1235,27 @@ impl Document {
       check_panelize(toolpath)?;
     }
 
+    check_exc_areas(self)?;
     check_layers(self)?;
     check_nesting(self)?;
 
     Ok(())
   }
+}
+
+fn check_exc_areas(document: &Document) -> Result<(), ModelError> {
+  for (index, region) in document.exc_areas.iter().enumerate() {
+    for (bi, boundary) in region.boundaries.iter().enumerate() {
+      if !boundary.is_closed() {
+        return Err(ModelError::InvalidExcArea {
+          index,
+          boundary: bi,
+          reason: "boundary is not closed".to_owned(),
+        });
+      }
+    }
+  }
+  Ok(())
 }
 
 /// Check the optional nesting section: authored sheets, parts, placements, their agreement and the

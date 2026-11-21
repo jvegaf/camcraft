@@ -2546,3 +2546,36 @@ fn entity_source_metadata_defaults_when_absent() {
   assert!(document.layers[0].entities[0].source.is_empty());
   document.validate().expect("valid");
 }
+
+#[test]
+fn exc_areas_default_and_round_trip() {
+  let json = r##"{
+    "schema": "camcraft/document@1",
+    "board": {"width": 100.0, "height": 100.0, "thickness": 1.6,
+              "origin": "bottom_left", "side_up": "top"},
+    "layers": [], "toolpaths": []
+  }"##;
+  let mut document: Document = serde_json::from_str(json).expect("deserialises");
+  assert!(document.exc_areas.is_empty());
+  document
+    .exc_areas
+    .push(cam_geom::region::Region::new(vec![square(10.0)]).expect("region"));
+  document.validate().expect("valid with exc_areas");
+  let serialized = serde_json::to_string(&document).expect("serializes");
+  let parsed: Document = serde_json::from_str(&serialized).expect("round trip");
+  assert_eq!(parsed.exc_areas.len(), 1);
+  assert_eq!(parsed.exc_areas[0].boundaries.len(), 1);
+}
+
+#[test]
+fn exc_areas_reject_open_boundary() {
+  let mut document = Document::new(Board::default_board());
+  let open = cam_geom::Contour::new(square(10.0).vertices().to_vec(), false).expect("open contour");
+  document.exc_areas.push(cam_geom::region::Region {
+    boundaries: vec![open],
+  });
+  let err = document
+    .validate()
+    .expect_err("open exc_area boundary must be rejected");
+  assert!(format!("{err}").contains("exc_areas[0]"));
+}

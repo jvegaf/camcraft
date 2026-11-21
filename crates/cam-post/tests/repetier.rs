@@ -74,3 +74,67 @@ fn emitting_the_same_stream_twice_is_byte_identical() {
   let second = emit(&post, &profile_stream(), &meta()).expect("emits");
   assert_eq!(first.text, second.text);
 }
+
+#[test]
+fn toolchange_uses_repetier_pause_style() {
+  let post = parse_post(REPETIER_POST).expect("built-in Repetier post parses");
+  let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(0.0, 0.0));
+  stream.segments.push(Segment {
+    name: "Drill 1".to_owned(),
+    tool_number: 1,
+    tool: ToolShape::cylinder(Length::from_mm(1.0)),
+    feed_rate: 100.0,
+    plunge_rate: 30.0,
+    spindle_speed: 12_000,
+    moves: vec![
+      Move::Rapid {
+        to: Point3::new(10.0, 0.0, 5.0),
+      },
+      Move::Feed {
+        to: Point3::new(10.0, 0.0, -1.0),
+      },
+      Move::Retract {
+        to: Point3::new(10.0, 0.0, 5.0),
+      },
+    ],
+  });
+  stream.segments.push(Segment {
+    name: "Drill 2".to_owned(),
+    tool_number: 2,
+    tool: ToolShape::cylinder(Length::from_mm(2.0)),
+    feed_rate: 100.0,
+    plunge_rate: 30.0,
+    spindle_speed: 9_000,
+    moves: vec![
+      Move::Rapid {
+        to: Point3::new(20.0, 0.0, 5.0),
+      },
+      Move::Feed {
+        to: Point3::new(20.0, 0.0, -1.0),
+      },
+      Move::Retract {
+        to: Point3::new(20.0, 0.0, 5.0),
+      },
+    ],
+  });
+  let emitted = emit(&post, &stream, &meta()).expect("emits");
+  let expected = concat!(
+    "G21 G90 G94 G17\n",
+    "M3 S12000\n",
+    "G0X10.000Y0.000Z5.000\n",
+    "G1Z-1.000F30.0\n",
+    "G0Z5.000\n",
+    "G0 Z5.000\n",
+    "M84\n",
+    "@pause Change tool to T2\n",
+    "G0 Z5.000\n",
+    "(new segment)\n",
+    "G0X20.000\n",
+    "G1Z-1.000\n",
+    "G0Z5.000\n",
+    "M5\n",
+    "G0 X0.000 Y0.000\n",
+    "M30\n",
+  );
+  assert_eq!(emitted.text, expected);
+}

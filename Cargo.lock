@@ -829,6 +829,7 @@ dependencies = [
  "cam-geom",
  "cam-model",
  "cam-move",
+ "cam-ops",
  "cam-units",
  "proptest",
  "thiserror 2.0.21",

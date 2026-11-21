@@ -5,6 +5,7 @@
 
 #![warn(missing_docs)]
 
+pub mod exc_travel;
 pub mod excellon_drill;
 pub mod follow;
 pub mod isolation;
@@ -16,6 +17,7 @@ pub mod penetration;
 pub mod rings;
 pub mod shared;
 
+pub use exc_travel::{route_stream_around_exc_areas, route_travel_around_exc_areas};
 pub use excellon_drill::{
   plan_excellon_drill, ExcellonDrillPlan, ExcellonToolPlan, ExcellonToolSetup, SlotMode,
   ToolResolver,

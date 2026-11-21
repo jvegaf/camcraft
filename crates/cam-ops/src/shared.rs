@@ -387,6 +387,22 @@ pub enum ToolpathError {
     /// The strategy's refusal.
     source: Box<ToolpathError>,
   },
+  /// A rapid/retract travel crosses an exclusion area and no safe detour could be found.
+  #[error(
+    "travel from ({from_x:.3}, {from_y:.3}) to ({to_x:.3}, {to_y:.3}) mm crosses an exclusion area      and no safe detour could be found with {clearance_mm:.3} mm clearance"
+  )]
+  UnroutableTravel {
+    /// Start X in mm.
+    from_x: f64,
+    /// Start Y in mm.
+    from_y: f64,
+    /// End X in mm.
+    to_x: f64,
+    /// End Y in mm.
+    to_y: f64,
+    /// Clearance used for routing, in mm.
+    clearance_mm: f64,
+  },
 }
 
 /// Depth of each pass, from the start depth down to the cut depth.

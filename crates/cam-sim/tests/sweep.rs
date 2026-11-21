@@ -748,3 +748,57 @@ fn a_full_turn_helix_is_one_revolution_and_grades_one_pitch_around_it() {
     "and the middle is still standing"
   );
 }
+
+#[test]
+fn rapid_crossing_exc_area_is_reported_as_collision_and_routed_travel_is_clean() {
+  use cam_geom::region::Region;
+  use cam_geom::{Contour, Point2 as G2, TolerancePolicy};
+  use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
+  use cam_sim::sweep::apply_with_exc_areas;
+
+  let exc = vec![Region::new(vec![Contour::from_points(
+    &[
+      G2::new(4.0, -1.0),
+      G2::new(6.0, -1.0),
+      G2::new(6.0, 1.0),
+      G2::new(4.0, 1.0),
+    ],
+    true,
+  )
+  .unwrap()])
+  .unwrap()];
+
+  let mut stream = MoveStream::new(Length::from_mm(5.0), G2::new(0.0, 0.0));
+  stream.segments.push(Segment {
+    name: "t".to_owned(),
+    tool_number: 1,
+    tool: ToolShape::cylinder(Length::from_mm(1.0)),
+    feed_rate: 100.0,
+    plunge_rate: 30.0,
+    spindle_speed: 1000,
+    moves: vec![
+      Move::Rapid {
+        to: Point3::new(0.0, 0.0, 5.0),
+      },
+      Move::Rapid {
+        to: Point3::new(10.0, 0.0, 5.0),
+      },
+    ],
+  });
+
+  let mut hf = field(30.0, 0.5);
+  let removal = apply_with_exc_areas(&stream, &mut hf, &exc, TolerancePolicy::default());
+  assert!(
+    !removal.crashes.is_empty(),
+    "crossing travel must be reported as collision"
+  );
+
+  let routed =
+    cam_ops::route_stream_around_exc_areas(&stream, &exc, TolerancePolicy::default()).unwrap();
+  let mut hf2 = field(30.0, 0.5);
+  let removal2 = apply_with_exc_areas(&routed, &mut hf2, &exc, TolerancePolicy::default());
+  assert!(
+    removal2.crashes.is_empty(),
+    "routed travel must not collide with exc_areas"
+  );
+}

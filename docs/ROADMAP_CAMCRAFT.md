@@ -174,9 +174,9 @@ byte a byte con distintos `RAYON_NUM_THREADS`.
 | ID | Tarea | Tamaño | Criterio de salida |
 | --- | --- | --- | --- |
 | E5.1 | Catálogo de dialectos `.pp` de FlatCAM como datos (GRBL, Marlin, Repetier y los de uso real) | **M** | Cada dialecto con golden test byte a byte |
-| E5.2 | `exc_areas` en el modelo + ruteo de travel alrededor de exclusiones | **M** | Un travel que cruza un área prohibida se desvía; simulación sin colisión |
+| E5.2 | `exc_areas` en el modelo + ruteo de travel alrededor de exclusiones | **M** | ✅ Task 069: Document.exc_areas, routing Rapid/Retract, sim collision checks. |
 | E5.3 | Autolevelling como transformación del `MoveStream`: mapa de alturas, segmentación de arcos y movimientos largos | **L** | Sobre una placa con warp simulado, la profundidad efectiva queda dentro de tolerancia |
-| E5.4 | `toolchange_style` como enum en el preprocesador, reemplazando el matching por nombre de FlatCAM (`CNCJobObject.py:947-962`) | **S** | Los dialectos con M6 especial emiten igual que el original; golden |
+| E5.4 | `toolchange_style` como enum en el preprocesador, reemplazando el matching por nombre de FlatCAM (`CNCJobObject.py:947-962`) | **S** | ✅ Task 069: ToolchangeStyle enum/directive, emit por estilo, goldens M6 Marlin/Repetier. |
 | E5.5 | Escritores Gerber y Excellon en `cam-export` | **M** | Round-trip: exportar e importar recupera la geometría dentro de tolerancia |
 
 ---

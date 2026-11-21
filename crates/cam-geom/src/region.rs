@@ -32,7 +32,7 @@ pub use crate::region_offset::RegionOffset;
 /// Build one with [`Region::new`]; `boundaries` is public because reading a region is a legitimate
 /// thing to do, but a region built by hand must still satisfy the closedness invariant, which is why
 /// the field is normally reached through [`Region::normalize`] instead.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Region {
   /// The closed boundaries. Membership is by parity across them, never by orientation.
   pub boundaries: Vec<Contour>,

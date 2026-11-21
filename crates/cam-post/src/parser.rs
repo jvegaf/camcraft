@@ -1,6 +1,8 @@
 //! Parser for the `.pp` post-processor dialect.
 
-use crate::{BlockKind, EmissionMode, PostError, PostProcessor, PostUnits, VarSpec};
+use crate::{
+  BlockKind, EmissionMode, PostError, PostProcessor, PostUnits, ToolchangeStyle, VarSpec,
+};
 
 /// Comment markers seen in the dialect: `+` in shipped files, `|` in the versioned store.
 fn is_comment(line: &str) -> bool {
@@ -149,6 +151,18 @@ fn apply_directive(
     "ROTARY_WRAP_Y" => post.rotary_wrap_y = Some(unquote_or_bare(value, number)?),
     "RAPID_PLUNGE_TO_STARTZ" => post.rapid_plunge_to_start_z = parse_flag(value, number, line, 0)?,
     "PRINT_DIRECT" => post.print_direct = parse_flag(value, number, line, 1)?,
+    "TOOLCHANGE_STYLE" => {
+      let style = unquote(value, number)?;
+      post.toolchange_style = ToolchangeStyle::parse(&style).ok_or_else(|| {
+        PostError::new(
+          number,
+          column_of(line, "TOOLCHANGE_STYLE") + 1,
+          format!(
+            "unknown TOOLCHANGE_STYLE {style:?}; expected \"STANDARD\", \"MARLIN_M6\" or \"REPETIER_PAUSE\""
+          ),
+        )
+      })?;
+    }
     other => {
       return Err(PostError::new(
         number,
@@ -157,7 +171,7 @@ fn apply_directive(
           "unknown directive {other:?}; expected one of POST_NAME, FILE_EXTENSION, UNITS, \
            LINE_ENDING, LINE_NUMBER_START, LINE_NUMBER_INCREMENT, LINE_NUMBER_MAXIMUM, \
            DIRECT_OUTPUT, SUBSTITUTE, ROTARY_WRAP_X, ROTARY_WRAP_Y, RAPID_PLUNGE_TO_STARTZ, \
-           PRINT_DIRECT or VAR"
+           PRINT_DIRECT, TOOLCHANGE_STYLE or VAR"
         ),
       ))
     }

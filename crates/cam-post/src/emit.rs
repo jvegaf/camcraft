@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use cam_move::{Move, MoveStream, Point3};
 use cam_units::{Format, MM_PER_INCH};
 
-use crate::{BlockKind, EmissionMode, PostProcessor, PostUnits, VarSpec};
+use crate::{BlockKind, EmissionMode, PostProcessor, PostUnits, ToolchangeStyle, VarSpec};
 
 /// Metadata a post-processor may reference in its text variables.
 ///
@@ -165,7 +165,7 @@ impl<'a> Writer<'a> {
             arc_center: None,
             arc_radius: None,
           };
-          self.emit_block(BlockKind::Toolchange, &site)?;
+          self.emit_toolchange(&site, segment)?;
         }
       }
       if index > 0 {
@@ -322,6 +322,78 @@ impl<'a> Writer<'a> {
     ]
     .iter()
     .any(|kind| !self.post.block(*kind).is_empty())
+  }
+
+  fn emit_toolchange(&mut self, site: &Site, segment: &cam_move::Segment) -> Result<(), EmitError> {
+    match self.post.toolchange_style {
+      ToolchangeStyle::Standard => self.emit_block(BlockKind::Toolchange, site),
+      ToolchangeStyle::MarlinM6 => {
+        let z = self.format_z(self.stream.safe_z.mm());
+        let tool = segment.tool_number;
+        let lines = vec![
+          "M5".to_string(),
+          format!("G0 Z{z}"),
+          format!("T{tool}"),
+          "M6".to_string(),
+          format!("(MSG, Change tool to T{tool})"),
+          "M0".to_string(),
+          format!("G0 Z{z}"),
+        ];
+        self.emit_raw_lines(lines);
+        self.note_z_emitted(&z);
+        Ok(())
+      }
+      ToolchangeStyle::RepetierPause => {
+        let z = self.format_z(self.stream.safe_z.mm());
+        let tool = segment.tool_number;
+        let lines = vec![
+          format!("G0 Z{z}"),
+          "M84".to_string(),
+          format!("@pause Change tool to T{tool}"),
+          format!("G0 Z{z}"),
+        ];
+        self.emit_raw_lines(lines);
+        self.note_z_emitted(&z);
+        Ok(())
+      }
+    }
+  }
+
+  fn note_z_emitted(&mut self, z: &str) {
+    // Keep OnChange state coherent after style-specific raw toolchange lines.
+    let prefix = self
+      .by_source
+      .get("Z")
+      .map(|v| v.prefix.clone())
+      .unwrap_or_else(|| "Z".to_string());
+    self
+      .last_emitted
+      .insert("Z".to_string(), format!("{prefix}{z}"));
+  }
+
+  fn format_z(&self, mm: f64) -> String {
+    let value = match self.post.units {
+      PostUnits::Millimetres => mm,
+      PostUnits::Inches => mm / MM_PER_INCH,
+    };
+    let decimals = self
+      .by_source
+      .get("Z")
+      .map(|v| v.decimals as usize)
+      .unwrap_or(3);
+    format!("{value:.decimals$}")
+  }
+
+  fn emit_raw_lines(&mut self, lines: Vec<String>) {
+    let ending = self.line_ending();
+    for line in lines {
+      if line.trim().is_empty() {
+        continue;
+      }
+      self.out.push_str(&line);
+      self.out.push_str(&ending);
+      self.lines += 1;
+    }
   }
 
   fn emit_block(&mut self, kind: BlockKind, site: &Site) -> Result<(), EmitError> {

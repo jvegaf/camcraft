@@ -22,7 +22,8 @@
 
 use std::f64::consts::TAU;
 
-use cam_geom::Point2;
+use cam_geom::region::Region;
+use cam_geom::{Point2, TolerancePolicy};
 use cam_model::Frame;
 use cam_move::{Move, MoveStream, Point3, ToolShape};
 
@@ -50,6 +51,16 @@ pub struct Removal {
 
 /// Apply a whole program to a field, one segment at a time, with each segment's own tool shape.
 pub fn apply(program: &MoveStream, field: &mut Heightfield) -> Removal {
+  apply_with_exc_areas(program, field, &[], TolerancePolicy::default())
+}
+
+/// Apply a whole program to a field, checking rapid/retract travel against exclusion areas (E5.2).
+pub fn apply_with_exc_areas(
+  program: &MoveStream,
+  field: &mut Heightfield,
+  exc_areas: &[Region],
+  tolerance: TolerancePolicy,
+) -> Removal {
   let mut removal = Removal::default();
   for segment in &program.segments {
     let tool = segment.tool;
@@ -63,11 +74,117 @@ pub fn apply(program: &MoveStream, field: &mut Heightfield) -> Removal {
         crash.move_index = index;
         removal.crashes.push(crash);
       }
+      if !exc_areas.is_empty() && matches!(movement, Move::Rapid { .. } | Move::Retract { .. }) {
+        let z = origin.z.mm().max(movement.destination().z.mm()).max(0.0);
+        let radius = match tool {
+          ToolShape::Cylinder { diameter } => diameter.mm() / 2.0,
+          ToolShape::VBit { .. } => tool.radius_at(z),
+        };
+        if travel_crosses_exc_areas(
+          origin,
+          movement.destination(),
+          exc_areas,
+          radius.max(0.0),
+          tolerance,
+        ) {
+          removal.crashes.push(Crash {
+            toolpath: segment.name.clone(),
+            move_index: index,
+            at: movement.destination(),
+          });
+        }
+      }
       removal.moves += 1;
       from = Some(movement.destination());
     }
   }
   removal
+}
+
+fn travel_crosses_exc_areas(
+  from: Point3,
+  to: Point3,
+  exc_areas: &[Region],
+  radius: f64,
+  tol: TolerancePolicy,
+) -> bool {
+  let a = Point2::new(from.x.mm(), from.y.mm());
+  let b = Point2::new(to.x.mm(), to.y.mm());
+  exc_areas
+    .iter()
+    .any(|r| segment_hits_region(a, b, r, radius, tol))
+}
+
+fn segment_hits_region(
+  a: Point2,
+  b: Point2,
+  region: &Region,
+  radius: f64,
+  tol: TolerancePolicy,
+) -> bool {
+  let too_close = |p: Point2| {
+    region
+      .distance_to_boundary(p, tol)
+      .map(|d| d.inside || d.distance < radius)
+      .unwrap_or(false)
+  };
+  if too_close(a) || too_close(b) {
+    return true;
+  }
+  for boundary in &region.boundaries {
+    let pts = boundary.tessellate(tol);
+    if pts.len() < 2 {
+      continue;
+    }
+    let n = pts.len();
+    let limit = if boundary.is_closed() { n } else { n - 1 };
+    for i in 0..limit {
+      let c = pts[i];
+      let d = pts[(i + 1) % n];
+      if segments_intersect(a, b, c, d) {
+        return true;
+      }
+    }
+  }
+  let len = a.distance_to(b);
+  let steps = ((len / 0.5).ceil() as usize).clamp(2, 64);
+  for i in 0..=steps {
+    let t = i as f64 / steps as f64;
+    let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    if too_close(p) {
+      return true;
+    }
+  }
+  false
+}
+
+fn segments_intersect(a: Point2, b: Point2, c: Point2, d: Point2) -> bool {
+  fn orient(p: Point2, q: Point2, r: Point2) -> f64 {
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+  }
+  fn on_seg(p: Point2, q: Point2, r: Point2) -> bool {
+    q.x <= p.x.max(r.x) + 1e-9
+      && q.x + 1e-9 >= p.x.min(r.x)
+      && q.y <= p.y.max(r.y) + 1e-9
+      && q.y + 1e-9 >= p.y.min(r.y)
+  }
+  let o1 = orient(a, b, c);
+  let o2 = orient(a, b, d);
+  let o3 = orient(c, d, a);
+  let o4 = orient(c, d, b);
+  if o1.abs() < 1e-12 && on_seg(a, c, b) {
+    return true;
+  }
+  if o2.abs() < 1e-12 && on_seg(a, d, b) {
+    return true;
+  }
+  if o3.abs() < 1e-12 && on_seg(c, a, d) {
+    return true;
+  }
+  if o4.abs() < 1e-12 && on_seg(c, b, d) {
+    return true;
+  }
+  (o1 > 0.0) != (o2 > 0.0) && (o3 > 0.0) != (o4 > 0.0)
 }
 
 /// The depth residual one sample interval may leave, as a divisor of a cell.

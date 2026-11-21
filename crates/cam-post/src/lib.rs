@@ -75,6 +75,43 @@ impl PostUnits {
   }
 }
 
+/// How tool changes are emitted (E5.4).
+///
+/// `Standard` emits the post-processor's `TOOLCHANGE` block as authored. Other styles emit a
+/// style-specific sequence that matches the original FlatCAM dialect behaviour for controllers that
+/// need special M6/pause handling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ToolchangeStyle {
+  /// Emit the `TOOLCHANGE` block template as written in the post.
+  #[default]
+  Standard,
+  /// Marlin-style tool change: M5, lift to safe Z, Tn, M6, message, M0 pause, lift to safe Z.
+  MarlinM6,
+  /// Repetier-style tool change: lift to safe Z, M84 motors off, @pause message, lift to safe Z.
+  RepetierPause,
+}
+
+impl ToolchangeStyle {
+  /// Parse the `TOOLCHANGE_STYLE` directive's value.
+  pub fn parse(value: &str) -> Option<Self> {
+    match value.trim().to_ascii_uppercase().as_str() {
+      "STANDARD" | "DEFAULT" => Some(Self::Standard),
+      "MARLIN_M6" | "MARLIN" => Some(Self::MarlinM6),
+      "REPETIER_PAUSE" | "REPETIER" => Some(Self::RepetierPause),
+      _ => None,
+    }
+  }
+
+  /// Canonical directive value.
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Standard => "STANDARD",
+      Self::MarlinM6 => "MARLIN_M6",
+      Self::RepetierPause => "REPETIER_PAUSE",
+    }
+  }
+}
+
 /// How a variable appears in the output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmissionMode {
@@ -239,6 +276,8 @@ pub struct PostProcessor {
   pub rapid_plunge_to_start_z: bool,
   /// `PRINT_DIRECT`.
   pub print_direct: bool,
+  /// `TOOLCHANGE_STYLE`: how tool changes are emitted (E5.4). Default preserves legacy block emission.
+  pub toolchange_style: ToolchangeStyle,
   /// `VAR` declarations, keyed by variable name in declaration order.
   pub variables: BTreeMap<String, VarSpec>,
   /// Output blocks, keyed by kind.
@@ -261,6 +300,7 @@ impl Default for PostProcessor {
       rotary_wrap_y: None,
       rapid_plunge_to_start_z: false,
       print_direct: false,
+      toolchange_style: ToolchangeStyle::Standard,
       variables: BTreeMap::new(),
       blocks: BTreeMap::new(),
     }
