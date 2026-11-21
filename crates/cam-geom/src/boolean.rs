@@ -2048,7 +2048,7 @@ fn combine_with_indexed(
         _ => d4p += 1,
       }
     }
-    if d3 == 0 && d4p == 0 && d1 >= 2 && d1 <= RETRY_REPAIR_MAX_DEGREE1 {
+    if d3 == 0 && d4p == 0 && (2..=RETRY_REPAIR_MAX_DEGREE1).contains(&d1) {
       let mut s3 = segments.clone();
       let d1_points: Vec<Point2> = vertices
         .iter()
