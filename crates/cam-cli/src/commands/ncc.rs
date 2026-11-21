@@ -153,6 +153,11 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
       moves: run.moves,
     });
   }
+  let stream = cam_ops::route_stream_around_exc_areas(
+    &stream,
+    &document.exc_areas,
+    cam_geom::TolerancePolicy::default(),
+  );
   emit_program(&stream, &post_path, flags.out.as_deref(), &path)
 }
 

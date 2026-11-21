@@ -35,6 +35,8 @@
 
 ## Log
 
+- **L6** (assistant): T3/T4 added exc_travel routing (Rapid/Retract detours around exc_areas, per-segment tool clearance), wired into isolate/cutout/program/ncc CLI emit paths, extended cam-sim with apply_with_exc_areas collision checks, and added acceptance tests for deviation and no-collision.
+
 - **L5** (assistant): T2 added Document.exc_areas: Vec<Region> with serde default/skip_serializing_if empty, Region serde derives, check_exc_areas validation, and document round-trip/default/reject tests. cam-model tests pass.
 
 - **L4** (assistant): T1 implemented ToolchangeStyle enum (Standard/MarlinM6/RepetierPause), TOOLCHANGE_STYLE directive parsing, emit style dispatch, marlin/repetier posts declare style; added toolchange goldens for marlin/repetier. cam-post tests pass.

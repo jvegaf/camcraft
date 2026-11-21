@@ -237,6 +237,11 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
     }
     stream.segments.push(cutout_segment(run, &flags, diameter));
   }
+  let stream = cam_ops::route_stream_around_exc_areas(
+    &stream,
+    &document.exc_areas,
+    cam_geom::TolerancePolicy::default(),
+  );
   emit_program(&stream, &post_path, flags.out.as_deref(), &path)
 }
 
@@ -315,12 +320,17 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
     }
     stream.segments.push(cutout_segment(run, &flags, diameter));
   }
+  let stream = cam_ops::route_stream_around_exc_areas(
+    &stream,
+    &document.exc_areas,
+    cam_geom::TolerancePolicy::default(),
+  );
 
   let cutout_moves: usize = runs
     .iter()
     .map(|run| run.moves.len() + run.mouse_bite_moves.len())
     .sum();
-  let drill_moves = stream.move_count() - cutout_moves;
+  let drill_moves = stream.move_count().saturating_sub(cutout_moves);
   let bite_hits: usize = runs
     .iter()
     .map(|run| {
