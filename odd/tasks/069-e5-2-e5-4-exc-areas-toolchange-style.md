@@ -27,13 +27,15 @@
 
 | ID | Spec | Route | Commit | Status |
 | --- | --- | --- | --- | --- |
-| T1 | S3,S5 | inline | — | pending | Add `toolchange_style` enum/directive to cam-post, default compatible, emit by style, goldens for special M6 dialects |
+| T1 | S3,S5 | inline | (pending commit) | done | Add `toolchange_style` enum/directive to cam-post, default compatible, emit by style, goldens for special M6 dialects |
 | T2 | S2,S4 | inline | — | pending | Add `exc_areas: Vec<Region>` to Document (serde default, backcompat) and model/validation plumbing |
 | T3 | S2,S4 | inline | — | pending | Implement travel routing around exc_areas for Rapid/Retract moves and wire into G-code-producing paths before emit/sim |
 | T4 | S2,S4 | inline | — | pending | Extend simulation/collision checks for travel across exclusion areas; add tests proving travel deviates and sim has no collision |
 | T5 | S2,S3 | inline | — | pending | Update roadmap/docs status and task evidence; run focused checks |
 
 ## Log
+
+- **L4** (assistant): T1 implemented ToolchangeStyle enum (Standard/MarlinM6/RepetierPause), TOOLCHANGE_STYLE directive parsing, emit style dispatch, marlin/repetier posts declare style; added toolchange goldens for marlin/repetier. cam-post tests pass.
 
 - **L1** (user request, verbatim): "ahora para la task 069 vamos con E5.2 y E5.4"
 - **L2** (assistant): Explored E5.2/E5.4 surfaces via gentle-ai-explore. Key findings: no `exc_areas`/`toolchange_style` in crates; cam-move has Rapid/Retract; cam-sim only checks rapid below surface; cam-post has fixed TOOLCHANGE block emission, no style directive; FlatCAM RUST_PORT_LOGIC notes travel_coordinates and name-based toolchange special casing (marlin/repetier).
