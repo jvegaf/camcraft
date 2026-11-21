@@ -80,6 +80,15 @@ COMMANDS:
         --spindle <rpm>       Spindle speed (default 18000)
         --vbit-angle <deg>    V-bit included angle to derive cut depth (with --vbit-tip)
         --vbit-tip <mm>       V-bit tip/flat diameter to derive cut depth (with --vbit-angle)
+    ncc <document>            Non-copper clear for the document's NonCopperClear toolpaths: envelope
+                              from copper+outline, fill by method (standard/seed/lines), emit G-code
+        --diameter <mm>       Tool diameter (required)
+        --post <file>         Post-processor (.pp); without it only the report is printed
+        --out <path>          Write the G-code to a file instead of stdout
+        --tool <number>       Tool number carried by the emitted segments (default 1)
+        --feed <mm/min>       Cutting feed rate (default 100)
+        --plunge <mm/min>     Plunge rate (default 30)
+        --spindle <rpm>       Spindle speed (default 18000)
     program <document>        One board program: the Excellon drills first, then the cutout
         --drill <file.drl>    Excellon drill file (required)
         --post <file>         Post-processor (.pp) to emit with (required)
@@ -227,6 +236,7 @@ pub fn run(arguments: &[String]) -> Result<(), Failure> {
     "program" => commands::cutout::program(rest),
     "drill" => commands::drill::run(rest),
     "isolate" => commands::isolate::run(rest),
+    "ncc" => commands::ncc::run(rest),
     "parts" => pieces::parts_command(rest),
     "cutlist" => pieces::cutlist_command(rest),
     "report" => printsheet::report_command(rest),

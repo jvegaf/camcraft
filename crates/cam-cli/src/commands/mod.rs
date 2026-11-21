@@ -10,6 +10,7 @@ pub mod export;
 pub mod import;
 pub mod inspect;
 pub mod isolate;
+pub mod ncc;
 pub mod postp;
 pub mod tools;
 pub mod validate;
