@@ -686,3 +686,83 @@ fn measure_ncc_large_plate_benchmark() {
   );
   assert!(!fill.contours.is_empty());
 }
+
+#[test]
+#[ignore = "timing measurement for E4.7 / Hito 3 on corpus large plate"]
+fn measure_ncc_large_plate_kicad_large_pours() {
+  use std::path::PathBuf;
+  use std::time::Instant;
+  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let top =
+    std::fs::read_to_string(root.join("fixtures/corpus/kicad-large-pours/top.gbr")).expect("top");
+  let outline = std::fs::read_to_string(root.join("fixtures/corpus/kicad-large-pours/outline.gbr"))
+    .expect("outline");
+  let tol = TolerancePolicy::uniform(1.0e-6);
+  let copper = cam_gerber::parse(&top)
+    .expect("parse top")
+    .image(tol)
+    .expect("image top");
+  let outline_region = cam_gerber::parse(&outline)
+    .expect("parse outline")
+    .image(tol)
+    .expect("image outline");
+
+  // Outline is a stroked ring: board interior is outer filled minus stroke.
+  let mut outer_idx = 0usize;
+  let mut outer_area = 0.0f64;
+  for (i, b) in outline_region.boundaries.iter().enumerate() {
+    let a = b.signed_area().abs();
+    if a > outer_area {
+      outer_area = a;
+      outer_idx = i;
+    }
+  }
+  let outer_filled = Region::new(vec![outline_region.boundaries[outer_idx].clone()])
+    .unwrap()
+    .normalize(tol)
+    .unwrap()
+    .region;
+  let board = match cam_geom::boolean::combine(
+    &outer_filled,
+    &outline_region,
+    cam_geom::boolean::BooleanOp::Difference,
+    tol,
+  )
+  .unwrap()
+  {
+    cam_geom::boolean::Combined::Empty => outer_filled,
+    cam_geom::boolean::Combined::Region { region, .. } => region,
+  };
+
+  let t0 = Instant::now();
+  let united = unite_copper(&copper.boundaries, tol).expect("united");
+  let t_unite = t0.elapsed();
+  let t1 = Instant::now();
+  let raw_fill = ncc_fill_rings(&board, 1.0, 0.5, tol).expect("raw fill");
+  let t_fill = t1.elapsed();
+  let t2 = Instant::now();
+  let fill_region = Region::new(raw_fill.contours.clone())
+    .unwrap()
+    .normalize(tol)
+    .unwrap()
+    .region;
+  let clipped = match cam_geom::boolean::combine(
+    &fill_region,
+    &united,
+    cam_geom::boolean::BooleanOp::Difference,
+    tol,
+  )
+  .unwrap()
+  {
+    cam_geom::boolean::Combined::Empty => Region::new(Vec::new()).unwrap(),
+    cam_geom::boolean::Combined::Region { region, .. } => region,
+  };
+  let t_clip = t2.elapsed();
+  let total = t_unite + t_fill + t_clip;
+  eprintln!(
+    "kicad-large-pours top: unite_ms={:.2} fill_ms={:.2} clip_ms={:.2} total_ms={:.2} raw={} clipped_boundaries={} board_area={:.2}",
+    t_unite.as_secs_f64()*1000.0, t_fill.as_secs_f64()*1000.0, t_clip.as_secs_f64()*1000.0,
+    total.as_secs_f64()*1000.0, raw_fill.contours.len(), clipped.boundaries.len(), region_area(&board)
+  );
+  assert!(!clipped.boundaries.is_empty());
+}

@@ -159,9 +159,9 @@ que `E0.6`+`E0.7` estén en verde**, porque sin baseline la promesa no es medibl
 | E4.4 | Paralelismo por isla con `rayon` | **L** | Speedup medido en la placa grande; salida **determinista** byte a byte | 🟡 |
 | E4.5 | Rest machining entre herramientas (grueso→fino), reusando la región restante | **L** | Dos herramientas cubren el área sin recortes redundantes; medido | 🟡 |
 | E4.6 | Métodos alternativos: seed y lines | **M** | Los tres métodos producen salida válida | 🟡 |
-| E4.7 | Benchmark publicado de NCC vs FlatCAM en la placa grande | **S** | **Hito 3: NCC más rápida que FlatCAM en la placa grande**, reproducible desde CI | 🟡 |
+| E4.7 | Benchmark publicado de NCC vs FlatCAM en la placa grande | **S** | **Hito 3: NCC más rápida que FlatCAM en la placa grande**, reproducible desde CI | ✅ |
 
-> Estado F4 (2026-11-16): núcleo E4.1-E4.6 implementado en `cam-ops` (envelope, rings/seed/lines, grid index, rayon determinista, rest machining) con tests; comando CLI `cam-cli ncc` cableado. Falta cerrar E4.7 con baseline NCC FlatCAM publicado/reproducible en CI (Hito 3) e integración final app/sim/documento según haga falta. Ver `odd/tasks/067-f4-non-copper-clear.md` y `odd/reports/f4-ncc-benchmark.md`.
+> Estado F4 (2026-11-16): E4.1-E4.6 implementados en `cam-ops` (envelope, rings/seed/lines, grid index, rayon determinista, rest machining) con tests; comando CLI `cam-cli ncc` cableado (fill-board-then-clip). E4.7/Hito 3 cerrado: camcraft 2.09s release vs FlatCAM 49.87s en `kicad-large-pours/top.gbr` (~23.9x), reproducible con `cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_pours -- --ignored --nocapture`. Ver `odd/tasks/067-f4-non-copper-clear.md` y `odd/reports/f4-ncc-benchmark.md`.
 
 **Riesgo de F4.** Es la fase donde el paralelismo puede romper el determinismo (orden no
 determinista de reducción). La mitigación es reducir con orden estable siempre, y test de igualdad
