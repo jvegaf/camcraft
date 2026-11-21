@@ -75,9 +75,10 @@ pub fn apply_with_exc_areas(
         removal.crashes.push(crash);
       }
       if !exc_areas.is_empty() && matches!(movement, Move::Rapid { .. } | Move::Retract { .. }) {
+        let z = origin.z.mm().max(movement.destination().z.mm()).max(0.0);
         let radius = match tool {
           ToolShape::Cylinder { diameter } => diameter.mm() / 2.0,
-          ToolShape::VBit { flat_diameter, .. } => flat_diameter.mm() / 2.0,
+          ToolShape::VBit { .. } => tool.radius_at(z),
         };
         if travel_crosses_exc_areas(
           origin,
