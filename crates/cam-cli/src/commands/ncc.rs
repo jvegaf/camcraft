@@ -212,28 +212,70 @@ fn ncc_runs(document: &Document, diameter: f64) -> Result<(Vec<NccRun>, usize), 
         .and_then(|r| r.normalize(tolerance).map(|n| n.region))
         .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
     } else {
-      cam_geom::region::Region::new(outline_contours)
+      let outline_region = cam_geom::region::Region::new(outline_contours)
         .and_then(|r| r.normalize(tolerance).map(|n| n.region))
+        .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
+      outline_region_to_board(&outline_region, tolerance)
         .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
     };
 
-    let envelope = cam_ops::non_copper_envelope(
-      &boundary,
-      &copper_contours,
-      params.margin.mm(),
-      params.copper_offset.map(|l| l.mm()).unwrap_or(0.0),
-      tolerance,
-    )
-    .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
+    let margin = params.margin.mm();
+    let copper_offset = params.copper_offset.map(|l| l.mm()).unwrap_or(0.0);
+    let clearing_limit = if margin == 0.0 {
+      boundary.clone()
+    } else {
+      boundary
+        .offset(margin, tolerance)
+        .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
+        .region
+    };
+    let united_copper = cam_ops::unite_copper(&copper_contours, tolerance)
+      .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
+    let keep_out = if copper_offset == 0.0 {
+      united_copper
+    } else {
+      united_copper
+        .offset(-copper_offset, tolerance)
+        .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
+        .region
+    };
 
-    let fill = match params.method {
+    let raw_fill = match params.method {
       FillMethod::Standard => {
-        cam_ops::ncc_fill_rings(&envelope, diameter, params.overlap, tolerance)
+        cam_ops::ncc_fill_rings(&clearing_limit, diameter, params.overlap, tolerance)
       }
-      FillMethod::Seed => cam_ops::ncc_fill_seed(&envelope, diameter, params.overlap, tolerance),
-      FillMethod::Lines => cam_ops::ncc_fill_lines(&envelope, diameter, params.overlap, tolerance),
+      FillMethod::Seed => {
+        cam_ops::ncc_fill_seed(&clearing_limit, diameter, params.overlap, tolerance)
+      }
+      FillMethod::Lines => {
+        cam_ops::ncc_fill_lines(&clearing_limit, diameter, params.overlap, tolerance)
+      }
     }
     .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
+
+    let fill_region = cam_geom::region::Region::new(raw_fill.contours.clone())
+      .and_then(|r| r.normalize(tolerance).map(|n| n.region))
+      .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
+    let clipped_region = if keep_out.boundaries.is_empty() {
+      fill_region
+    } else {
+      match cam_geom::boolean::combine(
+        &fill_region,
+        &keep_out,
+        cam_geom::boolean::BooleanOp::Difference,
+        tolerance,
+      )
+      .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?
+      {
+        cam_geom::boolean::Combined::Empty => cam_geom::region::Region::new(Vec::new())
+          .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?,
+        cam_geom::boolean::Combined::Region { region, .. } => region,
+      }
+    };
+    let fill = cam_ops::NccFill {
+      contours: clipped_region.boundaries,
+      flattened: raw_fill.flattened,
+    };
 
     let moves = cam_ops::ncc_moves(&fill.contours, params.cut_depth.mm(), &document.board)
       .map_err(|err| Failure::input(format!("ncc {:?}: {err}", toolpath.name)))?;
@@ -315,5 +357,51 @@ fn emit_program(
         .and_then(|()| stdout.flush())
         .map_err(|error| Failure::input(format!("cannot write the program: {error}")))
     }
+  }
+}
+
+/// Convert a stroked outline region into the filled board interior.
+///
+/// Gerber outline layers are often drawn as strokes (thin ring). For NCC we need the board
+/// interior, not the stroke band. If the outline has inner holes, return the holes filled;
+/// otherwise return the outline region unchanged.
+fn outline_region_to_board(
+  outline: &cam_geom::region::Region,
+  tolerance: cam_geom::TolerancePolicy,
+) -> Result<cam_geom::region::Region, cam_geom::GeomError> {
+  if outline.boundaries.len() < 2 {
+    return Ok(outline.clone());
+  }
+  // Outermost boundary = largest absolute area.
+  let mut outer_idx = 0usize;
+  let mut outer_area = 0.0f64;
+  for (i, b) in outline.boundaries.iter().enumerate() {
+    let a = b.signed_area().abs();
+    if a > outer_area {
+      outer_area = a;
+      outer_idx = i;
+    }
+  }
+  let outer_filled = cam_geom::region::Region::new(vec![outline.boundaries[outer_idx].clone()])?
+    .normalize(tolerance)?
+    .region;
+  let stroke_area: f64 = outline
+    .boundaries
+    .iter()
+    .map(|b| b.signed_area().abs())
+    .sum::<f64>();
+  // If stroke material is much smaller than the outer filled area, it's a stroked outline.
+  let filled_area = outline.boundaries[outer_idx].signed_area().abs();
+  if stroke_area >= filled_area * 0.8 {
+    return Ok(outline.clone());
+  }
+  match cam_geom::boolean::combine(
+    &outer_filled,
+    outline,
+    cam_geom::boolean::BooleanOp::Difference,
+    tolerance,
+  )? {
+    cam_geom::boolean::Combined::Empty => Ok(outline.clone()),
+    cam_geom::boolean::Combined::Region { region, .. } => Ok(region),
   }
 }
