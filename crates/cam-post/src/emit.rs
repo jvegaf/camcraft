@@ -376,12 +376,11 @@ impl<'a> Writer<'a> {
       PostUnits::Millimetres => mm,
       PostUnits::Inches => mm / MM_PER_INCH,
     };
-    let decimals = self
-      .by_source
-      .get("Z")
-      .map(|v| v.decimals as usize)
-      .unwrap_or(3);
-    format!("{value:.decimals$}")
+    let spec = self.by_source.get("Z");
+    let scale = spec.map(|v| v.scale).unwrap_or(1.0);
+    let decimals = spec.map(|v| v.decimals as usize).unwrap_or(3);
+    let scaled = value * scale;
+    format!("{scaled:.decimals$}")
   }
 
   fn emit_raw_lines(&mut self, lines: Vec<String>) {

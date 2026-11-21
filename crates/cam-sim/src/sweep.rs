@@ -147,7 +147,8 @@ fn segment_hits_region(
     }
   }
   let len = a.distance_to(b);
-  let steps = ((len / 0.5).ceil() as usize).clamp(2, 64);
+  let step = (radius * 0.5).max(0.05);
+  let steps = ((len / step).ceil() as usize).max(2);
   for i in 0..=steps {
     let t = i as f64 / steps as f64;
     let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
