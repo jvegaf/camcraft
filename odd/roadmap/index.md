@@ -86,7 +86,7 @@ Legend: `✅` done · `🟡` partial (code exists, the exit criterion does not h
 
 | ID | State | Evidence | What is missing |
 | --- | --- | --- | --- |
-| E6.1 Board layer identity | ⬜ | `Layer.role` exists in the model (`cam-model/src/lib.rs:237`), the UI still draws generic layers (`cam-view/tests/scene.rs:17` uses `LayerRole::Geometry`) | Colour by role, copper mode |
+| E6.1 Board layer identity | ✅ | `cam-model` `LayerRole::{color_rgb,label,is_copper}` define canonical PCB role identity; `cam-view` `SceneItem` carries `role` and `build_scene` propagates it for contour, drill and slot entities while skipping hidden layers; `cam-ui` paints Normal geometry by role color, exposes layer visibility toggles with role swatches/labels and a `Copper mode` toggle that fills copper-role contours; tests in `cam-model/tests/document.rs`, `cam-view/tests/scene.rs` and `cam-ui/tests/shell/panels.rs` pin distinct 6 fabrication roles and toggleable dock rows. Task [071](../tasks/071-e6-1-board-layer-identity.md) | — |
 | E6.2 Project tree | ⬜ | No board→layers→operations tree in `cam-ui` | The tree and its navigation |
 | E6.3 Operation forms | ⬜ | `grep -rn "IsolationParams\|NonCopperClearParams\|CutoutParams\|PaintParams" crates/cam-ui/src` → 0 | One form per PCB operation |
 | E6.4 Tool panel bound to the library | 🟡 | `cam-ui/src/tool_library/` is a real editor over the SQLite store (tasks [032](../tasks/032-tool-library-app.md), [033](../tasks/033-tool-library-editor.md)) | The binding to PCB operations, which do not exist yet |

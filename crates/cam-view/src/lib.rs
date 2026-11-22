@@ -61,6 +61,8 @@ pub enum SceneItem {
     style: Style,
     /// The entity it belongs to, when it comes from the document.
     entity: Option<String>,
+    /// The PCB layer role the entity belongs to, when known.
+    role: Option<cam_model::LayerRole>,
   },
   /// A circular arc, kept as parameters so the painter can flatten it at its own tolerance.
   Arc {
@@ -76,6 +78,8 @@ pub enum SceneItem {
     style: Style,
     /// The entity it belongs to, when it comes from the document.
     entity: Option<String>,
+    /// The PCB layer role the entity belongs to, when known.
+    role: Option<cam_model::LayerRole>,
   },
 }
 
@@ -91,6 +95,13 @@ impl SceneItem {
   pub fn entity(&self) -> Option<&str> {
     match self {
       Self::Polyline { entity, .. } | Self::Arc { entity, .. } => entity.as_deref(),
+    }
+  }
+
+  /// The PCB layer role this item belongs to, when known.
+  pub fn role(&self) -> Option<cam_model::LayerRole> {
+    match self {
+      Self::Polyline { role, .. } | Self::Arc { role, .. } => *role,
     }
   }
 
@@ -168,16 +179,91 @@ pub fn build_scene(document: &Document, selection: &Selection) -> Scene {
       continue;
     }
     for entity in &layer.entities {
-      let Some(contour) = entity.kind.as_contour() else {
-        continue;
-      };
       let style = if selection.contains(&entity.id) {
         Style::Selected
       } else {
         Style::Normal
       };
-      for segment in contour.segments() {
-        scene.push(item_for(segment, style, Some(entity.id.clone())));
+      let role = Some(layer.role);
+      let id = Some(entity.id.clone());
+      match &entity.kind {
+        cam_model::EntityKind::Contour { contour } => {
+          for segment in contour.segments() {
+            scene.push(item_for(segment, style, id.clone(), role));
+          }
+        }
+        cam_model::EntityKind::Drill { center, diameter } => {
+          let radius = diameter.mm() * 0.5;
+          if radius.is_finite() && radius > 0.0 {
+            let pi = std::f64::consts::PI;
+            scene.push(SceneItem::Arc {
+              center: *center,
+              radius,
+              start_angle: 0.0,
+              sweep: pi,
+              style,
+              entity: id.clone(),
+              role,
+            });
+            scene.push(SceneItem::Arc {
+              center: *center,
+              radius,
+              start_angle: pi,
+              sweep: pi,
+              style,
+              entity: id,
+              role,
+            });
+          }
+        }
+        cam_model::EntityKind::Slot { start, end, width } => {
+          let radius = width.mm() * 0.5;
+          let dx = end.x - start.x;
+          let dy = end.y - start.y;
+          let len = (dx * dx + dy * dy).sqrt();
+          if radius.is_finite() && radius > 0.0 && len > 1.0e-9 {
+            let ux = dx / len;
+            let uy = dy / len;
+            let nx = -uy;
+            let ny = ux;
+            let p1 = Point2::new(start.x + nx * radius, start.y + ny * radius);
+            let p2 = Point2::new(end.x + nx * radius, end.y + ny * radius);
+            let p3 = Point2::new(end.x - nx * radius, end.y - ny * radius);
+            let p4 = Point2::new(start.x - nx * radius, start.y - ny * radius);
+            let angle = uy.atan2(ux);
+            let pi = std::f64::consts::PI;
+            scene.push(SceneItem::Polyline {
+              points: vec![p1, p2],
+              style,
+              entity: id.clone(),
+              role,
+            });
+            scene.push(SceneItem::Arc {
+              center: *end,
+              radius,
+              start_angle: angle - pi * 0.5,
+              sweep: pi,
+              style,
+              entity: id.clone(),
+              role,
+            });
+            scene.push(SceneItem::Polyline {
+              points: vec![p3, p4],
+              style,
+              entity: id.clone(),
+              role,
+            });
+            scene.push(SceneItem::Arc {
+              center: *start,
+              radius,
+              start_angle: angle + pi * 0.5,
+              sweep: pi,
+              style,
+              entity: id,
+              role,
+            });
+          }
+        }
       }
     }
   }
@@ -185,12 +271,18 @@ pub fn build_scene(document: &Document, selection: &Selection) -> Scene {
 }
 
 /// Turn a kernel segment into a scene item.
-fn item_for(segment: Segment, style: Style, entity: Option<String>) -> SceneItem {
+fn item_for(
+  segment: Segment,
+  style: Style,
+  entity: Option<String>,
+  role: Option<cam_model::LayerRole>,
+) -> SceneItem {
   match segment {
     Segment::Line(line) => SceneItem::Polyline {
       points: vec![line.start, line.end],
       style,
       entity,
+      role,
     },
     Segment::Arc(arc) => SceneItem::Arc {
       center: arc.center(),
@@ -199,6 +291,7 @@ fn item_for(segment: Segment, style: Style, entity: Option<String>) -> SceneItem
       sweep: arc.sweep(),
       style,
       entity,
+      role,
     },
   }
 }
@@ -262,6 +355,7 @@ pub fn build_grid(camera: &Camera, target_px: f64) -> Scene {
       points: vec![Point2::new(x, min_y), Point2::new(x, max_y)],
       style: Style::Grid,
       entity: None,
+      role: None,
     });
     x += spacing;
     count += 1;
@@ -272,6 +366,7 @@ pub fn build_grid(camera: &Camera, target_px: f64) -> Scene {
       points: vec![Point2::new(min_x, y), Point2::new(max_x, y)],
       style: Style::Grid,
       entity: None,
+      role: None,
     });
     y += spacing;
     count += 1;

@@ -35,6 +35,10 @@ impl Shell {
       &palette,
     );
 
+    if self.copper_mode {
+      paint_copper_fills(&painter, canvas, &camera, app);
+    }
+
     let scene = build_scene(app.document(), app.selection());
     output.drawn.painted_items = scene.len();
     for item in &scene.items {
@@ -111,10 +115,13 @@ fn paint_item(
   width: f32,
   palette: &Palette,
 ) {
-  // Four roles carry the whole scene vocabulary: what is drawn, what is selected, what is only
-  // construction, and the grid. A fifth would be a fifth kind of geometry.
+  // Style still decides the drawing intent, but PCB role gives Normal geometry its identity color so
+  // the fabrication layers can be told apart at a glance (E6.1).
   let colour = match item.style() {
-    Style::Normal => palette.get(Role::Text),
+    Style::Normal => item.role().map_or(palette.get(Role::Text), |role| {
+      let [r, g, b] = role.color_rgb();
+      egui::Color32::from_rgb(r, g, b)
+    }),
     Style::Selected => palette.get(Role::Sel),
     Style::Construction => palette.get(Role::TextDim),
     Style::Grid => palette.get(Role::Hairline),
@@ -147,6 +154,172 @@ fn paint_item(
   if points.len() >= 2 {
     painter.add(egui::Shape::line(points, Stroke::new(width, colour)));
   }
+}
+
+/// Paint filled copper layers when copper mode is active.
+fn paint_copper_fills(
+  painter: &egui::Painter,
+  canvas: &CanvasRect,
+  camera: &Camera,
+  app: &AppState,
+) {
+  for layer in &app.document().layers {
+    if !layer.visible || !layer.role.is_copper() {
+      continue;
+    }
+    let [r, g, b] = layer.role.color_rgb();
+    let fill = egui::Color32::from_rgba_unmultiplied(r, g, b, 110);
+    let stroke = egui::Color32::from_rgb(r, g, b);
+    for entity in &layer.entities {
+      let Some(contour) = entity.kind.as_contour() else {
+        continue;
+      };
+      let points = flatten_contour_to_screen(contour, canvas, camera);
+      if points.len() < 3 {
+        continue;
+      }
+      for triangle in earclip(&points) {
+        painter.add(egui::Shape::convex_polygon(
+          triangle.to_vec(),
+          fill,
+          egui::Stroke::NONE,
+        ));
+      }
+      if points.len() >= 2 {
+        let mut outline = points.clone();
+        if outline.first() != outline.last() {
+          if let Some(first) = outline.first().copied() {
+            outline.push(first);
+          }
+        }
+        painter.add(egui::Shape::line(outline, egui::Stroke::new(1.0, stroke)));
+      }
+    }
+  }
+}
+
+fn flatten_contour_to_screen(
+  contour: &cam_geom::Contour,
+  canvas: &CanvasRect,
+  camera: &Camera,
+) -> Vec<Pos2> {
+  let mut points = Vec::new();
+  for segment in contour.segments() {
+    let seg_points: Vec<Pos2> = match segment {
+      cam_geom::Segment::Line(line) => {
+        vec![
+          canvas.to_window(camera.world_to_screen(line.start)),
+          canvas.to_window(camera.world_to_screen(line.end)),
+        ]
+      }
+      cam_geom::Segment::Arc(arc) => {
+        let tolerance_mm = 0.5 / camera.pixels_per_mm().max(f64::EPSILON);
+        arc
+          .tessellate(cam_geom::TolerancePolicy::standard().with_chord(tolerance_mm))
+          .into_iter()
+          .map(|point| canvas.to_window(camera.world_to_screen(point)))
+          .collect()
+      }
+    };
+    for point in seg_points {
+      if points
+        .last()
+        .is_some_and(|last: &Pos2| last.distance_sq(point) < 0.25)
+      {
+        continue;
+      }
+      points.push(point);
+    }
+  }
+  if points.len() > 1
+    && points
+      .first()
+      .zip(points.last())
+      .is_some_and(|(a, b)| a.distance_sq(*b) < 0.25)
+  {
+    points.pop();
+  }
+  points
+}
+
+fn earclip(points: &[Pos2]) -> Vec<[Pos2; 3]> {
+  if points.len() < 3 {
+    return Vec::new();
+  }
+  let mut indices: Vec<usize> = (0..points.len()).collect();
+  let area = signed_area(points);
+  if area.abs() < 1.0e-6 {
+    return Vec::new();
+  }
+  if area < 0.0 {
+    indices.reverse();
+  }
+  let mut triangles = Vec::new();
+  let mut guard = 0usize;
+  let max_guard = indices.len().saturating_mul(indices.len()).max(16);
+  while indices.len() > 3 && guard < max_guard {
+    guard += 1;
+    let mut clipped = false;
+    let n = indices.len();
+    for i in 0..n {
+      let prev = indices[(i + n - 1) % n];
+      let curr = indices[i];
+      let next = indices[(i + 1) % n];
+      let a = points[prev];
+      let b = points[curr];
+      let c = points[next];
+      if cross(a, b, c) <= 0.0 {
+        continue;
+      }
+      let mut has_point = false;
+      for &other in &indices {
+        if other == prev || other == curr || other == next {
+          continue;
+        }
+        if point_in_triangle(points[other], a, b, c) {
+          has_point = true;
+          break;
+        }
+      }
+      if has_point {
+        continue;
+      }
+      triangles.push([a, b, c]);
+      indices.remove(i);
+      clipped = true;
+      break;
+    }
+    if !clipped {
+      break;
+    }
+  }
+  if indices.len() == 3 {
+    triangles.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
+  }
+  triangles
+}
+
+fn signed_area(points: &[Pos2]) -> f32 {
+  let mut area = 0.0f32;
+  for i in 0..points.len() {
+    let a = points[i];
+    let b = points[(i + 1) % points.len()];
+    area += a.x * b.y - b.x * a.y;
+  }
+  area * 0.5
+}
+
+fn cross(a: Pos2, b: Pos2, c: Pos2) -> f32 {
+  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+fn point_in_triangle(p: Pos2, a: Pos2, b: Pos2, c: Pos2) -> bool {
+  let c1 = cross(a, b, p);
+  let c2 = cross(b, c, p);
+  let c3 = cross(c, a, p);
+  let has_neg = c1 < -1.0e-5 || c2 < -1.0e-5 || c3 < -1.0e-5;
+  let has_pos = c1 > 1.0e-5 || c2 > 1.0e-5 || c3 > 1.0e-5;
+  !(has_neg && has_pos)
 }
 
 /// Paint a world-space rectangle, used for the stock outline.

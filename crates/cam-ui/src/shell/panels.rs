@@ -11,6 +11,14 @@ use crate::{Shell, ShellOutput, Tool, UiAction};
 impl Shell {
   pub(crate) fn layer_dock(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     {
+      let palette = self.palette();
+      ui.horizontal(|ui| {
+        let mut copper = self.copper_mode;
+        if ui.checkbox(&mut copper, "Copper mode").changed() {
+          self.copper_mode = copper;
+        }
+      });
+      ui.add_space(4.0);
       egui::ScrollArea::vertical()
         .scroll_source(egui::scroll_area::ScrollSource {
           drag: egui::scroll_area::DragScroll::Never,
@@ -19,15 +27,30 @@ impl Shell {
         .show(ui, |ui| {
           for layer in &app.document().layers {
             let mut visible = layer.visible;
+            let [r, g, b] = layer.role.color_rgb();
+            let role_color = egui::Color32::from_rgb(r, g, b);
             ui.horizontal(|ui| {
               if ui.checkbox(&mut visible, "").changed() {
                 output.actions.push(UiAction::ToggleLayerVisible {
                   layer_id: layer.id.clone(),
                 });
               }
-              ui.label(format!("{} — {:?}/{:?}", layer.id, layer.role, layer.side));
+              let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+              ui.painter().rect_filled(rect, 2.0, role_color);
+              ui.colored_label(
+                if visible {
+                  palette.get(Role::Text)
+                } else {
+                  palette.get(Role::TextDim)
+                },
+                format!("{} · {:?}", layer.role.label(), layer.side),
+              );
             });
-            ui.label(format!("  {} entit(ies)", layer.entities.len()));
+            ui.small(format!(
+              "  {}  ·  {} entit(ies)",
+              layer.id,
+              layer.entities.len()
+            ));
             output
               .drawn
               .layer_rows

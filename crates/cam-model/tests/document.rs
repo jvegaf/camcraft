@@ -2579,3 +2579,31 @@ fn exc_areas_reject_open_boundary() {
     .expect_err("open exc_area boundary must be rejected");
   assert!(format!("{err}").contains("exc_areas[0]"));
 }
+
+#[test]
+fn the_six_fabrication_roles_have_distinct_colors_and_labels() {
+  use std::collections::BTreeSet;
+  let roles = [
+    LayerRole::CopperTop,
+    LayerRole::CopperBottom,
+    LayerRole::Mask,
+    LayerRole::Silk,
+    LayerRole::Outline,
+    LayerRole::Drill,
+  ];
+  let colors: BTreeSet<[u8; 3]> = roles.iter().map(|role| role.color_rgb()).collect();
+  let labels: BTreeSet<&str> = roles.iter().map(|role| role.label()).collect();
+  assert_eq!(
+    colors.len(),
+    6,
+    "the 6 fabrication roles must be visually distinct"
+  );
+  assert_eq!(
+    labels.len(),
+    6,
+    "the 6 fabrication roles must have distinct labels"
+  );
+  assert!(LayerRole::CopperTop.is_copper());
+  assert!(LayerRole::CopperBottom.is_copper());
+  assert!(!LayerRole::Drill.is_copper());
+}

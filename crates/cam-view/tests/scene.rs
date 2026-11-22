@@ -239,3 +239,60 @@ proptest! {
     prop_assert!(coarser <= fine + 1.0e-12, "{} -> {}", fine, coarser);
   }
 }
+
+#[test]
+fn scene_items_carry_their_layer_role() {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "TOP".to_owned(),
+    role: cam_model::LayerRole::CopperTop,
+    side: cam_model::Side::Top,
+    color: "#ff0000".to_owned(),
+    visible: true,
+    entities: vec![cam_model::Entity {
+      id: "E1".to_owned(),
+      kind: cam_model::EntityKind::Contour {
+        contour: rectangle(0.0, 0.0, 10.0, 10.0),
+      },
+      source: cam_model::Provenance::default(),
+    }],
+    source: cam_model::Provenance::default(),
+  });
+  let scene = build_scene(&document, &cam_app::Selection::default());
+  assert!(!scene.is_empty());
+  assert!(scene
+    .items
+    .iter()
+    .all(|item| item.role() == Some(cam_model::LayerRole::CopperTop)));
+}
+
+#[test]
+fn drill_entities_are_rendered_as_arcs_with_role() {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "DRL".to_owned(),
+    role: cam_model::LayerRole::Drill,
+    side: cam_model::Side::Both,
+    color: "#cccccc".to_owned(),
+    visible: true,
+    entities: vec![cam_model::Entity {
+      id: "D1".to_owned(),
+      kind: cam_model::EntityKind::Drill {
+        center: Point2::new(5.0, 5.0),
+        diameter: cam_units::Length::from_mm(1.0),
+      },
+      source: cam_model::Provenance::default(),
+    }],
+    source: cam_model::Provenance::default(),
+  });
+  let scene = build_scene(&document, &cam_app::Selection::default());
+  assert_eq!(scene.len(), 2, "a drill is drawn as two semicircles");
+  assert!(scene
+    .items
+    .iter()
+    .all(|item| matches!(item, SceneItem::Arc { .. })));
+  assert!(scene
+    .items
+    .iter()
+    .all(|item| item.role() == Some(cam_model::LayerRole::Drill)));
+}

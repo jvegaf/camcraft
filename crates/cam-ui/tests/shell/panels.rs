@@ -26,8 +26,16 @@ fn the_layer_dock_reports_every_layer_and_paints_its_name() {
   ));
   let all = joined(&texts);
   assert!(
-    all.contains("L1 — Outline/Both"),
-    "the layer row must be painted: {all}"
+    all.contains("Outline · Both"),
+    "the layer row must show role and side: {all}"
+  );
+  assert!(
+    all.contains("L1"),
+    "the layer row must show the layer id: {all}"
+  );
+  assert!(
+    all.contains("Copper mode"),
+    "the layers block must expose copper mode: {all}"
   );
   // `LAYERS` is its own block since camui-prancheta S6, and every section heading in this frame is uppercase.
   assert!(
@@ -197,4 +205,96 @@ fn the_task_header_keeps_the_typed_numbers_on_done_and_discards_them_on_cancel()
     material_size_of(&app),
     "Cancel puts the material's draft back to the document's own stock"
   );
+}
+
+#[test]
+fn e6_1_six_fabrication_layers_are_distinct_and_toggleable() {
+  use cam_geom::{Contour, Point2};
+  use cam_model::{Entity, EntityKind, Layer, LayerRole, Provenance, Side};
+
+  let mut document = Document::new(Job::default_sheet());
+  let roles = [
+    (LayerRole::CopperTop, Side::Top),
+    (LayerRole::CopperBottom, Side::Bottom),
+    (LayerRole::Mask, Side::Top),
+    (LayerRole::Silk, Side::Top),
+    (LayerRole::Outline, Side::Both),
+    (LayerRole::Drill, Side::Both),
+  ];
+  for (index, (role, side)) in roles.iter().enumerate() {
+    let contour = Contour::from_points(
+      &[
+        Point2::new(0.0, 0.0),
+        Point2::new(10.0, 0.0),
+        Point2::new(10.0, 10.0),
+        Point2::new(0.0, 10.0),
+      ],
+      true,
+    )
+    .expect("rectangle");
+    document.layers.push(Layer {
+      id: format!("L{}", index + 1),
+      role: *role,
+      side: *side,
+      color: "#000".to_owned(),
+      visible: true,
+      entities: vec![Entity {
+        id: format!("E{}", index + 1),
+        kind: EntityKind::Contour { contour },
+        source: Provenance::default(),
+      }],
+      source: Provenance::default(),
+    });
+  }
+
+  let mut app = AppState::new(document);
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+  let (output, mut texts) = frame_with(&ctx, &mut shell, &mut app);
+
+  assert_eq!(output.drawn.layer_rows.len(), 6);
+  assert!(output
+    .drawn
+    .layer_rows
+    .iter()
+    .all(|(_, _, visible)| *visible));
+
+  let inspector = egui::pos2(
+    (output.canvas.x + output.canvas.width) as f32 - 160.0,
+    (output.canvas.y + 260.0) as f32,
+  );
+  texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
+  texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
+  texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
+  let all = joined(&texts);
+  let labels = [
+    "Copper top",
+    "Copper bottom",
+    "Mask",
+    "Silk",
+    "Outline",
+    "Drill",
+  ];
+  let visible_count = labels.iter().filter(|label| all.contains(**label)).count();
+  assert!(
+    visible_count >= 2,
+    "expected some PCB layer labels to be painted, got {visible_count}: {all}"
+  );
+  assert!(
+    all.contains("Copper mode"),
+    "missing copper mode toggle: {all}"
+  );
+  let ids: Vec<&str> = output
+    .drawn
+    .layer_rows
+    .iter()
+    .map(|(id, _, _)| id.as_str())
+    .collect();
+  assert_eq!(ids, vec!["L1", "L2", "L3", "L4", "L5", "L6"]);
 }

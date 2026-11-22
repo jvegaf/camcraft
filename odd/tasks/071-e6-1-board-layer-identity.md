@@ -5,12 +5,14 @@ Capas con identidad de placa en la UI: color por rol, visibilidad y modo cobre, 
 ## Surfaces
 
 - `crates/cam-model/src/lib.rs`
+- `crates/cam-model/tests/document.rs`
 - `crates/cam-view/src/lib.rs`
 - `crates/cam-view/tests/scene.rs`
 - `crates/cam-ui/src/shell/`
 - `crates/cam-ui/src/actions/`
 - `crates/cam-ui/src/theme.rs`
 - `crates/cam-ui/src/lib.rs`
+- `crates/cam-ui/tests/shell/panels.rs`
 - `odd/roadmap/index.md`
 - `docs/ROADMAP_CAMCRAFT.md`
 

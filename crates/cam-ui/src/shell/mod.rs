@@ -225,6 +225,8 @@ pub struct Shell {
   /// View state of its own, and S6 asks for exactly that: `Camadas` collapses on its own, below the task
   /// editor, independently of which task is open.
   pub(crate) layers_open: bool,
+  /// Whether copper layers are rendered as filled areas (PCB copper mode).
+  pub copper_mode: bool,
   /// Whether the inspector is expanded. Collapsed it leaves a 12 px strip that reopens on hover.
   pub(crate) inspector_open: bool,
   /// The rail groups the operator has collapsed.
@@ -467,6 +469,7 @@ impl Default for Shell {
       inspector_tab: Tab::default(),
       task: None,
       layers_open: true,
+      copper_mode: false,
       inspector_open: true,
       collapsed_groups: Vec::new(),
       show_shortcuts: false,

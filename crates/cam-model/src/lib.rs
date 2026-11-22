@@ -192,6 +192,42 @@ pub enum LayerRole {
   Keepout,
 }
 
+impl LayerRole {
+  /// Canonical display color for this PCB role, as `[r, g, b]`.
+  ///
+  /// The six fabrication roles get distinct colors so they can be told apart at a glance; keepout
+  /// also gets its own color. The UI uses these as the base stroke/fill color for layer identity.
+  pub const fn color_rgb(self) -> [u8; 3] {
+    match self {
+      Self::CopperTop => [220, 90, 90],
+      Self::CopperBottom => [90, 140, 230],
+      Self::Mask => [90, 190, 130],
+      Self::Silk => [235, 225, 140],
+      Self::Outline => [230, 170, 80],
+      Self::Drill => [190, 190, 200],
+      Self::Keepout => [190, 110, 220],
+    }
+  }
+
+  /// Short human label for UI display.
+  pub const fn label(self) -> &'static str {
+    match self {
+      Self::CopperTop => "Copper top",
+      Self::CopperBottom => "Copper bottom",
+      Self::Mask => "Mask",
+      Self::Silk => "Silk",
+      Self::Outline => "Outline",
+      Self::Drill => "Drill",
+      Self::Keepout => "Keepout",
+    }
+  }
+
+  /// Whether this role is a copper layer.
+  pub const fn is_copper(self) -> bool {
+    matches!(self, Self::CopperTop | Self::CopperBottom)
+  }
+}
+
 /// Which side a layer belongs to.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
