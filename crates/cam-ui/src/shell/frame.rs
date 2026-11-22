@@ -196,6 +196,13 @@ impl Shell {
     if self.show_import {
       self.import_dialog(&ctx, app, &mut output);
     }
+    // The settings modal (camcraft-workbench-v2 04-settings). Esc closes without applying, same as other modals.
+    if self.show_settings && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+      self.close_settings();
+    }
+    if self.show_settings {
+      self.settings_dialog(&ctx, app, &mut output);
+    }
     // The crate's only clock read (A10). Everything that needs time — playback, and nothing else —
     // receives this delta as an argument, so the arithmetic stays a pure function a test can drive
     // frame by frame. `stable_dt` rather than `unstable_dt`: a frame that stalled (a resize, a
@@ -208,6 +215,7 @@ impl Shell {
       && !self.show_tool_library
       && !self.show_script
       && !self.show_import
+      && !self.show_settings
       && self.pending_tool_import.is_none()
     {
       self.track_pointer(app, &ctx);

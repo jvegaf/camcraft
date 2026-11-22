@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camcraft — Settings</title>
+<style>
+  :root {
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
+    --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    --sel:#6fd3e8; --sel-soft:rgba(111,211,232,.13);
+    --cut:#f5a623; --cut-soft:rgba(245,166,35,.13);
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    --r-control:4px; --r-panel:6px; --r-dialog:10px;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 48px rgba(0,0,0,.5);
+    --font: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; } }
+  * { box-sizing:border-box; } html,body { margin:0; min-height:100%; background:#0a0c10; color:var(--text); font:13px/1.4 var(--font); }
+  button,input,select { font:inherit; color:inherit; background:none; border:none; } button { cursor:pointer; }
+  .page { padding:24px; display:flex; flex-direction:column; gap:20px; }
+  .intro { max-width:1320px; margin:0 auto; width:100%; }
+  .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-off); margin:0 0 6px; }
+  h1 { margin:0; font-size:28px; line-height:1.15; font-weight:600; color:var(--text-hi); }
+  .lede { margin:8px 0 0; max-width:820px; color:var(--text-dim); font-size:14px; line-height:1.5; }
+  .shell { width:1440px; max-width:100%; height:900px; margin:0 auto; position:relative; overflow:hidden; border-radius:12px; border:1px solid var(--line-strong); box-shadow:0 24px 80px rgba(0,0,0,.45); background:var(--bg-canvas); }
+  .canvas-bg { position:absolute; inset:0; background:linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, var(--bg-canvas); }
+  .backdrop { position:absolute; inset:0; background:rgba(8,10,14,.45); }
+  .dialog { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:920px; max-width:calc(100% - 48px); height:680px; max-height:calc(100% - 48px); background:var(--bg-panel); border:1px solid var(--line-strong); border-radius:var(--r-dialog); box-shadow:var(--shadow); display:grid; grid-template-rows:52px 1fr 56px; overflow:hidden; }
+  .titlebar { display:flex; align-items:center; gap:12px; padding:0 16px; border-bottom:1px solid var(--line-hair); }
+  .titlebar h2 { margin:0; font-size:15px; font-weight:600; color:var(--text-hi); }
+  .search { margin-left:auto; width:260px; height:30px; border-radius:6px; background:var(--bg-app); border:1px solid var(--line-strong); display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-dim); font-size:12px; }
+  .search kbd { margin-left:auto; font:11px var(--mono); color:var(--text-off); padding:1px 5px; border-radius:3px; background:var(--bg-raised); border:1px solid var(--line-hair); }
+  .icon-btn { width:30px; height:30px; display:grid; place-items:center; border-radius:6px; color:var(--text-dim); }
+  .icon-btn:hover { background:var(--bg-raised); color:var(--text-hi); }
+  .icon-btn:focus-visible, .page-item:focus-visible, .btn:focus-visible, .field input:focus-visible, .field select:focus-visible, .seg button:focus-visible, .check:focus-visible { outline:2px solid var(--sel); outline-offset:-1px; }
+  .content { display:grid; grid-template-columns:220px 1fr; min-height:0; }
+  .pages { background:rgba(13,16,20,.72); border-right:1px solid var(--line-hair); padding:12px 8px; overflow:auto; }
+  .group { margin:10px 8px 6px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-off); }
+  .page-item { width:100%; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; text-align:left; font-size:13px; color:var(--text); }
+  .page-item:hover { background:var(--bg-raised); }
+  .page-item[aria-current="page"] { background:var(--sel-soft); color:var(--text-hi); box-shadow:inset 0 0 0 1px rgba(111,211,232,.12); }
+  .page-item .ic { width:18px; height:18px; color:var(--text-dim); flex:none; display:grid; place-items:center; }
+  .page-item[aria-current="page"] .ic { color:var(--sel); }
+  .main { padding:24px 28px; overflow:auto; min-height:0; }
+  .main h3 { margin:0; font-size:20px; font-weight:600; color:var(--text-hi); }
+  .main .desc { margin:6px 0 20px; color:var(--text-dim); font-size:13px; line-height:1.5; max-width:640px; }
+  .section { padding:18px 0; border-top:1px solid var(--line-hair); }
+  .section:first-of-type { border-top:0; padding-top:0; }
+  .section h4 { margin:0 0 12px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-off); }
+  .setting { display:grid; grid-template-columns:240px 1fr; gap:16px; align-items:start; padding:10px 0; }
+  .setting .label { font-size:13px; color:var(--text-hi); font-weight:500; }
+  .setting .hint { font-size:12px; color:var(--text-dim); margin-top:3px; line-height:1.45; }
+  .field input[type="text"], .field select { width:100%; max-width:320px; height:32px; padding:0 10px; border-radius:var(--r-control); background:var(--bg-app); border:1px solid var(--line-strong); color:var(--text); font-size:13px; }
+  .seg { display:inline-flex; background:var(--bg-app); border:1px solid var(--line-strong); border-radius:6px; overflow:hidden; }
+  .seg button { height:30px; padding:0 12px; font-size:12px; color:var(--text-dim); border-right:1px solid var(--line-hair); }
+  .seg button:last-child { border-right:0; }
+  .seg button[aria-pressed="true"] { background:var(--sel-soft); color:var(--sel); }
+  .check { display:inline-flex; align-items:center; gap:10px; font-size:13px; color:var(--text); }
+  .box { width:16px; height:16px; border-radius:4px; border:1px solid var(--line-strong); background:var(--bg-app); display:grid; place-items:center; flex:none; }
+  .check[aria-checked="true"] .box { background:var(--sel-soft); border-color:rgba(111,211,232,.4); }
+  .check[aria-checked="true"] .box::after { content:""; width:8px; height:4px; border-left:2px solid var(--sel); border-bottom:2px solid var(--sel); transform:rotate(-45deg) translateY(-1px); }
+  .footer { display:flex; align-items:center; gap:10px; padding:0 16px; border-top:1px solid var(--line-hair); background:rgba(23,27,33,.5); }
+  .footer .spacer { flex:1; }
+  .btn { height:32px; padding:0 14px; border-radius:6px; font-size:13px; font-weight:500; border:1px solid var(--line-strong); background:var(--bg-raised); color:var(--text); }
+  .btn:hover { background:#252d36; }
+  .btn.primary { background:var(--cut-soft); color:var(--cut); border-color:rgba(245,166,35,.28); }
+  .btn.ghost { background:transparent; border-color:transparent; color:var(--text-dim); }
+  .btn.ghost:hover { background:var(--bg-raised); color:var(--text); }
+  .note { max-width:1440px; margin:0 auto; color:var(--text-dim); font-size:12px; line-height:1.6; }
+  .note strong { color:var(--text); font-weight:500; }
+  svg.icon { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <p class="eyebrow">Dirección 2 · Camcraft Workbench v2 · Familia SolidCraft</p>
+    <h1>Settings</h1>
+    <p class="lede">Ventana de preferencias con patrón SolidCraft: lista de páginas a la izquierda, búsqueda en la barra de título, contenido a la derecha y footer con Restaurar/Cancelar/Aplicar. Páginas acotadas al dominio real de Camcraft (PCB CAM), sin inventar features CAD.</p>
+  </header>
+
+  <div class="shell" role="application" aria-label="Camcraft con ventana de settings">
+    <div class="canvas-bg" aria-hidden="true"></div>
+    <div class="backdrop" aria-hidden="true"></div>
+
+    <div class="dialog" role="dialog" aria-label="Preferencias">
+      <div class="titlebar">
+        <h2>Preferencias</h2>
+        <div class="search" role="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>Buscar configuración… <kbd>⌘F</kbd></div>
+        <button class="icon-btn" aria-label="Cerrar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+
+      <div class="content">
+        <nav class="pages" aria-label="Páginas de preferencias">
+          <div class="group">General</div>
+          <button class="page-item" aria-current="page"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5z"/></svg></span>General</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span>Apariencia</button>
+          <div class="group">Workspace</div>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1"/><rect x="3" y="13" width="8" height="7" rx="1"/></svg></span>Layout</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-5 3 3 5-7"/></svg></span>Canvas</button>
+          <div class="group">CAM</div>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"/></svg></span>Manufactura</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.66 5.66L3 18l3 3 6.04-6.04a4 4 0 0 0 5.66-5.66l-3 3-2.7-2.7z"/></svg></span>Librería de herramientas</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></span>Importar</button>
+        </nav>
+
+        <main class="main">
+          <h3>General</h3>
+          <p class="desc">Comportamiento base de la app. Estas opciones afectan cómo arranca Camcraft y cómo maneja archivos recientes.</p>
+
+          <div class="section">
+            <h4>Inicio</h4>
+            <div class="setting">
+              <div><div class="label">Al abrir Camcraft</div><div class="hint">Qué mostrar cuando no hay un proyecto reabierto por el sistema.</div></div>
+              <div class="field">
+                <div class="seg" role="group" aria-label="Al abrir Camcraft">
+                  <button aria-pressed="true">Start screen</button>
+                  <button aria-pressed="false">Proyecto vacío</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting">
+              <div><div class="label">Recientes</div><div class="hint">Cantidad de proyectos mostrados en la start screen.</div></div>
+              <div class="field"><select aria-label="Cantidad de recientes"><option>8 proyectos</option><option selected>12 proyectos</option><option>20 proyectos</option></select></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h4>Archivos</h4>
+            <div class="setting">
+              <div><div class="label">Reabrir último proyecto</div><div class="hint">Al iniciar, abrir el último proyecto si estaba cerrado normalmente.</div></div>
+              <div class="field"><button class="check" role="checkbox" aria-checked="false"><span class="box" aria-hidden="true"></span>Activar</button></div>
+            </div>
+            <div class="setting">
+              <div><div class="label">Confirmar antes de cerrar</div><div class="hint">Pedir confirmación si hay cambios sin guardar.</div></div>
+              <div class="field"><button class="check" role="checkbox" aria-checked="true"><span class="box" aria-hidden="true"></span>Activar</button></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h4>Idioma</h4>
+            <div class="setting">
+              <div><div class="label">Idioma de la interfaz</div><div class="hint">Camcraft v2 usa inglés en la UI del shell; el contenido y documentación pueden localizarse por proyecto.</div></div>
+              <div class="field"><select aria-label="Idioma"><option selected>English</option></select></div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <div class="footer">
+        <button class="btn ghost">Restaurar valores</button>
+        <div class="spacer"></div>
+        <button class="btn">Cancelar</button>
+        <button class="btn primary">Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="note"><strong>Mapeo desde SolidCraft:</strong> mantiene la estructura de ventana de preferencias (page list + búsqueda + footer), jerarquía de bordes primary/secondary/tertiary y controles sobrios. Se adapta al dominio Camcraft: páginas de <strong>Layout, Canvas, Manufactura, Importar</strong> en vez de páginas CAD (Sketch, Assemblies, 3D mouse, etc.). No incluye perfiles ni opciones inventadas sin respaldo en el producto; son placeholders razonables para diseño.</p>
+</div>
+</body>
+</html>

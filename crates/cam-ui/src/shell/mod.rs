@@ -208,7 +208,7 @@ pub struct Shell {
   pub(crate) last_canvas: CanvasRect,
   /// The set egui was last told about. `theme::apply` clones styles, so it runs when the set changes
   /// rather than once per frame.
-  applied_theme: Option<Theme>,
+  pub(crate) applied_theme: Option<Theme>,
   /// Whether the icon sheet is open. Until the shell has a rail to hang glyphs on, this is the only
   /// way to look at the whole set beside the rest of it.
   show_icons: bool,
@@ -335,6 +335,22 @@ pub struct Shell {
   /// `Esc` has nothing of its own to undo, and what a run changed survives closing the window. The panel
   /// itself is [`Self::script`].
   pub show_script: bool,
+  /// Whether the settings modal is open (camcraft-workbench-v2 04-settings).
+  pub show_settings: bool,
+  /// Selected settings page.
+  pub settings_page: crate::settings::SettingsPage,
+  /// Search query in settings dialog.
+  pub settings_search: String,
+  /// Draft state for the settings dialog; applied on Apply, discarded on Cancel.
+  pub(crate) settings_draft: Option<crate::settings::SettingsDraft>,
+  /// General setting: show start screen on startup when no project is reopened.
+  pub settings_startup_start_screen: bool,
+  /// General setting: number of recent projects to show.
+  pub settings_recents_count: usize,
+  /// General setting: reopen last project on startup.
+  pub settings_reopen_last_project: bool,
+  /// General setting: confirm before closing with unsaved changes.
+  pub settings_confirm_before_close: bool,
   /// The scripting panel the Script modal draws: the path, `Run`, and the last report.
   ///
   /// A draft of the frame's own, the rule [`Self::material_size`] follows: the path field and the report
@@ -474,6 +490,14 @@ impl Default for Shell {
       show_tool_library: false,
       show_script: false,
       script: script_panel::ScriptPanel::new(),
+      show_settings: false,
+      settings_page: crate::settings::SettingsPage::General,
+      settings_search: String::new(),
+      settings_draft: None,
+      settings_startup_start_screen: true,
+      settings_recents_count: 12,
+      settings_reopen_last_project: false,
+      settings_confirm_before_close: true,
       tool_search: String::new(),
       tool_library_target: None,
       tool_library_selected: None,

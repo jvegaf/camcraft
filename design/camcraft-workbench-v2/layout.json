@@ -1,0 +1,29 @@
+{
+  "arrangement": "free",
+  "positions": {
+    "system": {
+      "x": 0,
+      "y": 413
+    },
+    "01-compact-workbench.html": {
+      "x": 1552,
+      "y": 380
+    },
+    "02-floating-studio.html": {
+      "x": 3363,
+      "y": 283
+    },
+    "03-pipeline-board.html": {
+      "x": 5063,
+      "y": 261
+    },
+    "04-settings.html": {
+      "x": 6583,
+      "y": 261
+    },
+    "05-settings-tool-library.html": {
+      "x": 6953,
+      "y": 1782
+    }
+  }
+}

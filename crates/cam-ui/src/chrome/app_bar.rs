@@ -130,9 +130,7 @@ impl Shell {
               .on_hover_text("Settings")
               .clicked()
             {
-              self.set_tab(super::Tab::Job);
-              self.inspector_open = true;
-              self.status = "Settings: open from inspector for now".to_owned();
+              self.open_settings();
             }
             let (icon, label) = match self.theme {
               Theme::Dark => (Icon::ThemeDark, "Theme: dark — press for light"),

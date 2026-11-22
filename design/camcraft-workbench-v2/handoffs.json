@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "chosen": "04-settings.html",
+  "handoffs": {
+    "02-floating-studio.html": {
+      "status": "sent",
+      "queued": false,
+      "sentAt": "2026-11-22T19:45:41.724Z",
+      "startedAt": null,
+      "implementedAt": null
+    },
+    "04-settings.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-22T20:11:30.422Z",
+      "startedAt": "2026-11-22T20:11:41.750Z",
+      "implementedAt": "2026-11-22T20:22:39.196Z",
+      "note": "Implemented settings modal in cam-ui (egui): nav pages, search/title/footer, General controls wired to shell state; Appearance theme wired; Canvas snapping wired; other pages show domain placeholders. Settings button opens dialog; Esc closes without applying."
+    }
+  }
+}

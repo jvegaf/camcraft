@@ -59,6 +59,8 @@ pub mod script_panel;
 mod shell;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
+/// The settings modal: preferences dialog (camcraft-workbench-v2 04-settings).
+pub mod settings;
 /// The start screen: the modal the first frame shows when the window holds no project (start-screen S2, S3).
 pub mod start_screen;
 pub mod theme;
