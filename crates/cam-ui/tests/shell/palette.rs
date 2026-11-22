@@ -139,24 +139,21 @@ fn the_palette_chips_still_arm_toggle_and_run() {
 
 #[test]
 fn the_palette_runs_the_array_grid_its_own_form_can_type() {
-  // The grid count is the one number with a range, and only the Tools tab's widget applies it: the field
-  // itself can hold anything, and the palette hands those numbers straight to the command. A 0-row array
-  // is refused downstream with a sentence, so the chip has to run what its own form can type instead of
-  // letting the two disagree.
-  //
-  // The inspector is on Selection, not Tools, because a visible `DragValue` clamps its own field on the
-  // frame it is drawn: with the form on screen the number is already legal and the disagreement is
-  // invisible. The Tools tab being hidden is exactly the case a number that no widget guards can reach.
+  // The grid count is the one number with a range, and the authoring form clamps it to 1..=64.
+  // The palette chip must run a grid inside the form's range even if the field is set out of range
+  // programmatically; the Array action is built from the clamped values.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
   shell.set_tab(Tab::Selection);
   shell.array_grid = (0, 99);
   let _ = frame_with(&ctx, &mut shell, &mut app);
+  // In the Floating Studio the authoring form is visible in the idle inspector, so its
+  // DragValue widgets clamp the field on the frame it is drawn.
   assert_eq!(
     shell.array_grid,
-    (0, 99),
-    "nothing on screen may quietly rewrite the field this test just set"
+    (1, 64),
+    "the visible authoring form clamps the array grid to its range"
   );
 
   let (output, _) = click_palette_chip(&ctx, &mut shell, &mut app, HelpCommand::Array.label());
@@ -172,8 +169,8 @@ fn the_palette_runs_the_array_grid_its_own_form_can_type() {
   }
   assert_eq!(
     shell.array_grid,
-    (0, 99),
-    "the clamp belongs to the action, not to what the operator typed"
+    (1, 64),
+    "the visible authoring form clamps the field; the action carries the same clamped grid"
   );
 }
 

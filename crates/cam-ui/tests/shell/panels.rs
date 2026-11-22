@@ -7,23 +7,32 @@ use cam_ui::{handle_action, Shell, ShellOutput, Tab, UiAction};
 fn the_layer_dock_reports_every_layer_and_paints_its_name() {
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
-  let (output, texts) = frame(&mut shell, &mut app);
+  let ctx = egui::Context::default();
+  let (output, mut texts) = frame_with(&ctx, &mut shell, &mut app);
 
   assert_eq!(
     output.drawn.layer_rows,
     vec![("L1".to_owned(), 1, true)],
     "the dock must report id, entity count and visibility"
   );
+  // The layer dock sits below the inspector's scrollable content in the floating layout;
+  // scroll to the end so the painted row is in view.
+  let inspector = egui::pos2(
+    (output.canvas.x + output.canvas.width) as f32 - 160.0,
+    (output.canvas.y + 260.0) as f32,
+  );
+  texts.extend(texts_scrolled_to_the_end(
+    &ctx, &mut shell, &mut app, inspector,
+  ));
+  let all = joined(&texts);
   assert!(
-    joined(&texts).contains("L1 — Outline/Both"),
-    "the layer row must be painted: {}",
-    joined(&texts)
+    all.contains("L1 — Outline/Both"),
+    "the layer row must be painted: {all}"
   );
   // `LAYERS` is its own block since camui-prancheta S6, and every section heading in this frame is uppercase.
   assert!(
-    joined(&texts).contains("LAYERS"),
-    "the layers block must head itself: {}",
-    joined(&texts)
+    all.contains("LAYERS"),
+    "the layers block must head itself: {all}"
   );
 }
 

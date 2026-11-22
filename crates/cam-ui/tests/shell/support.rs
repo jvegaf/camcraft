@@ -64,6 +64,13 @@ pub(crate) fn frame_with_events(
   app: &mut AppState,
   events: Vec<egui::Event>,
 ) -> (ShellOutput, Vec<String>) {
+  // Warm-up pass: floating Areas (palette/inspector/browser) need a first layout pass before their
+  // shapes appear in output. Run once with no events, then run the real pass.
+  let warmup = ctx.run_pass(raw_input(), |ctx| {
+    let _ = shell.show(app, ctx);
+  });
+  warmup.drop_without_applying_deltas();
+
   let mut captured: Option<ShellOutput> = None;
   let mut input = raw_input();
   input.events = events;
@@ -71,8 +78,6 @@ pub(crate) fn frame_with_events(
     captured = Some(shell.show(app, ctx));
   });
   let texts = painted_text(&full);
-  // The texture deltas belong to a renderer we do not have in a headless test; dropping them
-  // silently is exactly what epaint forbids, so say so explicitly.
   full.drop_without_applying_deltas();
   (captured.expect("the shell ran"), texts)
 }
@@ -185,14 +190,22 @@ pub(crate) fn click_palette_chip(
 
 /// Every piece of text the frame actually drew.
 pub(crate) fn painted_text(output: &egui::FullOutput) -> Vec<String> {
-  output
-    .shapes
-    .iter()
-    .filter_map(|clipped| match &clipped.shape {
-      egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
-      _ => None,
-    })
-    .collect()
+  fn push_text(shape: &egui::Shape, out: &mut Vec<String>) {
+    match shape {
+      egui::Shape::Text(text) => out.push(text.galley.text().to_owned()),
+      egui::Shape::Vec(shapes) => {
+        for s in shapes {
+          push_text(s, out);
+        }
+      }
+      _ => {}
+    }
+  }
+  let mut texts = Vec::new();
+  for clipped in &output.shapes {
+    push_text(&clipped.shape, &mut texts);
+  }
+  texts
 }
 
 /// A window tall enough to lay the whole Tools tab out, so every one of its buttons is pressable.
@@ -219,6 +232,12 @@ pub(crate) fn tall_frame(
   app: &mut AppState,
   events: Vec<egui::Event>,
 ) -> ShellOutput {
+  // Warm-up pass: floating Areas need a layout pass before their shapes appear in output.
+  let warmup = ctx.run_pass(tall_input(), |ctx| {
+    let _ = shell.show(app, ctx);
+  });
+  warmup.drop_without_applying_deltas();
+
   let mut captured: Option<ShellOutput> = None;
   let mut input = tall_input();
   input.events = events;

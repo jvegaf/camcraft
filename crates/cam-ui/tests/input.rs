@@ -236,10 +236,8 @@ fn clicking_empty_space_clears_the_selection() {
   let mut harness = Harness::new();
   harness.app.select(vec!["E1".to_owned()]);
   harness.frame(Vec::new());
-  // The shell frames the drawing, so the visible area reaches well past the 100x60 rectangle. This
-  // point is inside that view and clear of every edge — but near it, because the chrome moved the
-  // canvas and a point 90 mm up is no longer on screen.
-  let position = harness.at(Point2::new(-8.0, 30.0));
+  // Pick an empty-canvas point clear of floating panels (task 070 Floating Studio).
+  let position = harness.at(Point2::new(50.0, -8.0));
   harness.click(position);
   assert!(
     harness.app.selection().is_empty(),
@@ -705,9 +703,8 @@ fn right_clicking_an_entity_offers_its_commands() {
 #[test]
 fn right_clicking_empty_canvas_offers_canvas_commands() {
   let mut harness = Harness::new();
-  // Clear of every edge, as in the click-to-clear test: the chrome leaves this much view around a
-  // 100 x 60 mm rectangle.
-  let position = harness.at(Point2::new(-8.0, 30.0));
+  // Pick an empty-canvas point clear of floating panels (task 070 Floating Studio).
+  let position = harness.at(Point2::new(50.0, -8.0));
   harness.right_click(position);
   harness.settle();
 
@@ -774,7 +771,7 @@ fn a_menu_entry_runs_its_command() {
 fn the_menu_entries_all_have_help() {
   // Both scopes, because a menu that offers a word the table does not know is a menu the `F1` panel
   // cannot explain.
-  for position in [Point2::new(50.0, 0.0), Point2::new(-8.0, 30.0)] {
+  for position in [Point2::new(50.0, 0.0), Point2::new(50.0, -8.0)] {
     let mut harness = Harness::new();
     let screen = harness.at(position);
     harness.right_click(screen);
@@ -863,7 +860,7 @@ fn the_trim_row_cuts_the_lower_id_with_the_other_one() {
 #[test]
 fn a_canvas_menu_row_runs_its_command_and_the_menu_closes() {
   let mut harness = Harness::new();
-  let position = harness.at(Point2::new(-8.0, 30.0));
+  let position = harness.at(Point2::new(50.0, -8.0));
   harness.right_click(position);
   harness.settle();
   assert!(harness.shell.snapping, "snapping starts armed");

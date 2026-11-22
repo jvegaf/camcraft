@@ -341,16 +341,24 @@ pub(crate) type Run = (String, egui::Pos2, egui::Vec2);
 /// buttons) but not the form's boxes — S9 makes them editable, and a box is reached the way an operator
 /// reaches it: by its own pixels, not by a rectangle a test computed from the column's padding.
 pub(crate) fn painted_runs(output: &egui::FullOutput) -> Vec<Run> {
-  output
-    .shapes
-    .iter()
-    .filter_map(|clipped| match &clipped.shape {
+  fn push(shape: &egui::Shape, out: &mut Vec<Run>) {
+    match shape {
       egui::Shape::Text(text) => {
-        Some((text.galley.text().to_owned(), text.pos, text.galley.size()))
+        out.push((text.galley.text().to_owned(), text.pos, text.galley.size()))
       }
-      _ => None,
-    })
-    .collect()
+      egui::Shape::Vec(shapes) => {
+        for s in shapes {
+          push(s, out);
+        }
+      }
+      _ => {}
+    }
+  }
+  let mut runs = Vec::new();
+  for clipped in &output.shapes {
+    push(&clipped.shape, &mut runs);
+  }
+  runs
 }
 
 /// One quiet frame that also hands back the points its text was painted at.
@@ -416,6 +424,7 @@ pub(crate) fn open_library(
   app: &mut AppState,
 ) -> ShellOutput {
   shell.open_task(Category::Toolpaths);
+  let _ = frame_with(ctx, shell, app);
   let (output, _) = frame_with(ctx, shell, app);
   let at = output
     .drawn

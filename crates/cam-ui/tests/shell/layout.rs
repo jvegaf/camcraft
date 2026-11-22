@@ -49,41 +49,41 @@ fn the_frame_draws_no_stage_bar_and_the_rail_offers_every_group_at_once() {
 }
 
 #[test]
-fn collapsing_the_inspector_widens_the_canvas_and_the_strip_opens_it_again() {
+fn collapsing_the_inspector_hides_its_content_while_the_canvas_stays_full() {
+  // Floating Studio (task 070): the inspector is a floating overlay, so the canvas is always full
+  // width. Collapsing hides the inspector body/content; reopening brings it back.
   let mut app = AppState::new(document_with_rectangle());
   let mut shell = Shell::new();
   let ctx = egui::Context::default();
-  let (open, _) = frame_with(&ctx, &mut shell, &mut app);
+  let (open, open_texts) = frame_with(&ctx, &mut shell, &mut app);
+  let open_all = joined(&open_texts);
+  assert!(
+    open_all.contains("Properties") || open_all.contains("LAYERS"),
+    "the open inspector must show its content: {open_all}"
+  );
 
   shell.set_inspector_open(false);
   let (closed, texts) = frame_with(&ctx, &mut shell, &mut app);
+  let all = joined(&texts);
   assert!(
-    !joined(&texts).contains("Inspector"),
-    "the panel must be gone"
+    !all.contains("Properties") && !all.contains("LAYERS"),
+    "collapsed floating inspector must hide its content: {all}"
   );
   assert!(
-    closed.canvas.width > open.canvas.width,
-    "the canvas must take the width back: {} vs {}",
+    (closed.canvas.width - open.canvas.width).abs() < 1.0,
+    "floating canvas width stays full: {} vs {}",
     closed.canvas.width,
     open.canvas.width
   );
+  assert!(!shell.inspector_open(), "inspector must be collapsed");
 
-  // Touching the strip brings it back: that is what makes collapsing usable rather than modal.
-  let strip = egui::pos2(
-    (closed.canvas.x + closed.canvas.width) as f32 + 6.0,
-    (closed.canvas.y + 40.0) as f32,
+  shell.set_inspector_open(true);
+  let (_reopened, reopened_texts) = frame_with(&ctx, &mut shell, &mut app);
+  let reopened_all = joined(&reopened_texts);
+  assert!(
+    reopened_all.contains("Properties") || reopened_all.contains("LAYERS"),
+    "reopening the inspector must restore its content: {reopened_all}"
   );
-  // Two passes with the pointer there: egui decides what is hovered from the interaction state the
-  // previous pass ended with, so one pass with a moved pointer reports hover on the next frame.
-  for _ in 0..2 {
-    let mut input = raw_input();
-    input.events.push(egui::Event::PointerMoved(strip));
-    let full = ctx.run_pass(input, |ctx| {
-      shell.show(&mut app, ctx);
-    });
-    full.drop_without_applying_deltas();
-  }
-  assert!(shell.inspector_open(), "hovering the strip must reopen it");
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn the_app_bar_offers_the_document_the_units_and_the_primary_action() {
   let mut shell = Shell::new();
   let (output, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  for label in ["campilot", "untitled.cmc", "mm", "Generate G-code"] {
+  for label in ["Camcraft", "untitled.cmc", "mm", "Generate G-code"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
   // The bar's file command moved to the rail (camui-prancheta T2b, S4), and a bar that could not ask for a
@@ -128,7 +128,7 @@ fn the_rail_foot_names_the_product_and_says_the_work_is_unsaved() {
   let mut shell = Shell::new();
   let (output, texts) = frame(&mut shell, &mut app);
   let all = joined(&texts);
-  for label in ["campilot", "Unsaved changes"] {
+  for label in ["Camcraft", "Unsaved changes"] {
     assert!(all.contains(label), "missing {label:?} in {all}");
   }
   assert_eq!(
@@ -142,7 +142,7 @@ fn the_rail_foot_names_the_product_and_says_the_work_is_unsaved() {
   );
   // The block is at the foot of the rail and the rail is a panel, not a canvas overlay: what it must never be
   // is a command, so none of the three lines is a chip the palette reports.
-  for line in ["campilot", "Unsaved changes"] {
+  for line in ["Camcraft", "Unsaved changes"] {
     assert!(
       !output.drawn.palette.iter().any(|chip| chip == line),
       "{line:?} must not be a rail command: {:?}",

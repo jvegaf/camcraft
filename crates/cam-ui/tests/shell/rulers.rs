@@ -527,7 +527,11 @@ fn the_wheel_zooms_over_the_sheet_but_not_over_a_ruler() {
     "the wheel over the top ruler must not zoom the sheet"
   );
 
-  let on_sheet = egui::pos2((canvas.x + 120.0) as f32, (canvas.y + 40.0) as f32);
+  // Pick a point clearly on the sheet, outside floating panels (task 070 Floating Studio).
+  let on_sheet = egui::pos2(
+    (canvas.x + canvas.width * 0.55) as f32,
+    (canvas.y + canvas.height * 0.35) as f32,
+  );
   let _ = move_to(&ctx, &mut shell, &mut app, on_sheet);
   let before = app.camera().pixels_per_mm();
   let _ = frame_with_events(
