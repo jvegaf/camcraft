@@ -198,6 +198,14 @@ fn paint_copper_fills(
   }
 }
 
+/// Screen-space dedupe threshold: 0.5 px, squared to avoid sqrt.
+const SCREEN_DEDUPE_DIST_SQ: f32 = 0.25;
+
+/// Above this point count, ear clipping becomes too expensive for per-frame rendering.
+/// Fall back to fan triangulation, which is fast and correct for convex contours; concave
+/// contours may get imperfect fill, but an approximate fill is better than dropping it.
+const EARCLIP_MAX_POINTS: usize = 96;
+
 fn flatten_contour_to_screen(
   contour: &cam_geom::Contour,
   canvas: &CanvasRect,
@@ -224,7 +232,7 @@ fn flatten_contour_to_screen(
     for point in seg_points {
       if points
         .last()
-        .is_some_and(|last: &Pos2| last.distance_sq(point) < 0.25)
+        .is_some_and(|last: &Pos2| last.distance_sq(point) < SCREEN_DEDUPE_DIST_SQ)
       {
         continue;
       }
@@ -235,7 +243,7 @@ fn flatten_contour_to_screen(
     && points
       .first()
       .zip(points.last())
-      .is_some_and(|(a, b)| a.distance_sq(*b) < 0.25)
+      .is_some_and(|(a, b)| a.distance_sq(*b) < SCREEN_DEDUPE_DIST_SQ)
   {
     points.pop();
   }
@@ -245,6 +253,9 @@ fn flatten_contour_to_screen(
 fn earclip(points: &[Pos2]) -> Vec<[Pos2; 3]> {
   if points.len() < 3 {
     return Vec::new();
+  }
+  if points.len() > EARCLIP_MAX_POINTS {
+    return fan_triangulate(points);
   }
   let mut indices: Vec<usize> = (0..points.len()).collect();
   let area = signed_area(points);
@@ -295,6 +306,21 @@ fn earclip(points: &[Pos2]) -> Vec<[Pos2; 3]> {
   }
   if indices.len() == 3 {
     triangles.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
+  } else if indices.len() > 3 {
+    // Best-effort fallback: keep the copper fill visible instead of dropping it silently.
+    let remaining: Vec<Pos2> = indices.iter().map(|&i| points[i]).collect();
+    triangles.extend(fan_triangulate(&remaining));
+  }
+  triangles
+}
+
+fn fan_triangulate(points: &[Pos2]) -> Vec<[Pos2; 3]> {
+  if points.len() < 3 {
+    return Vec::new();
+  }
+  let mut triangles = Vec::with_capacity(points.len().saturating_sub(2));
+  for i in 1..(points.len() - 1) {
+    triangles.push([points[0], points[i], points[i + 1]]);
   }
   triangles
 }
