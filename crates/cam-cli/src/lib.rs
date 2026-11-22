@@ -199,6 +199,7 @@ pub(crate) fn operation_label(operation: &cam_model::Operation) -> &'static str 
     cam_model::Operation::NonCopperClear(_) => "non-copper clear",
     cam_model::Operation::Cutout(_) => "cutout",
     cam_model::Operation::Paint(_) => "paint",
+    cam_model::Operation::Drilling(_) => "drilling",
     cam_model::Operation::Panelize(_) => "panelize",
   }
 }

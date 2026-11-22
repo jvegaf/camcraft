@@ -123,6 +123,7 @@ pub fn target_for(
       Operation::NonCopperClear(_) => "non_copper_clear",
       Operation::Cutout(_) => "cutout",
       Operation::Paint(_) => "paint",
+      Operation::Drilling(_) => "drilling",
       Operation::Panelize(_) => "panelize",
     };
     return Err(TargetError::OperationNotImplemented {

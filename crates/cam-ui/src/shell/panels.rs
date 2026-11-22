@@ -431,8 +431,8 @@ impl Shell {
                         self.toolpath_list(app, ui, &palette, output);
                         if !app.document().toolpaths.is_empty() {
                           self.tool_card(app, ui, &palette, output);
+                          self.toolpath_operation_editor(app, ui, &palette, output);
                         }
-                        self.authoring(app, ui, output);
                       }
                       Category::Relief3d => self.relief_task(app, ui, &palette, output),
                       Category::MachineOutput => self.job_section(app, ui, &palette, output),
@@ -464,6 +464,327 @@ impl Shell {
         );
       });
   }
+
+  fn toolpath_operation_editor(
+    &mut self,
+    app: &AppState,
+    ui: &mut egui::Ui,
+    palette: &crate::theme::Palette,
+    output: &mut ShellOutput,
+  ) {
+    use cam_model::{
+      CutoutParams, DrillingParams, FillMethod, IsolationKind, IsolationParams, MillingDirection,
+      NonCopperClearParams, Operation, PaintParams, PanelizeParams, TabKind,
+    };
+    use cam_units::Length;
+
+    let Some(toolpath) = self.described_toolpath(app).cloned() else {
+      return;
+    };
+    if self.toolpath_draft_id.as_deref() != Some(toolpath.id.as_str()) {
+      self.toolpath_draft_id = Some(toolpath.id.clone());
+      self.toolpath_name_draft = toolpath.name.clone();
+      self.toolpath_operation_draft = Some(toolpath.operation.clone());
+    }
+
+    ui.add_space(6.0);
+    ui.separator();
+    ui.label(RichText::new("Operation").size(theme::SMALL).strong());
+    ui.horizontal(|ui| {
+      ui.label("Name");
+      ui.text_edit_singleline(&mut self.toolpath_name_draft);
+      if ui.button("Rename").clicked() {
+        output.actions.push(UiAction::SetToolpathName {
+          toolpath_id: toolpath.id.clone(),
+          name: self.toolpath_name_draft.clone(),
+        });
+      }
+    });
+
+    let current_kind = self
+      .toolpath_operation_draft
+      .as_ref()
+      .or(Some(&toolpath.operation))
+      .map(operation_kind)
+      .unwrap_or(OperationKind::Isolation);
+    let mut selected_kind = current_kind;
+    egui::ComboBox::from_label("Type")
+      .selected_text(selected_kind.label())
+      .show_ui(ui, |ui| {
+        for kind in OperationKind::ALL {
+          ui.selectable_value(&mut selected_kind, kind, kind.label());
+        }
+      });
+    if selected_kind != current_kind {
+      self.toolpath_operation_draft = Some(default_operation(selected_kind));
+    }
+
+    let Some(op) = self.toolpath_operation_draft.as_mut() else {
+      return;
+    };
+
+    match op {
+      Operation::Isolation(params) => {
+        ui.add(
+          egui::DragValue::new(&mut params.passes)
+            .prefix("passes ")
+            .range(1..=100),
+        );
+        ui.add(
+          egui::DragValue::new(&mut params.overlap)
+            .prefix("overlap ")
+            .speed(0.01)
+            .range(0.0..=1.0),
+        );
+        direction_combo(ui, &mut params.direction);
+        isolation_kind_combo(ui, &mut params.kind);
+        length_mm(ui, "cut depth", &mut params.cut_depth);
+        ui.checkbox(&mut params.keep_pours, "keep pours");
+      }
+      Operation::NonCopperClear(params) => {
+        ui.add(
+          egui::DragValue::new(&mut params.overlap)
+            .prefix("overlap ")
+            .speed(0.01)
+            .range(0.0..=1.0),
+        );
+        length_mm(ui, "margin", &mut params.margin);
+        fill_method_combo(ui, &mut params.method);
+        ui.checkbox(&mut params.connect, "connect");
+        ui.checkbox(&mut params.contour, "contour");
+        let mut has_copper_offset = params.copper_offset.is_some();
+        if ui
+          .checkbox(&mut has_copper_offset, "copper offset")
+          .changed()
+        {
+          params.copper_offset = if has_copper_offset {
+            Some(Length::from_mm(0.0))
+          } else {
+            None
+          };
+        }
+        if let Some(offset) = params.copper_offset.as_mut() {
+          length_mm(ui, "copper offset mm", offset);
+        }
+        direction_combo(ui, &mut params.direction);
+        length_mm(ui, "cut depth", &mut params.cut_depth);
+      }
+      Operation::Cutout(params) => {
+        length_mm(ui, "margin", &mut params.margin);
+        tab_kind_combo(ui, &mut params.tab_kind);
+        length_mm(ui, "pass depth", &mut params.pass_depth);
+        length_mm(ui, "cut depth", &mut params.cut_depth);
+        ui.checkbox(&mut params.cut_interiors, "cut interiors");
+        ui.label(
+          RichText::new(format!("Tabs: {}", params.tabs.len()))
+            .size(theme::SMALL)
+            .color(palette.get(Role::TextDim)),
+        );
+      }
+      Operation::Paint(params) => {
+        ui.add(
+          egui::DragValue::new(&mut params.overlap)
+            .prefix("overlap ")
+            .speed(0.01)
+            .range(0.0..=1.0),
+        );
+        length_mm(ui, "offset", &mut params.offset);
+        fill_method_combo(ui, &mut params.method);
+        ui.checkbox(&mut params.connect, "connect");
+        ui.checkbox(&mut params.contour, "contour");
+        length_mm(ui, "cut depth", &mut params.cut_depth);
+      }
+      Operation::Drilling(params) => {
+        length_mm(ui, "cut depth", &mut params.cut_depth);
+        length_mm(ui, "peck depth", &mut params.peck_depth);
+        ui.add(
+          egui::DragValue::new(&mut params.dwell)
+            .prefix("dwell s ")
+            .speed(0.01)
+            .range(0.0..=60.0),
+        );
+      }
+      Operation::Panelize(params) => {
+        ui.add(
+          egui::DragValue::new(&mut params.rows)
+            .prefix("rows ")
+            .range(1..=100),
+        );
+        ui.add(
+          egui::DragValue::new(&mut params.columns)
+            .prefix("cols ")
+            .range(1..=100),
+        );
+        length_mm(ui, "spacing x", &mut params.spacing_x);
+        length_mm(ui, "spacing y", &mut params.spacing_y);
+      }
+    }
+
+    if ui.button("Apply operation").clicked() {
+      output.actions.push(UiAction::SetToolpathOperation {
+        toolpath_id: toolpath.id.clone(),
+        operation: op.clone(),
+      });
+    }
+  }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OperationKind {
+  Isolation,
+  NonCopperClear,
+  Cutout,
+  Paint,
+  Drilling,
+  Panelize,
+}
+
+impl OperationKind {
+  const ALL: [Self; 6] = [
+    Self::Isolation,
+    Self::NonCopperClear,
+    Self::Cutout,
+    Self::Paint,
+    Self::Drilling,
+    Self::Panelize,
+  ];
+
+  fn label(self) -> &'static str {
+    match self {
+      Self::Isolation => "Isolation",
+      Self::NonCopperClear => "NCC",
+      Self::Cutout => "Cutout",
+      Self::Paint => "Paint",
+      Self::Drilling => "Drilling",
+      Self::Panelize => "Panelize",
+    }
+  }
+}
+
+fn operation_kind(op: &cam_model::Operation) -> OperationKind {
+  match op {
+    cam_model::Operation::Isolation(_) => OperationKind::Isolation,
+    cam_model::Operation::NonCopperClear(_) => OperationKind::NonCopperClear,
+    cam_model::Operation::Cutout(_) => OperationKind::Cutout,
+    cam_model::Operation::Paint(_) => OperationKind::Paint,
+    cam_model::Operation::Drilling(_) => OperationKind::Drilling,
+    cam_model::Operation::Panelize(_) => OperationKind::Panelize,
+  }
+}
+
+fn default_operation(kind: OperationKind) -> cam_model::Operation {
+  use cam_model::{
+    CutoutParams, DrillingParams, FillMethod, IsolationKind, IsolationParams, MillingDirection,
+    NonCopperClearParams, Operation, PaintParams, PanelizeParams, TabKind,
+  };
+  use cam_units::Length;
+  match kind {
+    OperationKind::Isolation => Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
+    }),
+    OperationKind::NonCopperClear => Operation::NonCopperClear(NonCopperClearParams {
+      overlap: 0.5,
+      margin: Length::from_mm(0.0),
+      method: FillMethod::Standard,
+      connect: false,
+      contour: true,
+      copper_offset: None,
+      direction: MillingDirection::Climb,
+      cut_depth: Length::from_mm(0.1),
+    }),
+    OperationKind::Cutout => Operation::Cutout(CutoutParams {
+      margin: Length::from_mm(0.0),
+      tabs: Vec::new(),
+      tab_kind: TabKind::Straight,
+      pass_depth: Length::from_mm(0.0),
+      cut_depth: Length::from_mm(1.6),
+      cut_interiors: false,
+    }),
+    OperationKind::Paint => Operation::Paint(PaintParams {
+      overlap: 0.5,
+      offset: Length::from_mm(0.0),
+      method: FillMethod::Standard,
+      connect: false,
+      contour: true,
+      cut_depth: Length::from_mm(0.1),
+    }),
+    OperationKind::Drilling => Operation::Drilling(DrillingParams {
+      cut_depth: Length::from_mm(1.6),
+      peck_depth: Length::from_mm(0.0),
+      dwell: 0.0,
+    }),
+    OperationKind::Panelize => Operation::Panelize(PanelizeParams {
+      rows: 1,
+      columns: 1,
+      spacing_x: Length::from_mm(2.0),
+      spacing_y: Length::from_mm(2.0),
+      constrain_x: None,
+      constrain_y: None,
+    }),
+  }
+}
+
+fn length_mm(ui: &mut egui::Ui, label: &str, value: &mut cam_units::Length) {
+  let mut mm = value.mm();
+  if ui
+    .add(
+      egui::DragValue::new(&mut mm)
+        .prefix(format!("{label} "))
+        .suffix(" mm")
+        .speed(0.1),
+    )
+    .changed()
+  {
+    *value = cam_units::Length::from_mm(mm);
+  }
+}
+
+fn direction_combo(ui: &mut egui::Ui, value: &mut cam_model::MillingDirection) {
+  egui::ComboBox::from_label("direction")
+    .selected_text(format!("{:?}", value))
+    .show_ui(ui, |ui| {
+      ui.selectable_value(value, cam_model::MillingDirection::Climb, "Climb");
+      ui.selectable_value(
+        value,
+        cam_model::MillingDirection::Conventional,
+        "Conventional",
+      );
+    });
+}
+
+fn isolation_kind_combo(ui: &mut egui::Ui, value: &mut cam_model::IsolationKind) {
+  egui::ComboBox::from_label("kind")
+    .selected_text(format!("{:?}", value))
+    .show_ui(ui, |ui| {
+      ui.selectable_value(value, cam_model::IsolationKind::Exterior, "Exterior");
+      ui.selectable_value(value, cam_model::IsolationKind::Interior, "Interior");
+      ui.selectable_value(value, cam_model::IsolationKind::Full, "Full");
+    });
+}
+
+fn fill_method_combo(ui: &mut egui::Ui, value: &mut cam_model::FillMethod) {
+  egui::ComboBox::from_label("method")
+    .selected_text(format!("{:?}", value))
+    .show_ui(ui, |ui| {
+      ui.selectable_value(value, cam_model::FillMethod::Standard, "Standard");
+      ui.selectable_value(value, cam_model::FillMethod::Seed, "Seed");
+      ui.selectable_value(value, cam_model::FillMethod::Lines, "Lines");
+    });
+}
+
+fn tab_kind_combo(ui: &mut egui::Ui, value: &mut cam_model::TabKind) {
+  egui::ComboBox::from_label("tab kind")
+    .selected_text(format!("{:?}", value))
+    .show_ui(ui, |ui| {
+      ui.selectable_value(value, cam_model::TabKind::Straight, "Straight");
+      ui.selectable_value(value, cam_model::TabKind::Thin, "Thin");
+      ui.selectable_value(value, cam_model::TabKind::MouseBites, "MouseBites");
+    });
 }
 
 /// Draw one Tools-tab command button, report where it landed, and say whether it was pressed.

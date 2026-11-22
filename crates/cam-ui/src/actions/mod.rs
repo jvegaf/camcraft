@@ -237,6 +237,24 @@ pub enum UiAction {
     /// The new display name.
     name: String,
   },
+  /// Add a new toolpath to the document.
+  AddToolpath {
+    /// Identifier for the new toolpath; it must be free.
+    toolpath_id: String,
+    /// Display name.
+    name: String,
+    /// Entities the toolpath is computed from.
+    entity_ids: Vec<String>,
+    /// Tool number.
+    tool_number: u32,
+    /// The operation and its parameters.
+    operation: Operation,
+  },
+  /// Remove a toolpath from the document.
+  DeleteToolpath {
+    /// Identifier of the toolpath to remove.
+    toolpath_id: String,
+  },
   /// Write the tool library to `path` as the file format's JSON (tool-library-editor S11).
   ///
   /// This is the answer to [`UiAction::RequestExportTools`], exactly as [`UiAction::SaveFile`] answers
@@ -305,6 +323,8 @@ impl UiAction {
       Self::SetToolpathToolNumber { .. } => "set toolpath tool",
       Self::SetToolpathOperation { .. } => "set toolpath operation",
       Self::SetToolpathName { .. } => "set toolpath name",
+      Self::AddToolpath { .. } => "add toolpath",
+      Self::DeleteToolpath { .. } => "delete toolpath",
       Self::ExportTools { .. } | Self::RequestExportTools => "export tools",
       Self::ImportTools { .. } | Self::RequestImportTools => "import tools",
     }

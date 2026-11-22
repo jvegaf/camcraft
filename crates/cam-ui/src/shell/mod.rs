@@ -403,6 +403,12 @@ pub struct Shell {
   pub(crate) tool_library_error: Option<String>,
   /// The selected toolpath id in the toolpaths list.
   pub(crate) selected_toolpath: Option<String>,
+  /// Draft toolpath id the operation editor is editing.
+  pub(crate) toolpath_draft_id: Option<String>,
+  /// Draft toolpath name.
+  pub(crate) toolpath_name_draft: String,
+  /// Draft operation for the selected toolpath.
+  pub(crate) toolpath_operation_draft: Option<cam_model::Operation>,
 
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   pub(crate) help_focus: crate::help::Command,
@@ -513,6 +519,9 @@ impl Default for Shell {
       tool_library_path: None,
       tool_library_error: None,
       selected_toolpath: None,
+      toolpath_draft_id: None,
+      toolpath_name_draft: String::new(),
+      toolpath_operation_draft: None,
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }

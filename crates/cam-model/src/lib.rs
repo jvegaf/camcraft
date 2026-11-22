@@ -489,6 +489,17 @@ pub struct PaintParams {
   pub cut_depth: Length,
 }
 
+/// Parameters of a drilling operation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DrillingParams {
+  /// Total cut depth below the surface.
+  pub cut_depth: Length,
+  /// Depth removed per peck; zero means a single pass.
+  pub peck_depth: Length,
+  /// Dwell time at the bottom of each hole, in seconds.
+  pub dwell: f64,
+}
+
 /// Parameters of a panelization operation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanelizeParams {
@@ -518,6 +529,8 @@ pub enum Operation {
   Cutout(CutoutParams),
   /// Mill a solder-mask paint pattern.
   Paint(PaintParams),
+  /// Drill holes.
+  Drilling(DrillingParams),
   /// Arrange multiple board copies into a panel.
   Panelize(PanelizeParams),
 }
@@ -864,6 +877,30 @@ pub enum ModelError {
     toolpath: String,
     /// The offending cut depth in millimetres.
     cut_depth: f64,
+  },
+  /// A drilling operation has a non-positive cut depth.
+  #[error("toolpath {toolpath:?} drilling cut depth must be positive, got {cut_depth} mm")]
+  DrillingCutDepthNotPositive {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending cut depth in millimetres.
+    cut_depth: f64,
+  },
+  /// A drilling operation has a negative peck depth.
+  #[error("toolpath {toolpath:?} drilling peck depth must not be negative, got {peck_depth} mm")]
+  DrillingPeckDepthNegative {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending peck depth in millimetres.
+    peck_depth: f64,
+  },
+  /// A drilling operation has a negative dwell.
+  #[error("toolpath {toolpath:?} drilling dwell must not be negative, got {dwell} s")]
+  DrillingDwellNegative {
+    /// The toolpath id.
+    toolpath: String,
+    /// The offending dwell in seconds.
+    dwell: f64,
   },
   /// A panelize operation has fewer than one row.
   #[error("toolpath {toolpath:?} panelize rows must be at least 1, got {rows}")]
@@ -1247,7 +1284,8 @@ impl Document {
           Operation::Isolation(_)
           | Operation::NonCopperClear(_)
           | Operation::Cutout(_)
-          | Operation::Paint(_) => true,
+          | Operation::Paint(_)
+          | Operation::Drilling(_) => true,
           Operation::Panelize(_) => false,
         };
         if needs_closed_geometry {
@@ -1268,6 +1306,7 @@ impl Document {
       check_non_copper_clear(toolpath)?;
       check_cutout(self, toolpath)?;
       check_paint(toolpath)?;
+      check_drilling(toolpath)?;
       check_panelize(toolpath)?;
     }
 
@@ -1861,6 +1900,32 @@ fn check_paint(toolpath: &Toolpath) -> Result<(), ModelError> {
     return Err(ModelError::PaintCutDepthNotPositive {
       toolpath: toolpath.id.clone(),
       cut_depth: params.cut_depth.mm(),
+    });
+  }
+  Ok(())
+}
+
+/// Check a drilling operation's parameters.
+fn check_drilling(toolpath: &Toolpath) -> Result<(), ModelError> {
+  let Operation::Drilling(params) = &toolpath.operation else {
+    return Ok(());
+  };
+  if params.cut_depth.mm() <= 0.0 || !params.cut_depth.mm().is_finite() {
+    return Err(ModelError::DrillingCutDepthNotPositive {
+      toolpath: toolpath.id.clone(),
+      cut_depth: params.cut_depth.mm(),
+    });
+  }
+  if params.peck_depth.mm() < 0.0 || !params.peck_depth.mm().is_finite() {
+    return Err(ModelError::DrillingPeckDepthNegative {
+      toolpath: toolpath.id.clone(),
+      peck_depth: params.peck_depth.mm(),
+    });
+  }
+  if params.dwell < 0.0 || !params.dwell.is_finite() {
+    return Err(ModelError::DrillingDwellNegative {
+      toolpath: toolpath.id.clone(),
+      dwell: params.dwell,
     });
   }
   Ok(())

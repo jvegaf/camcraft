@@ -301,6 +301,11 @@ fn parameter_rows(toolpath: &Toolpath) -> Vec<(&'static str, String)> {
       ("contour", params.contour.to_string()),
       ("cut depth", millimetres(params.cut_depth.mm())),
     ],
+    Operation::Drilling(params) => vec![
+      ("cut depth", millimetres(params.cut_depth.mm())),
+      ("peck depth", millimetres(params.peck_depth.mm())),
+      ("dwell", format!("{:.3} s", params.dwell)),
+    ],
     Operation::Panelize(params) => {
       let mut rows = vec![
         ("rows", params.rows.to_string()),

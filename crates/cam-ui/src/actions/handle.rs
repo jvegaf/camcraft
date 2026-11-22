@@ -409,6 +409,28 @@ pub(crate) fn handle_action_with_file(
         name: name.clone(),
       },
     ),
+    UiAction::AddToolpath {
+      toolpath_id,
+      name,
+      entity_ids,
+      tool_number,
+      operation,
+    } => apply_command(
+      app,
+      Command::AddToolpath {
+        toolpath_id: toolpath_id.clone(),
+        name: name.clone(),
+        entity_ids: entity_ids.clone(),
+        tool_number: *tool_number,
+        operation: operation.clone(),
+      },
+    ),
+    UiAction::DeleteToolpath { toolpath_id } => apply_command(
+      app,
+      Command::DeleteToolpath {
+        toolpath_id: toolpath_id.clone(),
+      },
+    ),
     UiAction::SetSelection(ids) => {
       app.select(ids.clone());
       Ok(ActionReport {
