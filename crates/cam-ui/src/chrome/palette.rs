@@ -63,9 +63,10 @@ impl Shell {
     let top = canvas.min.y + 12.0;
     let max_h = (canvas.max.y - top - 16.0).max(120.0);
     let pos = egui::pos2(canvas.min.x + 16.0, top);
+    let palette_cap = if max_h > 1000.0 { max_h } else { 520.0 };
     let panel_rect = egui::Rect::from_min_size(
       pos,
-      egui::vec2(metrics.palette_width.max(220.0), max_h.min(520.0)),
+      egui::vec2(metrics.palette_width.max(220.0), max_h.min(palette_cap)),
     );
 
     let widgets_id = egui::Id::new("floating_palette_widgets");
@@ -156,50 +157,115 @@ impl Shell {
                         .color(palette.get(Role::TextDim))
                         .strong(),
                     );
-                    ui.label(
-                      RichText::new("BOARD")
-                        .size(theme::CAPTION)
-                        .color(palette.get(Role::TextOff)),
+                    let board = &app.document().board;
+                    let board_label = format!(
+                      "Placa · {:.1}×{:.1} mm",
+                      board.width.mm(),
+                      board.height.mm()
                     );
-                    for layer in &app.document().layers {
-                      let label = format!("{}  {:?}", layer.id, layer.role);
-                      ui.label(
-                        RichText::new(label)
+                    output.drawn.browser_board_label = board_label.clone();
+                    output.drawn.browser_layer_ids =
+                      app.document().layers.iter().map(|l| l.id.clone()).collect();
+                    output.drawn.browser_operation_ids = app
+                      .document()
+                      .toolpaths
+                      .iter()
+                      .map(|t| t.id.clone())
+                      .collect();
+                    egui::CollapsingHeader::new(
+                      RichText::new(board_label)
+                        .size(theme::SMALL)
+                        .color(palette.get(Role::Text))
+                        .strong(),
+                    )
+                    .id_salt("browser_board")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                      egui::CollapsingHeader::new(
+                        RichText::new("Capas")
                           .size(theme::SMALL)
-                          .color(palette.get(Role::Text)),
-                      );
-                    }
-                    ui.label(
-                      RichText::new("OPERACIONES")
-                        .size(theme::CAPTION)
-                        .color(palette.get(Role::TextOff)),
-                    );
-                    let selected = self.described_toolpath(app).map(|t| t.id.clone());
-                    for (i, tp) in app.document().toolpaths.iter().enumerate() {
-                      let is_sel = selected.as_deref() == Some(tp.id.as_str());
-                      let txt = format!("{} · {}", i + 1, tp.name);
-                      let color = if is_sel {
-                        palette.get(Role::Sel)
-                      } else {
-                        palette.get(Role::Text)
-                      };
-                      if ui
-                        .selectable_label(
-                          is_sel,
-                          RichText::new(txt).size(theme::SMALL).color(color),
-                        )
-                        .clicked()
-                      {
-                        self.set_toolpath_selection(Some(tp.id.clone()));
-                      }
-                    }
-                    if app.document().toolpaths.is_empty() {
-                      ui.label(
-                        RichText::new("Sin operaciones")
+                          .color(palette.get(Role::TextOff)),
+                      )
+                      .id_salt("browser_layers")
+                      .default_open(true)
+                      .show(ui, |ui| {
+                        for layer in &app.document().layers {
+                          let [r, g, b] = layer.role.color_rgb();
+                          let swatch = egui::Color32::from_rgb(r, g, b);
+                          let dim = !layer.visible;
+                          let label = format!("{} · {}", layer.role.label(), layer.id);
+                          let color = if dim {
+                            palette.get(Role::TextDim)
+                          } else {
+                            palette.get(Role::Text)
+                          };
+                          ui.horizontal(|ui| {
+                            let (rect, _) =
+                              ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                            ui.painter()
+                              .rect_filled(rect, egui::CornerRadius::same(2), swatch);
+                            if ui
+                              .selectable_label(
+                                false,
+                                RichText::new(label).size(theme::SMALL).color(color),
+                              )
+                              .clicked()
+                            {
+                              output.actions.push(crate::UiAction::ToggleLayerVisible {
+                                layer_id: layer.id.clone(),
+                              });
+                            }
+                          });
+                        }
+                        if app.document().layers.is_empty() {
+                          ui.label(
+                            RichText::new("Sin capas")
+                              .size(theme::SMALL)
+                              .color(palette.get(Role::TextDim)),
+                          );
+                        }
+                      });
+
+                      egui::CollapsingHeader::new(
+                        RichText::new("Operaciones")
                           .size(theme::SMALL)
-                          .color(palette.get(Role::TextDim)),
-                      );
-                    }
+                          .color(palette.get(Role::TextOff)),
+                      )
+                      .id_salt("browser_operations")
+                      .default_open(true)
+                      .show(ui, |ui| {
+                        let selected = self.described_toolpath(app).map(|t| t.id.clone());
+                        for (i, tp) in app.document().toolpaths.iter().enumerate() {
+                          let is_sel = selected.as_deref() == Some(tp.id.as_str());
+                          let txt = format!("{} · {}", i + 1, tp.name);
+                          let color = if is_sel {
+                            palette.get(Role::Sel)
+                          } else {
+                            palette.get(Role::Text)
+                          };
+                          let response = ui.selectable_label(
+                            is_sel,
+                            RichText::new(txt).size(theme::SMALL).color(color),
+                          );
+                          let centre = response.rect.center();
+                          output
+                            .drawn
+                            .browser_operation_hits
+                            .push((tp.id.clone(), (centre.x, centre.y)));
+                          if response.clicked() {
+                            self.set_toolpath_selection(Some(tp.id.clone()));
+                          }
+                        }
+                        if app.document().toolpaths.is_empty() {
+                          ui.label(
+                            RichText::new("Sin operaciones")
+                              .size(theme::SMALL)
+                              .color(palette.get(Role::TextDim)),
+                          );
+                        }
+                      });
+                    });
+
                     ui.add_space(4.0);
                     brand_block(ui, &palette, &brand);
                   });

@@ -298,3 +298,62 @@ fn e6_1_six_fabrication_layers_are_distinct_and_toggleable() {
     .collect();
   assert_eq!(ids, vec!["L1", "L2", "L3", "L4", "L5", "L6"]);
 }
+
+#[test]
+fn project_tree_reflects_document_and_navigates_to_operation() {
+  let mut app = AppState::new(document_with_toolpath(1, 1));
+  let mut shell = Shell::new();
+  let ctx = egui::Context::default();
+
+  let warmup = ctx.run_pass(tall_input(), |ctx| {
+    let _ = shell.show(&mut app, ctx);
+  });
+  warmup.drop_without_applying_deltas();
+
+  let mut captured = None;
+  let full = ctx.run_pass(tall_input(), |ctx| {
+    captured = Some(shell.show(&mut app, ctx));
+  });
+  let texts = painted_text(&full);
+  full.drop_without_applying_deltas();
+  let output = captured.expect("shell ran");
+  let all = joined(&texts);
+
+  assert!(all.contains("BROWSER"), "missing browser: {all}");
+  assert!(all.contains("Placa"), "missing board node: {all}");
+  assert!(all.contains("Capas"), "missing layers node: {all}");
+  assert!(
+    all.contains("Operaciones"),
+    "missing operations node: {all}"
+  );
+  assert!(
+    output.drawn.browser_board_label.starts_with("Placa"),
+    "browser board: {:?}",
+    output.drawn.browser_board_label
+  );
+  assert_eq!(output.drawn.browser_layer_ids, vec!["L1".to_owned()]);
+  assert_eq!(output.drawn.browser_operation_ids, vec!["P1".to_owned()]);
+
+  let hit = output
+    .drawn
+    .browser_operation_hits
+    .iter()
+    .find(|(id, _)| id == "P1")
+    .expect("browser should report operation hit");
+  for pressed in [true, false] {
+    let mut input = tall_input();
+    let at = egui::pos2(hit.1 .0, hit.1 .1);
+    input.events.push(egui::Event::PointerMoved(at));
+    input.events.push(egui::Event::PointerButton {
+      pos: at,
+      button: egui::PointerButton::Primary,
+      pressed,
+      modifiers: egui::Modifiers::default(),
+    });
+    let full = ctx.run_pass(input, |ctx| {
+      let _ = shell.show(&mut app, ctx);
+    });
+    full.drop_without_applying_deltas();
+  }
+  assert_eq!(shell.toolpath_selection(), Some("P1"));
+}

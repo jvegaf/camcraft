@@ -126,6 +126,15 @@ pub struct DrawnState {
   /// press only one of them could not prove they agree. Only those seven are listed — the tab's other
   /// buttons are not built from [`crate::params`], so nothing needs their points.
   pub authoring_hits: Vec<(String, (f32, f32))>,
+  /// Where the project browser drew each operation: its toolpath id and the point that selects it.
+  ///
+  /// Reported so a headless test can prove the tree navigates to the operation (E6.2) without
+  /// guessing at the browser layout.
+  pub browser_operation_hits: Vec<(String, (f32, f32))>,
+  /// The project browser's board label and the layer/operation ids it reflected, in document order.
+  pub browser_board_label: String,
+  pub browser_layer_ids: Vec<String>,
+  pub browser_operation_ids: Vec<String>,
   /// The words the app bar's command buttons answer to, in the order it drew them.
   ///
   /// Empty since camui-prancheta T2b, and kept as an empty report on purpose: the bar's file commands moved to
