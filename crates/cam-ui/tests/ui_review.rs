@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use cam_app::AppState;
 use cam_geom::{Contour, Point2};
 use cam_model::{
-  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole, MillingDirection,
-  Operation, Provenance, Side, Toolpath,
+  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, Operation, Provenance, Side, Toolpath,
 };
 use cam_ui::{RecentProject, Shell};
 use cam_units::Length;
@@ -163,8 +163,14 @@ fn render(shell: Shell, app: AppState, name: &str) -> image::RgbaImage {
   harness.run();
   harness.step();
 
-  let image = harness.render().unwrap_or_else(|e| panic!("render {name}: {e:?}"));
-  println!("ui-review: rendered {name} ({}x{})", image.width(), image.height());
+  let image = harness
+    .render()
+    .unwrap_or_else(|e| panic!("render {name}: {e:?}"));
+  println!(
+    "ui-review: rendered {name} ({}x{})",
+    image.width(),
+    image.height()
+  );
   image
 }
 
@@ -177,7 +183,10 @@ fn save_png(path: &Path, image: &image::RgbaImage) {
     .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
 }
 
-fn diff_images(expected: &image::RgbaImage, actual: &image::RgbaImage) -> (u64, u64, image::RgbaImage) {
+fn diff_images(
+  expected: &image::RgbaImage,
+  actual: &image::RgbaImage,
+) -> (u64, u64, image::RgbaImage) {
   assert_eq!(
     (expected.width(), expected.height()),
     (actual.width(), actual.height()),
@@ -283,7 +292,11 @@ fn floating_studio_start_screen() {
   let mut shell = Shell::new();
   shell.start_with_no_project();
   shell.set_recents(vec![
-    RecentProject::new("controller-board", "/tmp/controller-board.cam", "Hace 12 min"),
+    RecentProject::new(
+      "controller-board",
+      "/tmp/controller-board.cam",
+      "Hace 12 min",
+    ),
     RecentProject::new("usb-adapter", "/tmp/usb-adapter.cam", "Ayer"),
     RecentProject::new("front-panel", "/tmp/front-panel.cam", "Hace 3 días"),
   ]);
