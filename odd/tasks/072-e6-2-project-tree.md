@@ -21,9 +21,9 @@
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Modelar el árbol de proyecto en el browser: nodo placa, capas hijas, operaciones hijas | S1,S2,S3 | inline | `pending` |
-| T2 | Navegación desde el árbol: seleccionar operación y reflejar selección/capas del documento | S1,S2 | inline | `pending` |
-| T3 | Tests y actualización de roadmap/index | S1,S2,S3 | inline | `pending` |
+| T1 | Modelar el árbol de proyecto en el browser: nodo placa, capas hijas, operaciones hijas | S1,S2,S3 | inline | `17dc1f8` |
+| T2 | Navegación desde el árbol: seleccionar operación y reflejar selección/capas del documento | S1,S2 | inline | `17dc1f8` |
+| T3 | Tests y actualización de roadmap/index | S1,S2,S3 | inline | `17dc1f8` |
 
 ## Log
 

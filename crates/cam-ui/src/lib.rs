@@ -56,11 +56,11 @@ pub mod ruler;
 /// running half needs no egui at all, so a caller without a window can still run a script and read what
 /// it produced.
 pub mod script_panel;
+/// The settings modal: preferences dialog (camcraft-workbench-v2 04-settings).
+pub mod settings;
 mod shell;
 /// The brand block's `Saved …` line: a civil date and time from a [`std::time::SystemTime`].
 pub mod stamp;
-/// The settings modal: preferences dialog (camcraft-workbench-v2 04-settings).
-pub mod settings;
 /// The start screen: the modal the first frame shows when the window holds no project (start-screen S2, S3).
 pub mod start_screen;
 pub mod theme;
