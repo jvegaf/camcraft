@@ -190,3 +190,13 @@ check-worktree:
 # Behaviour tests for the claim/merge tooling (throws away its own repository).
 test-tooling:
   @./scripts/test-worktree-tooling.sh
+
+# Automatic visual review of Floating Studio UI against golden snapshots.
+# Renders the real egui shell with egui_kittest/wgpu and compares to committed goldens.
+# See crates/cam-ui/tests/goldens/floating-studio/manifest.json for coverage and roadmap gaps.
+ui-review:
+  cargo test -p cam-ui --test ui_review -- --ignored --nocapture
+
+# Regenerate Floating Studio UI golden snapshots after an intentional visual change.
+ui-review-update:
+  UPDATE_UI_GOLDENS=1 cargo test -p cam-ui --test ui_review -- --ignored --nocapture
