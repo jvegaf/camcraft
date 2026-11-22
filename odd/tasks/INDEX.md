@@ -75,3 +75,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 069 | [e5-2-e5-4-exc-areas-toolchange-style](069-e5-2-e5-4-exc-areas-toolchange-style.md) | delivered | 2026-11-21 | `bc047b6` |
 | 071 | [e6-1-board-layer-identity](071-e6-1-board-layer-identity.md) | delivered | 2026-11-22 | `b030045` |
 | 072 | [e6-2-project-tree](072-e6-2-project-tree.md) | delivered | 2026-11-22 | `82387b1` |
+| 073 | [e6-3-operation-forms](073-e6-3-operation-forms.md) | delivered | 2026-11-23 | `016d361` |
