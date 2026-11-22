@@ -63,11 +63,17 @@ impl Shell {
     let top = canvas.min.y + 12.0;
     let max_h = (canvas.max.y - top - 16.0).max(120.0);
     let pos = egui::pos2(canvas.min.x + 16.0, top);
-    let palette_cap = if max_h > 1000.0 { max_h } else { 520.0 };
-    let panel_rect = egui::Rect::from_min_size(
-      pos,
-      egui::vec2(metrics.palette_width.max(220.0), max_h.min(palette_cap)),
-    );
+    // Cap the floating palette in normal windows so it does not cover the canvas; very tall
+    // test windows uncap it so browser content remains paintable.
+    const PALETTE_MAX_HEIGHT: f32 = 520.0;
+    const TALL_WINDOW_UNCAP_MAX_H: f32 = 1000.0;
+    let palette_h = if max_h > TALL_WINDOW_UNCAP_MAX_H {
+      max_h
+    } else {
+      max_h.min(PALETTE_MAX_HEIGHT)
+    };
+    let panel_rect =
+      egui::Rect::from_min_size(pos, egui::vec2(metrics.palette_width.max(220.0), palette_h));
 
     let widgets_id = egui::Id::new("floating_palette_widgets");
     let widgets_layer = egui::LayerId::new(egui::Order::Middle, widgets_id);

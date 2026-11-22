@@ -254,14 +254,14 @@ fn earclip(points: &[Pos2]) -> Vec<[Pos2; 3]> {
   if points.len() < 3 {
     return Vec::new();
   }
-  if points.len() > EARCLIP_MAX_POINTS {
-    return fan_triangulate(points);
-  }
-  let mut indices: Vec<usize> = (0..points.len()).collect();
   let area = signed_area(points);
   if area.abs() < 1.0e-6 {
     return Vec::new();
   }
+  if points.len() > EARCLIP_MAX_POINTS && is_convex(points) {
+    return fan_triangulate(points);
+  }
+  let mut indices: Vec<usize> = (0..points.len()).collect();
   if area < 0.0 {
     indices.reverse();
   }
@@ -333,6 +333,26 @@ fn signed_area(points: &[Pos2]) -> f32 {
     area += a.x * b.y - b.x * a.y;
   }
   area * 0.5
+}
+
+fn is_convex(points: &[Pos2]) -> bool {
+  let mut sign = 0.0f32;
+  let n = points.len();
+  for i in 0..n {
+    let a = points[i];
+    let b = points[(i + 1) % n];
+    let c = points[(i + 2) % n];
+    let turn = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if turn.abs() <= 1.0e-6 {
+      continue;
+    }
+    if sign == 0.0 {
+      sign = turn;
+    } else if sign * turn < 0.0 {
+      return false;
+    }
+  }
+  true
 }
 
 fn cross(a: Pos2, b: Pos2, c: Pos2) -> f32 {
