@@ -11,43 +11,58 @@ use super::paint::{
 };
 
 impl Shell {
-  /// The app bar: what this document is and the switches the frame keeps up here.
-  ///
-  /// **The bar holds no file command any more.** `Open`, `Save`, `Save as`, `Fit the job`, `Undo` and `Redo`
-  /// moved to the rail's FILE group in camui-prancheta T2b (S4): the reference gives the command table to the
-  /// rail, and a bar and a rail offering the same seven commands is two vocabularies for one act. What is
-  /// left is what belongs to the frame rather than to the document — its name, the units, the theme and the
-  /// help panel — plus the one action that costs material.
-  ///
-  /// **The `2D | 3D` switch is not here.** S8 puts it at the top right of the canvas, where the reference
-  /// floats it, and a segmented control in the bar and another over the drawing would be two of one control.
-  /// Its one home is [`crate::Shell::view_toggle`].
+  /// Floating Studio top bar (task 070): thin frame with product, document, command search, and frame actions.
   pub(crate) fn app_bar(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
+    let height = 52.0_f32.max(metrics.app_bar_height);
     egui::Panel::top("app_bar")
-      .exact_size(metrics.app_bar_height)
+      .exact_size(height)
+      .frame(
+        egui::Frame::NONE
+          .fill(palette.get(Role::App))
+          .inner_margin(egui::Margin::symmetric(14, 0)),
+      )
       .show(ui, |ui| {
         ui.horizontal_centered(|ui| {
-          paint_mark(ui, &palette, metrics.icon_size);
-          ui.label(RichText::new("campilot").size(theme::TITLE));
-          ui.separator();
+          paint_mark(ui, &palette, 24.0);
+          ui.add_space(4.0);
+          ui.label(
+            RichText::new("Camcraft")
+              .size(15.0)
+              .strong()
+              .color(palette.get(Role::Text)),
+          );
+          ui.add_space(6.0);
+          ui.label(
+            RichText::new("|")
+              .size(theme::CAPTION)
+              .color(palette.get(Role::TextOff)),
+          );
+          ui.add_space(6.0);
 
-          // The bar names the file the drawing came from, and says whether it is modified. Until a host
-          // opens one there is no file to name, which is why the bar said `untitled.cmc` for so long.
           if self.project_open {
             let dirty = if app.is_dirty() { " · modified" } else { "" };
             ui.label(
               RichText::new(format!("{}{dirty}", self.document_name()))
-                .size(theme::CAPTION)
+                .size(theme::BODY)
                 .color(palette.get(Role::TextDim)),
             );
+            let stamp = if app.is_dirty() {
+              "Unsaved changes".to_owned()
+            } else {
+              self.saved_stamp()
+            };
+            ui.add_space(8.0);
+            ui.label(
+              RichText::new(format!("v{} · {stamp}", env!("CARGO_PKG_VERSION")))
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextOff)),
+            );
           } else {
-            // No project: the bar names the absence, and the name is the way back to the start screen — otherwise
-            // `Esc` would hide the list of recent projects until the window was launched again (start-screen S3).
             let open = ui.button(
               RichText::new(crate::start_screen::NO_PROJECT)
-                .size(theme::CAPTION)
+                .size(theme::BODY)
                 .color(palette.get(Role::TextDim)),
             );
             let centre = open.rect.center();
@@ -58,46 +73,101 @@ impl Shell {
             if open.clicked() {
               self.show_start = true;
             }
+            let stamp = if app.is_dirty() {
+              "Unsaved changes".to_owned()
+            } else {
+              self.saved_stamp()
+            };
+            ui.add_space(8.0);
+            ui.label(
+              RichText::new(format!("v{} · {stamp}", env!("CARGO_PKG_VERSION")))
+                .size(theme::CAPTION)
+                .color(palette.get(Role::TextOff)),
+            );
+          }
+
+          // Central command search placeholder
+          let available = ui.available_width();
+          let right_reserve = 360.0;
+          let search_w = (available - right_reserve).clamp(160.0, 520.0);
+          ui.add_space(((available - right_reserve - search_w) / 2.0).max(8.0));
+          let (search_rect, search_resp) =
+            ui.allocate_exact_size(egui::vec2(search_w, 34.0), egui::Sense::click());
+          let search_bg = palette.get(Role::Raised);
+          let search_border = palette.get(Role::Border);
+          ui.painter()
+            .rect_filled(search_rect, egui::CornerRadius::same(10), search_bg);
+          ui.painter().rect_stroke(
+            search_rect,
+            egui::CornerRadius::same(10),
+            egui::Stroke::new(1.0, search_border),
+            egui::StrokeKind::Inside,
+          );
+          ui.painter().text(
+            search_rect.left_center() + egui::vec2(12.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            "Buscar comandos o ir a…",
+            egui::FontId::proportional(theme::BODY),
+            palette.get(Role::TextOff),
+          );
+          ui.painter().text(
+            search_rect.right_center() - egui::vec2(12.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            "⌘K",
+            egui::FontId::proportional(theme::SMALL),
+            palette.get(Role::TextOff),
+          );
+          if search_resp
+            .on_hover_text("Help / command search (F1)")
+            .clicked()
+          {
+            self.show_help = !self.show_help;
           }
 
           ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // The primary action writes the program the drawing describes, and it is **not** disabled
-            // (M13 S2): it stays pressable and refuses by name from `apply_action` when it cannot — a
-            // greyed button whose reason lives in a hover is the thing this milestone removed, because a
-            // reason nobody hovers over reads as a button that does nothing.
+            if ui
+              .button(RichText::new("Settings").size(theme::SMALL))
+              .on_hover_text("Settings")
+              .clicked()
+            {
+              self.set_tab(super::Tab::Job);
+              self.inspector_open = true;
+              self.status = "Settings: open from inspector for now".to_owned();
+            }
+            let (icon, label) = match self.theme {
+              Theme::Dark => (Icon::ThemeDark, "Theme: dark — press for light"),
+              Theme::Light => (Icon::ThemeLight, "Theme: light — press for dark"),
+            };
+            if icon_button(ui, &palette, icon, label, false, true, 18.0).clicked() {
+              self.flip_theme();
+            }
+            let layout_resp = ui.add(egui::Button::new(
+              RichText::new("Floating layout").size(theme::SMALL),
+            ));
+            if layout_resp
+              .on_hover_text("Floating Studio layout")
+              .clicked()
+            {
+              self.status = "Floating layout active".to_owned();
+            }
+            ui.separator();
             let generate = ui
-              .button("Generate G-code")
-              .on_hover_text(
-                "Write the program the drawing describes to a file you name, in the post-processor this \
-                 window holds",
-              );
-            let _ = generate.clicked();
+              .button(RichText::new("Generate G-code").size(theme::SMALL))
+              .on_hover_text("Write the program the drawing describes to a file you name");
             output.drawn.app_bar_hits.push((
               "Generate G-code".to_owned(),
               (generate.rect.center().x, generate.rect.center().y),
             ));
-            // The dialect is a choice, not a default: `cam-cli emit` asks for it as `--post`, and a window
-            // that picked one for the person would be choosing what their machine runs. The label names the
-            // choice once it exists, so "is a program possible yet" is answered without a hover.
             let post: Option<String> = None;
             let post_label = match &post {
               Some(name) => format!("Post: {name}"),
               None => "Post…".to_owned(),
             };
-            let choose = ui.button(post_label).on_hover_text(match &post {
-              Some(name) => format!("Every program is written in {name} — press to choose another"),
-              None => {
-                "No post-processor is chosen, so no program can be written — press to choose a `.pp`"
-                  .to_owned()
-              }
-            });
-            let _ = choose.clicked();
+            let choose = ui.button(RichText::new(post_label).size(theme::SMALL));
             output.drawn.app_bar_hits.push((
               "Post".to_owned(),
               (choose.rect.center().x, choose.rect.center().y),
             ));
-            // Help is the `F1` panel now: the panel teaches every command, so a help button that opened
-            // a list of chords instead would answer a smaller question than the one asked.
             if icon_button(
               ui,
               &palette,
@@ -111,20 +181,6 @@ impl Shell {
             {
               self.show_help = !self.show_help;
             }
-            let (icon, label) = match self.theme {
-              Theme::Dark => (Icon::ThemeDark, "Theme: dark — press for light"),
-              Theme::Light => (Icon::ThemeLight, "Theme: light — press for dark"),
-            };
-            if icon_button(ui, &palette, icon, label, false, true, 18.0).clicked() {
-              self.flip_theme();
-            }
-            ui.separator();
-            ui.label(
-              RichText::new("mm")
-                .size(theme::CAPTION)
-                .color(palette.get(Role::TextDim)),
-            )
-            .on_hover_text("Working units. Every length in the shell is millimetres.");
           });
         });
       });

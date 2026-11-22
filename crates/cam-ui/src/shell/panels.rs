@@ -3,32 +3,38 @@ use cam_geom::Point2;
 use egui::RichText;
 
 use crate::chrome;
+use crate::chrome::{section_toggle, Category};
 use crate::params;
-use crate::theme;
+use crate::theme::{self, Role};
 use crate::{Shell, ShellOutput, Tool, UiAction};
 
 impl Shell {
   pub(crate) fn layer_dock(&mut self, app: &AppState, ui: &mut egui::Ui, output: &mut ShellOutput) {
     {
-      egui::ScrollArea::vertical().show(ui, |ui| {
-        for layer in &app.document().layers {
-          let mut visible = layer.visible;
-          ui.horizontal(|ui| {
-            if ui.checkbox(&mut visible, "").changed() {
-              output.actions.push(UiAction::ToggleLayerVisible {
-                layer_id: layer.id.clone(),
-              });
-            }
-            ui.label(format!("{} — {:?}/{:?}", layer.id, layer.role, layer.side));
-          });
-          ui.label(format!("  {} entit(ies)", layer.entities.len()));
-          output
-            .drawn
-            .layer_rows
-            .push((layer.id.clone(), layer.entities.len(), layer.visible));
-          ui.separator();
-        }
-      });
+      egui::ScrollArea::vertical()
+        .scroll_source(egui::scroll_area::ScrollSource {
+          drag: egui::scroll_area::DragScroll::Never,
+          ..Default::default()
+        })
+        .show(ui, |ui| {
+          for layer in &app.document().layers {
+            let mut visible = layer.visible;
+            ui.horizontal(|ui| {
+              if ui.checkbox(&mut visible, "").changed() {
+                output.actions.push(UiAction::ToggleLayerVisible {
+                  layer_id: layer.id.clone(),
+                });
+              }
+              ui.label(format!("{} — {:?}/{:?}", layer.id, layer.role, layer.side));
+            });
+            ui.label(format!("  {} entit(ies)", layer.entities.len()));
+            output
+              .drawn
+              .layer_rows
+              .push((layer.id.clone(), layer.entities.len(), layer.visible));
+            ui.separator();
+          }
+        });
     }
   }
 
@@ -264,6 +270,176 @@ impl Shell {
         }
       });
     }
+  }
+
+  /// Floating Studio panels (task 070): browser and inspector as floating cards over the canvas.
+  pub(crate) fn floating_panels(
+    &mut self,
+    app: &AppState,
+    ctx: &egui::Context,
+    output: &mut ShellOutput,
+  ) {
+    let palette = self.palette();
+    let canvas = egui::Rect::from_min_max(
+      egui::pos2(self.last_canvas.x as f32, self.last_canvas.y as f32),
+      egui::pos2(
+        (self.last_canvas.x + self.last_canvas.width) as f32,
+        (self.last_canvas.y + self.last_canvas.height) as f32,
+      ),
+    );
+
+    // Palette/commands as a floating panel (preserves DrawnState palette_* for tests/tools).
+    self.palette_panel(app, ctx, output);
+
+    if !self.project_open {
+      return;
+    }
+
+    let inspector_w = 324.0;
+    let top = canvas.min.y + 12.0;
+    let bottom_margin = 16.0;
+    let max_h = (canvas.max.y - top - bottom_margin).max(120.0);
+
+    // Inspector: one interactable hover-sense Area so widgets receive clicks but empty panel
+    // background does not block canvas clicks (hit-test fall-through).
+    let inspector_pos = egui::pos2(canvas.max.x - inspector_w - 16.0, top);
+    let inspector_rect = egui::Rect::from_min_size(inspector_pos, egui::vec2(inspector_w, max_h));
+    egui::Area::new(egui::Id::new("floating_inspector"))
+      .order(egui::Order::Middle)
+      .fixed_pos(inspector_pos)
+      .constrain(false)
+      .interactable(true)
+      .movable(false)
+      .sense(egui::Sense::hover())
+      .default_size(inspector_rect.size())
+      .show(ctx, |ui| {
+        ui.set_min_size(inspector_rect.size());
+        ui.set_max_size(inspector_rect.size());
+        let rect = inspector_rect;
+        ui.painter().rect_filled(
+          rect,
+          egui::CornerRadius::same(8),
+          palette.get(Role::Overlay),
+        );
+        ui.painter().rect_stroke(
+          rect,
+          egui::CornerRadius::same(8),
+          egui::Stroke::new(1.0, palette.get(Role::Border)),
+          egui::StrokeKind::Inside,
+        );
+        ui.add_space(8.0);
+        let available = ui.available_size();
+        ui.allocate_ui_with_layout(
+          available,
+          egui::Layout::left_to_right(egui::Align::Min),
+          |ui| {
+            ui.add_space(12.0);
+            ui.vertical(|ui| {
+              ui.set_max_width(rect.width() - 24.0);
+              egui::ScrollArea::vertical()
+                .id_salt(("inspector_scroll", self.task))
+                .max_height(max_h - 16.0)
+                .scroll_source(egui::scroll_area::ScrollSource {
+                  drag: egui::scroll_area::DragScroll::Never,
+                  ..Default::default()
+                })
+                .show(ui, |ui| {
+                  ui.horizontal(|ui| {
+                    ui.label(
+                      RichText::new("Inspector")
+                        .size(theme::CAPTION)
+                        .color(palette.get(Role::TextDim))
+                        .strong(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                      if ui
+                        .small_button(if self.inspector_open {
+                          "Ocultar"
+                        } else {
+                          "Mostrar"
+                        })
+                        .clicked()
+                      {
+                        self.inspector_open = !self.inspector_open;
+                      }
+                    });
+                  });
+                  ui.add_space(6.0);
+                  ui.separator();
+                  if !self.inspector_open {
+                    ui.add_space(8.0);
+                    return;
+                  }
+                  ui.horizontal(|ui| {
+                    for category in Category::ALL {
+                      let selected = self.task == Some(category);
+                      let label = match category {
+                        Category::Toolpaths => "Toolpaths",
+                        Category::Relief3d => "Relieve/3D",
+                        Category::MachineOutput => "Máquina/Salida",
+                      };
+                      let response =
+                        ui.selectable_label(selected, RichText::new(label).size(theme::SMALL));
+                      let centre = response.rect.center();
+                      output.drawn.categories.push(category.label().to_owned());
+                      output
+                        .drawn
+                        .category_hits
+                        .push((category.label().to_owned(), (centre.x, centre.y)));
+                      if response.clicked() {
+                        if self.task == Some(category) {
+                          self.close_task(false);
+                        } else {
+                          self.open_task(category);
+                        }
+                      }
+                    }
+                  });
+                  ui.add_space(4.0);
+                  ui.separator();
+                  ui.add_space(6.0);
+                  if let Some(category) = self.task {
+                    self.task_header(app, ui, &palette, category, output);
+                    ui.add_space(4.0);
+                  }
+                  match self.task {
+                    Some(category) => match category {
+                      Category::Toolpaths => {
+                        self.toolpath_list(app, ui, &palette, output);
+                        if !app.document().toolpaths.is_empty() {
+                          self.tool_card(app, ui, &palette, output);
+                        }
+                        self.authoring(app, ui, output);
+                      }
+                      Category::Relief3d => self.relief_task(app, ui, &palette, output),
+                      Category::MachineOutput => self.job_section(app, ui, &palette, output),
+                    },
+                    None => {
+                      output.drawn.task_editor.clear();
+                      if !app.document().toolpaths.is_empty() {
+                        self.tool_card(app, ui, &palette, output);
+                      }
+                      self.authoring(app, ui, output);
+                      self.properties(app, ui, output);
+                    }
+                  }
+                  ui.separator();
+                  let heading = section_toggle(ui, &palette, "LAYERS", self.layers_open);
+                  let centre = heading.rect.center();
+                  output.drawn.layers_heading = Some((centre.x, centre.y));
+                  if heading.clicked() {
+                    self.toggle_layers();
+                  }
+                  output.drawn.layers_open = self.layers_open;
+                  if self.layers_open {
+                    self.layer_dock(app, ui, output);
+                  }
+                  ui.add_space(8.0);
+                });
+            });
+          },
+        );
+      });
   }
 }
 

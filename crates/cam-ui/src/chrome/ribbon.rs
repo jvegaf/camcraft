@@ -266,7 +266,7 @@ impl Shell {
   }
 
   /// The list of toolpaths in the document (selection only; no strategy editor).
-  fn toolpath_list(
+  pub(crate) fn toolpath_list(
     &mut self,
     app: &AppState,
     ui: &mut egui::Ui,
@@ -302,7 +302,7 @@ impl Shell {
   /// `✓` keeps what is typed and `✕` throws away the one draft the panel holds (see [`Shell::close_task`]);
   /// both are painted rather than written as `✓` and `✕`, for the same reason the rail's caret is painted: a
   /// glyph the bundled faces do not carry renders as a box, and a box is not an affordance.
-  fn task_header(
+  pub(crate) fn task_header(
     &mut self,
 
     _app: &AppState,
@@ -343,7 +343,6 @@ impl Shell {
 
         for (response, word) in [(&done, "Done"), (&cancel, "Cancel")] {
           let centre = response.rect.center();
-
           output
             .drawn
             .task_editor_hits
@@ -364,7 +363,7 @@ impl Shell {
   /// program `cam-cli` produced — so the task says exactly that, opens or closes the split, and names whether
   /// a program is loaded. It is the same refusal the rest of the shell makes: no form for a capability that
   /// does not exist (L13).
-  fn relief_task(
+  pub(crate) fn relief_task(
     &mut self,
 
     _app: &AppState,
@@ -460,7 +459,7 @@ impl Shell {
   /// it (S5); [`clock_text`] writes it, so the two readouts are formatted by one rule. When that program
   /// cannot be built there is no time to show, and the emitter's sentence says which tool or toolpath
   /// stopped it instead.
-  fn tool_card(
+  pub(crate) fn tool_card(
     &mut self,
     app: &AppState,
 

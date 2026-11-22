@@ -211,16 +211,16 @@ impl Shell {
       && self.pending_tool_import.is_none()
     {
       self.track_pointer(app, &ctx);
+    } else {
+      self.cursor_world = None;
+      self.snap_marker = None;
     }
-    // Bars first, then the sides, then the canvas: egui lays panels out in the order they are added,
-    // and a central panel must come last or it would claim the space the sides need.
+    // Floating Studio layout (task 070): thin top bar, thin status bar, dominant canvas, and floating panels
+    // over the canvas. Docked palette/inspector panels are replaced by floating cards.
     self.app_bar(app, ui, &mut output);
     self.status_bar(app, ui, &mut output);
-    self.palette_panel(app, ui, &mut output);
-    self.inspector(app, ui, &mut output);
-    // One central area, and the mode decides how it is divided: the drawing alone, or the drawing and the 3D
-    // half side by side (camui-prancheta S8).
     self.canvas(app, ui, &mut output, dt);
+    self.floating_panels(app, &ctx, &mut output);
     if self.show_shortcuts {
       self.shortcuts_window(&ctx);
     }

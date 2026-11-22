@@ -96,7 +96,7 @@ impl Tab {
 /// Glyph only, one row per category. Opening one puts that category's **task editor** over the panel's body,
 /// which is what replaced the three named tabs: the words moved into the task editor's header, where they name
 /// the task instead of a tab nobody could tell apart.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Category {
   /// What makes and describes toolpaths: the authoring commands, the tool card, the estimate.
   Toolpaths,

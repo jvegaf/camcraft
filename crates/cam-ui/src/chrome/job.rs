@@ -42,7 +42,7 @@ impl Shell {
   /// once, so they get a dialog with a drawn plan instead of three text fields that can each be
   /// half-edited — which is the shape the reference's `Novo trabalho` frame shows and the row for it in
   /// `design/Screenshots-reference/README.md` settles.
-  pub(super) fn job_section(
+  pub(crate) fn job_section(
     &mut self,
     app: &AppState,
     ui: &mut egui::Ui,

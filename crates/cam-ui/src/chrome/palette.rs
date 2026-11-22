@@ -41,93 +41,183 @@ impl Shell {
     }
   }
 
-  /// The left palette: the commands, grouped, labelled, and foldable.
-  ///
-  /// The reference app settles a question this shell got wrong first. A rail of unlabelled glyphs stops
-  /// working the moment there are more than a dozen of them — which is why the seven Edit commands had
-  /// to hide behind icons nobody could name. Twenty commands in labelled groups stay findable, and the
-  /// label is the word a machinist already uses.
-  ///
-  /// Every word, run, glyph and command here comes from [`crate::help`]: the palette holds no list of
-  /// its own, which is what closed the two-lists-one-command debt T8 inherited (L14).
-  ///
-  /// **A heading folds its group** (camui-prancheta S4). Clicking `FILE` hides FILE's chips and leaves the
-  /// word; clicking it again brings them back. The heading is a control and not a decoration, which is why it
-  /// reports where it was drawn the way the chips do: a test clicks the word, not a coordinate it guessed.
+  /// Floating Studio palette (task 070): commands and browser as a floating panel over the canvas.
+  /// Widgets are on a dedicated interactable layer without an Area background widget so empty
+  /// panel space does not block canvas clicks (hit-test fall-through).
   pub(crate) fn palette_panel(
     &mut self,
     app: &AppState,
-    ui: &mut egui::Ui,
+    ctx: &egui::Context,
     output: &mut ShellOutput,
   ) {
     let palette = self.palette();
     let metrics = self.metrics();
-    // Computed before the panel borrows the shell: the brand block is read-only, and the rail's chips are
-    // not — a `&mut self` closure that had to read `self` inside would not compile, which is the borrow
-    // checker saying the same thing the split of concerns says.
     let brand = self.brand_lines(app);
-    egui::Panel::left("palette")
-      .exact_size(metrics.palette_width)
-      .show(ui, |ui| {
-        // The brand block is a bottom panel of the rail and not a row inside the scrolling one: a stamp that
-        // scrolled away with the chips would be a footnote, and the rail is the part of the frame the operator
-        // glances at to know what they are looking at. Reserving its height first is also what keeps the
-        // chips' coordinates stable between frames — a layout that grew or shrank as the block measured
-        // itself would report a point the next frame had already moved.
-        egui::Panel::bottom("brand_block")
-          .exact_size(BRAND_BLOCK_HEIGHT)
-          .show(ui, |ui| {
-            brand_block(ui, &palette, &brand);
-          });
-        egui::ScrollArea::vertical()
-          .id_salt("palette")
-          .show(ui, |ui| {
-            let mut offered: Vec<String> = Vec::new();
-            let mut hits: Vec<(String, (f32, f32))> = Vec::new();
-            let mut headings: Vec<(String, (f32, f32))> = Vec::new();
+    let canvas = egui::Rect::from_min_max(
+      egui::pos2(self.last_canvas.x as f32, self.last_canvas.y as f32),
+      egui::pos2(
+        (self.last_canvas.x + self.last_canvas.width) as f32,
+        (self.last_canvas.y + self.last_canvas.height) as f32,
+      ),
+    );
+    let top = canvas.min.y + 12.0;
+    let max_h = (canvas.max.y - top - 16.0).max(120.0);
+    let pos = egui::pos2(canvas.min.x + 16.0, top);
+    let panel_rect = egui::Rect::from_min_size(
+      pos,
+      egui::vec2(metrics.palette_width.max(220.0), max_h.min(520.0)),
+    );
 
-            // The runs arrive in the table's own order: FILE, DRAW, EDIT, ORGANISE and SHOW AND SELECT.
-            for (group, chips) in self.palette_runs() {
-              if group == Group::ShowAndSelect {
-                ui.add_space(metrics.space(3));
-              }
-              let open = self.group_open(group);
-              let heading = section_toggle(ui, &palette, group.label(), open);
-              let centre = heading.rect.center();
-              headings.push((group.label().to_owned(), (centre.x, centre.y)));
-              if heading.clicked() {
-                self.toggle_group(group);
-              }
-              if !open {
-                continue;
-              }
-              ui.horizontal_wrapped(|ui| {
-                for (icon, command) in chips {
-                  let response = icon_button(
-                    ui,
-                    &palette,
-                    icon,
-                    &palette_tooltip(command),
-                    self.palette_active(command),
-                    true,
-                    20.0,
-                  );
-                  if response.clicked() {
-                    self.run_command(command, app, output);
-                  }
-                  let centre = response.rect.center();
-                  offered.push(command.label().to_owned());
-                  hits.push((command.label().to_owned(), (centre.x, centre.y)));
-                }
+    let widgets_id = egui::Id::new("floating_palette_widgets");
+    let widgets_layer = egui::LayerId::new(egui::Order::Middle, widgets_id);
+
+    egui::Area::new(egui::Id::new("floating_palette_layout"))
+      .order(egui::Order::Middle)
+      .fixed_pos(pos)
+      .constrain(false)
+      .interactable(false)
+      .show(ctx, |ui| {
+        ui.scope_builder(
+          egui::UiBuilder::new()
+            .layer_id(widgets_layer)
+            .max_rect(panel_rect),
+          |ui| {
+            ui.painter().rect_filled(
+              panel_rect,
+              egui::CornerRadius::same(8),
+              palette.get(Role::Overlay),
+            );
+            ui.painter().rect_stroke(
+              panel_rect,
+              egui::CornerRadius::same(8),
+              egui::Stroke::new(1.0, palette.get(Role::Border)),
+              egui::StrokeKind::Inside,
+            );
+            ui.add_space(8.0);
+            let scroll_h = (panel_rect.height() - 16.0).max(80.0);
+            egui::ScrollArea::vertical()
+              .id_salt("palette")
+              .max_height(scroll_h)
+              .scroll_source(egui::scroll_area::ScrollSource {
+                drag: egui::scroll_area::DragScroll::Never,
+                ..Default::default()
+              })
+              .show(ui, |ui| {
+                ui.set_max_width(panel_rect.width() - 16.0);
+                ui.horizontal(|ui| {
+                  ui.add_space(8.0);
+                  ui.vertical(|ui| {
+                    ui.set_max_width(panel_rect.width() - 32.0);
+                    let mut offered: Vec<String> = Vec::new();
+                    let mut hits: Vec<(String, (f32, f32))> = Vec::new();
+                    let mut headings: Vec<(String, (f32, f32))> = Vec::new();
+                    for (group, chips) in self.palette_runs() {
+                      if group == Group::ShowAndSelect {
+                        ui.add_space(metrics.space(3));
+                      }
+                      let open = self.group_open(group);
+                      let heading = section_toggle(ui, &palette, group.label(), open);
+                      let centre = heading.rect.center();
+                      headings.push((group.label().to_owned(), (centre.x, centre.y)));
+                      if heading.clicked() {
+                        self.toggle_group(group);
+                      }
+                      if !open {
+                        continue;
+                      }
+                      ui.horizontal_wrapped(|ui| {
+                        for (icon, command) in chips {
+                          let response = icon_button(
+                            ui,
+                            &palette,
+                            icon,
+                            &palette_tooltip(command),
+                            self.palette_active(command),
+                            true,
+                            20.0,
+                          );
+                          if response.clicked() {
+                            self.run_command(command, app, output);
+                          }
+                          let centre = response.rect.center();
+                          offered.push(command.label().to_owned());
+                          hits.push((command.label().to_owned(), (centre.x, centre.y)));
+                        }
+                      });
+                    }
+                    output.drawn.palette = offered;
+                    output.drawn.palette_hits = hits;
+                    output.drawn.palette_headings = headings;
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.label(
+                      RichText::new("BROWSER")
+                        .size(theme::CAPTION)
+                        .color(palette.get(Role::TextDim))
+                        .strong(),
+                    );
+                    ui.label(
+                      RichText::new("BOARD")
+                        .size(theme::CAPTION)
+                        .color(palette.get(Role::TextOff)),
+                    );
+                    for layer in &app.document().layers {
+                      let label = format!("{}  {:?}", layer.id, layer.role);
+                      ui.label(
+                        RichText::new(label)
+                          .size(theme::SMALL)
+                          .color(palette.get(Role::Text)),
+                      );
+                    }
+                    ui.label(
+                      RichText::new("OPERACIONES")
+                        .size(theme::CAPTION)
+                        .color(palette.get(Role::TextOff)),
+                    );
+                    let selected = self.described_toolpath(app).map(|t| t.id.clone());
+                    for (i, tp) in app.document().toolpaths.iter().enumerate() {
+                      let is_sel = selected.as_deref() == Some(tp.id.as_str());
+                      let txt = format!("{} · {}", i + 1, tp.name);
+                      let color = if is_sel {
+                        palette.get(Role::Sel)
+                      } else {
+                        palette.get(Role::Text)
+                      };
+                      if ui
+                        .selectable_label(
+                          is_sel,
+                          RichText::new(txt).size(theme::SMALL).color(color),
+                        )
+                        .clicked()
+                      {
+                        self.set_toolpath_selection(Some(tp.id.clone()));
+                      }
+                    }
+                    if app.document().toolpaths.is_empty() {
+                      ui.label(
+                        RichText::new("Sin operaciones")
+                          .size(theme::SMALL)
+                          .color(palette.get(Role::TextDim)),
+                      );
+                    }
+                    ui.add_space(4.0);
+                    brand_block(ui, &palette, &brand);
+                  });
+                });
               });
-            }
+          },
+        );
+      });
 
-            // What the palette offered: `DrawnState` is the shell's report of what it drew, and the
-            // palette is the part of the frame that carries no text of its own.
-            output.drawn.palette = offered;
-            output.drawn.palette_hits = hits;
-            output.drawn.palette_headings = headings;
-          });
+    // Register widgets layer as interactable; tiny offscreen background widget won't block hit-test.
+    egui::Area::new(widgets_id)
+      .order(egui::Order::Middle)
+      .fixed_pos(egui::pos2(-100.0, -100.0))
+      .constrain(false)
+      .interactable(true)
+      .movable(false)
+      .show(ctx, |ui| {
+        ui.allocate_exact_size(egui::vec2(1.0, 1.0), egui::Sense::hover());
       });
   }
 

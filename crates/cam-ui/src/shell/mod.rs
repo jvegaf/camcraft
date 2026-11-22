@@ -205,7 +205,7 @@ pub struct Shell {
   /// Panels are laid out before the central area, so the status bar can only show this frame's cursor
   /// if pointer tracking uses last frame's canvas geometry. That is the standard immediate-mode
   /// approach and it keeps the readout a frame fresh instead of a frame stale.
-  last_canvas: CanvasRect,
+  pub(crate) last_canvas: CanvasRect,
   /// The set egui was last told about. `theme::apply` clones styles, so it runs when the set changes
   /// rather than once per frame.
   applied_theme: Option<Theme>,
