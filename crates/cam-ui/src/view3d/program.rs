@@ -7,8 +7,8 @@ use cam_ops::unite_copper;
 use cam_store::tools::{stored_tool_for_toolpath, StoredTool};
 use cam_units::Length;
 
-const PREVIEW_FEED_MM_MIN: f64 = 100.0;
-const PREVIEW_PLUNGE_MM_MIN: f64 = 30.0;
+const PREVIEW_FEED_MM_PER_MIN: f64 = 100.0;
+const PREVIEW_PLUNGE_MM_PER_MIN: f64 = 30.0;
 const PREVIEW_SPINDLE_RPM: u32 = 18_000;
 const PREVIEW_DEFAULT_DIAMETER_MM: f64 = 1.0;
 
@@ -26,6 +26,9 @@ pub fn build_preview_stream(
   let mut warnings = Vec::new();
   let mut any = false;
   for toolpath in &document.toolpaths {
+    if matches!(toolpath.operation, Operation::Panelize(_)) {
+      continue;
+    }
     let Some((tool_shape, tool_diameter_mm)) = resolve_preview_tool(
       tools,
       toolpath.tool_id.as_deref(),
@@ -227,8 +230,8 @@ fn push_segment(
     name: toolpath.name.clone(),
     tool_number: toolpath.tool_number,
     tool,
-    feed_rate: PREVIEW_FEED_MM_MIN,
-    plunge_rate: PREVIEW_PLUNGE_MM_MIN,
+    feed_rate: PREVIEW_FEED_MM_PER_MIN,
+    plunge_rate: PREVIEW_PLUNGE_MM_PER_MIN,
     spindle_speed: PREVIEW_SPINDLE_RPM,
     moves,
   });
