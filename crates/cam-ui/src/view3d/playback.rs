@@ -68,18 +68,7 @@ impl Preview3d {
       stock,
       stride,
       deviation: cam_sim::Deviation::default(),
-      warnings: Vec::new(),
     }
-  }
-
-  /// Warnings produced while building this preview.
-  pub fn warnings(&self) -> &[String] {
-    &self.warnings
-  }
-
-  /// Set warnings produced while building this preview.
-  pub fn set_warnings(&mut self, warnings: Vec<String>) {
-    self.warnings = warnings;
   }
 
   /// The simulated stock this preview draws.

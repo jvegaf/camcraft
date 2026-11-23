@@ -553,7 +553,6 @@ impl Shell {
     let deviation = cam_sim::pcb_gouge_over_max_depth(&field, max_depth, tolerance);
     let mut preview = crate::view3d::Preview3d::new(field, stream, &job);
     preview.set_deviation(deviation);
-    preview.set_warnings(warnings);
     self.preview = Some(preview);
     self.show_3d = true;
   }

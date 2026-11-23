@@ -151,18 +151,20 @@ pub fn pcb_gouge_over_max_depth(
 }
 
 /// Derive the target surface for a whole document, on a grid of `cell` millimetres.
+///
+/// PCB operations currently use the maximum declared cut depth across the document as a
+/// whole-board authorisation bound. This preserves gouge-over-depth semantics for callers using
+/// [`deviations`], but it is not a per-operation geometric uncut target.
 pub fn target_for(
   document: &Document,
   cell: Length,
   _tools: &ToolShapes,
 ) -> Result<Target, TargetError> {
   let grid = grid_for(&document.board, cell)?;
-  // PCB preview target: without per-operation geometric targets, authorising the whole board
-  // produces misleading whole-board "uncut". Report no uncut expectation here; callers may compute
-  // gouge-over-depth separately when a cut-depth bound is known.
+  let depth = max_pcb_cut_depth_mm(document).max(0.0);
   Ok(Target {
     grid,
-    authorised: vec![0.0; grid.cells()],
+    authorised: vec![depth; grid.cells()],
   })
 }
 
@@ -202,4 +204,88 @@ pub fn deviations(
     }
   }
   Ok(deviation)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use cam_model::{
+    Board, BoardSideUp, CutoutParams, Document, IsolationKind, IsolationParams, MillingDirection,
+    Operation, TabKind, Toolpath,
+  };
+  use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
+  use cam_units::Length;
+
+  fn pcb_doc(depth_mm: f64) -> Document {
+    let mut doc = Document::new(Board {
+      width: Length::from_mm(10.0),
+      height: Length::from_mm(10.0),
+      thickness: Length::from_mm(1.6),
+      origin: cam_model::OriginCorner::BottomLeft,
+      side_up: BoardSideUp::Top,
+    });
+    doc.toolpaths.push(Toolpath {
+      id: "T1".into(),
+      name: "Iso".into(),
+      entity_ids: vec![],
+      tool_id: None,
+      tool_number: 1,
+      operation: Operation::Isolation(IsolationParams {
+        passes: 1,
+        overlap: 0.5,
+        direction: MillingDirection::Climb,
+        kind: IsolationKind::Full,
+        cut_depth: Length::from_mm(depth_mm),
+        keep_pours: false,
+      }),
+    });
+    doc
+  }
+
+  #[test]
+  fn max_pcb_cut_depth_mm_reports_maximum_declared_depth() {
+    let mut doc = pcb_doc(0.1);
+    doc.toolpaths.push(Toolpath {
+      id: "T2".into(),
+      name: "Cut".into(),
+      entity_ids: vec![],
+      tool_id: None,
+      tool_number: 2,
+      operation: Operation::Cutout(CutoutParams {
+        margin: Length::from_mm(0.0),
+        tabs: vec![],
+        tab_kind: TabKind::Straight,
+        pass_depth: Length::from_mm(0.0),
+        cut_depth: Length::from_mm(1.7),
+        cut_interiors: false,
+      }),
+    });
+    assert!((max_pcb_cut_depth_mm(&doc) - 1.7).abs() < 1e-9);
+  }
+
+  #[test]
+  fn pcb_gouge_over_max_depth_reports_only_excess_removal() {
+    let doc = pcb_doc(0.2);
+    let mut field = Heightfield::new(&doc.board, Length::from_mm(1.0)).unwrap();
+    let mut stream = MoveStream::new(Length::from_mm(5.0), cam_geom::Point2::new(0.0, 0.0));
+    stream.segments.push(Segment {
+      name: "cut".into(),
+      tool_number: 1,
+      tool: ToolShape::cylinder(Length::from_mm(1.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 18000,
+      moves: vec![
+        Move::Rapid { to: Point3::new(2.0, 2.0, 5.0) },
+        Move::Feed { to: Point3::new(2.0, 2.0, -0.5) },
+        Move::Feed { to: Point3::new(3.0, 2.0, -0.5) },
+      ],
+    });
+    crate::sweep::apply(&stream, &mut field);
+    let dev = pcb_gouge_over_max_depth(&field, 0.2, Length::from_mm(0.01));
+    assert!(dev.gouge > 0.0);
+    assert!(dev.gouge_cells > 0);
+    assert_eq!(dev.uncut, 0.0);
+    assert_eq!(dev.uncut_cells, 0);
+  }
 }

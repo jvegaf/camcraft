@@ -440,4 +440,44 @@ mod tests {
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("missing tool"));
   }
+
+  #[test]
+  fn build_preview_stream_keeps_valid_toolpaths_and_warns_for_missing_tools() {
+    let mut doc = doc_with_isolation();
+    let contour = Contour::from_points(
+      &[
+        Point2::new(50.0, 10.0),
+        Point2::new(60.0, 10.0),
+        Point2::new(60.0, 20.0),
+        Point2::new(50.0, 20.0),
+      ],
+      true,
+    )
+    .unwrap();
+    doc.layers[0].entities.push(Entity {
+      id: "E2".into(),
+      kind: EntityKind::Contour { contour },
+      source: Provenance::default(),
+    });
+    doc.toolpaths.push(Toolpath {
+      id: "T2".into(),
+      name: "Iso2".into(),
+      entity_ids: vec!["E2".into()],
+      tool_id: Some("MISSING".into()),
+      tool_number: 99,
+      operation: Operation::Isolation(IsolationParams {
+        passes: 1,
+        overlap: 0.5,
+        direction: MillingDirection::Climb,
+        kind: IsolationKind::Full,
+        cut_depth: Length::from_mm(0.1),
+        keep_pours: false,
+      }),
+    });
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    let stream = stream.expect("stream");
+    assert_eq!(stream.segments.len(), 1);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("missing tool"));
+  }
 }
