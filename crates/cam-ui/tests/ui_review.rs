@@ -99,6 +99,7 @@ fn document_for_floating_shell() -> Document {
     id: "TP1".to_owned(),
     name: "Profile outline".to_owned(),
     entity_ids: vec!["E-outline".to_owned()],
+    tool_id: None,
     tool_number: 1,
     operation: Operation::Isolation(IsolationParams {
       passes: 1,
@@ -113,6 +114,7 @@ fn document_for_floating_shell() -> Document {
     id: "TP2".to_owned(),
     name: "Drill 0.8 / 1.0".to_owned(),
     entity_ids: vec![],
+    tool_id: None,
     tool_number: 1,
     operation: Operation::Isolation(IsolationParams {
       passes: 1,
@@ -127,6 +129,7 @@ fn document_for_floating_shell() -> Document {
     id: "TP3".to_owned(),
     name: "Isolation top".to_owned(),
     entity_ids: vec!["E-top".to_owned()],
+    tool_id: None,
     tool_number: 2,
     operation: Operation::Isolation(IsolationParams {
       passes: 2,

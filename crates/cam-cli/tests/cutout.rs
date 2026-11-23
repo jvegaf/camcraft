@@ -68,6 +68,7 @@ fn document(tabs: Vec<Tab>) -> Document {
     id: "TP1".to_owned(),
     name: "Board cutout".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    tool_id: None,
     tool_number: 1,
     operation: Operation::Cutout(CutoutParams {
       margin: Length::ZERO,

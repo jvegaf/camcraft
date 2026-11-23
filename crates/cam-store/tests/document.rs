@@ -367,6 +367,7 @@ fn full_board() -> Document {
       id: format!("T{}", index + 1),
       name: format!("operation {}", index + 1),
       entity_ids: vec![format!("E{}", index + 1)],
+      tool_id: None,
       tool_number: index as u32 + 1,
       operation,
     });

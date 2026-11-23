@@ -1124,6 +1124,7 @@ impl Shell {
       if let Some(target) = self.tool_library_target.clone() {
         output.actions.push(UiAction::SetToolpathToolNumber {
           toolpath_id: target,
+          tool_id: Some(id.clone()),
           tool_number: number,
         });
       }

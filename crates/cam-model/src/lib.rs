@@ -544,6 +544,11 @@ pub struct Toolpath {
   pub name: String,
   /// Entities the toolpath is computed from.
   pub entity_ids: Vec<String>,
+  /// Stable tool identity in the tool library (geometry id). When present, this is the
+  /// authoritative binding; `tool_number` is kept for machine/program emission and backward
+  /// compatibility.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub tool_id: Option<String>,
   /// Tool number, matched against the tool library at emission time.
   pub tool_number: u32,
   /// The operation and its parameters.

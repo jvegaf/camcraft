@@ -61,6 +61,7 @@ fn typing_a_diameter_edits_the_draft_and_writes_nothing_until_use_this_tool() {
     wrote.actions,
     vec![UiAction::SetToolpathToolNumber {
       toolpath_id: "P1".to_owned(),
+      tool_id: Some("G1".to_owned()),
       tool_number: 1,
     }],
     "`Use this tool` must emit exactly the number the form showed"

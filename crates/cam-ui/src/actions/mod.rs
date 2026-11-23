@@ -201,16 +201,16 @@ pub enum UiAction {
   /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: the shell shows no
   /// dialog, writes no file and touches no document when it receives this.
   RequestSaveAs,
-  /// Give an existing toolpath a different tool number, leaving its geometry and operation alone.
+  /// Give an existing toolpath a different tool, leaving its geometry and operation alone.
   ///
   /// The tool library's `Use this tool` is what pushes this (camui-prancheta S9): the modal chooses a tool
-  /// from the library snapshot, and the one thing the choice can change about the document is the number the
-  /// toolpath cuts with. [`cam_app::Command::SetToolpathToolNumber`] is the rule, and it takes the number as
-  /// it stands — a number the library does not hold is refused at emission time, where the library is
-  /// actually read, not here.
+  /// from the library, and the choice binds the toolpath to the tool's stable library identity and its
+  /// current tool number. [`cam_app::Command::SetToolpathToolNumber`] is the rule.
   SetToolpathToolNumber {
     /// Identifier of the toolpath to retool.
     toolpath_id: String,
+    /// Stable tool library identity (geometry id), when bound.
+    tool_id: Option<String>,
     /// The new tool number.
     tool_number: u32,
   },
@@ -245,6 +245,8 @@ pub enum UiAction {
     name: String,
     /// Entities the toolpath is computed from.
     entity_ids: Vec<String>,
+    /// Stable tool library identity (geometry id), when bound.
+    tool_id: Option<String>,
     /// Tool number.
     tool_number: u32,
     /// The operation and its parameters.

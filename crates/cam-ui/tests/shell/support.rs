@@ -402,6 +402,7 @@ pub(crate) fn document_with_toolpath(count: usize, tool_number: u32) -> Document
     id: "P1".to_owned(),
     name: "Profile".to_owned(),
     entity_ids: vec!["S0".to_owned()],
+    tool_id: None,
     tool_number,
     operation: Operation::Isolation(IsolationParams {
       passes: 1,

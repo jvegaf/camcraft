@@ -368,6 +368,8 @@ pub enum Command {
     name: String,
     /// Entities the toolpath is computed from; at least one.
     entity_ids: Vec<String>,
+    /// Stable tool library identity (geometry id), when bound.
+    tool_id: Option<String>,
     /// Tool number, matched against the tool library at emission time.
     tool_number: u32,
     /// The operation and its parameters.
@@ -380,6 +382,8 @@ pub enum Command {
   SetToolpathToolNumber {
     /// Identifier of the toolpath to retool.
     toolpath_id: String,
+    /// Stable tool library identity (geometry id), when bound.
+    tool_id: Option<String>,
     /// The new tool number.
     tool_number: u32,
   },
@@ -658,6 +662,7 @@ impl Command {
         toolpath_id,
         name,
         entity_ids,
+        tool_id,
         tool_number,
         operation,
       } => {
@@ -671,6 +676,7 @@ impl Command {
           id: toolpath_id.clone(),
           name: name.clone(),
           entity_ids: entity_ids.clone(),
+          tool_id: tool_id.clone(),
           tool_number: *tool_number,
           operation: operation.clone(),
         });
@@ -678,9 +684,11 @@ impl Command {
       }
       Self::SetToolpathToolNumber {
         toolpath_id,
+        tool_id,
         tool_number,
       } => {
         let index = toolpath_index(document, toolpath_id)?;
+        document.toolpaths[index].tool_id = tool_id.clone();
         document.toolpaths[index].tool_number = *tool_number;
         Ok(CommandOutcome::default())
       }

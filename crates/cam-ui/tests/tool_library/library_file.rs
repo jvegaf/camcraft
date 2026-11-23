@@ -38,6 +38,7 @@ fn use_this_tool_writes_the_edited_tool_through_the_library_file() {
     wrote.actions,
     vec![cam_ui::UiAction::SetToolpathToolNumber {
       toolpath_id: "P1".to_owned(),
+      tool_id: Some("G1".to_owned()),
       tool_number: 7,
     }],
     "the commit wrote the tool and did not retool the toolpath it was opened for"
