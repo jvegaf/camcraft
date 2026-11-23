@@ -276,9 +276,15 @@ mod tests {
       plunge_rate: 30.0,
       spindle_speed: 18000,
       moves: vec![
-        Move::Rapid { to: Point3::new(2.0, 2.0, 5.0) },
-        Move::Feed { to: Point3::new(2.0, 2.0, -0.5) },
-        Move::Feed { to: Point3::new(3.0, 2.0, -0.5) },
+        Move::Rapid {
+          to: Point3::new(2.0, 2.0, 5.0),
+        },
+        Move::Feed {
+          to: Point3::new(2.0, 2.0, -0.5),
+        },
+        Move::Feed {
+          to: Point3::new(3.0, 2.0, -0.5),
+        },
       ],
     });
     crate::sweep::apply(&stream, &mut field);
