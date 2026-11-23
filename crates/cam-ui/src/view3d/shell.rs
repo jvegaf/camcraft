@@ -157,8 +157,6 @@ impl Shell {
         layout.picture.min.x + metrics.space(4),
         layout.picture.min.y + metrics.space(4),
       );
-      // What the half is *for*, never which other program to run: M13 S3 removed the sentence that sent the
-      // person to a terminal, and a control replaced it.
       painter.text(
         origin,
         egui::Align2::LEFT_TOP,
@@ -173,7 +171,9 @@ impl Shell {
         size,
       );
       let response = ui.allocate_rect(rect, egui::Sense::click());
-      let _ = response.clicked();
+      if response.clicked() {
+        self.simulate_pcb_preview(app);
+      }
       paint_plain_chip(&painter, rect, &palette, word);
       let _centre = rect.center();
       return;
@@ -240,7 +240,7 @@ impl Shell {
   /// is left to paint.
   fn overlay_row(
     &mut self,
-    _app: &cam_app::AppState,
+    app: &cam_app::AppState,
     ui: &mut egui::Ui,
     layout: &Half,
     palette: &Palette,
@@ -253,6 +253,7 @@ impl Shell {
       .iter()
       .map(|layer| (layer.label().to_owned(), true))
       .collect();
+    items.push(("Simulate again".to_owned(), false));
     items.push(("Centre".to_owned(), false));
     items.push(("?".to_owned(), false));
     let mut slots: RowSlots = Vec::new();
@@ -288,6 +289,9 @@ impl Shell {
         continue;
       }
       match word.as_str() {
+        "Simulate again" => {
+          self.simulate_pcb_preview(app);
+        }
         "Centre" => {
           if let Some(preview) = self.preview.as_mut() {
             preview.recentre();
@@ -485,10 +489,19 @@ impl Shell {
     output.drawn.preview_progress = preview.progress();
     output.drawn.preview_bar = bar_fill(preview.progress(), preview.duration());
     output.drawn.preview_clock = progress_text(preview.elapsed(), preview.duration());
+    let deviation = preview.deviation();
+    output.drawn.preview_gouge_mm3 = deviation.gouge;
+    output.drawn.preview_uncut_mm3 = deviation.uncut;
+    output.drawn.preview_gouge_cells = deviation.gouge_cells;
+    output.drawn.preview_uncut_cells = deviation.uncut_cells;
     output.drawn.playback_readout = format!(
-      "{}  {}",
+      "{}  {}  gouge {:.2}mm³ ({}c)  uncut {:.2}mm³ ({}c)",
       output.drawn.preview_clock,
-      preview.playhead_text()
+      preview.playhead_text(),
+      deviation.gouge,
+      deviation.gouge_cells,
+      deviation.uncut,
+      deviation.uncut_cells,
     );
     painter.text(
       egui::pos2(strip.min.x + 10.0, strip.max.y - 6.0),
@@ -500,5 +513,29 @@ impl Shell {
     output.drawn.scrubber = bar
       .scrubber
       .map(|track| (track.min.x, track.max.x, track.center().y));
+  }
+}
+
+impl Shell {
+  /// Build a PCB preview from the current document and simulate it.
+  pub(crate) fn simulate_pcb_preview(&mut self, app: &cam_app::AppState) {
+    let Some(stream) = crate::view3d::program::build_preview_stream(app.document()) else {
+      return;
+    };
+    let job = app.document().board.clone();
+    let cell = cam_units::Length::from_mm(0.5);
+    let Ok(mut field) = cam_sim::Heightfield::new(&job, cell) else {
+      return;
+    };
+    cam_sim::sweep::apply(&stream, &mut field);
+    let target = cam_sim::target_for(app.document(), cell, &cam_sim::ToolShapes::default()).ok();
+    let deviation = target
+      .as_ref()
+      .and_then(|t| cam_sim::deviations(&field, t, cam_units::Length::from_mm(0.01)).ok())
+      .unwrap_or_default();
+    let mut preview = crate::view3d::Preview3d::new(field, stream, &job);
+    preview.set_deviation(deviation);
+    self.preview = Some(preview);
+    self.show_3d = true;
   }
 }

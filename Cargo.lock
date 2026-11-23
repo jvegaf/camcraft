@@ -859,6 +859,7 @@ dependencies = [
  "cam-import",
  "cam-model",
  "cam-move",
+ "cam-ops",
  "cam-post",
  "cam-sim",
  "cam-store",

@@ -233,6 +233,14 @@ pub struct DrawnState {
   /// panel writes its output rather than something of its own. Empty when the panel is closed or
   /// holds no preview, because a bar nobody drew has no clock.
   pub preview_clock: String,
+  /// Gouged volume reported by simulation, in cubic millimetres.
+  pub preview_gouge_mm3: f64,
+  /// Uncut volume reported by simulation, in cubic millimetres.
+  pub preview_uncut_mm3: f64,
+  /// Gouged cell count reported by simulation.
+  pub preview_gouge_cells: usize,
+  /// Uncut cell count reported by simulation.
+  pub preview_uncut_cells: usize,
   /// The words the `2D | 3D` toggle drew and the point in the window that presses each (camui-prancheta S8).
   ///
   /// Reported for the same reason the palette reports its chips: the toggle is painted, not a widget egui

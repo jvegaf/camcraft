@@ -67,6 +67,7 @@ impl Preview3d {
       home: camera,
       stock,
       stride,
+      deviation: cam_sim::Deviation::default(),
     }
   }
 
@@ -78,6 +79,16 @@ impl Preview3d {
   /// The program this preview draws.
   pub fn program(&self) -> &MoveStream {
     &self.program
+  }
+
+  /// Gouge/uncut deviation for this preview.
+  pub fn deviation(&self) -> cam_sim::Deviation {
+    self.deviation
+  }
+
+  /// Set gouge/uncut deviation for this preview.
+  pub fn set_deviation(&mut self, deviation: cam_sim::Deviation) {
+    self.deviation = deviation;
   }
 
   /// The camera, for a caller that wants to frame or test the view.
