@@ -327,9 +327,24 @@ impl Shell {
   pub fn open_tool_library(&mut self, app: &AppState) {
     // E6.4: bind to the live SQLite library, not a stale snapshot.
     if let Some(path) = self.tool_library_path.clone() {
-      if let Ok(library) = ToolLibrary::open(&path) {
-        if let Ok(tools) = library.tools() {
-          self.tools = tools;
+      match ToolLibrary::open(&path) {
+        Ok(library) => match library.tools() {
+          Ok(tools) => {
+            self.tools = tools;
+            self.tool_library_error = None;
+          }
+          Err(err) => {
+            self.tool_library_error = Some(format!(
+              "could not read tool library {}: {err}",
+              path.display()
+            ));
+          }
+        },
+        Err(err) => {
+          self.tool_library_error = Some(format!(
+            "could not open tool library {}: {err}",
+            path.display()
+          ));
         }
       }
     }

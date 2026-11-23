@@ -123,26 +123,12 @@ pub fn target_for(
       authorised: vec![0.0; grid.cells()],
     });
   }
-  // Rough PCB target: authorise the maximum declared cut depth over the whole board.
-  // This is conservative for area-selective operations but gives a useful gouge/uncut
-  // signal in the UI playback (E6.6).
-  let mut depth = 0.0_f64;
-  for toolpath in &document.toolpaths {
-    let d = match &toolpath.operation {
-      Operation::Isolation(p) => p.cut_depth.mm(),
-      Operation::NonCopperClear(p) => p.cut_depth.mm(),
-      Operation::Cutout(p) => p.cut_depth.mm(),
-      Operation::Paint(p) => p.cut_depth.mm(),
-      Operation::Drilling(p) => p.cut_depth.mm(),
-      Operation::Panelize(_) => 0.0,
-    };
-    if d > depth {
-      depth = d;
-    }
-  }
+  // PCB preview target: without per-operation geometric targets, authorising the whole board
+  // produces misleading whole-board "uncut". Report no uncut expectation here; callers may compute
+  // gouge-over-depth separately when a cut-depth bound is known.
   Ok(Target {
     grid,
-    authorised: vec![depth.max(0.0); grid.cells()],
+    authorised: vec![0.0; grid.cells()],
   })
 }
 

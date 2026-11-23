@@ -519,7 +519,8 @@ impl Shell {
 impl Shell {
   /// Build a PCB preview from the current document and simulate it.
   pub(crate) fn simulate_pcb_preview(&mut self, app: &cam_app::AppState) {
-    let Some(stream) = crate::view3d::program::build_preview_stream(app.document()) else {
+    let Some(stream) = crate::view3d::program::build_preview_stream(app.document(), &self.tools)
+    else {
       return;
     };
     let job = app.document().board.clone();
@@ -529,10 +530,42 @@ impl Shell {
     };
     cam_sim::sweep::apply(&stream, &mut field);
     let target = cam_sim::target_for(app.document(), cell, &cam_sim::ToolShapes::default()).ok();
-    let deviation = target
+    let mut deviation = target
       .as_ref()
       .and_then(|t| cam_sim::deviations(&field, t, cam_units::Length::from_mm(0.01)).ok())
       .unwrap_or_default();
+    // PCB preview target has no geometric uncut area; report gouge only as removal beyond
+    // the maximum declared cut depth.
+    deviation.uncut = 0.0;
+    deviation.uncut_cells = 0;
+    let max_depth = app
+      .document()
+      .toolpaths
+      .iter()
+      .map(|tp| match &tp.operation {
+        cam_model::Operation::Isolation(p) => p.cut_depth.mm(),
+        cam_model::Operation::NonCopperClear(p) => p.cut_depth.mm(),
+        cam_model::Operation::Cutout(p) => p.cut_depth.mm(),
+        cam_model::Operation::Paint(p) => p.cut_depth.mm(),
+        cam_model::Operation::Drilling(p) => p.cut_depth.mm(),
+        cam_model::Operation::Panelize(_) => 0.0,
+      })
+      .fold(0.0_f64, f64::max);
+    let mut gouge = 0.0;
+    let mut gouge_cells = 0usize;
+    let tol = 0.01_f64;
+    let area = field.grid().cell_area();
+    for row in 0..field.grid().rows {
+      for col in 0..field.grid().columns {
+        let removed = -field.surface(col, row);
+        if removed > max_depth + tol {
+          gouge += (removed - max_depth) * area;
+          gouge_cells += 1;
+        }
+      }
+    }
+    deviation.gouge = gouge;
+    deviation.gouge_cells = gouge_cells;
     let mut preview = crate::view3d::Preview3d::new(field, stream, &job);
     preview.set_deviation(deviation);
     self.preview = Some(preview);
