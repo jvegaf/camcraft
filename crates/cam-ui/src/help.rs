@@ -563,9 +563,9 @@ impl Command {
       },
       Self::Save => Help {
         what: "Writes the drawing straight back to the file the bar names, and marks it saved.",
-        how: "Press Save in the app bar. Until the drawing has a file there is nothing to write to, so \
-              Save is refused and points at Save As; from then on Save writes the file the bar names, \
-              entries this build does not read included.",
+        how: "Press Ctrl+S or Save in the app bar. If the drawing already has a path, it saves without \
+              a dialog; if it has none, Save As asks where to write it. Entries this build does not read \
+              are kept.",
         related: &[Command::SaveAs, Command::Open, Command::Undo],
       },
       Self::SaveAs => Help {

@@ -399,6 +399,7 @@ impl Shell {
         for (keys, meaning) in [
           ("Ctrl+Z", "Undo"),
           ("Ctrl+Y", "Redo"),
+          ("Ctrl+S", "Save the document (no dialog when it has a path)"),
           ("Delete", "Delete the selection"),
           ("F", "Fit the job in the window"),
           ("F2", "The icon set"),
