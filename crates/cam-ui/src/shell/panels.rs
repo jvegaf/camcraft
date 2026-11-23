@@ -438,6 +438,7 @@ impl Shell {
                           self.tool_card(app, ui, &palette, output);
                           self.toolpath_operation_editor(app, ui, &palette, output);
                         }
+                        self.authoring(app, ui, output);
                       }
                       Category::Relief3d => self.relief_task(app, ui, &palette, output),
                       Category::MachineOutput => self.job_section(app, ui, &palette, output),
