@@ -409,6 +409,10 @@ pub struct Shell {
   pub(crate) toolpath_name_draft: String,
   /// Draft operation for the selected toolpath.
   pub(crate) toolpath_operation_draft: Option<cam_model::Operation>,
+  /// Last document name synced into the toolpath draft.
+  pub(crate) toolpath_draft_doc_name: String,
+  /// Last document operation synced into the toolpath draft.
+  pub(crate) toolpath_draft_doc_operation: Option<cam_model::Operation>,
 
   /// The command the help panel is teaching: whichever row was pressed last, or the first one.
   pub(crate) help_focus: crate::help::Command,
@@ -522,6 +526,8 @@ impl Default for Shell {
       toolpath_draft_id: None,
       toolpath_name_draft: String::new(),
       toolpath_operation_draft: None,
+      toolpath_draft_doc_name: String::new(),
+      toolpath_draft_doc_operation: None,
       help_focus: crate::help::Command::ALL[0],
       menu_scope: crate::help::MenuScope::default(),
     }

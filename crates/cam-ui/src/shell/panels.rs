@@ -481,10 +481,14 @@ impl Shell {
     let Some(toolpath) = self.described_toolpath(app).cloned() else {
       return;
     };
-    if self.toolpath_draft_id.as_deref() != Some(toolpath.id.as_str()) {
+    let doc_changed = self.toolpath_draft_doc_name != toolpath.name
+      || self.toolpath_draft_doc_operation.as_ref() != Some(&toolpath.operation);
+    if self.toolpath_draft_id.as_deref() != Some(toolpath.id.as_str()) || doc_changed {
       self.toolpath_draft_id = Some(toolpath.id.clone());
       self.toolpath_name_draft = toolpath.name.clone();
       self.toolpath_operation_draft = Some(toolpath.operation.clone());
+      self.toolpath_draft_doc_name = toolpath.name.clone();
+      self.toolpath_draft_doc_operation = Some(toolpath.operation.clone());
     }
 
     ui.add_space(6.0);
