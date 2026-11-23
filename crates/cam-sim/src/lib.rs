@@ -17,6 +17,6 @@ pub use grid::{grid_for, Grid, GridError, DEFAULT_CELL, MAX_CELLS};
 pub use heightfield::{Heightfield, Volumes};
 pub use sweep::{apply, apply_move, apply_with_exc_areas, Crash, Removal};
 pub use target::{
-  deviations, max_pcb_cut_depth_mm, target_for, Deviation, DeviationError, Target, TargetError,
-  ToolShapes,
+  deviations, max_pcb_cut_depth_mm, pcb_gouge_over_max_depth, target_for, Deviation,
+  DeviationError, Target, TargetError, ToolShapes,
 };

@@ -13,11 +13,11 @@ const PREVIEW_SPINDLE_RPM: u32 = 18_000;
 const PREVIEW_DEFAULT_DIAMETER_MM: f64 = 1.0;
 
 /// Build a MoveStream for the document's PCB toolpaths for preview/simulation.
-/// Returns None when there are no supported toolpaths or generation fails.
+/// Returns the stream when supported toolpaths were generated, and any warnings.
 pub fn build_preview_stream(
   document: &Document,
   tools: &[StoredTool],
-) -> Option<(MoveStream, Vec<String>)> {
+) -> (Option<MoveStream>, Vec<String>) {
   let tolerance = TolerancePolicy::default();
   let mut stream = MoveStream::new(
     Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
@@ -26,13 +26,15 @@ pub fn build_preview_stream(
   let mut warnings = Vec::new();
   let mut any = false;
   for toolpath in &document.toolpaths {
-    let (tool_shape, tool_diameter_mm) = resolve_preview_tool(
+    let Some((tool_shape, tool_diameter_mm)) = resolve_preview_tool(
       tools,
       toolpath.tool_id.as_deref(),
       toolpath.tool_number,
       &toolpath.name,
       &mut warnings,
-    );
+    ) else {
+      continue;
+    };
     match &toolpath.operation {
       Operation::Isolation(params) => {
         let contours = collect_contours(document, &toolpath.entity_ids);
@@ -167,9 +169,9 @@ pub fn build_preview_stream(
     }
   }
   if any {
-    Some((stream, warnings))
+    (Some(stream), warnings)
   } else {
-    None
+    (None, warnings)
   }
 }
 
@@ -179,23 +181,23 @@ fn resolve_preview_tool(
   tool_number: u32,
   toolpath_name: &str,
   warnings: &mut Vec<String>,
-) -> (ToolShape, f64) {
+) -> Option<(ToolShape, f64)> {
   let Some(tool) = stored_tool_for_toolpath(tools, tool_id, tool_number) else {
     warnings.push(format!(
-      "toolpath '{toolpath_name}' uses missing tool {tool_number}; preview uses default {}mm cylinder",
-      PREVIEW_DEFAULT_DIAMETER_MM
+      "toolpath '{toolpath_name}' uses missing tool {tool_number}; skipped in preview"
     ));
-    return (
-      ToolShape::cylinder(Length::from_mm(PREVIEW_DEFAULT_DIAMETER_MM)),
-      PREVIEW_DEFAULT_DIAMETER_MM,
-    );
+    return None;
   };
-  let diameter_mm = tool
-    .geometry
-    .diameter
-    .map(Length::mm)
-    .filter(|d| *d > 0.0)
-    .unwrap_or(PREVIEW_DEFAULT_DIAMETER_MM);
+  let diameter_mm = match tool.geometry.diameter.map(Length::mm).filter(|d| *d > 0.0) {
+    Some(d) => d,
+    None => {
+      warnings.push(format!(
+        "toolpath '{toolpath_name}' has tool {tool_number} with missing/non-positive diameter; preview uses default {}mm cylinder",
+        PREVIEW_DEFAULT_DIAMETER_MM
+      ));
+      PREVIEW_DEFAULT_DIAMETER_MM
+    }
+  };
   let shape = if let Some(angle) = tool.geometry.included_angle {
     ToolShape::v_bit(
       angle,
@@ -204,7 +206,7 @@ fn resolve_preview_tool(
   } else {
     ToolShape::cylinder(Length::from_mm(diameter_mm))
   };
-  (shape, diameter_mm)
+  Some((shape, diameter_mm))
 }
 
 fn push_segment(
@@ -404,7 +406,8 @@ mod tests {
   #[test]
   fn build_preview_stream_uses_bound_tool_diameter_and_shape() {
     let doc = doc_with_isolation();
-    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]).expect("stream");
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    let stream = stream.expect("stream");
     assert!(warnings.is_empty());
     let seg = &stream.segments[0];
     assert_eq!(seg.tool_number, 7);
@@ -419,14 +422,16 @@ mod tests {
   fn build_preview_stream_reports_none_when_no_supported_ops() {
     let mut doc = doc_with_isolation();
     doc.toolpaths.clear();
-    assert!(build_preview_stream(&doc, &[]).is_none());
+    let (stream, warnings) = build_preview_stream(&doc, &[]);
+    assert!(stream.is_none());
+    assert!(warnings.is_empty());
   }
 
   #[test]
-  fn build_preview_stream_warns_when_bound_tool_is_missing() {
+  fn build_preview_stream_warns_and_skips_when_bound_tool_is_missing() {
     let doc = doc_with_isolation();
-    let (stream, warnings) = build_preview_stream(&doc, &[]).expect("stream");
-    assert_eq!(stream.segments.len(), 1);
+    let (stream, warnings) = build_preview_stream(&doc, &[]);
+    assert!(stream.is_none());
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("missing tool"));
   }

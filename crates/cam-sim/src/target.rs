@@ -126,6 +126,30 @@ pub fn max_pcb_cut_depth_mm(document: &Document) -> f64 {
     .fold(0.0_f64, f64::max)
 }
 
+/// Gouge over the maximum declared PCB cut depth.
+///
+/// PCB preview has no per-operation geometric target; this reports only removal beyond the given
+/// maximum declared depth and leaves uncut at zero.
+pub fn pcb_gouge_over_max_depth(
+  field: &Heightfield,
+  max_depth_mm: f64,
+  tolerance: Length,
+) -> Deviation {
+  let mut deviation = Deviation::default();
+  let tol = tolerance.mm();
+  let area = field.grid().cell_area();
+  for row in 0..field.grid().rows {
+    for col in 0..field.grid().columns {
+      let removed = -field.surface(col, row);
+      if removed > max_depth_mm + tol {
+        deviation.gouge += (removed - max_depth_mm) * area;
+        deviation.gouge_cells += 1;
+      }
+    }
+  }
+  deviation
+}
+
 /// Derive the target surface for a whole document, on a grid of `cell` millimetres.
 pub fn target_for(
   document: &Document,
