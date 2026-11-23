@@ -5,7 +5,7 @@ use cam_model::{Document, Operation};
 use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
 use cam_ops::unite_copper;
 use cam_store::tools::{stored_tool_for_toolpath, StoredTool};
-use cam_units::{Angle, Length};
+use cam_units::Length;
 
 const PREVIEW_FEED_MM_MIN: f64 = 100.0;
 const PREVIEW_PLUNGE_MM_MIN: f64 = 30.0;
@@ -306,7 +306,13 @@ mod tests {
   use cam_units::{Length, UnitSystem};
 
   fn doc_with_isolation() -> Document {
-    let mut doc = Document::new(Board { width: Length::from_mm(100.0), height: Length::from_mm(80.0), thickness: Length::from_mm(1.6), origin: cam_model::OriginCorner::BottomLeft, side_up: BoardSideUp::Top });
+    let mut doc = Document::new(Board {
+      width: Length::from_mm(100.0),
+      height: Length::from_mm(80.0),
+      thickness: Length::from_mm(1.6),
+      origin: cam_model::OriginCorner::BottomLeft,
+      side_up: BoardSideUp::Top,
+    });
     let contour = Contour::from_points(
       &[
         Point2::new(10.0, 10.0),
