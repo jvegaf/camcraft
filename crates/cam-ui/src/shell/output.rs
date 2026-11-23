@@ -131,9 +131,11 @@ pub struct DrawnState {
   /// Reported so a headless test can prove the tree navigates to the operation (E6.2) without
   /// guessing at the browser layout.
   pub browser_operation_hits: Vec<(String, (f32, f32))>,
-  /// The project browser's board label and the layer/operation ids it reflected, in document order.
+  /// The project browser's board label, as it drew it.
   pub browser_board_label: String,
+  /// The layer ids the project browser reflected, in document order.
   pub browser_layer_ids: Vec<String>,
+  /// The operation ids the project browser reflected, in document order.
   pub browser_operation_ids: Vec<String>,
   /// The words the app bar's command buttons answer to, in the order it drew them.
   ///

@@ -10,24 +10,70 @@
 use std::path::Path;
 
 use cam_app::AppState;
-use cam_model::{Document, Job};
+use cam_geom::{Contour, Point2};
+use cam_model::{
+  Document, Entity, EntityKind, IsolationKind, IsolationParams, Job, Layer, LayerRole,
+  MillingDirection, Operation, Provenance, Side, Toolpath,
+};
 use cam_ui::start_screen::MAX_RECENTS;
 use cam_ui::{stamp, tool_library, RecentProject, Shell, UiAction};
+use cam_units::Length;
 use serde::{Deserialize, Serialize};
 
+/// Escena de review visual, activada por `CAM_UI_SCENE`.
+/// Permite levantar la app en un estado determinista para capturarla con grim en sway headless.
+#[derive(Clone, Copy, Debug)]
+enum ReviewScene {
+  StartScreen,
+  FloatingShell,
+  Settings,
+}
+
+impl ReviewScene {
+  fn from_env() -> Option<Self> {
+    match std::env::var("CAM_UI_SCENE").ok()?.as_str() {
+      "start-screen" => Some(Self::StartScreen),
+      "floating-shell" => Some(Self::FloatingShell),
+      "settings" => Some(Self::Settings),
+      other => {
+        eprintln!("CAM_UI_SCENE desconocida: {other}");
+        None
+      }
+    }
+  }
+
+  /// Tamaño de ventana que coincide con la referencia en fixtures/ui/<id>.png.
+  fn viewport_size(self) -> [f32; 2] {
+    match self {
+      Self::StartScreen => [1924.0, 701.0],
+      Self::FloatingShell => [1920.0, 1200.0],
+      Self::Settings => [1225.0, 906.0],
+    }
+  }
+}
+
 fn main() -> eframe::Result<()> {
+  let scene = ReviewScene::from_env();
+  let inner_size = scene.map_or([1440.0, 900.0], ReviewScene::viewport_size);
+  let mut viewport = eframe::egui::ViewportBuilder::default()
+    .with_inner_size(inner_size)
+    .with_min_inner_size([800.0, 600.0])
+    .with_title("campilot");
+  if scene.is_some() {
+    viewport = viewport.with_decorations(false);
+  }
   let options = eframe::NativeOptions {
-    viewport: eframe::egui::ViewportBuilder::default()
-      .with_inner_size([1440.0, 900.0])
-      .with_min_inner_size([800.0, 600.0])
-      .with_title("campilot"),
+    viewport,
     ..Default::default()
   };
   eframe::run_native(
     "campilot",
     options,
-    Box::new(|creation| {
+    Box::new(move |creation| {
       let mut editor = Editor::new();
+      if let Some(scene) = scene {
+        editor.apply_review_scene(scene);
+      }
       // Publish the tokens before the first frame: this host hands the shell a `Ui` it built itself,
       // so the only moment the theme can reach every widget of frame one is here, on the context.
       editor.shell.publish_theme(&creation.egui_ctx);
@@ -42,10 +88,146 @@ struct Editor {
   shell: Shell,
 }
 
+fn document_for_floating_shell() -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  let contour = Contour::from_points(
+    &[
+      Point2::new(0.0, 0.0),
+      Point2::new(100.0, 0.0),
+      Point2::new(100.0, 80.0),
+      Point2::new(0.0, 80.0),
+    ],
+    true,
+  )
+  .expect("board outline");
+
+  document.layers.push(Layer {
+    id: "Top Copper".to_owned(),
+    role: LayerRole::Outline,
+    side: Side::Top,
+    color: "#c47a2c".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities: vec![Entity {
+      id: "E-top".to_owned(),
+      kind: EntityKind::Contour {
+        contour: contour.clone(),
+      },
+      source: Provenance::default(),
+    }],
+  });
+  document.layers.push(Layer {
+    id: "Bottom Copper".to_owned(),
+    role: LayerRole::Outline,
+    side: Side::Bottom,
+    color: "#c47a2c".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities: vec![],
+  });
+  document.layers.push(Layer {
+    id: "Drill Hits".to_owned(),
+    role: LayerRole::Drill,
+    side: Side::Both,
+    color: "#7cc7ff".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities: vec![],
+  });
+  document.layers.push(Layer {
+    id: "Board Outline".to_owned(),
+    role: LayerRole::Outline,
+    side: Side::Both,
+    color: "#ddc9a3".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities: vec![Entity {
+      id: "E-outline".to_owned(),
+      kind: EntityKind::Contour { contour },
+      source: Provenance::default(),
+    }],
+  });
+
+  document.toolpaths.push(Toolpath {
+    id: "TP1".to_owned(),
+    name: "Profile outline".to_owned(),
+    entity_ids: vec!["E-outline".to_owned()],
+    tool_id: None,
+    tool_number: 1,
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(1.8),
+      keep_pours: false,
+    }),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP2".to_owned(),
+    name: "Drill 0.8 / 1.0".to_owned(),
+    entity_ids: vec![],
+    tool_id: None,
+    tool_number: 1,
+    operation: Operation::Isolation(IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(1.8),
+      keep_pours: false,
+    }),
+  });
+  document.toolpaths.push(Toolpath {
+    id: "TP3".to_owned(),
+    name: "Isolation top".to_owned(),
+    entity_ids: vec!["E-top".to_owned()],
+    tool_id: None,
+    tool_number: 2,
+    operation: Operation::Isolation(IsolationParams {
+      passes: 2,
+      overlap: 0.5,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
+    }),
+  });
+  document
+}
+
 impl Editor {
   fn new() -> Self {
     let directory = tool_library::app_data_dir();
     Self::with_library(directory.as_deref())
+  }
+
+  /// Aplica un estado determinista para captura visual en sway headless.
+  fn apply_review_scene(&mut self, scene: ReviewScene) {
+    match scene {
+      ReviewScene::StartScreen => {
+        self.shell.start_with_no_project();
+        self.shell.set_recents(vec![
+          RecentProject::new(
+            "controller-board",
+            "/tmp/controller-board.cam",
+            "Hace 12 min",
+          ),
+          RecentProject::new("usb-adapter", "/tmp/usb-adapter.cam", "Ayer"),
+          RecentProject::new("front-panel", "/tmp/front-panel.cam", "Hace 3 días"),
+        ]);
+        self.app = AppState::new(Document::new(Job::default_sheet()));
+      }
+      ReviewScene::FloatingShell => {
+        self.shell.status = "Sin errores".to_owned();
+        self.app = AppState::new(document_for_floating_shell());
+      }
+      ReviewScene::Settings => {
+        self.shell.status = "Sin errores".to_owned();
+        self.app = AppState::new(document_for_floating_shell());
+        self.shell.open_settings();
+      }
+    }
   }
 
   /// The editor over one application data directory, which is [`Self::new`]'s only variable.

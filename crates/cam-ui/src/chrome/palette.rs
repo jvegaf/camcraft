@@ -12,12 +12,6 @@ use super::paint::{command_icon, icon_button, section_toggle};
 /// One palette chip: the glyph and the command it runs.
 type PaletteChip = (Icon, Command);
 
-/// The height the rail reserves for its foot: three lines of text and a hairline.
-///
-/// A number and not a measurement, because the block is a bottom panel and egui needs its size before the
-/// content exists. It is generous by a few pixels on purpose: a block clipped by its own reserve would cut the
-/// stamp in half, which is the one line in the frame that has to be readable at a glance.
-const BRAND_BLOCK_HEIGHT: f32 = 62.0;
 
 /// A labelled run of palette chips: the group's name and the chips under it.
 type PaletteRun = (Group, Vec<PaletteChip>);
@@ -75,10 +69,10 @@ impl Shell {
     let panel_rect =
       egui::Rect::from_min_size(pos, egui::vec2(metrics.palette_width.max(220.0), palette_h));
 
-    let widgets_id = egui::Id::new("floating_palette_widgets");
+    let widgets_id = egui::Id::unique("floating_palette_widgets");
     let widgets_layer = egui::LayerId::new(egui::Order::Middle, widgets_id);
 
-    egui::Area::new(egui::Id::new("floating_palette_layout"))
+    egui::Area::new(egui::Id::unique("floating_palette_layout"))
       .order(egui::Order::Middle)
       .fixed_pos(pos)
       .constrain(false)

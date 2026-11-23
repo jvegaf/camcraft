@@ -191,12 +191,22 @@ check-worktree:
 test-tooling:
   @./scripts/test-worktree-tooling.sh
 
-# Automatic visual review of Floating Studio UI against golden snapshots.
-# Renders the real egui shell with egui_kittest/wgpu and compares to committed goldens.
-# See crates/cam-ui/tests/goldens/floating-studio/manifest.json for coverage and roadmap gaps.
+# Visual review automático de la UI contra referencias canónicas en fixtures/ui/.
+# Renderiza el shell real con egui_kittest/wgpu y compara contra fixtures/ui/*.png.
+# Las referencias NO se sobreescriben: los diffs quedan en target/ui-review-diffs/.
+# Cobertura y gaps: fixtures/ui/manifest.json
 ui-review:
   cargo test -p cam-ui --test ui_review -- --ignored --nocapture
 
-# Regenerate Floating Studio UI golden snapshots after an intentional visual change.
+# Las referencias en fixtures/ui son read-only. Para aceptar un cambio visual intencional,
+# revisá target/ui-review-diffs/<id>.actual.png y copiá a mano el que corresponda:
+#   cp target/ui-review-diffs/<id>.actual.png fixtures/ui/<id>.png
 ui-review-update:
-  UPDATE_UI_GOLDENS=1 cargo test -p cam-ui --test ui_review -- --ignored --nocapture
+  @echo "Las referencias en fixtures/ui/ no se sobreescriben automáticamente."
+  @echo "Revisá los diffs en target/ui-review-diffs/ y, si el cambio es intencional:"
+  @echo "  cp target/ui-review-diffs/<id>.actual.png fixtures/ui/<id>.png"
+
+# Visual review en background con sway headless (Wayland). No toca tu sesión Hyprland.
+# Requiere: sway, grim, jq, python3.
+ui-review-sway *scenes:
+  scripts/ui-review-sway.sh {{scenes}}

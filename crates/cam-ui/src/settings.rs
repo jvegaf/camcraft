@@ -168,12 +168,19 @@ impl Shell {
     let mut restore = false;
 
     egui::Modal::new(egui::Id::unique("camcraft-settings"))
+      .backdrop_color(egui::Color32::from_black_alpha(140))
       .frame(
         egui::Frame::NONE
           .fill(palette.get(Role::Panel))
           .stroke(Stroke::new(metrics.hairline, palette.get(Role::Border)))
           .corner_radius(egui::CornerRadius::same(metrics.radius_dialog as u8))
-          .inner_margin(egui::Margin::ZERO),
+          .inner_margin(egui::Margin::ZERO)
+          .shadow(egui::epaint::Shadow {
+            offset: [0, 18],
+            blur: 40,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(120),
+          }),
       )
       .show(ctx, |ui| {
         ui.set_width(920.0);
@@ -184,8 +191,8 @@ impl Shell {
           .inner_margin(egui::Margin {
             left: 16,
             right: 16,
-            top: 11,
-            bottom: 11,
+            top: 10,
+            bottom: 10,
           })
           .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -196,18 +203,76 @@ impl Shell {
                   .strong(),
               );
               ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                  .add(egui::Button::new(RichText::new("✕").size(theme::BODY)).frame(false))
-                  .on_hover_text("Cerrar")
-                  .clicked()
-                {
+                let close_resp = ui.add(
+                  egui::Button::new(
+                    RichText::new("✕")
+                      .size(theme::BODY)
+                      .color(palette.get(Role::TextDim)),
+                  )
+                  .frame(false),
+                );
+                if close_resp.on_hover_text("Cerrar").clicked() {
                   close = true;
                 }
-                ui.add_space(8.0);
-                ui.add(
+                ui.add_space(12.0);
+                // Search pill: icon + field + ⌘F hint, styled like the HTML artboard.
+                let search_w = 280.0f32;
+                let search_h = 30.0f32;
+                let (search_rect, _) =
+                  ui.allocate_exact_size(egui::vec2(search_w, search_h), Sense::hover());
+                ui.painter().rect(
+                  search_rect,
+                  egui::CornerRadius::same(metrics.radius_control as u8),
+                  palette.get(Role::App),
+                  Stroke::new(1.0, palette.get(Role::Border)),
+                  egui::StrokeKind::Inside,
+                );
+                // Magnifier icon
+                let icon_c = search_rect.left_center() + egui::vec2(16.0, 0.0);
+                ui.painter()
+                  .circle_stroke(icon_c + egui::vec2(-1.0, -1.0), 5.0, Stroke::new(1.5, palette.get(Role::TextDim)));
+                ui.painter().line_segment(
+                  [icon_c + egui::vec2(2.5, 2.5), icon_c + egui::vec2(5.5, 5.5)],
+                  Stroke::new(1.5, palette.get(Role::TextDim)),
+                );
+                // ⌘F kbd hint
+                let kbd_text = "⌘F";
+                let kbd_galley = ui.painter().layout_no_wrap(
+                  kbd_text.to_owned(),
+                  egui::FontId::proportional(theme::CAPTION),
+                  palette.get(Role::TextOff),
+                );
+                let kbd_w = kbd_galley.size().x + 10.0;
+                let kbd_rect = egui::Rect::from_min_size(
+                  egui::pos2(search_rect.max.x - kbd_w - 6.0, search_rect.center().y - 9.0),
+                  egui::vec2(kbd_w, 18.0),
+                );
+                ui.painter().rect(
+                  kbd_rect,
+                  egui::CornerRadius::same(3),
+                  palette.get(Role::Raised),
+                  Stroke::new(1.0, palette.get(Role::Hairline)),
+                  egui::StrokeKind::Inside,
+                );
+                ui.painter().galley(
+                  egui::pos2(
+                    kbd_rect.center().x - kbd_galley.size().x / 2.0,
+                    kbd_rect.center().y - kbd_galley.size().y / 2.0,
+                  ),
+                  kbd_galley,
+                  palette.get(Role::TextOff),
+                );
+                // TextEdit placed over the search rect
+                let edit_rect = egui::Rect::from_min_max(
+                  egui::pos2(search_rect.min.x + 30.0, search_rect.min.y + 2.0),
+                  egui::pos2(kbd_rect.min.x - 4.0, search_rect.max.y - 2.0),
+                );
+                ui.put(
+                  edit_rect,
                   egui::TextEdit::singleline(&mut draft.search)
                     .hint_text(SEARCH_HINT)
-                    .desired_width(260.0),
+                    .frame(egui::Frame::NONE)
+                    .desired_width(edit_rect.width()),
                 );
               });
             });
@@ -353,32 +418,45 @@ impl Shell {
           })
           .show(ui, |ui| {
             ui.horizontal(|ui| {
-              if ui
-                .button(
+              let restore_resp = ui.add(
+                egui::Button::new(
                   RichText::new(RESTORE)
                     .size(theme::BODY)
                     .color(palette.get(Role::TextDim)),
                 )
-                .clicked()
-              {
+                .frame(false),
+              );
+              if restore_resp.clicked() {
                 restore = true;
               }
               ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let apply_btn = egui::Button::new(
                   RichText::new(APPLY)
                     .size(theme::BODY)
-                    .color(palette.get(Role::Cut)),
+                    .color(palette.get(Role::Cut))
+                    .strong(),
                 )
                 .fill(palette.get(Role::CutSoft))
                 .stroke(Stroke::new(
                   1.0,
                   palette.get(Role::Cut).gamma_multiply(0.35),
-                ));
+                ))
+                .corner_radius(egui::CornerRadius::same(metrics.radius_control as u8))
+                .min_size(egui::vec2(84.0, 32.0));
                 if ui.add(apply_btn).clicked() {
                   apply = true;
                 }
                 ui.add_space(8.0);
-                if ui.button(RichText::new(CANCEL).size(theme::BODY)).clicked() {
+                let cancel_btn = egui::Button::new(
+                  RichText::new(CANCEL)
+                    .size(theme::BODY)
+                    .color(palette.get(Role::Text)),
+                )
+                .fill(palette.get(Role::Raised))
+                .stroke(Stroke::new(1.0, palette.get(Role::Border)))
+                .corner_radius(egui::CornerRadius::same(metrics.radius_control as u8))
+                .min_size(egui::vec2(84.0, 32.0));
+                if ui.add(cancel_btn).clicked() {
                   close = true;
                 }
               });
@@ -415,141 +493,101 @@ fn paint_nav_icon(
 ) {
   let r = egui::Rect::from_min_size(pos, egui::vec2(16.0, 16.0));
   let c = r.center();
-  let s = Stroke::new(1.5, color);
+  let s = Stroke::new(1.4, color);
   match page {
     SettingsPage::General => {
-      painter.circle_stroke(c, 3.0, s);
-      painter.circle_stroke(c, 6.0, Stroke::new(1.0, color));
+      // gear
+      painter.circle_stroke(c, 2.5, s);
+      for i in 0..8 {
+        let a = i as f32 * std::f32::consts::TAU / 8.0;
+        let inner = egui::vec2(a.cos(), a.sin()) * 4.2;
+        let outer = egui::vec2(a.cos(), a.sin()) * 6.2;
+        painter.line_segment([c + inner, c + outer], Stroke::new(1.6, color));
+      }
     }
     SettingsPage::Appearance => {
       painter.rect_stroke(
         egui::Rect::from_min_size(r.min + egui::vec2(1.0, 2.0), egui::vec2(14.0, 10.0)),
-        2.0,
+        1.5,
         s,
         egui::StrokeKind::Inside,
       );
       painter.line_segment(
-        [egui::pos2(c.x, r.max.y - 2.0), egui::pos2(c.x, r.max.y)],
-        s,
+        [egui::pos2(r.min.x + 4.0, r.min.y + 6.0), egui::pos2(r.max.x - 4.0, r.min.y + 6.0)],
+        Stroke::new(1.0, color),
+      );
+      painter.line_segment(
+        [egui::pos2(r.min.x + 4.0, r.min.y + 9.0), egui::pos2(r.max.x - 6.0, r.min.y + 9.0)],
+        Stroke::new(1.0, color),
       );
     }
     SettingsPage::Layout => {
-      painter.rect_stroke(
-        egui::Rect::from_min_size(r.min + egui::vec2(1.0, 1.0), egui::vec2(6.0, 6.0)),
-        1.0,
-        s,
-        egui::StrokeKind::Inside,
-      );
-      painter.rect_stroke(
-        egui::Rect::from_min_size(r.min + egui::vec2(9.0, 1.0), egui::vec2(6.0, 6.0)),
-        1.0,
-        s,
-        egui::StrokeKind::Inside,
-      );
-      painter.rect_stroke(
-        egui::Rect::from_min_size(r.min + egui::vec2(1.0, 9.0), egui::vec2(6.0, 6.0)),
-        1.0,
-        s,
-        egui::StrokeKind::Inside,
-      );
+      for (x, y, w, h) in [(1.0, 2.0, 6.0, 5.0), (9.0, 2.0, 6.0, 5.0), (1.0, 9.0, 6.0, 5.0)] {
+        painter.rect_stroke(
+          egui::Rect::from_min_size(r.min + egui::vec2(x, y), egui::vec2(w, h)),
+          1.0,
+          s,
+          egui::StrokeKind::Inside,
+        );
+      }
     }
     SettingsPage::Canvas => {
       painter.line_segment(
-        [
-          egui::pos2(r.min.x + 2.0, r.max.y - 1.0),
-          egui::pos2(r.min.x + 2.0, r.min.y + 2.0),
-        ],
+        [egui::pos2(r.min.x + 2.0, r.max.y - 2.0), egui::pos2(r.min.x + 2.0, r.min.y + 2.0)],
         s,
       );
       painter.line_segment(
-        [
-          egui::pos2(r.min.x + 2.0, r.max.y - 1.0),
-          egui::pos2(r.max.x - 1.0, r.max.y - 1.0),
-        ],
+        [egui::pos2(r.min.x + 2.0, r.max.y - 2.0), egui::pos2(r.max.x - 1.0, r.max.y - 2.0)],
         s,
       );
       painter.line_segment(
-        [
-          egui::pos2(r.min.x + 4.0, r.max.y - 4.0),
-          egui::pos2(r.min.x + 7.0, r.min.y + 6.0),
-        ],
+        [egui::pos2(r.min.x + 4.0, r.max.y - 5.0), egui::pos2(r.min.x + 7.0, r.min.y + 6.0)],
         s,
       );
       painter.line_segment(
-        [
-          egui::pos2(r.min.x + 7.0, r.min.y + 6.0),
-          egui::pos2(r.min.x + 10.0, r.min.y + 9.0),
-        ],
+        [egui::pos2(r.min.x + 7.0, r.min.y + 6.0), egui::pos2(r.min.x + 10.0, r.min.y + 8.0)],
+        s,
+      );
+      painter.line_segment(
+        [egui::pos2(r.min.x + 10.0, r.min.y + 8.0), egui::pos2(r.max.x - 2.0, r.min.y + 4.0)],
         s,
       );
     }
     SettingsPage::Manufacturing => {
-      painter.circle_stroke(c, 5.5, s);
-      painter.line_segment(
-        [
-          egui::pos2(c.x, r.min.y + 1.0),
-          egui::pos2(c.x, r.min.y + 4.0),
-        ],
-        s,
-      );
-      painter.line_segment(
-        [
-          egui::pos2(c.x, r.max.y - 4.0),
-          egui::pos2(c.x, r.max.y - 1.0),
-        ],
-        s,
-      );
+      painter.circle_stroke(c, 5.0, s);
+      for (p1, p2) in [
+        (egui::vec2(0.0, -7.0), egui::vec2(0.0, -5.0)),
+        (egui::vec2(0.0, 5.0), egui::vec2(0.0, 7.0)),
+        (egui::vec2(-7.0, 0.0), egui::vec2(-5.0, 0.0)),
+        (egui::vec2(5.0, 0.0), egui::vec2(7.0, 0.0)),
+      ] {
+        painter.line_segment([c + p1, c + p2], Stroke::new(1.3, color));
+      }
     }
     SettingsPage::ToolLibrary => {
+      // wrench
       painter.line_segment(
-        [
-          egui::pos2(c.x - 3.0, r.min.y + 2.0),
-          egui::pos2(c.x + 3.0, r.min.y + 2.0),
-        ],
-        s,
+        [c + egui::vec2(-3.5, -5.0), c + egui::vec2(1.0, -0.5)],
+        Stroke::new(1.6, color),
       );
       painter.line_segment(
-        [
-          egui::pos2(c.x, r.min.y + 2.0),
-          egui::pos2(c.x, r.max.y - 5.0),
-        ],
-        s,
+        [c + egui::vec2(-0.5, 1.0), c + egui::vec2(4.0, 5.5)],
+        Stroke::new(1.6, color),
       );
-      painter.line_segment(
-        [
-          egui::pos2(c.x - 3.0, r.max.y - 2.0),
-          egui::pos2(c.x + 3.0, r.max.y - 2.0),
-        ],
-        s,
+      painter.circle_stroke(c + egui::vec2(-4.0, -4.5), 2.2, Stroke::new(1.3, color));
+      painter.rect_stroke(
+        egui::Rect::from_center_size(c + egui::vec2(4.2, 4.8), egui::vec2(3.0, 4.0)),
+        0.5,
+        Stroke::new(1.2, color),
+        egui::StrokeKind::Inside,
       );
     }
     SettingsPage::Import => {
+      painter.line_segment([c + egui::vec2(0.0, -5.0), c + egui::vec2(0.0, 3.0)], s);
+      painter.line_segment([c + egui::vec2(-3.5, 0.0), c + egui::vec2(0.0, 3.5)], s);
+      painter.line_segment([c + egui::vec2(3.5, 0.0), c + egui::vec2(0.0, 3.5)], s);
       painter.line_segment(
-        [
-          egui::pos2(c.x, r.min.y + 2.0),
-          egui::pos2(c.x, r.max.y - 4.0),
-        ],
-        s,
-      );
-      painter.line_segment(
-        [
-          egui::pos2(c.x - 3.0, r.max.y - 7.0),
-          egui::pos2(c.x, r.max.y - 4.0),
-        ],
-        s,
-      );
-      painter.line_segment(
-        [
-          egui::pos2(c.x + 3.0, r.max.y - 7.0),
-          egui::pos2(c.x, r.max.y - 4.0),
-        ],
-        s,
-      );
-      painter.line_segment(
-        [
-          egui::pos2(r.min.x + 2.0, r.max.y - 2.0),
-          egui::pos2(r.max.x - 2.0, r.max.y - 2.0),
-        ],
+        [egui::pos2(r.min.x + 2.0, r.max.y - 2.0), egui::pos2(r.max.x - 2.0, r.max.y - 2.0)],
         s,
       );
     }
@@ -585,16 +623,25 @@ fn page_title(ui: &mut egui::Ui, palette: &theme::Palette, title: &str, desc: &s
 }
 
 fn section_heading(ui: &mut egui::Ui, palette: &theme::Palette, title: &str) {
-  ui.add_space(8.0);
-  ui.separator();
-  ui.add_space(8.0);
-  ui.label(
-    RichText::new(title.to_uppercase())
-      .size(theme::CAPTION)
-      .color(palette.get(Role::TextOff))
-      .strong(),
+  ui.add_space(12.0);
+  let rect = ui.available_rect_before_wrap();
+  let y = ui.cursor().min.y + 6.0;
+  let galley = ui.painter().layout_no_wrap(
+    title.to_uppercase(),
+    egui::FontId::proportional(theme::CAPTION),
+    palette.get(Role::TextOff),
   );
-  ui.add_space(4.0);
+  ui.painter().galley(
+    egui::pos2(rect.min.x, y - galley.size().y / 2.0),
+    galley.clone(),
+    palette.get(Role::TextOff),
+  );
+  let line_x = rect.min.x + galley.size().x + 10.0;
+  ui.painter().line_segment(
+    [egui::pos2(line_x, y), egui::pos2(rect.max.x, y)],
+    Stroke::new(1.0, palette.get(Role::Hairline)),
+  );
+  ui.add_space(18.0);
 }
 
 fn setting_row(
@@ -604,10 +651,10 @@ fn setting_row(
   hint: &str,
   add_control: impl FnOnce(&mut egui::Ui),
 ) {
-  ui.add_space(6.0);
+  ui.add_space(10.0);
   ui.horizontal(|ui| {
     ui.allocate_ui_with_layout(
-      egui::vec2(240.0, 0.0),
+      egui::vec2(260.0, 0.0),
       egui::Layout::top_down(egui::Align::Min),
       |ui| {
         ui.label(
@@ -616,6 +663,7 @@ fn setting_row(
             .color(palette.get(Role::TextHi))
             .strong(),
         );
+        ui.add_space(2.0);
         ui.label(
           RichText::new(hint)
             .size(theme::SMALL)
@@ -623,12 +671,131 @@ fn setting_row(
         );
       },
     );
-    ui.add_space(16.0);
-    ui.vertical(|ui| {
-      add_control(ui);
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+      ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+        ui.add_space(2.0);
+        add_control(ui);
+      });
     });
   });
-  ui.add_space(6.0);
+  ui.add_space(10.0);
+}
+
+fn segmented_control<const N: usize>(
+  ui: &mut egui::Ui,
+  palette: &theme::Palette,
+  id: &str,
+  options: [&str; N],
+  selected: usize,
+) -> usize {
+  let mut selected = selected;
+  let h = 30.0f32;
+  let pad = 2.0f32;
+  let btn_w = 110.0f32;
+  let total_w = btn_w * N as f32 + pad * 2.0;
+  let (rect, _) = ui.allocate_exact_size(egui::vec2(total_w, h), Sense::hover());
+  ui.painter().rect(
+    rect,
+    egui::CornerRadius::same(6),
+    palette.get(Role::App),
+    Stroke::new(1.0, palette.get(Role::Border)),
+    egui::StrokeKind::Inside,
+  );
+  for (i, label) in options.iter().enumerate() {
+    let btn_rect = egui::Rect::from_min_size(
+      egui::pos2(rect.min.x + pad + i as f32 * btn_w, rect.min.y + pad),
+      egui::vec2(btn_w, h - pad * 2.0),
+    );
+    let resp = ui.interact(btn_rect, ui.scope_id().with((id, i)), Sense::click());
+    let is_sel = i == selected;
+    if is_sel {
+      ui.painter().rect(
+        btn_rect,
+        egui::CornerRadius::same(4),
+        palette.get(Role::Raised),
+        Stroke::new(1.0, palette.get(Role::Border)),
+        egui::StrokeKind::Inside,
+      );
+    } else if resp.hovered() {
+      ui.painter().rect_filled(
+        btn_rect,
+        egui::CornerRadius::same(4),
+        palette.get(Role::Raised).gamma_multiply(0.5),
+      );
+    }
+    let color = if is_sel {
+      palette.get(Role::TextHi)
+    } else {
+      palette.get(Role::TextDim)
+    };
+    ui.painter().text(
+      btn_rect.center(),
+      egui::Align2::CENTER_CENTER,
+      *label,
+      egui::FontId::proportional(theme::BODY),
+      color,
+    );
+    if resp.clicked() {
+      selected = i;
+    }
+  }
+  selected
+}
+
+fn styled_checkbox(ui: &mut egui::Ui, palette: &theme::Palette, id: &str, checked: &mut bool) {
+  let h = 30.0f32;
+  let box_size = 16.0f32;
+  let label = "Activar";
+  let galley = ui.painter().layout_no_wrap(
+    label.to_owned(),
+    egui::FontId::proportional(theme::BODY),
+    palette.get(Role::Text),
+  );
+  let total_w = box_size + 8.0 + galley.size().x + 16.0;
+  let (rect, resp) = ui.allocate_exact_size(egui::vec2(total_w, h), Sense::click());
+  if resp.clicked() {
+    *checked = !*checked;
+  }
+  let box_rect = egui::Rect::from_min_size(
+    egui::pos2(rect.min.x, rect.center().y - box_size / 2.0),
+    egui::vec2(box_size, box_size),
+  );
+  let (fill, stroke_col) = if *checked {
+    (palette.get(Role::SelSoft), palette.get(Role::Sel))
+  } else {
+    (palette.get(Role::App), palette.get(Role::Border))
+  };
+  ui.painter().rect(
+    box_rect,
+    egui::CornerRadius::same(3),
+    fill,
+    Stroke::new(1.0, stroke_col),
+    egui::StrokeKind::Inside,
+  );
+  if *checked {
+    let c = box_rect.center();
+    ui.painter().line_segment(
+      [c + egui::vec2(-4.0, 0.0), c + egui::vec2(-1.0, 3.0)],
+      Stroke::new(1.8, palette.get(Role::Sel)),
+    );
+    ui.painter().line_segment(
+      [c + egui::vec2(-1.0, 3.0), c + egui::vec2(4.0, -3.0)],
+      Stroke::new(1.8, palette.get(Role::Sel)),
+    );
+  }
+  let text_col = if resp.hovered() {
+    palette.get(Role::TextHi)
+  } else {
+    palette.get(Role::Text)
+  };
+  ui.painter().text(
+    egui::pos2(box_rect.max.x + 8.0, rect.center().y),
+    egui::Align2::LEFT_CENTER,
+    label,
+    egui::FontId::proportional(theme::BODY),
+    text_col,
+  );
+  let _ = id;
 }
 
 fn paint_general(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut SettingsDraft) {
@@ -641,15 +808,9 @@ fn paint_general(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Settin
     "Al abrir Camcraft",
     "Qué mostrar cuando no hay un proyecto reabierto por el sistema.",
     |ui| {
-      ui.horizontal(|ui| {
-        let start = draft.startup_start_screen;
-        if ui.selectable_label(start, "Start screen").clicked() {
-          draft.startup_start_screen = true;
-        }
-        if ui.selectable_label(!start, "Proyecto vacío").clicked() {
-          draft.startup_start_screen = false;
-        }
-      });
+      let selected = if draft.startup_start_screen { 0 } else { 1 };
+      let sel = segmented_control(ui, palette, "startup", ["Start screen", "Proyecto vacío"], selected);
+      draft.startup_start_screen = sel == 0;
     },
   );
   setting_row(
@@ -658,12 +819,24 @@ fn paint_general(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Settin
     "Recientes",
     "Cantidad de proyectos mostrados en la start screen.",
     |ui| {
-      egui::ComboBox::from_id_salt("settings-recents-count")
-        .selected_text(format!("{} proyectos", draft.recents_count))
-        .show_ui(ui, |ui| {
-          for n in [8usize, 12, 20] {
-            ui.selectable_value(&mut draft.recents_count, n, format!("{n} proyectos"));
-          }
+      egui::Frame::NONE
+        .fill(palette.get(Role::App))
+        .stroke(Stroke::new(1.0, palette.get(Role::Border)))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+          egui::ComboBox::from_id_salt("settings-recents-count")
+            .width(160.0)
+            .selected_text(
+              RichText::new(format!("{} proyectos", draft.recents_count))
+                .size(theme::BODY)
+                .color(palette.get(Role::Text)),
+            )
+            .show_ui(ui, |ui| {
+              for n in [8usize, 12, 20] {
+                ui.selectable_value(&mut draft.recents_count, n, format!("{n} proyectos"));
+              }
+            });
         });
     },
   );
@@ -675,7 +848,7 @@ fn paint_general(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Settin
     "Reabrir último proyecto",
     "Al iniciar, abrir el último proyecto si estaba cerrado normalmente.",
     |ui| {
-      ui.checkbox(&mut draft.reopen_last_project, "Activar");
+      styled_checkbox(ui, palette, "reopen", &mut draft.reopen_last_project);
     },
   );
   setting_row(
@@ -684,7 +857,7 @@ fn paint_general(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Settin
     "Confirmar antes de cerrar",
     "Pedir confirmación si hay cambios sin guardar.",
     |ui| {
-      ui.checkbox(&mut draft.confirm_before_close, "Activar");
+      styled_checkbox(ui, palette, "confirm-close", &mut draft.confirm_before_close);
     },
   );
 
@@ -708,20 +881,9 @@ fn paint_appearance(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Set
     "Modo de color",
     "Selecciona el tema oscuro o claro del workbench.",
     |ui| {
-      ui.horizontal(|ui| {
-        if ui
-          .selectable_label(draft.theme == Theme::Dark, "Dark")
-          .clicked()
-        {
-          draft.theme = Theme::Dark;
-        }
-        if ui
-          .selectable_label(draft.theme == Theme::Light, "Light")
-          .clicked()
-        {
-          draft.theme = Theme::Light;
-        }
-      });
+      let selected = if draft.theme == Theme::Dark { 0 } else { 1 };
+      let sel = segmented_control(ui, palette, "theme", ["Dark", "Light"], selected);
+      draft.theme = if sel == 0 { Theme::Dark } else { Theme::Light };
     },
   );
 }
@@ -763,7 +925,7 @@ fn paint_canvas(ui: &mut egui::Ui, palette: &theme::Palette, draft: &mut Setting
     "Snapping",
     "Activa o desactiva el ajuste a puntos relevantes durante el dibujo.",
     |ui| {
-      ui.checkbox(&mut draft.snapping, "Activar");
+      styled_checkbox(ui, palette, "snapping", &mut draft.snapping);
     },
   );
 }

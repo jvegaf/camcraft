@@ -15,7 +15,6 @@ cam-store.workspace = true
 cam-post.workspace = true
 cam-import.workspace = true
 cam-export.workspace = true
-cam-sim.workspace = true
 cam-excellon.workspace = true
 cam-ops.workspace = true
 
@@ -23,5 +22,6 @@ cam-ops.workspace = true
 cam-units.workspace = true
 cam-geom.workspace = true
 cam-model.workspace = true
+cam-sim.workspace = true
 cam-store.workspace = true
 zip.workspace = true

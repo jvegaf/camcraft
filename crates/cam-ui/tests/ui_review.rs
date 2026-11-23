@@ -1,12 +1,13 @@
-//! Automatic visual review for the Floating Studio shell (design/camcraft-workbench-v2/02-floating-studio.html).
+//! Visual review automático de la UI de camcraft contra referencias canónicas.
 //!
-//! Renders the real egui shell with `egui_kittest` (wgpu) and compares against golden PNGs.
-//! The goldens catch visual regressions in implemented UI. They do NOT prove pixel-perfect parity
-//! with the HTML artboard: the artboard is the visual spec, and roadmap gaps (E6.x) are documented
-//! in `tests/goldens/floating-studio/manifest.json`.
+//! Renderiza el shell real de egui con `egui_kittest` (wgpu) y compara contra los PNGs de
+//! `fixtures/ui/`. Las referencias son la verdad visual: este test NO las sobreescribe.
 //!
-//! Run:    just ui-review
-//! Update: UPDATE_UI_GOLDENS=1 just ui-review
+//! Correr:    just ui-review
+//! Diffs:     target/ui-review-diffs/<id>.actual.png y <id>.diff.png
+//!
+//! Si un cambio visual es intencional y la UI ya coincide con la nueva intención, actualizá la
+//! referencia a mano (copiá el actual sobre fixtures/ui/<id>.png) y revisá el diff antes de commitear.
 
 use std::path::{Path, PathBuf};
 
@@ -20,19 +21,20 @@ use cam_ui::{RecentProject, Shell};
 use cam_units::Length;
 use egui_kittest::Harness;
 
-const WIDTH: f32 = 1440.0;
-const HEIGHT: f32 = 900.0;
+fn repo_root() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
 
-fn golden_dir() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/goldens/floating-studio")
+fn reference_dir() -> PathBuf {
+  repo_root().join("fixtures/ui")
 }
 
 fn diff_dir() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-review-diffs")
+  repo_root().join("target/ui-review-diffs")
 }
 
 fn manifest_path() -> PathBuf {
-  golden_dir().join("manifest.json")
+  reference_dir().join("manifest.json")
 }
 
 fn document_for_floating_shell() -> Document {
@@ -143,9 +145,9 @@ fn document_for_floating_shell() -> Document {
   document
 }
 
-fn render(shell: Shell, app: AppState, name: &str) -> image::RgbaImage {
+fn render(shell: Shell, app: AppState, name: &str, width: f32, height: f32) -> image::RgbaImage {
   let mut harness = Harness::builder()
-    .with_size(egui::Vec2::new(WIDTH, HEIGHT))
+    .with_size(egui::Vec2::new(width, height))
     .with_pixels_per_point(1.0)
     .with_accessibility_check(false)
     .allow_missing_glyphs()
@@ -179,7 +181,7 @@ fn render(shell: Shell, app: AppState, name: &str) -> image::RgbaImage {
 
 fn save_png(path: &Path, image: &image::RgbaImage) {
   if let Some(parent) = path.parent() {
-    std::fs::create_dir_all(parent).expect("create golden dir");
+    std::fs::create_dir_all(parent).expect("create diff dir");
   }
   image::DynamicImage::ImageRgba8(image.clone())
     .save_with_format(path, image::ImageFormat::Png)
@@ -193,7 +195,7 @@ fn diff_images(
   assert_eq!(
     (expected.width(), expected.height()),
     (actual.width(), actual.height()),
-    "golden size mismatch: expected {}x{}, got {}x{}",
+    "size mismatch: expected {}x{}, got {}x{}",
     expected.width(),
     expected.height(),
     actual.width(),
@@ -214,7 +216,6 @@ fn diff_images(
     total_channel_diff += pixel_diff as u64;
     if pixel_diff > 0 {
       different_pixels += 1;
-      // highlight diff in red, keep some context
       let alpha = (pixel_diff.min(255)) as u8;
       diff.put_pixel(x, y, image::Rgba([255, 0, 0, alpha.max(80)]));
     } else {
@@ -225,73 +226,80 @@ fn diff_images(
   (different_pixels, total_channel_diff, diff)
 }
 
-fn compare_or_update(name: &str, actual: &image::RgbaImage) {
-  let golden_path = golden_dir().join(format!("{name}.png"));
-  let update = std::env::var_os("UPDATE_UI_GOLDENS").is_some();
+fn compare(name: &str, actual: &image::RgbaImage) {
+  let reference_path = reference_dir().join(format!("{name}.png"));
+  assert!(
+    reference_path.exists(),
+    "missing reference {}. Las referencias viven en fixtures/ui/ y no se generan automáticamente.",
+    reference_path.display()
+  );
 
-  if update || !golden_path.exists() {
-    save_png(&golden_path, actual);
-    println!(
-      "ui-review: {} golden {}",
-      if update { "updated" } else { "created" },
-      golden_path.display()
-    );
-    if !update {
-      println!("ui-review: golden was missing; created it. Re-run to verify, or commit it if it matches the artboard.");
-    }
-    return;
-  }
-
-  let expected = image::open(&golden_path)
-    .unwrap_or_else(|e| panic!("read golden {}: {e}", golden_path.display()))
+  let expected = image::open(&reference_path)
+    .unwrap_or_else(|e| panic!("read reference {}: {e}", reference_path.display()))
     .to_rgba8();
+
   let (different_pixels, total_channel_diff, diff) = diff_images(&expected, actual);
   let total_pixels = (expected.width() * expected.height()) as u64;
   let pct = (different_pixels as f64 / total_pixels as f64) * 100.0;
 
+  let diff_path = diff_dir().join(format!("{name}.diff.png"));
+  let actual_path = diff_dir().join(format!("{name}.actual.png"));
+
   if different_pixels == 0 {
-    println!("ui-review: {name} matches golden exactly");
+    // Clean stale diffs for this scene so the output dir reflects current state.
+    let _ = std::fs::remove_file(&diff_path);
+    let _ = std::fs::remove_file(&actual_path);
+    println!("ui-review: {name}  OK  (match exacto contra {})", reference_path.display());
     return;
   }
 
-  let diff_path = diff_dir().join(format!("{name}.diff.png"));
-  let actual_path = diff_dir().join(format!("{name}.actual.png"));
   save_png(&diff_path, &diff);
   save_png(&actual_path, actual);
 
-  // Small AA/font rasterization tolerance. The threshold is intentionally strict; raise only
-  // with evidence from cross-platform runs, not to hide real regressions.
+  // Tolerancia pequeña para AA/rasterización de fuentes. Estricta a propósito.
   let max_pct = 0.50;
-  let max_channel_diff = total_pixels * 4 * 2; // avg 2 levels per channel per pixel
+  let max_channel_diff = total_pixels * 4 * 2; // avg 2 niveles por canal por pixel
   println!(
-    "ui-review: {name} differs: {different_pixels}/{total_pixels} pixels ({pct:.3}%), channel_diff={total_channel_diff}, diff={}, actual={}",
-    diff_path.display(),
-    actual_path.display()
+    "ui-review: {name}  DIFF  {different_pixels}/{total_pixels} px ({pct:.3}%), channel_diff={total_channel_diff}"
   );
+  println!("  reference: {}", reference_path.display());
+  println!("  actual:    {}", actual_path.display());
+  println!("  diff:      {}", diff_path.display());
+
   assert!(
     pct <= max_pct && total_channel_diff <= max_channel_diff,
-    "{name} visual regression: {pct:.3}% pixels differ ({different_pixels}/{total_pixels}), channel_diff={total_channel_diff}. \
-See {} and {}. If the change is intentional, run UPDATE_UI_GOLDENS=1 just ui-review and review the new golden against {}.",
+    "{name}: regresión visual {pct:.3}% ({different_pixels}/{total_pixels}), channel_diff={total_channel_diff}. \
+Revisá {} y {}. Si el cambio es intencional, actualizá la referencia a mano: \
+cp {} {}",
+    actual_path.display(),
     diff_path.display(),
     actual_path.display(),
-    manifest_path().display()
+    reference_path.display()
   );
-  println!("ui-review: {name} within tolerance ({pct:.3}%)");
+  println!("ui-review: {name}  OK  (dentro de tolerancia {pct:.3}%)");
+}
+
+fn reference_size(name: &str) -> (f32, f32) {
+  let reference_path = reference_dir().join(format!("{name}.png"));
+  let img = image::image_dimensions(&reference_path)
+    .unwrap_or_else(|e| panic!("read dimensions {}: {e}", reference_path.display()));
+  (img.0 as f32, img.1 as f32)
 }
 
 fn assert_manifest_exists() {
   let path = manifest_path();
   assert!(
     path.exists(),
-    "missing coverage manifest {}: it must document artboard coverage and roadmap gaps",
+    "missing manifest {}: debe documentar escenas, cobertura y gaps",
     path.display()
   );
 }
 
 #[test]
-#[ignore = "offscreen UI visual review — run with `just ui-review`, update with `UPDATE_UI_GOLDENS=1 just ui-review`"]
-fn floating_studio_start_screen() {
+#[ignore = "visual review offscreen — correr con `just ui-review`"]
+fn start_screen() {
   assert_manifest_exists();
+  let (width, height) = reference_size("start-screen");
   let mut shell = Shell::new();
   shell.start_with_no_project();
   shell.set_recents(vec![
@@ -304,18 +312,31 @@ fn floating_studio_start_screen() {
     RecentProject::new("front-panel", "/tmp/front-panel.cam", "Hace 3 días"),
   ]);
   let app = AppState::new(Document::new(Job::default_sheet()));
-  let img = render(shell, app, "start-screen");
-  compare_or_update("start-screen", &img);
+  let img = render(shell, app, "start-screen", width, height);
+  compare("start-screen", &img);
 }
 
 #[test]
-#[ignore = "offscreen UI visual review — run with `just ui-review`, update with `UPDATE_UI_GOLDENS=1 just ui-review`"]
-fn floating_studio_shell() {
+#[ignore = "visual review offscreen — correr con `just ui-review`"]
+fn floating_shell() {
   assert_manifest_exists();
+  let (width, height) = reference_size("floating-shell");
   let mut shell = Shell::new();
-  // project_open defaults true; ensure start screen is not shown.
   shell.status = "Sin errores".to_owned();
   let app = AppState::new(document_for_floating_shell());
-  let img = render(shell, app, "floating-shell");
-  compare_or_update("floating-shell", &img);
+  let img = render(shell, app, "floating-shell", width, height);
+  compare("floating-shell", &img);
+}
+
+#[test]
+#[ignore = "visual review offscreen — correr con `just ui-review`"]
+fn settings() {
+  assert_manifest_exists();
+  let (width, height) = reference_size("settings");
+  let mut shell = Shell::new();
+  shell.status = "Sin errores".to_owned();
+  shell.open_settings();
+  let app = AppState::new(document_for_floating_shell());
+  let img = render(shell, app, "settings", width, height);
+  compare("settings", &img);
 }

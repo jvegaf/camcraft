@@ -1,3 +1,6 @@
+---
+page-id: 18
+---
 # AGENTS.md — Reglas para agentes en camcraft
 
 ## Ramas: `dev` integra, `master` publica
@@ -43,3 +46,7 @@
 - `just check-worktree` — validar que trabajás en un worktree reclamado
 - `just check` — gate completo: claim, docs, fmt, clippy, tests
 - `just test-tooling` — pruebas de comportamiento del tooling de claims
+
+## Skills del proyecto
+- `.agents/skills/odd-docs/SKILL.md` — disciplina de documentación ODD (nombres, splits, referencias).
+- `.agents/skills/ui-visual-review/SKILL.md` — iteración visual de cam-ui contra referencias en `fixtures/ui/`.

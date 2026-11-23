@@ -332,7 +332,7 @@ impl Shell {
     // background does not block canvas clicks (hit-test fall-through).
     let inspector_pos = egui::pos2(canvas.max.x - inspector_w - 16.0, top);
     let inspector_rect = egui::Rect::from_min_size(inspector_pos, egui::vec2(inspector_w, max_h));
-    egui::Area::new(egui::Id::new("floating_inspector"))
+    egui::Area::new(egui::Id::unique("floating_inspector"))
       .order(egui::Order::Middle)
       .fixed_pos(inspector_pos)
       .constrain(false)
