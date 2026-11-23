@@ -543,6 +543,7 @@ impl Shell {
     let job = app.document().board.clone();
     let cell = cam_units::Length::from_mm(0.5);
     let Ok(mut field) = cam_sim::Heightfield::new(&job, cell) else {
+      self.preview = None;
       return;
     };
     cam_sim::sweep::apply(&stream, &mut field);
