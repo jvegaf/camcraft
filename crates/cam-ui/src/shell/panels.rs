@@ -1,5 +1,10 @@
 use cam_app::{AlignMode, AppState, VertexEdit};
 use cam_geom::Point2;
+use cam_model::{
+  CutoutParams, DrillingParams, FillMethod, IsolationKind, IsolationParams, MillingDirection,
+  NonCopperClearParams, Operation, PaintParams, PanelizeParams, TabKind,
+};
+use cam_units::Length;
 use egui::RichText;
 
 use crate::chrome;
@@ -472,12 +477,6 @@ impl Shell {
     palette: &crate::theme::Palette,
     output: &mut ShellOutput,
   ) {
-    use cam_model::{
-      CutoutParams, DrillingParams, FillMethod, IsolationKind, IsolationParams, MillingDirection,
-      NonCopperClearParams, Operation, PaintParams, PanelizeParams, TabKind,
-    };
-    use cam_units::Length;
-
     let Some(toolpath) = self.described_toolpath(app).cloned() else {
       return;
     };
@@ -677,11 +676,6 @@ fn operation_kind(op: &cam_model::Operation) -> OperationKind {
 }
 
 fn default_operation(kind: OperationKind) -> cam_model::Operation {
-  use cam_model::{
-    CutoutParams, DrillingParams, FillMethod, IsolationKind, IsolationParams, MillingDirection,
-    NonCopperClearParams, Operation, PaintParams, PanelizeParams, TabKind,
-  };
-  use cam_units::Length;
   match kind {
     OperationKind::Isolation => Operation::Isolation(IsolationParams {
       passes: 1,
