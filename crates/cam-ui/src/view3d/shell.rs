@@ -541,6 +541,9 @@ impl Shell {
     let job = app.document().board.clone();
     let cell = cam_units::Length::from_mm(0.5);
     let Ok(mut field) = cam_sim::Heightfield::new(&job, cell) else {
+      self
+        .preview_warnings
+        .push("could not create simulation heightfield for PCB preview".to_string());
       self.preview = None;
       return;
     };
