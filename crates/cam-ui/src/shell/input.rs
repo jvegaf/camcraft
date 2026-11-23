@@ -305,11 +305,12 @@ impl Shell {
       }
     }
 
-    // Keyboard: undo/redo, delete, fit.
-    let (undo, redo, delete, fit) = ui.ctx().input(|input| {
+    // Keyboard: undo/redo, save, delete, fit.
+    let (undo, redo, save, delete, fit) = ui.ctx().input(|input| {
       (
         input.modifiers.command && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
         input.modifiers.command && input.key_pressed(egui::Key::Z) && input.modifiers.shift,
+        input.modifiers.command && input.key_pressed(egui::Key::S),
         input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace),
         input.key_pressed(egui::Key::F) && !input.modifiers.command,
       )
@@ -319,6 +320,13 @@ impl Shell {
     }
     if redo {
       output.actions.push(UiAction::Redo);
+    }
+    if save {
+      if self.document_path.is_some() {
+        output.actions.push(UiAction::Save);
+      } else {
+        output.actions.push(UiAction::RequestSaveAs);
+      }
     }
     if delete {
       output.actions.push(UiAction::DeleteSelection);

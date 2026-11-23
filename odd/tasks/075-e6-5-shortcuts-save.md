@@ -23,10 +23,11 @@ Atajos de teclado del flujo PCB, Ctrl+S sin diálogo cuando hay ruta, y mapa de 
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Implementar Ctrl+S (guardar sin diálogo cuando hay ruta; comportamiento definido si no hay ruta) | S1,S2 | inline |  |
-| T2 | Documentar mapa de atajos en ayuda/overlay, incluyendo flujo PCB relevante | S1,S2 | inline |  |
-| T3 | Tests y actualización de roadmap | S1,S2 | inline |  |
+| T1 | Implementar Ctrl+S (guardar sin diálogo cuando hay ruta; comportamiento definido si no hay ruta) | S1,S2 | inline | pending |
+| T2 | Documentar mapa de atajos en ayuda/overlay, incluyendo flujo PCB relevante | S1,S2 | inline | pending |
+| T3 | Tests y actualización de roadmap | S1,S2 | inline | pending |
 
 ## Log
 
 - **L1 (pedido original, verbatim).** «lee @odd/README.md @docs/ROADMAP_CAMCRAFT.md @odd/roadmap/index.md y completa F6»
+- **L2 (implementación).** Se agregó Ctrl+S en `shell/input.rs`: guarda con `UiAction::Save` si hay ruta, o `RequestSaveAs` si no. Se documentó en la ventana de atajos (`chrome/overlays.rs`) y en la ayuda de Save (`src/help.rs`).
