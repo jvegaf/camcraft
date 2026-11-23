@@ -44,6 +44,7 @@ pub(crate) fn document_with_toolpath(tool_number: u32) -> Document {
     id: "P1".to_owned(),
     name: "Perfil 01".to_owned(),
     entity_ids: vec!["E1".to_owned()],
+    tool_id: None,
     tool_number,
     operation: cam_model::Operation::Isolation(cam_model::IsolationParams {
       passes: 1,

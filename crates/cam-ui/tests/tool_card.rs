@@ -65,6 +65,7 @@ fn document_with_toolpaths(tool_number: u32, count: usize) -> Document {
       id: format!("P{}", index + 1),
       name: format!("Perfil {:02}", index + 1),
       entity_ids: vec!["E1".to_owned()],
+      tool_id: None,
       tool_number,
       operation: cam_model::Operation::Isolation(cam_model::IsolationParams {
         passes: 1,
