@@ -529,16 +529,9 @@ impl Shell {
       return;
     };
     cam_sim::sweep::apply(&stream, &mut field);
+    // PCB preview has no per-operation geometric target; report gouge as removal beyond the
+    // maximum declared cut depth and no whole-board uncut.
     let tolerance_mm = 0.01_f64;
-    let target = cam_sim::target_for(app.document(), cell, &cam_sim::ToolShapes::default()).ok();
-    let mut deviation = target
-      .as_ref()
-      .and_then(|t| cam_sim::deviations(&field, t, cam_units::Length::from_mm(tolerance_mm)).ok())
-      .unwrap_or_default();
-    // PCB preview target has no geometric uncut area; report gouge only as removal beyond
-    // the maximum declared cut depth.
-    deviation.uncut = 0.0;
-    deviation.uncut_cells = 0;
     let max_depth = app
       .document()
       .toolpaths
@@ -552,20 +545,17 @@ impl Shell {
         cam_model::Operation::Panelize(_) => 0.0,
       })
       .fold(0.0_f64, f64::max);
-    let mut gouge = 0.0;
-    let mut gouge_cells = 0usize;
+    let mut deviation = cam_sim::Deviation::default();
     let area = field.grid().cell_area();
     for row in 0..field.grid().rows {
       for col in 0..field.grid().columns {
         let removed = -field.surface(col, row);
         if removed > max_depth + tolerance_mm {
-          gouge += (removed - max_depth) * area;
-          gouge_cells += 1;
+          deviation.gouge += (removed - max_depth) * area;
+          deviation.gouge_cells += 1;
         }
       }
     }
-    deviation.gouge = gouge;
-    deviation.gouge_cells = gouge_cells;
     let mut preview = crate::view3d::Preview3d::new(field, stream, &job);
     preview.set_deviation(deviation);
     self.preview = Some(preview);
