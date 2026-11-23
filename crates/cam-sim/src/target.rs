@@ -157,10 +157,9 @@ pub fn target_for(
   _tools: &ToolShapes,
 ) -> Result<Target, TargetError> {
   let grid = grid_for(&document.board, cell)?;
-  let _ = document; // PCB preview: no per-operation geometric target yet.
-                    // PCB preview target: without per-operation geometric targets, authorising the whole board
-                    // produces misleading whole-board "uncut". Report no uncut expectation here; callers may compute
-                    // gouge-over-depth separately when a cut-depth bound is known.
+  // PCB preview target: without per-operation geometric targets, authorising the whole board
+  // produces misleading whole-board "uncut". Report no uncut expectation here; callers may compute
+  // gouge-over-depth separately when a cut-depth bound is known.
   Ok(Target {
     grid,
     authorised: vec![0.0; grid.cells()],

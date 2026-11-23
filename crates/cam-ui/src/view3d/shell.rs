@@ -537,6 +537,7 @@ impl Shell {
       crate::view3d::program::build_preview_stream(app.document(), &self.tools);
     self.preview_warnings = warnings.clone();
     let Some(stream) = stream else {
+      self.preview = None;
       return;
     };
     let job = app.document().board.clone();
