@@ -110,6 +110,22 @@ pub struct Deviation {
   pub uncut_cells: usize,
 }
 
+/// Maximum declared PCB cut depth across document toolpaths, in millimetres.
+pub fn max_pcb_cut_depth_mm(document: &Document) -> f64 {
+  document
+    .toolpaths
+    .iter()
+    .map(|toolpath| match &toolpath.operation {
+      Operation::Isolation(p) => p.cut_depth.mm(),
+      Operation::NonCopperClear(p) => p.cut_depth.mm(),
+      Operation::Cutout(p) => p.cut_depth.mm(),
+      Operation::Paint(p) => p.cut_depth.mm(),
+      Operation::Drilling(p) => p.cut_depth.mm(),
+      Operation::Panelize(_) => 0.0,
+    })
+    .fold(0.0_f64, f64::max)
+}
+
 /// Derive the target surface for a whole document, on a grid of `cell` millimetres.
 pub fn target_for(
   document: &Document,

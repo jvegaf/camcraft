@@ -14,16 +14,25 @@ const PREVIEW_DEFAULT_DIAMETER_MM: f64 = 1.0;
 
 /// Build a MoveStream for the document's PCB toolpaths for preview/simulation.
 /// Returns None when there are no supported toolpaths or generation fails.
-pub fn build_preview_stream(document: &Document, tools: &[StoredTool]) -> Option<MoveStream> {
+pub fn build_preview_stream(
+  document: &Document,
+  tools: &[StoredTool],
+) -> Option<(MoveStream, Vec<String>)> {
   let tolerance = TolerancePolicy::default();
   let mut stream = MoveStream::new(
     Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
     Point2::new(0.0, 0.0),
   );
+  let mut warnings = Vec::new();
   let mut any = false;
   for toolpath in &document.toolpaths {
-    let (tool_shape, tool_diameter_mm) =
-      resolve_preview_tool(tools, toolpath.tool_id.as_deref(), toolpath.tool_number);
+    let (tool_shape, tool_diameter_mm) = resolve_preview_tool(
+      tools,
+      toolpath.tool_id.as_deref(),
+      toolpath.tool_number,
+      &toolpath.name,
+      &mut warnings,
+    );
     match &toolpath.operation {
       Operation::Isolation(params) => {
         let contours = collect_contours(document, &toolpath.entity_ids);
@@ -158,7 +167,7 @@ pub fn build_preview_stream(document: &Document, tools: &[StoredTool]) -> Option
     }
   }
   if any {
-    Some(stream)
+    Some((stream, warnings))
   } else {
     None
   }
@@ -168,8 +177,14 @@ fn resolve_preview_tool(
   tools: &[StoredTool],
   tool_id: Option<&str>,
   tool_number: u32,
+  toolpath_name: &str,
+  warnings: &mut Vec<String>,
 ) -> (ToolShape, f64) {
   let Some(tool) = stored_tool_for_toolpath(tools, tool_id, tool_number) else {
+    warnings.push(format!(
+      "toolpath '{toolpath_name}' uses missing tool {tool_number}; preview uses default {}mm cylinder",
+      PREVIEW_DEFAULT_DIAMETER_MM
+    ));
     return (
       ToolShape::cylinder(Length::from_mm(PREVIEW_DEFAULT_DIAMETER_MM)),
       PREVIEW_DEFAULT_DIAMETER_MM,
@@ -389,7 +404,8 @@ mod tests {
   #[test]
   fn build_preview_stream_uses_bound_tool_diameter_and_shape() {
     let doc = doc_with_isolation();
-    let stream = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]).expect("stream");
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]).expect("stream");
+    assert!(warnings.is_empty());
     let seg = &stream.segments[0];
     assert_eq!(seg.tool_number, 7);
     match seg.tool {
@@ -404,5 +420,14 @@ mod tests {
     let mut doc = doc_with_isolation();
     doc.toolpaths.clear();
     assert!(build_preview_stream(&doc, &[]).is_none());
+  }
+
+  #[test]
+  fn build_preview_stream_warns_when_bound_tool_is_missing() {
+    let doc = doc_with_isolation();
+    let (stream, warnings) = build_preview_stream(&doc, &[]).expect("stream");
+    assert_eq!(stream.segments.len(), 1);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("missing tool"));
   }
 }

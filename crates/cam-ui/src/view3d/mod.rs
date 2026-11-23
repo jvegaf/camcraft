@@ -232,6 +232,8 @@ pub struct Preview3d {
   stride: usize,
   /// Gouge/uncut deviation reported for the preview.
   deviation: Deviation,
+  /// Warnings produced while building this preview.
+  warnings: Vec<String>,
 }
 
 /// One movement of the program, with everything playback needs to apply it and to time it.

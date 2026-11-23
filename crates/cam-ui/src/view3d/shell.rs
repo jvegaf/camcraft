@@ -519,7 +519,8 @@ impl Shell {
 impl Shell {
   /// Build a PCB preview from the current document and simulate it.
   pub(crate) fn simulate_pcb_preview(&mut self, app: &cam_app::AppState) {
-    let Some(stream) = crate::view3d::program::build_preview_stream(app.document(), &self.tools)
+    let Some((stream, warnings)) =
+      crate::view3d::program::build_preview_stream(app.document(), &self.tools)
     else {
       return;
     };
@@ -532,19 +533,7 @@ impl Shell {
     // PCB preview has no per-operation geometric target; report gouge as removal beyond the
     // maximum declared cut depth and no whole-board uncut.
     let tolerance_mm = 0.01_f64;
-    let max_depth = app
-      .document()
-      .toolpaths
-      .iter()
-      .map(|tp| match &tp.operation {
-        cam_model::Operation::Isolation(p) => p.cut_depth.mm(),
-        cam_model::Operation::NonCopperClear(p) => p.cut_depth.mm(),
-        cam_model::Operation::Cutout(p) => p.cut_depth.mm(),
-        cam_model::Operation::Paint(p) => p.cut_depth.mm(),
-        cam_model::Operation::Drilling(p) => p.cut_depth.mm(),
-        cam_model::Operation::Panelize(_) => 0.0,
-      })
-      .fold(0.0_f64, f64::max);
+    let max_depth = cam_sim::max_pcb_cut_depth_mm(app.document());
     let mut deviation = cam_sim::Deviation::default();
     let area = field.grid().cell_area();
     for row in 0..field.grid().rows {
@@ -558,6 +547,7 @@ impl Shell {
     }
     let mut preview = crate::view3d::Preview3d::new(field, stream, &job);
     preview.set_deviation(deviation);
+    preview.set_warnings(warnings);
     self.preview = Some(preview);
     self.show_3d = true;
   }
