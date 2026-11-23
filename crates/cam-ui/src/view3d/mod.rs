@@ -55,11 +55,12 @@
 //! S12's trigger fires; nothing here would have to change to allow it.
 
 use cam_move::{Move, MoveStream, Point3, ToolShape};
-use cam_sim::Heightfield;
+use cam_sim::{Deviation, Heightfield};
 use cam_view::{Camera3d, Line3};
 
 mod chrome;
 mod playback;
+pub mod program;
 mod scene;
 mod shell;
 
@@ -229,6 +230,8 @@ pub struct Preview3d {
   stock: Vec<Line3>,
   /// Decimation factor for the surface mesh.
   stride: usize,
+  /// Gouge/uncut deviation reported for the preview.
+  deviation: Deviation,
 }
 
 /// One movement of the program, with everything playback needs to apply it and to time it.

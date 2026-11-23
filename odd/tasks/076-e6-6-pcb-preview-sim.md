@@ -30,10 +30,12 @@ Previsualización de toolpaths y simulación integradas para el flujo PCB, con g
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Pipeline UI/app para generar programa PCB desde operaciones y correr simulación | S1,S2,S3 | inline |  |
-| T2 | Integrar preview 3D/playback con reporte de simulación (gouge/uncut visibles) | S1,S2 | inline |  |
-| T3 | Cerrar flujo importar/configurar/generar/simular/exportar en UI y actualizar roadmap | S1,S2,S3 | inline |  |
+| T1 | Pipeline UI/app para generar programa PCB desde operaciones y correr simulación | S1,S2,S3 | inline | pending |
+| T2 | Integrar preview 3D/playback con reporte de simulación (gouge/uncut visibles) | S1,S2 | inline | pending |
+| T3 | Cerrar flujo importar/configurar/generar/simular/exportar en UI y actualizar roadmap | S1,S2,S3 | inline | pending |
 
 ## Log
 
 - **L1 (pedido original, verbatim).** «lee @odd/README.md @docs/ROADMAP_CAMCRAFT.md @odd/roadmap/index.md y completa F6»
+- **L2 (implementación).** Se agregó `view3d/program.rs` para generar MoveStream PCB desde operaciones Isolation/NCC/Cutout/Drilling/Paint. `Shell::simulate_pcb_preview` genera el programa, corre `cam_sim::sweep::apply`, calcula desviación con `target_for/deviations` y carga el preview. Los botones Simulate/Simulate again disparan la simulación. `DrawnState` y el readout de playback muestran gouge/uncut (mm³ y celdas). Roadmap index marca E6.6 ✅.
+- **L3 (nota).** El target de simulación PCB es una aproximación por profundidad máxima declarada en toda la placa (pragmática para E6.6); el flujo UI de export/generación G-code preexistente no se rehízo en esta tarea.
