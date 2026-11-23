@@ -147,6 +147,8 @@ impl Category {
 pub(crate) struct ToolSubject<'a> {
   /// The word the heading carries: the document toolpath's name, or the draft's.
   pub name: &'a str,
+  /// Stable tool library identity (geometry id), when bound.
+  pub tool_id: Option<&'a str>,
   /// The tool number to read out of the library, when the subject has one.
   pub number: Option<u32>,
   /// Whether a program exists to measure the cutting time over. A draft has none.

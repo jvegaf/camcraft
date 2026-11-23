@@ -72,6 +72,7 @@ fn isolation_document(contours: Vec<Contour>, params: IsolationParams) -> Docume
     id: "TP1".to_owned(),
     name: "Top isolation".to_owned(),
     entity_ids,
+    tool_id: None,
     tool_number: 1,
     operation: Operation::Isolation(params),
   });

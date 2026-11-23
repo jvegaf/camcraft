@@ -384,11 +384,13 @@ pub(crate) fn handle_action_with_file(
     }
     UiAction::SetToolpathToolNumber {
       toolpath_id,
+      tool_id,
       tool_number,
     } => apply_command(
       app,
       Command::SetToolpathToolNumber {
         toolpath_id: toolpath_id.clone(),
+        tool_id: tool_id.clone(),
         tool_number: *tool_number,
       },
     ),
@@ -413,6 +415,7 @@ pub(crate) fn handle_action_with_file(
       toolpath_id,
       name,
       entity_ids,
+      tool_id,
       tool_number,
       operation,
     } => apply_command(
@@ -421,6 +424,7 @@ pub(crate) fn handle_action_with_file(
         toolpath_id: toolpath_id.clone(),
         name: name.clone(),
         entity_ids: entity_ids.clone(),
+        tool_id: tool_id.clone(),
         tool_number: *tool_number,
         operation: operation.clone(),
       },

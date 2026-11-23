@@ -2,7 +2,7 @@ use cam_app::AppState;
 
 use cam_model::Toolpath;
 
-use cam_store::tools::{render_name, stored_tool_for_number, StoredTool, ToolGeometry};
+use cam_store::tools::{render_name, stored_tool_for_toolpath, StoredTool, ToolGeometry};
 
 use cam_units::Format;
 
@@ -474,7 +474,7 @@ impl Shell {
     };
 
     let name = toolpath.name.clone();
-
+    let tool_id = toolpath.tool_id.as_deref();
     let number = Some(toolpath.tool_number);
 
     self.tool_card_for(
@@ -484,9 +484,8 @@ impl Shell {
       output,
       ToolSubject {
         name: &name,
-
+        tool_id,
         number,
-
         estimate: true,
       },
     );
@@ -515,44 +514,50 @@ impl Shell {
 
     output.drawn.tool_card.push(heading);
 
-    match subject.number {
-      Some(number) => match stored_tool_for_number(&self.tools, number) {
-        Some(tool) => {
-          let title = format!("T{number} - {}", tool_name(&tool.geometry));
+    let resolved =
+      stored_tool_for_toolpath(&self.tools, subject.tool_id, subject.number.unwrap_or(0));
+    match resolved {
+      Some(tool) => {
+        let number = tool.cutting.tool_number.or(subject.number).unwrap_or(0);
+        let title = format!("T{number} - {}", tool_name(&tool.geometry));
 
-          let shape = tool_shape_line(tool);
+        let shape = tool_shape_line(tool);
 
-          ui.label(
-            RichText::new(&title)
-              .size(theme::TITLE)
-              .color(palette.get(Role::TextHi)),
-          );
+        ui.label(
+          RichText::new(&title)
+            .size(theme::TITLE)
+            .color(palette.get(Role::TextHi)),
+        );
 
-          ui.label(
-            RichText::new(&shape)
-              .size(theme::CAPTION)
-              .color(palette.get(Role::TextDim)),
-          );
+        ui.label(
+          RichText::new(&shape)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::TextDim)),
+        );
 
-          output.drawn.tool_card.push(title);
+        output.drawn.tool_card.push(title);
 
-          output.drawn.tool_card.push(shape);
-        }
+        output.drawn.tool_card.push(shape);
+      }
 
-        None => {
-          let sentence = format!(
-            "T{number} is not in the tool library this window was given, so this toolpath has no tool to show."
-          );
+      None if subject.tool_id.is_some() || subject.number.is_some() => {
+        let label = subject
+          .number
+          .map(|n| format!("T{n}"))
+          .or_else(|| subject.tool_id.map(|id| format!("tool '{id}'")))
+          .unwrap_or_else(|| "tool".to_owned());
+        let sentence = format!(
+          "{label} is not in the tool library this window was given, so this toolpath has no tool to show."
+        );
 
-          ui.label(
-            RichText::new(&sentence)
-              .size(theme::CAPTION)
-              .color(palette.get(Role::Danger)),
-          );
+        ui.label(
+          RichText::new(&sentence)
+            .size(theme::CAPTION)
+            .color(palette.get(Role::Danger)),
+        );
 
-          output.drawn.tool_card.push(sentence);
-        }
-      },
+        output.drawn.tool_card.push(sentence);
+      }
 
       // A draft that has not chosen a tool yet: a sentence, never a blank card, because an operator looking at
 

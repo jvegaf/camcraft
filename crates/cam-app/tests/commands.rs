@@ -2707,6 +2707,7 @@ fn add_toolpath(toolpath_id: &str, entity_ids: Vec<String>, tool_number: u32) ->
     toolpath_id: toolpath_id.to_owned(),
     name: toolpath_id.to_owned(),
     entity_ids,
+    tool_id: None,
     tool_number,
     operation: isolation_op(),
   }
@@ -2806,6 +2807,7 @@ fn setting_a_toolpaths_tool_number_leaves_the_rest_of_it_alone() {
     &mut app,
     Command::SetToolpathToolNumber {
       toolpath_id: "TP1".to_owned(),
+      tool_id: None,
       tool_number: 7,
     },
   );
@@ -2813,6 +2815,7 @@ fn setting_a_toolpaths_tool_number_leaves_the_rest_of_it_alone() {
   app
     .execute(Command::SetToolpathToolNumber {
       toolpath_id: "TP1".to_owned(),
+      tool_id: None,
       tool_number: 7,
     })
     .expect("the tool number is set");
@@ -2832,6 +2835,7 @@ fn setting_a_tool_number_on_an_absent_toolpath_is_refused_naming_it() {
     &mut app,
     Command::SetToolpathToolNumber {
       toolpath_id: "TP9".to_owned(),
+      tool_id: None,
       tool_number: 7,
     },
   );
@@ -3033,6 +3037,7 @@ fn the_toolpath_commands_have_human_labels() {
   assert_eq!(
     Command::SetToolpathToolNumber {
       toolpath_id: "TP1".to_owned(),
+      tool_id: None,
       tool_number: 4,
     }
     .label(),

@@ -978,6 +978,28 @@ pub fn stored_tool_for_number(tools: &[StoredTool], number: u32) -> Option<&Stor
     .find(|tool| tool.cutting.tool_number == Some(number))
 }
 
+/// The tool a stable library identity names, read from a snapshot of the library.
+///
+/// The geometry id is the stable identity (E6.4 S3): editing a tool's cutting data or name keeps the
+/// same id, so operations bound by id keep resolving to the edited tool.
+pub fn stored_tool_for_id<'a>(tools: &'a [StoredTool], id: &str) -> Option<&'a StoredTool> {
+  tools.iter().find(|tool| tool.geometry.id == id)
+}
+
+/// Resolve a tool for a toolpath: prefer stable `tool_id`, fall back to `tool_number`.
+pub fn stored_tool_for_toolpath<'a>(
+  tools: &'a [StoredTool],
+  tool_id: Option<&str>,
+  tool_number: u32,
+) -> Option<&'a StoredTool> {
+  if let Some(id) = tool_id {
+    if let Some(tool) = stored_tool_for_id(tools, id) {
+      return Some(tool);
+    }
+  }
+  stored_tool_for_number(tools, tool_number)
+}
+
 /// Render a tool display name from its template.
 ///
 /// Supported fields: `Tool Type`, `Diameter`, `Flat Diameter`, `Included Angle`, `Tip Radius`,

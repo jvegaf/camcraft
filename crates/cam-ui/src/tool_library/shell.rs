@@ -3,7 +3,7 @@ use std::path::Path;
 use cam_app::AppState;
 use cam_store::tool_edit::{duplicate_tool, factory_tools, new_tool, next_tool_number};
 use cam_store::tool_file;
-use cam_store::tools::{stored_tool_for_number, StoredTool, ToolLibrary};
+use cam_store::tools::{stored_tool_for_toolpath, StoredTool, ToolLibrary};
 use egui::RichText;
 
 use crate::actions::file_label;
@@ -325,11 +325,23 @@ impl Shell {
   /// Public for the reason [`Shell::open_material`] is: a modal whose opening cannot be driven from outside a
   /// frame is a modal only a mouse could test.
   pub fn open_tool_library(&mut self, app: &AppState) {
+    // E6.4: bind to the live SQLite library, not a stale snapshot.
+    if let Some(path) = self.tool_library_path.clone() {
+      if let Ok(library) = ToolLibrary::open(&path) {
+        if let Ok(tools) = library.tools() {
+          self.tools = tools;
+        }
+      }
+    }
     let target = self.described_toolpath(app).map(|toolpath| {
       (
         toolpath.id.clone(),
-        stored_tool_for_number(&self.tools, toolpath.tool_number)
-          .map(|tool| tool.geometry.id.clone()),
+        stored_tool_for_toolpath(
+          &self.tools,
+          toolpath.tool_id.as_deref(),
+          toolpath.tool_number,
+        )
+        .map(|tool| tool.geometry.id.clone()),
       )
     });
     self.tool_library_target = target.as_ref().map(|(id, _)| id.clone());
