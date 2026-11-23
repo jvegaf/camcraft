@@ -483,33 +483,46 @@ impl Shell {
     if let Some(track) = bar.scrubber {
       paint_scrubber(painter, track, bar.fill, palette);
     }
-    let Some(preview) = self.preview.as_ref() else {
-      return;
-    };
-    output.drawn.preview_progress = preview.progress();
-    output.drawn.preview_bar = bar_fill(preview.progress(), preview.duration());
-    output.drawn.preview_clock = progress_text(preview.elapsed(), preview.duration());
-    let deviation = preview.deviation();
-    output.drawn.preview_gouge_mm3 = deviation.gouge;
-    output.drawn.preview_uncut_mm3 = deviation.uncut;
-    output.drawn.preview_gouge_cells = deviation.gouge_cells;
-    output.drawn.preview_uncut_cells = deviation.uncut_cells;
-    output.drawn.playback_readout = format!(
-      "{}  {}  gouge {:.2}mm³ ({}c)  uncut {:.2}mm³ ({}c)",
-      output.drawn.preview_clock,
-      preview.playhead_text(),
-      deviation.gouge,
-      deviation.gouge_cells,
-      deviation.uncut,
-      deviation.uncut_cells,
-    );
-    painter.text(
-      egui::pos2(strip.min.x + 10.0, strip.max.y - 6.0),
-      egui::Align2::LEFT_BOTTOM,
-      &output.drawn.playback_readout,
-      egui::FontId::monospace(theme::CAPTION),
-      palette.get(Role::TextHi),
-    );
+    if let Some(preview) = self.preview.as_ref() {
+      output.drawn.preview_progress = preview.progress();
+      output.drawn.preview_bar = bar_fill(preview.progress(), preview.duration());
+      output.drawn.preview_clock = progress_text(preview.elapsed(), preview.duration());
+      let deviation = preview.deviation();
+      output.drawn.preview_gouge_mm3 = deviation.gouge;
+      output.drawn.preview_uncut_mm3 = deviation.uncut;
+      output.drawn.preview_gouge_cells = deviation.gouge_cells;
+      output.drawn.preview_uncut_cells = deviation.uncut_cells;
+      let mut readout = format!(
+        "{}  {}  gouge {:.2}mm³ ({}c)  uncut {:.2}mm³ ({}c)",
+        output.drawn.preview_clock,
+        preview.playhead_text(),
+        deviation.gouge,
+        deviation.gouge_cells,
+        deviation.uncut,
+        deviation.uncut_cells,
+      );
+      if !self.preview_warnings.is_empty() {
+        readout.push_str("  warning: ");
+        readout.push_str(&self.preview_warnings.join("; "));
+      }
+      output.drawn.playback_readout = readout;
+      painter.text(
+        egui::pos2(strip.min.x + 10.0, strip.max.y - 6.0),
+        egui::Align2::LEFT_BOTTOM,
+        &output.drawn.playback_readout,
+        egui::FontId::monospace(theme::CAPTION),
+        palette.get(Role::TextHi),
+      );
+    } else if !self.preview_warnings.is_empty() {
+      output.drawn.playback_readout = format!("warning: {}", self.preview_warnings.join("; "));
+      painter.text(
+        egui::pos2(strip.min.x + 10.0, strip.max.y - 6.0),
+        egui::Align2::LEFT_BOTTOM,
+        &output.drawn.playback_readout,
+        egui::FontId::monospace(theme::CAPTION),
+        palette.get(Role::TextHi),
+      );
+    }
     output.drawn.scrubber = bar
       .scrubber
       .map(|track| (track.min.x, track.max.x, track.center().y));
@@ -519,8 +532,10 @@ impl Shell {
 impl Shell {
   /// Build a PCB preview from the current document and simulate it.
   pub(crate) fn simulate_pcb_preview(&mut self, app: &cam_app::AppState) {
+    self.preview_warnings.clear();
     let (stream, warnings) =
       crate::view3d::program::build_preview_stream(app.document(), &self.tools);
+    self.preview_warnings = warnings.clone();
     let Some(stream) = stream else {
       return;
     };

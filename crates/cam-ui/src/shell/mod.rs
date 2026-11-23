@@ -101,6 +101,8 @@ pub struct Shell {
   pub scene_layers: view3d::Layers,
   /// The program preview the 3D panel draws, once a caller has handed one in.
   pub(crate) preview: Option<Preview3d>,
+  /// Warnings from the last PCB preview build/simulation.
+  pub(crate) preview_warnings: Vec<String>,
   /// The tool library as a snapshot: every tool this window was given, in the library's own order.
   ///
   /// A snapshot and not a library: [`cam_store::tools::ToolLibrary`] owns a rusqlite connection and is
@@ -452,6 +454,7 @@ impl Default for Shell {
       recents_retry: false,
       scene_layers: view3d::Layers::default(),
       preview: None,
+      preview_warnings: Vec::new(),
       tools: Vec::new(),
       document_path: None,
       document_extras: BTreeMap::new(),

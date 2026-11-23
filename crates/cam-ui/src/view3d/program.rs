@@ -191,8 +191,13 @@ fn resolve_preview_tool(
   let diameter_mm = match tool.geometry.diameter.map(Length::mm).filter(|d| *d > 0.0) {
     Some(d) => d,
     None => {
+      let fallback_shape = if tool.geometry.included_angle.is_some() {
+        "v-bit"
+      } else {
+        "cylinder"
+      };
       warnings.push(format!(
-        "toolpath '{toolpath_name}' has tool {tool_number} with missing/non-positive diameter; preview uses default {}mm cylinder",
+        "toolpath '{toolpath_name}' has tool {tool_number} with missing/non-positive diameter; preview uses default {}mm {fallback_shape}",
         PREVIEW_DEFAULT_DIAMETER_MM
       ));
       PREVIEW_DEFAULT_DIAMETER_MM
