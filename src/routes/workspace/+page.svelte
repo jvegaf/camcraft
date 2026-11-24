@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { css } from 'styled-system/css';
+import { button } from 'styled-system/recipes';
 import { goto } from '$app/navigation';
 
 type DocumentStatus = {
@@ -96,20 +97,8 @@ const h1 = css({
   fontWeight: '600'
 });
 const actions = css({ display: 'flex', gap: '8px', flexWrap: 'wrap' });
-const btn = css({
-  font: 'inherit',
-  fontSize: '14px',
-  px: '14px',
-  py: '9px',
-  borderRadius: '8px',
-  border: '1px solid',
-  borderColor: 'border',
-  bg: 'raised',
-  color: 'text',
-  cursor: 'pointer',
-  _hover: { bg: 'overlay', color: 'textHi' }
-});
-const btnPrimary = css({ bg: 'selSoft', borderColor: 'sel', color: 'textHi' });
+const btn = button({ variant: 'solid', size: 'md' });
+const btnPrimary = button({ variant: 'primary', size: 'md' });
 const panel = css({
   bg: 'panel',
   border: '1px solid',

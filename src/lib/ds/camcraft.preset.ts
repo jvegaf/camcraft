@@ -156,6 +156,42 @@ export const camcraftPreset = definePreset({
             }
           },
           defaultVariants: { tone: 'default' }
+        },
+        input: {
+          className: 'input',
+          description: 'Camcraft text/number input',
+          base: {
+            font: 'inherit',
+            px: '10px',
+            py: '8px',
+            borderRadius: 'control',
+            border: '1px solid',
+            borderColor: 'border',
+            bg: 'app',
+            color: 'textHi',
+            _focusVisible: {
+              outline: '2px solid',
+              outlineColor: 'sel',
+              outlineOffset: '-1px'
+            },
+            _disabled: { opacity: '0.5', cursor: 'not-allowed' }
+          }
+        },
+        badge: {
+          className: 'badge',
+          description: 'Camcraft small status/count badge',
+          base: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: '11px',
+            px: '8px',
+            py: '2px',
+            borderRadius: '999px',
+            bg: 'raised',
+            color: 'textDim',
+            border: '1px solid',
+            borderColor: 'hairline'
+          }
         }
       }
     }

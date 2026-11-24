@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { css } from 'styled-system/css';
+import { badge, button, input } from 'styled-system/recipes';
 import { goto } from '$app/navigation';
 
 type RecentProject = {
@@ -126,20 +127,8 @@ const actions = css({
   flexWrap: 'wrap',
   mb: '24px'
 });
-const btn = css({
-  font: 'inherit',
-  fontSize: '14px',
-  px: '14px',
-  py: '9px',
-  borderRadius: '8px',
-  border: '1px solid',
-  borderColor: 'border',
-  bg: 'raised',
-  color: 'text',
-  cursor: 'pointer',
-  _hover: { bg: 'overlay', color: 'textHi' }
-});
-const btnPrimary = css({ bg: 'selSoft', borderColor: 'sel', color: 'textHi' });
+const btn = button({ variant: 'solid', size: 'md' });
+const btnPrimary = button({ variant: 'primary', size: 'md' });
 const errorText = css({ color: 'danger', fontSize: '14px', m: '0 0 16px' });
 const label = css({
   m: '0 0 8px',
@@ -162,16 +151,7 @@ const fieldLabel = css({
   fontSize: '13px',
   color: 'textDim'
 });
-const inputCls = css({
-  font: 'inherit',
-  px: '10px',
-  py: '8px',
-  borderRadius: '8px',
-  border: '1px solid',
-  borderColor: 'border',
-  bg: 'app',
-  color: 'textHi'
-});
+const inputCls = input();
 const recentsPane = css({ p: '32px', bg: 'canvas' });
 const recentsHead = css({
   display: 'flex',
@@ -185,14 +165,7 @@ const h2 = css({
   color: 'textHi',
   fontWeight: '600'
 });
-const count = css({
-  fontSize: '12px',
-  color: 'textDim',
-  bg: 'raised',
-  px: '8px',
-  py: '2px',
-  borderRadius: '999px'
-});
+const count = badge();
 const muted = css({ color: 'textDim' });
 const recentList = css({
   listStyle: 'none',
