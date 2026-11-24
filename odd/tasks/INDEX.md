@@ -76,6 +76,6 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 071 | [e6-1-board-layer-identity](071-e6-1-board-layer-identity.md) | delivered | 2026-11-22 | `b030045` |
 | 072 | [e6-2-project-tree](072-e6-2-project-tree.md) | delivered | 2026-11-22 | `82387b1` |
 | 073 | [e6-3-operation-forms](073-e6-3-operation-forms.md) | delivered | 2026-11-23 | `016d361` |
-| 077 | [spike-tauri-webview](077-spike-tauri-webview.md) | planned | — | — |
-| 078 | [spike-gpui-native](078-spike-gpui-native.md) | planned | — | — |
-| 079 | [tauri-migration-plan](079-tauri-migration-plan.md) | delivered | 2026-05-24 | — |
+| 077 | [spike-tauri-webview](077-spike-tauri-webview.md) | delivered | 2026-05-24 | `1b41dec` |
+| 078 | [spike-gpui-native](078-spike-gpui-native.md) | delivered | 2026-05-24 | `7cf44b8` |
+| 079 | [tauri-migration-plan](079-tauri-migration-plan.md) | delivered | 2026-05-24 | `b707a04` |

@@ -1,7 +1,7 @@
 # Plan de migración: egui → Tauri 2
 
-> **Estado**: decisión tomada; scaffolding inicial creado en `feat/tauri`.  
-> **Fecha**: 2026-05-24 (actualizado con scaffolding real)  
+> **Estado**: decisión tomada; scaffolding inicial creado en `feat/tauri`.
+> **Fecha**: 2026-05-24 (actualizado con scaffolding real)
 > **Decisión**: quedarse con **Tauri 2 + webview** para el shell desktop de Camcraft.
 
 ## Contexto
@@ -11,7 +11,7 @@ Camcraft usa hoy `cam-ui` (~16.8k LOC) sobre `egui/eframe 0.37`, con `cam-deskto
 Se ejecutaron dos spikes en paralelo (worktrees 077/078):
 
 | Spike | Branch | Resultado |
-|---|---|---|
+| --- | --- | --- |
 | 077 Tauri 2 + webview | `feat/077-spike-tauri-webview` @ `1b41dec` | DS HTML literal, bridge Rust→webview con `cam-view/cam-model/cam-ops/cam-sim/cam-app`, viewport WebGL/Three.js, overlay. FPS formal pendiente. |
 | 078 GPUI nativo | `feat/078-spike-gpui-native` @ `7cf44b8` | DS mapeable pero no literal, integración directa Rust, viewport por proyección 2D CPU en canvas GPUI. Riesgo alto en render 3D; build pesado; parche `xattr`. |
 
@@ -57,6 +57,7 @@ odd/                     # ODD/roadmap/tareas
 ```
 
 Decisiones ya tomadas por el scaffolding:
+
 - Frontend en `src/` (SvelteKit + Vite).
 - Host Tauri en `src-tauri/`.
 - Estilos con Panda CSS + `styled-system/`.
@@ -65,6 +66,7 @@ Decisiones ya tomadas por el scaffolding:
 - Logging con `tauri-plugin-log`.
 
 Pendientes:
+
 - Integrar crates de dominio desde `prev/crates/` al nuevo workspace/host.
 - Definir `justfile`/scripts de gate para el nuevo stack.
 - Cablear review visual para webview.
@@ -72,7 +74,7 @@ Pendientes:
 ## Boundary de responsabilidades
 
 | Capa | Responsabilidad | No hace |
-|---|---|---|
+| --- | --- | --- |
 | Frontend webview | Chrome DS, input UI, render viewport (WebGL/WebGPU), estado de vista local | Lógica CAM, geometría autoritativa, persistencia de dominio |
 | Tauri commands/events | Bridge tipado, validación, origen, colas/cancelación | Reglas de negocio CAM |
 | `cam-app`/`cam-ops`/`cam-model` | Comandos, documento, operaciones, validación | Render HTML/CSS |
@@ -90,6 +92,7 @@ Pendientes:
 ## Fases
 
 ### Fase 0 — Scaffolding (hecho, base)
+
 - [x] Crear rama `feat/tauri` y estructura Tauri.
 - [x] Frontend SvelteKit + Vite + Panda CSS + Biome.
 - [x] Host `src-tauri/` con plugin log/opener.
@@ -99,11 +102,13 @@ Pendientes:
 **Salida**: app Tauri mínima compila en Linux.
 
 ### Fase 1 — Host + shell mínimo
+
 - Start screen real con DS HTML/CSS.
 - Comandos: recents, open/new, settings mínimas.
 - **Salida**: start screen funcional con DS real.
 
 ### Fase 2 — Viewport read-only
+
 - `cam-view` expone snapshot serializable.
 - Frontend renderiza WebGL (Three.js, como spike) o WebGPU si se valida.
 - Cámara orbit/pan/zoom.
@@ -111,18 +116,21 @@ Pendientes:
 - **Salida**: documento visible y medido.
 
 ### Fase 3 — Interacción 3D
+
 - Picking/selección/hover.
 - Overlays/gizmos mínimos.
 - Selección sincronizada con UI.
 - **Salida**: selección 3D refleja estado.
 
 ### Fase 4 — Paridad de shell
+
 - Floating shell, browser, inspector, status bar, settings.
 - Migración por paneles.
 - egui legacy detrás de flag.
 - **Salida**: flujos principales sin egui.
 
 ### Fase 5 — Retiro egui
+
 - Eliminar `cam-ui` egui y deps eframe/wgpu-egui del camino principal.
 - Actualizar docs, CI, packaging, review visual.
 - **Salida**: `just check/test` verde sin egui.
@@ -130,7 +138,7 @@ Pendientes:
 ## Documentación a actualizar
 
 | Documento | Cambio |
-|---|---|
+| --- | --- |
 | `docs/SYSTEM_DESIGN_CAMCRAFT.md` | Arquitectura Tauri/webview/backend Rust, boundary viewport, IPC. |
 | `docs/DOMAIN_INTEGRATION_TAURI.md` | Mapeo de crates `prev/crates/` a reusar/adaptar/retirar e integración con `src-tauri`. |
 | `docs/ARCHITECTURE_TAURI.md` | Nuevo: detalle de boundary, protocolo, packaging Linux, seguridad IPC. |
@@ -143,7 +151,7 @@ Pendientes:
 ## Riesgos
 
 | Riesgo | Impacto | Mitigación |
-|---|---|---|
+| --- | --- | --- |
 | Viewport performance/picking | Alto | Medir FPS/picking antes de Fase 4; formato binario si JSON pesa. |
 | WebKitGTK/WebGPU en Linux | Medio | Validar temprano; fallback WebGL. |
 | Duplicación de estado | Alto | Rust dominio fuente de verdad; frontend solo vista. |
