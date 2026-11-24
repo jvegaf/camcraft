@@ -85,4 +85,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 083 | [tauri-fase3-interaccion-3d](083-tauri-fase3-interaccion-3d.md)                       | delivered                | 2026-11-24 | `16199a5`      |
 | 084 | [tauri-fase4-shell-panels](084-tauri-fase4-shell-panels.md)                           | delivered                | 2026-11-24 | `fae81d8`      |
 | 085 | [tauri-fase4-document-actions](085-tauri-fase4-document-actions.md)                   | delivered                | 2026-11-24 | `e03a2da`      |
-| 086 | [tauri-fase4-workbench-flow-hardening](086-tauri-fase4-workbench-flow-hardening.md)   | in-progress              | 2026-11-24 |                |
+| 086 | [tauri-fase4-workbench-flow-hardening](086-tauri-fase4-workbench-flow-hardening.md)   | delivered                | 2026-11-24 | `b9036f0`      |
