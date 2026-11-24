@@ -1,6 +1,6 @@
 ---
-
-## page-id: 18
+page-id: 18
+---
 
 # AGENTS.md — Reglas para agentes en camcraft
 
