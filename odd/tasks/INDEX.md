@@ -89,4 +89,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 087 | [tauri-fase4-recents-smoke](087-tauri-fase4-recents-smoke.md)                         | delivered                | 2026-11-24 | `3083342`      |
 | 088 | [tauri-fase4-ds-parity](088-tauri-fase4-ds-parity.md)                                 | delivered                | 2026-11-24 | `906ec14`      |
 | 089 | [tauri-fase4-startscreen-shell](089-tauri-fase4-startscreen-shell.md)                 | delivered                | 2026-11-24 | `c02988d`      |
-| 090 | [tauri-fase4-settings-ds](090-tauri-fase4-settings-ds.md)                             | in-progress              | 2026-11-24 |                |
+| 090 | [tauri-fase4-settings-ds](090-tauri-fase4-settings-ds.md)                             | delivered                | 2026-11-24 | `45a41fe`      |
