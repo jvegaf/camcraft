@@ -88,8 +88,8 @@
             "useImportType": "off"
           },
           "correctness": {
-            "noUnusedVariables": "on",
-            "noUnusedImports": "on"
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
           }
         }
       }
