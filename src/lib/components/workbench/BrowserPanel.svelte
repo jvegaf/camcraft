@@ -3,6 +3,12 @@ import { css } from 'styled-system/css';
 import FloatCard from './FloatCard.svelte';
 import { workbenchState } from './workbench.svelte';
 
+interface Props {
+  onOpenRecent?: (path: string) => void;
+}
+
+let { onOpenRecent }: Props = $props();
+
 const panelPos = css({
   top: '64px',
   left: '16px',
@@ -37,6 +43,10 @@ const navItem = css({
   bg: 'transparent',
   border: 'none'
 });
+const recentBtn = css({
+  cursor: 'pointer',
+  _hover: { bg: 'raised' }
+});
 const dotBase = css({ w: '8px', h: '8px', borderRadius: '50%', bg: 'border', flex: 'none' });
 const count = css({ ml: 'auto', fontSize: '11px', fontFamily: 'mono', color: 'textOff', whiteSpace: 'nowrap' });
 </script>
@@ -56,5 +66,18 @@ const count = css({ ml: 'auto', fontSize: '11px', fontFamily: 'mono', color: 'te
     <h3 class={sectionTitle}>Contenido</h3>
     <div class={navItem}><span class={dotBase} style="background:#6fd3e8"></span>Capas <span class={count}>{workbenchState.document?.layerCount ?? '—'}</span></div>
     <div class={navItem}><span class={dotBase} style="background:#f5a623"></span>Toolpaths <span class={count}>{workbenchState.document?.toolpathCount ?? '—'}</span></div>
+  </div>
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Recientes</h3>
+    {#if workbenchState.recents.length === 0}
+      <div class={navItem}><span class={dotBase} style="background:#35404c"></span>Sin recientes</div>
+    {:else}
+      {#each workbenchState.recents.slice(0, 5) as recent}
+        <button class={`${navItem} ${recentBtn}`} onclick={() => onOpenRecent?.(recent.path)}>
+          <span class={dotBase} style="background:#8aa0b6"></span>
+          {recent.name}
+        </button>
+      {/each}
+    {/if}
   </div>
 </FloatCard>

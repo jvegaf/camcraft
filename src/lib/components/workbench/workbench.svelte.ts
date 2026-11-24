@@ -18,18 +18,26 @@ export type DocumentStatus = {
 
 export type StatusKind = 'ok' | 'error' | 'info';
 
+export type RecentProject = {
+  name: string;
+  path: string;
+  lastOpened: string;
+};
+
 export type WorkbenchState = {
   selection: ViewportSelection;
   statusMessage: string;
   statusKind: StatusKind;
   document: DocumentStatus | null;
+  recents: RecentProject[];
 };
 
 export const workbenchState: WorkbenchState = $state({
   selection: null,
   statusMessage: 'Listo',
   statusKind: 'ok',
-  document: null
+  document: null,
+  recents: []
 });
 
 export function setSelection(selection: ViewportSelection) {
@@ -61,5 +69,15 @@ export async function refreshDocumentStatus(): Promise<void> {
     setDocument(status);
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
+  }
+}
+
+export async function refreshRecents(): Promise<void> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const recents = await invoke<RecentProject[]>('list_recents');
+    workbenchState.recents = recents;
+  } catch {
+    // recents are optional in shell
   }
 }

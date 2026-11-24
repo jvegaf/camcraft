@@ -11,7 +11,7 @@ import StatusBar from './StatusBar.svelte';
 import ToolRail from './ToolRail.svelte';
 import TopBar from './TopBar.svelte';
 import ViewportHud from './ViewportHud.svelte';
-import { refreshDocumentStatus, setDocument, setStatus, workbenchState } from './workbench.svelte';
+import { refreshDocumentStatus, refreshRecents, setDocument, setStatus, workbenchState } from './workbench.svelte';
 
 interface Props {
   projectName?: string;
@@ -21,6 +21,7 @@ let { projectName = 'documento.cam' }: Props = $props();
 
 onMount(() => {
   void refreshDocumentStatus();
+  void refreshRecents();
 });
 
 async function handleOpen() {
@@ -33,6 +34,18 @@ async function handleOpen() {
     const status = await invoke<typeof workbenchState.document>('open_document', { path: selected });
     setDocument(status);
     setStatus('Documento abierto', 'ok');
+    void refreshRecents();
+  } catch (e) {
+    setStatus(`Error: ${String(e)}`, 'error');
+  }
+}
+
+async function handleOpenRecent(path: string) {
+  try {
+    const status = await invoke<typeof workbenchState.document>('open_document', { path });
+    setDocument(status);
+    setStatus('Documento abierto', 'ok');
+    void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -43,7 +56,7 @@ async function handleSave() {
     const path = workbenchState.document?.path ?? null;
     const status = await invoke<typeof workbenchState.document>('save_document', { path });
     setDocument(status);
-    setStatus('Documento guardado', 'ok');
+    setStatus('Documento guardado', 'ok'); void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -55,7 +68,7 @@ async function handleSaveAs() {
     if (!target) return;
     const status = await invoke<typeof workbenchState.document>('save_document', { path: target });
     setDocument(status);
-    setStatus('Documento guardado', 'ok');
+    setStatus('Documento guardado', 'ok'); void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -67,7 +80,7 @@ async function handleNew() {
       request: { width: 100, height: 100, thickness: 1.6 }
     });
     setDocument(status);
-    setStatus('Nuevo documento', 'ok');
+    setStatus('Nuevo documento', 'ok'); void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -115,7 +128,7 @@ const shell = css({
   />
   <ToolRail onOpen={handleOpen} onSave={handleSave} />
   <ViewportHud />
-  <BrowserPanel />
+  <BrowserPanel onOpenRecent={handleOpenRecent} />
   <InspectorPanel />
   <StatusBar />
 </div>
