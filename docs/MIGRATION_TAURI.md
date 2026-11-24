@@ -1,7 +1,7 @@
 # Plan de migración: egui → Tauri 2
 
-> **Estado**: decisión tomada, pendiente scaffolding.  
-> **Fecha**: 2026-05-24  
+> **Estado**: decisión tomada; scaffolding inicial creado en `feat/tauri`.  
+> **Fecha**: 2026-05-24 (actualizado con scaffolding real)  
 > **Decisión**: quedarse con **Tauri 2 + webview** para el shell desktop de Camcraft.
 
 ## Contexto
@@ -32,36 +32,42 @@ Reportes: `.worktrees/077/spikes/tauri/REPORT.md` y `.worktrees/078/spikes/gpui/
 - **Una fuente de verdad.** Rust dominio manda; frontend guarda estado de vista.
 - **egui como legacy temporal.** Detrás de feature flag/fallback hasta paridad.
 
-## Arquitectura objetivo
+## Scaffolding real (feat/tauri)
 
 ```text
-crates/                  # dominio Rust (se mantiene)
-  cam-app/
-  cam-core/
-  cam-geom/
-  cam-import/
-  cam-export/
-  cam-model/
-  cam-ops/
-  cam-post/
-  cam-sim/
-  cam-store/
-  cam-view/              # escena/cámara/picking/snapshot serializable
-  cam-desktop/           # host Tauri (o crate nuevo según scaffolding)
-  cam-ui/                # egui legacy, retiro en Fase 5
-apps/ o ui/              # frontend webview (definido por scaffolding)
-src-tauri/               # si aplica al layout elegido
+src/                     # Svelte 5 + SvelteKit frontend
+  routes/
+  app.html
+src-tauri/               # Tauri 2 host Rust
+  src/main.rs
+  src/lib.rs
+  capabilities/
+  tauri.conf.json
+static/                  # assets estáticos
+styled-system/           # Panda CSS generado (no editar a mano)
+panda.config.ts
+vite.config.js
+svelte.config.js
+biome.json
+package.json             # pnpm, scripts dev/build/check/lint/test
+prev/                    # legado Rust/egui en migración (crates/, Cargo.toml, justfile, spikes)
 design/                  # fuente DS
-docs/
-  SYSTEM_DESIGN_CAMCRAFT.md
-  MIGRATION_TAURI.md
-  ARCHITECTURE_TAURI.md  # propuesto
+docs/                    # documentación
+odd/                     # ODD/roadmap/tareas
 ```
 
-Decisiones pendientes del scaffolding:
-- Layout final frontend/Tauri.
-- Si `cam-desktop` se transforma o se crea crate host nuevo.
-- Integración al workspace Cargo y a `justfile`/CI.
+Decisiones ya tomadas por el scaffolding:
+- Frontend en `src/` (SvelteKit + Vite).
+- Host Tauri en `src-tauri/`.
+- Estilos con Panda CSS + `styled-system/`.
+- Lint/format con Biome.
+- Tests con Vitest + Testing Library.
+- Logging con `tauri-plugin-log`.
+
+Pendientes:
+- Integrar crates de dominio desde `prev/crates/` al nuevo workspace/host.
+- Definir `justfile`/scripts de gate para el nuevo stack.
+- Cablear review visual para webview.
 
 ## Boundary de responsabilidades
 
@@ -83,12 +89,14 @@ Decisiones pendientes del scaffolding:
 
 ## Fases
 
-### Fase 0 — Scaffolding (usuario)
-- Crear rama y estructura Tauri.
-- Alinear workspace Cargo, `justfile`, CI, deps Linux.
-- Definir layout frontend/host.
+### Fase 0 — Scaffolding (hecho, base)
+- [x] Crear rama `feat/tauri` y estructura Tauri.
+- [x] Frontend SvelteKit + Vite + Panda CSS + Biome.
+- [x] Host `src-tauri/` con plugin log/opener.
+- [ ] Alinear gates/CI/justfile al stack nuevo.
+- [ ] Definir integración de crates de dominio desde `prev/`.
 
-**Salida**: app Tauri vacía o mínima compila en Linux.
+**Salida**: app Tauri mínima compila en Linux.
 
 ### Fase 1 — Host + shell mínimo
 - Start screen real con DS HTML/CSS.
