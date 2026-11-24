@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "purpose": "Referencias visuales canónicas para la UI de camcraft. El review automático renderiza la UI real con egui_kittest/wgpu y la compara contra estos PNGs. Estas referencias NO se sobreescriben automáticamente.",
-  "how_to_run": "just ui-review (egui_kittest/wgpu) o just ui-review-sway (sway headless, background)",
+  "purpose": "Referencias visuales canónicas para la UI de camcraft. El review compara renders reales de la UI contra estos PNGs. Estas referencias NO se sobreescriben automáticamente.",
+  "how_to_run": "Capturar la escena al tamaño de referencia y comparar contra fixtures/ui/<id>.png (sway headless/grim o harness webview cuando esté cableado).",
   "diff_output": "target/ui-review-diffs/<id>.actual.png y <id>.diff.png",
   "update_policy": "Las referencias en fixtures/ui son read-only para el tooling. Si una referencia cambia intencionalmente, reemplazá el PNG a mano y revisá el diff antes de commitear.",
   "scenes": [

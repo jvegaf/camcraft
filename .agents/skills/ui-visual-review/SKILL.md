@@ -1,41 +1,47 @@
 ---
 name: ui-visual-review
-description: "Trigger: UI visual review, igualar UI, referencia visual, screenshot diff, iterar UI, fixtures/ui. Iterate cam-ui egui screens against canonical PNG references."
+description: "Trigger: UI visual review, igualar UI, referencia visual, screenshot diff, iterar UI, fixtures/ui. Iterate Camcraft UI against canonical PNG references."
 license: Apache-2.0
 metadata:
   author: "th3g3ntl3man"
-  version: "1.0"
+  version: "2.0"
 ---
 
 ## Activation Contract
 
-Use when changing cam-ui visuals against reference captures in `fixtures/ui/`, adding a visual review scene, or diagnosing a UI diff.
+Use when changing Camcraft UI visuals against reference captures in `fixtures/ui/`, adding a visual review scene, or diagnosing a UI diff.
 
 ## Hard Rules
 
 - `fixtures/ui/*.png` are canonical references. Never overwrite them automatically; only copy a reviewed actual by hand when the change is intentional.
-- Compare real egui renders, not HTML artboards. Artboards in `design/` are design intent; `fixtures/ui/manifest.json` maps scene coverage and gaps.
-- Render at the reference image size (`image_dimensions`), `pixels_per_point=1.0`, same harness warmup as `crates/cam-ui/tests/ui_review.rs`.
-- Keep scene setup deterministic: fixed shell state, fixed document/recents, no time-dependent data.
-- Do not claim visual parity from code changes alone; run `just ui-review` and report diff evidence.
+- Compare real renders, not HTML artboards. Artboards in `design/` are design intent; `fixtures/ui/manifest.json` maps scene coverage and gaps.
+- Keep scene setup deterministic: fixed route/state, fixed data, no time-dependent data.
+- Do not claim visual parity from code changes alone; capture and report diff evidence.
+
+## Capture Paths
+
+| Path | When | Notes |
+|------|------|-------|
+| Sway headless window capture | Linux/Wayland dev, background | Adapt `scripts/ui-review-sway.sh` to launch the Tauri app/window; captures with `grim`, compares PNGs in `target/ui-review-diffs/` |
+| Playwright/webview screenshot | CI or deterministic browser-level capture | Preferred when webview route can be rendered without full desktop shell |
+| Manual capture | Harness not wired yet | Capture at reference size, save to `target/ui-review-diffs/<id>.actual.png`, compare with same diff policy |
 
 ## Decision Gates
 
 | Need | Action |
 |------|--------|
-| Iterate on existing scene | Run `just ui-review-sway` (background, no toca Hyprland) o `just ui-review` (egui_kittest); inspeccionar `target/ui-review-diffs/<id>.{actual,diff}.png`, cambiar UI, rerun |
-| Add a new reference scene | Add PNG to `fixtures/ui/`, add scene entry to `fixtures/ui/manifest.json`, add `#[ignore]` test in `crates/cam-ui/tests/ui_review.rs` |
+| Iterate on existing scene | Capture scene, inspect `target/ui-review-diffs/<id>.{actual,diff}.png`, change smallest UI code, rerun |
+| Add a new reference scene | Add PNG to `fixtures/ui/`, add scene entry to `fixtures/ui/manifest.json`, wire deterministic scene setup |
 | Accept intentional visual change | Review diff, then `cp target/ui-review-diffs/<id>.actual.png fixtures/ui/<id>.png` |
-| UI differs but render is blank/transparent | Treat as environment/render issue; verify wgpu backend before changing UI |
+| Diff is render-noise heavy | Check font/render path, viewport size, theme, and scale before changing UI |
 
 ## Execution Steps
 
 1. Read `fixtures/ui/manifest.json` for scene id, reference, artboard, covers, and gaps.
-2. Run `just ui-review-sway` para captura en background con sway headless (recomendado en esta máquina), o `just ui-review` para egui_kittest/wgpu.
-3. For each failing scene, open `target/ui-review-diffs/<id>.actual.png` and `<id>.diff.png`; compare against `fixtures/ui/<id>.png`.
-4. Change the smallest cam-ui code that explains the diff; rerun only affected scene with `cargo test -p cam-ui --test ui_review <scene> -- --ignored --nocapture` while iterating.
-5. When a scene matches, confirm output reports exact match or within tolerance (0.50% pixels, bounded channel diff).
-6. If adding a scene, wire shell state in `ui_review.rs`: create `Shell`/`AppState`, set deterministic data, call `shell.show_in(app, ui)`, render, `compare("<id>", &img)`.
+2. Capture the scene at the reference image size with deterministic state.
+3. Compare against `fixtures/ui/<id>.png`; inspect actual and diff in `target/ui-review-diffs/`.
+4. Change the smallest UI code that explains the diff; rerun affected scene.
+5. When a scene matches, report diff percent and evidence. If updating reference intentionally, copy by hand and review before commit.
 
 ## Output Contract
 
@@ -44,6 +50,5 @@ Report: scenes run, pass/diff status, diff percent, actual/diff paths, reference
 ## References
 
 - `fixtures/ui/manifest.json` — canonical scene manifest and update policy.
-- `crates/cam-ui/tests/ui_review.rs` — offscreen egui_kittest/wgpu render and diff harness.
-- `scripts/ui-review-sway.sh` — sway headless capture + diff harness (background).
-- `justfile` — `ui-review`, `ui-review-sway`, and `ui-review-update` recipes.
+- `scripts/ui-review-sway.sh` — legacy sway headless capture script; adapt for Tauri window launch.
+- `design/` — visual intent/artboards.
