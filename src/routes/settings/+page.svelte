@@ -4,8 +4,9 @@ import { css } from 'styled-system/css';
 import { goto } from '$app/navigation';
 
 type Settings = { theme: string };
+const DEFAULTS: Settings = { theme: 'dark' };
 
-let settings = $state<Settings>({ theme: 'dark' });
+let settings = $state<Settings>({ ...DEFAULTS });
 let error = $state('');
 let saved = $state(false);
 
@@ -45,6 +46,12 @@ async function saveSettings() {
   }
 }
 
+function restoreDefaults() {
+  settings = { ...DEFAULTS };
+  saved = false;
+  error = '';
+}
+
 void loadSettings();
 
 const page = css({ minH: '100vh', p: '24px', bg: 'canvas', color: 'text', fontFamily: 'sans' });
@@ -67,24 +74,33 @@ const dialog = css({
 });
 const titlebar = css({ display: 'flex', alignItems: 'center', gap: '12px', px: '16px', borderBottom: '1px solid', borderColor: 'hairline' });
 const title = css({ m: '0', fontSize: '15px', fontWeight: '600', color: 'textHi' });
-const spacer = css({ flex: '1' });
+const search = css({
+  ml: 'auto', w: '260px', h: '30px', borderRadius: '6px', bg: 'app',
+  border: '1px solid', borderColor: 'border', display: 'flex', alignItems: 'center', gap: '8px',
+  px: '10px', color: 'textDim', fontSize: '12px',
+  '& kbd': { ml: 'auto', font: '11px ui-monospace, SFMono-Regular, Menlo, monospace', color: 'textOff', px: '5px', py: '1px', borderRadius: '3px', bg: 'raised', border: '1px solid', borderColor: 'hairline' }
+});
 const iconBtn = css({
   w: '30px', h: '30px', display: 'grid', placeItems: 'center', borderRadius: '6px',
   color: 'textDim', cursor: 'pointer', bg: 'transparent', border: 'none',
   _hover: { bg: 'raised', color: 'textHi' }
 });
 const content = css({ display: 'grid', gridTemplateColumns: '220px 1fr', minH: '0' });
-const pages = css({ bg: 'canvas', borderRight: '1px solid', borderColor: 'hairline', p: '12px 8px', overflow: 'auto' });
+const pages = css({ bg: 'rgba(13,16,20,.72)', borderRight: '1px solid', borderColor: 'hairline', p: '12px 8px', overflow: 'auto' });
 const group = css({ m: '10px 8px 6px', fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'textOff' });
 const pageItem = css({
   w: '100%', display: 'flex', alignItems: 'center', gap: '10px', px: '10px', py: '8px',
-  borderRadius: '6px', textAlign: 'left', fontSize: '13px', color: 'text', bg: 'transparent', border: 'none'
+  borderRadius: '6px', textAlign: 'left', fontSize: '13px', color: 'text', bg: 'transparent', border: 'none',
+  cursor: 'default'
 });
 const pageItemActive = css({ bg: 'selSoft', color: 'textHi', boxShadow: 'inset 0 0 0 1px token(colors.selSoft)' });
+const ic = css({ w: '18px', h: '18px', color: 'textDim', flex: 'none', display: 'grid', placeItems: 'center' });
+const icActive = css({ color: 'sel' });
 const main = css({ p: '24px 28px', overflow: 'auto', minH: '0' });
 const h3 = css({ m: '0', fontSize: '20px', fontWeight: '600', color: 'textHi' });
 const desc = css({ m: '6px 0 20px', color: 'textDim', fontSize: '13px', lineHeight: '1.5', maxW: '640px' });
-const section = css({ py: '18px', borderTop: '1px solid', borderColor: 'hairline', _firstOfType: { borderTop: '0', pt: '0' } });
+const section = css({ py: '18px', borderTop: '1px solid', borderColor: 'hairline' });
+const sectionFirst = css({ borderTop: '0', pt: '0' });
 const sectionTitle = css({ m: '0 0 12px', fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'textOff' });
 const setting = css({ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '16px', alignItems: 'start', py: '10px' });
 const label = css({ fontSize: '13px', color: 'textHi', fontWeight: '500' });
@@ -93,7 +109,8 @@ const selectCls = css({
   w: '100%', maxW: '320px', h: '32px', px: '10px', borderRadius: '4px',
   bg: 'app', border: '1px solid', borderColor: 'border', color: 'text', fontSize: '13px'
 });
-const footer = css({ display: 'flex', alignItems: 'center', gap: '10px', px: '16px', borderTop: '1px solid', borderColor: 'hairline', bg: 'panel' });
+const footer = css({ display: 'flex', alignItems: 'center', gap: '10px', px: '16px', borderTop: '1px solid', borderColor: 'hairline', bg: 'rgba(23,27,33,.5)' });
+const footerSpacer = css({ flex: '1' });
 const btn = css({
   h: '32px', px: '14px', borderRadius: '6px', fontSize: '13px', fontWeight: '500',
   border: '1px solid', borderColor: 'border', bg: 'raised', color: 'text', cursor: 'pointer',
@@ -114,7 +131,11 @@ const icon = css({ w: '16px', h: '16px', stroke: 'currentColor', fill: 'none', s
     <div class={dialog} role="dialog" aria-label="Preferencias">
       <div class={titlebar}>
         <h2 class={title}>Preferencias</h2>
-        <div class={spacer}></div>
+        <div class={search} role="search">
+          <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>
+          Buscar configuración…
+          <kbd>⌘F</kbd>
+        </div>
         <button class={iconBtn} aria-label="Cerrar" onclick={() => goto('/')}>
           <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
@@ -124,15 +145,16 @@ const icon = css({ w: '16px', h: '16px', stroke: 'currentColor', fill: 'none', s
         <nav class={pages} aria-label="Páginas de preferencias">
           <div class={group}>General</div>
           <button class={`${pageItem} ${pageItemActive}`} aria-current="page">
-            <span>Apariencia</span>
+            <span class={`${ic} ${icActive}`}><svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span>
+            Apariencia
           </button>
         </nav>
 
         <section class={main}>
           <h3 class={h3}>Apariencia</h3>
-          <p class={desc}>Configuración visual de Camcraft. Solo se muestran opciones soportadas actualmente.</p>
+          <p class={desc}>Configuración visual de Camcraft. Se muestran solo las opciones soportadas actualmente por el backend.</p>
 
-          <div class={section}>
+          <div class={`${section} ${sectionFirst}`}>
             <h4 class={sectionTitle}>Tema</h4>
             <div class={setting}>
               <div>
@@ -155,8 +177,9 @@ const icon = css({ w: '16px', h: '16px', stroke: 'currentColor', fill: 'none', s
       </div>
 
       <div class={footer}>
-        <button class={`${btn} ${btnGhost}`} onclick={() => goto('/')}>Cancelar</button>
-        <div class={spacer}></div>
+        <button class={`${btn} ${btnGhost}`} onclick={restoreDefaults}>Restaurar valores</button>
+        <div class={footerSpacer}></div>
+        <button class={btn} onclick={() => goto('/')}>Cancelar</button>
         <button class={`${btn} ${btnPrimary}`} onclick={saveSettings}>Aplicar</button>
       </div>
     </div>
