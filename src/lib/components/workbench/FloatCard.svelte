@@ -1,4 +1,6 @@
 <script lang="ts">
+import { css, cx } from 'styled-system/css';
+import { panel } from 'styled-system/recipes';
 import type { Snippet } from 'svelte';
 
 interface Props {
@@ -16,22 +18,47 @@ let {
   ariaLabel = title,
   children
 }: Props = $props();
+
+const surface = panel({ tone: 'overlay' });
+const head = css({
+  h: '38px',
+  px: '10px',
+  pl: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  borderBottom: '1px solid',
+  borderColor: 'hairline',
+  background: 'raised',
+  flex: 'none'
+});
+const heading = css({
+  m: '0',
+  fontSize: '11px',
+  fontWeight: '600',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'textDim'
+});
+const metaClass = css({
+  ml: 'auto',
+  fontSize: '11px',
+  fontFamily: 'mono',
+  color: 'textOff'
+});
+const body = css({ p: '10px', overflow: 'auto', minH: '0' });
 </script>
 
-<aside class={`float ${className}`} aria-label={ariaLabel}>
-  <div class="head">
-    <h2>{title}</h2>
-    {#if meta}<span class="meta">{meta}</span>{/if}
+<aside
+  class={cx(surface, className)}
+  style="position:absolute; backdrop-filter:blur(10px); z-index:20; display:flex; flex-direction:column; min-height:0; overflow:hidden;"
+  aria-label={ariaLabel}
+>
+  <div class={head}>
+    <h2 class={heading}>{title}</h2>
+    {#if meta}<span class={metaClass}>{meta}</span>{/if}
   </div>
-  <div class="body">
+  <div class={body}>
     {@render children()}
   </div>
 </aside>
-
-<style>
-  .float { position:absolute; background:rgba(23,27,33,.94); backdrop-filter:blur(10px); border:1px solid var(--line-strong); border-radius:var(--radius-overlay); box-shadow:var(--shadow-float); z-index:20; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-  .head { height:38px; padding:0 10px 0 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line-hair); background:rgba(30,36,43,.35); flex:none; }
-  .head h2 { margin:0; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); }
-  .meta { margin-left:auto; font:11px var(--mono); color:var(--text-off); }
-  .body { padding:10px; overflow:auto; min-height:0; }
-</style>
