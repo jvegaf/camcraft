@@ -56,14 +56,6 @@ let {
 
 <style>
   .start-shell {
-    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
-    --line-hair:#262d36; --line-strong:#35404c;
-    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
-    --sel:#6fd3e8; --sel-soft:rgba(111,211,232,.13);
-    --cut:#f5a623; --cut-soft:rgba(245,166,35,.13);
-    --shadow-float:0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42);
-    --font: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     height:100%; min-height:520px; border:1px solid var(--line-strong); border-radius:12px; overflow:hidden; background:var(--bg-canvas); position:relative; box-shadow:0 24px 80px rgba(0,0,0,.35); display:grid; place-items:center; color:var(--text); font:13px/1.4 var(--font);
   }
   .start-shell::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px; }
