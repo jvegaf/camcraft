@@ -1,18 +1,7 @@
 <script lang="ts">
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
-
-type DocumentStatus = {
-  schema: string;
-  documentSchema: string;
-  dirty: boolean;
-  path: string | null;
-  layerCount: number;
-  toolpathCount: number;
-  boardWidthMm: number;
-  boardHeightMm: number;
-  boardThicknessMm: number;
-};
+import { open } from '@tauri-apps/plugin-dialog';
+import { goto } from '$app/navigation';
 
 type RecentProject = {
   name: string;
@@ -20,7 +9,6 @@ type RecentProject = {
   lastOpened: string;
 };
 
-let status = $state<DocumentStatus | null>(null);
 // biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let error = $state('');
 // biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
@@ -46,27 +34,19 @@ async function refreshRecents() {
   }
 }
 
-async function refreshStatus() {
-  error = '';
-  try {
-    status = await invoke<DocumentStatus>('document_status');
-  } catch (e) {
-    error = formatError(e);
-  }
-}
-
 // biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 async function createDocument(event: Event) {
   event.preventDefault();
   error = '';
   try {
-    status = await invoke<DocumentStatus>('new_document', {
+    await invoke('new_document', {
       request: {
         widthMm: Number(widthMm),
         heightMm: Number(heightMm),
         thicknessMm: Number(thicknessMm)
       }
     });
+    await goto('/workspace');
   } catch (e) {
     error = formatError(e);
   }
@@ -81,8 +61,8 @@ async function openDocument() {
       filters: [{ name: 'Camcraft document', extensions: ['cmc', 'json'] }]
     });
     if (typeof selected !== 'string') return;
-    status = await invoke<DocumentStatus>('open_document', { path: selected });
-    await refreshRecents();
+    await invoke('open_document', { path: selected });
+    await goto('/workspace');
   } catch (e) {
     error = formatError(e);
   }
@@ -92,42 +72,13 @@ async function openDocument() {
 async function openRecent(path: string) {
   error = '';
   try {
-    status = await invoke<DocumentStatus>('open_document', { path });
-    await refreshRecents();
+    await invoke('open_document', { path });
+    await goto('/workspace');
   } catch (e) {
     error = formatError(e);
   }
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
-async function saveDocument() {
-  error = '';
-  try {
-    status = await invoke<DocumentStatus>('save_document', {
-      path: status?.path ?? null
-    });
-    await refreshRecents();
-  } catch (e) {
-    error = formatError(e);
-  }
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
-async function saveDocumentAs() {
-  error = '';
-  try {
-    const target = await save({
-      filters: [{ name: 'Camcraft document', extensions: ['cmc'] }]
-    });
-    if (!target) return;
-    status = await invoke<DocumentStatus>('save_document', { path: target });
-    await refreshRecents();
-  } catch (e) {
-    error = formatError(e);
-  }
-}
-
-void refreshStatus();
 void refreshRecents();
 </script>
 
@@ -140,23 +91,10 @@ void refreshRecents();
 
       <div class="actions">
         <button type="button" class="primary" onclick={openDocument}>Open document</button>
-        <button type="button" onclick={saveDocument}>Save</button>
-        <button type="button" onclick={saveDocumentAs}>Save as</button>
       </div>
 
       {#if error}
         <p class="error">{error}</p>
-      {/if}
-
-      {#if status}
-        <div class="current">
-          <p class="label">Current document</p>
-          <p class="value">{status.path ?? 'Unsaved document'}</p>
-          <p class="meta">
-            {status.boardWidthMm} × {status.boardHeightMm} × {status.boardThicknessMm} mm
-            · {status.dirty ? 'dirty' : 'saved'}
-          </p>
-        </div>
       {/if}
 
       <form class="new-doc" onsubmit={createDocument}>
@@ -220,11 +158,8 @@ void refreshRecents();
   button { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; color: #1f2430; cursor: pointer; }
   button.primary { background: #1f2430; color: #fff; border-color: #1f2430; }
   .error { color: #b42318; font-size: 14px; margin: 0 0 16px; }
-  .current { padding: 14px 0; border-top: 1px solid #e3e8ee; border-bottom: 1px solid #e3e8ee; margin-bottom: 20px; }
   .label { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #667085; }
-  .value { margin: 0; font-size: 14px; word-break: break-word; }
-  .meta { margin: 6px 0 0; font-size: 13px; color: #5f6b7a; }
-  .new-doc { display: grid; gap: 12px; }
+  .new-doc { display: grid; gap: 12px; padding-top: 20px; border-top: 1px solid #e3e8ee; }
   .fields { display: grid; gap: 10px; }
   label { display: grid; gap: 4px; font-size: 13px; color: #344054; }
   input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; }
