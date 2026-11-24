@@ -10,15 +10,15 @@ members = [
     "src-tauri/crates/cam-store",
     "src-tauri/crates/cam-post",
     "src-tauri/crates/cam-sim",
-    "prev/crates/cam-cli",
+    "src-tauri/crates/cam-cli",
     "src-tauri/crates/cam-app",
     "src-tauri/crates/cam-export",
     "src-tauri/crates/cam-import",
     "src-tauri/crates/cam-excellon",
     "src-tauri/crates/cam-gerber",
-    "prev/crates/cam-view",
-    "prev/crates/cam-ui",
-    "prev/crates/cam-desktop",
+    "src-tauri/crates/cam-view",
+    "src-tauri/crates/cam-ui",
+    "src-tauri/crates/cam-desktop",
 ]
 
 [workspace.package]
@@ -42,9 +42,9 @@ cam-import = { path = "src-tauri/crates/cam-import" }
 cam-excellon = { path = "src-tauri/crates/cam-excellon" }
 cam-gerber = { path = "src-tauri/crates/cam-gerber" }
 cam-export = { path = "src-tauri/crates/cam-export" }
-cam-cli = { path = "prev/crates/cam-cli" }
-cam-view = { path = "prev/crates/cam-view" }
-cam-ui = { path = "prev/crates/cam-ui" }
+cam-cli = { path = "src-tauri/crates/cam-cli" }
+cam-view = { path = "src-tauri/crates/cam-view" }
+cam-ui = { path = "src-tauri/crates/cam-ui" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
