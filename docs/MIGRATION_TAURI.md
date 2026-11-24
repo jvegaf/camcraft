@@ -132,6 +132,7 @@ Pendientes:
 | Documento | Cambio |
 |---|---|
 | `docs/SYSTEM_DESIGN_CAMCRAFT.md` | Arquitectura Tauri/webview/backend Rust, boundary viewport, IPC. |
+| `docs/DOMAIN_INTEGRATION_TAURI.md` | Mapeo de crates `prev/crates/` a reusar/adaptar/retirar e integración con `src-tauri`. |
 | `docs/ARCHITECTURE_TAURI.md` | Nuevo: detalle de boundary, protocolo, packaging Linux, seguridad IPC. |
 | `README.md` | Dev setup Tauri/webkit2gtk/node, comandos, layout. |
 | `AGENTS.md` | Superficies/worktrees para frontend Tauri; mantener ODD/records gate. |
