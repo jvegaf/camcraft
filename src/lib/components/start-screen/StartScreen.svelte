@@ -12,6 +12,7 @@ interface RecentItem {
 interface Props {
   recents?: RecentItem[];
   error?: string;
+  showNew?: boolean;
   onCreate?: (request: {
     widthMm: number;
     heightMm: number;
@@ -25,13 +26,12 @@ interface Props {
 let {
   recents = [],
   error = '',
+  showNew = $bindable(false),
   onCreate,
   onOpen,
   onOpenRecent,
   onSettings
 }: Props = $props();
-
-let showNew = $state(false);
 let widthMm = $state(1219);
 let heightMm = $state(2438);
 let thicknessMm = $state(18);
@@ -51,14 +51,10 @@ function submitNew(event: Event) {
 
 const startShell = css({
   h: '100%',
-  minH: '520px',
-  border: '1px solid',
-  borderColor: 'border',
-  borderRadius: '12px',
-  overflow: 'hidden',
+  minH: '100%',
+  overflow: 'auto',
   bg: 'canvas',
   position: 'relative',
-  boxShadow: '0 24px 80px rgba(0,0,0,.35)',
   display: 'grid',
   placeItems: 'center',
   color: 'text',

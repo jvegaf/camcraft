@@ -2,7 +2,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { goto } from '$app/navigation';
+import { css } from 'styled-system/css';
 import { StartScreen } from '$lib/components/start-screen';
+import StatusBar from '$lib/components/workbench/StatusBar.svelte';
+import TopBar from '$lib/components/workbench/TopBar.svelte';
+import { workbenchState } from '$lib/components/workbench/workbench.svelte';
 
 type RecentProject = {
   name: string;
@@ -12,6 +16,7 @@ type RecentProject = {
 
 let error = $state('');
 let recents = $state<RecentProject[]>([]);
+let showNew = $state(false);
 
 function formatError(e: unknown): string {
   if (typeof e === 'string') return e;
@@ -70,13 +75,47 @@ async function openRecent(path: string) {
 }
 
 void refreshRecents();
+workbenchState.statusMessage = 'Listo';
+workbenchState.statusKind = 'ok';
+
+const shell = css({
+  w: '100%',
+  h: '100vh',
+  position: 'relative',
+  overflow: 'hidden',
+  bg: 'canvas',
+  color: 'text',
+  fontSize: '13px',
+  lineHeight: '1.4',
+  fontFamily: 'sans'
+});
+const content = css({
+  position: 'absolute',
+  top: '48px',
+  left: '0',
+  right: '0',
+  bottom: '34px',
+  overflow: 'auto'
+});
 </script>
 
-<StartScreen
-  {recents}
-  {error}
-  onCreate={createDocument}
-  onOpen={openDocument}
-  onOpenRecent={openRecent}
-  onSettings={() => goto('/settings')}
-/>
+<div class={shell}>
+  <TopBar
+    projectName="Camcraft"
+    onNew={() => (showNew = true)}
+    onOpen={openDocument}
+    onSettings={() => goto('/settings')}
+  />
+  <div class={content}>
+    <StartScreen
+      {recents}
+      {error}
+      bind:showNew
+      onCreate={createDocument}
+      onOpen={openDocument}
+      onOpenRecent={openRecent}
+      onSettings={() => goto('/settings')}
+    />
+  </div>
+  <StatusBar />
+</div>
