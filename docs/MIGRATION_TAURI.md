@@ -123,10 +123,10 @@ Pendientes:
 
 ### Fase 3 — Interacción 3D
 
-- Picking/selección/hover.
-- Overlays/gizmos mínimos.
-- Selección sincronizada con UI.
-- **Salida**: selección 3D refleja estado.
+- [x] Picking/selección/hover en viewport 3D (raycast Three.js sobre surface mesh).
+- [x] Overlay mínimo de hover/selección (highlight de triángulo).
+- [x] Selección sincronizada con UI (HUD viewport muestra triángulo/profundidad).
+- **Salida**: selección 3D refleja estado (MVP).
 
 ### Fase 4 — Paridad de shell
 

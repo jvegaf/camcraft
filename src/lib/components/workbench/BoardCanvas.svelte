@@ -21,6 +21,7 @@ type SceneSnapshotDto = {
 let container: HTMLDivElement | undefined = $state();
 let fpsText = $state('FPS: --');
 let statusText = $state('Cargando escena...');
+let selectionText = $state('Selección: ninguna');
 
 const wrap = css({
   position: 'absolute',
@@ -47,7 +48,6 @@ const hud = css({
 
 function depthColor(depth: number): [number, number, number] {
   const d = Math.max(0, Math.min(1, depth));
-  // teal-ish top to warm cut
   const r = 0.25 + d * 0.65;
   const g = 0.58 - d * 0.28;
   const b = 0.72 - d * 0.45;
@@ -110,7 +110,6 @@ onMount(() => {
     dir.position.set(120, 180, 80);
     scene.add(dir);
 
-    // stock box
     const boxPoints: number[] = [];
     for (const line of snapshot.stockBox) {
       boxPoints.push(line.start.x, line.start.z, -line.start.y);
@@ -121,7 +120,6 @@ onMount(() => {
     const boxMat = new THREE.LineBasicMaterial({ color: 0x88a0b8, transparent: true, opacity: 0.7 });
     scene.add(new THREE.LineSegments(boxGeom, boxMat));
 
-    // surface mesh
     const positions = new Float32Array(snapshot.vertices.length * 3);
     const colors = new Float32Array(snapshot.vertices.length * 3);
     snapshot.vertices.forEach((v, i) => {
@@ -150,11 +148,107 @@ onMount(() => {
       metalness: 0.08,
       side: THREE.DoubleSide
     });
-    scene.add(new THREE.Mesh(meshGeom, meshMat));
+    const surfaceMesh = new THREE.Mesh(meshGeom, meshMat);
+    scene.add(surfaceMesh);
 
     const grid = new THREE.GridHelper(220, 22, 0x334455, 0x223344);
     grid.position.set(50, -20.01, -50);
     scene.add(grid);
+
+    // hover/select highlight
+    const highlightMat = new THREE.MeshBasicMaterial({
+      color: 0x6fd3e8,
+      transparent: true,
+      opacity: 0.45,
+      depthTest: true,
+      side: THREE.DoubleSide
+    });
+    const hoverMesh = new THREE.Mesh(new THREE.BufferGeometry(), highlightMat.clone());
+    hoverMesh.visible = false;
+    scene.add(hoverMesh);
+    const selectMat = new THREE.MeshBasicMaterial({
+      color: 0xf5a623,
+      transparent: true,
+      opacity: 0.55,
+      depthTest: true,
+      side: THREE.DoubleSide
+    });
+    const selectMesh = new THREE.Mesh(new THREE.BufferGeometry(), selectMat);
+    selectMesh.visible = false;
+    scene.add(selectMesh);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let hoveredTri: number | null = null;
+    let selectedTri: number | null = null;
+
+    function triGeometry(triIndex: number) {
+      const tri = snapshot.triangles[triIndex];
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(9);
+      for (let j = 0; j < 3; j++) {
+        const v = snapshot.vertices[tri[j]].position;
+        pos[j * 3] = v.x;
+        pos[j * 3 + 1] = v.z;
+        pos[j * 3 + 2] = -v.y;
+      }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.computeVertexNormals();
+      return g;
+    }
+
+    function updatePointer(event: PointerEvent) {
+      if (!renderer) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    function pickTriangle(event: PointerEvent): number | null {
+      if (!renderer) return null;
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObject(surfaceMesh, false);
+      if (hits.length === 0) return null;
+      const faceIndex = hits[0].faceIndex;
+      if (faceIndex == null) return null;
+      return faceIndex;
+    }
+
+    const onPointerMove = (event: PointerEvent) => {
+      const tri = pickTriangle(event);
+      if (tri === hoveredTri) return;
+      hoveredTri = tri;
+      if (tri == null) {
+        hoverMesh.visible = false;
+      } else {
+        hoverMesh.geometry.dispose();
+        hoverMesh.geometry = triGeometry(tri);
+        hoverMesh.visible = tri !== selectedTri;
+      }
+    };
+
+    const onClick = (event: PointerEvent) => {
+      const tri = pickTriangle(event);
+      selectedTri = tri;
+      if (tri == null) {
+        selectMesh.visible = false;
+        selectionText = 'Selección: ninguna';
+      } else {
+        selectMesh.geometry.dispose();
+        selectMesh.geometry = triGeometry(tri);
+        selectMesh.visible = true;
+        hoverMesh.visible = false;
+        const triVerts = snapshot.triangles[tri];
+        const d = triVerts
+          .map((vi) => snapshot.vertices[vi].depth)
+          .reduce((a, b) => a + b, 0) / 3;
+        selectionText = `Selección: tri ${tri}\nProfundidad media: ${(d * snapshot.stockThickness).toFixed(2)} mm`;
+      }
+    };
+
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('click', onClick);
 
     const resize = () => {
       if (!container || !renderer) return;
@@ -196,7 +290,14 @@ onMount(() => {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-  })();
+
+    return () => {
+      renderer?.domElement.removeEventListener('pointermove', onPointerMove);
+      renderer?.domElement.removeEventListener('click', onClick);
+    };
+  })().then((cleanup) => {
+    if (disposed) cleanup?.();
+  });
 
   return () => {
     disposed = true;
@@ -212,5 +313,5 @@ onMount(() => {
 </script>
 
 <div class={wrap} bind:this={container}>
-  <div class={hud}>{statusText}{'\n'}{fpsText}</div>
+  <div class={hud}>{statusText}{'\n'}{fpsText}{'\n'}{selectionText}</div>
 </div>
