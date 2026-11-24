@@ -40,12 +40,12 @@ donde una feature salteada sería una placa mal taladrada.
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Inventariar cada `GerberError::Invalid` de `cam-gerber` y clasificarlo: constructo salteable (un trazo, un flash, un macro que no se puede barrer) o archivo irremediable (formato, unidades, puntero fuera de orden). El inventario queda en el Log | S2, S3 | inline | done | `L5` + `L10` |
-| T2 | Enhebrar `ImportReport` en el lector Gerber: los constructos salteables se reportan con `skip(construct, reason, location)` y el resto de la capa se evalúa; los irremediables siguen devolviendo `Err` | S2, S3, S4, S5 | inline | done | `c7df894` + `1005888` |
-| T3 | Excellon: dejar el rechazo entero como está y **probar que no se aflojó** (una feature con herramienta indefinida sigue siendo `Err`), más el reporte de lo que sí se puede contar | S6 | inline | done | `1005888` |
-| T4 | Aceptación S7 completa: (a) test de un Gerber con un arco inválido que devuelve geometría parcial **y** un `Skipped` con constructo/razón/ubicación; (b) test de que una capa válida produce exactamente los mismos polígonos que antes; (c) test de que el Excellon con herramienta indefinida sigue siendo rechazo. Documentar el cierre y actualizar la fila E1.7 del audit | S3, S7 | inline | done | `c7df894` + `1005888` + `L10` |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                          | Specs          | Ruta   | Estado | Commit                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------ | ------ | ----------------------------- |
+| T1  | Inventariar cada `GerberError::Invalid` de `cam-gerber` y clasificarlo: constructo salteable (un trazo, un flash, un macro que no se puede barrer) o archivo irremediable (formato, unidades, puntero fuera de orden). El inventario queda en el Log                                                                                                                           | S2, S3         | inline | done   | `L5` + `L10`                  |
+| T2  | Enhebrar `ImportReport` en el lector Gerber: los constructos salteables se reportan con `skip(construct, reason, location)` y el resto de la capa se evalúa; los irremediables siguen devolviendo `Err`                                                                                                                                                                        | S2, S3, S4, S5 | inline | done   | `c7df894` + `1005888`         |
+| T3  | Excellon: dejar el rechazo entero como está y **probar que no se aflojó** (una feature con herramienta indefinida sigue siendo `Err`), más el reporte de lo que sí se puede contar                                                                                                                                                                                             | S6             | inline | done   | `1005888`                     |
+| T4  | Aceptación S7 completa: (a) test de un Gerber con un arco inválido que devuelve geometría parcial **y** un `Skipped` con constructo/razón/ubicación; (b) test de que una capa válida produce exactamente los mismos polígonos que antes; (c) test de que el Excellon con herramienta indefinida sigue siendo rechazo. Documentar el cierre y actualizar la fila E1.7 del audit | S3, S7         | inline | done   | `c7df894` + `1005888` + `L10` |
 
 ## Log
 
@@ -64,7 +64,7 @@ donde una feature salteada sería una placa mal taladrada.
   rechazo: la tarea agrega visibilidad, no tolerancia.
 - **L5 (T1: inventario y clasificación, sobre `crates/cam-gerber/src/lib.rs` de `96a0899`).** La regla que
   decide no es «qué variante del error es» sino **qué cuesta el error**:
-  - **Salteable**: la falla está confinada a la *forma de un constructo* y el estado de dibujo queda
+  - **Salteable**: la falla está confinada a la _forma de un constructo_ y el estado de dibujo queda
     determinado después de él (puntero, polaridad, apertura seleccionada, pertenencia a región). Se
     pierde esa geometría, se sabe cuál y dónde, y el resto de la capa sigue significando lo que dice.
   - **Irremediable**: la falla deja sin sentido lo que viene después, o el kernel rechazó el booleano
@@ -124,7 +124,7 @@ donde una feature salteada sería una placa mal taladrada.
 - **L8 (T4: aceptación S7, medida).** Los tres pedazos de S7 tienen test propio, y el caso feliz está
   garantizado por construcción (S7b): `image()` delega en `image_reporting()`, así que no puede devolver
   otra geometría. Tests: 50 en `cam-gerber` (4 nuevos de E1.7), 16 en `cam-excellon` (1 nuevo), 12 en
-  `cam-import/tests/folder.rs` (1 nuevo, punta a punta sobre una carpeta). `just check` → *all gates green*.
+  `cam-import/tests/folder.rs` (1 nuevo, punta a punta sobre una carpeta). `just check` → _all gates green_.
   **El test de aceptación muerde de verdad**: simulé la alternativa peligrosa (no envenenar la región, o
   sea cerrar el hueco y armar igual el polígono) y el test falló; restaurado, volvió a verde. Eso es lo
   que importa: el test no distingue «se salteó la región» de «se armó una región plausible» por
@@ -140,12 +140,12 @@ donde una feature salteada sería una placa mal taladrada.
     129.78/1, `substitute-eagle/outline` 21.28/21.
   - **4 `refused` → `timeout`**: `kicad-2l-simple` bottom/mask-bottom/silk-bottom y
     `substitute-eagle/bottom`. No es una mejora: el lector ahora acepta la capa y el kernel no termina
-    dentro del límite. Es la misma clase que el README ya documenta («el pin se movió de *el lector dice
-    no* a *el kernel no termina*») y cuesta 30 s de CI por capa; queda registrado, no escondido.
+    dentro del límite. Es la misma clase que el README ya documenta («el pin se movió de _el lector dice
+    no_ a _el kernel no termina_») y cuesta 30 s de CI por capa; queda registrado, no escondido.
   - Totales nuevos: **17 `parsed`, 15 `refused`, 22 `timeout`** de 54 (antes 12/24/18). `timeout_seconds`
     y `flatten_tolerance_mm` no cambiaron.
-  El re-fijado fue una decisión explícita, no un `--update` a ciegas: se corrió, se clasificó cada entrada
-  y recién entonces se commiteó (commit propio, separado del código).
+    El re-fijado fue una decisión explícita, no un `--update` a ciegas: se corrió, se clasificó cada entrada
+    y recién entonces se commiteó (commit propio, separado del código).
 - **L10 (el audit).** Fila E1.7: `⬜` → `✅` con la evidencia (nombres de test, `image_reporting`,
   `FolderImport.report`) y dos límites explícitos: la ubicación es índice de comando y no línea de origen,
   y el parseo sigue rechazando el archivo entero. Números del corpus corregidos en las filas E0.4 y E1.4,

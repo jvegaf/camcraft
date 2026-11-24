@@ -20,8 +20,8 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   aperturas estándar (C, R, O, P), macros, `G36/G37`, interpolación circular `G74/G75`, unidades y
   formato de coordenadas, `M02` | **L** | Las 6 placas del corpus producen geometría que pasa E0.4
   contra FlatCAM |»
-- **S3 (estado medido, `odd/roadmap/index.md`, fila E1.4, verbatim).** «The exit criterion is *the six
-  corpus boards produce geometry that passes E0.4 against FlatCAM*. The oracle half is answered — E0.6
+- **S3 (estado medido, `odd/roadmap/index.md`, fila E1.4, verbatim).** «The exit criterion is _the six
+  corpus boards produce geometry that passes E0.4 against FlatCAM_. The oracle half is answered — E0.6
   (task 059) pinned FlatCAM's own numbers for all six boards, and FlatCAM reads 51 of 54 artefacts —
   but the tree's half is not: of the 54 corpus artefacts, 17 parse, 15 are still refused, and **22
   exceed the harness' 20 s bound** and are pinned as `timeout`»
@@ -185,7 +185,7 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   es leer dos JSON. Comparados los 24 artefactos con medición en ambos lados (`status`, `polygons`,
   `contour_area_mm2`): **1 de 24 coincide** en área a `rel 1e-9`; 18 de 24 coinciden en polígonos.
   Se agrupan en tres familias:
-  1. **`outline` (3 placas, `rel` ≈ 0.99).** FlatCAM mide el *área encerrada* por el contorno
+  1. **`outline` (3 placas, `rel` ≈ 0.99).** FlatCAM mide el _área encerrada_ por el contorno
      (`kicad-2l-simple` 1210.58, `kicad-4l-pours` 16790.50, `substitute-eagle` 13410.66 mm²); el árbol
      mide la **línea dibujada** (10.26, 35.35, 29.92 mm²; 8, 8 y 20 polígonos frente a 2). No es un
      bug: son dos definiciones distintas de «outline». Hay que decidir cuál es la regla comparable
@@ -201,9 +201,9 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
      `kicad-4l-pours/mask-top` (mismos 567 polígonos pero `rel` 0.022), `substitute-altium/top`
      (634 vs 643, `rel` 7.8e-4), `kicad-large-pours/silk-bottom` (`rel` 2.9e-5). Estas sí son
      divergencias que el árbol tiene que explicar o corregir.
-  Conclusión para el orden del trabajo: **T4 (tiempo) no es la brecha principal**. Los 29 `timeout`
-  no tienen medición que comparar, pero los que **sí** miden ya discrepan del oráculo, así que acelerar
-  antes de cerrar la paridad optimiza capas cuyo resultado todavía no es el correcto.
+     Conclusión para el orden del trabajo: **T4 (tiempo) no es la brecha principal**. Los 29 `timeout`
+     no tienen medición que comparar, pero los que **sí** miden ya discrepan del oráculo, así que acelerar
+     antes de cerrar la paridad optimiza capas cuyo resultado todavía no es el correcto.
 - **L18 (decisiones del humano sobre T5).** Dos decisiones que fijan la regla de paridad: (1) el
   `outline` se mide **como lo mide FlatCAM**, es decir el **área encerrada** por el contorno, no el área
   del trazo dibujado; (2) **se acepta tolerancia** de área por artefacto/rol en vez del `1e-9` relativo
@@ -231,19 +231,19 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   1. worker: `filter_valid_snaps` con tolerancia + en `assemble` reasignar el extremo a otro vértice o
      **descartar el sliver** y seguir; el repro pasó de «begins and ends at the same point» a
      **`revisits a piece`** (~277 s), o sea el rechazo se movió, no se resolvió; además la regresión sólo
-     afirmaba la *ausencia de un mensaje* (acepta cualquier otro error) y tardaba 288 s en release y
+     afirmaba la _ausencia de un mensaje_ (acepta cualquier otro error) y tardaba 288 s en release y
      ~1400 s en debug, y la capa pasó de 78 s a 279 s y `kicad-2l-simple/top` de 107 s a 170 s.
   2. alternativa propia, en la capa correcta: descartar piezas con longitud ≤ 2·ε entre los
      supervivientes y antes de `assemble` (`is_tolerance_sliver`). Verificado con el mismo repro
      `/tmp/bot_12797.gbr`: **también** termina en `revisits a piece` (~139 s).
-  Conclusión medida: **el sliver es portante**. Sacarlo abre el arreglo y el recorrido revisita, así que
-  el problema no está en el ensamblado sino en el **corte**: se está creando un trozo de ~2·ε cuyos dos
-  extremos caen dentro de ε de un vértice ajeno. El arreglo correcto es que el corte no genere ese trozo
-  (fundir la fracción de corte con el vértice existente que está a menos de ε), no descartarlo después.
-  Queda como el próximo paso de T3, junto con `kicad-2l-simple/top`.
+     Conclusión medida: **el sliver es portante**. Sacarlo abre el arreglo y el recorrido revisita, así que
+     el problema no está en el ensamblado sino en el **corte**: se está creando un trozo de ~2·ε cuyos dos
+     extremos caen dentro de ε de un vértice ajeno. El arreglo correcto es que el corte no genere ese trozo
+     (fundir la fracción de corte con el vértice existente que está a menos de ε), no descartarlo después.
+     Queda como el próximo paso de T3, junto con `kicad-2l-simple/top`.
 - **L21 (T3, contracción de aristas sub-tolerancia + diagnóstico del resto).** Aceptado e implementado en
   `combine_with_indexed`: toda pieza superviviente con longitud ≤ 2·ε se **quita y se registra como snap
-  entre sus dos extremos** (`near_miss_snaps`), o sea se *contrae*: los vecinos que unía se reconectan a
+  entre sus dos extremos** (`near_miss_snaps`), o sea se _contrae_: los vecinos que unía se reconectan a
   través del vértice identificado. Es la única de cinco variantes que preserva la topología — conservarla
   la colapsa («begins and ends at the same point»), descartarla abre el grado del vértice y da
   «revisits a piece», fundir fracciones de corte o deduplicar aristas a 2·ε no cambia el resultado,
@@ -272,12 +272,12 @@ esta tarea dice que el parser ya lee 13 de esos 15 archivos enteros y que la mur
   6. reparación quirúrgica `join_open_ends` (unir sólo pares de grado 1 dentro de la distancia de unión,
      que no puede crear uniones impares): parity verde (4 passed) pero **no** arregla
      `kicad-2l-simple/top`, que sigue en `revisits a piece`.
-  **Estado real y localizado.** En `kicad-2l-simple/top` quedan exactamente dos vértices no-manifold:
-  uno de **grado 3** en `(148.699500,-87.652139294)` y uno de **grado 1** en `(148.699500,-87.443774000)`,
-  a **0.208 mm** — longitud geométrica real, 208.365·ε. Falta **una pieza** entre ellos: la descartó
-  `decide_indexed`. No es soldadura ni umbral: es clasificación. `substitute-easyeda/bottom` también
-  sigue rechazando. **Corrección de un reporte anterior:** el prefijo `/tmp/bot_12797.gbr` nunca pasó;
-  lo que se veía era `parse ok` seguido del timeout, no un `image ok`.
+     **Estado real y localizado.** En `kicad-2l-simple/top` quedan exactamente dos vértices no-manifold:
+     uno de **grado 3** en `(148.699500,-87.652139294)` y uno de **grado 1** en `(148.699500,-87.443774000)`,
+     a **0.208 mm** — longitud geométrica real, 208.365·ε. Falta **una pieza** entre ellos: la descartó
+     `decide_indexed`. No es soldadura ni umbral: es clasificación. `substitute-easyeda/bottom` también
+     sigue rechazando. **Corrección de un reporte anterior:** el prefijo `/tmp/bot_12797.gbr` nunca pasó;
+     lo que se veía era `parse ok` seguido del timeout, no un `image ok`.
 - **L24 (T3 cerrado por derivación).** La familia de fallos de arreglo que quedaba en T3 no se resuelve en
   esta tarea: pasa a la [063](063-arrangement-classification.md) (clasificación de piezas). Motivo: el
   defecto está localizado en **una pieza de 0.208 mm descartada** por `decide_indexed`, no en la medición,

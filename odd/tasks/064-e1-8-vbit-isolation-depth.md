@@ -15,17 +15,17 @@ Cierre del criterio de salida de E1.8/E3.3: derivación de la profundidad de ais
 - **S2 (seguimiento, verbatim).** «comitea mergea y haz deliver»
 - **S3 (E1.8, `docs/ROADMAP_CAMCRAFT.md:97`, verbatim).** «| E1.8 | Librería de herramientas: V-bit con ángulo y punta, fresa de aislamiento, broca (verificar/cubrir G2.5) | **S** | Una V-bit del catálogo produce la profundidad esperada en isolation |»
 - **S4 (E3.3, `docs/ROADMAP_CAMCRAFT.md:137`, verbatim).** «| E3.3 | Profundidad derivada del V-bit (ángulo y punta) | **M** | Una V-bit de 30° y 0.2 mm de punta da profundidad calculada; test con el valor esperado |»
-- **S5 (`odd/roadmap/index.md`, estado previo E1.8, verbatim).** «The exit criterion is *a catalogue V-bit produces the expected depth in isolation*, and that is the isolation **operation**, which belongs to F3 (E3.x) and does not exist yet: W2d delivered the vocabulary the operation will read, not the operation»
+- **S5 (`odd/roadmap/index.md`, estado previo E1.8, verbatim).** «The exit criterion is _a catalogue V-bit produces the expected depth in isolation_, and that is the isolation **operation**, which belongs to F3 (E3.x) and does not exist yet: W2d delivered the vocabulary the operation will read, not the operation»
 - **S6 (`odd/roadmap/index.md`, estado previo E3.3, verbatim).** «`IsolationParams` carries `cut_depth` only (`cam-model/src/lib.rs:329`)» / «Depth derived from included angle and tip»
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Implementar `vbit_isolation_depth_mm(target_diameter_mm, included_angle_deg, tip_diameter_mm)` en `cam_ops::isolation`, derivando profundidad de aislamiento desde ángulo incluido y punta/plano; exportar y validar casos inválidos | S3,S4,S6 | inline | — |
-| T2 | Agregar tests: valor esperado para V-bit 30°/punta 0.2 mm (profundidad calculada), caso de catálogo produciendo profundidad esperada en isolation, borde en ancho de punta y rechazo bajo la punta | S3,S4 | inline | — |
-| T3 | Actualizar `odd/roadmap/index.md` para reflejar E1.8/E3.3 completos con evidencia (sin modificar INDEX) | S1,S3,S4,S5,S6 | inline | — |
-| T4 | Verificación focalizada (`cargo test -p cam-ops --lib isolation`, `--test isolation`, `cargo fmt -p cam-ops`), review nativo RDD, commit/merge/deliver según pedido | S1,S2 | inline | — |
+| ID  | Tarea                                                                                                                                                                                                                                | Specs          | Ruta   | Commit |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------ | ------ |
+| T1  | Implementar `vbit_isolation_depth_mm(target_diameter_mm, included_angle_deg, tip_diameter_mm)` en `cam_ops::isolation`, derivando profundidad de aislamiento desde ángulo incluido y punta/plano; exportar y validar casos inválidos | S3,S4,S6       | inline | —      |
+| T2  | Agregar tests: valor esperado para V-bit 30°/punta 0.2 mm (profundidad calculada), caso de catálogo produciendo profundidad esperada en isolation, borde en ancho de punta y rechazo bajo la punta                                   | S3,S4          | inline | —      |
+| T3  | Actualizar `odd/roadmap/index.md` para reflejar E1.8/E3.3 completos con evidencia (sin modificar INDEX)                                                                                                                              | S1,S3,S4,S5,S6 | inline | —      |
+| T4  | Verificación focalizada (`cargo test -p cam-ops --lib isolation`, `--test isolation`, `cargo fmt -p cam-ops`), review nativo RDD, commit/merge/deliver según pedido                                                                  | S1,S2          | inline | —      |
 
 ## Log
 

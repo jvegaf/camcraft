@@ -14,10 +14,10 @@ Completar la ola 2 ítem W2b: que el lector Excellon entienda el dialecto que tr
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ Soportar ranuras `G85` en línea (`X…Y…G85X…Y…`) y casos de ceros omitidos / dialecto necesarios para los archivos reales | S1, S2, S3 | inline | — |
-| T2 | ✅ Pruebas contra los 6 taladros del corpus: herramientas, diámetros y cantidad de hits | S1, S2, S3 | inline | — |
+| ID  | Tarea                                                                                                                       | Specs      | Ruta   | Commit |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
+| T1  | ✅ Soportar ranuras `G85` en línea (`X…Y…G85X…Y…`) y casos de ceros omitidos / dialecto necesarios para los archivos reales | S1, S2, S3 | inline | —      |
+| T2  | ✅ Pruebas contra los 6 taladros del corpus: herramientas, diámetros y cantidad de hits                                     | S1, S2, S3 | inline | —      |
 
 ## Log
 

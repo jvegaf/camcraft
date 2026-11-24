@@ -18,12 +18,12 @@ Ola 4, ítem W4c: unión previa del cobre de la capa y offset multipasada acumul
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Explorar APIs y requisitos concretos de E3.1/E3.2 (geom boolean/offset/tolerance, modelo, patrones ops) | S1-S4 | inline | done | — |
-| T2 | Implementar unión de cobre de capa (E3.1) en `isolation.rs` con API y tests | S3 | inline | done | e91882b |
-| T3 | Implementar offset multipasada acumulado con fórmula y dirección por tipo de fresado (E3.2) con tests | S4 | inline | done | e91882b |
-| T4 | Exportar/integrar en `cam-ops`, verificar (fmt/clippy/tests) y documentar cierre | S1-S4 | inline | done | e91882b |
+| ID  | Tarea                                                                                                   | Specs | Ruta   | Estado | Commit  |
+| --- | ------------------------------------------------------------------------------------------------------- | ----- | ------ | ------ | ------- |
+| T1  | Explorar APIs y requisitos concretos de E3.1/E3.2 (geom boolean/offset/tolerance, modelo, patrones ops) | S1-S4 | inline | done   | —       |
+| T2  | Implementar unión de cobre de capa (E3.1) en `isolation.rs` con API y tests                             | S3    | inline | done   | e91882b |
+| T3  | Implementar offset multipasada acumulado con fórmula y dirección por tipo de fresado (E3.2) con tests   | S4    | inline | done   | e91882b |
+| T4  | Exportar/integrar en `cam-ops`, verificar (fmt/clippy/tests) y documentar cierre                        | S1-S4 | inline | done   | e91882b |
 
 ## Log
 

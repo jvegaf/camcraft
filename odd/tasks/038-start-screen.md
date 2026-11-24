@@ -8,40 +8,40 @@ Design: `design/start-screen/` (three directions; the handed-off one is recorded
 
 ## Specs
 
-- **S1** — The user's words: *"ahora siempre abre con la prueba del rectangulo y el circulo, junto con la vista 3d, y no
-  debe de ser asi"*. No launch path may create the sample rectangle, the sample circle, or the sample pocket program,
+- **S1** — The user's words: _"ahora siempre abre con la prueba del rectangulo y el circulo, junto con la vista 3d, y no
+  debe de ser asi"_. No launch path may create the sample rectangle, the sample circle, or the sample pocket program,
   and nothing may start the 3D view or its playback.
-- **S2** — The user's words: *"debe de iniciarse sin nada abierto"*. After launch the app holds no project: the drawing
+- **S2** — The user's words: _"debe de iniciarse sin nada abierto"_. After launch the app holds no project: the drawing
   area draws neither stock nor geometry, the app bar names no document, and every command that needs a project reports
   that none is open instead of acting on an invisible empty one.
-- **S3** — The user's words: *"agregar un modal para elegir entre nuevo proyecto, abrir proyecto, y una lista de los
-  ultimos proyectos abiertos"*. One modal, opened at launch, offering exactly three things: **New project**, **Open
+- **S3** — The user's words: _"agregar un modal para elegir entre nuevo proyecto, abrir proyecto, y una lista de los
+  ultimos proyectos abiertos"_. One modal, opened at launch, offering exactly three things: **New project**, **Open
   project**, and the list of projects opened last. Choosing a recent project opens that project.
-- **S4** — The user's words: *"debemos de crear un system design para disenar ese modal"*. The modal is designed as
+- **S4** — The user's words: _"debemos de crear un system design para disenar ese modal"_. The modal is designed as
   artboards under `design/`, on the existing tokens of `design/system.md`, before it is implemented.
 
 ## Tasks
 
-| ID | Specs | What it delivers | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | S1, S2 | `cam-ui`: the shell can sit with no project open — start-screen state, empty canvas (no stock, no rulers' origin), app bar and status bar naming no project, 3D refusing without one | inline | `37550dc` |
-| T2 | S3, S4 | `cam-ui`: the start modal drawn from the handed-off artboard — New project, Open project, recent list, first-run and unreadable-list states, Esc leaves the empty workspace | inline | `37550dc` |
-| T3 | S3 | `cam-ui`: the recent-project list as shell state (`RecentProject`), recorded on a successful open and save-as, capped and de-duplicated by path | inline | `37550dc` |
-| T4 | S1, S2, S3 | `cam-desktop`: launch with no project, no sample document, no preview autoplay, no tool-library modal at launch; host the `recents.json` file in the app data directory and answer the file dialog | inline | `37550dc` |
-| T5 | S1, S2, S3 | Tests: twelve — nine in `crates/cam-ui/tests/shell/start.rs`, three host-side in `cam-desktop/src/main.rs`, plus the launch state | inline | `37550dc` |
-| T6 | S2, S3 | Docs: README startup section, `design/system.md` modal rule (a second dialog, still `radius_dialog`), the artboards | inline | `ad1e029`, `37550dc` |
+| ID  | Specs      | What it delivers                                                                                                                                                                                   | Route  | Commit               |
+| --- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------- |
+| T1  | S1, S2     | `cam-ui`: the shell can sit with no project open — start-screen state, empty canvas (no stock, no rulers' origin), app bar and status bar naming no project, 3D refusing without one               | inline | `37550dc`            |
+| T2  | S3, S4     | `cam-ui`: the start modal drawn from the handed-off artboard — New project, Open project, recent list, first-run and unreadable-list states, Esc leaves the empty workspace                        | inline | `37550dc`            |
+| T3  | S3         | `cam-ui`: the recent-project list as shell state (`RecentProject`), recorded on a successful open and save-as, capped and de-duplicated by path                                                    | inline | `37550dc`            |
+| T4  | S1, S2, S3 | `cam-desktop`: launch with no project, no sample document, no preview autoplay, no tool-library modal at launch; host the `recents.json` file in the app data directory and answer the file dialog | inline | `37550dc`            |
+| T5  | S1, S2, S3 | Tests: twelve — nine in `crates/cam-ui/tests/shell/start.rs`, three host-side in `cam-desktop/src/main.rs`, plus the launch state                                                                  | inline | `37550dc`            |
+| T6  | S2, S3     | Docs: README startup section, `design/system.md` modal rule (a second dialog, still `radius_dialog`), the artboards                                                                                | inline | `ad1e029`, `37550dc` |
 
 ## Log
 
-- **L1** — The user's request, verbatim: *"hay que modificar el inicio de la app, porque ahora siempre abre con la prueba
+- **L1** — The user's request, verbatim: _"hay que modificar el inicio de la app, porque ahora siempre abre con la prueba
   del rectangulo y el circulo, junto con la vista 3d, y no debe de ser asi. debe de iniciarse sin nada abierto, y agregar
   un modal para elegir entre nuevo proyecto, abrir proyecto, y una lista de los ultimos proyectos abiertos. debemos de
-  crear un system design para disenar ese modal"*.
+  crear un system design para disenar ese modal"_.
 - **L2** — Evidence for S1, as found (explorer pass, `path:line`): `crates/cam-desktop/src/main.rs:58` builds
   `AppState::new(sample_document())`; `sample_document()` (`:201-239`) makes `Document::new(Job::default_sheet())` plus
   the rectangle contour (`:203-212`), the circle contour (`:214-221`) and layer `Sample`; `CamDesktopApp::new` installs
   `sample_preview` (`:59-62`), sets `preview.set_playing(true)` (`:66`) and calls `shell.open_app_library()` (`:74`).
-  `Shell::show_3d` defaults to `false` (`crates/cam-ui/src/shell/mod.rs:441`), so the 3D half is the *preview's* doing,
+  `Shell::show_3d` defaults to `false` (`crates/cam-ui/src/shell/mod.rs:441`), so the 3D half is the _preview's_ doing,
   not a split flag. `AppState` stores `document: Document`, never an `Option` (`crates/cam-app/src/lib.rs:105`), and
   `Document::new(job)` (`crates/cam-model/src/lib.rs:1477`) is the empty constructor.
 - **L3** — No app-level preference, config or recents store exists in the workspace: `cam-store` holds `.c2d` documents

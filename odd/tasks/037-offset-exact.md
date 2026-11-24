@@ -11,13 +11,13 @@ clearance either loses exactness or refuses.
 verbatim:
 
 "- **G3.2 — El offset actual no soporta isolation confiable.**
-  `offset_contour` (`cam-geom/src/offset.rs:69`) hace offset por curva y resuelve vértices
-  intersectando curvas soporte, con fallback a puente recto + `OffsetWarning::MiterLimited`
-  (`offset.rs:246-279`); el cleanup de self-intersection **tessela, parte y se queda con el loop más
+`offset_contour` (`cam-geom/src/offset.rs:69`) hace offset por curva y resuelve vértices
+intersectando curvas soporte, con fallback a puente recto + `OffsetWarning::MiterLimited`
+(`offset.rs:246-279`); el cleanup de self-intersection **tessela, parte y se queda con el loop más
   grande, reportando `Flattened`** (`offset.rs:403-491`); y `Region::offset` puede rechazar el
-  resultado si el offset atraviesa la forma (`region_offset.rs:120-185,244-344`).
-  **Impacto:** en cobre denso y concavo, aclaraciones finas de PCB, este camino o pierde exactitud
-  (aplana arcos) o rechaza. Es el segundo bloqueante duro después de G0.1."
+resultado si el offset atraviesa la forma (`region_offset.rs:120-185,244-344`).
+**Impacto:** en cobre denso y concavo, aclaraciones finas de PCB, este camino o pierde exactitud
+(aplana arcos) o rechaza. Es el segundo bloqueante duro después de G0.1."
 
 **S2 — Una regla no está fijada si sólo se probó en la geometría fácil.** El defecto vive en el camino
 que se activa **sólo cuando el contorno se auto-intersecta**: en la geometría simple el arco sobrevive y
@@ -32,12 +32,12 @@ camino por otro, no inventar geometría.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| -- | ---- | ----- | ----- | ------ |
-| T1 | Mapear el pipeline del offset y decidir si el arrangement reemplaza al tessellated cleanup | S1, S3 | explorer | L3 |
-| T2 | El cleanup de auto-interseccion preserva arcos | S1, S3 | inline | L4 |
-| T3 | Tests con arcos que **fuerzan** la auto-interseccion | S2 | inline | L4 |
-| T4 | G3.2 corregida en `docs/GAPS_CAMCRAFT.md` | S1 | inline | L4 |
+| ID  | Task                                                                                       | Specs  | Route    | Commit |
+| --- | ------------------------------------------------------------------------------------------ | ------ | -------- | ------ |
+| T1  | Mapear el pipeline del offset y decidir si el arrangement reemplaza al tessellated cleanup | S1, S3 | explorer | L3     |
+| T2  | El cleanup de auto-interseccion preserva arcos                                             | S1, S3 | inline   | L4     |
+| T3  | Tests con arcos que **fuerzan** la auto-interseccion                                       | S2     | inline   | L4     |
+| T4  | G3.2 corregida en `docs/GAPS_CAMCRAFT.md`                                                  | S1     | inline   | L4     |
 
 **Fuera de alcance, declarado:** `Region::offset` rechazando el resultado cuando el offset atraviesa la
 forma (`region_offset.rs`) es el otro extremo del mismo bloqueante y merece su propia tarea cuando T2
@@ -95,7 +95,7 @@ sin corrección abierta, y con dos avisos no bloqueantes que son justos los dos:
    corregir el comentario para que prometa sólo lo que el código cumple. La segunda es más chica.
 2. **`R3-test-does-not-prove-survivor`** (`crates/cam-geom/tests/offset.rs:265-273`). El test prueba que
    **el arco sobrevive**, pero no que la frontera elegida sea la de **mayor área**. La elección por área
-   es la mitad del contrato que este documento dice respetar —la que decide *qué geometría sobrevive*— y
+   es la mitad del contrato que este documento dice respetar —la que decide _qué geometría sobrevive_— y
    quedó sin test. Se arregla con un contorno que se auto-intersecte en dos loops de áreas muy distintas
    y una aserción de que el que vuelve es el grande. **Esto va primero**: es la mitad del contrato que se
    declaró cumplido.
@@ -110,7 +110,7 @@ para que los dos tests compartan la geometría en vez de duplicarla. A -8 mm el 
 **dos candidatos**: la base erosionada del bloque, **2175.877489 mm²**, y la lengüeta que deja la boca de
 la muesca donde se cruzan las paredes de los brazos, **60.0 mm²**. El test nuevo,
 `a_self_intersecting_offset_keeps_the_largest_boundary`, afirma el área de la base con una ventana de
-1 mm²: la regla decide *qué geometría sobrevive*, así que lo que se afirma es cuál vuelve, no que algo
+1 mm²: la regla decide _qué geometría sobrevive_, así que lo que se afirma es cuál vuelve, no que algo
 razonable vuelva.
 
 **Prueba por mutación:** cambiando `area > *largest` por `area < *largest` en `arrangement_resolution`

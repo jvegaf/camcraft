@@ -22,13 +22,13 @@ Ola 4, ítem W4a: drilling desde tabla Excellon con orden determinista y predica
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Predicado de penetración puro en `penetration.rs` (sweep/buffer por radio ∩ cobre, ratio > umbral) con tests que inyectan penetración; export en `lib.rs` | S3, S4 | inline | `782fe6e` |
-| T2 | 2-opt determinista con presupuesto de iteraciones en el ordenamiento de `peck.rs` (por herramienta/grupo), preservando NN+semilla/desempates y determinismo byte a byte | S2, S4, S5 | inline | `782fe6e` |
-| T3 | Planificación de drill desde `cam_excellon::Excellon`: agrupar por diámetro/herramienta, mapear/seleccionar herramienta, soportar holes y slots (como taladros o trayectorias) y producir programa por grupo con conteos correctos | S1, S4, S5 | inline | `782fe6e` |
-| T4 | Comando CLI `drill` (`commands/drill.rs`) + registro en `commands/mod.rs` y `lib.rs`: entrada Excellon (y parámetros/herramientas necesarios), emisión de programa/G-code y reporte de hits/cambios de herramienta | S1, S2, S4 | inline | `782fe6e` |
-| T5 | Pruebas de integración/regresión: determinismo (misma entrada → igual), conteo de hits/cambios por herramienta sobre corpus/fixtures Excellon, no regresión de `peck` existente | S1, S2, S3 | inline | `782fe6e` |
+| ID  | Tarea                                                                                                                                                                                                                              | Specs      | Ruta   | Commit    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | --------- |
+| T1  | Predicado de penetración puro en `penetration.rs` (sweep/buffer por radio ∩ cobre, ratio > umbral) con tests que inyectan penetración; export en `lib.rs`                                                                          | S3, S4     | inline | `782fe6e` |
+| T2  | 2-opt determinista con presupuesto de iteraciones en el ordenamiento de `peck.rs` (por herramienta/grupo), preservando NN+semilla/desempates y determinismo byte a byte                                                            | S2, S4, S5 | inline | `782fe6e` |
+| T3  | Planificación de drill desde `cam_excellon::Excellon`: agrupar por diámetro/herramienta, mapear/seleccionar herramienta, soportar holes y slots (como taladros o trayectorias) y producir programa por grupo con conteos correctos | S1, S4, S5 | inline | `782fe6e` |
+| T4  | Comando CLI `drill` (`commands/drill.rs`) + registro en `commands/mod.rs` y `lib.rs`: entrada Excellon (y parámetros/herramientas necesarios), emisión de programa/G-code y reporte de hits/cambios de herramienta                 | S1, S2, S4 | inline | `782fe6e` |
+| T5  | Pruebas de integración/regresión: determinismo (misma entrada → igual), conteo de hits/cambios por herramienta sobre corpus/fixtures Excellon, no regresión de `peck` existente                                                    | S1, S2, S3 | inline | `782fe6e` |
 
 ## Log
 

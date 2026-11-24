@@ -33,7 +33,7 @@ Política de tolerancia única para el kernel geométrico: un objeto explícito 
 - **S3 (waves.md W3, verbatim).** «| W3 | **E0.3 política de tolerancia** | Un objeto de tolerancia explícito que cada operación recibe; ningún literal propio en operación pública | `crates/cam-geom/src/` |»
 - **S4 (ROADMAP_CAMCRAFT.md E0.3, verbatim).** «| E0.3 | Política de tolerancia única: un objeto explícito que cada operación recibe, reemplazando los literales dispersos (`cam-geom/src/lib.rs:52-58`, `offset.rs:26-43`, `region_offset.rs:62-74`) | **M** | Ninguna operación geométrica pública crea un literal de tolerancia propio; test que verifica la política |»
 - **S5 (SYSTEM_DESIGN_CAMCRAFT.md §5.2, verbatim).** «### 5.2 Política de tolerancia
-Un solo objeto, explícito, por operación:
+  Un solo objeto, explícito, por operación:
 
 ```rust
 pub struct TolerancePolicy {
@@ -45,17 +45,18 @@ pub struct TolerancePolicy {
 ```
 
 Nada dentro del kernel crea una política por su cuenta. La política viaja en la clave de cache — dos políticas distintas producen artefactos distintos, que es exactamente lo que queremos.»
+
 - **S6 (SYSTEM_DESIGN_CAMCRAFT.md I3, verbatim).** «**I3 — La tolerancia es un parámetro, nunca un literal ni un ambiente.** No hay `thread_local`, no hay»
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Inventariar API/literales de tolerancia en `cam-geom` y definir `TolerancePolicy` (+ tipos asociados) alineado con §5.2, con constructores/default canónico explícito | S3,S4,S5,S6 | inline | done | 1d170da |
-| T2 | Adaptar operaciones públicas y tipos de `cam-geom/src` para recibir `TolerancePolicy` (o referencia) donde corresponda y eliminar literales de tolerancia propios en operaciones públicas; reemplazar dispersos señalados | S3,S4,S5,S6 | inline | done | 1d170da |
-| T3 | Actualizar tests/benches de `cam-geom` y consumidores del workspace a la nueva API; mantener semántica equivalente | S1,S3,S4 | inline | done | 720285d, 525f0b9 |
-| T4 | Agregar test que verifique la política (ninguna operación geométrica pública crea literal propio / uso de política explícita) y ajustar docs si aplica | S4,S5 | inline | done | 720285d |
-| T5 | Verificación (fmt, clippy, tests relevantes/workspace), reviews RDD por slice y cierre (log, commits) | S1,S4 | inline | done | 525f0b9, cierre doc |
+| ID  | Tarea                                                                                                                                                                                                                     | Specs       | Ruta   | Estado | Commit              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------ | ------ | ------------------- |
+| T1  | Inventariar API/literales de tolerancia en `cam-geom` y definir `TolerancePolicy` (+ tipos asociados) alineado con §5.2, con constructores/default canónico explícito                                                     | S3,S4,S5,S6 | inline | done   | 1d170da             |
+| T2  | Adaptar operaciones públicas y tipos de `cam-geom/src` para recibir `TolerancePolicy` (o referencia) donde corresponda y eliminar literales de tolerancia propios en operaciones públicas; reemplazar dispersos señalados | S3,S4,S5,S6 | inline | done   | 1d170da             |
+| T3  | Actualizar tests/benches de `cam-geom` y consumidores del workspace a la nueva API; mantener semántica equivalente                                                                                                        | S1,S3,S4    | inline | done   | 720285d, 525f0b9    |
+| T4  | Agregar test que verifique la política (ninguna operación geométrica pública crea literal propio / uso de política explícita) y ajustar docs si aplica                                                                    | S4,S5       | inline | done   | 720285d             |
+| T5  | Verificación (fmt, clippy, tests relevantes/workspace), reviews RDD por slice y cierre (log, commits)                                                                                                                     | S1,S4       | inline | done   | 525f0b9, cierre doc |
 
 ## Log
 

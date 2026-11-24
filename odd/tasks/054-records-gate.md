@@ -20,12 +20,12 @@ Que no se pueda dar una tarea por completada sin comprobar que quedó registrada
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | `scripts/check-records.sh`: documento, secciones, Log, commit resoluble, memoria en Engram; `--task N` y `--engram-required` | S1, S2, S3 | inline | — |
-| T2 | Enganchar al gate (`== records ==`) y a `just records` | S1 | inline | — |
-| T3 | `deliver-task.sh`: negarse a marcar `delivered` sin registro, y a un commit inexistente | S2 | inline | — |
-| T4 | Verificar en rojo y en verde: sección ausente, commit inventado, tarea entregada sin memoria | S2 | inline | — |
+| ID  | Tarea                                                                                                                        | Specs      | Ruta   | Commit |
+| --- | ---------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
+| T1  | `scripts/check-records.sh`: documento, secciones, Log, commit resoluble, memoria en Engram; `--task N` y `--engram-required` | S1, S2, S3 | inline | —      |
+| T2  | Enganchar al gate (`== records ==`) y a `just records`                                                                       | S1         | inline | —      |
+| T3  | `deliver-task.sh`: negarse a marcar `delivered` sin registro, y a un commit inexistente                                      | S2         | inline | —      |
+| T4  | Verificar en rojo y en verde: sección ausente, commit inventado, tarea entregada sin memoria                                 | S2         | inline | —      |
 
 ## Log
 

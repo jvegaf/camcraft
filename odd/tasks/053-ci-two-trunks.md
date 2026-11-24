@@ -23,17 +23,17 @@ Arreglar el CI roto, bajar sus minutos por push y definir el flujo de ramas: `de
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Arreglar el job de paridad que no compilaba (medidor a `TolerancePolicy`) y hacer que el gate lo compile | S1, S5 | inline | `3f1abe1` |
-| T2 | Re-pinnear los goldens del corpus tras la ola W2 | S1 | inline | `3f1abe1` |
-| T3 | Alinear los dos tests que la migración W3 dejó inconsistentes | S1 | inline | `0be4139`, `9fd786c` |
-| T4 | Arreglar el test flaky que rompía el gate sólo en CI (`Scratch` por proceso) | S1 | inline | `32d6f01` |
-| T5 | Crear `dev`, proteger `master` con PR + checks requeridos | S3, S4 | inline | (settings del repo) |
-| T6 | Reescribir `ci.yml`: A en `dev`, B en PR a `master`, acciones v7, caché compartida | S2, S3 | inline | `307ab4d` |
-| T7 | Bajar el tope del arnés y re-pinnear (30 s → 20 s, medido) | S2, S5 | inline | `307ab4d` |
-| T8 | Hooks `pre-commit` / `pre-push` + `just hooks` | S2 | inline | `307ab4d` |
-| T9 | Documentar el flujo (`workflow.md`, `AGENTS.md`, `waves.md`, filas E0.4/E0.8) | S3, S4 | inline | `307ab4d` |
+| ID  | Tarea                                                                                                    | Specs  | Ruta   | Commit               |
+| --- | -------------------------------------------------------------------------------------------------------- | ------ | ------ | -------------------- |
+| T1  | Arreglar el job de paridad que no compilaba (medidor a `TolerancePolicy`) y hacer que el gate lo compile | S1, S5 | inline | `3f1abe1`            |
+| T2  | Re-pinnear los goldens del corpus tras la ola W2                                                         | S1     | inline | `3f1abe1`            |
+| T3  | Alinear los dos tests que la migración W3 dejó inconsistentes                                            | S1     | inline | `0be4139`, `9fd786c` |
+| T4  | Arreglar el test flaky que rompía el gate sólo en CI (`Scratch` por proceso)                             | S1     | inline | `32d6f01`            |
+| T5  | Crear `dev`, proteger `master` con PR + checks requeridos                                                | S3, S4 | inline | (settings del repo)  |
+| T6  | Reescribir `ci.yml`: A en `dev`, B en PR a `master`, acciones v7, caché compartida                       | S2, S3 | inline | `307ab4d`            |
+| T7  | Bajar el tope del arnés y re-pinnear (30 s → 20 s, medido)                                               | S2, S5 | inline | `307ab4d`            |
+| T8  | Hooks `pre-commit` / `pre-push` + `just hooks`                                                           | S2     | inline | `307ab4d`            |
+| T9  | Documentar el flujo (`workflow.md`, `AGENTS.md`, `waves.md`, filas E0.4/E0.8)                            | S3, S4 | inline | `307ab4d`            |
 
 ## Log
 

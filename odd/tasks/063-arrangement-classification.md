@@ -79,13 +79,13 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
     `left_in=false right_in=true` => `Reverse`.
   - intento 3, distancia 8.534642e-3: idem => `Reverse`.
   - intento 4: se detiene (`distance*2>len`).
-  Muestras `[(Drop,0),(Drop,1),(Reverse,2),(Reverse,3)]`, filtradas iguales (ningún conteo es 1),
-  `counts(K,R,D)=[0,2,2]`, decisión definitiva `Reverse` por prioridad ante el empate (`Reverse` > `Drop`,
-  `Keep` no aparece), sin guarda de sliver (`adjacent_to_snap=false`). **La pieza no se descarta: se
+    Muestras `[(Drop,0),(Drop,1),(Reverse,2),(Reverse,3)]`, filtradas iguales (ningún conteo es 1),
+    `counts(K,R,D)=[0,2,2]`, decisión definitiva `Reverse` por prioridad ante el empate (`Reverse` > `Drop`,
+    `Keep` no aparece), sin guarda de sliver (`adjacent_to_snap=false`). **La pieza no se descarta: se
   conserva invertida.** La traza completa está en `odd/tasks/evidence/063-t1-simple-top-gap.log`. Esto
-  contradice la hipótesis de L3 ("la descartó `decide_indexed`"): la clasificación la conserva y el
-  defecto —si sigue produciendo grado 3 y grado 1 en esos extremos— está después de `decide_indexed`
-  (ensamblado, soldadura de vértices, deduplicación o contracción), no en la decisión misma.
+    contradice la hipótesis de L3 ("la descartó `decide_indexed`"): la clasificación la conserva y el
+    defecto —si sigue produciendo grado 3 y grado 1 en esos extremos— está después de `decide_indexed`
+    (ensamblado, soldadura de vértices, deduplicación o contracción), no en la decisión misma.
 
 - **L5 (investigación posterior a T1, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr` = primera `G36/G37` de
   `kicad-2l-simple/top.gbr`).** La pieza de S2 **no se pierde en la clasificación ni en la poda**: llega a
@@ -110,11 +110,11 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
     único vértice 3223/3253 en `b0` con **grado 1** (sólo pieza 3216/3246 `top -> b0`), y el vértice
     1114/1133 en `top = (148.6995,-87.652139294)` con **grado 3** (piezas 1112, 3216, 3217 /
     `148.6995,-88.032744 -> top`). No hay otro vértice en `b0` y nada más llega a `b0`.
-  Comparando 4131 con 5025, el corte cambió: donde 4131 tenía `(-88.033)->b0->(destino alto)`, 5025 tiene
-  `(-88.033)->top` (3217) y `top->b0` (3216), dejando `b0` abierto y `top` como unión en T. **La causa
+    Comparando 4131 con 5025, el corte cambió: donde 4131 tenía `(-88.033)->b0->(destino alto)`, 5025 tiene
+    `(-88.033)->top` (3217) y `top->b0` (3216), dejando `b0` abierto y `top` como unión en T. **La causa
   real es un defecto topológico del conjunto de piezas que sobrevive a ese combine** (un extremo sin pareja
-  en `b0` y una T en `top`), no un fallo de fusión de vértices ni un descarte de la pieza 3216. Falta
-  determinar qué pieza que debería cerrar en `b0` falta o quedó mal cortada en asm 5025.
+    en `b0` y una T en `top`), no un fallo de fusión de vértices ni un descarte de la pieza 3216. Falta
+    determinar qué pieza que debería cerrar en `b0` falta o quedó mal cortada en asm 5025.
 
 - **L7 (T2, piezas de entrada a `assemble` en las pasadas clave, `CAMCRAFT_TRACE_063=1`, `/tmp/top_r1.gbr`,
   evidencia `odd/tasks/evidence/063-t2-pieces-asm5025.log`).** En **asm 4131** (2099, 55) `b0` es unión
@@ -191,7 +191,7 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   un extremo sin pareja, o coherencia con el grado del vértice resultante).
 
 - **L13 (T3, reparación acotada en reintento).** En el reintento por arreglo no encadenable
-  (`detect_near_misses=true`), `combine_with_indexed` descarta piezas frontera *far-flip*: las dos
+  (`detect_near_misses=true`), `combine_with_indexed` descarta piezas frontera _far-flip_: las dos
   sondas definitivas más cercanas concuerdan en `Drop` pero sondas más lejanas (que pueden cruzar
   otra frontera) invirtieron la clasificación a `Keep/Reverse`. Se intenta ensamblar el conjunto
   reparado antes de fallar. En `/tmp/top_r1.gbr` esto identifica y descarta exactamente 3216
@@ -225,9 +225,9 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
   - `fixtures/corpus/substitute-easyeda/bottom.gbr`: `parse ok in 7.52 ms`, `IMAGE-ERR after 32.02 s` —
     mismo rechazo. Tiempo distinto al observado antes (~356 s), pero el resultado sigue siendo fallo a
     terminación (sin `image ok`).
-  S3 sigue sin cumplirse para ambas capas. Próximo paso: localizar en qué región/`combine` falla cada
-  capa completa (traza/instrumentación acotada por capa) para distinguir si comparten el patrón far-flip
-  + extremos abiertos ya reparado o si son causas distintas.
+    S3 sigue sin cumplirse para ambas capas. Próximo paso: localizar en qué región/`combine` falla cada
+    capa completa (traza/instrumentación acotada por capa) para distinguir si comparten el patrón far-flip
+  * extremos abiertos ya reparado o si son causas distintas.
 
 - **L16 (T4, diagnóstico bottom).** Con traza `CAMCRAFT_TRACE_FAIL` y refactor de reparación (adoptar el
   conjunto sin piezas far-flip como base aunque falle el ensamblado, antes del intento final), los fallos
@@ -249,12 +249,12 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
     lo resuelve.
   - `a_bounds=1 b_bounds=1`: ambos intentos terminan en `segs=42, d1=4, d2=40, d3=0, far_flips=0`.
   - `a_bounds=113 b_bounds=1`: ambos intentos terminan en `segs=2274, d1=4, d2=2272, d3=0, far_flips=0`.
-  En los dos casos de extremos abiertos hay dos pares de hojas: uno a 1.414·ε y otro a
-  4.000000004·ε (4·ε + ruido de coma flotante) — mismo punto crítico observado en L22
-  (`93.129430/-88.588638` vs `93.129426/-88.588638`). El límite `4·ε` estricto no lo emparejaba; con
-  margen mínimo (`4·ε + 1e-12`) el combine ya no falla rápido en ~34 s, pero la capa completa pasa a
-  correr >300 s (en curso al registrar), lo que sugiere que ese combine se repara y el procesamiento
-  continúa a etapas posteriores (pendiente de medir a terminación o nuevo fallo).
+    En los dos casos de extremos abiertos hay dos pares de hojas: uno a 1.414·ε y otro a
+    4.000000004·ε (4·ε + ruido de coma flotante) — mismo punto crítico observado en L22
+    (`93.129430/-88.588638` vs `93.129426/-88.588638`). El límite `4·ε` estricto no lo emparejaba; con
+    margen mínimo (`4·ε + 1e-12`) el combine ya no falla rápido en ~34 s, pero la capa completa pasa a
+    correr >300 s (en curso al registrar), lo que sugiere que ese combine se repara y el procesamiento
+    continúa a etapas posteriores (pendiente de medir a terminación o nuevo fallo).
 
 - **L18 (T4, bottom con margen de emparejado).** `fixtures/corpus/substitute-easyeda/bottom.gbr` con
   `9d98491` (margen `4·ε + 1e-12`): supera el fallo rápido previo (~34 s) pero agota `timeout 600` sin
@@ -355,6 +355,7 @@ fase de corte: es la decisión de conservar o descartar, y merece su propio inst
 6. **Entrega/registros:** rama `feat/E1.4` con 85 commits desde `origin/master` (~23830 líneas autoradas según avisos de commit), por encima del corte de ~400 líneas — aplicar estrategia de entrega/cortes antes de más commits. Mantener `odd/tasks/061-e1-4-gerber.md`, `063-arrangement-classification.md`, espejos y memoria Engram alineados; `scripts/check-records.sh`/`just check` según corresponda. Actualizar `odd/roadmap/index.md` solo cuando el criterio de salida de E1.4 se satisfaga.
 
 ### Riesgo (línea)
+
 `Risk: none` para los cambios de documentación de esta sesión; los cambios de código de 063 previos tocan clasificación/ensamblado booleano compartido (ítem 3, contratos/uso compartido) y requieren la validación completa de (3) antes de darlos por cerrados.
 
 - **L26 (cierre parcial por presupuesto, esta sesión).** Para poder cerrar E1.4 de momento, los

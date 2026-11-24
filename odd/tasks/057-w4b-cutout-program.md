@@ -30,6 +30,7 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 ## Plan de trabajo (borrador)
 
 ### T1 — Alinear cutout geométrico con E2.3 (cam-ops/follow + modelo)
+
 - **Objetivo:** generar cutout de perfil exterior sobre el outline de la placa con tabs y mouse-bites, reutilizando/verificando el soporte de tabs de `profile` (S5, G3.6).
 - **Trabajo previsto:**
   - Definir/adaptar la entrada de cutout: contorno(s) de outline (`Job::outline()` y/o geometría de outline según corresponda) + `CutoutParams`/parámetros de mecanizado (margen, lado exterior, profundidad/pasadas, allowance, leads si aplica).
@@ -40,6 +41,7 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 - **Riesgo/decisión:** precisar semántica exacta de mouse-bites y fuente canónica del outline en este codebase antes de cerrar implementación.
 
 ### T2 — Comando CLI `cutout` (cam-cli)
+
 - **Objetivo:** exponer el cutout por CLI en `crates/cam-cli/src/commands/cutout.rs`, registrado en `commands/mod.rs` y en el dispatch de `run` (S4, S7).
 - **Trabajo previsto:**
   - Parseo de argumentos (documento/entrada, selección de operación/outline, parámetros relevantes, salida), siguiendo patrones de `commands/*.rs`.
@@ -48,6 +50,7 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 - **Dependencia:** interfaz estable de generación de cutout (T1).
 
 ### T3 — Post GRBL y datos de post-procesado (cam-post)
+
 - **Objetivo:** disponer del preprocesador/post GRBL utilizable para emitir el programa (S4, S6).
 - **Trabajo previsto:**
   - Localizar o definir el dialecto GRBL (`.pp`) como dato (revisar assets/dialectos existentes fuera de fixtures; si no existe, añadir el `.pp` de GRBL como dato versionado con parsing/emisión soportados por el motor actual).
@@ -55,6 +58,7 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 - **Nota:** `cam-post` hoy es parser/emisor genérico; E5.1 (catálogo de dialectos) es posterior, pero E2.5 requiere salida GRBL.
 
 ### T4 — Programa completo taladros + cutout por CLI (E2.5) e integración con W4a
+
 - **Objetivo:** `cam-cli` genera programa completo taladros + cutout con post GRBL y `cam-sim` lo acepta (S6).
 - **Trabajo previsto:**
   - Definir comando/flujo que componga drill + cutout en un solo programa (orden seguro, retract/safe Z entre operaciones, coherencia de job/herramienta/post).
@@ -63,6 +67,7 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 - **Criterio de salida:** generación por CLI y aceptación en `cam-sim`.
 
 ### T5 — Verificación y cierre
+
 - `cargo fmt --all --check`, `cargo clippy` (crates tocados/workspace según gate), tests relevantes (`cam-ops`, `cam-cli`, `cam-post`, `cam-sim` y los que apliquen), y corpus/paridad si corresponde para juzgar.
 - Actualizar Log/Tasks con evidencia, commits de unidad de trabajo y coordinar entrega/`just deliver 057` con quien mergea.
 
@@ -75,14 +80,14 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T0 | Coordinar con w4a (claims/surfaces/numeración) y elaborar plan | S1,S2,S3,S4,S7 | inline | done | — |
-| T1 | Cutout geométrico outline + tabs/mouse-bites en follow/ops | S4,S5 | inline | done | 487a020 |
-| T2 | Comando CLI `cutout` + registro en CLI | S4,S7 | inline | done | 5cd9e34 |
-| T3 | Post GRBL (datos) y emisión | S4,S6 | worker | done | 2be97e3 |
-| T4 | Programa completo drill+cutout por CLI aceptado por sim (integración W4a) | S4,S6 | inline | done | 5cd9e34 |
-| T5 | Verificación, docs de tarea y cierre | S1,S4,S5,S6 | inline | pending | — |
+| ID  | Tarea                                                                     | Specs          | Ruta   | Estado  | Commit  |
+| --- | ------------------------------------------------------------------------- | -------------- | ------ | ------- | ------- |
+| T0  | Coordinar con w4a (claims/surfaces/numeración) y elaborar plan            | S1,S2,S3,S4,S7 | inline | done    | —       |
+| T1  | Cutout geométrico outline + tabs/mouse-bites en follow/ops                | S4,S5          | inline | done    | 487a020 |
+| T2  | Comando CLI `cutout` + registro en CLI                                    | S4,S7          | inline | done    | 5cd9e34 |
+| T3  | Post GRBL (datos) y emisión                                               | S4,S6          | worker | done    | 2be97e3 |
+| T4  | Programa completo drill+cutout por CLI aceptado por sim (integración W4a) | S4,S6          | inline | done    | 5cd9e34 |
+| T5  | Verificación, docs de tarea y cierre                                      | S1,S4,S5,S6    | inline | pending | —       |
 
 ## Log
 
@@ -104,19 +109,19 @@ Plan y seguimiento de la ola 4 ítem W4b: cutout desde el outline de la placa co
 
 Tres unidades de trabajo revisables, cada una con su comportamiento, sus tests y sus docs:
 
-| Commit | Unidad | Líneas añadidas |
-| --- | --- | --- |
-| `487a020` | `cam_ops::cutout` + 7 tests (E2.3) | ~250 |
-| `2be97e3` | post GRBL como dato + golden (E2.5) | ~200 |
-| `5cd9e34` | comandos `cutout` y `program` + 8 tests de binario (E2.3/E2.5) | ~500 |
+| Commit    | Unidad                                                         | Líneas añadidas |
+| --------- | -------------------------------------------------------------- | --------------- |
+| `487a020` | `cam_ops::cutout` + 7 tests (E2.3)                             | ~250            |
+| `2be97e3` | post GRBL como dato + golden (E2.5)                            | ~200            |
+| `5cd9e34` | comandos `cutout` y `program` + 8 tests de binario (E2.3/E2.5) | ~500            |
 
 El tercero pasa de las ~400 líneas: `program` y `cutout` comparten parser de flags, composición del
 `MoveStream` y escritura atómica, así que partirlos habría duplicado esa mitad o dejado un commit que
 no compila por sí solo. La verificación de E2.5 (`cam-sim`) y la de E2.3 (moves por contorno) son la
 misma composición, y por eso viajan juntas.
+
 - **L14 (cierre, verificación final).** Gate completo sobre el HEAD definitivo (`58251a1`): `just check` → **exit 0**, `all gates green` (verificación de claim, docs, `cargo fmt --check`, `cargo clippy -D warnings`, tests del workspace y arnés de parity). Recuentos: `cam-ops` follow 27, `cam-post` 39 (16 emit + 5 grbl + 18 parser), `cam-cli` 57 (19 cli + 8 cutout + 10 pieces + 8 printsheet + 8 script + 4 script_in_memory). `waves/w4a` (`b324e3c`, tarea 056) quedó apilada con `2c41399`, único conflicto `crates/cam-ops/src/lib.rs` resuelto conservando ambos exports y las entradas `drill` de `commands/mod.rs`/`lib.rs` intactas. `odd/tasks/INDEX.md` sin tocar: lo actualiza quien mergea con `just deliver 057 58251a1`. Memoria de Engram de la tarea guardada (topic `camcraft/w4b-cutout-program-057`, nombra el slug `057-w4b-cutout-program`).
 - **L15 (review RDD: hallazgos y corrección, `194f2a1`).** Linaje `review-3c57240a1b957f4d` (tier `high`, 4 lentes + refuter + validador dirigido). El primer intento sobre el diff completo fue detenido por el proveedor con `lens_context_budget_exceeded` (sin crear autoridad); se redujo el alcance y el segundo creó linaje. Seis hallazgos corroborados del candidato, todos en dos causas:
-
   1. `cutout <doc> --out out.nc` **sin** `--post` salía con exit 0 y no escribía nada (`R1-001`, `R4-1`): la rama de reporte ignoraba `--out`. Ahora se rechaza por nombre — un `--out` que no escribe deja al llamador con un programa viejo de un intento anterior.
   2. `program` daba al cutout el **mismo número de herramienta** que los taladros (`R3-002`, `R4-2`): con un drill file que usa `T1` (el caso normal) el post no veía cambio de herramienta y el contorno se cortaba con la mecha de taladro. Ahora el comando rechaza un `--tool` que la tabla Excellon ya reclama.
   3. `route_slots` con `RetractMode::Amount` (`R1-003`, `R3-003`, hallazgo sobre `crates/cam-ops/src/excellon_drill.rs`, de la tarea 056): retraía a `-depth + amount` y después emitía un `Move::Rapid` que subía a safe Z **mientras** viajaba en XY, arrastrando la fresa fuera del material en diagonal. Ahora vuelve al inicio del slot a la altura del retract.

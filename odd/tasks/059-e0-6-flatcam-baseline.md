@@ -23,14 +23,14 @@ Instrumento E0.6: ejecutar FlatCAM-Plus sobre las 6 placas del corpus en un ento
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Explorar el entorno FlatCAM-Plus (arranque headless, superficie Tcl, objetos, `gcode_parsed`) y el arnés de paridad existente | S1-S4 | inline | done | — |
-| T2 | Escribir `scripts/baseline/`: medidor por artefacto y por operación, colector, comparador, `run.sh`, `pin.py` y README | S2, S3 | inline | done | e6ae585 |
-| T3 | Medir las 6 placas (54 artefactos, operaciones `isolation` y `drill`) y fijar los goldens en `fixtures/baseline/` | S2, S4 | inline | done | 93a5845 |
-| T4 | Escribir `odd/reports/flatcam-baseline.md`: tabla de tiempos y movimientos por placa y por operación, entorno fijado, límites y cómo reproducir | S2, S5, S6 | inline | done | 71d2c1d |
-| T5 | Cerrar el registro: receta `just baseline`, fila E0.6 del roadmap, índice y memoria Engram | S1, S7 | inline | done | 71d2c1d |
-| T6 | Revisión nativa del arnés en tres rebanadas y corrección de lo que encontró | S2 | inline | done | 8ca7c83 |
+| ID  | Tarea                                                                                                                                           | Specs      | Ruta   | Estado | Commit  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ | ------- |
+| T1  | Explorar el entorno FlatCAM-Plus (arranque headless, superficie Tcl, objetos, `gcode_parsed`) y el arnés de paridad existente                   | S1-S4      | inline | done   | —       |
+| T2  | Escribir `scripts/baseline/`: medidor por artefacto y por operación, colector, comparador, `run.sh`, `pin.py` y README                          | S2, S3     | inline | done   | e6ae585 |
+| T3  | Medir las 6 placas (54 artefactos, operaciones `isolation` y `drill`) y fijar los goldens en `fixtures/baseline/`                               | S2, S4     | inline | done   | 93a5845 |
+| T4  | Escribir `odd/reports/flatcam-baseline.md`: tabla de tiempos y movimientos por placa y por operación, entorno fijado, límites y cómo reproducir | S2, S5, S6 | inline | done   | 71d2c1d |
+| T5  | Cerrar el registro: receta `just baseline`, fila E0.6 del roadmap, índice y memoria Engram                                                      | S1, S7     | inline | done   | 71d2c1d |
+| T6  | Revisión nativa del arnés en tres rebanadas y corrección de lo que encontró                                                                     | S2         | inline | done   | 8ca7c83 |
 
 ## Log
 
@@ -51,6 +51,6 @@ Instrumento E0.6: ejecutar FlatCAM-Plus sobre las 6 placas del corpus en un ento
   - R4-TIMEOUT-PIN: un timeout se registraba pero no impedía fijar el golden. Ahora la corrida no se fija: probado con un documento con un timeout, los seis goldens quedaron idénticos byte a byte.
   - R3-001 (rebanada 3): `compare.py` exigía que las placas medidas fueran todas las del corpus, con lo que el filtro documentado `BASELINE_BOARDS` no servía para nada. Ahora se comparan las placas medidas contra sus propios goldens, se nombran las salteadas, y una corrida que no midió nada es divergencia (esa la marcó el validador como regresión de mi primera corrección).
   - R3-001/R4-001 (rebanada 2, segunda ronda): el filtro de placas aceptaba un argumento con ruta o barra final pero lo comparaba crudo con el nombre del directorio, así que nunca coincidía: la corrida medía nada, imprimía un mapa vacío y salía 0. Ahora se resuelve cada pedido al directorio directo del corpus y se mide por nombre (`8ca7c83`).
-  La rebanada 2 se había revisado antes contra un árbol que incluía por error un `__pycache__` (mi `git add -A`); se sacó antes de seguir y se abandonó esa línea de revisión sin quemar autoridad.
+    La rebanada 2 se había revisado antes contra un árbol que incluía por error un `__pycache__` (mi `git add -A`); se sacó antes de seguir y se abandonó esa línea de revisión sin quemar autoridad.
 - **L12 (verificación final).** `just check` completo en verde dos veces (antes y después de las correcciones: claim, docs, records, fmt, clippy, 109 suites de test, medidor de paridad). `just baseline` end-to-end contra los goldens commiteados, en verde, con el arnés ya corregido: **66 mediciones comparadas, 0 divergencias** — las correcciones no movieron ningún número. Riesgo: **item 6** (el arnés vive fuera de la suite y CI no puede correrlo).
 - **L13 (reviews de las rebanadas 2 y 3, recibo).** Segunda ronda sobre candidatos chicos corregidos (desde `32d6f012`): rebanada 3 (`compare.py`, `run.sh`, `README.md`, `justfile`, 416 líneas) **aprobada y reconocida** en `review-a1323828ef9fd596` sin corrección, con 6 advertencias informativas; rebanada 2 (`collect.py`, `pin.py`, 387 líneas) requirió un plan de corrección, se normalizaron los argumentos de placa a nombres de directorio del corpus (8 líneas), pasó la validación dirigida y quedó **aprobada y reconocida** en `review-9857ccbb703cf3d9`. Ambas autoridades quemadas. La corrección nueva se llevó a `feat/059-flatcam-baseline` en `8ca7c83`.

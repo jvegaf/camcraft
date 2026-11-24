@@ -14,12 +14,15 @@ Criterion en `cam-geom` y `cam-ops`, baseline guardado y mecanismo de regresión
 ## Specs
 
 **S1 — Entrega W1c (ola 1) según `odd/roadmap/waves.md`.** (verbatim de la fila W1c)
+
 > | W1c | **E0.7 benchmarks** | `criterion` en `cam-geom` y `cam-ops`, baseline guardado, job de regresión | `crates/cam-geom/benches/`, `crates/cam-ops/benches/`, `Cargo.toml` | — |
 
 **S2 — Criterio E0.7 del roadmap.** (verbatim de `docs/ROADMAP_CAMCRAFT.md`)
+
 > | E0.7 | Benchmarks propios con `criterion` + job de CI que falla ante regresión | **S** | `just bench` corre y CI compara contra el baseline |
 
 **S3 — Restricciones de ola y colisiones.** (verbatim relevante de `odd/roadmap/waves.md`)
+
 > **Colisiones declaradas:** `justfile` es de W1b; si W1c necesita una receta, la pide, no la escribe. `Cargo.toml` raíz es de W1c. `scripts/check.sh` es de W1b.
 > **Orden de merge:** W1c → W1a → W1b. El CI cierra la ola porque sus jobs necesitan lo que entregan los otros dos.
 
@@ -27,12 +30,12 @@ Criterion en `cam-geom` y `cam-ops`, baseline guardado y mecanismo de regresión
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Crear documento ODD 044, reclamar tarea y alinear dependencias Criterion en manifests de superficies | S1,S3,S4 | inline | `027c2cd` |
-| T2 | Implementar benches representativos en `cam-geom` con baseline guardado | S1,S2 | inline | `027c2cd` |
-| T3 | Implementar benches representativos en `cam-ops` con baseline guardado y mecanismo de regresión ejecutable dentro de superficies | S1,S2,S3 | inline | `027c2cd` |
-| T4 | Verificar ejecución de benches/regresión y cerrar evidencia en doc/Engram/todo | S1-S4 | inline | `027c2cd` |
+| ID  | Tarea                                                                                                                            | Specs    | Ruta   | Commit    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | --------- |
+| T1  | Crear documento ODD 044, reclamar tarea y alinear dependencias Criterion en manifests de superficies                             | S1,S3,S4 | inline | `027c2cd` |
+| T2  | Implementar benches representativos en `cam-geom` con baseline guardado                                                          | S1,S2    | inline | `027c2cd` |
+| T3  | Implementar benches representativos en `cam-ops` con baseline guardado y mecanismo de regresión ejecutable dentro de superficies | S1,S2,S3 | inline | `027c2cd` |
+| T4  | Verificar ejecución de benches/regresión y cerrar evidencia en doc/Engram/todo                                                   | S1-S4    | inline | `027c2cd` |
 
 ## Log
 

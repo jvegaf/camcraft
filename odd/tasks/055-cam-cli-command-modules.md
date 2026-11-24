@@ -14,11 +14,11 @@ Preparación obligatoria antes de abrir dos worktrees para la ola 4: partir `cra
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Crear `commands/` y extraer comandos de `lib.rs` preservando API y despacho | S1, S2 | inline | — |
-| T2 | Actualizar módulos existentes (`script`, `pieces`, `printsheet`) y reexportes | S2 | inline | — |
-| T3 | Verificar compilación y tests de `cam-cli` / workspace relevante | S3 | inline | — |
+| ID  | Tarea                                                                         | Specs  | Ruta   | Commit |
+| --- | ----------------------------------------------------------------------------- | ------ | ------ | ------ |
+| T1  | Crear `commands/` y extraer comandos de `lib.rs` preservando API y despacho   | S1, S2 | inline | —      |
+| T2  | Actualizar módulos existentes (`script`, `pieces`, `printsheet`) y reexportes | S2     | inline | —      |
+| T3  | Verificar compilación y tests de `cam-cli` / workspace relevante              | S3     | inline | —      |
 
 ## Log
 

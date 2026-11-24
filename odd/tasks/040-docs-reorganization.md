@@ -35,13 +35,13 @@ carpetas... lo que mas me guste."
 
 ## Tasks
 
-| # | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Renombrar las 39 tareas a `NNN-slug.md` y generar `INDEX.md` | S3, S4, S6 | inline (script) | `cd583d5` |
-| T2 | Actualizar las referencias a `odd/tasks/*` fuera de `odd/` | S3, S6 | inline (script) | `cd583d5` |
-| T3 | Partir `odd/roadmap.md` (el archivo de 1268 líneas) en `odd/roadmap/` + `odd/archive/` y actualizar sus referencias | S2, S6 | worker | `fd853db` |
-| T4 | Escribir `odd/README.md`: el esquema de nombrado y cómo se lee `odd/` | S5, S6 | inline | `6ac2a44` |
-| T5 | Reescribir `README.md` para camcraft (PCB), sin residuos del producto anterior | S1, S5 | inline | `6ac2a44` |
+| #   | Tarea                                                                                                               | Specs      | Ruta            | Commit    |
+| --- | ------------------------------------------------------------------------------------------------------------------- | ---------- | --------------- | --------- |
+| T1  | Renombrar las 39 tareas a `NNN-slug.md` y generar `INDEX.md`                                                        | S3, S4, S6 | inline (script) | `cd583d5` |
+| T2  | Actualizar las referencias a `odd/tasks/*` fuera de `odd/`                                                          | S3, S6     | inline (script) | `cd583d5` |
+| T3  | Partir `odd/roadmap.md` (el archivo de 1268 líneas) en `odd/roadmap/` + `odd/archive/` y actualizar sus referencias | S2, S6     | worker          | `fd853db` |
+| T4  | Escribir `odd/README.md`: el esquema de nombrado y cómo se lee `odd/`                                               | S5, S6     | inline          | `6ac2a44` |
+| T5  | Reescribir `README.md` para camcraft (PCB), sin residuos del producto anterior                                      | S1, S5     | inline          | `6ac2a44` |
 
 ## Log
 

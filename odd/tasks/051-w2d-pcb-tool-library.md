@@ -17,12 +17,12 @@ Librería PCB (E1.8 / W2d): fresa de aislamiento como tipo real, V-bit con ángu
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Agregar `ToolKind::IsolationMill` como tipo real en `cam-store` (código/slug/label/ALL/from_slug/from_shape/of, match arms y consumidores), con soporte en serialización `tool_file` y validación/edición; preservar compatibilidad con filas y archivos existentes | S2,S3,S4 | inline | — |
-| T2 | Asegurar V-bit con ángulo y punta end-to-end: `included_angle` y punta (`flat_diameter`, y geometría relevante) creables/validables/persistibles/serializables sin pérdida, coherente con el modelo existente | S2,S3 | inline | — |
-| T3 | Hacer `tools add` completo en `cam-cli/src/lib.rs`: aceptar kind y parámetros geométricos/de corte necesarios (p. ej. ángulo, punta/flat, flutes, longitudes, tip/shank, feed/plunge/spindle/stepdown/stepover, name-format), validar y guardar con las APIs de `tool_edit`/store, y actualizar ayuda/listado según corresponda | S2,S4,S5 | inline | — |
-| T4 | Tests y docs: cubrir nuevo tipo, round-trip V-bit (ángulo/punta) end-to-end en store/archivo/CLI según aplique, y casos de `tools add`; actualizar referencias de ayuda si cambian. Verificación focalizada y regresión relevante | S2,S3,S4 | inline | — |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                           | Specs    | Ruta   | Commit |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------ |
+| T1  | Agregar `ToolKind::IsolationMill` como tipo real en `cam-store` (código/slug/label/ALL/from_slug/from_shape/of, match arms y consumidores), con soporte en serialización `tool_file` y validación/edición; preservar compatibilidad con filas y archivos existentes                                                             | S2,S3,S4 | inline | —      |
+| T2  | Asegurar V-bit con ángulo y punta end-to-end: `included_angle` y punta (`flat_diameter`, y geometría relevante) creables/validables/persistibles/serializables sin pérdida, coherente con el modelo existente                                                                                                                   | S2,S3    | inline | —      |
+| T3  | Hacer `tools add` completo en `cam-cli/src/lib.rs`: aceptar kind y parámetros geométricos/de corte necesarios (p. ej. ángulo, punta/flat, flutes, longitudes, tip/shank, feed/plunge/spindle/stepdown/stepover, name-format), validar y guardar con las APIs de `tool_edit`/store, y actualizar ayuda/listado según corresponda | S2,S4,S5 | inline | —      |
+| T4  | Tests y docs: cubrir nuevo tipo, round-trip V-bit (ángulo/punta) end-to-end en store/archivo/CLI según aplique, y casos de `tools add`; actualizar referencias de ayuda si cambian. Verificación focalizada y regresión relevante                                                                                               | S2,S3,S4 | inline | —      |
 
 ## Log
 
