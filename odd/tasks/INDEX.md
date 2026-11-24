@@ -78,3 +78,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 073 | [e6-3-operation-forms](073-e6-3-operation-forms.md) | delivered | 2026-11-23 | `016d361` |
 | 077 | [spike-tauri-webview](077-spike-tauri-webview.md) | planned | — | — |
 | 078 | [spike-gpui-native](078-spike-gpui-native.md) | planned | — | — |
+| 079 | [tauri-migration-plan](079-tauri-migration-plan.md) | delivered | 2026-05-24 | — |
