@@ -1,0 +1,36 @@
+# 088 — Fase 4: paridad DS Floating Studio
+
+Ajustar shell/workbench y start screen a paridad de estilos/componentes con `design/camcraft-workbench-v2/02-floating-studio.html`.
+
+## Surfaces
+
+- `src/lib/components/start-screen/StartScreen.svelte`
+- `src/lib/components/workbench/TopBar.svelte`
+- `src/lib/components/workbench/ToolRail.svelte`
+- `src/lib/components/workbench/ViewportHud.svelte`
+- `src/lib/components/workbench/StatusBar.svelte`
+- `src/lib/components/workbench/BrowserPanel.svelte`
+- `src/lib/components/workbench/InspectorPanel.svelte`
+- `src/lib/components/workbench/FloatCard.svelte`
+- `src/lib/components/workbench/WorkbenchShell.svelte`
+- `docs/MIGRATION_TAURI.md`
+- `odd/tasks/088-tauri-fase4-ds-parity.md`
+- `odd/tasks/INDEX.md`
+
+## Specs
+
+- **S1 (pedido original, verbatim).** «el problema que teniamos en egui es que no estaba actualizada la ui con los nuevos requerimientos que teniamos, por lo que no le vamos a dar mas coba. tenemos que centrarnos en la paridad de estilos y componentes con el ui system design de @design/camcraft-workbench-v2/02-floating-studio.html»
+
+## Tasks
+
+| ID | Tarea | Specs | Ruta | Commit |
+| --- | --- | --- | --- | --- |
+| T1 | Auditar y ajustar TopBar/ToolRail/ViewportHud/StatusBar a DS | S1 | inline | pendiente |
+| T2 | Ajustar Browser/Inspector/FloatCard y StartScreen a DS | S1 | inline | pendiente |
+| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | pendiente |
+
+## Log
+
+- **L1 (pedido original, verbatim).** «el problema que teniamos en egui es que no estaba actualizada la ui con los nuevos requerimientos que teniamos, por lo que no le vamos a dar mas coba. tenemos que centrarnos en la paridad de estilos y componentes con el ui system design de @design/camcraft-workbench-v2/02-floating-studio.html»
+- **L2 (contexto).** Referencia DS: `design/camcraft-workbench-v2/02-floating-studio.html`. Priorizar paridad visual/estructural, manteniendo acciones reales ya cableadas.
+- **L3 (ejecución, 2026-11-24).** TopBar/ToolRail/ViewportHud/StatusBar ajustados a DS (kbd ⌘K, layout pill, iconos, estado/severidad, labels 3D). StartScreen ya alineado en textos clave. Verificado `pnpm check`.
