@@ -119,9 +119,9 @@ const count = css({
 const dotColor: Record<string, string> = {
   copper: '#c47a2c',
   drill: '#7cc7ff',
-  cut: 'var(--cut)',
-  ok: 'var(--ok)',
-  default: 'var(--line-strong)'
+  cut: '#f5a623',
+  ok: '#5ec27f',
+  default: '#35404c'
 };
 </script>
 
