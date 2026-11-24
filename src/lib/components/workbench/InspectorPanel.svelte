@@ -1,4 +1,5 @@
 <script lang="ts">
+import { css } from 'styled-system/css';
 import FloatCard from './FloatCard.svelte';
 
 interface Field {
@@ -31,41 +32,86 @@ let {
   statusTitle = 'Listo para simular.',
   statusText = 'Toolpath válido, sin colisiones detectadas en preview.'
 }: Props = $props();
+
+const panelPos = css({
+  top: '64px',
+  right: '16px',
+  w: '324px',
+  maxH: 'calc(100% - 114px)'
+});
+const sectionCls = css({ mb: '12px', _last: { mb: '0' } });
+const sectionTitle = css({
+  m: '0 0 6px',
+  px: '4px',
+  fontSize: '11px',
+  color: 'textOff',
+  fontWeight: '500',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  _after: { content: '""', flex: '1', h: '1px', bg: 'hairline', opacity: '0.9' }
+});
+const fieldCls = css({ display: 'grid', gap: '4px', mb: '10px' });
+const labelCls = css({ fontSize: '11px', color: 'textDim', px: '1px' });
+const inputCls = css({
+  h: '30px',
+  px: '10px',
+  borderRadius: 'control',
+  bg: 'app',
+  border: '1px solid',
+  borderColor: 'border',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  fontSize: '12px',
+  color: 'text'
+});
+const unitCls = css({ color: 'textOff', fontSize: '11px', fontFamily: 'mono' });
+const kv = css({
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  gap: '6px 12px',
+  fontSize: '12px',
+  pt: '10px',
+  borderTop: '1px solid',
+  borderColor: 'hairline',
+  mt: '2px',
+  mb: '0',
+  '& dt': { color: 'textDim' },
+  '& dd': { m: '0', fontSize: '11px', fontFamily: 'mono', color: 'text' }
+});
+const stateCard = css({
+  p: '10px',
+  borderRadius: '6px',
+  bg: 'ok/8',
+  border: '1px solid',
+  borderColor: 'ok/22',
+  color: 'text',
+  fontSize: '12px',
+  lineHeight: '1.45',
+  '& strong': { color: 'ok', fontWeight: '500' }
+});
 </script>
 
-<FloatCard title="Inspector" meta={title} class="inspector" ariaLabel="Inspector">
-  <div class="section">
-    <h3>Operación</h3>
+<FloatCard title="Inspector" meta={title} class={panelPos} ariaLabel="Inspector">
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Operación</h3>
     {#each fields as field}
-      <div class="field">
-        <span class="label">{field.label}</span>
-        <div class="input">{field.value}{#if field.unit}<span class="u">{field.unit}</span>{/if}</div>
+      <div class={fieldCls}>
+        <span class={labelCls}>{field.label}</span>
+        <div class={inputCls}>{field.value}{#if field.unit}<span class={unitCls}>{field.unit}</span>{/if}</div>
       </div>
     {/each}
-    <dl class="kv">
+    <dl class={kv}>
       {#each stats as stat}
         <dt>{stat.label}</dt><dd>{stat.value}</dd>
       {/each}
     </dl>
   </div>
-  <div class="section">
-    <h3>Estado</h3>
-    <div class="state-card"><strong>{statusTitle}</strong> {statusText}</div>
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Estado</h3>
+    <div class={stateCard}><strong>{statusTitle}</strong> {statusText}</div>
   </div>
 </FloatCard>
-
-<style>
-  :global(.inspector) { top:64px; right:16px; width:324px; max-height:calc(100% - 114px); }
-  .section { margin-bottom:12px; }
-  .section:last-child { margin-bottom:0; }
-  .section h3 { margin:0 0 6px; padding:0 4px; font-size:11px; color:var(--text-off); font-weight:500; text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:8px; }
-  .section h3::after { content:""; flex:1; height:1px; background:var(--line-hair); opacity:.9; }
-  .field { display:grid; gap:4px; margin-bottom:10px; }
-  .field .label { font-size:11px; color:var(--text-dim); padding:0 1px; }
-  .input { height:30px; padding:0 10px; border-radius:var(--radius-control); background:rgba(18,21,26,.72); border:1px solid var(--line-strong); display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text); }
-  .input .u { color:var(--text-off); font:11px var(--mono); }
-  .kv { display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12px; padding:10px 0 0; border-top:1px solid var(--line-hair); margin:2px 0 0; }
-  .kv dt { color:var(--text-dim); } .kv dd { margin:0; font:11px var(--mono); color:var(--text); }
-  .state-card { padding:10px; border-radius:6px; background:rgba(94,194,127,.08); border:1px solid rgba(94,194,127,.22); color:var(--text); font-size:12px; line-height:1.45; }
-  .state-card strong { color:var(--ok); font-weight:500; }
-</style>

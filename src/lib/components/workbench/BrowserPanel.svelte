@@ -1,4 +1,5 @@
 <script lang="ts">
+import { css } from 'styled-system/css';
 import FloatCard from './FloatCard.svelte';
 
 interface NavItem {
@@ -54,34 +55,87 @@ let {
     }
   ]
 }: Props = $props();
+
+const panelPos = css({
+  top: '64px',
+  left: '16px',
+  w: '284px',
+  maxH: 'calc(100% - 114px)'
+});
+const sectionCls = css({ mb: '12px', _last: { mb: '0' } });
+const sectionTitle = css({
+  m: '0 0 6px',
+  px: '4px',
+  fontSize: '11px',
+  color: 'textOff',
+  fontWeight: '500',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  _after: { content: '""', flex: '1', h: '1px', bg: 'hairline', opacity: '0.9' }
+});
+const navItem = css({
+  w: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  px: '8px',
+  py: '6px',
+  borderRadius: '5px',
+  textAlign: 'left',
+  fontSize: '12px',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'transparent',
+  border: 'none',
+  _hover: { bg: 'raised' },
+  _focusVisible: {
+    outline: '2px solid',
+    outlineColor: 'sel',
+    outlineOffset: '-1px'
+  }
+});
+const navActive = css({
+  bg: 'selSoft',
+  color: 'textHi',
+  boxShadow: 'inset 0 0 0 1px token(colors.selSoft)'
+});
+const dotBase = css({
+  w: '8px',
+  h: '8px',
+  borderRadius: '50%',
+  bg: 'border',
+  flex: 'none'
+});
+const count = css({
+  ml: 'auto',
+  fontSize: '11px',
+  fontFamily: 'mono',
+  color: 'textOff',
+  whiteSpace: 'nowrap'
+});
+const dotColor: Record<string, string> = {
+  copper: '#c47a2c',
+  drill: '#7cc7ff',
+  cut: 'var(--cut)',
+  ok: 'var(--ok)',
+  default: 'var(--line-strong)'
+};
 </script>
 
-<FloatCard title="Browser" meta="Proyecto" class="browser" ariaLabel="Browser">
+<FloatCard title="Browser" meta="Proyecto" class={panelPos} ariaLabel="Browser">
   {#each sections as section}
-    <div class="section">
-      <h3>{section.title}</h3>
+    <div class={sectionCls}>
+      <h3 class={sectionTitle}>{section.title}</h3>
       {#each section.items as item}
-        <button class="nav-item" aria-current={item.active ? 'true' : undefined}>
-          <span class="dot {item.dot ?? 'default'}"></span>
+        <button class={item.active ? `${navItem} ${navActive}` : navItem} aria-current={item.active ? 'true' : undefined}>
+          <span class={dotBase} style={`background:${dotColor[item.dot ?? 'default']}`}></span>
           {item.label}
-          {#if item.meta}<span class="count">{item.meta}</span>{/if}
+          {#if item.meta}<span class={count}>{item.meta}</span>{/if}
         </button>
       {/each}
     </div>
   {/each}
 </FloatCard>
-
-<style>
-  :global(.browser) { top:64px; left:16px; width:284px; max-height:calc(100% - 114px); }
-  .section { margin-bottom:12px; }
-  .section:last-child { margin-bottom:0; }
-  .section h3 { margin:0 0 6px; padding:0 4px; font-size:11px; color:var(--text-off); font-weight:500; text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:8px; }
-  .section h3::after { content:""; flex:1; height:1px; background:var(--line-hair); opacity:.9; }
-  .nav-item { width:100%; display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px; text-align:left; font-size:12px; color:var(--text); cursor:pointer; font:inherit; background:none; border:none; }
-  .nav-item:hover { background:var(--bg-raised); }
-  .nav-item[aria-current="true"] { background:var(--sel-soft); color:var(--text-hi); box-shadow:inset 0 0 0 1px rgba(111,211,232,.12); }
-  .nav-item:focus-visible { outline:2px solid var(--sel); outline-offset:-1px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--line-strong); flex:none; }
-  .dot.copper{background:#c47a2c}.dot.drill{background:#7cc7ff}.dot.cut{background:var(--cut)}.dot.ok{background:var(--ok)}
-  .count { margin-left:auto; font:11px var(--mono); color:var(--text-off); white-space:nowrap; }
-</style>
