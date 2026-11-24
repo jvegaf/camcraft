@@ -1,4 +1,5 @@
 <script lang="ts">
+import { css } from 'styled-system/css';
 import BoardCanvas from './BoardCanvas.svelte';
 import BrowserPanel from './BrowserPanel.svelte';
 import InspectorPanel from './InspectorPanel.svelte';
@@ -12,9 +13,29 @@ interface Props {
 }
 
 let { projectName = 'controller-board.cam' }: Props = $props();
+
+const shell = css({
+  w: '100%',
+  h: '100%',
+  minH: '600px',
+  position: 'relative',
+  overflow: 'hidden',
+  bg: 'canvas',
+  color: 'text',
+  fontSize: '13px',
+  lineHeight: '1.4',
+  fontFamily: 'sans',
+  '& button, & input': {
+    font: 'inherit',
+    color: 'inherit',
+    bg: 'none',
+    border: 'none'
+  },
+  '& button': { cursor: 'pointer' }
+});
 </script>
 
-<div class="shell" role="application" aria-label="Camcraft Floating Studio">
+<div class={shell} role="application" aria-label="Camcraft Floating Studio">
   <BoardCanvas />
   <TopBar {projectName} />
   <ToolRail />
@@ -23,11 +44,3 @@ let { projectName = 'controller-board.cam' }: Props = $props();
   <InspectorPanel />
   <StatusBar />
 </div>
-
-<style>
-  .shell {
-    width:100%; height:100%; min-height:600px; position:relative; overflow:hidden; background:var(--bg-canvas); color:var(--text); font:13px/1.4 var(--font);
-  }
-  .shell :global(button), .shell :global(input) { font:inherit; color:inherit; background:none; border:none; }
-  .shell :global(button) { cursor:pointer; }
-</style>
