@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { css } from 'styled-system/css';
+import { setSelection } from './workbench.svelte';
 
 type Point3Dto = { x: number; y: number; z: number };
 type Line3Dto = { start: Point3Dto; end: Point3Dto };
@@ -21,7 +22,6 @@ type SceneSnapshotDto = {
 let container: HTMLDivElement | undefined = $state();
 let fpsText = $state('FPS: --');
 let statusText = $state('Cargando escena...');
-let selectionText = $state('Selección: ninguna');
 
 const wrap = css({
   position: 'absolute',
@@ -233,7 +233,7 @@ onMount(() => {
       selectedTri = tri;
       if (tri == null) {
         selectMesh.visible = false;
-        selectionText = 'Selección: ninguna';
+        setSelection(null);
       } else {
         selectMesh.geometry.dispose();
         selectMesh.geometry = triGeometry(tri);
@@ -243,7 +243,7 @@ onMount(() => {
         const d = triVerts
           .map((vi) => snapshot.vertices[vi].depth)
           .reduce((a, b) => a + b, 0) / 3;
-        selectionText = `Selección: tri ${tri}\nProfundidad media: ${(d * snapshot.stockThickness).toFixed(2)} mm`;
+        setSelection({ kind: 'triangle', index: tri, avgDepthMm: d * snapshot.stockThickness });
       }
     };
 
@@ -313,5 +313,5 @@ onMount(() => {
 </script>
 
 <div class={wrap} bind:this={container}>
-  <div class={hud}>{statusText}{'\n'}{fpsText}{'\n'}{selectionText}</div>
+  <div class={hud}>{statusText}{'\n'}{fpsText}</div>
 </div>

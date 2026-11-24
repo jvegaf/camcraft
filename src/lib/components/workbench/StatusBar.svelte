@@ -1,21 +1,12 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
+import { workbenchState } from './workbench.svelte';
 
 interface Props {
-  x?: string;
-  y?: string;
-  z?: string;
   message?: string;
-  status?: string;
 }
 
-let {
-  x = 'X 42.80',
-  y = 'Y 31.20',
-  z = 'Z 2.00',
-  message = 'mm · Grid 1 mm · GRBL',
-  status = '● Sin errores'
-}: Props = $props();
+let { message = 'mm · Grid 1 mm · Tauri' }: Props = $props();
 
 const statusBar = css({
   position: 'absolute',
@@ -42,11 +33,14 @@ const sep = css({ w: '1px', h: '14px', bg: 'hairline' });
 </script>
 
 <footer class={statusBar} aria-label="Barra de estado">
-  <span class={mono}>{x}</span>
-  <span class={mono}>{y}</span>
-  <span class={mono}>{z}</span>
+  <span class={mono}>3D</span>
   <span class={sep} aria-hidden="true"></span>
   <span>{message}</span>
   <span class={spacer}></span>
-  <span class={ok}>{status}</span>
+  {#if workbenchState.selection}
+    <span class={mono}>Tri {workbenchState.selection.index}</span>
+    <span class={mono}>{workbenchState.selection.avgDepthMm.toFixed(2)} mm</span>
+    <span class={sep} aria-hidden="true"></span>
+  {/if}
+  <span class={ok}>{workbenchState.statusMessage}</span>
 </footer>

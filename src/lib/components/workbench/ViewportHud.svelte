@@ -1,15 +1,12 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
+import { workbenchState } from './workbench.svelte';
 
 interface Props {
   mode?: string;
-  selection?: string;
 }
 
-let {
-  mode = '2D Board · Grid 1 mm',
-  selection = '6 taladros seleccionados'
-}: Props = $props();
+let { mode = '3D Viewport · Orbit' }: Props = $props();
 
 const hud = css({
   position: 'absolute',
@@ -36,5 +33,13 @@ const selText = css({ color: 'sel' });
 
 <div class={hud} aria-label="Estado de viewport">
   <div class={card}><b>{mode.split(' · ')[0]}</b>{#if mode.includes(' · ')} · {mode.split(' · ').slice(1).join(' · ')}{/if}</div>
-  <div class={card}><span class={selText}>{selection}</span></div>
+  <div class={card}>
+    <span class={selText}>
+      {#if workbenchState.selection}
+        Tri {workbenchState.selection.index} · {workbenchState.selection.avgDepthMm.toFixed(2)} mm
+      {:else}
+        Sin selección
+      {/if}
+    </span>
+  </div>
 </div>

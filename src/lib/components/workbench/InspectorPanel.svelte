@@ -1,37 +1,7 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import FloatCard from './FloatCard.svelte';
-
-interface Field {
-  label: string;
-  value: string;
-  unit?: string;
-}
-
-interface Props {
-  title?: string;
-  fields?: Field[];
-  stats?: { label: string; value: string }[];
-  statusTitle?: string;
-  statusText?: string;
-}
-
-let {
-  title = 'Drill 0.8 / 1.0',
-  fields = [
-    { label: 'Tipo', value: 'Drill cycle', unit: 'G81' },
-    { label: 'Herramienta', value: 'T1 Flat 0.8 mm', unit: 'cambiar' },
-    { label: 'Z cut', value: '-1.8', unit: 'mm' },
-    { label: 'Feed plunge', value: '120', unit: 'mm/min' }
-  ],
-  stats = [
-    { label: 'Hits', value: '6' },
-    { label: 'Herramientas', value: 'T1, T2' },
-    { label: 'Tiempo', value: '0:42' }
-  ],
-  statusTitle = 'Listo para simular.',
-  statusText = 'Toolpath válido, sin colisiones detectadas en preview.'
-}: Props = $props();
+import { workbenchState } from './workbench.svelte';
 
 const panelPos = css({
   top: '64px',
@@ -93,25 +63,53 @@ const stateCard = css({
   lineHeight: '1.45',
   '& strong': { color: 'ok', fontWeight: '500' }
 });
+const neutralCard = css({
+  p: '10px',
+  borderRadius: '6px',
+  bg: 'raised',
+  border: '1px solid',
+  borderColor: 'hairline',
+  color: 'textDim',
+  fontSize: '12px',
+  lineHeight: '1.45'
+});
 </script>
 
-<FloatCard title="Inspector" meta={title} class={panelPos} ariaLabel="Inspector">
+<FloatCard
+  title="Inspector"
+  meta={workbenchState.selection ? `Tri ${workbenchState.selection.index}` : 'Sin selección'}
+  class={panelPos}
+  ariaLabel="Inspector"
+>
   <div class={sectionCls}>
-    <h3 class={sectionTitle}>Operación</h3>
-    {#each fields as field}
+    <h3 class={sectionTitle}>Selección</h3>
+    {#if workbenchState.selection}
       <div class={fieldCls}>
-        <span class={labelCls}>{field.label}</span>
-        <div class={inputCls}>{field.value}{#if field.unit}<span class={unitCls}>{field.unit}</span>{/if}</div>
+        <span class={labelCls}>Tipo</span>
+        <div class={inputCls}>Triángulo superficie<span class={unitCls}>mesh</span></div>
       </div>
-    {/each}
-    <dl class={kv}>
-      {#each stats as stat}
-        <dt>{stat.label}</dt><dd>{stat.value}</dd>
-      {/each}
-    </dl>
+      <div class={fieldCls}>
+        <span class={labelCls}>Índice</span>
+        <div class={inputCls}>{workbenchState.selection.index}<span class={unitCls}>tri</span></div>
+      </div>
+      <div class={fieldCls}>
+        <span class={labelCls}>Profundidad media</span>
+        <div class={inputCls}>{workbenchState.selection.avgDepthMm.toFixed(2)}<span class={unitCls}>mm</span></div>
+      </div>
+      <dl class={kv}>
+        <dt>Estado</dt><dd>Seleccionado</dd>
+        <dt>Fuente</dt><dd>Viewport 3D</dd>
+      </dl>
+    {:else}
+      <div class={neutralCard}>Hacé click en la superficie para seleccionar un triángulo.</div>
+    {/if}
   </div>
   <div class={sectionCls}>
     <h3 class={sectionTitle}>Estado</h3>
-    <div class={stateCard}><strong>{statusTitle}</strong> {statusText}</div>
+    {#if workbenchState.selection}
+      <div class={stateCard}><strong>Selección activa.</strong> Reflejada en viewport y HUD.</div>
+    {:else}
+      <div class={neutralCard}>Sin selección activa.</div>
+    {/if}
   </div>
 </FloatCard>
