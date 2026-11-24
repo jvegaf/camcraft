@@ -28,6 +28,8 @@ const statusBar = css({
 });
 const mono = css({ fontSize: '11px', fontFamily: 'mono', color: 'text' });
 const ok = css({ color: 'ok' });
+const err = css({ color: 'danger' });
+const info = css({ color: 'textDim' });
 const spacer = css({ flex: '1' });
 const sep = css({ w: '1px', h: '14px', bg: 'hairline' });
 </script>
@@ -42,5 +44,7 @@ const sep = css({ w: '1px', h: '14px', bg: 'hairline' });
     <span class={mono}>{workbenchState.selection.avgDepthMm.toFixed(2)} mm</span>
     <span class={sep} aria-hidden="true"></span>
   {/if}
-  <span class={ok}>{workbenchState.statusMessage}</span>
+  <span class={workbenchState.statusKind === 'error' ? err : workbenchState.statusKind === 'ok' ? ok : info}>
+    {workbenchState.statusMessage}
+  </span>
 </footer>

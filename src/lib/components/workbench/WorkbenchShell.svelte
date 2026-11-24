@@ -11,7 +11,7 @@ import StatusBar from './StatusBar.svelte';
 import ToolRail from './ToolRail.svelte';
 import TopBar from './TopBar.svelte';
 import ViewportHud from './ViewportHud.svelte';
-import { refreshDocumentStatus, setDocument, setStatusMessage, workbenchState } from './workbench.svelte';
+import { refreshDocumentStatus, setDocument, setStatus, workbenchState } from './workbench.svelte';
 
 interface Props {
   projectName?: string;
@@ -32,9 +32,9 @@ async function handleOpen() {
     if (!selected || Array.isArray(selected)) return;
     const status = await invoke<typeof workbenchState.document>('open_document', { path: selected });
     setDocument(status);
-    setStatusMessage('Documento abierto');
+    setStatus('Documento abierto', 'ok');
   } catch (e) {
-    setStatusMessage(`Error: ${String(e)}`);
+    setStatus(`Error: ${String(e)}`, 'error');
   }
 }
 
@@ -43,9 +43,9 @@ async function handleSave() {
     const path = workbenchState.document?.path ?? null;
     const status = await invoke<typeof workbenchState.document>('save_document', { path });
     setDocument(status);
-    setStatusMessage('Documento guardado');
+    setStatus('Documento guardado', 'ok');
   } catch (e) {
-    setStatusMessage(`Error: ${String(e)}`);
+    setStatus(`Error: ${String(e)}`, 'error');
   }
 }
 
@@ -55,9 +55,21 @@ async function handleSaveAs() {
     if (!target) return;
     const status = await invoke<typeof workbenchState.document>('save_document', { path: target });
     setDocument(status);
-    setStatusMessage('Documento guardado');
+    setStatus('Documento guardado', 'ok');
   } catch (e) {
-    setStatusMessage(`Error: ${String(e)}`);
+    setStatus(`Error: ${String(e)}`, 'error');
+  }
+}
+
+async function handleNew() {
+  try {
+    const status = await invoke<typeof workbenchState.document>('new_document', {
+      request: { width: 100, height: 100, thickness: 1.6 }
+    });
+    setDocument(status);
+    setStatus('Nuevo documento', 'ok');
+  } catch (e) {
+    setStatus(`Error: ${String(e)}`, 'error');
   }
 }
 
@@ -94,6 +106,7 @@ const shell = css({
   <BoardCanvas />
   <TopBar
     projectName={workbenchState.document?.path?.split('/').pop() ?? projectName}
+    onNew={handleNew}
     onOpen={handleOpen}
     onSave={handleSave}
     onSaveAs={handleSaveAs}

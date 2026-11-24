@@ -1,10 +1,12 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
+import { workbenchState } from './workbench.svelte';
 
 interface Props {
   projectName?: string;
   searchPlaceholder?: string;
   layoutLabel?: string;
+  onNew?: () => void;
   onOpen?: () => void;
   onSave?: () => void;
   onSaveAs?: () => void;
@@ -16,6 +18,7 @@ let {
   projectName = 'controller-board.cam',
   searchPlaceholder = 'Buscar comando, capa u operación…',
   layoutLabel = 'Floating',
+  onNew,
   onOpen,
   onSave,
   onSaveAs,
@@ -92,7 +95,7 @@ const icon = css({
   <div class={product}>Camcraft</div>
   <div class={sep} aria-hidden="true"></div>
   <button class={workspace} aria-label="Proyecto actual" onclick={onOpen}>
-    <span>{projectName}</span>
+    <span>{projectName}{workbenchState.document?.dirty ? ' •' : ''}</span>
     <span class={muted}>▾</span>
   </button>
   <div class={search} role="search" aria-label="Buscar comando">
@@ -100,6 +103,7 @@ const icon = css({
     <span>{searchPlaceholder}</span>
   </div>
   <div class={topActions}>
+    <button class={actionBtn} onclick={onNew}>Nuevo</button>
     <button class={actionBtn} onclick={onOpen}>Abrir</button>
     <button class={actionBtn} onclick={onSave}>Guardar</button>
     <button class={actionBtn} onclick={onSaveAs}>Guardar como</button>
