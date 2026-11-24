@@ -1,10 +1,10 @@
-# Integración de dominio Rust (`prev/crates`) al stack Tauri
+# Integración de dominio Rust (`src-tauri/crates`) al stack Tauri
 
-> Estado: borrador de mapeo para Fase 0/1. No mueve código todavía.
+> Estado: mapeo base actualizado; los crates de dominio ya fueron movidos físicamente a `src-tauri/crates/` en `feat/tauri`.
 
 ## Objetivo
 
-Reusar el dominio CAM existente en `prev/crates/` desde el host Tauri (`src-tauri/`) sin arrastrar egui/eframe al nuevo shell.
+Reusar el dominio CAM existente ahora ubicado en `src-tauri/crates/` desde el host Tauri (`src-tauri/`) sin arrastrar egui/eframe al nuevo shell.
 
 ## Inventario de crates
 
@@ -30,19 +30,13 @@ Reusar el dominio CAM existente en `prev/crates/` desde el host Tauri (`src-taur
 
 ## Estrategia de integración
 
-### Opción A — Workspace raíz (recomendada)
+### Layout elegido — crates dentro de `src-tauri/`
 
-- Crear/convertir un `Cargo.toml` workspace en raíz que incluya `src-tauri` y crates de dominio seleccionados.
-- Mover crates desde `prev/crates/<name>` a `crates/<name>` por fases, o incluirlos temporalmente por path en `prev/`.
-- Ventaja: un solo grafo Cargo, checks/tests coherentes, paths claros.
-
-### Opción B — Dependencias por path a `prev/` (puente temporal)
-
-- `src-tauri/Cargo.toml` depende de `../prev/crates/cam-*`.
-- Ventaja: rápida para spike/fase 1.
-- Riesgo: `prev/` se vuelve semipermanente; dos layouts conviven demasiado tiempo.
-
-**Recomendación**: usar B solo como puente corto si hace falta validar IPC, pero planear A como destino.
+- Los crates de dominio viven en `src-tauri/crates/<name>`.
+- El `Cargo.toml` raíz sigue siendo el workspace root e incluye `src-tauri` y `src-tauri/crates/cam-*`.
+- `src-tauri` consume crates de dominio vía dependencias `workspace = true`.
+- Ventaja: el dominio queda físicamente junto al host Tauri; un solo grafo Cargo en raíz.
+- Tradeoff: se desvía de la Opción A originalmente recomendada (`crates/<name>` en raíz del repo). Si se quiere recuperar esa separación, hay que hacer otro move explícito.
 
 ## Fases propuestas
 

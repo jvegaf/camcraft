@@ -50,7 +50,8 @@ vite.config.js
 svelte.config.js
 biome.json
 package.json             # pnpm, scripts dev/build/check/lint/test
-prev/                    # legado Rust/egui en migración (crates/, Cargo.toml, justfile, spikes)
+src-tauri/crates/       # crates de dominio CAM movidos desde prev/crates
+prev/                    # legado Rust/egui restante en migración (Cargo.toml, justfile, spikes, etc.)
 design/                  # fuente DS
 docs/                    # documentación
 odd/                     # ODD/roadmap/tareas
@@ -67,7 +68,7 @@ Decisiones ya tomadas por el scaffolding:
 
 Pendientes:
 
-- Integrar crates de dominio desde `prev/crates/` al nuevo workspace/host.
+- [x] Integrar crates de dominio en `src-tauri/crates/` (movidos físicamente desde `prev/crates/`).
 - Definir `justfile`/scripts de gate para el nuevo stack.
 - Cablear review visual para webview.
 
@@ -96,7 +97,7 @@ Pendientes:
 - [x] Crear rama `feat/tauri` y estructura Tauri.
 - [x] Frontend SvelteKit + Vite + Panda CSS + Biome.
 - [x] Host `src-tauri/` con plugin log/opener.
-- [ ] **Próxima sesión**: mover crates de dominio desde `prev/crates/` a `crates/` (Opción A en `docs/DOMAIN_INTEGRATION_TAURI.md`), actualizar `Cargo.toml` raíz, paths de `src-tauri`, scripts/CI/tooling y referencias; mantener `prev/` solo para legado no-crate si aplica.
+- [x] Mover crates de dominio desde `prev/crates/` a `src-tauri/crates/` (decisión del usuario: dentro de `src-tauri`; desvía de la Opción A original en `docs/DOMAIN_INTEGRATION_TAURI.md`), actualizar `Cargo.toml` raíz, paths/workspace y referencias.
 - [ ] Alinear gates/CI/justfile al stack nuevo.
 - [ ] Definir integración de crates de dominio desde `prev/`.
 
@@ -141,7 +142,7 @@ Pendientes:
 | Documento | Cambio |
 | --- | --- |
 | `docs/SYSTEM_DESIGN_CAMCRAFT.md` | Arquitectura Tauri/webview/backend Rust, boundary viewport, IPC. |
-| `docs/DOMAIN_INTEGRATION_TAURI.md` | Mapeo de crates `prev/crates/` a reusar/adaptar/retirar e integración con `src-tauri`. |
+| `docs/DOMAIN_INTEGRATION_TAURI.md` | Mapeo de crates `src-tauri/crates/` a reusar/adaptar/retirar e integración con `src-tauri`. |
 | `docs/ARCHITECTURE_TAURI.md` | Nuevo: detalle de boundary, protocolo, packaging Linux, seguridad IPC. |
 | `README.md` | Dev setup Tauri/webkit2gtk/node, comandos, layout. |
 | `AGENTS.md` | Superficies/worktrees para frontend Tauri; mantener ODD/records gate. |
