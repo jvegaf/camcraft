@@ -51,20 +51,20 @@ against.
 
 ## Evidence — commit per task
 
-| Task | Commit | Notes |
-| --- | --- | --- |
-| T1 | `1d11e99` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0 |
-| T2 | `16d98dd` | `cam-units`; 10 tests green, incl. 3 property tests |
-| T3 | `f33f630` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
-| T4 | `efebf40` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9) |
-| T5 | `0d552ab` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected |
-| T6 | `8d780dc` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite |
-| T7 | `62fd277` | SQLite tool library; 7 tests green, incl. a real v1→v2 migration of a hand-built legacy file |
-| T8 | `4ee3ab6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line |
-| T9 | `b0f1d68` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal |
-| T10 | `3a48ef6` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping) |
-| T11 | `5f86271` | CLI + end-to-end golden program through the real binary; 12 tests green |
-| T12 | `HEAD` | `README.md`, `docs/format.md`, roadmap status, corrected evidence |
+| Task | Commit    | Notes                                                                                                                                                                             |
+| ---- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1   | `1d11e99` | eight crates, dependency direction enforced by `Cargo.toml`, `fmt`/`clippy -D warnings`/`test` all 0                                                                              |
+| T2   | `16d98dd` | `cam-units`; 10 tests green, incl. 3 property tests                                                                                                                               |
+| T3   | `f33f630` | `cam-geom` primitives + chaining; 13 tests green (4 property tests). 1,390 lines: oversized for one review, but the crate splits cleanly per file (point / arc / contour / chain) |
+| T4   | `efebf40` | arc-preserving offset; 12 tests green (3 property tests). Two real defects found and fixed at the root (see L9)                                                                   |
+| T5   | `0d552ab` | document model; 9 tests green. Schema, dimensions, duplicate ids, dangling references and open geometry all rejected                                                              |
+| T6   | `8d780dc` | `.c2d` ZIP+JSON persistence; 8 tests green, incl. unknown-entry preservation and atomic overwrite                                                                                 |
+| T7   | `62fd277` | SQLite tool library; 7 tests green, incl. a real v1→v2 migration of a hand-built legacy file                                                                                      |
+| T8   | `4ee3ab6` | `.pp` parser; 18 tests green, one per directive/block plus every rejection path with its line                                                                                     |
+| T9   | `b0f1d68` | emitter; 13 tests green, incl. the byte-for-byte profile program and the arc refusal                                                                                              |
+| T10  | `3a48ef6` | profile strategy; 20 tests green (passes, sides, allowance, tabs, leads, origin mapping)                                                                                          |
+| T11  | `5f86271` | CLI + end-to-end golden program through the real binary; 12 tests green                                                                                                           |
+| T12  | `HEAD`    | `README.md`, `docs/format.md`, roadmap status, corrected evidence                                                                                                                 |
 
 ## Tasks
 
@@ -193,7 +193,7 @@ record the commit holding each task. No behaviour change.
   amended accordingly rather than left contradicting the code.
 - **L7 (execution, T1–T2):** delegation unavailable — `gentle-ai-worker` failed twice with
   "assistant reported an error" and no detail, so both tasks were executed inline by the parent. T2
-  produced two RED observations, and both were defects in the *tests*, not the implementation:
+  produced two RED observations, and both were defects in the _tests_, not the implementation:
   (a) `Format::fixed(2).apply(1.005)` cannot be `1.01` because 1.005 is 1.00499999999999989 in
   binary — the expectation assumed decimal semantics; (b) the negative-zero property rejected 1024
   generated cases, so the strategy was rebuilt with `prop_flat_map` to generate only values that
@@ -209,7 +209,7 @@ record the commit holding each task. No behaviour change.
   the shared error type.
   T4 exposed two genuine defects that the tests caught and that the implementation now explains:
   (a) `Contour::tessellate` did not close the ring, leaving a duplicated final vertex, which became
-  a zero-length segment and then a *spurious* self-intersection that flattened every offset; (b)
+  a zero-length segment and then a _spurious_ self-intersection that flattened every offset; (b)
   offsetting a circle built from two half arcs tried to intersect a circle with itself, because two
   concentric offsets are a smooth continuation, not a corner. Both are now handled at the root,
   with the reasoning recorded in the source. clippy also caught `Option::is_none_or` (stable in
@@ -218,7 +218,7 @@ record the commit holding each task. No behaviour change.
   commit was made (`scripts/check.sh`: `fmt --check`, `clippy -D warnings`, `cargo test`). The suite
   stands at **123 tests across 13 suites**. Three implementation findings worth keeping:
   (a) T10 exposed a genuine kernel defect — shrinking a contour past its own inradius returned a
-  valid-looking *mirrored* contour, so a tool that does not fit would have cut the wrong path; the
+  valid-looking _mirrored_ contour, so a tool that does not fit would have cut the wrong path; the
   offset now refuses when a shrinking offset's vertices sit far closer to the original boundary than
   the offset distance, and the reason is recorded in the source as a guard rather than a topological
   solution.

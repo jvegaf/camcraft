@@ -207,12 +207,12 @@ source and its limitation. Roadmap M2 row marked delivered with the evidence tab
 The milestone is one feature branch and four reviewable pull requests, sized so a reviewer keeps
 context across a slice:
 
-| Slice | Tasks | Subject |
-| --- | --- | --- |
-| 1 | T1–T3 | Kernel: primitives, ellipse, transforms |
-| 2 | T4–T7 | Kernel: intersections, node editing, join, trim |
-| 3 | T8–T10 | Document commands: draw, transform, edit |
-| 4 | T11–T13 | Text, shell wiring, docs |
+| Slice | Tasks   | Subject                                         |
+| ----- | ------- | ----------------------------------------------- |
+| 1     | T1–T3   | Kernel: primitives, ellipse, transforms         |
+| 2     | T4–T7   | Kernel: intersections, node editing, join, trim |
+| 3     | T8–T10  | Document commands: draw, transform, edit        |
+| 4     | T11–T13 | Text, shell wiring, docs                        |
 
 Slice boundaries are recorded here as they close, per the review-workload rule: `072b95c` + `8e5a727`
 (plan + T1, 778 lines), `ad5cd64` (T2, 325), `64f2f29` (T3, 486), `41910a5` (T4, 603), `3e881ae` (T5, 400), `6feaaf5` (T6, 350), T7 (~470).
@@ -224,21 +224,21 @@ merge for T9–T13.
 
 ## Evidence — commit per task
 
-| Task | Commit | Notes |
-| --- | --- | --- |
-| T1 | `8e5a727` | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5) |
-| T2 | `ad5cd64` | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet |
-| T3 | `HEAD` | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta |
-| T4 | `HEAD` | 18 tests; tangent and coincident cases distinguished; two property tests |
-| T5 | `HEAD` | 14 tests; insertion projects onto the segment and splits arcs exactly |
-| T6 | `HEAD` | 12 tests; forks, two-chain groups and closed inputs refused by name |
-| T7 | `HEAD` | 7 tests; arcs split exactly; four refusal classes by name |
-| T8 | `HEAD` | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome` |
-| T9 | `HEAD` | 18 tests (36 → 54); `lost_arcs` aggregated from the kernel; array copies are full-duplicate per cell |
-| T10 | `HEAD` | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `31e0fc4` |
-| T11 | `2223928` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
-| T12 | `HEAD` | 18 tests (14 input + 35 shell in total); every command reachable, drag draws one command per gesture |
-| T13 | `HEAD` | `docs/m2-authoring.md`, roadmap row and §4.4 evidence, M2 defects recorded |
+| Task | Commit             | Notes                                                                                                                                            |
+| ---- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T1   | `8e5a727`          | 20 tests; analytic area/perimeter/winding; cam-app delegates to the kernel; serde_json `float_roundtrip` added (see L5)                          |
+| T2   | `ad5cd64`          | 10 tests; tolerance met at up to 100:1 and re-checked by independent sampling; error handed back when unmet                                      |
+| T3   | `HEAD`             | 15 tests incl. two property tests; winding normalised; non-uniform scale measures its own sagitta                                                |
+| T4   | `HEAD`             | 18 tests; tangent and coincident cases distinguished; two property tests                                                                         |
+| T5   | `HEAD`             | 14 tests; insertion projects onto the segment and splits arcs exactly                                                                            |
+| T6   | `HEAD`             | 12 tests; forks, two-chain groups and closed inputs refused by name                                                                              |
+| T7   | `HEAD`             | 7 tests; arcs split exactly; four refusal classes by name                                                                                        |
+| T8   | `HEAD`             | 18 tests (10 → 28); atomic refusals; ellipse error reaches the caller via `CommandOutcome`                                                       |
+| T9   | `HEAD`             | 18 tests (36 → 54); `lost_arcs` aggregated from the kernel; array copies are full-duplicate per cell                                             |
+| T10  | `HEAD`             | 19 tests (54 → 73); kernel refusals reach the caller verbatim; found the offset misclassification fixed in `31e0fc4`                             |
+| T11  | `2223928` + `HEAD` | 10 tests in cam-geom (79-glyph table, no dependency) + 8 in cam-app; one entity per glyph stroke, `CommandOutcome.created_entities` reports them |
+| T12  | `HEAD`             | 18 tests (14 input + 35 shell in total); every command reachable, drag draws one command per gesture                                             |
+| T13  | `HEAD`             | `docs/m2-authoring.md`, roadmap row and §4.4 evidence, M2 defects recorded                                                                       |
 
 ## Log
 

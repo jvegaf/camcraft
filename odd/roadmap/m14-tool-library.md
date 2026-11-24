@@ -15,7 +15,7 @@ still reads as the shape its geometry proves. `ToolKind::from_shape` is still th
 
 **The store could not write.** `cam-store` had no delete, no reset and no validation: `put_geometry` is an
 upsert that inserts whatever it is handed. `ToolProblem` is one variant per refusal carrying the number that
-failed, and the three writers are each one transaction with `replace_tools` validating every tool *before* it
+failed, and the three writers are each one transaction with `replace_tools` validating every tool _before_ it
 deletes one — the alternative is a library emptied by a typo.
 
 **A feed rate was two units at once.** Four documents and the cutting-time model said millimetres per second;
@@ -29,5 +29,4 @@ The suite was rewritten as behaviour over the report rather than shapes over a p
 `tool_library` target, including the deliberate absence test for the action rows that this slice then flipped.
 Two defects it found are worth naming because they were invisible from outside: a `decimal` call handed an
 `f64` where a `Length` was expected, and a seeding guard that never fired, which made `Use this tool`
-unreachable for *every* tool.
-
+unreachable for _every_ tool.

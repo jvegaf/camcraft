@@ -6,10 +6,10 @@ them without answering anything a release has not already asked.
 
 ## The two trunks
 
-| Trunk | Receives | Runs in CI |
-| --- | --- | --- |
-| `dev` | every integrated change | `gate` always; `parity` only when the push touches a parser, the kernel, the corpus or the harness; no benchmarks |
-| `master` | **only** pull requests from `dev`, merged and tagged as a release | `gate`, `parity` and `bench`, always |
+| Trunk    | Receives                                                          | Runs in CI                                                                                                        |
+| -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `dev`    | every integrated change                                           | `gate` always; `parity` only when the push touches a parser, the kernel, the corpus or the harness; no benchmarks |
+| `master` | **only** pull requests from `dev`, merged and tagged as a release | `gate`, `parity` and `bench`, always                                                                              |
 
 `master` is protected (`enforce_admins`, no force-push, no deletion, conversation resolution required)
 with `gate`, `parity` and `bench` as required status checks and `strict` on, so a release pull request

@@ -101,7 +101,7 @@ against.
   `FlateDecode` and PNG `IDAT`. `cam-import` therefore adds no parser, no XML library and no image
   decoder.
 - **D-M3-2** — Curves that cannot be arcs are flattened at the caller's tolerance and the count is
-  reported (S8 stays true for anything that *is* an arc, and the roadmap's "import report instead of
+  reported (S8 stays true for anything that _is_ an arc, and the roadmap's "import report instead of
   silent loss" mitigation applies to everything else).
 - **D-M3-3** — Unitless DXF falls back to `$INSUNITS`; when the header has neither `$INSUNITS` nor
   `$MEASUREMENT`, millimetres are assumed and the report says so.
@@ -285,11 +285,11 @@ with the evidence table and the deviations.
 
 ## Delivery slices
 
-| Slice | Tasks | Subject |
-| --- | --- | --- |
-| 1 | T1–T2 | Crate spine, report, CLI `import`; kernel validation |
-| 2 | T3–T7 | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered in this session; T4 delivered in a later one (L12)** |
-| 3 | T8–T10 | `check`, shell import, docs — **delivered** |
+| Slice | Tasks  | Subject                                                                                                                                |
+| ----- | ------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | T1–T2  | Crate spine, report, CLI `import`; kernel validation                                                                                   |
+| 2     | T3–T7  | The five importers, in parallel on disjoint surfaces — **T3, T5, T6, T7 delivered in this session; T4 delivered in a later one (L12)** |
+| 3     | T8–T10 | `check`, shell import, docs — **delivered**                                                                                            |
 
 Slice boundaries, recorded as they close: slice 1 (T1+T2) closed at `c1a9ac2`, 1705 authored lines across
 three commits (plan `86b0e79`, `163a3b7`, `c1a9ac2`). Like M2 the milestone overtakes the ~400-line review
@@ -303,18 +303,18 @@ format at a time, and no reader has to hold two grammars in their head to review
 
 ## Evidence — commit per task
 
-| Task | Commit | Notes |
-| --- | --- | --- |
-| T1 | `163a3b7` | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids |
-| T2 | `c1a9ac2` | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported |
-| T3 | `cd5b3ba` | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number |
-| T4 | `cf8cd07` | 30 tests; XML reader with located errors, the full path grammar, every shape element, inherited transforms, `viewBox` with `xMidYMid meet`, exact circular arcs. The parked work's three root defects fixed (non-advancing path cursor, unitless attribute read as px, contradictory tag-location tests) and the owner's Y convention applied as a reflection in the root mapping (D-M3-10). See L11, L12 |
-| T5 | `6f8ae3c` | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name |
-| T6 | `3c24394` | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`ebb9e1d`) |
-| T7 | `ecd2b50` | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported |
-| T8 | `86fc659`-series | 5 CLI tests; deterministic ordering, exit `5`, `all vectors valid` on a clean document |
-| T9 | `041ee97` | 5 tests (2 cam-app, 3 cam-ui); undoable replacement, reseeded id counter, exact status sentence, failed import leaves document and history untouched |
-| T10 | this commit | `docs/m3-import.md`, `docs/format.md` contract rows, roadmap M3 evidence |
+| Task | Commit           | Notes                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1   | `163a3b7`        | 10 cam-import tests + 6 CLI tests; detection by extension then signature; report render asserted whole; assembly places geometry at the 10 mm margin with ordered ids                                                                                                                                                                                                                                     |
+| T2   | `c1a9ac2`        | 10 tests incl. two property tests; adjacent segments never intersected; figure eight reports its crossing; arc index reported                                                                                                                                                                                                                                                                             |
+| T3   | `cd5b3ba`        | 25 tests; bulges exact arcs, full ellipse rotated exactly, partial ellipse flattened and counted; `$INSUNITS`/`$MEASUREMENT`/mm-inference; skipped entities carry their line number                                                                                                                                                                                                                       |
+| T4   | `cf8cd07`        | 30 tests; XML reader with located errors, the full path grammar, every shape element, inherited transforms, `viewBox` with `xMidYMid meet`, exact circular arcs. The parked work's three root defects fixed (non-advancing path cursor, unitless attribute read as px, contradictory tag-location tests) and the owner's Y convention applied as a reflection in the root mapping (D-M3-10). See L11, L12 |
+| T5   | `6f8ae3c`        | 16 tests; tolerant object scan, page tree with inherited `MediaBox`, `FlateDecode`, CTM stack, curves counted, encrypted refused by name                                                                                                                                                                                                                                                                  |
+| T6   | `3c24394`        | 26 tests; transformation stack, `arc`/`arcn` exact, cubic flattening counted, empty drawing unified to `NothingImported` (`ebb9e1d`)                                                                                                                                                                                                                                                                      |
+| T7   | `ecd2b50`        | 16 tests; hand-written PNG decoder (all five filters), deterministic marching squares, holes as opposite-wound contours, `--min-area`/`--simplify` reported                                                                                                                                                                                                                                               |
+| T8   | `86fc659`-series | 5 CLI tests; deterministic ordering, exit `5`, `all vectors valid` on a clean document                                                                                                                                                                                                                                                                                                                    |
+| T9   | `041ee97`        | 5 tests (2 cam-app, 3 cam-ui); undoable replacement, reseeded id counter, exact status sentence, failed import leaves document and history untouched                                                                                                                                                                                                                                                      |
+| T10  | this commit      | `docs/m3-import.md`, `docs/format.md` contract rows, roadmap M3 evidence                                                                                                                                                                                                                                                                                                                                  |
 
 ## Log
 

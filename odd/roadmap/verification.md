@@ -20,4 +20,3 @@ Per ODD, change behaviour with applicable runnable checks, test-first:
 Explicitly not used: another CAM package's G-code output as an oracle. Byte-matching a closed-source
 implementation's ordering and rounding choices would turn every improvement into a regression, and we
 did not decompile its algorithms.
-
