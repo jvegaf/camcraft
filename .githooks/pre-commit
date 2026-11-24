@@ -1,46 +1,32 @@
 #!/usr/bin/env bash
-# What a commit pays for, before it exists.
-#
-# The gate in `scripts/check.sh` is the truth and CI runs it; this hook is the part cheap enough to run
-# on every commit and early enough to save a push. It is deliberately *not* the whole gate: a hook that
-# takes minutes gets bypassed with `--no-verify`, and then it protects nothing.
-#
-# What it checks, and why each one earns its place here:
-#   - `cargo fmt --check` on a staged Rust file: a formatting slip is the most common red CI run.
-#   - `scripts/check-docs.sh` on a staged markdown file: a broken link is the second most common.
-#   - the parity measurer's build, when the harness or a parser moved: that crate lives outside the
-#     workspace, so nothing else compiles it until CI does.
-#
-# It does not run the claim gate on purpose: that gate refuses a dirty primary tree, and refusing a
-# commit because its own files are uncommitted would make the primary tree unusable. Claim discipline
-# belongs to `just check`, which reads the tree, not to a hook that runs mid-edit.
+# Hook barato antes de commit: lint/format/docs según lo staged.
+# La gate completa vive en scripts/check.sh.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
 
-if [ -z "$staged" ]; then
-  exit 0
+# Frontend/estilos/config: Biome
+if echo "$staged" | grep -qE '\.(js|jsx|ts|tsx|svelte|css|json|jsonc)$'; then
+  if command -v pnpm >/dev/null 2>&1; then
+    echo "pre-commit: pnpm lint"
+    pnpm lint
+  else
+    echo "pre-commit: skip pnpm lint (pnpm no disponible)"
+  fi
 fi
 
-if echo "$staged" | grep -qE '\.rs$'; then
-  echo "pre-commit: cargo fmt --check"
-  cargo fmt --all -- --check
+# Rust del host Tauri
+if echo "$staged" | grep -qE '^src-tauri/.*\.rs$'; then
+  echo "pre-commit: cargo fmt --check (src-tauri)"
+  cargo fmt --manifest-path src-tauri/Cargo.toml --check
 fi
 
+# Docs markdown
 if echo "$staged" | grep -qE '\.md$'; then
   echo "pre-commit: markdown links"
   ./scripts/check-docs.sh
-fi
-
-if echo "$staged" | grep -qE '^(fixtures/corpus/|crates/cam-(gerber|excellon|geom|import)/|scripts/parity/)'; then
-  echo "pre-commit: the parity measurer still compiles"
-  # The same command the last gate in `scripts/check.sh` runs, so the two cannot disagree about how
-  # the harness is built. A stable target dir lets repeated local checks reuse the compilation.
-  # The pattern is aligned with the parity scope: anything that can move the measurement can also
-  # move the harness that measures it.
-  CARGO_TARGET_DIR="$root/target/parity-measure-check" \
-    cargo build --quiet --locked --manifest-path scripts/parity/measure/Cargo.toml
 fi
