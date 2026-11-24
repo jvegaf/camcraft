@@ -96,6 +96,7 @@ Pendientes:
 - [x] Crear rama `feat/tauri` y estructura Tauri.
 - [x] Frontend SvelteKit + Vite + Panda CSS + Biome.
 - [x] Host `src-tauri/` con plugin log/opener.
+- [ ] **Próxima sesión**: mover crates de dominio desde `prev/crates/` a `crates/` (Opción A en `docs/DOMAIN_INTEGRATION_TAURI.md`), actualizar `Cargo.toml` raíz, paths de `src-tauri`, scripts/CI/tooling y referencias; mantener `prev/` solo para legado no-crate si aplica.
 - [ ] Alinear gates/CI/justfile al stack nuevo.
 - [ ] Definir integración de crates de dominio desde `prev/`.
 
