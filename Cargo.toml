@@ -7,15 +7,15 @@ members = [
     "src-tauri/crates/cam-move",
     "src-tauri/crates/cam-model",
     "prev/crates/cam-ops",
-    "prev/crates/cam-store",
-    "prev/crates/cam-post",
-    "prev/crates/cam-sim",
+    "src-tauri/crates/cam-store",
+    "src-tauri/crates/cam-post",
+    "src-tauri/crates/cam-sim",
     "prev/crates/cam-cli",
     "prev/crates/cam-app",
     "prev/crates/cam-export",
     "prev/crates/cam-import",
-    "prev/crates/cam-excellon",
-    "prev/crates/cam-gerber",
+    "src-tauri/crates/cam-excellon",
+    "src-tauri/crates/cam-gerber",
     "prev/crates/cam-view",
     "prev/crates/cam-ui",
     "prev/crates/cam-desktop",
@@ -34,13 +34,13 @@ cam-geom = { path = "src-tauri/crates/cam-geom" }
 cam-move = { path = "src-tauri/crates/cam-move" }
 cam-model = { path = "src-tauri/crates/cam-model" }
 cam-ops = { path = "prev/crates/cam-ops" }
-cam-store = { path = "prev/crates/cam-store" }
-cam-post = { path = "prev/crates/cam-post" }
-cam-sim = { path = "prev/crates/cam-sim" }
+cam-store = { path = "src-tauri/crates/cam-store" }
+cam-post = { path = "src-tauri/crates/cam-post" }
+cam-sim = { path = "src-tauri/crates/cam-sim" }
 cam-app = { path = "prev/crates/cam-app" }
 cam-import = { path = "prev/crates/cam-import" }
-cam-excellon = { path = "prev/crates/cam-excellon" }
-cam-gerber = { path = "prev/crates/cam-gerber" }
+cam-excellon = { path = "src-tauri/crates/cam-excellon" }
+cam-gerber = { path = "src-tauri/crates/cam-gerber" }
 cam-export = { path = "prev/crates/cam-export" }
 cam-cli = { path = "prev/crates/cam-cli" }
 cam-view = { path = "prev/crates/cam-view" }
