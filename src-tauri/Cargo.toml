@@ -25,8 +25,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-log = "2"
 
-# Dominio CAM (Fase 0: reusar crates desde prev/)
+# Dominio CAM
 cam-app = { workspace = true }
 cam-model = { workspace = true }
 cam-store = { workspace = true }
 cam-units = { workspace = true }
+cam-view = { workspace = true }
+cam-sim = { workspace = true }
+cam-geom = { workspace = true }
+cam-move = { workspace = true }

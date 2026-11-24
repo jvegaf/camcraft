@@ -1075,9 +1075,13 @@ name = "camcraft"
 version = "0.1.0"
 dependencies = [
  "cam-app",
+ "cam-geom",
  "cam-model",
+ "cam-move",
+ "cam-sim",
  "cam-store",
  "cam-units",
+ "cam-view",
  "serde",
  "serde_json",
  "tauri",

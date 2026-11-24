@@ -2,8 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use cam_app::AppState;
-use cam_model::{Board, Document};
+use cam_app::{AppState, Viewport};
+use cam_model::{Board, Document, Job, OriginCorner};
+use cam_sim::Heightfield;
+use cam_units::Length;
+use cam_view::{build_stock_box, build_surface, Camera3d};
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
@@ -329,6 +332,134 @@ fn update_settings(
   update_settings_impl(&runtime, settings)
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Point3Dto {
+  pub x: f64,
+  pub y: f64,
+  pub z: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Line3Dto {
+  pub start: Point3Dto,
+  pub end: Point3Dto,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeshVertexDto {
+  pub position: Point3Dto,
+  pub depth: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneSnapshotDto {
+  pub stock_width: f64,
+  pub stock_height: f64,
+  pub stock_thickness: f64,
+  pub stock_box: Vec<Line3Dto>,
+  pub vertices: Vec<MeshVertexDto>,
+  pub triangles: Vec<[u32; 3]>,
+  pub camera_target: Point3Dto,
+  pub camera_yaw: f64,
+  pub camera_pitch: f64,
+  pub camera_distance: f64,
+}
+
+fn canonical_job() -> Job {
+  Job {
+    width: Length::from_mm(100.0),
+    height: Length::from_mm(100.0),
+    thickness: Length::from_mm(20.0),
+    origin: OriginCorner::BottomLeft,
+    side_up: cam_model::BoardSideUp::Top,
+  }
+}
+
+fn scene_snapshot_impl() -> Result<SceneSnapshotDto, CommandErrorDto> {
+  let job = canonical_job();
+  let mut field = Heightfield::new(&job, Length::from_mm(1.0))
+    .map_err(|e| CommandErrorDto::new("scene_build_failed", format!("{e}")))?;
+  let grid = field.grid();
+  for row in 0..grid.rows {
+    for column in 0..grid.columns {
+      let centre = grid.centre(column, row);
+      if centre.x >= 20.0 && centre.x <= 80.0 && centre.y >= 30.0 && centre.y <= 70.0 {
+        field.lower(column, row, -5.0);
+      }
+    }
+  }
+
+  let target = cam_move::Point3::new(50.0, 50.0, -2.5);
+  let camera = Camera3d {
+    yaw: 0.75,
+    pitch: 0.55,
+    distance: Length::from_mm(220.0),
+    target,
+    viewport: Viewport::new(1280.0, 720.0),
+  };
+
+  let stock_box = build_stock_box(&job)
+    .into_iter()
+    .map(|line| Line3Dto {
+      start: Point3Dto {
+        x: line.start.x.mm(),
+        y: line.start.y.mm(),
+        z: line.start.z.mm(),
+      },
+      end: Point3Dto {
+        x: line.end.x.mm(),
+        y: line.end.y.mm(),
+        z: line.end.z.mm(),
+      },
+    })
+    .collect();
+
+  let mesh = build_surface(&field, &camera, 2);
+  let vertices = mesh
+    .vertices
+    .iter()
+    .map(|v| MeshVertexDto {
+      position: Point3Dto {
+        x: v.position.x.mm(),
+        y: v.position.y.mm(),
+        z: v.position.z.mm(),
+      },
+      depth: v.depth,
+    })
+    .collect();
+  let triangles = mesh
+    .triangles
+    .iter()
+    .map(|t| [t[0] as u32, t[1] as u32, t[2] as u32])
+    .collect();
+
+  Ok(SceneSnapshotDto {
+    stock_width: job.width.mm(),
+    stock_height: job.height.mm(),
+    stock_thickness: job.thickness.mm(),
+    stock_box,
+    vertices,
+    triangles,
+    camera_target: Point3Dto {
+      x: target.x.mm(),
+      y: target.y.mm(),
+      z: target.z.mm(),
+    },
+    camera_yaw: camera.yaw,
+    camera_pitch: camera.pitch,
+    camera_distance: camera.distance.mm(),
+  })
+}
+
+#[tauri::command]
+fn scene_snapshot() -> Result<SceneSnapshotDto, CommandErrorDto> {
+  scene_snapshot_impl()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -369,7 +500,8 @@ pub fn run() {
       save_document,
       list_recents,
       get_settings,
-      update_settings
+      update_settings,
+      scene_snapshot
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
