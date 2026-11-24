@@ -2,10 +2,10 @@
 resolver = "2"
 members = [
     "src-tauri",
-    "prev/crates/cam-units",
-    "prev/crates/cam-geom",
-    "prev/crates/cam-move",
-    "prev/crates/cam-model",
+    "src-tauri/crates/cam-units",
+    "src-tauri/crates/cam-geom",
+    "src-tauri/crates/cam-move",
+    "src-tauri/crates/cam-model",
     "prev/crates/cam-ops",
     "prev/crates/cam-store",
     "prev/crates/cam-post",
@@ -29,10 +29,10 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-cam-units = { path = "prev/crates/cam-units" }
-cam-geom = { path = "prev/crates/cam-geom" }
-cam-move = { path = "prev/crates/cam-move" }
-cam-model = { path = "prev/crates/cam-model" }
+cam-units = { path = "src-tauri/crates/cam-units" }
+cam-geom = { path = "src-tauri/crates/cam-geom" }
+cam-move = { path = "src-tauri/crates/cam-move" }
+cam-model = { path = "src-tauri/crates/cam-model" }
 cam-ops = { path = "prev/crates/cam-ops" }
 cam-store = { path = "prev/crates/cam-store" }
 cam-post = { path = "prev/crates/cam-post" }
