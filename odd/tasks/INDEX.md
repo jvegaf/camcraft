@@ -87,4 +87,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 085 | [tauri-fase4-document-actions](085-tauri-fase4-document-actions.md)                   | delivered                | 2026-11-24 | `e03a2da`      |
 | 086 | [tauri-fase4-workbench-flow-hardening](086-tauri-fase4-workbench-flow-hardening.md)   | delivered                | 2026-11-24 | `b9036f0`      |
 | 087 | [tauri-fase4-recents-smoke](087-tauri-fase4-recents-smoke.md)                         | delivered                | 2026-11-24 | `3083342`      |
-| 088 | [tauri-fase4-ds-parity](088-tauri-fase4-ds-parity.md)                                 | in-progress              | 2026-11-24 |                |
+| 088 | [tauri-fase4-ds-parity](088-tauri-fase4-ds-parity.md)                                 | delivered                | 2026-11-24 | `906ec14`      |

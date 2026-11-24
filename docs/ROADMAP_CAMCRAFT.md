@@ -1,3 +1,6 @@
+---
+page-id: 34
+---
 # Roadmap y plan de ejecución: camcraft
 
 **Propósito.** Convertir el diagnóstico de [GAPS_CAMCRAFT.md](GAPS_CAMCRAFT.md) y las decisiones

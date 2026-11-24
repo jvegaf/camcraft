@@ -1,3 +1,6 @@
+---
+page-id: 31
+---
 # Integración de dominio Rust (`src-tauri/crates`) al stack Tauri
 
 > Estado: mapeo base actualizado; los crates de dominio ya fueron movidos físicamente a `src-tauri/crates/` en `feat/tauri`.

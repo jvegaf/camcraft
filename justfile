@@ -24,10 +24,15 @@ check-worktree:
 install:
   pnpm install
 
+# Panda
+codegen:
+  pnpm codegen
+
 dev:
   pnpm dev
 
 tauri-dev:
+  just codegen
   pnpm tauri dev
 
 build:
@@ -60,10 +65,6 @@ test-rust:
 
 test-rust-workspace:
   cargo test --workspace --exclude cam-ui --exclude cam-desktop
-
-# Panda
-codegen:
-  pnpm codegen
 
 # Worktrees / ODD
 worktree N:

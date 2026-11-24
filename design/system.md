@@ -1,3 +1,6 @@
+---
+page-id: 30
+---
 # Camcraft design system  (workbench v2)
 
 Sistema visual para el rediseño de Camcraft con lenguaje de familia SolidCraft. Adapta patrones de SolidCraft (jerarquía de bordes, superficies flotantes/compactas, command search, densidad sobria) al dominio CAM de PCB de Camcraft.
