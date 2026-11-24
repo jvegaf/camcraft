@@ -1,5 +1,7 @@
 # System design: camcraft (v0.1 — para iterar)
 
+> **Nota de migración (2026-05-24).** Camcraft migró la decisión de shell desktop a **Tauri 2 + Svelte 5 + Panda CSS**. Este documento sigue siendo la referencia del dominio/arquitectura de producto, pero las secciones de UI/desktop (`cam-ui` egui, `cam-desktop` eframe) están en transición. Ver [`MIGRATION_TAURI.md`](MIGRATION_TAURI.md) para el plan y fases.
+
 **Estado.** Propuesta de arquitectura. Este documento **reemplaza**:
 
 - el orden de fases y la estructura de crates de [ROADMAP_CAMCRAFT.md](ROADMAP_CAMCRAFT.md) §2 y §14;
