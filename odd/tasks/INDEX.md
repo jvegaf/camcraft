@@ -84,3 +84,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 082 | [tauri-fase2-viewport-readonly](082-tauri-fase2-viewport-readonly.md)                 | delivered                | 2026-11-24 | `4a91aa2`      |
 | 083 | [tauri-fase3-interaccion-3d](083-tauri-fase3-interaccion-3d.md)                       | delivered                | 2026-11-24 | `16199a5`      |
 | 084 | [tauri-fase4-shell-panels](084-tauri-fase4-shell-panels.md)                           | delivered                | 2026-11-24 | `fae81d8`      |
+| 085 | [tauri-fase4-document-actions](085-tauri-fase4-document-actions.md)                   | in-progress              | 2026-11-24 |                |

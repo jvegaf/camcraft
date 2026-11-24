@@ -1,23 +1,12 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 
-interface Tool {
-  label: string;
-  primary?: boolean;
-}
-
 interface Props {
-  tools?: Tool[];
+  onOpen?: () => void;
+  onSave?: () => void;
 }
 
-let {
-  tools = [
-    { label: 'Importar' },
-    { label: 'Capas' },
-    { label: 'Origen' },
-    { label: 'Generar plan', primary: true }
-  ]
-}: Props = $props();
+let { onOpen, onSave }: Props = $props();
 
 const rail = css({
   position: 'absolute',
@@ -48,15 +37,9 @@ const toolBtn = css({
     outlineOffset: '-1px'
   }
 });
-const primaryBtn = css({
-  color: 'cut',
-  borderColor: 'cut',
-  bg: 'cutSoft'
-});
 </script>
 
 <div class={rail} aria-label="Acciones rápidas">
-  {#each tools as tool}
-    <button class={tool.primary ? `${toolBtn} ${primaryBtn}` : toolBtn}>{tool.label}</button>
-  {/each}
+  <button class={toolBtn} onclick={onOpen}>Abrir</button>
+  <button class={toolBtn} onclick={onSave}>Guardar</button>
 </div>

@@ -1,60 +1,7 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import FloatCard from './FloatCard.svelte';
-
-interface NavItem {
-  label: string;
-  meta?: string;
-  dot?: 'copper' | 'drill' | 'cut' | 'ok' | 'default';
-  active?: boolean;
-}
-
-interface Section {
-  title: string;
-  items: NavItem[];
-}
-
-interface Props {
-  sections?: Section[];
-}
-
-let {
-  sections = [
-    {
-      title: 'Board',
-      items: [
-        { label: 'Top Copper', meta: '.gbr', dot: 'copper' },
-        { label: 'Bottom Copper', meta: '.gbr', dot: 'copper' },
-        { label: 'Drill Hits', meta: '.drl', dot: 'drill', active: true },
-        { label: 'Board Outline', meta: '.gbr', dot: 'default' }
-      ]
-    },
-    {
-      title: 'Setup',
-      items: [
-        { label: 'Stock FR-4 1.6mm', meta: '100×80', dot: 'ok' },
-        { label: 'Origen bottom-left', meta: 'X0 Y0', dot: 'ok' }
-      ]
-    },
-    {
-      title: 'Operaciones',
-      items: [
-        { label: '1 · Profile outline', meta: 'OK', dot: 'cut' },
-        {
-          label: '2 · Drill 0.8 / 1.0',
-          meta: 'seleccionada',
-          dot: 'drill',
-          active: true
-        },
-        { label: '3 · Isolation top', meta: 'draft', dot: 'copper' }
-      ]
-    },
-    {
-      title: 'Salida',
-      items: [{ label: 'Post GRBL', meta: '.nc', dot: 'default' }]
-    }
-  ]
-}: Props = $props();
+import { workbenchState } from './workbench.svelte';
 
 const panelPos = css({
   top: '64px',
@@ -87,55 +34,27 @@ const navItem = css({
   textAlign: 'left',
   fontSize: '12px',
   color: 'text',
-  cursor: 'pointer',
   bg: 'transparent',
-  border: 'none',
-  _hover: { bg: 'raised' },
-  _focusVisible: {
-    outline: '2px solid',
-    outlineColor: 'sel',
-    outlineOffset: '-1px'
-  }
+  border: 'none'
 });
-const navActive = css({
-  bg: 'selSoft',
-  color: 'textHi',
-  boxShadow: 'inset 0 0 0 1px token(colors.selSoft)'
-});
-const dotBase = css({
-  w: '8px',
-  h: '8px',
-  borderRadius: '50%',
-  bg: 'border',
-  flex: 'none'
-});
-const count = css({
-  ml: 'auto',
-  fontSize: '11px',
-  fontFamily: 'mono',
-  color: 'textOff',
-  whiteSpace: 'nowrap'
-});
-const dotColor: Record<string, string> = {
-  copper: '#c47a2c',
-  drill: '#7cc7ff',
-  cut: '#f5a623',
-  ok: '#5ec27f',
-  default: '#35404c'
-};
+const dotBase = css({ w: '8px', h: '8px', borderRadius: '50%', bg: 'border', flex: 'none' });
+const count = css({ ml: 'auto', fontSize: '11px', fontFamily: 'mono', color: 'textOff', whiteSpace: 'nowrap' });
 </script>
 
-<FloatCard title="Browser" meta="Proyecto" class={panelPos} ariaLabel="Browser">
-  {#each sections as section}
-    <div class={sectionCls}>
-      <h3 class={sectionTitle}>{section.title}</h3>
-      {#each section.items as item}
-        <button class={item.active ? `${navItem} ${navActive}` : navItem} aria-current={item.active ? 'true' : undefined}>
-          <span class={dotBase} style={`background:${dotColor[item.dot ?? 'default']}`}></span>
-          {item.label}
-          {#if item.meta}<span class={count}>{item.meta}</span>{/if}
-        </button>
-      {/each}
-    </div>
-  {/each}
+<FloatCard title="Browser" meta={workbenchState.document?.path?.split('/').pop() ?? 'Proyecto'} class={panelPos} ariaLabel="Browser">
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Documento</h3>
+    <div class={navItem}><span class={dotBase} style="background:#5ec27f"></span>Schema <span class={count}>{workbenchState.document?.documentSchema ?? '—'}</span></div>
+    <div class={navItem}><span class={dotBase} style="background:#7cc7ff"></span>Dirty <span class={count}>{workbenchState.document ? (workbenchState.document.dirty ? 'yes' : 'no') : '—'}</span></div>
+  </div>
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Board</h3>
+    <div class={navItem}><span class={dotBase} style="background:#c47a2c"></span>Tamaño <span class={count}>{workbenchState.document ? `${workbenchState.document.boardWidthMm}×${workbenchState.document.boardHeightMm}` : '—'}</span></div>
+    <div class={navItem}><span class={dotBase} style="background:#c47a2c"></span>Espesor <span class={count}>{workbenchState.document ? `${workbenchState.document.boardThicknessMm} mm` : '—'}</span></div>
+  </div>
+  <div class={sectionCls}>
+    <h3 class={sectionTitle}>Contenido</h3>
+    <div class={navItem}><span class={dotBase} style="background:#6fd3e8"></span>Capas <span class={count}>{workbenchState.document?.layerCount ?? '—'}</span></div>
+    <div class={navItem}><span class={dotBase} style="background:#f5a623"></span>Toolpaths <span class={count}>{workbenchState.document?.toolpathCount ?? '—'}</span></div>
+  </div>
 </FloatCard>

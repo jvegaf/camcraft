@@ -1,4 +1,8 @@
 <script lang="ts">
+import { onMount } from 'svelte';
+import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { goto } from '$app/navigation';
 import { css } from 'styled-system/css';
 import BoardCanvas from './BoardCanvas.svelte';
 import BrowserPanel from './BrowserPanel.svelte';
@@ -7,12 +11,63 @@ import StatusBar from './StatusBar.svelte';
 import ToolRail from './ToolRail.svelte';
 import TopBar from './TopBar.svelte';
 import ViewportHud from './ViewportHud.svelte';
+import { refreshDocumentStatus, setDocument, setStatusMessage, workbenchState } from './workbench.svelte';
 
 interface Props {
   projectName?: string;
 }
 
-let { projectName = 'controller-board.cam' }: Props = $props();
+let { projectName = 'documento.cam' }: Props = $props();
+
+onMount(() => {
+  void refreshDocumentStatus();
+});
+
+async function handleOpen() {
+  try {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Camcraft document', extensions: ['cmc'] }]
+    });
+    if (!selected || Array.isArray(selected)) return;
+    const status = await invoke<typeof workbenchState.document>('open_document', { path: selected });
+    setDocument(status);
+    setStatusMessage('Documento abierto');
+  } catch (e) {
+    setStatusMessage(`Error: ${String(e)}`);
+  }
+}
+
+async function handleSave() {
+  try {
+    const path = workbenchState.document?.path ?? null;
+    const status = await invoke<typeof workbenchState.document>('save_document', { path });
+    setDocument(status);
+    setStatusMessage('Documento guardado');
+  } catch (e) {
+    setStatusMessage(`Error: ${String(e)}`);
+  }
+}
+
+async function handleSaveAs() {
+  try {
+    const target = await save({ filters: [{ name: 'Camcraft document', extensions: ['cmc'] }] });
+    if (!target) return;
+    const status = await invoke<typeof workbenchState.document>('save_document', { path: target });
+    setDocument(status);
+    setStatusMessage('Documento guardado');
+  } catch (e) {
+    setStatusMessage(`Error: ${String(e)}`);
+  }
+}
+
+async function handleSettings() {
+  await goto('/settings');
+}
+
+async function handleBack() {
+  await goto('/');
+}
 
 const shell = css({
   w: '100%',
@@ -37,8 +92,15 @@ const shell = css({
 
 <div class={shell} role="application" aria-label="Camcraft Floating Studio">
   <BoardCanvas />
-  <TopBar {projectName} />
-  <ToolRail />
+  <TopBar
+    projectName={workbenchState.document?.path?.split('/').pop() ?? projectName}
+    onOpen={handleOpen}
+    onSave={handleSave}
+    onSaveAs={handleSaveAs}
+    onSettings={handleSettings}
+    onBack={handleBack}
+  />
+  <ToolRail onOpen={handleOpen} onSave={handleSave} />
   <ViewportHud />
   <BrowserPanel />
   <InspectorPanel />
