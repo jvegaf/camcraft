@@ -1,6 +1,12 @@
 @layer reset, base, tokens, recipes, utilities;
 
 @layer base {
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg-canvas);
+  }
+
   :root {
     --bg-app: token(colors.app);
     --bg-canvas: token(colors.canvas);
