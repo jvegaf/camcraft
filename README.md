@@ -1,6 +1,7 @@
 ---
-page-id: 19
----
+
+## page-id: 19
+
 # Camcraft
 
 Aplicación CAM de escritorio para **fabricación de PCBs**, en migración a **Tauri 2 + Svelte 5 + Panda CSS**.
@@ -41,15 +42,15 @@ Si existe `just`, usá `just --list` y `just check`.
 
 ## Estructura
 
-| Ruta | Responsabilidad |
-| --- | --- |
-| `src/` | Frontend Svelte/SvelteKit |
-| `src-tauri/` | Host Tauri, comandos IPC, capabilities, plugins |
-| `design/` | Design system y artboards HTML/CSS |
-| `fixtures/ui/` | Referencias visuales canónicas |
-| `docs/` | Documentación de arquitectura, roadmap y migración |
-| `odd/` | ODD: tareas, roadmap, decisiones, evidencia |
-| `prev/` | Workspace Rust/egui anterior en migración (`crates/`, `justfile`, spikes) |
+| Ruta           | Responsabilidad                                                           |
+| -------------- | ------------------------------------------------------------------------- |
+| `src/`         | Frontend Svelte/SvelteKit                                                 |
+| `src-tauri/`   | Host Tauri, comandos IPC, capabilities, plugins                           |
+| `design/`      | Design system y artboards HTML/CSS                                        |
+| `fixtures/ui/` | Referencias visuales canónicas                                            |
+| `docs/`        | Documentación de arquitectura, roadmap y migración                        |
+| `odd/`         | ODD: tareas, roadmap, decisiones, evidencia                               |
+| `prev/`        | Workspace Rust/egui anterior en migración (`crates/`, `justfile`, spikes) |
 
 ## Migración a Tauri
 

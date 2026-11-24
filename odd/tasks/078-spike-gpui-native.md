@@ -15,13 +15,13 @@ Spike de viabilidad: GPUI nativo en Rust para reexpresar el DS de camcraft e int
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Bootstrap del spike en `spikes/gpui/`: app GPUI que levanta en Linux, README con deps y comandos reproducibles | S1,S2 | worktree | — |
-| T2 | Chrome DS: start screen mínima con tokens mapeados desde `design/system.md` (colores, spacing, radios, tipografía); dark/light toggle | S2,S3 | worktree | — |
-| T3 | Viewport 3D: escena fija de `cam-view` en una vista GPUI con orbit/pan/zoom; documentar estrategia de render/integración | S2,S3 | worktree | — |
-| T4 | Composición: overlay UI junto/sobre viewport (status o panel) y wiring de estado básico (cámara/selección) | S2,S3 | worktree | — |
-| T5 | Medición y reporte: completar `spikes/gpui/REPORT.md` con scorecard S4, capturas/gif, bloqueos, comandos de reproducción | S1,S4 | worktree | — |
+| ID  | Tarea                                                                                                                                 | Specs | Ruta     | Commit |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------- | ------ |
+| T1  | Bootstrap del spike en `spikes/gpui/`: app GPUI que levanta en Linux, README con deps y comandos reproducibles                        | S1,S2 | worktree | —      |
+| T2  | Chrome DS: start screen mínima con tokens mapeados desde `design/system.md` (colores, spacing, radios, tipografía); dark/light toggle | S2,S3 | worktree | —      |
+| T3  | Viewport 3D: escena fija de `cam-view` en una vista GPUI con orbit/pan/zoom; documentar estrategia de render/integración              | S2,S3 | worktree | —      |
+| T4  | Composición: overlay UI junto/sobre viewport (status o panel) y wiring de estado básico (cámara/selección)                            | S2,S3 | worktree | —      |
+| T5  | Medición y reporte: completar `spikes/gpui/REPORT.md` con scorecard S4, capturas/gif, bloqueos, comandos de reproducción              | S1,S4 | worktree | —      |
 
 ## Log
 

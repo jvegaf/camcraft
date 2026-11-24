@@ -24,13 +24,13 @@ Capas con identidad de placa en la UI: color por rol, visibilidad y modo cobre, 
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Exponer rol en la escena y mapear colores canónicos por rol de capa PCB | S1,S2,S3 | inline | `5a95d49` |
-| T2 | Renderizar capas con color por rol en el canvas 2D y distinguir las 6 capas de fabricación | S1,S2 | inline | `5a95d49` |
-| T3 | Agregar modo cobre (toggle) y relleno visual de capas de cobre cuando está activo | S1,S2 | inline | `5a95d49` |
-| T4 | Pulir el dock de capas: identidad visual por rol, visibilidad clara y estado de modo cobre | S1,S2 | inline | `5a95d49` |
-| T5 | Tests, verificación focalizada y actualización de roadmap/docs | S1,S2,S3 | inline | `5a95d49` |
+| ID  | Tarea                                                                                      | Specs    | Ruta   | Commit    |
+| --- | ------------------------------------------------------------------------------------------ | -------- | ------ | --------- |
+| T1  | Exponer rol en la escena y mapear colores canónicos por rol de capa PCB                    | S1,S2,S3 | inline | `5a95d49` |
+| T2  | Renderizar capas con color por rol en el canvas 2D y distinguir las 6 capas de fabricación | S1,S2    | inline | `5a95d49` |
+| T3  | Agregar modo cobre (toggle) y relleno visual de capas de cobre cuando está activo          | S1,S2    | inline | `5a95d49` |
+| T4  | Pulir el dock de capas: identidad visual por rol, visibilidad clara y estado de modo cobre | S1,S2    | inline | `5a95d49` |
+| T5  | Tests, verificación focalizada y actualización de roadmap/docs                             | S1,S2,S3 | inline | `5a95d49` |
 
 ## Log
 

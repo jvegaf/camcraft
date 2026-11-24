@@ -27,13 +27,13 @@ Formularios de isolation, NCC, drilling, cutout y paint sobre el editor de estra
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Exponer UI para crear/seleccionar toolpaths y editar nombre/operación base | S1,S2 | inline | `939595f` |
-| T2 | Formularios de parámetros para Isolation y NonCopperClear (NCC) | S1,S2,S3 | inline | `939595f` |
-| T3 | Formularios de parámetros para Cutout y Paint | S1,S2,S3 | inline | `939595f` |
-| T4 | Drilling: agregar operación/parámetros al modelo/app y formulario UI | S1,S2,S3 | inline | `939595f` |
-| T5 | Verificación, tests y actualización de roadmap | S1,S2,S3 | inline | `939595f` |
+| ID  | Tarea                                                                      | Specs    | Ruta   | Commit    |
+| --- | -------------------------------------------------------------------------- | -------- | ------ | --------- |
+| T1  | Exponer UI para crear/seleccionar toolpaths y editar nombre/operación base | S1,S2    | inline | `939595f` |
+| T2  | Formularios de parámetros para Isolation y NonCopperClear (NCC)            | S1,S2,S3 | inline | `939595f` |
+| T3  | Formularios de parámetros para Cutout y Paint                              | S1,S2,S3 | inline | `939595f` |
+| T4  | Drilling: agregar operación/parámetros al modelo/app y formulario UI       | S1,S2,S3 | inline | `939595f` |
+| T5  | Verificación, tests y actualización de roadmap                             | S1,S2,S3 | inline | `939595f` |
 
 ## Log
 

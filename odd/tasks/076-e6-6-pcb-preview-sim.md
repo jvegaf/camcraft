@@ -28,11 +28,11 @@ Previsualización de toolpaths y simulación integradas para el flujo PCB, con g
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Pipeline UI/app para generar programa PCB desde operaciones y correr simulación | S1,S2,S3 | inline | pending |
-| T2 | Integrar preview 3D/playback con reporte de simulación (gouge/uncut visibles) | S1,S2 | inline | pending |
-| T3 | Cerrar flujo importar/configurar/generar/simular/exportar en UI y actualizar roadmap | S1,S2,S3 | inline | pending |
+| ID  | Tarea                                                                                | Specs    | Ruta   | Commit  |
+| --- | ------------------------------------------------------------------------------------ | -------- | ------ | ------- |
+| T1  | Pipeline UI/app para generar programa PCB desde operaciones y correr simulación      | S1,S2,S3 | inline | pending |
+| T2  | Integrar preview 3D/playback con reporte de simulación (gouge/uncut visibles)        | S1,S2    | inline | pending |
+| T3  | Cerrar flujo importar/configurar/generar/simular/exportar en UI y actualizar roadmap | S1,S2,S3 | inline | pending |
 
 ## Log
 

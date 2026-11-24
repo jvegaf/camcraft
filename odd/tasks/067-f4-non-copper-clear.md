@@ -39,16 +39,16 @@ Implementar F4 (Non-Copper Clear, NCC): la operación que define la promesa de r
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | E4.1: envolvente de no-cobre a partir del cobre unido, con margen y offset (semántica "a la izquierda" del material); cobertura del área de no-cobre dentro de tolerancia en el corpus | S1,S2,S3,S11,S12 | inline | done | — |
-| T2 | E4.2: relleno estándar por offsets concéntricos sobre región con islas, sin gouge ni áreas sin limpiar en el corpus | S1,S4,S10,S12 | inline | done | — |
-| T3 | E4.3: índice espacial (rstar o grilla propia) para intersección/vecindad durante el relleno; medir y guardar mejora vs ingenua | S1,S5,S12 | inline | pending | — |
-| T4 | E4.4: paralelismo por isla con rayon; speedup medido en placa grande y salida determinista byte a byte (incl. `RAYON_NUM_THREADS`) | S1,S6,S10 | inline | pending | — |
-| T5 | E4.5: rest machining entre herramientas (grueso→fino) reusando región restante; dos herramientas cubren área sin recortes redundantes, medido | S1,S7 | inline | pending | — |
-| T6 | E4.6: métodos alternativos seed y lines; los tres métodos (Rings/Seed/Lines o equivalente) producen salida válida | S1,S8,S11 | inline | pending | — |
-| T7 | E4.7: benchmark publicado NCC vs FlatCAM en placa grande, reproducible desde CI (Hito 3) | S1,S9 | inline | pending | — |
-| T8 | Integración/CLI-ops según corresponda, actualizar `odd/roadmap/index.md` y verificación (fmt, clippy, tests/benches relevantes) | S1-S12 | inline | pending | — |
+| ID  | Tarea                                                                                                                                                                                  | Specs            | Ruta   | Estado  | Commit |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------ | ------- | ------ |
+| T1  | E4.1: envolvente de no-cobre a partir del cobre unido, con margen y offset (semántica "a la izquierda" del material); cobertura del área de no-cobre dentro de tolerancia en el corpus | S1,S2,S3,S11,S12 | inline | done    | —      |
+| T2  | E4.2: relleno estándar por offsets concéntricos sobre región con islas, sin gouge ni áreas sin limpiar en el corpus                                                                    | S1,S4,S10,S12    | inline | done    | —      |
+| T3  | E4.3: índice espacial (rstar o grilla propia) para intersección/vecindad durante el relleno; medir y guardar mejora vs ingenua                                                         | S1,S5,S12        | inline | pending | —      |
+| T4  | E4.4: paralelismo por isla con rayon; speedup medido en placa grande y salida determinista byte a byte (incl. `RAYON_NUM_THREADS`)                                                     | S1,S6,S10        | inline | pending | —      |
+| T5  | E4.5: rest machining entre herramientas (grueso→fino) reusando región restante; dos herramientas cubren área sin recortes redundantes, medido                                          | S1,S7            | inline | pending | —      |
+| T6  | E4.6: métodos alternativos seed y lines; los tres métodos (Rings/Seed/Lines o equivalente) producen salida válida                                                                      | S1,S8,S11        | inline | pending | —      |
+| T7  | E4.7: benchmark publicado NCC vs FlatCAM en placa grande, reproducible desde CI (Hito 3)                                                                                               | S1,S9            | inline | pending | —      |
+| T8  | Integración/CLI-ops según corresponda, actualizar `odd/roadmap/index.md` y verificación (fmt, clippy, tests/benches relevantes)                                                        | S1-S12           | inline | pending | —      |
 
 ## Log
 

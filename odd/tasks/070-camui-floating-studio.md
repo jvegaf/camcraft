@@ -31,17 +31,17 @@ Rediseño del shell de Camcraft en egui según la dirección `design/camcraft-wo
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Mapear el shell actual y definir el layout Floating Studio en egui: top bar, canvas dominante, paneles flotantes, status bar, preservando UiAction/estado | S1,S2,S3 | inline | — |
-| T2 | Implementar top bar estilo SolidCraft (marca, documento, command search central, acciones de layout/tema/config) y quitar dependencia del layout docked anterior donde corresponda | S1,S3,S4 | inline | — |
-| T3 | Implementar paneles flotantes Browser/Inspector/Operaciones con jerarquía de bordes primary/secondary/tertiary y comportamiento dinámico de altura | S1,S3,S4 | inline | — |
-| T4 | Adaptar start screen y status bar al nuevo shell, manteniendo flujos existentes (New/Open/recents/save/status) | S1,S3 | inline | — |
-| T5 | Verificación focalizada (fmt/clippy/tests de cam-ui afectados), actualización de handoff gentle_design y notas de pendientes | S1,S5 | inline | — |
+| ID  | Tarea                                                                                                                                                                              | Specs    | Ruta   | Commit |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------ |
+| T1  | Mapear el shell actual y definir el layout Floating Studio en egui: top bar, canvas dominante, paneles flotantes, status bar, preservando UiAction/estado                          | S1,S2,S3 | inline | —      |
+| T2  | Implementar top bar estilo SolidCraft (marca, documento, command search central, acciones de layout/tema/config) y quitar dependencia del layout docked anterior donde corresponda | S1,S3,S4 | inline | —      |
+| T3  | Implementar paneles flotantes Browser/Inspector/Operaciones con jerarquía de bordes primary/secondary/tertiary y comportamiento dinámico de altura                                 | S1,S3,S4 | inline | —      |
+| T4  | Adaptar start screen y status bar al nuevo shell, manteniendo flujos existentes (New/Open/recents/save/status)                                                                     | S1,S3    | inline | —      |
+| T5  | Verificación focalizada (fmt/clippy/tests de cam-ui afectados), actualización de handoff gentle_design y notas de pendientes                                                       | S1,S5    | inline | —      |
 
 ## Log
 
-- **L1 (pedido original, verbatim).** «Implement the design artboard design/camcraft-workbench-v2/02-floating-studio.html ... Implement it in the project's real stack. ...» 
+- **L1 (pedido original, verbatim).** «Implement the design artboard design/camcraft-workbench-v2/02-floating-studio.html ... Implement it in the project's real stack. ...»
 - **L2 (contexto).** Se crearon direcciones de diseño en `design/camcraft-workbench-v2/`, se actualizó `design/system.md`/`design/system.html` a familia SolidCraft y se refinó `02-floating-studio.html` con comentarios de canvas. Se inicia implementación egui en `cam-ui`.
 - **L3 (primera pasada egui).** Layout Floating Studio en `shell/frame.rs`, top bar rediseñado en `chrome/app_bar.rs`, paneles flotantes browser/inspector en `shell/panels.rs`, paleta flotante en `chrome/palette.rs`. `cargo test -p cam-ui --lib` 34/0.
 - **L4 (fix click-through + tests).** Worker: patrón de hit-test para paneles flotantes sin bloquear canvas; warm-up pass removido de `pass` (was corrupting one-shot reports); adaptaciones de tests por layout obsoleto. `--test input` 23/0, `--test shell` 138/0.

@@ -21,11 +21,11 @@ Atajos de teclado del flujo PCB, Ctrl+S sin diálogo cuando hay ruta, y mapa de 
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Implementar Ctrl+S (guardar sin diálogo cuando hay ruta; comportamiento definido si no hay ruta) | S1,S2 | inline | pending |
-| T2 | Documentar mapa de atajos en ayuda/overlay, incluyendo flujo PCB relevante | S1,S2 | inline | pending |
-| T3 | Tests y actualización de roadmap | S1,S2 | inline | pending |
+| ID  | Tarea                                                                                            | Specs | Ruta   | Commit  |
+| --- | ------------------------------------------------------------------------------------------------ | ----- | ------ | ------- |
+| T1  | Implementar Ctrl+S (guardar sin diálogo cuando hay ruta; comportamiento definido si no hay ruta) | S1,S2 | inline | pending |
+| T2  | Documentar mapa de atajos en ayuda/overlay, incluyendo flujo PCB relevante                       | S1,S2 | inline | pending |
+| T3  | Tests y actualización de roadmap                                                                 | S1,S2 | inline | pending |
 
 ## Log
 

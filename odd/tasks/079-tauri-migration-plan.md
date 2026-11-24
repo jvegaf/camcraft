@@ -15,11 +15,11 @@ Documentar la decisión de migrar el shell desktop de camcraft de egui a Tauri 2
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Crear `docs/MIGRATION_TAURI.md` con decisión, evidencia de spikes, arquitectura objetivo, IPC, fases, riesgos y docs a actualizar | S1,S2 | inline | `b707a04` |
-| T2 | Registrar en ODD (task doc + INDEX) y Engram | S2 | inline | `b707a04` |
-| T3 | Commit y push | S2 | inline | `b707a04` |
+| ID  | Tarea                                                                                                                             | Specs | Ruta   | Commit    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Crear `docs/MIGRATION_TAURI.md` con decisión, evidencia de spikes, arquitectura objetivo, IPC, fases, riesgos y docs a actualizar | S1,S2 | inline | `b707a04` |
+| T2  | Registrar en ODD (task doc + INDEX) y Engram                                                                                      | S2    | inline | `b707a04` |
+| T3  | Commit y push                                                                                                                     | S2    | inline | `b707a04` |
 
 ## Log
 

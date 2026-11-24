@@ -15,13 +15,13 @@ Spike de viabilidad: Tauri 2 con webview para el chrome DS HTML/CSS y viewport 3
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Bootstrap del spike en `spikes/tauri/`: app Tauri 2 que levanta en Linux, README con deps y comandos reproducibles | S1,S2 | worktree | — |
-| T2 | Chrome DS: start screen mínima usando tokens/componentes derivados de `design/system.md` y `design/start-screen/03-split-workbench.html`; dark/light toggle | S2,S3 | worktree | — |
-| T3 | Viewport 3D: escena fija de `cam-view` renderizada en webview (WebGPU o WebGL, documentar elección) con orbit/pan/zoom | S2,S3 | worktree | — |
-| T4 | Bridge Rust↔webview: comando/evento para cargar escena y estado de cámara/selección; overlay UI junto al viewport | S2,S3 | worktree | — |
-| T5 | Medición y reporte: completar `spikes/tauri/REPORT.md` con scorecard S4, capturas/gif, bloqueos, comandos de reproducción | S1,S4 | worktree | — |
+| ID  | Tarea                                                                                                                                                       | Specs | Ruta     | Commit |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------- | ------ |
+| T1  | Bootstrap del spike en `spikes/tauri/`: app Tauri 2 que levanta en Linux, README con deps y comandos reproducibles                                          | S1,S2 | worktree | —      |
+| T2  | Chrome DS: start screen mínima usando tokens/componentes derivados de `design/system.md` y `design/start-screen/03-split-workbench.html`; dark/light toggle | S2,S3 | worktree | —      |
+| T3  | Viewport 3D: escena fija de `cam-view` renderizada en webview (WebGPU o WebGL, documentar elección) con orbit/pan/zoom                                      | S2,S3 | worktree | —      |
+| T4  | Bridge Rust↔webview: comando/evento para cargar escena y estado de cámara/selección; overlay UI junto al viewport                                           | S2,S3 | worktree | —      |
+| T5  | Medición y reporte: completar `spikes/tauri/REPORT.md` con scorecard S4, capturas/gif, bloqueos, comandos de reproducción                                   | S1,S4 | worktree | —      |
 
 ## Log
 

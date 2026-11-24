@@ -63,7 +63,7 @@ writes down instead of making.
 
 ## Two halves, and why the measurement lives outside the workspace
 
-`cargo test` runs the half it can bound: every artefact the goldens pin as *parsed* is measured again in
+`cargo test` runs the half it can bound: every artefact the goldens pin as _parsed_ is measured again in
 `crates/cam-geom/tests/parity.rs` and compared with the same rules, plus the corpus-integrity assertions.
 That half is fast (0.1 s today) and needs no external process.
 
@@ -113,7 +113,7 @@ that is not a valid region) now imports the rest, so the reader accepts the laye
 it to a kernel that does not finish (`timeout`). The cost is honest and visible: four more 30 s bounds.
 
 Those 22 are the important line. They are not the layers the reader rejects: they are layers the
-reader now *accepts* and hands to the geometry kernel, which does not finish evaluating them inside the
+reader now _accepts_ and hands to the geometry kernel, which does not finish evaluating them inside the
 harness' 20 s bound, down from 30 s: at ten the run takes four minutes but loses two `substitute-easyeda`
 layers that do terminate between ten and thirty, so twenty is the largest saving that keeps every
 measurement. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
@@ -149,11 +149,11 @@ some afternoon.
 
 `5 parsed, 49 not parsed, of 54 artefacts`. That is not parity; it is the distance, quantified:
 
-| Artefacts | State | Why |
-| --- | --- | --- |
-| 42 Gerber layers | 38 refused, 4 timeout | three constructs stand between this reader and a real board: an aperture macro (`RoundRect`) with a non-zero rotation, an arc `D01` outside a `G36`/`G37` region, and the boolean engine refusing real copper with "the arrangement revisits a piece" |
-| 6 drill files | 2 parsed, 4 refused | routed slots written as `X…Y…G85X…Y…`, which the Excellon reader does not accept |
-| 3 Gerber layers parsed | 1 with geometry, 2 empty | `substitute-easyeda/outline` (2 polygons, 16 114.898 739 518 914 mm² of contour area), and two layers whose source file is legitimately empty of material |
+| Artefacts              | State                    | Why                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 42 Gerber layers       | 38 refused, 4 timeout    | three constructs stand between this reader and a real board: an aperture macro (`RoundRect`) with a non-zero rotation, an arc `D01` outside a `G36`/`G37` region, and the boolean engine refusing real copper with "the arrangement revisits a piece" |
+| 6 drill files          | 2 parsed, 4 refused      | routed slots written as `X…Y…G85X…Y…`, which the Excellon reader does not accept                                                                                                                                                                      |
+| 3 Gerber layers parsed | 1 with geometry, 2 empty | `substitute-easyeda/outline` (2 polygons, 16 114.898 739 518 914 mm² of contour area), and two layers whose source file is legitimately empty of material                                                                                             |
 
 Each refused artefact maps to an item the roadmap already names — `RoundRect` and the aperture macros to
 E3b, the arc stroke and the region re-entry to E1.4, the arrangement refusal to G0.1/G0.2, the slots to

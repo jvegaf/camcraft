@@ -3,7 +3,7 @@
 FlatCAM-Plus is the reference implementation this port is measured against, and E0.6 asks for its
 numbers **before** any PCB operation is judged: `docs/ROADMAP_CAMCRAFT.md` does not write phase 4 until
 E0.6 and E0.7 are green, "porque sin baseline la promesa no es medible". The parity harness of E0.4 says
-in its own README that it is *not* parity against FlatCAM; this is the other instrument, the one that
+in its own README that it is _not_ parity against FlatCAM; this is the other instrument, the one that
 runs FlatCAM over the same corpus and records what it costs.
 
 ```
@@ -51,10 +51,10 @@ Per artefact, one process:
 
 Per board, per operation:
 
-| operation | source | parameters |
-| --- | --- | --- |
-| `isolation` | `top.gbr` | tool ⌀ 0.2 mm, 2 passes, 15 % overlap, full isolation, passes combined |
-| `drill` | `drill.drl` | drill −1.8 mm, travel 2 mm, plunge feed 60 mm/min, toolchange at Z 30 |
+| operation   | source      | parameters                                                             |
+| ----------- | ----------- | ---------------------------------------------------------------------- |
+| `isolation` | `top.gbr`   | tool ⌀ 0.2 mm, 2 passes, 15 % overlap, full isolation, passes combined |
+| `drill`     | `drill.drl` | drill −1.8 mm, travel 2 mm, plunge feed 60 mm/min, toolchange at Z 30  |
 
 Each records `seconds` for the operation itself, and the move count read from `CNCjob.gcode_parsed`: the
 list of tool paths FlatCAM generated, each tagged `T`/`C` (travel/cut) × `F`/`S` (fast/slow), plus the
@@ -87,7 +87,7 @@ Never checked, on purpose:
   comparison of E0.7. `compare.py` prints them next to their goldens with a ratio and never fails on it.
 - **FlatCAM's `vertices` against camcraft's `points`.** FlatCAM flattens every arc through Shapely while
   the workspace preserves arcs, so the two count different things. `docs/ROADMAP_CAMCRAFT.md` states the
-  rule: "La comparación es de área y cobertura, nunca de conteo de vértices con FlatCAM." The *area* is
+  rule: "La comparación es de área y cobertura, nunca de conteo de vértices con FlatCAM." The _area_ is
   the comparable number, and it is comparable only loosely across the two implementations (an arc drawn
   at 64 segments is not the circle it approximates); the baseline compares FlatCAM with FlatCAM.
 

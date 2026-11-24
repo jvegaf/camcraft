@@ -29,11 +29,11 @@ Binding estable de herramientas PCB a la librería SQLite (no snapshot), de modo
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Definir identidad estable de herramienta y contrato de binding en modelo/store/UI | S1,S2,S3 | inline | pending |
-| T2 | Hacer que panel/operaciones resuelvan contra librería viva (no snapshot) y que edits se reflejen | S1,S2,S3 | inline | pending |
-| T3 | Tests de regresión, validación y actualización de roadmap | S1,S2,S3 | inline | pending |
+| ID  | Tarea                                                                                            | Specs    | Ruta   | Commit  |
+| --- | ------------------------------------------------------------------------------------------------ | -------- | ------ | ------- |
+| T1  | Definir identidad estable de herramienta y contrato de binding en modelo/store/UI                | S1,S2,S3 | inline | pending |
+| T2  | Hacer que panel/operaciones resuelvan contra librería viva (no snapshot) y que edits se reflejen | S1,S2,S3 | inline | pending |
+| T3  | Tests de regresión, validación y actualización de roadmap                                        | S1,S2,S3 | inline | pending |
 
 ## Log
 

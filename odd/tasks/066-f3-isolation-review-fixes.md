@@ -20,13 +20,13 @@ Atender las correcciones/hallazgos indicados por los reviewers de la revisión R
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Estado | Commit |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Corregir doc de `isolation_passes` para reflejar su contrato real (delegación sin `kind`/`keep_pours`) y aclarar el API | S1,S2,S3 | inline | done | 1fe68cc |
-| T2 | Ajustar test `isolate_emits_gcode_accepted_by_camsim` para que valide la salida emitida y no solo un stream reconstruido aparte | S1,S2,S4 | inline | done | 1fe68cc |
-| T3 | Hacer la escritura de `--out` robusta ante concurrencia/sobrescritura usando nombre temporal único/seguro | S1,S2,S5 | inline | done | 1fe68cc |
-| T4 | Evitar descarte silencioso de errores inesperados en recuperación por colapso de huecos (`interior_boundaries_per_hole`), con diagnóstico observable | S1,S2,S6 | inline | done | 1fe68cc |
-| T5 | Verificar (fmt, clippy, tests relevantes), actualizar este documento y preparar entrega | S1-S6 | inline | done | — |
+| ID  | Tarea                                                                                                                                                | Specs    | Ruta   | Estado | Commit  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ------ | ------- |
+| T1  | Corregir doc de `isolation_passes` para reflejar su contrato real (delegación sin `kind`/`keep_pours`) y aclarar el API                              | S1,S2,S3 | inline | done   | 1fe68cc |
+| T2  | Ajustar test `isolate_emits_gcode_accepted_by_camsim` para que valide la salida emitida y no solo un stream reconstruido aparte                      | S1,S2,S4 | inline | done   | 1fe68cc |
+| T3  | Hacer la escritura de `--out` robusta ante concurrencia/sobrescritura usando nombre temporal único/seguro                                            | S1,S2,S5 | inline | done   | 1fe68cc |
+| T4  | Evitar descarte silencioso de errores inesperados en recuperación por colapso de huecos (`interior_boundaries_per_hole`), con diagnóstico observable | S1,S2,S6 | inline | done   | 1fe68cc |
+| T5  | Verificar (fmt, clippy, tests relevantes), actualizar este documento y preparar entrega                                                              | S1-S6    | inline | done   | —       |
 
 ## Log
 
