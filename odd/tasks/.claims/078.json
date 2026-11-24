@@ -1,0 +1,16 @@
+{
+  "task": 78,
+  "agent": "unknown",
+  "session_id": "unknown",
+  "branch": "feat/078-spike-gpui-native",
+  "worktree": "/home/th3g3ntl3man/Code/camcraft/.worktrees/078",
+  "mode": "surfaces",
+  "surfaces": [
+    "spikes/gpui"
+  ],
+  "declared_surfaces": [
+    "spikes/gpui"
+  ],
+  "crates": [],
+  "started_at": "2026-11-24T05:17:15+01:00"
+}

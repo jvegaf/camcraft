@@ -1,19 +1,13 @@
-# The owner's local scratch: never committed.
-/etc/
-/data/
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
 
-# Rust
-/target/
-.worktrees/
-.m3-brief.md
-.t9-brief.md
-
-# Shared task claims: ephemeral coordination state between agents
-/odd/tasks/.claims/
-
-# Generated skill-registry cache (gentle-ai)
-.atl/
-# Stray downloads that land in the tree and would pollute a review scope
-*.m4a*
-*.ytdl
-__pycache__
+# Panda
+styled-system

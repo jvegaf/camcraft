@@ -1,4 +1,4 @@
-# Camcraft design system — SolidCraft family (workbench v2)
+# Camcraft design system  (workbench v2)
 
 Sistema visual para el rediseño de Camcraft con lenguaje de familia SolidCraft. Adapta patrones de SolidCraft (jerarquía de bordes, superficies flotantes/compactas, command search, densidad sobria) al dominio CAM de PCB de Camcraft.
 
@@ -74,7 +74,7 @@ Los colores de material/stock (`StockTop/Bottom/Edge`) se mantienen del sistema 
 
 ## Tipografía
 
-Familia: `Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.  
+Familia: `Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
 Mono: `ui-monospace, SFMono-Regular, Menlo, monospace` para coordenadas, IDs, valores numéricos tabulares.
 
 | Estilo | Tamaño / peso | Uso |
@@ -106,37 +106,44 @@ Mono: `ui-monospace, SFMono-Regular, Menlo, monospace` para coordenadas, IDs, va
 ## Componentes (patrones SolidCraft family)
 
 ### App bar / command bar
+
 - Fondo `Panel`, borde inferior `Hairline`.
 - Izquierda: mark/producto, separador, documento/estado.
 - Centro: command search con scope visible (`Buscar comando…`), atajo `⌘K`.
 - Derecha: acciones de vista/layout/tema/configuración, unidades.
 
 ### Floating card
+
 - Fondo `Overlay` con leve blur opcional (en implementación; en artboard, color sólido).
 - Borde `Border` (primary), radio `radius-overlay`, sombra `0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42)`.
 - Header 38px: título caption uppercase, metadata a la derecha, acciones quietas.
 - Body con padding 10-12px; scroll interno si hace falta.
 
 ### Browser / árbol de proyecto
+
 - Filas completas clickeables, altura ~28-32px.
 - Selección actual con `SelSoft` + texto `TextHi`; nunca solo color.
 - Íconos/puntos de estado con significado (copper/drill/cut/ok), con texto/metadato.
 
 ### Inspector contextual
+
 - Edita el objeto seleccionado; no compite con browser.
 - Campos con label `TextDim`, input `App/Raised` + borde `Border`, valor `Text`.
 - Veredictos/estado como callout con borde semántico suave.
 
 ### Command search
+
 - Siempre visible o invocable por `⌘K`.
 - Placeholder dice el alcance; no promete buscar “todo” si no lo hace.
 
 ### Status bar
+
 - Izquierda: coords/estado inmediato (mono).
 - Centro/derecha: contexto, unidades, mensajes, estado de salud.
 - Chips discretos; sin ruido.
 
 ### Start screen
+
 - Misma familia visual que el shell.
 - Dos acciones claras: nuevo/abrir; recientes con nombre, path, tiempo.
 - No desplaza el lenguaje a “marketing hero”.
