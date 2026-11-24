@@ -32,3 +32,4 @@ Implementar Fase 1 de la migración Tauri: start screen real con DS, comandos re
 - **L1 (pedido original, verbatim).** «perfecto, continua»
 - **L2 (contexto).** Continúa Fase 1 de `docs/MIGRATION_TAURI.md`: start screen real con DS HTML/CSS, comandos recents/open/new, settings mínimas. Ya existen comandos de documento/recents y rutas `/` `/workspace`.
 - **L3 (ejecución, 2026-11-24).** Se cableó `StartScreen` DS a comandos Tauri reales (new/open/recent/settings). Se agregó backend de settings (`get_settings`/`update_settings`, JSON en app data) y ruta `/settings` mínima con theme. Verificados biome, svelte-check, cargo check --workspace, cargo test src-tauri, vitest.
+- **L4 (cierre, 2026-11-24).** Commit `2ab41cf`. RDD assess: not-due (under_budget, medium). ODD/Engram sincronizados; push a `origin/feat/tauri`.
