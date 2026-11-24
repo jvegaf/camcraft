@@ -79,4 +79,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 077 | [spike-tauri-webview](077-spike-tauri-webview.md)                                   | delivered                | 2026-05-24 | `1b41dec`      |
 | 078 | [spike-gpui-native](078-spike-gpui-native.md)                                       | delivered                | 2026-05-24 | `7cf44b8`      |
 | 079 | [tauri-migration-plan](079-tauri-migration-plan.md)                                 | delivered                | 2026-05-24 | `b707a04`      |
-| 080 | [tauri-fase0-gates](080-tauri-fase0-gates.md)                                       | in-progress              | 2026-11-24 |                |
+| 080 | [tauri-fase0-gates](080-tauri-fase0-gates.md)                                       | delivered                | 2026-11-24 | `0fbad73`      |
