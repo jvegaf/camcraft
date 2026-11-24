@@ -25,7 +25,7 @@ Ajustar shell/workbench y start screen a paridad de estilos/componentes con `des
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Auditar y ajustar TopBar/ToolRail/ViewportHud/StatusBar a DS | S1 | inline | pendiente |
+| T1 | Auditar y ajustar TopBar/ToolRail/ViewportHud/StatusBar a DS | S1 | inline | `212d4b3` |
 | T2 | Ajustar Browser/Inspector/FloatCard y StartScreen a DS | S1 | inline | pendiente |
 | T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | pendiente |
 
@@ -34,3 +34,4 @@ Ajustar shell/workbench y start screen a paridad de estilos/componentes con `des
 - **L1 (pedido original, verbatim).** «el problema que teniamos en egui es que no estaba actualizada la ui con los nuevos requerimientos que teniamos, por lo que no le vamos a dar mas coba. tenemos que centrarnos en la paridad de estilos y componentes con el ui system design de @design/camcraft-workbench-v2/02-floating-studio.html»
 - **L2 (contexto).** Referencia DS: `design/camcraft-workbench-v2/02-floating-studio.html`. Priorizar paridad visual/estructural, manteniendo acciones reales ya cableadas.
 - **L3 (ejecución, 2026-11-24).** TopBar/ToolRail/ViewportHud/StatusBar ajustados a DS (kbd ⌘K, layout pill, iconos, estado/severidad, labels 3D). StartScreen ya alineado en textos clave. Verificado `pnpm check`.
+- **L4 (cierre parcial, 2026-11-24).** Commit `212d4b3`. RDD assess: not-due (under_budget, medium). Queda T2/T3: afinar Browser/Inspector/FloatCard contra DS y cierre final.
