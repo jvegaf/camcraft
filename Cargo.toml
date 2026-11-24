@@ -1,0 +1,66 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "prev/crates/cam-units",
+    "prev/crates/cam-geom",
+    "prev/crates/cam-move",
+    "prev/crates/cam-model",
+    "prev/crates/cam-ops",
+    "prev/crates/cam-store",
+    "prev/crates/cam-post",
+    "prev/crates/cam-sim",
+    "prev/crates/cam-cli",
+    "prev/crates/cam-app",
+    "prev/crates/cam-export",
+    "prev/crates/cam-import",
+    "prev/crates/cam-excellon",
+    "prev/crates/cam-gerber",
+    "prev/crates/cam-view",
+    "prev/crates/cam-ui",
+    "prev/crates/cam-desktop",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+cam-units = { path = "prev/crates/cam-units" }
+cam-geom = { path = "prev/crates/cam-geom" }
+cam-move = { path = "prev/crates/cam-move" }
+cam-model = { path = "prev/crates/cam-model" }
+cam-ops = { path = "prev/crates/cam-ops" }
+cam-store = { path = "prev/crates/cam-store" }
+cam-post = { path = "prev/crates/cam-post" }
+cam-sim = { path = "prev/crates/cam-sim" }
+cam-app = { path = "prev/crates/cam-app" }
+cam-import = { path = "prev/crates/cam-import" }
+cam-excellon = { path = "prev/crates/cam-excellon" }
+cam-gerber = { path = "prev/crates/cam-gerber" }
+cam-export = { path = "prev/crates/cam-export" }
+cam-cli = { path = "prev/crates/cam-cli" }
+cam-view = { path = "prev/crates/cam-view" }
+cam-ui = { path = "prev/crates/cam-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+proptest = "1"
+egui = "0.37"
+eframe = "0.37"
+rfd = "0.15"
+criterion = { version = "0.5", features = ["html_reports"] }
+rayon = "1"
+
+# Tauri release profile (moved from src-tauri/Cargo.toml, workspace root controls profiles)
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -11,3 +11,6 @@ vite.config.ts.timestamp-*
 
 # Panda
 styled-system
+
+# Rust
+/target/
