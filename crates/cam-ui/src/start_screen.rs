@@ -231,8 +231,8 @@ impl Shell {
   pub(crate) fn start_screen(&mut self, ctx: &egui::Context, output: &mut ShellOutput) {
     let palette = self.palette();
     let metrics = self.metrics();
-    let side_width = 232.0;
-    let list_width = 456.0;
+    let side_width = 260.0;
+    let list_width = 520.0;
     let mut words: Vec<String> = Vec::new();
     let mut hits: Vec<(String, (f32, f32))> = Vec::new();
     let mut pressed: Option<UiAction> = None;
@@ -244,19 +244,36 @@ impl Shell {
     let unreadable = self.recents_error.clone();
     let modal_id = egui::Id::unique("campilot-start");
     egui::Modal::new(modal_id)
+      .backdrop_color(egui::Color32::from_black_alpha(140))
       .frame(
         egui::Frame::NONE
           .fill(palette.get(Role::Overlay))
           .stroke(Stroke::new(metrics.hairline, palette.get(Role::Border)))
           .corner_radius(egui::CornerRadius::same(metrics.radius_dialog as u8))
-          .inner_margin(egui::Margin::same(metrics.space(4) as i8)),
+          .inner_margin(egui::Margin::ZERO)
+          .shadow(egui::epaint::Shadow {
+            offset: [0, 24],
+            blur: 64,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(140),
+          }),
       )
       .show(ctx, |ui| {
         ui.set_min_height(MIN_HEIGHT);
         ui.horizontal_top(|ui| {
-          // ---- the side column: what a person can start ----
-          ui.vertical(|ui| {
-            ui.set_width(side_width);
+          ui.spacing_mut().item_spacing.x = 0.0;
+          // ---- side column: the acts ----
+          let side_frame = egui::Frame::NONE
+            .fill(palette.get(Role::Panel))
+            .inner_margin(egui::Margin {
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: 16,
+            });
+          let side_resp = side_frame.show(ui, |ui| {
+            ui.set_width(side_width - 32.0);
+            ui.set_min_height(MIN_HEIGHT);
             ui.horizontal(|ui| {
               glyph(ui, &palette, &metrics, Icon::View3d, 20.0, Role::Sel);
               ui.label(
@@ -266,17 +283,14 @@ impl Shell {
               );
             });
             words.push("campilot".to_owned());
-            ui.add_space(metrics.space(4));
+            ui.add_space(metrics.space(6));
 
             heading(ui, &palette, START);
             words.push(START.to_owned());
-            ui.add_space(metrics.space(1));
+            ui.add_space(metrics.space(2));
 
-            // The two acts are separate decisions and not a list, so they get more air between them than one line and
-            // its neighbour: 16 dp of `item_spacing` instead of the style's 8. The scope keeps that spacing off the
-            // heading above and the footer below, which are read as one block with the column.
             ui.scope(|ui| {
-              ui.spacing_mut().item_spacing.y = metrics.space(5);
+              ui.spacing_mut().item_spacing.y = metrics.space(2);
               for (icon, title, sentence, primary) in [
                 (Icon::New, NEW_PROJECT, NEW_PROJECT_SENTENCE, true),
                 (Icon::Open, OPEN_PROJECT, OPEN_PROJECT_SENTENCE, false),
@@ -291,7 +305,7 @@ impl Shell {
                     sentence,
                     primary,
                   },
-                  side_width,
+                  side_width - 32.0,
                 );
                 let centre = response.rect.center();
                 hits.push((title.to_owned(), (centre.x, centre.y)));
@@ -307,7 +321,7 @@ impl Shell {
               }
             });
 
-            ui.add_space(metrics.space(4));
+            ui.add_space(ui.available_height().max(0.0).max(metrics.space(4)));
             ui.label(
               RichText::new(FOOTER_PATH)
                 .size(theme::SMALL)
@@ -321,75 +335,110 @@ impl Shell {
             );
             words.push(FOOTER_ESCAPE.to_owned());
           });
+          // Side right border
+          let side_rect = side_resp.response.rect;
+          ui.painter().line_segment(
+            [side_rect.right_top(), side_rect.right_bottom()],
+            Stroke::new(metrics.hairline, palette.get(Role::Hairline)),
+          );
 
-          ui.add_space(metrics.space(2));
-          ui.separator();
-          ui.add_space(metrics.space(2));
-
-          // ---- the list: what was open before ----
+          // ---- main column: recent projects ----
           ui.vertical(|ui| {
             ui.set_width(list_width);
-            ui.horizontal(|ui| {
-              heading(ui, &palette, RECENTS_TITLE);
-              words.push(RECENTS_TITLE.to_owned());
-              ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let response = close_mark(ui, &palette, &metrics);
-                if response.clicked() {
-                  close = true;
+            ui.set_min_height(MIN_HEIGHT);
+            // Header
+            egui::Frame::NONE
+              .inner_margin(egui::Margin {
+                left: 16,
+                right: 8,
+                top: 0,
+                bottom: 0,
+              })
+              .show(ui, |ui| {
+                ui.set_min_height(40.0);
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                  heading(ui, &palette, RECENTS_TITLE);
+                  words.push(RECENTS_TITLE.to_owned());
+                  ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let response = close_mark(ui, &palette, &metrics);
+                    if response.clicked() {
+                      close = true;
+                    }
+                  });
+                });
+              });
+            let header_rect = ui.min_rect();
+            ui.painter().line_segment(
+              [
+                egui::pos2(side_rect.right() + 1.0, header_rect.max.y),
+                egui::pos2(side_rect.right() + list_width, header_rect.max.y),
+              ],
+              Stroke::new(metrics.hairline, palette.get(Role::Hairline)),
+            );
+
+            // List content
+            egui::Frame::NONE
+              .inner_margin(egui::Margin::ZERO)
+              .show(ui, |ui| {
+                ui.set_width(list_width);
+                if let Some(sentence) = &unreadable {
+                  egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(16, 24))
+                    .show(ui, |ui| {
+                      ui.label(
+                        RichText::new(sentence)
+                          .size(theme::BODY)
+                          .color(palette.get(Role::Text)),
+                      );
+                      words.push(sentence.clone());
+                      ui.add_space(6.0);
+                      ui.label(
+                        RichText::new(RECENTS_UNREADABLE_HINT)
+                          .size(theme::SMALL)
+                          .color(palette.get(Role::TextDim)),
+                      );
+                      words.push(RECENTS_UNREADABLE_HINT.to_owned());
+                      ui.add_space(8.0);
+                      let response = ui.button(RichText::new(RETRY).size(theme::SMALL));
+                      let centre = response.rect.center();
+                      hits.push((RETRY.to_owned(), (centre.x, centre.y)));
+                      words.push(RETRY.to_owned());
+                      retry = response.clicked();
+                    });
+                } else if recents.is_empty() {
+                  egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(16, 24))
+                    .show(ui, |ui| {
+                      ui.label(
+                        RichText::new(NO_RECENTS)
+                          .size(theme::BODY)
+                          .color(palette.get(Role::Text)),
+                      );
+                      words.push(NO_RECENTS.to_owned());
+                      ui.add_space(6.0);
+                      ui.label(
+                        RichText::new(NO_RECENTS_HINT)
+                          .size(theme::SMALL)
+                          .color(palette.get(Role::TextDim)),
+                      );
+                      words.push(NO_RECENTS_HINT.to_owned());
+                    });
+                } else {
+                  for entry in &recents {
+                    let response = recent_row(ui, &palette, &metrics, entry, list_width);
+                    let centre = response.rect.center();
+                    words.push(entry.name.clone());
+                    words.push(entry.display_path());
+                    hits.push((entry.display_path(), (centre.x, centre.y)));
+                    let action = UiAction::OpenFile {
+                      path: entry.path.clone(),
+                    };
+                    if response.clicked() {
+                      pressed = Some(action);
+                    }
+                  }
                 }
               });
-            });
-            ui.add_space(metrics.space(1));
-
-            if let Some(sentence) = &unreadable {
-              // The list could not be read, which is not the same answer as "nothing was opened yet" and must not be
-              // drawn as one: a person with twelve projects and an unreadable file would be told they have none.
-              ui.label(
-                RichText::new(sentence)
-                  .size(theme::BODY)
-                  .color(palette.get(Role::Text)),
-              );
-              words.push(sentence.clone());
-              ui.label(
-                RichText::new(RECENTS_UNREADABLE_HINT)
-                  .size(theme::SMALL)
-                  .color(palette.get(Role::TextDim)),
-              );
-              words.push(RECENTS_UNREADABLE_HINT.to_owned());
-              ui.add_space(metrics.space(1));
-              let response = ui.button(RichText::new(RETRY).size(theme::SMALL));
-              let centre = response.rect.center();
-              hits.push((RETRY.to_owned(), (centre.x, centre.y)));
-              words.push(RETRY.to_owned());
-              retry = response.clicked();
-            } else if recents.is_empty() {
-              ui.label(
-                RichText::new(NO_RECENTS)
-                  .size(theme::BODY)
-                  .color(palette.get(Role::Text)),
-              );
-              words.push(NO_RECENTS.to_owned());
-              ui.label(
-                RichText::new(NO_RECENTS_HINT)
-                  .size(theme::SMALL)
-                  .color(palette.get(Role::TextDim)),
-              );
-              words.push(NO_RECENTS_HINT.to_owned());
-            } else {
-              for entry in &recents {
-                let response = recent_row(ui, &palette, &metrics, entry, list_width);
-                let centre = response.rect.center();
-                words.push(entry.name.clone());
-                words.push(entry.display_path());
-                hits.push((entry.display_path(), (centre.x, centre.y)));
-                let action = UiAction::OpenFile {
-                  path: entry.path.clone(),
-                };
-                if response.clicked() {
-                  pressed = Some(action);
-                }
-              }
-            }
           });
         });
       });
@@ -510,17 +559,13 @@ fn recent_row(
   entry: &RecentProject,
   width: f32,
 ) -> egui::Response {
-  let height = metrics.space(5) + theme::BODY + theme::SMALL;
+  let height = 44.0;
   let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
   let painter = ui.painter();
   if response.hovered() || response.has_focus() {
-    painter.rect_filled(
-      rect,
-      egui::CornerRadius::same(metrics.radius_control as u8),
-      palette.get(Role::SelSoft),
-    );
+    painter.rect_filled(rect, 0.0, palette.get(Role::SelSoft));
   }
-  let inner = metrics.space(2);
+  let inner = 16.0;
   let text_left = rect.left() + inner;
   let step = metrics.space(0);
   painter.text(
