@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use cam_app::AppState;
@@ -5,7 +6,12 @@ use cam_model::{Board, Document};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-struct AppRuntime(Mutex<AppState>);
+struct RuntimeState {
+  app: AppState,
+  path: Option<PathBuf>,
+}
+
+struct AppRuntime(Mutex<RuntimeState>);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +19,7 @@ pub struct DocumentStatusDto {
   pub schema: String,
   pub document_schema: String,
   pub dirty: bool,
+  pub path: Option<String>,
   pub layer_count: usize,
   pub toolpath_count: usize,
   pub board_width_mm: f64,
@@ -28,12 +35,13 @@ pub struct NewDocumentRequest {
   pub thickness_mm: f64,
 }
 
-fn snapshot(state: &AppState) -> DocumentStatusDto {
-  let doc = state.document();
+fn snapshot(state: &RuntimeState) -> DocumentStatusDto {
+  let doc = state.app.document();
   DocumentStatusDto {
     schema: "cam-document-status@1".into(),
     document_schema: doc.schema.clone(),
-    dirty: state.is_dirty(),
+    dirty: state.app.is_dirty(),
+    path: state.path.as_ref().map(|p| p.to_string_lossy().into_owned()),
     layer_count: doc.layers.len(),
     toolpath_count: doc.toolpaths.len(),
     board_width_mm: doc.board.width.mm(),
@@ -59,13 +67,43 @@ fn new_document(
   board.height = cam_units::Length::from_mm(request.height_mm);
   board.thickness = cam_units::Length::from_mm(request.thickness_mm);
   let doc = Document::new(board);
-  state.replace_document(doc);
+  state.app.replace_document(doc);
+  state.path = None;
+  Ok(snapshot(&state))
+}
+
+#[tauri::command]
+fn open_document(runtime: State<'_, AppRuntime>, path: String) -> Result<DocumentStatusDto, String> {
+  let doc = cam_store::document::load_document(&path).map_err(|e| e.to_string())?;
+  let mut state = runtime.0.lock().map_err(|_| "runtime state poisoned")?;
+  state.app.replace_document(doc);
+  state.path = Some(PathBuf::from(path));
+  Ok(snapshot(&state))
+}
+
+#[tauri::command]
+fn save_document(
+  runtime: State<'_, AppRuntime>,
+  path: Option<String>,
+) -> Result<DocumentStatusDto, String> {
+  let mut state = runtime.0.lock().map_err(|_| "runtime state poisoned")?;
+  let target = path
+    .map(PathBuf::from)
+    .or_else(|| state.path.clone())
+    .ok_or_else(|| "no document path; use save as".to_string())?;
+  let doc = state.app.document().clone();
+  cam_store::document::save_document(&target, &doc).map_err(|e| e.to_string())?;
+  state.path = Some(target);
+  state.app.mark_saved();
   Ok(snapshot(&state))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  let initial = AppState::new(Document::new(Board::default_board()));
+  let initial = RuntimeState {
+    app: AppState::new(Document::new(Board::default_board())),
+    path: None,
+  };
 
   tauri::Builder::default()
     .manage(AppRuntime(Mutex::new(initial)))
@@ -75,7 +113,13 @@ pub fn run() {
         .build(),
     )
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![document_status, new_document])
+    .plugin(tauri_plugin_dialog::init())
+    .invoke_handler(tauri::generate_handler![
+      document_status,
+      new_document,
+      open_document,
+      save_document
+    ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

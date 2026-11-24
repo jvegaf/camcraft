@@ -1,10 +1,12 @@
 <script lang="ts">
 import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 
 type DocumentStatus = {
   schema: string;
   documentSchema: string;
   dirty: boolean;
+  path: string | null;
   layerCount: number;
   toolpathCount: number;
   boardWidthMm: number;
@@ -12,7 +14,6 @@ type DocumentStatus = {
   boardThicknessMm: number;
 };
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let status = $state<DocumentStatus | null>(null);
 // biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let error = $state('');
@@ -46,6 +47,47 @@ async function createDocument(event: Event) {
   }
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
+async function openDocument() {
+  error = '';
+  try {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Camcraft document', extensions: ['cmc', 'json'] }]
+    });
+    if (typeof selected !== 'string') return;
+    status = await invoke<DocumentStatus>('open_document', { path: selected });
+  } catch (e) {
+    error = String(e);
+  }
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
+async function saveDocument() {
+  error = '';
+  try {
+    status = await invoke<DocumentStatus>('save_document', {
+      path: status?.path ?? null
+    });
+  } catch (e) {
+    error = String(e);
+  }
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
+async function saveDocumentAs() {
+  error = '';
+  try {
+    const target = await save({
+      filters: [{ name: 'Camcraft document', extensions: ['cmc'] }]
+    });
+    if (!target) return;
+    status = await invoke<DocumentStatus>('save_document', { path: target });
+  } catch (e) {
+    error = String(e);
+  }
+}
+
 void refreshStatus();
 </script>
 
@@ -56,7 +98,12 @@ void refreshStatus();
   <section class="panel">
     <div class="row">
       <h2>Document</h2>
-      <button type="button" onclick={refreshStatus}>Refresh</button>
+      <div class="actions">
+        <button type="button" onclick={openDocument}>Open</button>
+        <button type="button" onclick={saveDocument}>Save</button>
+        <button type="button" onclick={saveDocumentAs}>Save as</button>
+        <button type="button" onclick={refreshStatus}>Refresh</button>
+      </div>
     </div>
 
     {#if error}
@@ -66,6 +113,7 @@ void refreshStatus();
     {#if status}
       <dl class="status">
         <dt>Schema</dt><dd>{status.documentSchema}</dd>
+        <dt>Path</dt><dd>{status.path ?? "(unsaved)"}</dd>
         <dt>Dirty</dt><dd>{status.dirty ? "yes" : "no"}</dd>
         <dt>Layers</dt><dd>{status.layerCount}</dd>
         <dt>Toolpaths</dt><dd>{status.toolpathCount}</dd>
@@ -94,13 +142,14 @@ void refreshStatus();
     background: #f4f5f7;
     font-family: Inter, system-ui, sans-serif;
   }
-  .container { max-width: 720px; margin: 0 auto; padding: 32px 20px; }
+  .container { max-width: 860px; margin: 0 auto; padding: 32px 20px; }
   .subtitle { color: #5f6b7a; margin-top: -8px; }
   .panel { background: #fff; border: 1px solid #d9dde3; border-radius: 12px; padding: 16px; margin: 16px 0; }
-  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .status { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0 0; }
   dt { color: #5f6b7a; }
-  dd { margin: 0; }
+  dd { margin: 0; word-break: break-word; }
   .form { display: grid; gap: 12px; max-width: 320px; }
   label { display: grid; gap: 4px; font-size: 14px; }
   input, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #c7ced8; }
