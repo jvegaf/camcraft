@@ -8,6 +8,7 @@ interface Props {
   meta?: string;
   class?: string;
   ariaLabel?: string;
+  headAction?: Snippet;
   children: Snippet;
 }
 
@@ -16,6 +17,7 @@ let {
   meta,
   class: className = '',
   ariaLabel = title,
+  headAction,
   children
 }: Props = $props();
 
@@ -57,6 +59,7 @@ const body = css({ p: '10px', overflow: 'auto', minH: '0' });
   <div class={head}>
     <h2 class={heading}>{title}</h2>
     {#if meta}<span class={metaClass}>{meta}</span>{/if}
+    {#if headAction}{@render headAction()}{/if}
   </div>
   <div class={body}>
     {@render children()}

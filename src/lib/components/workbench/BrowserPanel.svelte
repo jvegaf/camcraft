@@ -43,15 +43,24 @@ const navItem = css({
   bg: 'transparent',
   border: 'none'
 });
-const recentBtn = css({
-  cursor: 'pointer',
-  _hover: { bg: 'raised' }
-});
+const recentBtn = css({ cursor: 'pointer', _hover: { bg: 'raised' } });
 const dotBase = css({ w: '8px', h: '8px', borderRadius: '50%', bg: 'border', flex: 'none' });
 const count = css({ ml: 'auto', fontSize: '11px', fontFamily: 'mono', color: 'textOff', whiteSpace: 'nowrap' });
+const headBtn = css({
+  w: '24px', h: '24px', display: 'grid', placeItems: 'center',
+  borderRadius: '4px', color: 'textOff', cursor: 'pointer',
+  _hover: { bg: 'raised', color: 'text' }
+});
+const icon = css({ w: '14px', h: '14px', stroke: 'currentColor', fill: 'none', strokeWidth: '1.6', strokeLinecap: 'round', strokeLinejoin: 'round' });
 </script>
 
 <FloatCard title="Browser" meta={workbenchState.document?.path?.split('/').pop() ?? 'Proyecto'} class={panelPos} ariaLabel="Browser">
+  {#snippet headAction()}
+    <button class={headBtn} aria-label="Buscar en browser">
+      <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>
+    </button>
+  {/snippet}
+
   <div class={sectionCls}>
     <h3 class={sectionTitle}>Documento</h3>
     <div class={navItem}><span class={dotBase} style="background:#5ec27f"></span>Schema <span class={count}>{workbenchState.document?.documentSchema ?? '—'}</span></div>
