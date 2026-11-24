@@ -94,8 +94,8 @@ def enforced_base(surface: str) -> str:
     return "/".join(kept)
 
 
-def legacy_crates() -> list[str]:
-    return sorted(set(re.findall(r"crates/[A-Za-z0-9_-]+", text)))
+def legacy_tokens() -> list[str]:
+    return sorted(set(re.findall(r"(?:crates|src-tauri|src|docs|scripts|design|odd|prev|fixtures|apps|packages|\.agents|\.github)/[A-Za-z0-9_.-]+", text)))
 
 
 def overlaps(one: str, other: str) -> bool:
@@ -110,8 +110,8 @@ for surface in declared:
     base = enforced_base(surface)
     if base not in surfaces:
         surfaces.append(base)
-crates = [] if declared else legacy_crates()
-mine = surfaces + crates
+legacy = [] if declared else legacy_tokens()
+mine = surfaces + legacy
 
 for other in sorted(pathlib.Path(claimdir).glob("*.json")):
     if other.resolve() == pathlib.Path(claimpath).resolve():
@@ -148,10 +148,10 @@ claim = {
     "session_id": session,
     "branch": branch,
     "worktree": worktree,
-    "mode": "surfaces" if declared else "crates-fallback",
+    "mode": "surfaces" if declared else "legacy-fallback",
     "surfaces": surfaces,
     "declared_surfaces": declared,
-    "crates": crates,
+    "crates": legacy,
     "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
 }
 payload = json.dumps(claim, indent=2) + "\n"
