@@ -6,9 +6,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, feat/tauri]
+    branches: [ dev, feat/tauri ]
   pull_request:
-    branches: [master, dev]
+    branches: [ master, dev ]
   workflow_dispatch:
 
 concurrency:
@@ -57,7 +57,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            src-tauri -> target
+            . -> target
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile

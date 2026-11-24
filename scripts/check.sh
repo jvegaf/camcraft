@@ -26,9 +26,16 @@ else
   echo "skip: pnpm/package.json no disponible"
 fi
 
-echo "== rust (src-tauri) =="
+echo "== rust (workspace check) =="
+if [ -f Cargo.toml ]; then
+  cargo check --workspace
+else
+  echo "skip: Cargo.toml no encontrado"
+fi
+
+echo "== rust (test src-tauri) =="
 if [ -f src-tauri/Cargo.toml ]; then
-  cargo check --manifest-path src-tauri/Cargo.toml
+  cargo test --manifest-path src-tauri/Cargo.toml
 else
   echo "skip: src-tauri/Cargo.toml no encontrado"
 fi

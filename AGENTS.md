@@ -1,6 +1,7 @@
 ---
-page-id: 18
----
+
+## page-id: 18
+
 # AGENTS.md — Reglas para agentes en camcraft
 
 ## Stack
@@ -74,8 +75,10 @@ pnpm format         # biome check --write
 pnpm test           # vitest (cuando haya tests configurados)
 
 # Tauri/Rust
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo check --workspace
 cargo test  --manifest-path src-tauri/Cargo.toml
+# opcional, más completo (excluye crates egui legacy):
+cargo test  --workspace --exclude cam-ui --exclude cam-desktop
 
 # ODD/worktrees
 just claim N

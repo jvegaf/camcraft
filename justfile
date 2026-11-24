@@ -53,10 +53,13 @@ test:
 
 # Tauri/Rust
 check-rust:
-  cargo check --manifest-path src-tauri/Cargo.toml
+  cargo check --workspace
 
 test-rust:
   cargo test --manifest-path src-tauri/Cargo.toml
+
+test-rust-workspace:
+  cargo test --workspace --exclude cam-ui --exclude cam-desktop
 
 # Panda
 codegen:
