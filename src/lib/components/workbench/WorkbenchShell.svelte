@@ -11,7 +11,7 @@ import StatusBar from './StatusBar.svelte';
 import ToolRail from './ToolRail.svelte';
 import TopBar from './TopBar.svelte';
 import ViewportHud from './ViewportHud.svelte';
-import { refreshDocumentStatus, refreshRecents, setDocument, setStatus, workbenchState } from './workbench.svelte';
+import { openSettings, refreshDocumentStatus, refreshRecents, setDocument, setStatus, workbenchState } from './workbench.svelte';
 
 interface Props {
   projectName?: string;
@@ -86,8 +86,8 @@ async function handleNew() {
   }
 }
 
-async function handleSettings() {
-  await goto('/settings');
+function handleSettings() {
+  openSettings();
 }
 
 async function handleBack() {

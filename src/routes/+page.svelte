@@ -6,7 +6,7 @@ import { css } from 'styled-system/css';
 import { StartScreen } from '$lib/components/start-screen';
 import StatusBar from '$lib/components/workbench/StatusBar.svelte';
 import TopBar from '$lib/components/workbench/TopBar.svelte';
-import { workbenchState } from '$lib/components/workbench/workbench.svelte';
+import { openSettings, workbenchState } from '$lib/components/workbench/workbench.svelte';
 
 type RecentProject = {
   name: string;
@@ -104,7 +104,7 @@ const content = css({
     projectName="Camcraft"
     onNew={() => (showNew = true)}
     onOpen={openDocument}
-    onSettings={() => goto('/settings')}
+    onSettings={openSettings}
   />
   <div class={content}>
     <StartScreen
@@ -114,7 +114,7 @@ const content = css({
       onCreate={createDocument}
       onOpen={openDocument}
       onOpenRecent={openRecent}
-      onSettings={() => goto('/settings')}
+      onSettings={openSettings}
     />
   </div>
   <StatusBar />

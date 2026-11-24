@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { onMount } from 'svelte';
 import '../app.css';
+import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
 
 let { children } = $props();
 
@@ -27,3 +28,4 @@ onMount(async () => {
 </script>
 
 {@render children()}
+<SettingsDialog />

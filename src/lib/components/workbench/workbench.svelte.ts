@@ -30,6 +30,7 @@ export type WorkbenchState = {
   statusKind: StatusKind;
   document: DocumentStatus | null;
   recents: RecentProject[];
+  settingsOpen: boolean;
 };
 
 export const workbenchState: WorkbenchState = $state({
@@ -37,7 +38,8 @@ export const workbenchState: WorkbenchState = $state({
   statusMessage: 'Listo',
   statusKind: 'ok',
   document: null,
-  recents: []
+  recents: [],
+  settingsOpen: false
 });
 
 export function setSelection(selection: ViewportSelection) {
@@ -80,4 +82,13 @@ export async function refreshRecents(): Promise<void> {
   } catch {
     // recents are optional in shell
   }
+}
+
+
+export function openSettings() {
+  workbenchState.settingsOpen = true;
+}
+
+export function closeSettings() {
+  workbenchState.settingsOpen = false;
 }
