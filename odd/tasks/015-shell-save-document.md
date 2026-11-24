@@ -6,10 +6,10 @@ model. This feature closes them, and it is the one where a mistake reaches the u
 
 ## Specs
 
-- **S1 — the decision.** The owner's words, in order: *"pushea"* (delivery of the open feature), then, to the
-  parent's proposal *"si arrancás por Save, avisame y hago el mismo camino"*, *"me parece bien, hazlo"*. The
-  requirement is the parent's own sentence that proposed it: *"Guardar es donde esos `WARNING` se vuelven
-  reales"*.
+- **S1 — the decision.** The owner's words, in order: _"pushea"_ (delivery of the open feature), then, to the
+  parent's proposal _"si arrancás por Save, avisame y hago el mismo camino"_, _"me parece bien, hazlo"_. The
+  requirement is the parent's own sentence that proposed it: _"Guardar es donde esos `WARNING` se vuelven
+  reales"_.
 - **S2 — Save and Save As, and nothing else.** `Save` writes to the path the window already recorded and is
   **refused** with a message when there is none, pointing at Save As. `Save As` asks the host for a path (the
   same shape Open uses: an intent out of the shell, `rfd` in the host, a path back in as an action) and, on
@@ -30,7 +30,7 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   document, history, path and name untouched. **Amended after the verifier ran (L5):** an open also enters
   **no** history entry, because an undo that crossed a document boundary left the recorded path describing a
   different drawing, and the next save overwrote the wrong file. The owner took that decision explicitly, as
-  *"Abrir deja de ser deshacible"*, and it supersedes `shell-open-document`'s S4.
+  _"Abrir deja de ser deshacible"_, and it supersedes `shell-open-document`'s S4.
 - **S5 — a failed save changes nothing.** On any write or validation error the dirty flag stays as it was, the
   recorded path stays as it was, and the status line says `refused: …`. The file on disk is the atomic
   writer's business — it either has the old bytes or the new ones, never half of each.
@@ -64,8 +64,8 @@ model. This feature closes them, and it is the one where a mistake reaches the u
 
 ## Log
 
-- **L1 (the request, verbatim).** *"me parece bien, hazlo"*, accepting the parent's *"Si arrancás por Save,
-  avisame y hago el mismo camino"*, in a session that had just pushed the open feature.
+- **L1 (the request, verbatim).** _"me parece bien, hazlo"_, accepting the parent's _"Si arrancás por Save,
+  avisame y hago el mismo camino"_, in a session that had just pushed the open feature.
 - **L2 (reconnaissance, before any write).** `DocumentFile::save` already exists (`cam-store/src/document.rs:93`),
   validates at `:95-101`, and writes through `write_atomically` (`:168-188`): a sibling `.{name}.tmp` then a
   rename. `DocumentFile` carries `extras: BTreeMap<String, Vec<u8>>` (`:20-25`) and `to_bytes` writes them back
@@ -109,7 +109,7 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   save arms now refuse an empty path before any filesystem call.
   **Decided by the owner:** **A6** — open `a.c2d`, open `b.c2d`, `Undo`, `Save` overwrote `b.c2d` with a's
   drawing and dropped its archive entries. That is the class this feature exists to prevent, and it came from
-  the undoable open the *previous* feature promised. The owner chose *"Abrir deja de ser deshacible"* over
+  the undoable open the _previous_ feature promised. The owner chose _"Abrir deja de ser deshacible"_ over
   recording it as a limit or making undo forget the path; the open now swaps through `replace_document`, so no
   history entry can cross a document boundary and the invariant holds by construction. Both new tests fail if
   the arm is ever made undoable again. It costs the owner one honesty, recorded here: an accidental open is no
@@ -165,7 +165,7 @@ model. This feature closes them, and it is the one where a mistake reaches the u
   `ToolLibrary::tools()` to `set_tools` (`:1081-1090`), so a document this window saved with a `tools_ref`
   naming a library beside it now resolves that library when it is opened again. The round trip S7 describes is
   untouched: the open reads the field the save wrote and writes nothing back into the document. Two properties
-  of the resolution matter to a reader of *this* document, because both concern data this writer produces. A
+  of the resolution matter to a reader of _this_ document, because both concern data this writer produces. A
   library that is missing, unreadable or not a library **does not cost the drawing** — the file opens, the card
   says the tool's number is not in the library it was given, and the status line keeps the open's own sentence
   and appends the library and the reason (`:1100-1102`) — so a `tools_ref` written here can never make a saved

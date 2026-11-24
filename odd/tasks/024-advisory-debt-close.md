@@ -25,16 +25,16 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `5a7d770` — justification now names `footprints_overlap`'s `Touching` rule | S5 | parent | `5a7d770` |
-| T2 | ✅ delivered `5a7d770` — renamed to `NESTING_COST_FRACTION_TOLERANCE` | S5 | parent | `5a7d770` |
-| T3 | ✅ delivered `5a7d770` — all three `None` cases named | S5 | parent | `5a7d770` |
-| T4 | ✅ delivered `189fbe0` — only identity record passes with zero placements | S2 S5 | parent | `189fbe0` |
-| T5 | ✅ delivered `5a7d770` — three tests + mutation argument in comment | S6 | parent | `5a7d770` |
-| T6 | ✅ delivered `5a7d770` — two-sheet test; global-min pair named | S6 | parent | `5a7d770` |
-| T7 | ✅ delivered `7ed2ef9` + correction `5635855` — grid index + early exit; review approved | S3 S6 | parent | `5635855` |
-| T8 | ✅ delivered — lineage `review-ca5c7eda65951600` approved, receipt burned | S4 | parent | `5635855` |
+| ID  | Task                                                                                     | Specs | Route  | Commit    |
+| --- | ---------------------------------------------------------------------------------------- | ----- | ------ | --------- |
+| T1  | ✅ delivered `5a7d770` — justification now names `footprints_overlap`'s `Touching` rule  | S5    | parent | `5a7d770` |
+| T2  | ✅ delivered `5a7d770` — renamed to `NESTING_COST_FRACTION_TOLERANCE`                    | S5    | parent | `5a7d770` |
+| T3  | ✅ delivered `5a7d770` — all three `None` cases named                                    | S5    | parent | `5a7d770` |
+| T4  | ✅ delivered `189fbe0` — only identity record passes with zero placements                | S2 S5 | parent | `189fbe0` |
+| T5  | ✅ delivered `5a7d770` — three tests + mutation argument in comment                      | S6    | parent | `5a7d770` |
+| T6  | ✅ delivered `5a7d770` — two-sheet test; global-min pair named                           | S6    | parent | `5a7d770` |
+| T7  | ✅ delivered `7ed2ef9` + correction `5635855` — grid index + early exit; review approved | S3 S6 | parent | `5635855` |
+| T8  | ✅ delivered — lineage `review-ca5c7eda65951600` approved, receipt burned                | S4    | parent | `5635855` |
 
 ## Log
 
@@ -60,7 +60,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
   accumulation at `lib.rs:1840-1875`: it visits every candidate pair whatever the answer.
 - **L4 (T1-T3, the wording three, and each says something the code is).** No behaviour moved; all three
   are the advisory's own subject. **T1**: the differential test's justification is now the rule that
-  actually accepts a shared edge — `footprints_overlap`'s `Touching` arm refuses only *equal* bounds —
+  actually accepts a shared edge — `footprints_overlap`'s `Touching` arm refuses only _equal_ bounds —
   and says out loud that whole-millimetre coordinates are a property of the fixture, not of the rule.
   **T2**: `NESTING_COST_SUM_TOLERANCE` is `NESTING_COST_FRACTION_TOLERANCE` (`lib.rs:1913`, both use
   sites renamed), and its doc states that the sum is implied rather than checked, which is the part of
@@ -73,7 +73,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
   `…_loads_only_a_record_that_used_nothing`, and with the old code the `0.4 / 0.6` record and zero
   placements still validated — the assertion failed exactly there. The fix is one line and it is the
   whole rule: `document.nesting_utilisation().unwrap_or(0.0)`, so a document that cannot measure has
-  *used nothing* and its derivation is utilisation `0.0`, waste `1.0`. A record claiming anything else
+  _used nothing_ and its derivation is utilisation `0.0`, waste `1.0`. A record claiming anything else
   is then refused by the existing comparison — `NestingCostFractionMismatch { field: "utilisation",
   recorded: 0.4, derived: 0.0 }` — instead of being exempted from it. Both shapes (no sheets; sheets
   with nothing placed) still load the identity record. No fixture in the workspace carried a non-identity
@@ -83,7 +83,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
   at exactly the tolerance; a 10 mm tab inside the notch of an L-shaped part accepted, which is the one
   reachable shape where the box predicate and the winding predicate genuinely disagree (boxes overlap
   10 x 10 mm, material shares only the notch's edges); and the two-sheet test, where coincident copies
-  on two sheets load and a document with an offence on *both* sheets names the S2 pair — the earliest in
+  on two sheets load and a document with an offence on _both_ sheets names the S2 pair — the earliest in
   document order even though S1 sorts first in the bucket map. **The mutation, and what it measured**:
   the prune's threshold was made ten times stricter
   (`second_box.min.x > first_box.max.x - 10.0 * tolerance`) and the whole `cam-model` suite stayed green.
@@ -92,7 +92,7 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
   the pairs the relation would answer `Disjoint` for and not to keep the answer right. A test of outcomes
   therefore cannot see the tolerance term, and the guarantee is the argument — which is why the argument
   now sits in the comment above the loop instead of only in the suite. The L13 lesson repeats: a
-  boundary nobody can observe behaviourally has to be *argued* in the code, not pinned by a test that
+  boundary nobody can observe behaviourally has to be _argued_ in the code, not pinned by a test that
   cannot fail.
 - **L7 (T7, the index and the early exit; measured, not claimed).** The sweep iterated pairs in x order,
   so it accumulated the minimum pair instead of returning one: a document with its only overlap at the
@@ -132,20 +132,20 @@ Feature document for the sweep the owner asked for after `odd/tasks/021-debt-adv
   new code**. Their words are in Engram observation #193, saved **before** any acknowledgement, and
   again here because the store keeps none of them:
   1. **`R4-LOAD-REGRESSION`** (resilience, **CRITICAL**, deterministic, `introduced`, the only one the
-     provider judged blocking): the backward half of the index was bounded by a *running maximum of
-     `max.x`*, which one wide placement holds high for every placement behind it, and `consider` did not
+     provider judged blocking): the backward half of the index was bounded by a _running maximum of
+     `max.x`_, which one wide placement holds high for every placement behind it, and `consider` did not
      check the candidate's own `max.x`. A valid document with one wide part plus N small ones in another
      y band therefore did **O(N²) winding relations** — the very quadrant L7 claimed to improve.
   2. `R1-001` (risk, WARNING) and 3. `R3-001` (reliability, WARNING): the same defect from two more
      lenses, each prescribing a per-candidate x-interval guard or an interval index.
-  4. `R2-001` (readability, WARNING): the two prune-tolerance tests only assert that `validate`
+  3. `R2-001` (readability, WARNING): the two prune-tolerance tests only assert that `validate`
      **succeeds**, so a prune that wrongly skipped the pair would leave both green.
-  5. `R2-002` (readability, SUGGESTION): the index is spread over four parallel arrays defaulting to `0`
+  4. `R2-002` (readability, SUGGESTION): the index is spread over four parallel arrays defaulting to `0`
      and `""`, with nothing enforcing one assignment per footprint.
-  6. `R3-002` (reliability, WARNING): the sub-tolerance test cannot detect an unsound prune; add a pair
+  5. `R3-002` (reliability, WARNING): the sub-tolerance test cannot detect an unsound prune; add a pair
      that truly overlaps by less than the tolerance and assert the refusal.
-  **The refuter corroborated** `R4-LOAD-REGRESSION` (`outcome: corroborated`) and the state went
-  `correction_required` with a budget of 200 diff lines and one finding in scope.
+     **The refuter corroborated** `R4-LOAD-REGRESSION` (`outcome: corroborated`) and the state went
+     `correction_required` with a budget of 200 diff lines and one finding in scope.
 - **L10 (the correction, and the two walls in front of it).** Plan declared at **161 diff lines** and
   accepted; the correction is `5635855`: the running maximum is gone, replaced by a **uniform per-sheet
   grid over x** — a candidate is reached only through a cell the placement being tested also occupies,

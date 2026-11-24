@@ -1,7 +1,7 @@
 # Reviewable modules — the shell must fit in a reviewer's context
 
 Feature document opened by the owner's decision that closed M13's review story: the provider refused three of
-M13's four candidates with `lens_context_budget_exceeded`, and splitting the *commits* cannot fix it because the
+M13's four candidates with `lens_context_budget_exceeded`, and splitting the _commits_ cannot fix it because the
 cost is the **files**. Read **until `## Log`** before touching code.
 
 ## Specs
@@ -14,8 +14,8 @@ cost is the **files**. Read **until `## Log`** before touching code.
   lines) and `design/system.md` (254) — **~1,200 lines of file context** — and was reviewed end to end, approval
   and burned receipt. `c4da057` (T2) touched `view3d.rs` (2,130), `tests/view3d.rs` (2,374) and `lib.rs` (3,738) —
   **~8,200 lines** — and was refused at `preflight` with `lens_context_budget_exceeded`, `mutation_performed:
-  false`, no authority created. The provider's own continuation: *"split this change into a chained sequence of
-  smaller reviewable commits, each under the budget"*. T1 (~14,000) and T3 (~8,800) are worse. **Splitting a
+  false`, no authority created. The provider's own continuation: _"split this change into a chained sequence of
+  smaller reviewable commits, each under the budget"_. T1 (~14,000) and T3 (~8,800) are worse. **Splitting a
   commit does not help when the file is the cost.**
 - **S3 (the target, restated in L8 because the first version was unachievable).** No file under
   `crates/cam-ui/src` or `crates/cam-ui/tests` that a M13 concern touches exceeds **~800 lines**, so a **future**
@@ -38,26 +38,26 @@ cost is the **files**. Read **until `## Log`** before touching code.
 
 ## Tasks
 
-| ID | What | S | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T2 | ✅ **delivered** — `crates/cam-ui/tests/view3d.rs` (2,374) became a **31-line root** plus `support` and six concern modules (scene 413, playback 421, playback_bar 389, split 330, simulation 221, overlay 146); largest file **456**. 47 tests, same names, workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T3 | ✅ **delivered** — `crates/cam-ui/src/view3d.rs` (2,130) is now `view3d/`: `mod.rs` 328 (public paths + the five unit tests, whose names stayed `view3d::tests::*`), `scene` 443, `playback` 562, `chrome` 278, `shell` 573. Largest file **573**. Nine `pub(super)` markers, no `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T4 | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green | S3 S4 S5 | worker | — |
-| T5 | ✅ **delivered** — `lib.rs` 3,738 → 131 root; `actions/` (mod 339, handle 609) and `shell/` (mod 515, frame 195, input 330, output 439, canvas 190, panels 298, tool 249, action 253, paint 176, status 147); largest 609, all under 800 | S3 S4 S5 | worker | — |
-| T6 | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers | S3 | inline | — |
-| T8 | ✅ **delivered** — 71 → **0** unresolved links and the doc build 78 → 12 warnings; two names became code spans because a private item in a module whose header resolves at the crate root cannot be linked without code (`SPAN_MM`, `Capture`); `Group::History`, a variant that never existed, now points at `Group::File` | S3 S4 | worker | `5af825d` |
-| T8-old | ✅ dropped — superseded by T8 (`5af825d`) | S3 | worker | — |
-| T9 | ✅ **delivered** — the three sentences M13 made false now name what exists: the Toolpaths task authors a toolpath, the 3D half simulates the drawing's own toolpaths, and the empty half says *press Simulate in the picture*. One test assertion moved with its subject (`panels.rs:77`) | S4 | inline | `ca75966` |
-| T10 | ✅ **delivered** — light `Cut` `#a86200` → **`#8b5100`**, the lightest value under the luminance cap the deepest stop imposes (0.11528; `#8c5200` breaks it at 2.99:1). Every existing ratio improved (panel 4.76→6.41, canvas 4.51→6.08, lit face 3.05→4.11, deepest stop 2.25→**3.03**), the uncovered pair became a proof that walks five depths, and the workspace went 1607 → **1608** by adding it | S4 | worker | — |
-| T11 | ✅ **delivered** — light `CutSoft` is now the premultiplication of the new signal (`0x0b,0x06,0x00,0x14`); `design/system.md`, `design/system.html` and `design/camui-shell/04-tokens.html` carry T4's `#e8cb9d`/`#cfad7b`/`#664d2e` and the new `#8b5100`/`rgba(139,76,0,.08)`. Gate green, 1608 tests | S4 | owner | — |
-| T7 | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3 | worker | `86e9947`, `f0d74a1` |
+| ID     | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | S        | Route  | Commit               |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------ | -------------------- |
+| T1     | ✅ **delivered** — `crates/cam-ui/tests/shell.rs` (5,894) became a **38-line root** plus fifteen behaviour modules under `tests/shell/` and a 474-line `support`; largest file **676**. 136 tests with the same names, workspace **1607**, gate green                                                                                                                                                                                                                                                                                                                          | S3 S4 S5 | worker | —                    |
+| T2     | ✅ **delivered** — `crates/cam-ui/tests/view3d.rs` (2,374) became a **31-line root** plus `support` and six concern modules (scene 413, playback 421, playback_bar 389, split 330, simulation 221, overlay 146); largest file **456**. 47 tests, same names, workspace **1607**, gate green                                                                                                                                                                                                                                                                                    | S3 S4 S5 | worker | —                    |
+| T3     | ✅ **delivered** — `crates/cam-ui/src/view3d.rs` (2,130) is now `view3d/`: `mod.rs` 328 (public paths + the five unit tests, whose names stayed `view3d::tests::*`), `scene` 443, `playback` 562, `chrome` 278, `shell` 573. Largest file **573**. Nine `pub(super)` markers, no `pub(crate)`. Workspace **1607**, gate green                                                                                                                                                                                                                                                  | S3 S4 S5 | worker | —                    |
+| T4     | ✅ **delivered** — `crates/cam-ui/src/chrome.rs` (2,672) is now `chrome/` with nine files: `mod` 178, `app_bar` 159, `palette` 368, `ribbon` 692, `layers` 18, `status` 44, `job` 700, `overlays` 169, `paint` 429. Largest **700**. Every `chrome::` call site preserved, six `pub(super)` markers, no new `pub(crate)`. Workspace **1607**, gate green                                                                                                                                                                                                                       | S3 S4 S5 | worker | —                    |
+| T5     | ✅ **delivered** — `lib.rs` 3,738 → 131 root; `actions/` (mod 339, handle 609) and `shell/` (mod 515, frame 195, input 330, output 439, canvas 190, panels 298, tool 249, action 253, paint 176, status 147); largest 609, all under 800                                                                                                                                                                                                                                                                                                                                       | S3 S4 S5 | worker | —                    |
+| T6     | ✅ **delivered as a measurement** (see L8): the three historical ranges **cannot** be re-reviewed — a review freezes the candidate's own tree, which still holds the pre-split files — so the milestone's proof is the forward context measured per concern, recorded here with its numbers                                                                                                                                                                                                                                                                                    | S3       | inline | —                    |
+| T8     | ✅ **delivered** — 71 → **0** unresolved links and the doc build 78 → 12 warnings; two names became code spans because a private item in a module whose header resolves at the crate root cannot be linked without code (`SPAN_MM`, `Capture`); `Group::History`, a variant that never existed, now points at `Group::File`                                                                                                                                                                                                                                                    | S3 S4    | worker | `5af825d`            |
+| T8-old | ✅ dropped — superseded by T8 (`5af825d`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | S3       | worker | —                    |
+| T9     | ✅ **delivered** — the three sentences M13 made false now name what exists: the Toolpaths task authors a toolpath, the 3D half simulates the drawing's own toolpaths, and the empty half says _press Simulate in the picture_. One test assertion moved with its subject (`panels.rs:77`)                                                                                                                                                                                                                                                                                      | S4       | inline | `ca75966`            |
+| T10    | ✅ **delivered** — light `Cut` `#a86200` → **`#8b5100`**, the lightest value under the luminance cap the deepest stop imposes (0.11528; `#8c5200` breaks it at 2.99:1). Every existing ratio improved (panel 4.76→6.41, canvas 4.51→6.08, lit face 3.05→4.11, deepest stop 2.25→**3.03**), the uncovered pair became a proof that walks five depths, and the workspace went 1607 → **1608** by adding it                                                                                                                                                                       | S4       | worker | —                    |
+| T11    | ✅ **delivered** — light `CutSoft` is now the premultiplication of the new signal (`0x0b,0x06,0x00,0x14`); `design/system.md`, `design/system.html` and `design/camui-shell/04-tokens.html` carry T4's `#e8cb9d`/`#cfad7b`/`#664d2e` and the new `#8b5100`/`rgba(139,76,0,.08)`. Gate green, 1608 tests                                                                                                                                                                                                                                                                        | S4       | owner  | —                    |
+| T7     | ✅ **delivered** — the one M13 concern still without a review path is split: `strategy.rs` 1,137 → `strategy/` (mod 532, cards 256, editor 169, list 119, quick 104) and `tests/strategy.rs` 1,285 → root 30 + seven modules (largest 378); `tool_library.rs` 1,234 → `tool_library/` (dialog 514, drawing 229, family 155, form 128, shell 100, tree 94, mod 52) and `tests/tool_library.rs` 1,179 → root 28 + seven (largest 371). **`icons.rs` 2,135, `theme.rs` 945 and `tests/input.rs` 881 stay whole by decision** (L9). The only three files over 800 left in `cam-ui` | S3       | worker | `86e9947`, `f0d74a1` |
 
 ## Log
 
 - **L1 (the owner's decision, verbatim).** "3" — the third of the options this session offered after the
-  provider refused M13's second candidate: *"(3) Partir los módulos primero (`view3d.rs`, `chrome.rs`, `lib.rs`,
-  y sobre todo `tests/shell.rs`) en unidades de ~800 líneas, y recién entonces revisar."* Recorded as S1.
+  provider refused M13's second candidate: _"(3) Partir los módulos primero (`view3d.rs`, `chrome.rs`, `lib.rs`,
+  y sobre todo `tests/shell.rs`) en unidades de ~800 líneas, y recién entonces revisar."_ Recorded as S1.
 - **L2 (what the refusal actually said).** `lens_context_budget_exceeded`, `phase: preflight`,
   `mutation_performed: false`, `authority_applicability: not_evaluated`, `retry_safe: true`, `next_action: stop`
   — and a continuation that asks for smaller candidates. No authority was created by either refusal, so nothing
@@ -151,7 +151,7 @@ cost is the **files**. Read **until `## Log`** before touching code.
   **And the limit**: the crate still holds seven files above ~800 lines that no task here named — T7 lists them,
   because a promise of "every file under 800" would be false.
 - **L9 (T7 decided: split the one that matters, keep the three that do not).** The owner took the recommendation
-  verbatim — *"seguimos tu recomendacion"* — so the last two surfaces M13 still could not review get the same
+  verbatim — _"seguimos tu recomendacion"_ — so the last two surfaces M13 still could not review get the same
   treatment: `strategy.rs` (1,137) with `tests/strategy.rs` (1,285), and `tool_library.rs` (1,234) with
   `tests/tool_library.rs` (1,179). Together that is the ~3.1k a toolpath-list candidate was still carrying, and it
   is the one remaining M13 concern without a review path.
@@ -192,16 +192,16 @@ cost is the **files**. Read **until `## Log`** before touching code.
      same 1607 tests.
   3. What the budget can hold is a **change**, not a **move**: T4 (280 changed lines over 1.2k of files) is the
      shape that fits, and that shape is what the seven slices now make possible for the shell's own surfaces.
-  The recommendation this leaves for the owner is therefore narrow and honest: keep RDD for behaviour, and treat
-  pure moves as gate-and-comparison evidence rather than review subjects — or disable it for a move with
-  `gentle-ai review mode disable --scope clone`, the provider's own `D` route, and re-enable it for the next
-  behaviour change.
+     The recommendation this leaves for the owner is therefore narrow and honest: keep RDD for behaviour, and treat
+     pure moves as gate-and-comparison evidence rather than review subjects — or disable it for a move with
+     `gentle-ai review mode disable --scope clone`, the provider's own `D` route, and re-enable it for the next
+     behaviour change.
 - **L12 (the RDD policy for pure moves, decided).** The owner took the recommendation: **RDD stays on for behaviour
   and is not spent on moves.** A move's truth is arithmetic — every original item verbatim in exactly one new file,
   the non-blank line multiset identical apart from declarations and visibility markers, and the gate green at the
   same test count — and that is stronger evidence than a reviewer's verdict on a diff nobody can hold. A move that
   cannot fit the budget is not a reason to disable anything: it simply does not become a review candidate. When a
-  candidate *does* change behaviour, RDD applies as before, and T4 is the proof that it earns its cost (it found a
+  candidate _does_ change behaviour, RDD applies as before, and T4 is the proof that it earns its cost (it found a
   CRITICAL no test could see). If a future move's diff ever needs a reviewer's opinion rather than its own
   arithmetic, the provider's `D` route (`gentle-ai review mode disable --scope clone`, then `enable`) is the
   escape hatch — used around that move, never as a standing setting.
@@ -242,6 +242,5 @@ cost is the **files**. Read **until `## Log`** before touching code.
   **15,862 tokens and US$0.0052 for the pair** (5,432 + 10,430), against **144,780 tokens and US$0.235** for T4's
   280-line candidate — a **9× cut in tokens and 45× in money**, entirely from the candidate fitting rather than
   from any change of model or lens. Receipt burned (`gentle-ai.review-acknowledged/v1`), authority consumed, and
-  the discipline held: the review ran *after* the commit and the burn came first, so nothing had to be reset this
+  the discipline held: the review ran _after_ the commit and the burn came first, so nothing had to be reset this
   time.
-

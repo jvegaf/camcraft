@@ -33,13 +33,13 @@ Feature document for milestone **M11** of `odd/roadmap/index.md`. Read **until `
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | `Job.material`, optional and omitted when absent, with `Copy` lost and every site updated; a document written before this loads and re-saves byte-identically | S1 S3 S5 | worker | `6a4994f` |
-| T2 | Thread the material to the store's existing lookup: `program_for`, `program_for_snapshot` and `program_tool` take it, `None` keeps `tool_for_number`'s behaviour, and `cutting_data_for` decides when it is `Some` | S2 S3 | worker | `6a4994f` |
-| T3 | `cam-cli emit --material`, the flag winning over the document, and the refusal naming material and tool when the library has nothing; one new golden with a material, and all 17 existing ones unchanged | S4 S6 | parent | `6a4994f`, `1ae65ec` |
-| T4 | Docs: `docs/format.md`'s `emit` row, the tool-library story (a tool's card still says it shows no rates), and the roadmap row's evidence | S2 | parent | `93e8e96`, `98e8e55` |
-| T5 | The review of this candidate | — | parent | `1ae65ec`, `8767a2b` |
+| ID  | Task                                                                                                                                                                                                               | Specs    | Route  | Commit               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------ | -------------------- |
+| T1  | `Job.material`, optional and omitted when absent, with `Copy` lost and every site updated; a document written before this loads and re-saves byte-identically                                                      | S1 S3 S5 | worker | `6a4994f`            |
+| T2  | Thread the material to the store's existing lookup: `program_for`, `program_for_snapshot` and `program_tool` take it, `None` keeps `tool_for_number`'s behaviour, and `cutting_data_for` decides when it is `Some` | S2 S3    | worker | `6a4994f`            |
+| T3  | `cam-cli emit --material`, the flag winning over the document, and the refusal naming material and tool when the library has nothing; one new golden with a material, and all 17 existing ones unchanged           | S4 S6    | parent | `6a4994f`, `1ae65ec` |
+| T4  | Docs: `docs/format.md`'s `emit` row, the tool-library story (a tool's card still says it shows no rates), and the roadmap row's evidence                                                                           | S2       | parent | `93e8e96`, `98e8e55` |
+| T5  | The review of this candidate                                                                                                                                                                                       | —        | parent | `1ae65ec`, `8767a2b` |
 
 T1 and T2 landed together in `6a4994f`, which is what L4 records; T3's flag parser was corrected in
 `1ae65ec`, the same commit that carries T5's bounded correction, and `8767a2b` holds the review's own Log
@@ -49,8 +49,8 @@ section (L6, L7). T4's roadmap evidence arrived separately, in `98e8e55`.
 
 - **L1 (user, verbatim):** the milestone choice and the design answer — "Feeds & speeds (recomendado)" for
   M11, and "Campo en el documento + flag" for where the selector lives.
-- **L2 (what the reconnaissance changed about my own proposal).** I offered feeds & speeds as *derive F
-  and RPM from material, chipload and geometry*. The evidence says otherwise, and the milestone is
+- **L2 (what the reconnaissance changed about my own proposal).** I offered feeds & speeds as _derive F
+  and RPM from material, chipload and geometry_. The evidence says otherwise, and the milestone is
   smaller for it: the library **already** stores feed, plunge and spindle per material and per machine,
   and already has the query. Inventing a chipload derivation would move the single number 17 goldens
   pin and would add arithmetic nothing in the workspace tests. So M11 is a **selector**, not a
@@ -102,7 +102,7 @@ section (L6, L7). T4's roadmap evidence arrived separately, in `98e8e55`.
   Lineage **`review-c54c930ddcde3f9f`** (tier `high`, 667 lines, 26 paths) went `correction_required` on
   five corroborated findings, and two things were wrong.
   **(a) The flag's parser** — `R1-001`, `R2-001`, `R3-002` and `R4-001` are the same defect from four
-  lenses: `rest.get(index + 1).cloned()` made a trailing `--material` indistinguishable from *no*
+  lenses: `rest.get(index + 1).cloned()` made a trailing `--material` indistinguishable from _no_
   selector, so `emit` exited `0` and cut at a rate the operator had explicitly asked not to use, and a
   following flag was consumed as the name. It now refuses: a missing value, or a value that starts with
   `-`, is `exit 2` with "emit --material needs a material name", pinned by both shapes (`--material`
@@ -134,8 +134,8 @@ section (L6, L7). T4's roadmap evidence arrived separately, in `98e8e55`.
      --material` flag is the honest fix, and it is small.
   3. `R2-002` — the `program_for` doc claimed `None` was byte-identical for every library shape; the
      correction made it true, so this one is answered rather than open.
-  **What the review caught that the tests could not**: the flag accepting a missing name (four lenses, one
-  defect) and a preference I had added to the no-selector path that changed an existing library shape's
-  output without being asked to. Both were mine, both were invisible to a green gate, and the second one is
-  the more instructive: a green gate proves the shapes you thought of, and S3 said *don't change the
-  existing bytes* — the reviewers read S3 and I had not.
+     **What the review caught that the tests could not**: the flag accepting a missing name (four lenses, one
+     defect) and a preference I had added to the no-selector path that changed an existing library shape's
+     output without being asked to. Both were mine, both were invisible to a green gate, and the second one is
+     the more instructive: a green gate proves the shapes you thought of, and S3 said _don't change the
+  existing bytes_ — the reviewers read S3 and I had not.

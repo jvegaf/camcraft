@@ -5,9 +5,9 @@ Feature document for milestone **M13** of `odd/roadmap/index.md`. Read **until `
 ## Specs
 
 - **S1 (the owner's decision, verbatim):** `A · El ciclo se cierra dentro de la app (recomendado)` — the
-  option's own description, which is the scope: *"G-code real, simulación in-app, lista de toolpaths con
+  option's own description, which is the scope: _"G-code real, simulación in-app, lista de toolpaths con
   selección, y el material 3D con los tokens del sistema. Ata los dos callejones sin salida y el cierre del
-  flujo."*
+  flujo."_
 - **S2 (dead end one, measured):** the shell's primary action **cannot run**. `crates/cam-ui/src/chrome.rs:323`
   registers `Generate G-code` as `add_enabled(false, …)` with a hover sentence, and `cam-desktop` does not
   even link `cam-post` (`crates/cam-desktop/Cargo.toml:14-24`). So the app can import a drawing, generate
@@ -17,8 +17,8 @@ Feature document for milestone **M13** of `odd/roadmap/index.md`. Read **until `
   never a disabled button with no reason in it.
 - **S3 (dead end two, measured):** the 3D half does not simulate; it displays a program somebody else
   produced. `crates/cam-ui/src/view3d.rs:1379-1394` prints `"No program to preview. Simulate one with
-  \`cam-cli simulate\` and hand it in."` and draws no overlay row and no playback bar until a `Preview3d` is
-  handed to it. `cam-desktop` already links `cam-sim`, `cam-toolpath` and `cam-move`
+  \`cam-cli simulate\` and hand it in."`and draws no overlay row and no playback bar until a`Preview3d`is
+  handed to it.`cam-desktop`already links`cam-sim`, `cam-toolpath`and`cam-move`
   (`crates/cam-desktop/Cargo.toml:14-24`), so the capability is one command away and never crosses the seam.
   **The gap to close:** the person presses simulate, the document's own toolpaths become a program and that
   program becomes the preview, with `Simulate again` and the estimated time where the reference app puts
@@ -29,13 +29,13 @@ Feature document for milestone **M13** of `odd/roadmap/index.md`. Read **until `
   "the" toolpath rather than a list of them. **The gap to close:** the surface lists the document's
   toolpaths, one is selectable, and the selection is what the tool card and the editor describe.
 - **S5 (the material — the owner chose tan, see L8; corrected once already, see L6).** The owner's screenshot reads as a white slab, and
-  this spec first said the 3D half stood *against* the design system's material roles. Measured: it does not.
+  this spec first said the 3D half stood _against_ the design system's material roles. Measured: it does not.
   `design/system.md:53` fixes `StockTop #d6dce6` ("the lit face of the material"), `StockBottom #424c58` and
   `StockEdge #6e7b8a`; `theme.rs:221`'s `stock_shade(t)` is the shell's only interpolation and mixes exactly
   those two ends; the 3D half paints through them (`chrome.rs:2482`, `StockEdge` at `view3d.rs:963`), and
   `theme.rs:692` proves their contrast in both sets. So the near-white slab **is** the system's own `StockTop`,
   not a literal in `view3d.rs`, and there is no drift for a painting rule to fix. What differs from the
-  reference app is a **palette value**. The owner decided it (L8: *"1. prefiero tan material"*): the stock
+  reference app is a **palette value**. The owner decided it (L8: _"1. prefiero tan material"_): the stock
   roles become material tan in **both** palettes, and the four contrast proofs are **re-derived with the new
   values** — never deleted, never weakened. `StockEdge` keeps its 3:1 floor against both the canvas and the
   stock's lit face, and every pair the shell actually writes on keeps its AA or AA-large floor.
@@ -50,30 +50,30 @@ Feature document for milestone **M13** of `odd/roadmap/index.md`. Read **until `
   desktop answers the path intent, the posting and the write belong to the shell, no subprocess and no
   `std::process::Command` anywhere, and **no dependency is added to `cam-desktop`**. `cam-post` joins
   `cam-ui`, which already links `cam-program`, `cam-sim`, `cam-store` and `cam-cli`
-  (`crates/cam-ui/Cargo.toml`). *(Corrected after measurement; see L4.)*
+  (`crates/cam-ui/Cargo.toml`). _(Corrected after measurement; see L4.)_
 
 ## Tasks
 
-| ID | What | S | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | `Generate G-code` is real: `cam-post` reaches `cam-ui`, the action is enabled exactly by being pressable, a press posts the open document, one save dialog chooses the path, the file is written, and the status bar names it and its line count. `Post…` holds the dialect for the session, a file that is not a post-processor is refused while the held one stays, and every refusal writes nothing | S1 S2 S7 | inline | — |
-| T2 | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3 | inline | — |
-| T3 | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe | S1 S4 | inline | — |
-| T4 | ✅ delivered in `18ded99` — the stock reads as **material**: dark `StockTop #705c42` / `StockBottom #453726` / `StockEdge #ddc9a3`, light `#e8cb9d` / `#cfad7b` / `#664d2e`; four stock proofs re-derived, two new (the wood band, and `Cut` on the lit face at 3:1 — a pair that had never been proved and measured 1.47:1). No painting code changed | S1 S5 | worker | `18ded99` |
-| T5 | The milestone's row in `odd/roadmap/index.md`, its §4.16 evidence section and this document's log, with the commits as evidence | — | inline | `0f7dc4e`+ |
+| ID  | What                                                                                                                                                                                                                                                                                                                                                                                                                                         | S        | Route  | Commit     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------- |
+| T1  | `Generate G-code` is real: `cam-post` reaches `cam-ui`, the action is enabled exactly by being pressable, a press posts the open document, one save dialog chooses the path, the file is written, and the status bar names it and its line count. `Post…` holds the dialect for the session, a file that is not a post-processor is refused while the held one stays, and every refusal writes nothing                                       | S1 S2 S7 | inline | —          |
+| T2  | `Simulate` runs in the shell: the document's toolpaths are generated and simulated in-process, the `Preview3d` is handed to the 3D half, the empty half's console sentence becomes a `Simulate` control and the overlay row gains `Simulate again`, and the duration the playback bar names answers "how long is this job". A drawing with no toolpaths, or one whose tools the library cannot resolve, refuses by name and draws no picture | S1 S3    | inline | —          |
+| T3  | The `TOOLPATHS` surface becomes a list: one row per toolpath, one selected, and the selection — not `first()` — is what the tool card and the editor describe                                                                                                                                                                                                                                                                                | S1 S4    | inline | —          |
+| T4  | ✅ delivered in `18ded99` — the stock reads as **material**: dark `StockTop #705c42` / `StockBottom #453726` / `StockEdge #ddc9a3`, light `#e8cb9d` / `#cfad7b` / `#664d2e`; four stock proofs re-derived, two new (the wood band, and `Cut` on the lit face at 3:1 — a pair that had never been proved and measured 1.47:1). No painting code changed                                                                                       | S1 S5    | worker | `18ded99`  |
+| T5  | The milestone's row in `odd/roadmap/index.md`, its §4.16 evidence section and this document's log, with the commits as evidence                                                                                                                                                                                                                                                                                                              | —        | inline | `0f7dc4e`+ |
 
 ## Slices
 
 One commit per task, because each is one reviewable behaviour. Sizes are **authored** lines (lock files excluded),
 measured against the ~400-line guidance that protects the reviewer:
 
-| Slice | Task | Commit | Authored lines | Why this boundary |
-| --- | --- | --- | --- | --- |
-| 1 | T1 + this document | `e84164d` | 731 | Over the guidance, and the reason is the test file: 359 of those lines are eight behaviour tests, each asserting a refusal's *absence of effect* as well as its message. Splitting the code from its tests would have left a slice that proves nothing, and splitting the two behaviours (choose a post / write a program) would have left a commit that does not compile, because both presses live in one `with_layout` block. Recorded rather than hidden: the candidate is the whole slice. |
-| 2 | T2 | `4729b00` (boundary) + `2be9298` | 406 | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. Two sentences in `chrome.rs` (the RELIEF AND 3D task) still name `cam-cli`; they are outside this slice and named below. |
-| 3 | T3 | — | 585 test + ~120 source, plus the one-line door | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. The slice closed the deviation the first version left — `open_tool_library` still aimed at `toolpaths.first()` (`tool_library.rs:538`), which would have retooled a different toolpath than the card named, one press away from writing the defect this task removes from reading. |
-| 4 | T4 | `18ded99` | two palettes, one table, five proofs | The roles move, the shader does not: `stock_shade` already mixed `StockTop` into `StockBottom`, so the slice is two palettes, one table and the proofs that hold them. |
-| 5 | T5 | — | docs only | Documentation only: the roadmap row, §4.16 and L7. |
+| Slice | Task               | Commit                           | Authored lines                                 | Why this boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----- | ------------------ | -------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | T1 + this document | `e84164d`                        | 731                                            | Over the guidance, and the reason is the test file: 359 of those lines are eight behaviour tests, each asserting a refusal's _absence of effect_ as well as its message. Splitting the code from its tests would have left a slice that proves nothing, and splitting the two behaviours (choose a post / write a program) would have left a commit that does not compile, because both presses live in one `with_layout` block. Recorded rather than hidden: the candidate is the whole slice. |
+| 2     | T2                 | `4729b00` (boundary) + `2be9298` | 406                                            | The simulate control and its picture are one behaviour, and the empty half's sentence cannot change without the control that replaces it. Two sentences in `chrome.rs` (the RELIEF AND 3D task) still name `cam-cli`; they are outside this slice and named below.                                                                                                                                                                                                                              |
+| 3     | T3                 | —                                | 585 test + ~120 source, plus the one-line door | The list and the selection that drives the card are one behaviour: a list nobody can select is the `first()` it replaced. The slice closed the deviation the first version left — `open_tool_library` still aimed at `toolpaths.first()` (`tool_library.rs:538`), which would have retooled a different toolpath than the card named, one press away from writing the defect this task removes from reading.                                                                                    |
+| 4     | T4                 | `18ded99`                        | two palettes, one table, five proofs           | The roles move, the shader does not: `stock_shade` already mixed `StockTop` into `StockBottom`, so the slice is two palettes, one table and the proofs that hold them.                                                                                                                                                                                                                                                                                                                          |
+| 5     | T5                 | —                                | docs only                                      | Documentation only: the roadmap row, §4.16 and L7.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Log
 
@@ -137,7 +137,7 @@ measured against the ~400-line guidance that protects the reviewer:
   `6cc361f..HEAD` (six commits, ~2900 authored lines) stopped at `preflight` with
   `lens_context_budget_exceeded`: no review authority was created, `mutation_performed: false`, and the
   provider's own continuation is to split the change into smaller candidates. That is the rule this
-  repository already had — *a work-unit commit is the candidate, never the accumulated branch* — enforced by
+  repository already had — _a work-unit commit is the candidate, never the accumulated branch_ — enforced by
   the provider instead of by my judgement, after I twice deferred the review instead of splitting it. The
   four candidates are `e84164d`, `2be9298`, `0f7dc4e` and the sweep's commit, each with its parent as
   `baseRef`.
@@ -149,5 +149,5 @@ measured against the ~400-line guidance that protects the reviewer:
   (`#ddc9a3`, because nothing darker clears 3:1 against that face). The light set is squeezed into a
   0.024-of-luminance window by the same two proofs: `#e8cb9d` carries `#a86200` at 3.05:1 and stands 1.48:1 off
   the page. Two consequences are recorded rather than hidden: the dark ramp narrows from 6.33:1 to 1.80:1, and
-  the light set's amber over the *deepest* stop is 2.25:1 — under the floor, and unfixable by moving only these
+  the light set's amber over the _deepest_ stop is 2.25:1 — under the floor, and unfixable by moving only these
   three roles (it needs a lighter paper amber, which is its own decision and not this task's).
