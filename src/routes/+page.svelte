@@ -14,9 +14,17 @@ type DocumentStatus = {
   boardThicknessMm: number;
 };
 
+type RecentProject = {
+  name: string;
+  path: string;
+  lastOpened: string;
+};
+
 let status = $state<DocumentStatus | null>(null);
 // biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let error = $state('');
+// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
+let recents = $state<RecentProject[]>([]);
 let widthMm = $state(1219);
 let heightMm = $state(2438);
 let thicknessMm = $state(18);
@@ -28,6 +36,14 @@ function formatError(e: unknown): string {
     return err.code ? `${err.code}: ${err.message}` : err.message;
   }
   return String(e);
+}
+
+async function refreshRecents() {
+  try {
+    recents = await invoke<RecentProject[]>('list_recents');
+  } catch {
+    // non-fatal: recents should not block document actions
+  }
 }
 
 async function refreshStatus() {
@@ -66,6 +82,18 @@ async function openDocument() {
     });
     if (typeof selected !== 'string') return;
     status = await invoke<DocumentStatus>('open_document', { path: selected });
+    await refreshRecents();
+  } catch (e) {
+    error = formatError(e);
+  }
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
+async function openRecent(path: string) {
+  error = '';
+  try {
+    status = await invoke<DocumentStatus>('open_document', { path });
+    await refreshRecents();
   } catch (e) {
     error = formatError(e);
   }
@@ -78,6 +106,7 @@ async function saveDocument() {
     status = await invoke<DocumentStatus>('save_document', {
       path: status?.path ?? null
     });
+    await refreshRecents();
   } catch (e) {
     error = formatError(e);
   }
@@ -92,12 +121,14 @@ async function saveDocumentAs() {
     });
     if (!target) return;
     status = await invoke<DocumentStatus>('save_document', { path: target });
+    await refreshRecents();
   } catch (e) {
     error = formatError(e);
   }
 }
 
 void refreshStatus();
+void refreshRecents();
 </script>
 
 <main class="container">
@@ -122,8 +153,8 @@ void refreshStatus();
     {#if status}
       <dl class="status">
         <dt>Schema</dt><dd>{status.documentSchema}</dd>
-        <dt>Path</dt><dd>{status.path ?? "(unsaved)"}</dd>
-        <dt>Dirty</dt><dd>{status.dirty ? "yes" : "no"}</dd>
+        <dt>Path</dt><dd>{status.path ?? '(unsaved)'}</dd>
+        <dt>Dirty</dt><dd>{status.dirty ? 'yes' : 'no'}</dd>
         <dt>Layers</dt><dd>{status.layerCount}</dd>
         <dt>Toolpaths</dt><dd>{status.toolpathCount}</dd>
         <dt>Board</dt>
@@ -142,6 +173,24 @@ void refreshStatus();
       <label>Thickness (mm)<input type="number" step="any" bind:value={thicknessMm} /></label>
       <button type="submit">Create</button>
     </form>
+  </section>
+
+  <section class="panel">
+    <h2>Recent</h2>
+    {#if recents.length === 0}
+      <p class="muted">No recent documents.</p>
+    {:else}
+      <ul class="recents">
+        {#each recents as recent (recent.path)}
+          <li>
+            <button type="button" class="recent" onclick={() => openRecent(recent.path)}>
+              <span class="recent-name">{recent.name}</span>
+              <span class="recent-path">{recent.path}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </section>
 </main>
 
@@ -164,4 +213,9 @@ void refreshStatus();
   input, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #c7ced8; }
   button { cursor: pointer; background: #1f2430; color: #fff; border-color: #1f2430; }
   .error { color: #b42318; }
+  .muted { color: #5f6b7a; }
+  .recents { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+  .recent { width: 100%; text-align: left; background: #fff; color: #1f2430; border: 1px solid #d9dde3; }
+  .recent-name { display: block; font-weight: 600; }
+  .recent-path { display: block; font-size: 12px; color: #5f6b7a; word-break: break-all; }
 </style>

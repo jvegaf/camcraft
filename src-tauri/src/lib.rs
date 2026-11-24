@@ -1,10 +1,11 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use cam_app::AppState;
 use cam_model::{Board, Document};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,9 +27,71 @@ impl CommandErrorDto {
   }
 }
 
+const MAX_RECENTS: usize = 10;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentProjectDto {
+  pub name: String,
+  pub path: String,
+  pub last_opened: String,
+}
+
+fn recents_file(data_dir: &Path) -> PathBuf {
+  data_dir.join("recents.json")
+}
+
+fn read_recents(data_dir: &Path) -> Vec<RecentProjectDto> {
+  let path = recents_file(data_dir);
+  let text = match fs::read_to_string(&path) {
+    Ok(text) => text,
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+    Err(_) => return Vec::new(),
+  };
+  let mut recents = serde_json::from_str::<Vec<RecentProjectDto>>(&text).unwrap_or_default();
+  recents.truncate(MAX_RECENTS);
+  recents
+}
+
+fn write_recents(data_dir: &Path, recents: &[RecentProjectDto]) -> Result<(), CommandErrorDto> {
+  fs::create_dir_all(data_dir)
+    .map_err(|e| CommandErrorDto::new("recents_dir_failed", e.to_string()))?;
+  let path = recents_file(data_dir);
+  let tmp = path.with_file_name("recents.json.tmp");
+  let mut entries: Vec<RecentProjectDto> = recents.to_vec();
+  entries.truncate(MAX_RECENTS);
+  let text = serde_json::to_string_pretty(&entries)
+    .map_err(|e| CommandErrorDto::new("recents_serialize_failed", e.to_string()))?;
+  fs::write(&tmp, text).map_err(|e| CommandErrorDto::new("recents_write_failed", e.to_string()))?;
+  fs::rename(&tmp, &path).map_err(|e| {
+    let _ = fs::remove_file(&tmp);
+    CommandErrorDto::new("recents_rename_failed", e.to_string())
+  })
+}
+
+fn push_recent(recents: &mut Vec<RecentProjectDto>, path: &Path) {
+  let path_str = path.to_string_lossy().into_owned();
+  let name = path
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| path_str.clone());
+  recents.retain(|r| r.path != path_str);
+  recents.insert(
+    0,
+    RecentProjectDto {
+      name,
+      path: path_str,
+      last_opened: String::new(),
+    },
+  );
+  recents.truncate(MAX_RECENTS);
+}
+
 struct RuntimeState {
   app: AppState,
   path: Option<PathBuf>,
+  data_dir: Option<PathBuf>,
+  recents: Vec<RecentProjectDto>,
 }
 
 struct AppRuntime(Mutex<RuntimeState>);
@@ -110,8 +173,17 @@ fn open_document_impl(
     .lock()
     .map_err(|_| CommandErrorDto::state_poisoned())?;
   state.app.replace_document(doc);
-  state.path = Some(PathBuf::from(path));
+  let pb = PathBuf::from(path);
+  state.path = Some(pb.clone());
+  record_recent(&mut state, &pb);
   Ok(snapshot(&state))
+}
+
+fn record_recent(state: &mut RuntimeState, path: &Path) {
+  push_recent(&mut state.recents, path);
+  if let Some(dir) = state.data_dir.clone() {
+    let _ = write_recents(&dir, &state.recents);
+  }
 }
 
 fn save_document_impl(
@@ -131,9 +203,18 @@ fn save_document_impl(
   let doc = state.app.document().clone();
   cam_store::document::save_document(&target, &doc)
     .map_err(|e| CommandErrorDto::new("document_save_failed", e.to_string()))?;
-  state.path = Some(target);
+  state.path = Some(target.clone());
   state.app.mark_saved();
+  record_recent(&mut state, &target);
   Ok(snapshot(&state))
+}
+
+fn list_recents_impl(runtime: &AppRuntime) -> Result<Vec<RecentProjectDto>, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  Ok(state.recents.clone())
 }
 
 #[tauri::command]
@@ -165,15 +246,34 @@ fn save_document(
   save_document_impl(&runtime, path)
 }
 
+#[tauri::command]
+fn list_recents(runtime: State<'_, AppRuntime>) -> Result<Vec<RecentProjectDto>, CommandErrorDto> {
+  list_recents_impl(&runtime)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
     app: AppState::new(Document::new(Board::default_board())),
     path: None,
+    data_dir: None,
+    recents: Vec::new(),
   };
 
   tauri::Builder::default()
     .manage(AppRuntime(Mutex::new(initial)))
+    .setup(|app| {
+      let data_dir = app.path().app_data_dir().ok().map(|d| d.join("camcraft"));
+      if let Some(dir) = data_dir.clone() {
+        let recents = read_recents(&dir);
+        let runtime = app.state::<AppRuntime>();
+        if let Ok(mut state) = runtime.0.lock() {
+          state.data_dir = Some(dir);
+          state.recents = recents;
+        }
+      }
+      Ok(())
+    })
     .plugin(
       tauri_plugin_log::Builder::new()
         .level(tauri_plugin_log::log::LevelFilter::Info)
@@ -185,7 +285,8 @@ pub fn run() {
       document_status,
       new_document,
       open_document,
-      save_document
+      save_document,
+      list_recents
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -213,6 +314,8 @@ mod tests {
     AppRuntime(Mutex::new(RuntimeState {
       app: AppState::new(Document::new(Board::default_board())),
       path: None,
+      data_dir: None,
+      recents: Vec::new(),
     }))
   }
 
@@ -288,5 +391,45 @@ mod tests {
     let rt = runtime();
     let err = save_document_impl(&rt, None).expect_err("missing path");
     assert_eq!(err.code, "document_path_missing");
+  }
+
+  #[test]
+  fn save_and_open_record_recents() {
+    let dir = std::env::temp_dir().join(format!(
+      "camcraft-tauri-recents-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("mkdir");
+
+    let path = dir.join("board.cmc");
+    let rt = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(Document::new(Board::default_board())),
+      path: None,
+      data_dir: Some(dir.clone()),
+      recents: Vec::new(),
+    }));
+
+    save_document_impl(&rt, Some(path.to_string_lossy().into_owned())).expect("save");
+    let recents = list_recents_impl(&rt).expect("recents");
+    assert_eq!(recents.len(), 1);
+    assert_eq!(recents[0].path, path.to_string_lossy());
+
+    let rt2 = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(Document::new(Board::default_board())),
+      path: None,
+      data_dir: Some(dir.clone()),
+      recents: Vec::new(),
+    }));
+    open_document_impl(&rt2, path.to_string_lossy().into_owned()).expect("open");
+    let recents2 = list_recents_impl(&rt2).expect("recents");
+    assert_eq!(recents2.len(), 1);
+    assert_eq!(recents2[0].name, "board");
+
+    let _ = fs::remove_dir_all(&dir);
   }
 }
