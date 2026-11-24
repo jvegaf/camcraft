@@ -42,7 +42,7 @@ async function refreshRecents() {
   try {
     recents = await invoke<RecentProject[]>('list_recents');
   } catch {
-    // non-fatal: recents should not block document actions
+    // non-fatal
   }
 }
 
@@ -131,91 +131,115 @@ void refreshStatus();
 void refreshRecents();
 </script>
 
-<main class="container">
-  <h1>Camcraft</h1>
-  <p class="subtitle">Tauri host + domain Rust spike</p>
+<main class="shell">
+  <section class="start">
+    <aside class="brand">
+      <p class="eyebrow">Camcraft</p>
+      <h1>Start</h1>
+      <p class="lead">Open a recent document or create a new board.</p>
 
-  <section class="panel">
-    <div class="row">
-      <h2>Document</h2>
       <div class="actions">
-        <button type="button" onclick={openDocument}>Open</button>
+        <button type="button" class="primary" onclick={openDocument}>Open document</button>
         <button type="button" onclick={saveDocument}>Save</button>
         <button type="button" onclick={saveDocumentAs}>Save as</button>
-        <button type="button" onclick={refreshStatus}>Refresh</button>
       </div>
-    </div>
 
-    {#if error}
-      <p class="error">{error}</p>
-    {/if}
+      {#if error}
+        <p class="error">{error}</p>
+      {/if}
 
-    {#if status}
-      <dl class="status">
-        <dt>Schema</dt><dd>{status.documentSchema}</dd>
-        <dt>Path</dt><dd>{status.path ?? '(unsaved)'}</dd>
-        <dt>Dirty</dt><dd>{status.dirty ? 'yes' : 'no'}</dd>
-        <dt>Layers</dt><dd>{status.layerCount}</dd>
-        <dt>Toolpaths</dt><dd>{status.toolpathCount}</dd>
-        <dt>Board</dt>
-        <dd>{status.boardWidthMm} × {status.boardHeightMm} × {status.boardThicknessMm} mm</dd>
-      </dl>
-    {:else}
-      <p>Loading...</p>
-    {/if}
-  </section>
+      {#if status}
+        <div class="current">
+          <p class="label">Current document</p>
+          <p class="value">{status.path ?? 'Unsaved document'}</p>
+          <p class="meta">
+            {status.boardWidthMm} × {status.boardHeightMm} × {status.boardThicknessMm} mm
+            · {status.dirty ? 'dirty' : 'saved'}
+          </p>
+        </div>
+      {/if}
 
-  <section class="panel">
-    <h2>New document</h2>
-    <form class="form" onsubmit={createDocument}>
-      <label>Width (mm)<input type="number" step="any" bind:value={widthMm} /></label>
-      <label>Height (mm)<input type="number" step="any" bind:value={heightMm} /></label>
-      <label>Thickness (mm)<input type="number" step="any" bind:value={thicknessMm} /></label>
-      <button type="submit">Create</button>
-    </form>
-  </section>
+      <form class="new-doc" onsubmit={createDocument}>
+        <p class="label">New document</p>
+        <div class="fields">
+          <label>Width (mm)<input type="number" step="any" bind:value={widthMm} /></label>
+          <label>Height (mm)<input type="number" step="any" bind:value={heightMm} /></label>
+          <label>Thickness (mm)<input type="number" step="any" bind:value={thicknessMm} /></label>
+        </div>
+        <button type="submit" class="primary">Create document</button>
+      </form>
+    </aside>
 
-  <section class="panel">
-    <h2>Recent</h2>
-    {#if recents.length === 0}
-      <p class="muted">No recent documents.</p>
-    {:else}
-      <ul class="recents">
-        {#each recents as recent (recent.path)}
-          <li>
-            <button type="button" class="recent" onclick={() => openRecent(recent.path)}>
-              <span class="recent-name">{recent.name}</span>
-              <span class="recent-path">{recent.path}</span>
-            </button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <section class="recents">
+      <div class="recents-head">
+        <h2>Recent</h2>
+        <span class="count">{recents.length}</span>
+      </div>
+      {#if recents.length === 0}
+        <p class="muted">No recent documents yet.</p>
+      {:else}
+        <ul class="recent-list">
+          {#each recents as recent (recent.path)}
+            <li>
+              <button type="button" class="recent-item" onclick={() => openRecent(recent.path)}>
+                <span class="recent-name">{recent.name}</span>
+                <span class="recent-path">{recent.path}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
   </section>
 </main>
 
 <style>
-  :root {
+  :global(body) {
+    margin: 0;
+    background: #eef1f4;
     color: #1f2430;
-    background: #f4f5f7;
     font-family: Inter, system-ui, sans-serif;
   }
-  .container { max-width: 860px; margin: 0 auto; padding: 32px 20px; }
-  .subtitle { color: #5f6b7a; margin-top: -8px; }
-  .panel { background: #fff; border: 1px solid #d9dde3; border-radius: 12px; padding: 16px; margin: 16px 0; }
-  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .status { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0 0; }
-  dt { color: #5f6b7a; }
-  dd { margin: 0; word-break: break-word; }
-  .form { display: grid; gap: 12px; max-width: 320px; }
-  label { display: grid; gap: 4px; font-size: 14px; }
-  input, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #c7ced8; }
-  button { cursor: pointer; background: #1f2430; color: #fff; border-color: #1f2430; }
-  .error { color: #b42318; }
-  .muted { color: #5f6b7a; }
-  .recents { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
-  .recent { width: 100%; text-align: left; background: #fff; color: #1f2430; border: 1px solid #d9dde3; }
-  .recent-name { display: block; font-weight: 600; }
-  .recent-path { display: block; font-size: 12px; color: #5f6b7a; word-break: break-all; }
+  .shell { min-height: 100vh; display: grid; place-items: center; padding: 32px; box-sizing: border-box; }
+  .start {
+    width: min(1040px, 100%);
+    min-height: 640px;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    background: #f7f8fa;
+    border: 1px solid #d7dde5;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(20, 28, 40, 0.08);
+  }
+  .brand { padding: 32px; border-right: 1px solid #d7dde5; background: #fbfcfd; }
+  .eyebrow { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #667085; }
+  h1 { margin: 8px 0 0; font-size: 40px; line-height: 1; }
+  .lead { margin: 12px 0 24px; color: #5f6b7a; max-width: 28ch; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  button { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; color: #1f2430; cursor: pointer; }
+  button.primary { background: #1f2430; color: #fff; border-color: #1f2430; }
+  .error { color: #b42318; font-size: 14px; margin: 0 0 16px; }
+  .current { padding: 14px 0; border-top: 1px solid #e3e8ee; border-bottom: 1px solid #e3e8ee; margin-bottom: 20px; }
+  .label { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #667085; }
+  .value { margin: 0; font-size: 14px; word-break: break-word; }
+  .meta { margin: 6px 0 0; font-size: 13px; color: #5f6b7a; }
+  .new-doc { display: grid; gap: 12px; }
+  .fields { display: grid; gap: 10px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: #344054; }
+  input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; }
+  .recents { padding: 32px; }
+  .recents-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  h2 { margin: 0; font-size: 20px; }
+  .count { font-size: 12px; color: #667085; background: #e9eef4; padding: 2px 8px; border-radius: 999px; }
+  .muted { color: #667085; }
+  .recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .recent-item { width: 100%; text-align: left; padding: 12px 14px; background: #fff; border: 1px solid #dfe5ec; border-radius: 10px; }
+  .recent-item:hover { border-color: #b8c4d3; background: #fcfdff; }
+  .recent-name { display: block; font-size: 14px; font-weight: 600; color: #1f2430; }
+  .recent-path { display: block; margin-top: 4px; font-size: 12px; color: #667085; word-break: break-all; }
+  @media (max-width: 900px) {
+    .start { grid-template-columns: 1fr; min-height: auto; }
+    .brand { border-right: 0; border-bottom: 1px solid #d7dde5; }
+  }
 </style>
