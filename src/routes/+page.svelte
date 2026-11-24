@@ -1,6 +1,7 @@
 <script lang="ts">
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { css } from 'styled-system/css';
 import { goto } from '$app/navigation';
 
 type RecentProject = {
@@ -9,9 +10,7 @@ type RecentProject = {
   lastOpened: string;
 };
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let error = $state('');
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 let recents = $state<RecentProject[]>([]);
 let widthMm = $state(1219);
 let heightMm = $state(2438);
@@ -34,7 +33,6 @@ async function refreshRecents() {
   }
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 async function createDocument(event: Event) {
   event.preventDefault();
   error = '';
@@ -52,7 +50,6 @@ async function createDocument(event: Event) {
   }
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 async function openDocument() {
   error = '';
   try {
@@ -68,7 +65,6 @@ async function openDocument() {
   }
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Svelte template
 async function openRecent(path: string) {
   error = '';
   try {
@@ -80,48 +76,197 @@ async function openRecent(path: string) {
 }
 
 void refreshRecents();
+
+const shell = css({
+  minH: '100vh',
+  display: 'grid',
+  placeItems: 'center',
+  p: '32px',
+  bg: 'app',
+  color: 'text',
+  fontFamily: 'sans'
+});
+const start = css({
+  w: 'min(1040px, 100%)',
+  minH: '640px',
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', md: '360px 1fr' },
+  bg: 'panel',
+  border: '1px solid',
+  borderColor: 'border',
+  borderRadius: '12px',
+  overflow: 'hidden',
+  boxShadow: '0 20px 60px rgba(0,0,0,.28)'
+});
+const brand = css({
+  p: '32px',
+  borderRight: { base: 'none', md: '1px solid' },
+  borderBottom: { base: '1px solid', md: 'none' },
+  borderColor: 'hairline',
+  bg: 'panel'
+});
+const eyebrow = css({
+  m: '0',
+  fontSize: '11px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'textOff'
+});
+const h1 = css({
+  m: '8px 0 0',
+  fontSize: '40px',
+  lineHeight: '1',
+  color: 'textHi',
+  fontWeight: '600'
+});
+const lead = css({ mt: '12px', mb: '24px', color: 'textDim', maxW: '28ch' });
+const actions = css({
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+  mb: '24px'
+});
+const btn = css({
+  font: 'inherit',
+  fontSize: '14px',
+  px: '14px',
+  py: '9px',
+  borderRadius: '8px',
+  border: '1px solid',
+  borderColor: 'border',
+  bg: 'raised',
+  color: 'text',
+  cursor: 'pointer',
+  _hover: { bg: 'overlay', color: 'textHi' }
+});
+const btnPrimary = css({ bg: 'selSoft', borderColor: 'sel', color: 'textHi' });
+const errorText = css({ color: 'danger', fontSize: '14px', m: '0 0 16px' });
+const label = css({
+  m: '0 0 8px',
+  fontSize: '12px',
+  letterSpacing: '0.04em',
+  textTransform: 'uppercase',
+  color: 'textOff'
+});
+const newDoc = css({
+  display: 'grid',
+  gap: '12px',
+  pt: '20px',
+  borderTop: '1px solid',
+  borderColor: 'hairline'
+});
+const fields = css({ display: 'grid', gap: '10px' });
+const fieldLabel = css({
+  display: 'grid',
+  gap: '4px',
+  fontSize: '13px',
+  color: 'textDim'
+});
+const inputCls = css({
+  font: 'inherit',
+  px: '10px',
+  py: '8px',
+  borderRadius: '8px',
+  border: '1px solid',
+  borderColor: 'border',
+  bg: 'app',
+  color: 'textHi'
+});
+const recentsPane = css({ p: '32px', bg: 'canvas' });
+const recentsHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  mb: '16px'
+});
+const h2 = css({
+  m: '0',
+  fontSize: '20px',
+  color: 'textHi',
+  fontWeight: '600'
+});
+const count = css({
+  fontSize: '12px',
+  color: 'textDim',
+  bg: 'raised',
+  px: '8px',
+  py: '2px',
+  borderRadius: '999px'
+});
+const muted = css({ color: 'textDim' });
+const recentList = css({
+  listStyle: 'none',
+  m: '0',
+  p: '0',
+  display: 'grid',
+  gap: '8px'
+});
+const recentItem = css({
+  w: '100%',
+  textAlign: 'left',
+  p: '12px 14px',
+  bg: 'panel',
+  border: '1px solid',
+  borderColor: 'hairline',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  _hover: { borderColor: 'border', bg: 'raised' }
+});
+const recentName = css({
+  display: 'block',
+  fontSize: '14px',
+  fontWeight: '600',
+  color: 'textHi'
+});
+const recentPath = css({
+  display: 'block',
+  mt: '4px',
+  fontSize: '12px',
+  color: 'textDim',
+  wordBreak: 'break-all'
+});
 </script>
 
-<main class="shell">
-  <section class="start">
-    <aside class="brand">
-      <p class="eyebrow">Camcraft</p>
-      <h1>Start</h1>
-      <p class="lead">Open a recent document or create a new board.</p>
+<main class={shell}>
+  <section class={start}>
+    <aside class={brand}>
+      <p class={eyebrow}>Camcraft</p>
+      <h1 class={h1}>Start</h1>
+      <p class={lead}>Open a recent document or create a new board.</p>
 
-      <div class="actions">
-        <button type="button" class="primary" onclick={openDocument}>Open document</button>
+      <div class={actions}>
+        <button type="button" class={`${btn} ${btnPrimary}`} onclick={openDocument}>Open document</button>
       </div>
 
       {#if error}
-        <p class="error">{error}</p>
+        <p class={errorText}>{error}</p>
       {/if}
 
-      <form class="new-doc" onsubmit={createDocument}>
-        <p class="label">New document</p>
-        <div class="fields">
-          <label>Width (mm)<input type="number" step="any" bind:value={widthMm} /></label>
-          <label>Height (mm)<input type="number" step="any" bind:value={heightMm} /></label>
-          <label>Thickness (mm)<input type="number" step="any" bind:value={thicknessMm} /></label>
+      <form class={newDoc} onsubmit={createDocument}>
+        <p class={label}>New document</p>
+        <div class={fields}>
+          <label class={fieldLabel}>Width (mm)<input class={inputCls} type="number" step="any" bind:value={widthMm} /></label>
+          <label class={fieldLabel}>Height (mm)<input class={inputCls} type="number" step="any" bind:value={heightMm} /></label>
+          <label class={fieldLabel}>Thickness (mm)<input class={inputCls} type="number" step="any" bind:value={thicknessMm} /></label>
         </div>
-        <button type="submit" class="primary">Create document</button>
+        <button type="submit" class={`${btn} ${btnPrimary}`}>Create document</button>
       </form>
     </aside>
 
-    <section class="recents">
-      <div class="recents-head">
-        <h2>Recent</h2>
-        <span class="count">{recents.length}</span>
+    <section class={recentsPane}>
+      <div class={recentsHead}>
+        <h2 class={h2}>Recent</h2>
+        <span class={count}>{recents.length}</span>
       </div>
       {#if recents.length === 0}
-        <p class="muted">No recent documents yet.</p>
+        <p class={muted}>No recent documents yet.</p>
       {:else}
-        <ul class="recent-list">
+        <ul class={recentList}>
           {#each recents as recent (recent.path)}
             <li>
-              <button type="button" class="recent-item" onclick={() => openRecent(recent.path)}>
-                <span class="recent-name">{recent.name}</span>
-                <span class="recent-path">{recent.path}</span>
+              <button type="button" class={recentItem} onclick={() => openRecent(recent.path)}>
+                <span class={recentName}>{recent.name}</span>
+                <span class={recentPath}>{recent.path}</span>
               </button>
             </li>
           {/each}
@@ -130,51 +275,3 @@ void refreshRecents();
     </section>
   </section>
 </main>
-
-<style>
-  :global(body) {
-    margin: 0;
-    background: #eef1f4;
-    color: #1f2430;
-    font-family: Inter, system-ui, sans-serif;
-  }
-  .shell { min-height: 100vh; display: grid; place-items: center; padding: 32px; box-sizing: border-box; }
-  .start {
-    width: min(1040px, 100%);
-    min-height: 640px;
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    background: #f7f8fa;
-    border: 1px solid #d7dde5;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 20px 60px rgba(20, 28, 40, 0.08);
-  }
-  .brand { padding: 32px; border-right: 1px solid #d7dde5; background: #fbfcfd; }
-  .eyebrow { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #667085; }
-  h1 { margin: 8px 0 0; font-size: 40px; line-height: 1; }
-  .lead { margin: 12px 0 24px; color: #5f6b7a; max-width: 28ch; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
-  button { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; color: #1f2430; cursor: pointer; }
-  button.primary { background: #1f2430; color: #fff; border-color: #1f2430; }
-  .error { color: #b42318; font-size: 14px; margin: 0 0 16px; }
-  .label { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #667085; }
-  .new-doc { display: grid; gap: 12px; padding-top: 20px; border-top: 1px solid #e3e8ee; }
-  .fields { display: grid; gap: 10px; }
-  label { display: grid; gap: 4px; font-size: 13px; color: #344054; }
-  input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #cfd6df; background: #fff; }
-  .recents { padding: 32px; }
-  .recents-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  h2 { margin: 0; font-size: 20px; }
-  .count { font-size: 12px; color: #667085; background: #e9eef4; padding: 2px 8px; border-radius: 999px; }
-  .muted { color: #667085; }
-  .recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .recent-item { width: 100%; text-align: left; padding: 12px 14px; background: #fff; border: 1px solid #dfe5ec; border-radius: 10px; }
-  .recent-item:hover { border-color: #b8c4d3; background: #fcfdff; }
-  .recent-name { display: block; font-size: 14px; font-weight: 600; color: #1f2430; }
-  .recent-path { display: block; margin-top: 4px; font-size: 12px; color: #667085; word-break: break-all; }
-  @media (max-width: 900px) {
-    .start { grid-template-columns: 1fr; min-height: auto; }
-    .brand { border-right: 0; border-bottom: 1px solid #d7dde5; }
-  }
-</style>
