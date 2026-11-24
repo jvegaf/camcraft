@@ -91,4 +91,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 089 | [tauri-fase4-startscreen-shell](089-tauri-fase4-startscreen-shell.md)                 | delivered                | 2026-11-24 | `c02988d`      |
 | 090 | [tauri-fase4-settings-ds](090-tauri-fase4-settings-ds.md)                             | delivered                | 2026-11-24 | `45a41fe`      |
 | 091 | [tauri-fase4-settings-ds-fine](091-tauri-fase4-settings-ds-fine.md)                   | delivered                | 2026-11-24 | `a96532b`      |
-| 092 | [tauri-fase4-settings-overlay-atomic](092-tauri-fase4-settings-overlay-atomic.md)     | in-progress              | 2026-11-24 |                |
+| 092 | [tauri-fase4-settings-overlay-atomic](092-tauri-fase4-settings-overlay-atomic.md)     | delivered                | 2026-11-24 | `396f3c6`      |

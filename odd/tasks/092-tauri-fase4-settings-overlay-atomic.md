@@ -24,10 +24,10 @@ Mover settings dentro de la app como overlay, ajustar select/combo al DS, y crea
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Settings como overlay dentro de la app (no ruta propia) | S1 | inline | |
-| T2 | Ajustar estilos de select/combo a referencia DS | S2 | inline | |
-| T3 | Crear skill de Atomic Design para agentes | S3 | inline | |
-| T4 | Verificar, RDD, ODD/Engram, commit y push | S1, S2, S3 | inline | |
+| T1 | Settings como overlay dentro de la app (no ruta propia) | S1 | inline | `396f3c6` |
+| T2 | Ajustar estilos de select/combo a referencia DS | S2 | inline | `396f3c6` |
+| T3 | Crear skill de Atomic Design para agentes | S3 | inline | `396f3c6` |
+| T4 | Verificar, RDD, ODD/Engram, commit y push | S1, S2, S3 | inline | `396f3c6` |
 
 ## Log
 
@@ -35,3 +35,4 @@ Mover settings dentro de la app como overlay, ajustar select/combo al DS, y crea
 - **L2 (pedido original, verbatim).** «por otro lado, hay que arreglar los estilos del componente selector/combo porque no son los que hay en su referencia.»
 - **L3 (pedido original, verbatim).** «y por ultimo, pero no menos importante, debemos desarrollar la ui mediante atomic desing, asi que debemos crear una skill con la metodologia para que los agentes desarrollen de esa manera.»
 - **L4 (ejecución, 2026-11-24).** SettingsDialog como overlay en layout/store; /settings redirige abriendo overlay. Select con estilo DS custom. Skill `.agents/skills/atomic-design/SKILL.md` creada. `pnpm check` OK.
+- **L5 (cierre, 2026-11-24).** Commit `396f3c6`. RDD assess: not-due (under_budget, medium). ODD/Engram sincronizados; push a `origin/feat/tauri`.
