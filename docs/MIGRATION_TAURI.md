@@ -105,8 +105,9 @@ Pendientes:
 
 ### Fase 1 — Host + shell mínimo
 
-- Start screen real con DS HTML/CSS.
-- Comandos: recents, open/new, settings mínimas.
+- [x] Start screen real con DS HTML/CSS (componente `StartScreen` cableado a Tauri).
+- [x] Comandos: recents, open/new, settings mínimas (`get_settings`/`update_settings`, persistidas en app data).
+- [x] UI de settings mínima (`/settings`, theme).
 - **Salida**: start screen funcional con DS real.
 
 ### Fase 2 — Viewport read-only

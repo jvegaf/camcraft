@@ -1,27 +1,53 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
+import { button, input } from 'styled-system/recipes';
 
 interface RecentItem {
   name: string;
   path: string;
-  when: string;
+  when?: string;
+  lastOpened?: string;
 }
 
 interface Props {
   recents?: RecentItem[];
+  error?: string;
+  onCreate?: (request: {
+    widthMm: number;
+    heightMm: number;
+    thicknessMm: number;
+  }) => void;
+  onOpen?: () => void;
+  onOpenRecent?: (path: string) => void;
+  onSettings?: () => void;
 }
 
 let {
-  recents = [
-    {
-      name: 'controller-board.cam',
-      path: '~/Boards/controller/',
-      when: 'Hace 12 min'
-    },
-    { name: 'usb-adapter.cam', path: '~/Boards/adapters/', when: 'Ayer' },
-    { name: 'front-panel.cam', path: '~/Boards/panel/', when: 'Hace 3 días' }
-  ]
+  recents = [],
+  error = '',
+  onCreate,
+  onOpen,
+  onOpenRecent,
+  onSettings
 }: Props = $props();
+
+let showNew = $state(false);
+let widthMm = $state(1219);
+let heightMm = $state(2438);
+let thicknessMm = $state(18);
+
+function recentWhen(item: RecentItem): string {
+  return item.when || item.lastOpened || '';
+}
+
+function submitNew(event: Event) {
+  event.preventDefault();
+  onCreate?.({
+    widthMm: Number(widthMm),
+    heightMm: Number(heightMm),
+    thicknessMm: Number(thicknessMm)
+  });
+}
 
 const startShell = css({
   h: '100%',
@@ -52,7 +78,7 @@ const startCard = css({
   w: '940px',
   maxW: 'calc(100% - 48px)',
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: { base: '1fr', md: '1fr 1fr' },
   gap: '16px'
 });
 const panel = css({
@@ -153,7 +179,7 @@ const recentPath = css({
   fontFamily: 'mono',
   mt: '2px'
 });
-const recentWhen = css({ ml: 'auto', fontSize: '11px', color: 'textOff' });
+const recentWhenStyle = css({ ml: 'auto', fontSize: '11px', color: 'textOff' });
 const icon = css({
   w: '16px',
   h: '16px',
@@ -164,36 +190,115 @@ const icon = css({
   strokeLinejoin: 'round',
   flex: 'none'
 });
+const errorText = css({
+  color: 'danger',
+  fontSize: '12px',
+  mt: '12px',
+  mb: '0'
+});
+const emptyText = css({
+  color: 'textDim',
+  fontSize: '13px',
+  mt: '16px',
+  mb: '0'
+});
+const topRow = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '12px'
+});
+const settingsBtn = css({
+  w: '32px',
+  h: '32px',
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '6px',
+  border: '1px solid',
+  borderColor: 'hairline',
+  bg: 'transparent',
+  color: 'textDim',
+  cursor: 'pointer',
+  flex: 'none',
+  _hover: { bg: 'raised', color: 'textHi', borderColor: 'border' }
+});
+const newDocForm = css({
+  display: 'grid',
+  gap: '10px',
+  mt: '14px',
+  p: '14px',
+  bg: 'raised',
+  border: '1px solid',
+  borderColor: 'hairline',
+  borderRadius: '8px'
+});
+const fieldLabel = css({
+  display: 'grid',
+  gap: '4px',
+  fontSize: '12px',
+  color: 'textDim'
+});
+const formActions = css({ display: 'flex', gap: '8px', mt: '4px' });
+const btn = button({ variant: 'solid', size: 'sm' });
+const btnPrimary = button({ variant: 'primary', size: 'sm' });
+const inputCls = input();
 </script>
 
 <div class={startShell}>
   <div class={startCard}>
     <div class={panel}>
-      <p class={eyebrow}>Camcraft</p>
-      <h2 class={welcome}>Bienvenido al estudio CAM</h2>
+      <div class={topRow}>
+        <div>
+          <p class={eyebrow}>Camcraft</p>
+          <h2 class={welcome}>Bienvenido al estudio CAM</h2>
+        </div>
+        {#if onSettings}
+          <button class={settingsBtn} type="button" onclick={onSettings} aria-label="Settings">
+            <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5z"/></svg>
+          </button>
+        {/if}
+      </div>
       <p class={lead}>Abrí una placa o retomá un proyecto. El shell usa superficies flotantes, jerarquía de bordes clara y command search central.</p>
-      <button class={action}>
+      <button class={action} type="button" onclick={() => (showNew = !showNew)}>
         <span class={`${actionIcon} ${actionIconPrimary}`}>
           <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </span>
         <div><strong class={actionTitle}>Nuevo proyecto PCB</strong><span class={actionDesc}>Configurar stock, origen y board</span></div>
       </button>
-      <button class={action}>
+      {#if showNew}
+        <form class={newDocForm} onsubmit={submitNew}>
+          <label class={fieldLabel}>Width (mm)<input class={inputCls} type="number" step="any" bind:value={widthMm} /></label>
+          <label class={fieldLabel}>Height (mm)<input class={inputCls} type="number" step="any" bind:value={heightMm} /></label>
+          <label class={fieldLabel}>Thickness (mm)<input class={inputCls} type="number" step="any" bind:value={thicknessMm} /></label>
+          <div class={formActions}>
+            <button type="submit" class={`${btn} ${btnPrimary}`}>Create</button>
+            <button type="button" class={btn} onclick={() => (showNew = false)}>Cancel</button>
+          </div>
+        </form>
+      {/if}
+      <button class={action} type="button" onclick={onOpen}>
         <span class={actionIcon}>
           <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
         </span>
         <div><strong class={actionTitle}>Abrir proyecto</strong><span class={actionDesc}>.cam o fuentes de placa</span></div>
       </button>
+      {#if error}
+        <p class={errorText}>{error}</p>
+      {/if}
     </div>
     <div class={panel}>
       <h2 class={heading}>Recientes</h2>
       <p class={lead}>Retomá con contexto visible antes de abrir.</p>
-      {#each recents as recent}
-        <button class={recentBtn}>
-          <div><div class={`${recentName} recent-name`}>{recent.name}</div><div class={recentPath}>{recent.path}</div></div>
-          <div class={recentWhen}>{recent.when}</div>
-        </button>
-      {/each}
+      {#if recents.length === 0}
+        <p class={emptyText}>No recent documents yet.</p>
+      {:else}
+        {#each recents as recent (recent.path)}
+          <button class={recentBtn} type="button" onclick={() => onOpenRecent?.(recent.path)}>
+            <div><div class={`${recentName} recent-name`}>{recent.name}</div><div class={recentPath}>{recent.path}</div></div>
+            <div class={recentWhenStyle}>{recentWhen(recent)}</div>
+          </button>
+        {/each}
+      {/if}
     </div>
   </div>
 </div>

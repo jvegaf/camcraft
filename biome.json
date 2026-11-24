@@ -16,7 +16,8 @@
       "!src-tauri/crates/**/benches/baselines",
       "!design",
       "!src/app.css",
-      "!static"
+      "!static",
+      "!AGENTS.md"
     ]
   },
   "formatter": {
@@ -82,9 +83,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "**/*.svelte"
-      ],
+      "includes": ["**/*.svelte"],
       "linter": {
         "rules": {
           "style": {

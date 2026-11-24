@@ -19,8 +19,8 @@ Cerrar los ítems pendientes de Fase 0 del plan de migración Tauri: alinear gat
 
 ## Tasks
 
-| ID  | Tarea                                                                       | Specs | Ruta   | Commit |
-| --- | --------------------------------------------------------------------------- | ----- | ------ | ------ |
+| ID  | Tarea                                                                       | Specs | Ruta   | Commit    |
+| --- | --------------------------------------------------------------------------- | ----- | ------ | --------- |
 | T1  | Alinear gates/CI/justfile al stack Tauri (workspace Rust, scripts, recetas) | S1    | inline | `f29731f` |
 | T2  | Actualizar docs de migración/integración para reflejar Fase 0 cerrada       | S1    | inline | `f29731f` |
 | T3  | Verificar gates, RDD, commit y push                                         | S1    | inline | `0fbad73` |

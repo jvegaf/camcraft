@@ -80,3 +80,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 078 | [spike-gpui-native](078-spike-gpui-native.md)                                       | delivered                | 2026-05-24 | `7cf44b8`      |
 | 079 | [tauri-migration-plan](079-tauri-migration-plan.md)                                 | delivered                | 2026-05-24 | `b707a04`      |
 | 080 | [tauri-fase0-gates](080-tauri-fase0-gates.md)                                       | delivered                | 2026-11-24 | `0fbad73`      |
+| 081 | [tauri-fase1-host-shell](081-tauri-fase1-host-shell.md)                             | in-progress              | 2026-11-24 |                |

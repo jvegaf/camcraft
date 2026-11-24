@@ -87,11 +87,53 @@ fn push_recent(recents: &mut Vec<RecentProjectDto>, path: &Path) {
   recents.truncate(MAX_RECENTS);
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsDto {
+  pub theme: String,
+}
+
+impl Default for SettingsDto {
+  fn default() -> Self {
+    Self {
+      theme: "dark".to_string(),
+    }
+  }
+}
+
+fn settings_file(data_dir: &Path) -> PathBuf {
+  data_dir.join("settings.json")
+}
+
+fn read_settings(data_dir: &Path) -> SettingsDto {
+  let path = settings_file(data_dir);
+  let text = match fs::read_to_string(&path) {
+    Ok(text) => text,
+    Err(_) => return SettingsDto::default(),
+  };
+  serde_json::from_str::<SettingsDto>(&text).unwrap_or_default()
+}
+
+fn write_settings(data_dir: &Path, settings: &SettingsDto) -> Result<(), CommandErrorDto> {
+  fs::create_dir_all(data_dir)
+    .map_err(|e| CommandErrorDto::new("settings_dir_failed", e.to_string()))?;
+  let path = settings_file(data_dir);
+  let tmp = path.with_file_name("settings.json.tmp");
+  let text = serde_json::to_string_pretty(settings)
+    .map_err(|e| CommandErrorDto::new("settings_serialize_failed", e.to_string()))?;
+  fs::write(&tmp, text).map_err(|e| CommandErrorDto::new("settings_write_failed", e.to_string()))?;
+  fs::rename(&tmp, &path).map_err(|e| {
+    let _ = fs::remove_file(&tmp);
+    CommandErrorDto::new("settings_rename_failed", e.to_string())
+  })
+}
+
 struct RuntimeState {
   app: AppState,
   path: Option<PathBuf>,
   data_dir: Option<PathBuf>,
   recents: Vec<RecentProjectDto>,
+  settings: SettingsDto,
 }
 
 struct AppRuntime(Mutex<RuntimeState>);
@@ -217,6 +259,29 @@ fn list_recents_impl(runtime: &AppRuntime) -> Result<Vec<RecentProjectDto>, Comm
   Ok(state.recents.clone())
 }
 
+fn get_settings_impl(runtime: &AppRuntime) -> Result<SettingsDto, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  Ok(state.settings.clone())
+}
+
+fn update_settings_impl(
+  runtime: &AppRuntime,
+  settings: SettingsDto,
+) -> Result<SettingsDto, CommandErrorDto> {
+  let mut state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  state.settings = settings;
+  if let Some(dir) = state.data_dir.clone() {
+    write_settings(&dir, &state.settings)?;
+  }
+  Ok(state.settings.clone())
+}
+
 #[tauri::command]
 fn document_status(runtime: State<'_, AppRuntime>) -> Result<DocumentStatusDto, CommandErrorDto> {
   document_status_impl(&runtime)
@@ -251,6 +316,19 @@ fn list_recents(runtime: State<'_, AppRuntime>) -> Result<Vec<RecentProjectDto>,
   list_recents_impl(&runtime)
 }
 
+#[tauri::command]
+fn get_settings(runtime: State<'_, AppRuntime>) -> Result<SettingsDto, CommandErrorDto> {
+  get_settings_impl(&runtime)
+}
+
+#[tauri::command]
+fn update_settings(
+  runtime: State<'_, AppRuntime>,
+  settings: SettingsDto,
+) -> Result<SettingsDto, CommandErrorDto> {
+  update_settings_impl(&runtime, settings)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -258,6 +336,7 @@ pub fn run() {
     path: None,
     data_dir: None,
     recents: Vec::new(),
+    settings: SettingsDto::default(),
   };
 
   tauri::Builder::default()
@@ -266,10 +345,12 @@ pub fn run() {
       let data_dir = app.path().app_data_dir().ok().map(|d| d.join("camcraft"));
       if let Some(dir) = data_dir.clone() {
         let recents = read_recents(&dir);
+        let settings = read_settings(&dir);
         let runtime = app.state::<AppRuntime>();
         if let Ok(mut state) = runtime.0.lock() {
           state.data_dir = Some(dir);
           state.recents = recents;
+          state.settings = settings;
         }
       }
       Ok(())
@@ -286,7 +367,9 @@ pub fn run() {
       new_document,
       open_document,
       save_document,
-      list_recents
+      list_recents,
+      get_settings,
+      update_settings
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -316,6 +399,7 @@ mod tests {
       path: None,
       data_dir: None,
       recents: Vec::new(),
+      settings: SettingsDto::default(),
     }))
   }
 
@@ -412,6 +496,7 @@ mod tests {
       path: None,
       data_dir: Some(dir.clone()),
       recents: Vec::new(),
+      settings: SettingsDto::default(),
     }));
 
     save_document_impl(&rt, Some(path.to_string_lossy().into_owned())).expect("save");
@@ -424,11 +509,58 @@ mod tests {
       path: None,
       data_dir: Some(dir.clone()),
       recents: Vec::new(),
+      settings: SettingsDto::default(),
     }));
     open_document_impl(&rt2, path.to_string_lossy().into_owned()).expect("open");
     let recents2 = list_recents_impl(&rt2).expect("recents");
     assert_eq!(recents2.len(), 1);
     assert_eq!(recents2[0].name, "board");
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn settings_round_trip_and_persist() {
+    let dir = std::env::temp_dir().join(format!(
+      "camcraft-tauri-settings-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("mkdir");
+
+    let rt = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(Document::new(Board::default_board())),
+      path: None,
+      data_dir: Some(dir.clone()),
+      recents: Vec::new(),
+      settings: SettingsDto::default(),
+    }));
+
+    let got = get_settings_impl(&rt).expect("get");
+    assert_eq!(got.theme, "dark");
+
+    let updated = update_settings_impl(
+      &rt,
+      SettingsDto {
+        theme: "light".to_string(),
+      },
+    )
+    .expect("update");
+    assert_eq!(updated.theme, "light");
+
+    let rt2 = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(Document::new(Board::default_board())),
+      path: None,
+      data_dir: Some(dir.clone()),
+      recents: Vec::new(),
+      settings: read_settings(&dir),
+    }));
+    let got2 = get_settings_impl(&rt2).expect("get2");
+    assert_eq!(got2.theme, "light");
 
     let _ = fs::remove_dir_all(&dir);
   }

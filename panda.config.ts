@@ -9,5 +9,13 @@ export default defineConfig({
   include: ['./src/**/*.{js,ts,svelte}'],
   exclude: [],
   outdir: 'styled-system',
-  jsxFramework: 'svelte'
+  jsxFramework: 'svelte',
+  conditions: {
+    extend: {
+      _light: '[data-theme=light] &',
+      _dark: '[data-theme=dark] &',
+      light: '[data-theme=light] &',
+      dark: '[data-theme=dark] &'
+    }
+  }
 });
