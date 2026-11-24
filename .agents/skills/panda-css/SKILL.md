@@ -1,4 +1,5 @@
 ---
+
 name: panda-css
 description: "Trigger: Panda CSS, styled-system, recipe, pattern, token, design system styles. Style Camcraft UI with Panda CSS."
 license: Apache-2.0

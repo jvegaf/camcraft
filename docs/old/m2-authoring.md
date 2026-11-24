@@ -17,17 +17,17 @@ That split is why the same command is tested headless and why a refusal cannot h
 
 ## Drawing
 
-| What | Command | Geometry you get |
-| --- | --- | --- |
-| Line | `AddLine` | two vertices, open |
-| Polyline | `AddPolyline` | straight segments, open or closed |
-| Arc | `AddArc` | one arc through three points, open |
-| Rectangle | `AddRectangle` | four corners, closed, counter-clockwise |
-| Circle | `AddCircle` | **two half-turn arcs** — an arc may never be a full turn |
-| Ellipse | `AddEllipse` | arcs, approximated (see below) |
-| Polygon | `AddPolygon` | N straight segments, at least 3 |
-| Star | `AddStar` | 2N segments, inner radius strictly inside the outer |
-| Text | `AddText` | one entity per glyph stroke |
+| What      | Command        | Geometry you get                                         |
+| --------- | -------------- | -------------------------------------------------------- |
+| Line      | `AddLine`      | two vertices, open                                       |
+| Polyline  | `AddPolyline`  | straight segments, open or closed                        |
+| Arc       | `AddArc`       | one arc through three points, open                       |
+| Rectangle | `AddRectangle` | four corners, closed, counter-clockwise                  |
+| Circle    | `AddCircle`    | **two half-turn arcs** — an arc may never be a full turn |
+| Ellipse   | `AddEllipse`   | arcs, approximated (see below)                           |
+| Polygon   | `AddPolygon`   | N straight segments, at least 3                          |
+| Star      | `AddStar`      | 2N segments, inner radius strictly inside the outer      |
+| Text      | `AddText`      | one entity per glyph stroke                              |
 
 Closed shapes always come back counter-clockwise. Winding is part of the contract, not an accident of
 the order the vertices were computed in.
@@ -52,7 +52,7 @@ Both cases therefore **approximate and say so**, instead of silently changing th
   asked, and returns `ScaleOutcome { contour, lost_arcs, approximation_error }`. The error is measured
   against the true curve, not assumed from the request.
 
-The shell carries the number through to the status bar: *"…, 3 arc(s) lost to tessellation"*. A user
+The shell carries the number through to the status bar: _"…, 3 arc(s) lost to tessellation"_. A user
 who scales a circle into an ellipse deserves to know their arcs became straight segments.
 
 ## Editing
@@ -85,18 +85,18 @@ topologically resolved.
 Refusals are named rather than absorbed, because a silent no-op looks like a broken program and a
 guessed chain produces a cut path nobody asked for:
 
-| Situation | Message |
-| --- | --- |
-| Three or more contours meet at one point | `edit refused: three or more endpoints meet at one point, so the join is ambiguous` |
-| The group does not chain | `edit refused: the contours do not form exactly one chain` |
-| Joining a closed contour | `edit refused: a closed contour has no free ends to join` |
-| A cutter misses, or only touches tangentially | `edit refused: trim needs exactly two cut points where the cutter crosses the target` |
-| A cutter crosses four times | the same message: the choice would be a guess |
-| Offsetting an open contour | `edit refused: only closed contours can be offset` |
-| An offset larger than the shape | `offset collapsed the contour: an arc radius would collapse` |
-| A star whose inner radius is not inside the outer one | `invalid primitive: the star inner radius must be smaller than the outer one` |
-| A scale factor of zero | `invalid primitive: the X scale factor must be finite and non-zero` |
-| A character the glyph table does not have | `the glyph source has no glyph for '€'` |
+| Situation                                             | Message                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Three or more contours meet at one point              | `edit refused: three or more endpoints meet at one point, so the join is ambiguous`   |
+| The group does not chain                              | `edit refused: the contours do not form exactly one chain`                            |
+| Joining a closed contour                              | `edit refused: a closed contour has no free ends to join`                             |
+| A cutter misses, or only touches tangentially         | `edit refused: trim needs exactly two cut points where the cutter crosses the target` |
+| A cutter crosses four times                           | the same message: the choice would be a guess                                         |
+| Offsetting an open contour                            | `edit refused: only closed contours can be offset`                                    |
+| An offset larger than the shape                       | `offset collapsed the contour: an arc radius would collapse`                          |
+| A star whose inner radius is not inside the outer one | `invalid primitive: the star inner radius must be smaller than the outer one`         |
+| A scale factor of zero                                | `invalid primitive: the X scale factor must be finite and non-zero`                   |
+| A character the glyph table does not have             | `the glyph source has no glyph for '€'`                                               |
 
 A refusal never reaches the document: the command is applied to a copy, validated, and only then
 committed, so the document and the undo depth are unchanged.
@@ -126,19 +126,19 @@ line).
 
 Numbers a gesture cannot supply come from documented defaults on the `Shell`:
 
-| Argument | Default |
-| --- | --- |
-| Rectangle size | 100 × 60 mm |
-| Polygon sides | 6 |
-| Star points / inner ratio | 5 / 0.5 |
-| Array grid / spacing | 2 × 3 / 50 × 25 mm |
-| Offset distance | 2 mm |
-| Move delta | 10 × 0 mm |
-| Rotate angle | 15° |
-| Scale factors | 2 × 2 (uniform, so exact on arcs) |
-| Text / height | `CAM` / 10 mm |
-| Approximation tolerance | 0.01 mm (`DEFAULT_TOLERANCE_MM`) |
-| Join tolerance | the kernel's own `DEFAULT_TOLERANCE` (1e-6 mm), not a second number |
+| Argument                  | Default                                                             |
+| ------------------------- | ------------------------------------------------------------------- |
+| Rectangle size            | 100 × 60 mm                                                         |
+| Polygon sides             | 6                                                                   |
+| Star points / inner ratio | 5 / 0.5                                                             |
+| Array grid / spacing      | 2 × 3 / 50 × 25 mm                                                  |
+| Offset distance           | 2 mm                                                                |
+| Move delta                | 10 × 0 mm                                                           |
+| Rotate angle              | 15°                                                                 |
+| Scale factors             | 2 × 2 (uniform, so exact on arcs)                                   |
+| Text / height             | `CAM` / 10 mm                                                       |
+| Approximation tolerance   | 0.01 mm (`DEFAULT_TOLERANCE_MM`)                                    |
+| Join tolerance            | the kernel's own `DEFAULT_TOLERANCE` (1e-6 mm), not a second number |
 
 Rotate, scale and mirror pivot on the camera centre; the mirror line is the vertical through it.
 

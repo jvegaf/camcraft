@@ -42,15 +42,15 @@ The document above holds one 100 x 80 mm square, a 20 mm hole and an open line, 
 pair — and the report is what the shipped code prints: the 12 mm³ of uncut is inside M5's published
 coverage bound and is the pocket's own residue under the inlay's male half (see the inlay section).
 
-| Piece | Where |
-| --- | --- |
-| The six parameter records, `ChamferParams::depth` and `TextureParams::grooves` | `cam-model` |
-| The six strategies | `cam-toolpath::{chamfer, engrave, fluting, texture, inlay, thread}` |
-| The tool's shape on a segment, `ToolShape::{Cylinder, VBit}` | `cam-move`, `cam-sim::sweep` |
-| The helical move and its four post block kinds | `cam-move::Move::Helix`, `cam-post` |
-| The authorised depth for each strategy | `cam-sim::target` (`claim_cone_region`, `claim_along_path`, `claim_flute`, `claim_helix`, `claim_clearing`) |
-| `--kind chamfer\|engrave\|fluting\|texture\|inlay\|thread` | `cam-cli` |
-| The contract rows for each `kind` | [format.md](format.md#document-c2d) |
+| Piece                                                                          | Where                                                                                                       |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| The six parameter records, `ChamferParams::depth` and `TextureParams::grooves` | `cam-model`                                                                                                 |
+| The six strategies                                                             | `cam-toolpath::{chamfer, engrave, fluting, texture, inlay, thread}`                                         |
+| The tool's shape on a segment, `ToolShape::{Cylinder, VBit}`                   | `cam-move`, `cam-sim::sweep`                                                                                |
+| The helical move and its four post block kinds                                 | `cam-move::Move::Helix`, `cam-post`                                                                         |
+| The authorised depth for each strategy                                         | `cam-sim::target` (`claim_cone_region`, `claim_along_path`, `claim_flute`, `claim_helix`, `claim_clearing`) |
+| `--kind chamfer\|engrave\|fluting\|texture\|inlay\|thread`                     | `cam-cli`                                                                                                   |
+| The contract rows for each `kind`                                              | [format.md](format.md#document-c2d)                                                                         |
 
 The decisions are D-M6-1 … D-M6-14 and the log is L1 … L17 in the
 [feature document](../../odd/tasks/008-m6-depth-variants.md); the milestone's evidence is §4.9 of the
@@ -64,14 +64,14 @@ existing `kind` tag, an unknown `kind` is still a hard load error, and every doc
 still loads and re-saves byte-identically. That is not decoration — it is the property the closing
 differential measured against `8a953ba` (see [Determinism](#determinism-and-the-old-bytes)).
 
-| Kind | In the document | Passes | The Z law | Cuts from |
-| --- | --- | --- | --- | --- |
-| `chamfer` | `chamfer_width`, `included_angle` (radians), `start_depth` | one | `start_depth + width / tan(angle/2)`, derived and never stored | the vector, tip **on** it |
-| `engrave` | `start_depth`, `cut_depth` | one | `cut_depth`, authored | the vector, centre **on** it |
-| `fluting` | `start_depth`, `cut_depth`, `ramp` (default 0) | one | ramps 0 → depth over the first `ramp` mm, plateau, depth → 0 over the last | the vector, centre **on** it |
-| `texture` | `start_depth`, `cut_depth`, `spacing` (default 3), `angle` (radians, default 0) | one per groove | `cut_depth` | each groove of a derived pattern, centre on it |
-| `inlay` | `allowance`, `stepover`, `pass_depth`, `start_depth`, `cut_depth` | the pocket's | the pocket's depth chunking | **two** toolpaths: the grown region, then the job rectangle around the region |
-| `thread` | `pitch`, `direction`, `start_depth`, `cut_depth` | one descent | `pitch` per revolution to `cut_depth` | a helix around the selected circle |
+| Kind      | In the document                                                                 | Passes         | The Z law                                                                  | Cuts from                                                                     |
+| --------- | ------------------------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `chamfer` | `chamfer_width`, `included_angle` (radians), `start_depth`                      | one            | `start_depth + width / tan(angle/2)`, derived and never stored             | the vector, tip **on** it                                                     |
+| `engrave` | `start_depth`, `cut_depth`                                                      | one            | `cut_depth`, authored                                                      | the vector, centre **on** it                                                  |
+| `fluting` | `start_depth`, `cut_depth`, `ramp` (default 0)                                  | one            | ramps 0 → depth over the first `ramp` mm, plateau, depth → 0 over the last | the vector, centre **on** it                                                  |
+| `texture` | `start_depth`, `cut_depth`, `spacing` (default 3), `angle` (radians, default 0) | one per groove | `cut_depth`                                                                | each groove of a derived pattern, centre on it                                |
+| `inlay`   | `allowance`, `stepover`, `pass_depth`, `start_depth`, `cut_depth`               | the pocket's   | the pocket's depth chunking                                                | **two** toolpaths: the grown region, then the job rectangle around the region |
+| `thread`  | `pitch`, `direction`, `start_depth`, `cut_depth`                                | one descent    | `pitch` per revolution to `cut_depth`                                      | a helix around the selected circle                                            |
 
 Every one of them inherits M4's conservative linking: between grooves, spans, rings and passes the tool
 retracts to `job.safe_z` and rapids (D-M4-6, S14). Staying down needs a gouge-free proof, and a texture
@@ -100,11 +100,11 @@ deep the tip has to go for the flank to meet the surface exactly `chamfer_width`
 depth = start_depth + chamfer_width / tan(included_angle / 2)
 ```
 
-| Bit | `chamfer_width` | Derived depth | What it looks like |
-| --- | --- | --- | --- |
-| 90° | 3 mm | `3 / tan(45°) = 3.000` | a 3 mm chamfer at 45° — the case a user checks by eye |
-| 60° | 6 mm | `6 / tan(30°) = 10.392` | the same 6 mm of surface width, 10.392 mm deep |
-| 60° | 3 mm | `3 / tan(30°) = 5.196` | the worked fixture below |
+| Bit | `chamfer_width` | Derived depth           | What it looks like                                    |
+| --- | --------------- | ----------------------- | ----------------------------------------------------- |
+| 90° | 3 mm            | `3 / tan(45°) = 3.000`  | a 3 mm chamfer at 45° — the case a user checks by eye |
+| 60° | 6 mm            | `6 / tan(30°) = 10.392` | the same 6 mm of surface width, 10.392 mm deep        |
+| 60° | 3 mm            | `3 / tan(30°) = 5.196`  | the worked fixture below                              |
 
 `depth()` lives once, in `cam-model`, and both `cam-toolpath` and `cam-sim` call it: a stored derived
 depth and a recomputed one would eventually disagree in a hand-edited document, and a bevel that a
@@ -117,15 +117,15 @@ at one depth, arcs kept as arcs.
 
 ### What it refuses, and why
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `ChamferWidthNotPositive` | the document | `toolpath "TP1" chamfer width must be a positive number of millimetres, got 0 mm` |
-| `ChamferAngleOutOfRange` | the document | `toolpath "TP1" chamfer included angle must be between 0 and 180 degrees, got 0 degrees` |
-| `InvalidIncludedAngle` | `cam-toolpath::chamfer` | `chamfer included angle 0 degrees must be strictly between 0 and 180` |
-| no angle in the library | `cam-cli toolpath` | `tool T3 has no included angle in the library, so a chamfer's depth cannot be derived: a chamfer needs a V-bit` |
-| a flat tip | `cam-cli toolpath` | `tool T3 has a 2 mm flat tip, so a chamfer's bevel would reach the surface wider than --chamfer-width 3 mm: a chamfer needs a sharp V-bit` |
-| `--side`, `--cut-depth`, `--pass-depth` | `cam-cli toolpath` | `--kind chamfer takes no --side: the tip runs on the vector and its depth is derived from --chamfer-width and the tool's included angle` |
-| `ChamferNeedsVBit`, `ChamferNeedsSharpBit` | `cam-sim::target` | a segment whose tool is a cylinder or a flat-tipped bit cannot be the bevel the document describes |
+| Refusal                                    | Raised by               | Message                                                                                                                                    |
+| ------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ChamferWidthNotPositive`                  | the document            | `toolpath "TP1" chamfer width must be a positive number of millimetres, got 0 mm`                                                          |
+| `ChamferAngleOutOfRange`                   | the document            | `toolpath "TP1" chamfer included angle must be between 0 and 180 degrees, got 0 degrees`                                                   |
+| `InvalidIncludedAngle`                     | `cam-toolpath::chamfer` | `chamfer included angle 0 degrees must be strictly between 0 and 180`                                                                      |
+| no angle in the library                    | `cam-cli toolpath`      | `tool T3 has no included angle in the library, so a chamfer's depth cannot be derived: a chamfer needs a V-bit`                            |
+| a flat tip                                 | `cam-cli toolpath`      | `tool T3 has a 2 mm flat tip, so a chamfer's bevel would reach the surface wider than --chamfer-width 3 mm: a chamfer needs a sharp V-bit` |
+| `--side`, `--cut-depth`, `--pass-depth`    | `cam-cli toolpath`      | `--kind chamfer takes no --side: the tip runs on the vector and its depth is derived from --chamfer-width and the tool's included angle`   |
+| `ChamferNeedsVBit`, `ChamferNeedsSharpBit` | `cam-sim::target`       | a segment whose tool is a cylinder or a flat-tipped bit cannot be the bevel the document describes                                         |
 
 The angle is checked twice on purpose. The document sees it before a toolpath exists, and the strategy
 checks it again because the tangent of zero is zero: a caller that reaches `chamfer()` without passing
@@ -141,7 +141,7 @@ against a flat one — and the `ToolShape` the segment carries.
 
 The band is the contour offset out and in by the cone's own reach at its derived depth, and inside that
 band the authorised depth is the cone's floor, cell by cell: `depth − rise(distance)`, capped at `depth`,
-zero past the reach. For a sharp bit the reach *is* the chamfer width, so the band and the bevel are the
+zero past the reach. For a sharp bit the reach _is_ the chamfer width, so the band and the bevel are the
 same number. The claim is graded rather than flat, which is why a square chamfer does not show the
 corner over-authorisation a cylindrical profile does: on the worked fixture (100 x 80 mm square, 3 mm
 bevel, 60° bit, 1 mm cells) `simulate` reports `removed 5595.074 mm³`, `gouge 0.000`, `uncut 0.000` —
@@ -179,7 +179,7 @@ which is why `--start-depth` is accepted even though A3 names only `--cut-depth`
 The claim is the tool's footprint band **along** the vector, `cut_depth − rise(distance)` clamped at
 zero, plus the reach test a cone self-clamps and a cylinder does not (L12's first finding). A V-bit
 engrave therefore removes the cone it sweeps — `L · d² · tan(θ/2)`, `3325.6 mm³` for a 6 mm pass over the
-oracle's 160 mm vector — and an end mill removes a uniform band `2r · d`. A flat tip is *not* refused
+oracle's 160 mm vector — and an end mill removes a uniform band `2r · d`. A flat tip is _not_ refused
 here: an engrave's depth is authored rather than derived, so a flat widens the groove by `f/2` and
 `rise_at_radius` accounts for it in both the sweep and the claim. D-M6-10 stays chamfer-only.
 
@@ -211,12 +211,12 @@ a chorded ramp is `ramp² / (8r)` inside the vector, half a millimetre for a 10 
 and T4 refused that case by name until T7's helix existed. `ramp = 0` on the same contour is untouched,
 because a constant-depth pass along an arc is exactly what `Move::Arc` is for.
 
-| Refusal | Message |
-| --- | --- |
-| the document, negative ramp | `toolpath "TP1" fluting ramp must not be negative, got -1 mm` |
-| `InvalidRamp` | `fluting ramp -1 mm must not be negative` |
-| `RampTooLong` | `fluting ramp 51 mm is longer than half of the vector's 100 mm length` |
-| `InvalidDepthRange` | `cut depth 6 mm must be greater than start depth 6 mm` |
+| Refusal                     | Message                                                                |
+| --------------------------- | ---------------------------------------------------------------------- |
+| the document, negative ramp | `toolpath "TP1" fluting ramp must not be negative, got -1 mm`          |
+| `InvalidRamp`               | `fluting ramp -1 mm must not be negative`                              |
+| `RampTooLong`               | `fluting ramp 51 mm is longer than half of the vector's 100 mm length` |
+| `InvalidDepthRange`         | `cut depth 6 mm must be greater than start depth 6 mm`                 |
 
 A ramp longer than half the vector is an input error naming both numbers rather than a silently
 shortened ramp, which would cut both ends at a depth nobody authored; a closed contour measures the ramp
@@ -233,7 +233,7 @@ the cell (L13, L14). The oracle's arithmetic is the closed form the ramp gives:
 removed = 2·R·d·(L − ramp) = 2 · 3 · 6 · 150 = 5400 mm³   (R = 3, d = 6, L = 160, ramp = 10)
 ```
 
-Measured on that field: **5548.5 mm³**. The 148.5 mm³ between the two is mostly the *toes* — `π·R²·d =
+Measured on that field: **5548.5 mm³**. The 148.5 mm³ between the two is mostly the _toes_ — `π·R²·d =
 169.6 mm³` of material a tool's footprint adds where each ramp meets the surface, because the bottom of a
 6 mm end mill is still in the cut 3 mm past its tip — and the rest is the grid's account of the same
 toes. Four samplings of one geometry say so: the rejected staircase measured 5549.2, the half-cell
@@ -266,12 +266,12 @@ spacing inside** the region's lower extent in the groove frame, so it starts off
 instead of on it, where the kernel reports a tangency. The pattern is therefore centred only when the
 extent is a whole number of spacings (L15).
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `TextureSpacingNotPositive` | the document | `toolpath "TP1" texture spacing must be a positive number of millimetres, got 0 mm` |
-| `InvalidSpacing` | `cam-toolpath::texture` | `texture spacing 0 mm must be greater than zero` |
-| `NoGroove` | `cam-toolpath::texture` | `texture spacing 500 mm at 0 degrees leaves no groove across the region: …` |
-| no spacing anywhere | `cam-cli toolpath` | `a texture needs --spacing: the tool library has no stepover for that tool` |
+| Refusal                     | Raised by               | Message                                                                             |
+| --------------------------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| `TextureSpacingNotPositive` | the document            | `toolpath "TP1" texture spacing must be a positive number of millimetres, got 0 mm` |
+| `InvalidSpacing`            | `cam-toolpath::texture` | `texture spacing 0 mm must be greater than zero`                                    |
+| `NoGroove`                  | `cam-toolpath::texture` | `texture spacing 500 mm at 0 degrees leaves no groove across the region: …`         |
+| no spacing anywhere         | `cam-cli toolpath`      | `a texture needs --spacing: the tool library has no stepover for that tool`         |
 
 The oracle: a 40 mm square at an 8 mm spacing is five rows at `y = 4, 12, 20, 28, 36`, `Σ length = 200 mm`,
 and a 6 mm end mill at a 6 mm depth removes `2·R·d·ΣL = 7200 mm³` — measured **exactly** 7200, because
@@ -301,7 +301,7 @@ One command, **two** toolpaths, in a fixed order, sharing one copy of five param
 - the **male** clears the job rectangle with the region standing as an **island** — the plug — with the
   pocket's raster rows.
 
-The allowance *is* the clearance: the cavity is `allowance` bigger than the plug on every side, so there
+The allowance _is_ the clearance: the cavity is `allowance` bigger than the plug on every side, so there
 is one number and no second "gap" parameter. The female's growth is the pocket's own `allowance`
 **negated**, because that parameter is how far the tool centre keeps back from the boundary; at
 `allowance = 0` the female is the plain pocket of the region, cell for cell.
@@ -328,14 +328,14 @@ attached to the stock — while the row male leaves 80 mm². At a 4 mm stepover 
 2808 mm² of 8400 mm² against the rows' residue. The row lattice has no such blind spot: every row is
 clipped to the frame by the kernel's own spans, so it reaches both walls.
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `InlayStepoverNotPositive` | the document | `toolpath "TP5" inlay stepover must be a positive number of millimetres, got 0 mm` |
-| `InlayDepthRange` | the document | `toolpath "TP5" inlay cut depth 6 mm must be greater than its start depth 6 mm` |
-| `InlayMaleTakesNoEntities` | the document | `toolpath "TP5" is an inlay male with entity_ids: …` |
-| `InlayAllowanceCollapsed` | `cam-toolpath::inlay` | `inlay allowance -25 mm leaves no region to cut: …` |
-| `InlayRegionOutsideJob` | `cam-toolpath::inlay` | `inlay region is not strictly inside the job's 100 x 100 mm rectangle: …` |
-| `--id`, `--name`, `--side`, `--tab`, `--lead-*`, `--ramp`, `--spacing`, `--angle`, `--chamfer-width`, `--strategy` | `cam-cli toolpath` | `--kind inlay names its two toolpaths itself: …` and one refusal per flag |
+| Refusal                                                                                                            | Raised by             | Message                                                                            |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------- | ---------------------------------------------------------------------------------- |
+| `InlayStepoverNotPositive`                                                                                         | the document          | `toolpath "TP5" inlay stepover must be a positive number of millimetres, got 0 mm` |
+| `InlayDepthRange`                                                                                                  | the document          | `toolpath "TP5" inlay cut depth 6 mm must be greater than its start depth 6 mm`    |
+| `InlayMaleTakesNoEntities`                                                                                         | the document          | `toolpath "TP5" is an inlay male with entity_ids: …`                               |
+| `InlayAllowanceCollapsed`                                                                                          | `cam-toolpath::inlay` | `inlay allowance -25 mm leaves no region to cut: …`                                |
+| `InlayRegionOutsideJob`                                                                                            | `cam-toolpath::inlay` | `inlay region is not strictly inside the job's 100 x 100 mm rectangle: …`          |
+| `--id`, `--name`, `--side`, `--tab`, `--lead-*`, `--ramp`, `--spacing`, `--angle`, `--chamfer-width`, `--strategy` | `cam-cli toolpath`    | `--kind inlay names its two toolpaths itself: …` and one refusal per flag          |
 
 A **negative** allowance is an interference fit, not an error: the cavity comes out smaller than the
 plug. It is refused only when it shrinks the region away, and then by name with the kernel's reason.
@@ -352,7 +352,7 @@ standing; a cell both claim keeps the deeper and never the sum (D-M5-2). On the 
   to one stepover along the two walls of the region that run parallel to the rows, whose nearest row is
   at `wall − radius − 1` rather than `wall − radius`. That is the **pocket's published coverage bound**,
   pinned in the oracle with its arithmetic rather than absorbed into a tolerance (L16). What the pair
-  needs is that the plug be *separated* from the stock, which the rows do everywhere except those corner
+  needs is that the plug be _separated_ from the stock, which the rows do everywhere except those corner
   cells, and that is the honest statement of its finish.
 
 ## Thread milling
@@ -366,10 +366,10 @@ One helical descent around each selected **circle**, one `pitch` per revolution,
 `-cut_depth`, then a retract (A7). The tool orbits at a fixed radius that the circle and the tool fix
 between them:
 
-| Direction | Orbit radius | What it cuts |
-| --- | --- | --- |
-| `internal` (default) | `(D − t)/2` | the hole's wall, from inside: the disc reaches `D/2` and stops `t` short of the axis |
-| `external` | `(D + t)/2` | a boss's wall, from outside |
+| Direction            | Orbit radius | What it cuts                                                                         |
+| -------------------- | ------------ | ------------------------------------------------------------------------------------ |
+| `internal` (default) | `(D − t)/2`  | the hole's wall, from inside: the disc reaches `D/2` and stops `t` short of the axis |
+| `external`           | `(D + t)/2`  | a boss's wall, from outside                                                          |
 
 `D` is the selected circle's diameter and `t` the tool's, and neither is stored in the document: the
 circle is the entity the toolpath names and the tool is the library's, so a document cannot disagree with
@@ -381,7 +381,7 @@ the geometry it was written against.
 carrying the fraction that reaches the depth — a full turn being the move whose destination is its own
 start point, exactly as a full-circle arc is. The depth at unwrapped angle `Φ` from the orbit's `+x`
 point is `pitch · Φ / 2π`, so the floor the descent leaves is a **spiral**, not a disc: the material
-between two revolutions stands, and that material *is* the thread.
+between two revolutions stands, and that material _is_ the thread.
 
 ```text
 $ cam-cli emit part.c2d --post post-helix.pp --library tools.sqlite
@@ -413,14 +413,14 @@ The refusal is the whole point of the block kinds: an arc block's template carri
 `[Z]`, so a helix emitted through one would cut a flat circle at the wrong depth. Absence is a refusal,
 exit `4`, and nothing is written — M4's arc refusal, in the same words and for the same reason.
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `ThreadPitchNotPositive` | the document | `toolpath "TP7" thread pitch must be a positive number of millimetres, got 0 mm` |
-| `ThreadDepthRange` | the document | `toolpath "TP7" thread cut depth 6 mm must be greater than its start depth 6 mm` |
-| `InvalidPitch` | `cam-toolpath::thread` | `thread pitch 0 mm must be greater than zero` |
-| `NotACircle` | `cam-toolpath::thread` | `entity "E1" is not a circle, so it has no centre to work from` |
-| `ThreadToolTooWide` | `cam-toolpath::thread` | `tool diameter 14 mm does not fit a 12 mm hole: …` |
-| 11 flags its law does not have | `cam-cli toolpath` | `--kind thread takes no --stepover: a thread is one helical descent around each circle, one --pitch per revolution, …` |
+| Refusal                        | Raised by              | Message                                                                                                                |
+| ------------------------------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `ThreadPitchNotPositive`       | the document           | `toolpath "TP7" thread pitch must be a positive number of millimetres, got 0 mm`                                       |
+| `ThreadDepthRange`             | the document           | `toolpath "TP7" thread cut depth 6 mm must be greater than its start depth 6 mm`                                       |
+| `InvalidPitch`                 | `cam-toolpath::thread` | `thread pitch 0 mm must be greater than zero`                                                                          |
+| `NotACircle`                   | `cam-toolpath::thread` | `entity "E1" is not a circle, so it has no centre to work from`                                                        |
+| `ThreadToolTooWide`            | `cam-toolpath::thread` | `tool diameter 14 mm does not fit a 12 mm hole: …`                                                                     |
+| 11 flags its law does not have | `cam-cli toolpath`     | `--kind thread takes no --stepover: a thread is one helical descent around each circle, one --pitch per revolution, …` |
 
 ### The claim is the spiral, not the annulus
 
@@ -435,12 +435,12 @@ error `claim_flute` was amended for.
 
 Four numbers state a thread on the oracle's fixture (12 mm hole, 4 mm tool, 6 mm deep, 1.5 mm pitch):
 
-| Number | Value | What it is |
-| --- | --- | --- |
-| Analytic | `π·t·(D − t)·d = 603.186 mm³` | the full annulus at one depth — what a flat-bottomed cut would remove |
-| Authorised | `542.288 mm³` | the spiral, deepened by the footprint's angular window and quantised onto 1 mm cells |
-| Removed | `541.000 mm³` | the same spiral, sampled; the 1.288 between this and the claim is the sampling |
-| Tip-only claim | `527.788 mm³` | what the law at the cell's own angle would authorise — less than the program removes, so it would report a correct thread as a gouge |
+| Number         | Value                         | What it is                                                                                                                           |
+| -------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Analytic       | `π·t·(D − t)·d = 603.186 mm³` | the full annulus at one depth — what a flat-bottomed cut would remove                                                                |
+| Authorised     | `542.288 mm³`                 | the spiral, deepened by the footprint's angular window and quantised onto 1 mm cells                                                 |
+| Removed        | `541.000 mm³`                 | the same spiral, sampled; the 1.288 between this and the claim is the sampling                                                       |
+| Tip-only claim | `527.788 mm³`                 | what the law at the cell's own angle would authorise — less than the program removes, so it would report a correct thread as a gouge |
 
 The gap to the analytic — 62.186 mm³ — is the **crest**, which is the thread, not a defect. Both the
 coarse 1.5 mm fixture and a 0.05 mm pitch are clean on both signs, with no deviation: the claim is exact
@@ -460,13 +460,13 @@ D-M5-5 was amended to fix.
 
 So `cam_move::ToolShape` replaces the bare `tool_diameter` on `Segment` (D-M6-3):
 
-| Shape | Numbers | `radius_at(depth)` | `rise_at_radius(radius)` |
-| --- | --- | --- | --- |
-| `Cylinder` | `diameter` | `diameter/2`, whatever the depth | `0` |
-| `VBit` | `included_angle`, `flat_diameter` | `flat/2 + depth·tan(angle/2)` | how far the cone's surface sits above its tip at that radius |
+| Shape      | Numbers                           | `radius_at(depth)`               | `rise_at_radius(radius)`                                     |
+| ---------- | --------------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| `Cylinder` | `diameter`                        | `diameter/2`, whatever the depth | `0`                                                          |
+| `VBit`     | `included_angle`, `flat_diameter` | `flat/2 + depth·tan(angle/2)`    | how far the cone's surface sits above its tip at that radius |
 
 The two methods exist because a cone's footprint grows with depth, and because the first form of the law
-was written as a **depth** rather than a rise: `(x − flat/2)/tan(α)` is how far the surface sits *above*
+was written as a **depth** rather than a rise: `(x − flat/2)/tan(α)` is how far the surface sits _above_
 the tip, not how deep it cuts. The wrong reading produced a groove that widens with depth — the exact
 inverse of a V-groove — and it had a test written to agree with it before it was caught (L5). The
 methods' names are the fix: a name cannot be read as a depth again.
@@ -486,7 +486,7 @@ the four helical block kinds, and the emitter requires a block for every move ki
 Additive by construction: no existing block kind changed meaning, no document stops loading, and no post
 that works today stops working.
 
-`cam-sim` sweeps a helix with the arc code, because it *is* an arc that descends: the footprint is the
+`cam-sim` sweeps a helix with the arc code, because it _is_ an arc that descends: the footprint is the
 arc's, and only the Z differs, interpolated by angle. That is what makes a thread's floor the spiral the
 descent leaves instead of a step, and a full turn's destination is its own start point, so one revolution
 is one move to the sweep, to the preview and to `cut_length` alike.
@@ -506,10 +506,10 @@ document), `simulate` at three resolutions, and the error paths. Exit code, stdo
 produced (documents as their JSON payloads, programs byte for byte, the imported document, the library)
 were compared. **Two differ, and both are supposed to:**
 
-| Case | Before | After |
-| --- | --- | --- |
-| `--help` | lists `profile, pocket or drilling` and their flags | lists the nine kinds, `--spacing`, `--angle`, `--inlay-allowance`, `--chamfer-width`, `--ramp`, `--pitch`, `--thread-direction` |
-| unknown `--kind` | `unknown toolpath kind "bogus"; expected profile, pocket or drilling` | `…; expected profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or thread` |
+| Case             | Before                                                                | After                                                                                                                           |
+| ---------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--help`         | lists `profile, pocket or drilling` and their flags                   | lists the nine kinds, `--spacing`, `--angle`, `--inlay-allowance`, `--chamfer-width`, `--ramp`, `--pitch`, `--thread-direction` |
+| unknown `--kind` | `unknown toolpath kind "bogus"; expected profile, pocket or drilling` | `…; expected profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or thread`                                    |
 
 Everything else — including the `--islands` refusal, the `simulate` report of a document holding four M4
 toolpaths, and the `emit` program that document produces — is identical, byte for byte. The new commands
@@ -541,10 +541,10 @@ therefore disagree about **where** everything is.
 Measured through `cam-cli simulate`, on a single pocket over an 80 x 30 mm region at `y = 60 … 90` in a
 200 x 100 mm sheet, 1 mm cells:
 
-| Origin | Removed | Gouge | Uncut |
-| --- | --- | --- | --- |
-| `bottom_left` | 14376.000 mm³ | 0.000 | 24.000 mm³ over 4 cells |
-| `top_left` | 14376.000 mm³ | **14376.000 mm³ over 2396 cells** | **14400.000 mm³ over 2400 cells** |
+| Origin        | Removed       | Gouge                             | Uncut                             |
+| ------------- | ------------- | --------------------------------- | --------------------------------- |
+| `bottom_left` | 14376.000 mm³ | 0.000                             | 24.000 mm³ over 4 cells           |
+| `top_left`    | 14376.000 mm³ | **14376.000 mm³ over 2396 cells** | **14400.000 mm³ over 2400 cells** |
 
 The same program, the same region: at `top_left` the entire removal is reported as gouge and the entire
 region as uncut, because the cut is a mirror image of the authorisation about `y = 50`. With
@@ -599,7 +599,7 @@ test per corner asserting that a correct program reports `Deviation::default()`;
   refused as unknown, which is a real change for those two names.
 - **A ramped flute on an arc is a strategy-level rule, not a document one** (L14). `Document::validate`
   refuses a negative ramp, a non-positive spacing, a degenerate inlay stepover, a thread with no pitch
-  and a chamfer with no angle or an impossible one; whether a ramp *fits* its vector needs the geometry's
+  and a chamfer with no angle or an impossible one; whether a ramp _fits_ its vector needs the geometry's
   length, so it is refused where the vector is walked.
 - **A cone's interior candidate is exact while the nearest point is a perpendicular foot** (L14). It is
   measured clean on every fixture; a ternary search would remove the assumption at a real per-cell cost.
@@ -620,36 +620,36 @@ cam-cli toolpath <document> --kind chamfer|engrave|fluting|texture|inlay|thread
                  [--pitch <mm>] [--thread-direction internal|external]
 ```
 
-| Option | Applies to | Default, and where it comes from |
-| --- | --- | --- |
-| `--kind` | — | Required: one of the nine |
-| `--entities` | — | Required: each entity is its own vector, region, hole or thread |
-| `--tool` | — | Required: the tool number in the library |
-| `--library` | — | The document's `tools_ref`, resolved relative to the document |
-| `--id`, `--name` | all but inlay | `TP<n>` (first free) and `<Kind> <n>`; an inlay names its pair itself |
-| `--chamfer-width` | chamfer | Required; the depth is derived from it and the bit's angle |
-| `--cut-depth` | engrave, fluting, texture, inlay, thread | `18` mm, the model's default; refused for chamfer |
-| `--start-depth` | every kind | `0` |
-| `--ramp` | fluting | `0`, the in-place plunge |
-| `--spacing` | texture | The tool library's `stepover`; with neither, the command refuses |
-| `--angle` | texture | `0` degrees |
-| `--inlay-allowance` | inlay | `0`, the clearance between plug and cavity |
-| `--stepover`, `--clear` | inlay | The tool library's `stepover`, or `clear_stepover` with `--clear` |
-| `--pass-depth` | inlay | The tool library's `stepdown`; without it the command refuses |
-| `--pitch` | thread | Required, in millimetres |
-| `--thread-direction` | thread | `internal` |
+| Option                  | Applies to                               | Default, and where it comes from                                      |
+| ----------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| `--kind`                | —                                        | Required: one of the nine                                             |
+| `--entities`            | —                                        | Required: each entity is its own vector, region, hole or thread       |
+| `--tool`                | —                                        | Required: the tool number in the library                              |
+| `--library`             | —                                        | The document's `tools_ref`, resolved relative to the document         |
+| `--id`, `--name`        | all but inlay                            | `TP<n>` (first free) and `<Kind> <n>`; an inlay names its pair itself |
+| `--chamfer-width`       | chamfer                                  | Required; the depth is derived from it and the bit's angle            |
+| `--cut-depth`           | engrave, fluting, texture, inlay, thread | `18` mm, the model's default; refused for chamfer                     |
+| `--start-depth`         | every kind                               | `0`                                                                   |
+| `--ramp`                | fluting                                  | `0`, the in-place plunge                                              |
+| `--spacing`             | texture                                  | The tool library's `stepover`; with neither, the command refuses      |
+| `--angle`               | texture                                  | `0` degrees                                                           |
+| `--inlay-allowance`     | inlay                                    | `0`, the clearance between plug and cavity                            |
+| `--stepover`, `--clear` | inlay                                    | The tool library's `stepover`, or `clear_stepover` with `--clear`     |
+| `--pass-depth`          | inlay                                    | The tool library's `stepdown`; without it the command refuses         |
+| `--pitch`               | thread                                   | Required, in millimetres                                              |
+| `--thread-direction`    | thread                                   | `internal`                                                            |
 
 The document is written only after the whole command succeeded, so every refusal exits `2` with the file
 byte-identical. An inlay appends both halves or neither.
 
 ## Where the record lives
 
-| Question | Where |
-| --- | --- |
+| Question                                     | Where                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
 | What M6 had to be, and every amendment to it | `odd/tasks/008-m6-depth-variants.md` — S1 … S14, A1 … A11, D-M6-1 … 14, L1 … L17 |
-| What each kind does in the document | [format.md](format.md#document-c2d), one row per `kind` |
-| What the simulation authorises for each | [m5-simulation.md](m5-simulation.md#the-target-surface), one row per operation |
-| How a pocket, a profile and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
-| How islands, parity and the `@2` tag work | [region-booleans.md](region-booleans.md) |
-| What M6 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.9 |
-| The project-level summary | [README.md](../../README.md) |
+| What each kind does in the document          | [format.md](format.md#document-c2d), one row per `kind`                          |
+| What the simulation authorises for each      | [m5-simulation.md](m5-simulation.md#the-target-surface), one row per operation   |
+| How a pocket, a profile and a drill behave   | [m4-toolpaths.md](m4-toolpaths.md)                                               |
+| How islands, parity and the `@2` tag work    | [region-booleans.md](region-booleans.md)                                         |
+| What M6 delivered, and what it cost          | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.9                          |
+| The project-level summary                    | [README.md](../../README.md)                                                     |

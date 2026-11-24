@@ -60,7 +60,6 @@ Cuatro bloques, siempre en este orden:
 3. Sumá su fila a `tasks/INDEX.md`.
 4. Si la tarea toca un archivo del repo, su ruta va en `## Tasks`; el commit se anota cuando existe.
 
-
 ## Worktrees y reclamo de tareas (obligatorio para desarrollo paralelo)
 
 - **Un agente = un worktree = una tarea.** Cada tarea tomada de `tasks/INDEX.md` debe trabajarse en su propio git worktree (fuera del árbol principal), en una rama dedicada (`feat/NNN-<slug>`).

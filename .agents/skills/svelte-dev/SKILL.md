@@ -1,4 +1,5 @@
 ---
+
 name: svelte-dev
 description: "Trigger: Svelte, SvelteKit, rune, $state, $derived, $effect, route, component. Develop Camcraft's Svelte 5 frontend."
 license: Apache-2.0

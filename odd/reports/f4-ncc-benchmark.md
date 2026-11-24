@@ -19,10 +19,10 @@ open_gerber fixtures/corpus/kicad-large-pours/top.gbr -outname board
 ncc board -tooldia 1.0 -overlap 50 -margin 0 -method standard -all -outname board_ncc
 ```
 
-| Métrica | Valor |
-|---|---:|
-| ncc_s | 49.87 |
-| paths (objeto NCC) | 222 |
+| Métrica            | Valor |
+| ------------------ | ----: |
+| ncc_s              | 49.87 |
+| paths (objeto NCC) |   222 |
 
 ### Camcraft (medido 2026-11-16)
 
@@ -34,10 +34,10 @@ cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_p
 
 Nota: el outline de kicad-large-pours se interpreta como stroke de perfil Gerber; el board interior se toma como outer-filled minus stroke.
 
-| Build | unite_ms | fill_ms | clip_ms | total_ms | raw contours | clipped boundaries | board_area_mm2 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| release | 1015.92 | 1.42 | 1071.29 | 2088.64 | 98 | 826 | 15825.68 |
-| dev/test | 5449.77 | 3.42 | 5246.78 | 10699.96 | 98 | 826 | 15825.68 |
+| Build    | unite_ms | fill_ms | clip_ms | total_ms | raw contours | clipped boundaries | board_area_mm2 |
+| -------- | -------: | ------: | ------: | -------: | -----------: | -----------------: | -------------: |
+| release  |  1015.92 |    1.42 | 1071.29 |  2088.64 |           98 |                826 |       15825.68 |
+| dev/test |  5449.77 |    3.42 | 5246.78 | 10699.96 |           98 |                826 |       15825.68 |
 
 **Resultado:** camcraft release 2.09s vs FlatCAM 49.87s en la misma placa grande/params = **~23.9x más rápido**.
 

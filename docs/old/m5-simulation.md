@@ -22,15 +22,15 @@ deep — on the fixture's 200 x 100 x 18 mm stock: 50 rows of 4 moves, 50 x 98 m
 100 x 100 x 6 mm³ of material gone. The report is the contract, so it is printed in one order with one
 decimal count and pinned byte for byte.
 
-| Piece | Where |
-| --- | --- |
-| The grid, its cell size and its hard cap | `cam-sim::grid` |
-| The stock as remaining surface heights, and its volumes | `cam-sim::heightfield` |
-| Swept removal over a `MoveStream`, and the rapid that rams it | `cam-sim::sweep` |
-| The authorised depth per cell, and the two deviations | `cam-sim::target` |
-| `simulate`, its report and its exit code | `cam-cli` |
-| The orbit camera and the projected surface mesh | `cam-view::camera3d`, `cam-view::mesh` |
-| The 3D panel, its gestures and playback | `cam-ui::view3d` |
+| Piece                                                         | Where                                  |
+| ------------------------------------------------------------- | -------------------------------------- |
+| The grid, its cell size and its hard cap                      | `cam-sim::grid`                        |
+| The stock as remaining surface heights, and its volumes       | `cam-sim::heightfield`                 |
+| Swept removal over a `MoveStream`, and the rapid that rams it | `cam-sim::sweep`                       |
+| The authorised depth per cell, and the two deviations         | `cam-sim::target`                      |
+| `simulate`, its report and its exit code                      | `cam-cli`                              |
+| The orbit camera and the projected surface mesh               | `cam-view::camera3d`, `cam-view::mesh` |
+| The 3D panel, its gestures and playback                       | `cam-ui::view3d`                       |
 
 The contract rows for `simulate` and exit `6` are in [format.md](format.md); the decisions are
 D-M5-1 … D-M5-11 and the log is L1 … L9 in the
@@ -53,10 +53,10 @@ than one cell in each direction, and every volume is measured on the grid rather
 rectangle — which is what makes `removed + remaining` exactly the grid's volume instead of approximately
 the stock's.
 
-| Number | Value | Why |
-| --- | --- | --- |
-| Default cell | `1` mm | Keeps the default 1219 x 2438 mm sheet at 2,971,922 cells, under the cap, and is the resolution the oracle's error bound is written for |
-| Cell cap | `4,000,000` cells | 32 MB of `f64` surface heights: enough for the default sheet at a millimetre, small enough that a mistyped resolution is refused instead of attempted |
+| Number         | Value                  | Why                                                                                                                                                                                                                                                                                                                                                  |
+| -------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default cell   | `1` mm                 | Keeps the default 1219 x 2438 mm sheet at 2,971,922 cells, under the cap, and is the resolution the oracle's error bound is written for                                                                                                                                                                                                              |
+| Cell cap       | `4,000,000` cells      | 32 MB of `f64` surface heights: enough for the default sheet at a millimetre, small enough that a mistyped resolution is refused instead of attempted                                                                                                                                                                                                |
 | Coverage bound | `perimeter × cell / 2` | A cell is cut when its **centre** is inside the swept disc, so a boundary is wrong by at most half a cell; times the perimeter is the area the report can be off by, and times the depth the volume. A graded move adds no term of its own: the sampler takes enough samples to resolve its Z to half the deviation tolerance, `cell / 16` (D-M6-12) |
 
 A request over the cap fails **before any allocation**, with exit `2`, and the error carries all three
@@ -89,11 +89,11 @@ the tool sweeps there:
   and D-M5-4 refuses to hide that defect inside a plausible volume number.
 - **A feed above the surface cuts air.** Lowering a cell to a height above its current one is not a
   raise, so an approach that clears the stock leaves it untouched.
-- **The vertical ramp is interpolated** (D-M6-12, which amends D-M5-3). M5 removed a move's *destination*
+- **The vertical ramp is interpolated** (D-M6-12, which amends D-M5-3). M5 removed a move's _destination_
   depth across its whole travel, and that bullet used to say so: the error then ran in the one direction
   that keeps a report honest, no material claimed to be standing that the tool did not leave standing.
   That argument holds while every cutting move holds one depth, and fails the moment a strategy ramps —
-  a linear ramp simulated at its destination depth cuts *full* depth along the whole of its travel, which
+  a linear ramp simulated at its destination depth cuts _full_ depth along the whole of its travel, which
   is not conservative in any direction, it is simply wrong. A cutting move therefore removes, at each
   sampled point, the depth it has reached there: a constant-depth move removes one depth over its
   footprint (bit for bit what M5 measured, which the differential against the pre-change build shows),
@@ -107,17 +107,17 @@ the tool sweeps there:
 
 Sampling is deterministic and a function of the move's own numbers:
 
-| Move | Sampling |
-| --- | --- |
-| Line | A step of `cell / 2` along its length, a disc of the tool radius at each sample, of the depth it has reached there |
-| Arc | An angular step of `cell / (2 · r)` radians, `r` being the arc's own radius, a disc at each sample, of the depth the angle has reached |
+| Move  | Sampling                                                                                                                                                    |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Line  | A step of `cell / 2` along its length, a disc of the tool radius at each sample, of the depth it has reached there                                          |
+| Arc   | An angular step of `cell / (2 · r)` radians, `r` being the arc's own radius, a disc at each sample, of the depth the angle has reached                      |
 | Helix | The same angular step as an arc's, at the arc's own radius: a full turn is one revolution and its Z is read at the angle, exactly as an arc's constant Z is |
 
 Either count is then raised, if the move's `z` asks for it, to `16 · |Δz| / cell` samples: two neighbouring
 samples differ in depth by `grade · step`, and a cell's footprint reaches past the last sample inside it,
 so a whole interval of Z can be missing from its floor. At `16 · |Δz| / cell` that interval is at most
 `cell / 16` — half the tolerance a simulation is judged at, so the bound is met with headroom instead of
-grazing it — and it is the *smallest* such count. The factor of two is not free: it doubles the samples of
+grazing it — and it is the _smallest_ such count. The factor of two is not free: it doubles the samples of
 every graded move, which is the price of a residual that another platform's rounding cannot push over the
 judgement. The count follows
 the Z a move covers — bounded by the cut depth — and not how steep it is, which is unbounded as a ramp
@@ -137,18 +137,18 @@ The emitter ignores it, and its tests are unchanged.
 One rule, derived from the document alone: **the depth each cell is authorised to lose**, and zero
 everywhere the document claims nothing. Each operation's form of it:
 
-| Operation | Cells it claims | Authorised depth |
-| --- | --- | --- |
-| `pocket` | Its region — boundaries minus islands — inset by `allowance` | `cut_depth` |
-| `drilling` | Each selected hole's circle | `cut_depth` |
-| `profile` | The band the tool **sweeps**: `allowance … 2·radius + allowance` outside the vector, the same band inwards for `inside`, and `±radius` for `on` | `cut_depth`, less a tab's `height` inside the tab's span |
-| `chamfer` | The vector's band out to the cone's own reach at its depth | `depth − rise(distance)`, capped at the chamfer's derived depth (M6 A8) |
-| `engrave`, `texture` | The tool's footprint band **along** each vector or groove | `cut_depth − rise(distance)`, clamped at zero |
-| `fluting` | That same band along the vector | The ramp's law along the path: `min(depth, depth·s/ramp, depth·(L − s)/ramp)`, less the tool's rise, and the maximum of it anywhere the footprint could have removed the cell |
-| `inlay` | The female's region grown by the allowance, and the male's job rectangle with the region standing | `cut_depth` |
-| `thread` | The **annulus the helix sweeps**: `D/2 − t … D/2` for an internal thread and `D/2 … D/2 + t` for an external one, `D` the selected circle's diameter and `t` the tool's | The **spiral the descent leaves**, cell by cell: `cut_depth − pitch · ((θ_end − θ) mod 2π) / 2π`, deepened to the last pass the tool's own footprint reaches that cell at — see the paragraph below the table |
-| `v_carve` | The toolpath's whole region, and the depth is graded across it | The **distance field**: `d(centre) / tan(included_angle / 2)`, with `d` the exact distance from the cell's centre to the region's boundary, clamped to the stock (M7 A6, D-M7-7). A tip set inside the region can never cut deeper than this (the field is 1-Lipschitz), so a correct V-carve gouges **exactly zero** and a missing tip costs `uncut` and nothing else — see [m7-vcarve.md](m7-vcarve.md) |
-| Anything else | — | `0` |
+| Operation            | Cells it claims                                                                                                                                                         | Authorised depth                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pocket`             | Its region — boundaries minus islands — inset by `allowance`                                                                                                            | `cut_depth`                                                                                                                                                                                                                                                                                                                                                                                               |
+| `drilling`           | Each selected hole's circle                                                                                                                                             | `cut_depth`                                                                                                                                                                                                                                                                                                                                                                                               |
+| `profile`            | The band the tool **sweeps**: `allowance … 2·radius + allowance` outside the vector, the same band inwards for `inside`, and `±radius` for `on`                         | `cut_depth`, less a tab's `height` inside the tab's span                                                                                                                                                                                                                                                                                                                                                  |
+| `chamfer`            | The vector's band out to the cone's own reach at its depth                                                                                                              | `depth − rise(distance)`, capped at the chamfer's derived depth (M6 A8)                                                                                                                                                                                                                                                                                                                                   |
+| `engrave`, `texture` | The tool's footprint band **along** each vector or groove                                                                                                               | `cut_depth − rise(distance)`, clamped at zero                                                                                                                                                                                                                                                                                                                                                             |
+| `fluting`            | That same band along the vector                                                                                                                                         | The ramp's law along the path: `min(depth, depth·s/ramp, depth·(L − s)/ramp)`, less the tool's rise, and the maximum of it anywhere the footprint could have removed the cell                                                                                                                                                                                                                             |
+| `inlay`              | The female's region grown by the allowance, and the male's job rectangle with the region standing                                                                       | `cut_depth`                                                                                                                                                                                                                                                                                                                                                                                               |
+| `thread`             | The **annulus the helix sweeps**: `D/2 − t … D/2` for an internal thread and `D/2 … D/2 + t` for an external one, `D` the selected circle's diameter and `t` the tool's | The **spiral the descent leaves**, cell by cell: `cut_depth − pitch · ((θ_end − θ) mod 2π) / 2π`, deepened to the last pass the tool's own footprint reaches that cell at — see the paragraph below the table                                                                                                                                                                                             |
+| `v_carve`            | The toolpath's whole region, and the depth is graded across it                                                                                                          | The **distance field**: `d(centre) / tan(included_angle / 2)`, with `d` the exact distance from the cell's centre to the region's boundary, clamped to the stock (M7 A6, D-M7-7). A tip set inside the region can never cut deeper than this (the field is 1-Lipschitz), so a correct V-carve gouges **exactly zero** and a missing tip costs `uncut` and nothing else — see [m7-vcarve.md](m7-vcarve.md) |
+| Anything else        | —                                                                                                                                                                       | `0`                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The `thread` row is the one law in that table that is not a depth at a distance but a depth **at an
 angle**: the descent is a helix, so the material a cell is authorised to lose depends on where the descent
@@ -164,7 +164,7 @@ is refused by name rather than clamped.
 Three of those rows are decisions rather than arithmetic:
 
 - **The band is the material the tool sweeps, not the distance its centre travels** (D-M5-5, amended by
-  evidence). The emitter offsets the tool *centre* by `radius + allowance`, so a clean profile removes
+  evidence). The emitter offsets the tool _centre_ by `radius + allowance`, so a clean profile removes
   from `allowance` to `2·radius + allowance` outside the vector. Authorising only `0 … radius + allowance`
   reported the outer half of every perfect kerf as gouge — measured as `gouge: 1632.0 mm3 over 272
   cell(s)` on a clean 100 mm `Outside` cut before the amendment. An allowance is material the emitter
@@ -221,12 +221,12 @@ post's footer is not a stream move.
 the tolerance exists to catch are a whole millimetre deep. An eighth of a cell is above the sampling noise
 and below the defect, at the resolution the bound is written for.
 
-| Exit | Meaning |
-| --- | --- |
-| `0` | The program cut what the document authorised: no gouge, no uncut material, no crash |
-| `6` | The simulation found defects, and stderr names which: gouge, uncut volume, or a crash count |
-| `2` | Invalid input: an unknown option or a bad argument, an unreadable document or library, missing tool data, a grid over the cell cap, a target the geometry refuses |
-| `3` | An unsupported document schema, through the same document load every command uses |
+| Exit | Meaning                                                                                                                                                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | The program cut what the document authorised: no gouge, no uncut material, no crash                                                                               |
+| `6`  | The simulation found defects, and stderr names which: gouge, uncut volume, or a crash count                                                                       |
+| `2`  | Invalid input: an unknown option or a bad argument, an unreadable document or library, missing tool data, a grid over the cell cap, a target the geometry refuses |
+| `3`  | An unsupported document schema, through the same document load every command uses                                                                                 |
 
 **Nothing is written.** A simulation is a question about the document, not a change to it: no document, no
 program, no cache, and the file on disk is compared before and after by the tests that pin the report.
@@ -258,7 +258,7 @@ program, no cache, and the file on disk is compared before and after by the test
   The raster fixture pins the row lattice at 1 mm cells, which is the resolution the coverage bound is
   written for. It is not a resolution-independent claim, and it is stated rather than implied.
 - **A thread's claim is the spiral its helix leaves — this entry was a limit, and is now a resolved one.**
-  (M6 A7.) A helical descent leaves the material between two revolutions standing, and that material *is*
+  (M6 A7.) A helical descent leaves the material between two revolutions standing, and that material _is_
   the thread, so its floor is one pitch per revolution rather than flat. The first version of the claim
   authorised `cut_depth` across the whole annulus, on the argument that every point of it is passed by
   every revolution and the last pass is the deepest one: true, but the last revolution passes each point
@@ -297,12 +297,12 @@ and the `target` itself — plus the viewport it projects into. The eye sits on 
 and a perspective projection is built from the resulting basis; screen space has its origin at the top
 left with Y growing downwards, as the 2D camera does.
 
-| Number | Value | Why |
-| --- | --- | --- |
-| Pitch clamp | `±(π/2 − 1e-3)` rad, about 0.06° short of vertical | The basis comes from world +Z, so there is no up vector to invent at the pole; the clamp keeps the right vector from collapsing |
-| Distance range | 1 mm … 100 m | The near end is a camera inside the stock, the far end covers the largest sheet in millimetres |
-| Vertical field of view | 45° | A standard perspective: wide enough to frame a stock, narrow enough not to warp a straight edge at the border |
-| Defaults | yaw 0.75 rad (≈43°), pitch 0.55 rad (≈31°), distance 600 mm | The three-quarter view an operator expects, at a starting distance the caller reframes |
+| Number                 | Value                                                       | Why                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Pitch clamp            | `±(π/2 − 1e-3)` rad, about 0.06° short of vertical          | The basis comes from world +Z, so there is no up vector to invent at the pole; the clamp keeps the right vector from collapsing |
+| Distance range         | 1 mm … 100 m                                                | The near end is a camera inside the stock, the far end covers the largest sheet in millimetres                                  |
+| Vertical field of view | 45°                                                         | A standard perspective: wide enough to frame a stock, narrow enough not to warp a straight edge at the border                   |
+| Defaults               | yaw 0.75 rad (≈43°), pitch 0.55 rad (≈31°), distance 600 mm | The three-quarter view an operator expects, at a starting distance the caller reframes                                          |
 
 `orbit` holds the pitch inside the clamp whatever delta it is given, and `zoom` holds the distance inside
 its range and ignores a factor that is zero, negative or not finite, so a drag or a wheel event cannot

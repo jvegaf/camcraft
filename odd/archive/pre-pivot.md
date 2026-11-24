@@ -19,7 +19,7 @@ Non-goals for this program (explicit):
 
 `Rust` + `wgpu` was chosen. The evidence supports it: every domain subsystem a 2.5D CAM application
 needs (tool database, post-processor DSL and store, toolpath math, nesting layout) is plain portable
-logic with no Windows dependency, while the *only* genuinely platform-bound parts are the UI shell
+logic with no Windows dependency, while the _only_ genuinely platform-bound parts are the UI shell
 (the windowing toolkit and the native widget set behind it) and the 3D viewport (the graphics API and
 its driver stack). Replacing those two is exactly what a cross-platform requirement demands.
 
@@ -93,18 +93,18 @@ Two rules make the rest of the plan enforceable:
 
 ### 3.1 Cross-cutting technical decisions
 
-| Topic | Decision | Rationale from evidence |
-| --- | --- | --- |
-| Units | Internal geometry is `f64` **millimetres**. Document stores the user's unit preference; rounding happens **only** at post-processor emission using the `VAR ... |decimals` spec | Post-processor variables carry their own decimal spec (`[X|C|X|1.4]` vs `1.3`) and sheet libraries mix metric and imperial; rounding early would compound error across passes |
-| Arcs | Arcs are **first-class entities**, not tessellated polylines. Polylines carry nonzero bulges | Native G2/G3 output exists in 8 of the 15 post-processor blocks; flattening at import would make arc output impossible |
-| Tessellation | Only at render and simulation time, never in the toolpath pipeline | Keeps emitted geometry equal to authored geometry |
-| Tolerance | A single `Tolerance` value threaded through geometry ops, exposed as a job setting | Tolerance is usually a per-toolpath string, so two toolpaths can disagree about the same geometry; one job setting prevents that |
-| Tool/toolpath model | Tool geometry, cutting data and machine are **separate** records joined per (material, machine) | A tool's shape is constant while its rate depends on the material and the machine, so one record per concern is the normalization that makes a library worth having |
-| Post-processor | Implement a reader for the block/directive dialect machine posts are written in (13 directives, 17 variables, 15 blocks, `[var|A/C|prefix|decimals]`) **plus** our own authoring format | A data-driven emitter is the difference between one machine and seventy-five; a block/directive grammar is what makes a post data rather than code |
-| Post-processor licensing | **Do not vendor third-party `.pp` files.** Ship our own fixtures; support an optional user-supplied directory | Those files are third-party content; the *grammar* is what we reimplement |
-| Undo/redo | Whole-document snapshots (documents are kilobytes by nature) with a bounded history and coalescing | Command inversion across geometry edits is a defect factory; snapshot + structural sharing is cheap here |
-| Parallelism | `rayon` for independent toolpaths, pass carving and simulation tiles | Toolpaths, depth passes and simulation tiles write disjoint outputs, so coarse-grained parallelism is the safe kind here |
-| Text | `cosmic-text`/`ttf-parser` → outlines at authoring time, stored as curves | Complex-script shaping is a solved dependency; never reimplement it |
+| Topic                    | Decision                                                                                                                                                        | Rationale from evidence                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Units                    | Internal geometry is `f64` **millimetres**. Document stores the user's unit preference; rounding happens **only** at post-processor emission using the `VAR ... | decimals` spec                                                                                                                                                      | Post-processor variables carry their own decimal spec (`[X | C                                             | X                                                                                                                                                  | 1.4]`vs`1.3`) and sheet libraries mix metric and imperial; rounding early would compound error across passes |
+| Arcs                     | Arcs are **first-class entities**, not tessellated polylines. Polylines carry nonzero bulges                                                                    | Native G2/G3 output exists in 8 of the 15 post-processor blocks; flattening at import would make arc output impossible                                              |
+| Tessellation             | Only at render and simulation time, never in the toolpath pipeline                                                                                              | Keeps emitted geometry equal to authored geometry                                                                                                                   |
+| Tolerance                | A single `Tolerance` value threaded through geometry ops, exposed as a job setting                                                                              | Tolerance is usually a per-toolpath string, so two toolpaths can disagree about the same geometry; one job setting prevents that                                    |
+| Tool/toolpath model      | Tool geometry, cutting data and machine are **separate** records joined per (material, machine)                                                                 | A tool's shape is constant while its rate depends on the material and the machine, so one record per concern is the normalization that makes a library worth having |
+| Post-processor           | Implement a reader for the block/directive dialect machine posts are written in (13 directives, 17 variables, 15 blocks, `[var                                  | A/C                                                                                                                                                                 | prefix                                                     | decimals]`) **plus** our own authoring format | A data-driven emitter is the difference between one machine and seventy-five; a block/directive grammar is what makes a post data rather than code |
+| Post-processor licensing | **Do not vendor third-party `.pp` files.** Ship our own fixtures; support an optional user-supplied directory                                                   | Those files are third-party content; the _grammar_ is what we reimplement                                                                                           |
+| Undo/redo                | Whole-document snapshots (documents are kilobytes by nature) with a bounded history and coalescing                                                              | Command inversion across geometry edits is a defect factory; snapshot + structural sharing is cheap here                                                            |
+| Parallelism              | `rayon` for independent toolpaths, pass carving and simulation tiles                                                                                            | Toolpaths, depth passes and simulation tiles write disjoint outputs, so coarse-grained parallelism is the safe kind here                                            |
+| Text                     | `cosmic-text`/`ttf-parser` → outlines at authoring time, stored as curves                                                                                       | Complex-script shaping is a solved dependency; never reimplement it                                                                                                 |
 
 ### 3.2 File formats we own
 
@@ -124,4 +124,3 @@ Document `.c2d` (ZIP container, `document.json` at root, assets under `assets/`)
 Tool library `.sqlite` mirrors the decoded schema (`tool_tree_entry`, `tool_geometry`,
 `tool_cutting_data`, `tool_entity`, `material`, `machine`, `tool_name_format`) plus a
 `schema_version` table using a forward-only migration style: a version row, applied in order, never rewritten in place.
-

@@ -1,4 +1,5 @@
 ---
+
 name: odd-docs
 description: Procedure for keeping a project's ODD documentation organized - naming and numbering task documents, splitting an oversized doc, sweeping references after a rename, and proving the result instead of asserting it. Use when creating or closing a task document, when a document grew past what a human can read, when two documents say the same thing, or when a move or rename touches files other documents link to (renumerar tareas, partir un documento, reorganizar documentación, enlaces rotos).
 ---

@@ -17,34 +17,6 @@
       "!design",
       "!src/app.css",
       "!static",
-      "!.agents/skills/odd-docs/SKILL.md",
-      "!.agents/skills/panda-css/SKILL.md",
-      "!.agents/skills/svelte-dev/SKILL.md",
-      "!.agents/skills/tauri-dev/SKILL.md",
-      "!.agents/skills/ui-visual-review/SKILL.md",
-      "!docs/GAPS_CAMCRAFT.md",
-      "!docs/old/format.md",
-      "!docs/old/m10-documents.md",
-      "!docs/old/m2-authoring.md",
-      "!docs/old/m3-import.md",
-      "!docs/old/m4-toolpaths.md",
-      "!docs/old/m5-simulation.md",
-      "!docs/old/m6-toolpaths.md",
-      "!docs/old/m7-vcarve.md",
-      "!docs/old/m8-moulding.md",
-      "!docs/old/m9-nesting.md",
-      "!docs/old/region-booleans.md",
-      "!docs/old/RUST_PORT_LOGIC.md",
-      "!docs/ROADMAP_CAMCRAFT.md",
-      "!docs/SYSTEM_DESIGN_CAMCRAFT.md",
-      "!odd/archive/pre-pivot.md",
-      "!odd/README.md",
-      "!odd/reports/f4-ncc-benchmark.md",
-      "!odd/reports/flatcam-baseline.md",
-      "!odd/reports/review-findings-survival.md",
-      "!odd/roadmap/decisions.md",
-      "!odd/roadmap/index.md",
-      "!odd/roadmap/log.md",
       "!odd/roadmap/m00-foundation.md",
       "!odd/roadmap/m01-editor.md",
       "!odd/roadmap/m02-authoring.md",
@@ -218,7 +190,9 @@
   },
   "overrides": [
     {
-      "includes": ["**/*.svelte"],
+      "includes": [
+        "**/*.svelte"
+      ],
       "linter": {
         "rules": {
           "style": {

@@ -17,24 +17,24 @@ verificar en fuente está marcado **INFERIDO** o **A VERIFICAR**.
 
 ## 1. Inventario del estado actual
 
-| Crate | LOC `src/` | Rol verificado |
-| --- | ---: | --- |
-| `cam-geom` | 9.227 | Kernel geométrico propio: `Contour`, `Region`, `Arc`, offset, normalización, medial axis, nesting, moulding, texto |
-| `cam-import` | 7.363 | DXF / SVG / PDF / EPS / PNG → `Contour` en mm + `ImportReport` de fidelidad |
-| `cam-toolpath` | 3.459 | Estrategias: profile, pocket, drill, chamfer, engrave, fluting, inlay, thread, vcarve, moulding |
-| `cam-ui` | 19.061 | Shell egui: capas, ribbon, canvas 2D/3D, editor de estrategia, librería de herramientas, script, ayuda |
-| `cam-cli` | 5.293 | 15 subcomandos headless con contrato de exit codes |
-| `cam-store` | 2.516 | `.c2d` (ZIP + `document.json`) y librería de herramientas SQLite con escalera de migraciones |
-| `cam-sim` | 2.506 | Simulación por heightfield, remoción de material, `target_for`/`deviations` (gouge/uncut) |
-| `cam-model` | 2.424 | Documento `c2d/document@2`: job, capas, entidades, toolpaths, operaciones |
-| `cam-post` | 1.176 | Parser de `.pp` data-driven + emisor de G-code, golden tests byte a byte |
-| `cam-view` | 993 | Escena 2D/3D, cámara, mallas, picking (backend-agnóstico) |
-| `cam-program` | 652 | Une documento + herramienta + estrategia → `MoveStream` |
-| `cam-export` | 650 | DXF (AC1015) y SVG, deterministas |
-| `cam-desktop` | 377 | Host eframe + diálogos nativos |
-| `cam-move` | 311 | `Move::{Rapid,Feed,Arc,Helix,Retract}`, `Segment`, `MoveStream` |
-| `cam-units` | 228 | mm interno, conversión solo en frontera |
-| `cam-app` | 1.880 | `AppState`, `Command`, undo por snapshot, selección, cámara |
+| Crate          | LOC `src/` | Rol verificado                                                                                                     |
+| -------------- | ---------: | ------------------------------------------------------------------------------------------------------------------ |
+| `cam-geom`     |      9.227 | Kernel geométrico propio: `Contour`, `Region`, `Arc`, offset, normalización, medial axis, nesting, moulding, texto |
+| `cam-import`   |      7.363 | DXF / SVG / PDF / EPS / PNG → `Contour` en mm + `ImportReport` de fidelidad                                        |
+| `cam-toolpath` |      3.459 | Estrategias: profile, pocket, drill, chamfer, engrave, fluting, inlay, thread, vcarve, moulding                    |
+| `cam-ui`       |     19.061 | Shell egui: capas, ribbon, canvas 2D/3D, editor de estrategia, librería de herramientas, script, ayuda             |
+| `cam-cli`      |      5.293 | 15 subcomandos headless con contrato de exit codes                                                                 |
+| `cam-store`    |      2.516 | `.c2d` (ZIP + `document.json`) y librería de herramientas SQLite con escalera de migraciones                       |
+| `cam-sim`      |      2.506 | Simulación por heightfield, remoción de material, `target_for`/`deviations` (gouge/uncut)                          |
+| `cam-model`    |      2.424 | Documento `c2d/document@2`: job, capas, entidades, toolpaths, operaciones                                          |
+| `cam-post`     |      1.176 | Parser de `.pp` data-driven + emisor de G-code, golden tests byte a byte                                           |
+| `cam-view`     |        993 | Escena 2D/3D, cámara, mallas, picking (backend-agnóstico)                                                          |
+| `cam-program`  |        652 | Une documento + herramienta + estrategia → `MoveStream`                                                            |
+| `cam-export`   |        650 | DXF (AC1015) y SVG, deterministas                                                                                  |
+| `cam-desktop`  |        377 | Host eframe + diálogos nativos                                                                                     |
+| `cam-move`     |        311 | `Move::{Rapid,Feed,Arc,Helix,Retract}`, `Segment`, `MoveStream`                                                    |
+| `cam-units`    |        228 | mm interno, conversión solo en frontera                                                                            |
+| `cam-app`      |      1.880 | `AppState`, `Command`, undo por snapshot, selección, cámara                                                        |
 
 **Dependencias externas del workspace** (`Cargo.toml:27-57`): `serde`, `serde_json`, `thiserror`,
 `zip`, `rusqlite`, `flate2`, `proptest`, `egui`/`eframe` 0.37, `rfd`. **No hay** ningún crate de
@@ -56,12 +56,12 @@ en modelo de documento, pero sí parte casi de cero en todo lo que hace PCB a PC
 Gerber/Excellon, semántica de cobre/aperturas, y el motor de operaciones booleanas sobre el que se
 apoyan isolation y NCC.
 
-| Veredicto | Elementos |
-| --- | --- |
-| **Reutilizar tal cual** | `cam-units`, `cam-move` (contrato de stream), `cam-post` (parser/emisor `.pp` + golden tests), `cam-app` (undo/commands), `cam-sim` (oráculo de aceptación), `cam-cli` (contrato headless y exit codes), y las primitivas de `cam-geom` como base |
-| **Adaptar** | `cam-import` → sumar Gerber/Excellon sobre el mismo contrato `ImportReport`; `cam-model` → nueva versión de schema con entidades/capas PCB; `cam-toolpath` → el `pocket` por anillos de offset es la semilla de isolation; `cam-export` → sumar escritores Gerber/Excellon; `cam-ui` → capas + formularios por operación |
-| **Construir** | Motor booleano de regiones (∪/∩/∖); operaciones isolation, NCC, paint, panelize; drill desde tablas Excellon; autolevelling; corpus y arnés de paridad; benchmarks |
-| **Riesgo de rediseño** | Kernel de booleanas/offset; modelo de entidades (solo `Contour`); supuestos de un solo `Job`/`Frame`; performance (nada de paralelismo ni índices) |
+| Veredicto               | Elementos                                                                                                                                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Reutilizar tal cual** | `cam-units`, `cam-move` (contrato de stream), `cam-post` (parser/emisor `.pp` + golden tests), `cam-app` (undo/commands), `cam-sim` (oráculo de aceptación), `cam-cli` (contrato headless y exit codes), y las primitivas de `cam-geom` como base                                                                        |
+| **Adaptar**             | `cam-import` → sumar Gerber/Excellon sobre el mismo contrato `ImportReport`; `cam-model` → nueva versión de schema con entidades/capas PCB; `cam-toolpath` → el `pocket` por anillos de offset es la semilla de isolation; `cam-export` → sumar escritores Gerber/Excellon; `cam-ui` → capas + formularios por operación |
+| **Construir**           | Motor booleano de regiones (∪/∩/∖); operaciones isolation, NCC, paint, panelize; drill desde tablas Excellon; autolevelling; corpus y arnés de paridad; benchmarks                                                                                                                                                       |
+| **Riesgo de rediseño**  | Kernel de booleanas/offset; modelo de entidades (solo `Contour`); supuestos de un solo `Job`/`Frame`; performance (nada de paralelismo ni índices)                                                                                                                                                                       |
 
 ---
 
@@ -247,12 +247,12 @@ modal de librería de herramientas, panel de script, preview 3D integrado
 La premisa del pivote es "mejor rendimiento que FlatCAM". Verificado en fuente, hoy el proyecto no
 tiene **ninguna** de las cuatro palancas que esa promesa requiere:
 
-| Palanca | Estado | Evidencia |
-| --- | --- | --- |
-| Paralelismo | Ausente | Sin `rayon` en ningún `Cargo.toml`; cero usos en `cam-geom`, `cam-toolpath`, `cam-sim` |
-| Índice espacial | Ausente | Sin `rstar`/`kdtree`; sin grilla propia |
+| Palanca                                               | Estado  | Evidencia                                                                                     |
+| ----------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| Paralelismo                                           | Ausente | Sin `rayon` en ningún `Cargo.toml`; cero usos en `cam-geom`, `cam-toolpath`, `cam-sim`        |
+| Índice espacial                                       | Ausente | Sin `rstar`/`kdtree`; sin grilla propia                                                       |
 | Algoritmos preparados para rest/offsets incrementales | Parcial | Anillos de offset existen en `pocket`, sin acumulación multipasada ni rest entre herramientas |
-| Medición | Ausente | Sin `benches/`, sin CI, sin baseline |
+| Medición                                              | Ausente | Sin `benches/`, sin CI, sin baseline                                                          |
 
 Es importante decirlo con precisión: **el código actual no es lento porque esté mal escrito; es
 lento porque todavía no hay una sola operación PCB donde la performance importe.** El riesgo real no
@@ -300,10 +300,10 @@ hay que revisar si alguna vez se quiere reabrir.
   intersección = todos, diferencia = A sí y B no. Alternativa descartada: `i_overlay`/`clipper2`
   operan solo sobre polígonos de líneas y obligarían a aplanar arcos, que son first-class de punta a
   punta (`contour.rs:8-22`, `cam-post/src/lib.rs:112-177`).
-  *Trabajo:* capa de selección de tramos, normalización de salida y robustez ante degeneraciones
+  _Trabajo:_ capa de selección de tramos, normalización de salida y robustez ante degeneraciones
   (bordes coincidentes, vértices de contacto, contornos auto-intersectados hoy rechazados en
   `region.rs:162-165`). `proptest` ya está en el workspace.
-  *Umbral de abandono:* si el arrangement propio no pasa un corpus de 200 operaciones booleanas
+  _Umbral de abandono:_ si el arrangement propio no pasa un corpus de 200 operaciones booleanas
   contra áreas conocidas, reevaluar `i_overlay` con aplanado explícito.
 
 - **D2. Criterio de aceptación — híbrido por capa, no un criterio único.**
@@ -318,7 +318,7 @@ hay que revisar si alguna vez se quiere reabrir.
   Hecho decisivo: el kernel conoce una primitiva de área (`Region`) y una de camino (`Contour`), y
   `Job` + `Frame` ya modelan dimensiones, espesor, origen y mapeo documento↔máquina
   (`cam-model/src/lib.rs:57-88`). Un contenedor paralelo duplicaría carga/guardado/undo.
-  *Regla:* la semántica PCB (apertura, polaridad, herramienta, rol de capa, archivo de origen) vive
+  _Regla:_ la semántica PCB (apertura, polaridad, herramienta, rol de capa, archivo de origen) vive
   en **metadata**, no en variantes de `EntityKind` — el mismo principio con el que FlatCAM aplana a
   shapely y guarda aperturas y herramientas aparte. `Operation` sí crece con `Isolation`,
   `NonCopperClear`, `Cutout`, `Paint` y `Panelize`. `EntityKind` crece como mucho con `Drill` y
@@ -370,30 +370,30 @@ Para que el plan no rehaga lo que ya está:
 
 ## 8. Resumen de severidad
 
-| ID | Gap | Severidad | Bloquea |
-| --- | --- | --- | --- |
-| G0.1 | Sin motor booleano de regiones | **BLOQUEANTE** | Fases 1, 2, 3 |
-| G3.2 | Offset que aplana/rechaza | **BLOQUEANTE** | Isolation, NCC |
-| G1.1 | Sin parser Gerber | **BLOQUEANTE** | Todo el flujo PCB |
-| G1.2 | Sin parser Excellon | **BLOQUEANTE** | Drilling, cutout |
-| G2.1 | `EntityKind` solo `Contour` | **BLOQUEANTE** | Modelo PCB, UI, store |
-| G3.3 | Sin NCC y sin palancas de performance | **BLOQUEANTE** | La promesa del producto |
-| G2.2 | Sin operaciones PCB en el modelo | ALTO | UI, CLI, G-code |
-| G3.1 | Sin isolation | ALTO | Hito 2 del plan |
-| G4.1 | Sin autolevelling | ALTO | Fase 4 |
-| G4.2 | Sin ruteo de exclusiones | ALTO | Seguridad física |
-| G3.4 | Drilling sin semántica Excellon | ALTO | Fase 3 |
-| G6.3 | Sin arnés de paridad | ALTO | Aceptación de todo el port |
-| G2.3 | Sin capa de placa/stackup | ALTO | Fase 2 |
-| G0.3 | Sin índice espacial | MEDIO | Performance |
-| G3.6 | Tabs de perfil no verificados | MEDIO | Cutout |
-| G3.7 | Sin paint / panelize | MEDIO | Fase 3 tardía |
-| G4.3 | Sin escritores Gerber/Excellon | MEDIO | Panelize, film, punch |
-| G6.1 | Sin CI | MEDIO | Fase 6 |
-| G6.2 | Sin benchmarks | MEDIO | Promesa de performance |
-| G5.1 | Capas sin identidad de placa | MEDIO | Fase 5 |
-| G2.5 | Librería de herramientas a verificar para V-bit | BAJO | Fase 2 |
-| G5.3 | Atajos / Ctrl+S a verificar | BAJO | Fase 5 |
+| ID   | Gap                                             | Severidad      | Bloquea                    |
+| ---- | ----------------------------------------------- | -------------- | -------------------------- |
+| G0.1 | Sin motor booleano de regiones                  | **BLOQUEANTE** | Fases 1, 2, 3              |
+| G3.2 | Offset que aplana/rechaza                       | **BLOQUEANTE** | Isolation, NCC             |
+| G1.1 | Sin parser Gerber                               | **BLOQUEANTE** | Todo el flujo PCB          |
+| G1.2 | Sin parser Excellon                             | **BLOQUEANTE** | Drilling, cutout           |
+| G2.1 | `EntityKind` solo `Contour`                     | **BLOQUEANTE** | Modelo PCB, UI, store      |
+| G3.3 | Sin NCC y sin palancas de performance           | **BLOQUEANTE** | La promesa del producto    |
+| G2.2 | Sin operaciones PCB en el modelo                | ALTO           | UI, CLI, G-code            |
+| G3.1 | Sin isolation                                   | ALTO           | Hito 2 del plan            |
+| G4.1 | Sin autolevelling                               | ALTO           | Fase 4                     |
+| G4.2 | Sin ruteo de exclusiones                        | ALTO           | Seguridad física           |
+| G3.4 | Drilling sin semántica Excellon                 | ALTO           | Fase 3                     |
+| G6.3 | Sin arnés de paridad                            | ALTO           | Aceptación de todo el port |
+| G2.3 | Sin capa de placa/stackup                       | ALTO           | Fase 2                     |
+| G0.3 | Sin índice espacial                             | MEDIO          | Performance                |
+| G3.6 | Tabs de perfil no verificados                   | MEDIO          | Cutout                     |
+| G3.7 | Sin paint / panelize                            | MEDIO          | Fase 3 tardía              |
+| G4.3 | Sin escritores Gerber/Excellon                  | MEDIO          | Panelize, film, punch      |
+| G6.1 | Sin CI                                          | MEDIO          | Fase 6                     |
+| G6.2 | Sin benchmarks                                  | MEDIO          | Promesa de performance     |
+| G5.1 | Capas sin identidad de placa                    | MEDIO          | Fase 5                     |
+| G2.5 | Librería de herramientas a verificar para V-bit | BAJO           | Fase 2                     |
+| G5.3 | Atajos / Ctrl+S a verificar                     | BAJO           | Fase 5                     |
 
 ---
 

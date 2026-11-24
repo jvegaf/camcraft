@@ -1,4 +1,5 @@
 ---
+
 name: tauri-dev
 description: "Trigger: Tauri, src-tauri, IPC, commands, invoke, capabilities, Tauri plugin, desktop build. Develop Camcraft's Tauri 2 backend and frontend bridge."
 license: Apache-2.0
@@ -39,7 +40,8 @@ Frontend wrapper:
 
 ```ts
 import { invoke } from '@tauri-apps/api/core';
-export const loadScene = (id: string) => invoke<SceneSnapshot>('load_scene', { id });
+export const loadScene = (id: string) =>
+  invoke<SceneSnapshot>('load_scene', { id });
 ```
 
 ## Checks

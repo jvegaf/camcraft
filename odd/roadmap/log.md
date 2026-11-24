@@ -57,4 +57,3 @@
   findings are written down in the session that receives them **before** the receipt is burned, an inferred
   subject is marked as an inference, no finding is closed by a plausible-looking edit, and the quarantine
   residue is read before any finding is declared unreadable.
-
