@@ -1077,6 +1077,7 @@ dependencies = [
  "cam-app",
  "cam-model",
  "cam-store",
+ "cam-units",
  "serde",
  "serde_json",
  "tauri",
