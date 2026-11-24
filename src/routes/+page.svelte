@@ -21,12 +21,21 @@ let widthMm = $state(1219);
 let heightMm = $state(2438);
 let thicknessMm = $state(18);
 
+function formatError(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && 'message' in e) {
+    const err = e as { code?: string; message: string };
+    return err.code ? `${err.code}: ${err.message}` : err.message;
+  }
+  return String(e);
+}
+
 async function refreshStatus() {
   error = '';
   try {
     status = await invoke<DocumentStatus>('document_status');
   } catch (e) {
-    error = String(e);
+    error = formatError(e);
   }
 }
 
@@ -43,7 +52,7 @@ async function createDocument(event: Event) {
       }
     });
   } catch (e) {
-    error = String(e);
+    error = formatError(e);
   }
 }
 
@@ -58,7 +67,7 @@ async function openDocument() {
     if (typeof selected !== 'string') return;
     status = await invoke<DocumentStatus>('open_document', { path: selected });
   } catch (e) {
-    error = String(e);
+    error = formatError(e);
   }
 }
 
@@ -70,7 +79,7 @@ async function saveDocument() {
       path: status?.path ?? null
     });
   } catch (e) {
-    error = String(e);
+    error = formatError(e);
   }
 }
 
@@ -84,7 +93,7 @@ async function saveDocumentAs() {
     if (!target) return;
     status = await invoke<DocumentStatus>('save_document', { path: target });
   } catch (e) {
-    error = String(e);
+    error = formatError(e);
   }
 }
 
