@@ -21,12 +21,13 @@ Migrar paneles del shell a estado real compartido del workbench.
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Store compartido de workbench y wiring de selección | S1 | inline | |
-| T2 | Inspector/StatusBar/ViewportHud con estado real | S1 | inline | |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | |
+| T1 | Store compartido de workbench y wiring de selección | S1 | inline | `fae81d8` |
+| T2 | Inspector/StatusBar/ViewportHud con estado real | S1 | inline | `fae81d8` |
+| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `fae81d8` |
 
 ## Log
 
 - **L1 (pedido original, verbatim).** «perfecto, continua»
 - **L2 (contexto).** Continúa Fase 4 de `docs/MIGRATION_TAURI.md`: floating shell, paneles con estado real, migración por slices.
 - **L3 (ejecución, 2026-11-24).** Se agregó store `workbench.svelte.ts`; BoardCanvas escribe selección; ViewportHud/InspectorPanel/StatusBar leen estado real. Verificado `pnpm check`.
+- **L4 (cierre, 2026-11-24).** Commit `fae81d8`. RDD assess: not-due (under_budget, medium). ODD/Engram sincronizados; push a `origin/feat/tauri`.
