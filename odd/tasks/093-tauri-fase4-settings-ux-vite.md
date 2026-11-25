@@ -28,9 +28,9 @@ Refer to docs https://vite.dev/config/server-options.html#server-fs-allow for co
 
 | ID | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Cerrar SettingsDialog al aplicar | S1 | inline | pendiente |
-| T2 | Permitir styled-system en Vite fs.allow | S2 | inline | pendiente |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1, S2 | inline | pendiente |
+| T1 | Cerrar SettingsDialog al aplicar | S1 | inline | `946f600` |
+| T2 | Permitir styled-system en Vite fs.allow | S2 | inline | `946f600` |
+| T3 | Verificar, RDD, ODD/Engram, commit y push | S1, S2 | inline | `946f600` |
 
 ## Log
 
@@ -47,3 +47,4 @@ The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is 
 
 Refer to docs https://vite.dev/config/server-options.html#server-fs-allow for configurations and more details.»
 - **L3 (ejecución, 2026-11-24).** Aplicar cierra el diálogo tras guardar; `vite.config.js` agrega `server.fs.allow` para `./styled-system`. `pnpm check` OK.
+- **L4 (cierre, 2026-11-24).** Commit `946f600`. RDD assess: not-due (under_budget, medium). ODD/Engram sincronizados; push a `origin/feat/tauri`.
