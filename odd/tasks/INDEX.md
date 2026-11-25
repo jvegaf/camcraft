@@ -39,7 +39,7 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 032 | [tool-library-app](032-tool-library-app.md)                                         | delivered                | 2026-11-10 | `5c469ac`      |
 | 033 | [tool-library-editor](033-tool-library-editor.md)                                   | delivered                | 2026-11-10 | `81e1058`      |
 | 034 | [c1-booleans](034-c1-booleans.md)                                                   | delivered                | 2026-11-11 | `aee3e5d`      |
-| 035 | [c3-model](035-c3-model.md)                                                         | delivered                | 2026-11-11 | `9aed8275ac99` |
+| 035 | [c3-model](035-c3-model.md)                                                         | delivered                | 2026-11-11 | `7a7c725`      |
 | 036 | [gerber-geometry](036-gerber-geometry.md)                                           | delivered                | 2026-11-11 | `fc90dda`      |
 | 037 | [offset-exact](037-offset-exact.md)                                                 | delivered                | 2026-11-11 | `79a07c9`      |
 | 038 | [start-screen](038-start-screen.md)                                                 | delivered                | 2026-11-11 | `b745501`      |
@@ -64,7 +64,7 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 057 | [w4b-cutout-program](057-w4b-cutout-program.md)                                     | delivered                | 2026-11-15 | `e045c43`      |
 | 058 | [w4c-isolation](058-w4c-isolation.md)                                               | delivered                | 2026-11-15 | `e91882b`      |
 | 059 | [e0-6-flatcam-baseline](059-e0-6-flatcam-baseline.md)                               | delivered                | 2026-11-15 | `0520db8`      |
-| 060 | [e1-7-import-report](060-e1-7-import-report.md)                                     | delivered                | 2026-11-16 | `027d7ed00b67` |
+| 060 | [e1-7-import-report](060-e1-7-import-report.md)                                     | delivered                | 2026-11-16 | `ab5b487`      |
 | 061 | [e1-4-gerber](061-e1-4-gerber.md)                                                   | delivered                | 2026-11-17 | `957692c`      |
 | 062 | [board-outline-contour](062-board-outline-contour.md)                               | delivered                | 2026-11-18 | `957692c`      |
 | 063 | [arrangement-classification](063-arrangement-classification.md)                     | delivered                | 2026-11-18 | `957692c`      |
