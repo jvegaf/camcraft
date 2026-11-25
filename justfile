@@ -32,7 +32,7 @@ dev:
   pnpm dev
 
 tauri-dev:
-  just codegen
+  pnpm codegen
   pnpm tauri dev
 
 build:
