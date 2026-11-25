@@ -65,8 +65,10 @@ const startShell = css({
     content: '""',
     position: 'absolute',
     inset: '0',
-    background:
-      'linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px'
+    backgroundImage:
+      'linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px), linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px)',
+    backgroundPosition: '0 0, 0 0',
+    backgroundSize: '80px 80px, 80px 80px'
   }
 });
 const startCard = css({
