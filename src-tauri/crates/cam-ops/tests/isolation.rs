@@ -70,6 +70,86 @@ fn unite_copper_merges_overlapping_contours() {
   );
 }
 
+/// A rectangle wound clockwise (negative signed area), as a mirrored import hands it over.
+fn reversed_rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(x0, y0),
+      Point2::new(x0, y1),
+      Point2::new(x1, y1),
+      Point2::new(x1, y0),
+    ],
+    true,
+  )
+  .expect("reversed rectangle")
+}
+
+#[test]
+fn unite_copper_keeps_a_clockwise_copper_island() {
+  // Polarity is even-odd, never winding. A mirrored (clockwise) copper island is still copper;
+  // classifying it by a negative signed area subtracts it and deletes the whole layer.
+  let island = reversed_rect(0.0, 0.0, 10.0, 5.0);
+  let copper = unite_copper(&[island], TOLERANCE).expect("clockwise copper island");
+  assert!(
+    close(region_area(&copper), 50.0, 50.0),
+    "area {} of a clockwise island",
+    region_area(&copper)
+  );
+  assert!(
+    copper.contains(Point2::new(5.0, 2.5), TOLERANCE),
+    "a clockwise island is copper, not a hole"
+  );
+  assert!(
+    copper
+      .boundaries
+      .iter()
+      .all(|boundary| boundary.signed_area() > 0.0),
+    "the copper comes back in the kernel's orientation (material on the left)"
+  );
+}
+
+#[test]
+fn unite_copper_treats_a_clearance_by_nesting_not_winding() {
+  // A clearance wound counter-clockwise (positive signed area) is still a clearance because it is
+  // nested inside the copper, not because of the direction it was drawn in.
+  let outer = rect(0.0, 0.0, 100.0, 100.0);
+  let clearance = rect(20.0, 20.0, 80.0, 80.0);
+  let copper = unite_copper(&[outer, clearance], TOLERANCE).expect("nested clearance");
+  assert!(
+    close(region_area(&copper), 6400.0, 6400.0),
+    "area {} of copper with a clearance",
+    region_area(&copper)
+  );
+  assert!(
+    !copper.contains(Point2::new(50.0, 50.0), TOLERANCE),
+    "a nested boundary is a clearance whatever its winding"
+  );
+}
+
+#[test]
+fn unite_copper_keeps_copper_nested_inside_a_clearance() {
+  // Uniting every copper contour first and subtracting every hole afterwards swallows the copper
+  // that sits inside a clearance (a boss inside a hole), so the protection region loses it.
+  let outer = rect(0.0, 0.0, 100.0, 100.0);
+  let clearance = reversed_rect(20.0, 20.0, 80.0, 80.0);
+  let boss = rect(40.0, 40.0, 60.0, 60.0);
+  let copper = unite_copper(&[outer, clearance, boss], TOLERANCE).expect("nested copper");
+  let expected = 100.0 * 100.0 - 60.0 * 60.0 + 20.0 * 20.0;
+  assert!(
+    close(region_area(&copper), expected, expected),
+    "area {} of copper with a boss inside a clearance, expected {expected}",
+    region_area(&copper)
+  );
+  assert!(
+    copper.contains(Point2::new(50.0, 50.0), TOLERANCE),
+    "copper nested inside a clearance is copper"
+  );
+  assert!(
+    !copper.contains(Point2::new(30.0, 30.0), TOLERANCE),
+    "the clearance around the nested copper is not copper"
+  );
+}
+
 #[test]
 fn unite_copper_keeps_disjoint_contours() {
   let a = rect(0.0, 0.0, 5.0, 5.0);
@@ -108,7 +188,7 @@ fn unite_copper_of_corpus_layer_matches_flatcam_area() {
   // This tree's parity golden (fixtures/corpus/substitute-altium/parity.json) agrees with FlatCAM
   // for this layer within tolerance, so the united contour area (sum of absolute boundary areas,
   // the metric shared by parity and baseline) is compared against FlatCAM's value.
-  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
   let gerber_path = root.join("fixtures/corpus/substitute-altium/outline.gbr");
   let text = std::fs::read_to_string(&gerber_path)
     .unwrap_or_else(|e| panic!("read {}: {e}", gerber_path.display()));
@@ -178,7 +258,7 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
   // material image contains outer copper boundaries and hole clearances (pours/clearances). We
   // verify the selector on a pour sub-region extracted from this corpus layer (an outer copper
   // boundary that contains hole boundaries), so the test exercises real corpus geometry.
-  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
   let gerber_path = root.join("fixtures/corpus/kicad-large-pours/top.gbr");
   let text = std::fs::read_to_string(&gerber_path)
     .unwrap_or_else(|e| panic!("read {}: {e}", gerber_path.display()));
@@ -310,20 +390,69 @@ fn iso_type_selector_on_corpus_layer_with_pours() {
     tol,
   );
   // This copper region is itself a pour (outer with holes), so keeping pours suppresses its
-  // interior isolation paths.
-  match interior_keep {
-    Ok(kept) => {
-      let kept_count = kept.passes[0].contours.len();
-      assert!(
-        kept_count < interior.passes[0].contours.len(),
-        "keep_pours reduces interior paths inside a pour ({kept_count} !< {})",
-        interior.passes[0].contours.len()
-      );
-    }
-    Err(_) => {
-      // All interior paths fall inside the pour; keeping pours can legitimately leave none.
-    }
-  }
+  // interior isolation paths. Omitting every selected path is not a geometric failure.
+  let kept = interior_keep
+    .expect("keep_pours omits interior paths inside the pour; that is not an offset collapse");
+  let kept_count: usize = kept.passes.iter().map(|pass| pass.contours.len()).sum();
+  assert!(
+    kept_count < interior.passes[0].contours.len(),
+    "keep_pours reduces interior paths inside a pour ({kept_count} !< {})",
+    interior.passes[0].contours.len()
+  );
+}
+
+/// A copper region that is a pour: an outer boundary with two clearances inside it.
+fn pour_copper() -> Region {
+  unite_copper(
+    &[
+      rect(0.0, 0.0, 100.0, 100.0),
+      reversed_rect(10.0, 10.0, 20.0, 20.0),
+      reversed_rect(60.0, 60.0, 70.0, 70.0),
+    ],
+    TOLERANCE,
+  )
+  .expect("pour copper")
+}
+
+#[test]
+fn keep_pours_omitting_every_interior_path_is_not_a_collapse() {
+  // keep_pours omits the interior paths that lie inside pour areas; when that removes every selected
+  // path there is nothing to cut, which is an answer and not a geometric failure claiming the offset
+  // collapsed.
+  let copper = pour_copper();
+  let interior = isolation_passes_with_kind(
+    &copper,
+    0.2,
+    1,
+    0.15,
+    MillingDirection::Conventional,
+    IsolationKind::Interior,
+    false,
+    TOLERANCE,
+  )
+  .expect("interior isolation of the pour clearances");
+  assert_eq!(
+    interior.passes[0].contours.len(),
+    2,
+    "the pour has two clearances to isolate"
+  );
+
+  let kept = isolation_passes_with_kind(
+    &copper,
+    0.2,
+    1,
+    0.15,
+    MillingDirection::Conventional,
+    IsolationKind::Interior,
+    true,
+    TOLERANCE,
+  )
+  .expect("keeping the pour omits both interior paths, which is not a collapse");
+  assert!(
+    kept.passes.is_empty(),
+    "every interior path lies inside the kept pour, so no pass is produced: {:?}",
+    kept.passes.len()
+  );
 }
 
 // --- E3.2: pass distance formula ---

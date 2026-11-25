@@ -24,38 +24,143 @@ use crate::shared::{machine_point, push_horizontal, ToolpathError};
 ///
 /// Overlapping copper boundaries are merged by set union so the result describes the area the copper
 /// actually covers, not a stack of separate shapes. Boundaries that cross or touch are resolved by the
-/// same normalization the boolean engine uses. A contour whose winding is opposite (negative signed
-/// area, a hole boundary in a resolved region) is subtracted so the material region is preserved.
+/// same normalization the boolean engine uses.
+///
+/// Which boundary is copper and which is a clearance inside it is answered by **nesting**, never by
+/// winding: the copper of a layer is the material of the even-odd membership rule, so a boundary
+/// nested inside an odd number of others is a clearance (a hole in a resolved region) and is
+/// subtracted. Orientation is deliberately not part of the region model — a mirrored or reversed
+/// import must not turn an island into a hole — and nesting also keeps the copper that sits inside a
+/// clearance (a boss inside a hole): the depths are applied in order, so copper found inside a
+/// clearance is added back after that clearance has been subtracted.
 ///
 /// An empty input produces an empty region, which is the copper of a layer with no copper.
+///
+/// The returned boundaries carry the orientation the kernel gives a resolved region — material on the
+/// left, so copper is positive and a clearance is negative — whatever winding the input arrived in.
 ///
 /// # Errors
 ///
 /// Returns the first geometric error reported by normalization or union: a boundary that cannot be
 /// made into a region, a tolerance that cannot resolve the arrangement, or a union the engine refuses.
 pub fn unite_copper(contours: &[Contour], tolerance: TolerancePolicy) -> Result<Region, GeomError> {
-  let mut additive = Vec::new();
-  let mut subtractive = Vec::new();
+  // Each contour is normalized on its own first: a boundary that crosses itself is two loops wearing
+  // one contour, and nesting cannot be answered until each loop is its own boundary.
+  let mut boundaries = Vec::new();
   for contour in contours {
-    let piece = Region::new(vec![contour.clone()])?
-      .normalize(tolerance)?
-      .region;
-    if contour.signed_area() < 0.0 {
-      subtractive.push(piece);
-    } else {
-      additive.push(piece);
-    }
+    let normalized = Region::new(vec![contour.clone()])?.normalize(tolerance)?;
+    boundaries.extend(normalized.region.boundaries);
+  }
+  if boundaries.is_empty() {
+    return Region::new(Vec::new());
   }
 
-  let mut united = balanced_union(additive, tolerance)?;
-  if !subtractive.is_empty() {
-    let holes = balanced_union(subtractive, tolerance)?;
-    united = match combine(&united, &holes, BooleanOp::Difference, tolerance)? {
-      Combined::Empty => Region::new(Vec::new())?,
-      Combined::Region { region, .. } => region,
+  let depths = nesting_depths(&boundaries, tolerance)?;
+  let deepest = depths.iter().copied().max().unwrap_or(0);
+  let mut united = Region::new(Vec::new())?;
+  for depth in 0..=deepest {
+    let level = boundaries
+      .iter()
+      .zip(&depths)
+      .filter(|(_, boundary_depth)| **boundary_depth == depth)
+      .map(|(boundary, _)| Region::new(vec![boundary.clone()]))
+      .collect::<Result<Vec<_>, _>>()?;
+    if level.is_empty() {
+      continue;
+    }
+    let layer = balanced_union(level, tolerance)?;
+    if layer.boundaries.is_empty() {
+      continue;
+    }
+    // Even depth is copper and adds to the area; odd depth is a clearance inside it and is removed.
+    // Applying one depth at a time is what preserves the copper nested inside a clearance.
+    united = if depth % 2 == 0 {
+      boolean_region(&united, &layer, BooleanOp::Union, tolerance)?
+    } else {
+      boolean_region(&united, &layer, BooleanOp::Difference, tolerance)?
     };
   }
-  Ok(united)
+  canonical_orientation(&united, tolerance)
+}
+
+/// The region with every boundary oriented material-on-the-left: copper positive, clearance negative.
+///
+/// Polarity is decided by nesting, exactly as in [`unite_copper`], so a mirrored import comes back in
+/// the same orientation as any other. Nothing is moved: only the direction each boundary is walked
+/// in changes, which the even-odd membership rule does not read.
+fn canonical_orientation(region: &Region, tolerance: TolerancePolicy) -> Result<Region, GeomError> {
+  let depths = nesting_depths(&region.boundaries, tolerance)?;
+  let boundaries = region
+    .boundaries
+    .iter()
+    .zip(depths)
+    .map(|(boundary, depth)| {
+      let copper = depth % 2 == 0;
+      let positive = boundary.signed_area() >= 0.0;
+      if copper == positive {
+        boundary.clone()
+      } else {
+        boundary.reverse()
+      }
+    })
+    .collect();
+  Ok(Region { boundaries })
+}
+
+/// How many other boundaries contain each boundary, which is the copper polarity under parity.
+///
+/// An even depth is copper (material inside it) and an odd depth is a clearance inside that copper.
+/// Containment is answered by the region's own membership test against a single boundary, and by a
+/// majority of the boundary's vertices: a clearance that touches the copper that encloses it shares
+/// a vertex with it, which membership reports as neither side.
+fn nesting_depths(
+  boundaries: &[Contour],
+  tolerance: TolerancePolicy,
+) -> Result<Vec<usize>, GeomError> {
+  let regions = boundaries
+    .iter()
+    .map(|boundary| Region::new(vec![boundary.clone()]))
+    .collect::<Result<Vec<_>, _>>()?;
+  let mut depths = vec![0_usize; boundaries.len()];
+  for (index, boundary) in boundaries.iter().enumerate() {
+    let vertices = boundary.vertices();
+    if vertices.is_empty() {
+      continue;
+    }
+    for (other, region) in regions.iter().enumerate() {
+      if other == index {
+        continue;
+      }
+      let enclosed = vertices
+        .iter()
+        .filter(|vertex| region.contains(vertex.point, tolerance))
+        .count();
+      if enclosed * 2 > vertices.len() {
+        depths[index] += 1;
+      }
+    }
+  }
+  Ok(depths)
+}
+
+/// One boolean step of the copper reduction, where an empty left operand is nothing to combine with.
+fn boolean_region(
+  a: &Region,
+  b: &Region,
+  op: BooleanOp,
+  tolerance: TolerancePolicy,
+) -> Result<Region, GeomError> {
+  if a.boundaries.is_empty() {
+    return if matches!(op, BooleanOp::Union) {
+      Ok(b.clone())
+    } else {
+      Region::new(Vec::new())
+    };
+  }
+  match combine(a, b, op, tolerance)? {
+    Combined::Empty => Region::new(Vec::new()),
+    Combined::Region { region, .. } => Ok(region),
+  }
 }
 
 fn balanced_union(
@@ -71,10 +176,7 @@ fn balanced_union(
     while let Some(a) = it.next() {
       match it.next() {
         Some(b) => {
-          let merged = match combine(&a, &b, BooleanOp::Union, tolerance)? {
-            Combined::Empty => Region::new(Vec::new())?,
-            Combined::Region { region, .. } => region,
-          };
+          let merged = boolean_region(&a, &b, BooleanOp::Union, tolerance)?;
           next.push(merged);
         }
         None => next.push(a),
@@ -159,6 +261,10 @@ pub fn isolation_passes(
 /// keeps paths around copper exteriors (outer boundaries), [`IsolationKind::Interior`] keeps paths
 /// around interior clearances (hole boundaries inside copper), and [`IsolationKind::Full`] keeps
 /// both. When `keep_pours` is true, interior paths inside copper pour areas are omitted.
+///
+/// Omitting is not a geometric failure: when `keep_pours` (or a clearance narrower than the passes)
+/// leaves no selected path at all, the result carries no passes rather than reporting that the offset
+/// collapsed, because the offset succeeded and the selection is simply empty.
 #[allow(clippy::too_many_arguments)]
 pub fn isolation_passes_with_kind(
   copper: &Region,
@@ -199,6 +305,7 @@ pub fn isolation_passes_with_kind(
   };
 
   let mut result_passes = Vec::with_capacity(passes as usize);
+  let mut omitted_by_keep_pours = false;
   for index in 0..passes as usize {
     let distance = pass_distance(tool_diameter, index, overlap);
     let mut contours = Vec::new();
@@ -215,6 +322,7 @@ pub fn isolation_passes_with_kind(
             && is_interior_boundary(&contour)
             && contour_inside_any_pour(&contour, &pours)
           {
+            omitted_by_keep_pours = true;
             continue;
           }
           contours.push(contour);
@@ -244,13 +352,14 @@ pub fn isolation_passes_with_kind(
         if matches!(kind, IsolationKind::Interior | IsolationKind::Full) {
           for contour in interior_boundaries_per_hole(copper, distance, tolerance)? {
             if keep_pours && contour_inside_any_pour(&contour, &pours) {
+              omitted_by_keep_pours = true;
               continue;
             }
             contours.push(contour);
           }
         }
         if contours.is_empty() {
-          if index == 0 {
+          if index == 0 && !omitted_by_keep_pours {
             return Err(err);
           }
           break;
@@ -262,12 +371,12 @@ pub fn isolation_passes_with_kind(
     }
 
     if contours.is_empty() {
-      if index == 0 {
+      if index == 0 && !omitted_by_keep_pours {
         return Err(GeomError::OffsetCollapsed {
           reason: "the isolation offset left no path to cut",
         });
       }
-      if !result_passes.is_empty() {
+      if !result_passes.is_empty() || omitted_by_keep_pours {
         break;
       }
       continue;
@@ -283,6 +392,11 @@ pub fn isolation_passes_with_kind(
   }
 
   if result_passes.is_empty() {
+    if omitted_by_keep_pours {
+      // Every selected path lies inside a kept pour: the offset succeeded and there is nothing left
+      // to cut, which is an empty answer rather than a collapse to report.
+      return Ok(IsolationPath { passes: Vec::new() });
+    }
     return Err(GeomError::OffsetCollapsed {
       reason: "the isolation offset left no path to cut",
     });

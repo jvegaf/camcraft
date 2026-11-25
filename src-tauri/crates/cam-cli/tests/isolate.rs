@@ -41,6 +41,20 @@ fn rectangle(x0: f64, y0: f64, w: f64, h: f64) -> Contour {
   .expect("rectangle")
 }
 
+/// The same rectangle wound the other way, as a mirrored import hands it over.
+fn reversed_rectangle(x0: f64, y0: f64, w: f64, h: f64) -> Contour {
+  Contour::from_points(
+    &[
+      Point2::new(x0, y0),
+      Point2::new(x0, y0 + h),
+      Point2::new(x0 + w, y0 + h),
+      Point2::new(x0 + w, y0),
+    ],
+    true,
+  )
+  .expect("reversed rectangle")
+}
+
 fn isolation_document(contours: Vec<Contour>, params: IsolationParams) -> Document {
   let mut document = Document::new(Job {
     width: Length::from_mm(100.0),
@@ -251,6 +265,33 @@ fn isolate_wires_vbit_depth_derivation() {
   assert!(
     program.contains("Z-1.4928") || program.contains("Z-1.492"),
     "V-bit derived depth must be used in emitted G-code: {program}"
+  );
+}
+
+#[test]
+fn isolate_routes_a_clockwise_copper_layer() {
+  // A mirrored (clockwise) copper layer is copper. Uniting it by winding deletes it, and the command
+  // then fails because the united region has no material to isolate.
+  let directory = scratch("clockwise");
+  let doc = isolation_document(
+    vec![reversed_rectangle(30.0, 30.0, 20.0, 20.0)],
+    IsolationParams {
+      passes: 1,
+      overlap: 0.0,
+      direction: MillingDirection::Climb,
+      kind: IsolationKind::Full,
+      cut_depth: Length::from_mm(0.1),
+      keep_pours: false,
+    },
+  );
+  let path = write_document(&directory, &doc);
+  let output = run(&["isolate", path.to_str().unwrap(), "--diameter", "1.0"]);
+  assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+  let out = stdout(&output);
+  assert!(out.contains("isolate Top isolation:"), "{out}");
+  assert!(
+    !out.contains("0 contour(s)"),
+    "a clockwise copper layer still routes isolation paths: {out}"
   );
 }
 
