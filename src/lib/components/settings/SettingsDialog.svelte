@@ -43,6 +43,7 @@ async function saveSettings() {
     settings = await invoke<Settings>('update_settings', { settings });
     applyTheme(settings.theme);
     saved = true;
+    closeSettings();
   } catch (e) {
     error = formatError(e);
   }
