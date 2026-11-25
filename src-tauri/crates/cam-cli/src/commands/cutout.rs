@@ -290,17 +290,26 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
 
   // The cutout is a different tool from every drill, and the Excellon table already claims its
   // numbers. A program whose cutout reuses a drill's number emits no tool change there, so the
-  // outline is cut with the drill bit while the run reports success.
-  if plan
-    .groups
-    .iter()
-    .any(|group| group.excellon_tool == flags.tool_number)
-  {
+  // outline is cut with the drill bit while the run reports success. The mouse-bite perforation
+  // tool (cutout number + 100) needs the same guarantee: two segments sharing one number with
+  // different geometry make a tool-change-keyed controller skip a change and cut with the wrong
+  // physical tool.
+  let mouse_bite_tool_number = flags.tool_number.saturating_add(100);
+  let colliding_drill_tool = plan.groups.iter().find_map(|group| {
+    if group.excellon_tool == flags.tool_number {
+      Some((group.excellon_tool, "cutout"))
+    } else if group.excellon_tool == mouse_bite_tool_number {
+      Some((group.excellon_tool, "mouse-bite"))
+    } else {
+      None
+    }
+  });
+  if let Some((drill_tool, role)) = colliding_drill_tool {
     return Err(Failure::input(format!(
-      "--tool {} is a drill tool in this Excellon file: the cutout needs a tool number the file \
-       does not use, because a program that cuts the outline with a drill bit reports success and \
-       ruins the board",
-      flags.tool_number
+      "--tool {} collides with drill tool T{} in this Excellon file: the {} pass needs a tool \
+       number the file does not use, because a program that cuts or drills with the wrong bit \
+       reports success and ruins the board",
+      flags.tool_number, drill_tool, role
     )));
   }
 
