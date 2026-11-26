@@ -1,6 +1,6 @@
 <script lang="ts">
-import { onMount } from 'svelte';
 import { css } from 'styled-system/css';
+import { onMount } from 'svelte';
 import { setSelection } from './workbench.svelte';
 
 type Point3Dto = { x: number; y: number; z: number };
@@ -65,7 +65,9 @@ onMount(() => {
 
   (async () => {
     const THREE = await import('three');
-    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const { OrbitControls } = await import(
+      'three/addons/controls/OrbitControls.js'
+    );
     const { invoke } = await import('@tauri-apps/api/core');
 
     if (disposed || !container) return;
@@ -116,8 +118,15 @@ onMount(() => {
       boxPoints.push(line.end.x, line.end.z, -line.end.y);
     }
     const boxGeom = new THREE.BufferGeometry();
-    boxGeom.setAttribute('position', new THREE.Float32BufferAttribute(boxPoints, 3));
-    const boxMat = new THREE.LineBasicMaterial({ color: 0x88a0b8, transparent: true, opacity: 0.7 });
+    boxGeom.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(boxPoints, 3)
+    );
+    const boxMat = new THREE.LineBasicMaterial({
+      color: 0x88a0b8,
+      transparent: true,
+      opacity: 0.7
+    });
     scene.add(new THREE.LineSegments(boxGeom, boxMat));
 
     const positions = new Float32Array(snapshot.vertices.length * 3);
@@ -163,7 +172,10 @@ onMount(() => {
       depthTest: true,
       side: THREE.DoubleSide
     });
-    const hoverMesh = new THREE.Mesh(new THREE.BufferGeometry(), highlightMat.clone());
+    const hoverMesh = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      highlightMat.clone()
+    );
     hoverMesh.visible = false;
     scene.add(hoverMesh);
     const selectMat = new THREE.MeshBasicMaterial({
@@ -240,10 +252,15 @@ onMount(() => {
         selectMesh.visible = true;
         hoverMesh.visible = false;
         const triVerts = snapshot.triangles[tri];
-        const d = triVerts
-          .map((vi) => snapshot.vertices[vi].depth)
-          .reduce((a, b) => a + b, 0) / 3;
-        setSelection({ kind: 'triangle', index: tri, avgDepthMm: d * snapshot.stockThickness });
+        const d =
+          triVerts
+            .map(vi => snapshot.vertices[vi].depth)
+            .reduce((a, b) => a + b, 0) / 3;
+        setSelection({
+          kind: 'triangle',
+          index: tri,
+          avgDepthMm: d * snapshot.stockThickness
+        });
       }
     };
 
@@ -276,11 +293,15 @@ onMount(() => {
       }
       if (now - fpsWindowStart >= 1000) {
         const recent = frameTimes.slice(-120);
-        const avg = recent.reduce((a, b) => a + b, 0) / Math.max(1, recent.length);
+        const avg =
+          recent.reduce((a, b) => a + b, 0) / Math.max(1, recent.length);
         const fps = 1000 / Math.max(1, avg);
         const sorted = [...recent].sort((a, b) => a - b);
         const minFps = 1000 / Math.max(1, sorted[sorted.length - 1] || 16.7);
-        const p1 = sorted[Math.floor(sorted.length * 0.99)] || sorted[sorted.length - 1] || 16.7;
+        const p1 =
+          sorted[Math.floor(sorted.length * 0.99)] ||
+          sorted[sorted.length - 1] ||
+          16.7;
         const low1 = 1000 / Math.max(1, p1);
         fpsText = `FPS avg: ${fps.toFixed(1)}\nFPS min: ${minFps.toFixed(1)}\nFPS 1% low: ${low1.toFixed(1)}`;
         fpsWindowStart = now;
@@ -295,7 +316,7 @@ onMount(() => {
       renderer?.domElement.removeEventListener('pointermove', onPointerMove);
       renderer?.domElement.removeEventListener('click', onClick);
     };
-  })().then((cleanup) => {
+  })().then(cleanup => {
     if (disposed) cleanup?.();
   });
 

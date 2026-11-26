@@ -1,9 +1,9 @@
 <script lang="ts">
-import { onMount } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { goto } from '$app/navigation';
 import { css } from 'styled-system/css';
+import { onMount } from 'svelte';
+import { goto } from '$app/navigation';
 import BoardCanvas from './BoardCanvas.svelte';
 import BrowserPanel from './BrowserPanel.svelte';
 import InspectorPanel from './InspectorPanel.svelte';
@@ -11,7 +11,14 @@ import StatusBar from './StatusBar.svelte';
 import ToolRail from './ToolRail.svelte';
 import TopBar from './TopBar.svelte';
 import ViewportHud from './ViewportHud.svelte';
-import { openSettings, refreshDocumentStatus, refreshRecents, setDocument, setStatus, workbenchState } from './workbench.svelte';
+import {
+  openSettings,
+  refreshDocumentStatus,
+  refreshRecents,
+  setDocument,
+  setStatus,
+  workbenchState
+} from './workbench.svelte';
 
 interface Props {
   projectName?: string;
@@ -31,7 +38,10 @@ async function handleOpen() {
       filters: [{ name: 'Camcraft document', extensions: ['cmc'] }]
     });
     if (!selected || Array.isArray(selected)) return;
-    const status = await invoke<typeof workbenchState.document>('open_document', { path: selected });
+    const status = await invoke<typeof workbenchState.document>(
+      'open_document',
+      { path: selected }
+    );
     setDocument(status);
     setStatus('Documento abierto', 'ok');
     void refreshRecents();
@@ -42,7 +52,10 @@ async function handleOpen() {
 
 async function handleOpenRecent(path: string) {
   try {
-    const status = await invoke<typeof workbenchState.document>('open_document', { path });
+    const status = await invoke<typeof workbenchState.document>(
+      'open_document',
+      { path }
+    );
     setDocument(status);
     setStatus('Documento abierto', 'ok');
     void refreshRecents();
@@ -54,9 +67,13 @@ async function handleOpenRecent(path: string) {
 async function handleSave() {
   try {
     const path = workbenchState.document?.path ?? null;
-    const status = await invoke<typeof workbenchState.document>('save_document', { path });
+    const status = await invoke<typeof workbenchState.document>(
+      'save_document',
+      { path }
+    );
     setDocument(status);
-    setStatus('Documento guardado', 'ok'); void refreshRecents();
+    setStatus('Documento guardado', 'ok');
+    void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -64,11 +81,17 @@ async function handleSave() {
 
 async function handleSaveAs() {
   try {
-    const target = await save({ filters: [{ name: 'Camcraft document', extensions: ['cmc'] }] });
+    const target = await save({
+      filters: [{ name: 'Camcraft document', extensions: ['cmc'] }]
+    });
     if (!target) return;
-    const status = await invoke<typeof workbenchState.document>('save_document', { path: target });
+    const status = await invoke<typeof workbenchState.document>(
+      'save_document',
+      { path: target }
+    );
     setDocument(status);
-    setStatus('Documento guardado', 'ok'); void refreshRecents();
+    setStatus('Documento guardado', 'ok');
+    void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }
@@ -76,11 +99,15 @@ async function handleSaveAs() {
 
 async function handleNew() {
   try {
-    const status = await invoke<typeof workbenchState.document>('new_document', {
-      request: { width: 100, height: 100, thickness: 1.6 }
-    });
+    const status = await invoke<typeof workbenchState.document>(
+      'new_document',
+      {
+        request: { width: 100, height: 100, thickness: 1.6 }
+      }
+    );
     setDocument(status);
-    setStatus('Nuevo documento', 'ok'); void refreshRecents();
+    setStatus('Nuevo documento', 'ok');
+    void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
   }

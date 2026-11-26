@@ -52,14 +52,18 @@ export function setStatus(message: string, kind: StatusKind = 'info') {
 }
 
 export function setStatusMessage(message: string) {
-  const kind: StatusKind = message.toLowerCase().startsWith('error') ? 'error' : 'info';
+  const kind: StatusKind = message.toLowerCase().startsWith('error')
+    ? 'error'
+    : 'info';
   setStatus(message, kind);
 }
 
 export function setDocument(document: DocumentStatus | null) {
   workbenchState.document = document;
   if (document) {
-    workbenchState.statusMessage = document.dirty ? 'Cambios sin guardar' : 'Listo';
+    workbenchState.statusMessage = document.dirty
+      ? 'Cambios sin guardar'
+      : 'Listo';
     workbenchState.statusKind = document.dirty ? 'info' : 'ok';
   }
 }
@@ -83,7 +87,6 @@ export async function refreshRecents(): Promise<void> {
     // recents are optional in shell
   }
 }
-
 
 export function openSettings() {
   workbenchState.settingsOpen = true;

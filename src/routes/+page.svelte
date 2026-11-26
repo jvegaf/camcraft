@@ -1,12 +1,15 @@
 <script lang="ts">
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { goto } from '$app/navigation';
 import { css } from 'styled-system/css';
+import { goto } from '$app/navigation';
 import { StartScreen } from '$lib/components/start-screen';
 import StatusBar from '$lib/components/workbench/StatusBar.svelte';
 import TopBar from '$lib/components/workbench/TopBar.svelte';
-import { openSettings, workbenchState } from '$lib/components/workbench/workbench.svelte';
+import {
+  openSettings,
+  workbenchState
+} from '$lib/components/workbench/workbench.svelte';
 
 type RecentProject = {
   name: string;

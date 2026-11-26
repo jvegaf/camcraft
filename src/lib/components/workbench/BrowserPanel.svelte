@@ -44,14 +44,39 @@ const navItem = css({
   border: 'none'
 });
 const recentBtn = css({ cursor: 'pointer', _hover: { bg: 'raised' } });
-const dotBase = css({ w: '8px', h: '8px', borderRadius: '50%', bg: 'border', flex: 'none' });
-const count = css({ ml: 'auto', fontSize: '11px', fontFamily: 'mono', color: 'textOff', whiteSpace: 'nowrap' });
+const dotBase = css({
+  w: '8px',
+  h: '8px',
+  borderRadius: '50%',
+  bg: 'border',
+  flex: 'none'
+});
+const count = css({
+  ml: 'auto',
+  fontSize: '11px',
+  fontFamily: 'mono',
+  color: 'textOff',
+  whiteSpace: 'nowrap'
+});
 const headBtn = css({
-  w: '24px', h: '24px', display: 'grid', placeItems: 'center',
-  borderRadius: '4px', color: 'textOff', cursor: 'pointer',
+  w: '24px',
+  h: '24px',
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: '4px',
+  color: 'textOff',
+  cursor: 'pointer',
   _hover: { bg: 'raised', color: 'text' }
 });
-const icon = css({ w: '14px', h: '14px', stroke: 'currentColor', fill: 'none', strokeWidth: '1.6', strokeLinecap: 'round', strokeLinejoin: 'round' });
+const icon = css({
+  w: '14px',
+  h: '14px',
+  stroke: 'currentColor',
+  fill: 'none',
+  strokeWidth: '1.6',
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round'
+});
 </script>
 
 <FloatCard title="Browser" meta={workbenchState.document?.path?.split('/').pop() ?? 'Proyecto'} class={panelPos} ariaLabel="Browser">

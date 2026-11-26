@@ -3,11 +3,22 @@ import { css } from 'styled-system/css';
 import { workbenchState } from './workbench.svelte';
 
 const statusBar = css({
-  position: 'absolute', left: '0', right: '0', bottom: '0', h: '34px',
-  display: 'flex', alignItems: 'center', gap: '12px', px: '14px',
-  bg: 'panel', backdropFilter: 'blur(8px)',
-  borderTop: '1px solid', borderColor: 'hairline',
-  fontSize: '11px', color: 'textDim', zIndex: '30'
+  position: 'absolute',
+  left: '0',
+  right: '0',
+  bottom: '0',
+  h: '34px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  px: '14px',
+  bg: 'panel',
+  backdropFilter: 'blur(8px)',
+  borderTop: '1px solid',
+  borderColor: 'hairline',
+  fontSize: '11px',
+  color: 'textDim',
+  zIndex: '30'
 });
 const mono = css({ fontSize: '11px', fontFamily: 'mono', color: 'text' });
 const ok = css({ color: 'ok' });
