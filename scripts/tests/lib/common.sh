@@ -67,10 +67,14 @@ summary() {
 }
 
 # A repository that looks enough like this one: the scripts, a task index and task documents with and
-# without a `## Surfaces` block. Sets MAIN, builds worktrees wt100…wt104 and a `cargo` stub, because
+# without a `## Surfaces` block. Sets MAIN, builds worktrees wt100…wt107 and a `cargo` stub, because
 # running the real workspace suite is not what these tests judge.
+#
+# The optional tag lets one test build a second, independent repository beside the first (`repo2`,
+# `wt1002`…). Without it every path is what the single-repository tests have always named.
 build_repo() {
-  MAIN="$WORK/repo"
+  local tag=${1:-}
+  MAIN="$WORK/repo$tag"
   mkdir -p "$MAIN/scripts" "$MAIN/odd/tasks" "$WORK/bin"
 
   local script
@@ -176,7 +180,51 @@ MD
 
   local n
   for n in 100 101 102 103 104 105 106 107; do
-    git -C "$MAIN" worktree add -q "$WORK/wt$n" -b "feat/$n" >/dev/null 2>&1 ||
-      git -C "$MAIN" worktree add -q "$WORK/wt$n" "feat/$n" >/dev/null 2>&1
+    git -C "$MAIN" worktree add -q "$WORK/wt$n$tag" -b "feat/$n" >/dev/null 2>&1 ||
+      git -C "$MAIN" worktree add -q "$WORK/wt$n$tag" "feat/$n" >/dev/null 2>&1
   done
+}
+
+# Rewrite a Markdown index in the shape Biome gives it: every cell padded to its column's width, the
+# separator row padded to the same widths. That is not what `build_repo` writes on purpose — the
+# delivery tests assert the hand-written table's single-space cells — so a test that needs the
+# formatted shape asks for it here instead of growing a second copy of the fixture.
+#
+# The width is the widest cell plus two spaces, with a floor of five because a separator needs three
+# dashes; both numbers are what `biome format` produces for the tables in this repository.
+format_index() {
+  python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+table = [i for i, line in enumerate(lines) if line.startswith("|")]
+if not table:
+    sys.exit(f"ERROR: no table in {path}")
+sep_at = table[1]
+separator = lines[sep_at].split("|")
+columns = len(separator) - 2
+widths = [0] * columns
+for i in table:
+    if i == sep_at:
+        continue
+    cells = lines[i].split("|")
+    if len(cells) - 2 != columns:
+        continue
+    for c in range(columns):
+        widths[c] = max(widths[c], len(cells[c + 1].strip()))
+widths = [max(w + 2, 5) for w in widths]
+out = list(lines)
+out[sep_at] = "|" + "|".join(" " + "-" * (w - 2) + " " for w in widths) + "|"
+for i in table:
+    if i == sep_at:
+        continue
+    cells = lines[i].split("|")
+    if len(cells) - 2 != columns:
+        continue
+    out[i] = "|" + "|".join(" " + cells[c + 1].strip().ljust(widths[c] - 1)
+                            for c in range(columns)) + "|"
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
 }
