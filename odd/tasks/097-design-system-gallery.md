@@ -13,6 +13,7 @@ Reemplaza la pregunta por Storybook: no se agrega un segundo pipeline de build n
 - `src/routes/ds/+layout.ts`
 - `src/routes/ds/[slug]/+page.svelte`
 - `package.json`
+- `vitest.config.ts`
 - `docs/SYSTEM_DESIGN_CAMCRAFT.md`
 - `odd/tasks/097-design-system-gallery.md`
 - `odd/tasks/INDEX.md`
