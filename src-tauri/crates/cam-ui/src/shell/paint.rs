@@ -258,7 +258,9 @@ fn earclip(points: &[Pos2]) -> Vec<[Pos2; 3]> {
   if area.abs() < 1.0e-6 {
     return Vec::new();
   }
-  if points.len() > EARCLIP_MAX_POINTS && is_convex(points) {
+  // Ear clipping is O(n^2) guarded (O(n^3) worst case) per contour per frame, so any high-vertex
+  // contour - convex or concave - falls back to the bounded fan instead of stalling the UI.
+  if points.len() > EARCLIP_MAX_POINTS {
     return fan_triangulate(points);
   }
   let mut indices: Vec<usize> = (0..points.len()).collect();
