@@ -1,4 +1,5 @@
 ---
+
 name: atomic-design
 description: "Trigger: atomic design, atoms, molecules, organisms, templates, pages, component structure, UI decomposition. Build Camcraft UI with Atomic Design methodology."
 ---
@@ -20,14 +21,14 @@ Use when creating or refactoring UI components in Camcraft (Svelte 5 + Panda CSS
 
 ## Decision Gates
 
-| Situation | Action |
-| --- | --- |
-| Single visual primitive (button, icon, input, badge) | Atom in `src/lib/components/atoms/` |
-| Small reusable combo (field + label + hint, search box) | Molecule in `src/lib/components/molecules/` |
-| Feature block with state (panel, dialog, toolbar, card list) | Organism in `src/lib/components/organisms/` |
-| Layout skeleton with slots | Template in `src/lib/components/templates/` |
-| Route screen wiring data/actions | Page in `src/routes/` |
-| Existing component fits | Reuse/extend; do not create parallel variant |
+| Situation                                                    | Action                                       |
+| ------------------------------------------------------------ | -------------------------------------------- |
+| Single visual primitive (button, icon, input, badge)         | Atom in `src/lib/components/atoms/`          |
+| Small reusable combo (field + label + hint, search box)      | Molecule in `src/lib/components/molecules/`  |
+| Feature block with state (panel, dialog, toolbar, card list) | Organism in `src/lib/components/organisms/`  |
+| Layout skeleton with slots                                   | Template in `src/lib/components/templates/`  |
+| Route screen wiring data/actions                             | Page in `src/routes/`                        |
+| Existing component fits                                      | Reuse/extend; do not create parallel variant |
 
 ## Execution Steps
 

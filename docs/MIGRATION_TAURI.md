@@ -1,6 +1,7 @@
 ---
-page-id: 33
----
+
+## page-id: 33
+
 # Plan de migración: egui → Tauri 2
 
 > **Estado**: decisión tomada; scaffolding inicial creado en `feat/tauri`.

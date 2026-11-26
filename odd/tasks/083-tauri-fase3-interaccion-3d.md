@@ -19,11 +19,11 @@ Agregar picking/hover/selección en viewport 3D y sincronizar selección con UI.
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Picking/hover en viewport 3D (raycast Three.js) | S1 | inline | `16199a5` |
-| T2 | Selección sincronizada con UI (status/inspector) | S1 | inline | `16199a5` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `16199a5` |
+| ID  | Tarea                                            | Specs | Ruta   | Commit    |
+| --- | ------------------------------------------------ | ----- | ------ | --------- |
+| T1  | Picking/hover en viewport 3D (raycast Three.js)  | S1    | inline | `16199a5` |
+| T2  | Selección sincronizada con UI (status/inspector) | S1    | inline | `16199a5` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push        | S1    | inline | `16199a5` |
 
 ## Log
 

@@ -13,7 +13,7 @@ Cerrar settings al aplicar y permitir servir styled-system en Vite.
 
 - **S1 (pedido original, verbatim).** «vale, pero un par de cosas, por un lado, si le damos al boton de aplicar. deberia de cerrarse esa ventana, no que ahora solamente se cierra en cancelar o en el boton de cerrar de la ventana. es UX no nos lo va a permitir. y por otro lado corrije esto»
 - **S2 (pedido original, verbatim).** «[404] GET /styled-system/css/index.js
-The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is outside of Vite serving allow list.
+  The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is outside of Vite serving allow list.
 
 - /home/th3g3ntl3man/Code/camcraft/src/lib
 - /home/th3g3ntl3man/Code/camcraft/src/routes
@@ -26,17 +26,17 @@ Refer to docs https://vite.dev/config/server-options.html#server-fs-allow for co
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Cerrar SettingsDialog al aplicar | S1 | inline | `946f600` |
-| T2 | Permitir styled-system en Vite fs.allow | S2 | inline | `946f600` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1, S2 | inline | `946f600` |
+| ID  | Tarea                                     | Specs  | Ruta   | Commit    |
+| --- | ----------------------------------------- | ------ | ------ | --------- |
+| T1  | Cerrar SettingsDialog al aplicar          | S1     | inline | `946f600` |
+| T2  | Permitir styled-system en Vite fs.allow   | S2     | inline | `946f600` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push | S1, S2 | inline | `946f600` |
 
 ## Log
 
 - **L1 (pedido original, verbatim).** «vale, pero un par de cosas, por un lado, si le damos al boton de aplicar. deberia de cerrarse esa ventana, no que ahora solamente se cierra en cancelar o en el boton de cerrar de la ventana. es UX no nos lo va a permitir. y por otro lado corrije esto»
 - **L2 (pedido original, verbatim).** «[404] GET /styled-system/css/index.js
-The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is outside of Vite serving allow list.
+  The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is outside of Vite serving allow list.
 
 - /home/th3g3ntl3man/Code/camcraft/src/lib
 - /home/th3g3ntl3man/Code/camcraft/src/routes
@@ -46,5 +46,6 @@ The request id "/home/th3g3ntl3man/Code/camcraft/styled-system/css/index.js" is 
 - /home/th3g3ntl3man/Code/camcraft/node_modules
 
 Refer to docs https://vite.dev/config/server-options.html#server-fs-allow for configurations and more details.»
+
 - **L3 (ejecución, 2026-11-24).** Aplicar cierra el diálogo tras guardar; `vite.config.js` agrega `server.fs.allow` para `./styled-system`. `pnpm check` OK.
 - **L4 (cierre, 2026-11-24).** Commit `946f600`. RDD assess: not-due (under_budget, medium). ODD/Engram sincronizados; push a `origin/feat/tauri`.

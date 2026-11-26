@@ -17,10 +17,10 @@ Integrar recientes en el workbench y ejecutar smoke checks no-GUI de la migraci√
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Recents en store/BrowserPanel y refresh tras acciones | S1 | inline | `3083342` |
-| T2 | Smoke checks no-GUI y cierre ODD/Engram/push | S1 | inline | `3083342` |
+| ID  | Tarea                                                 | Specs | Ruta   | Commit    |
+| --- | ----------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Recents en store/BrowserPanel y refresh tras acciones | S1    | inline | `3083342` |
+| T2  | Smoke checks no-GUI y cierre ODD/Engram/push          | S1    | inline | `3083342` |
 
 ## Log
 

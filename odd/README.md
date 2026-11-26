@@ -1,6 +1,7 @@
 ---
-page-id: 36
----
+
+## page-id: 36
+
 # `odd/` — cómo se lee y cómo se escribe
 
 Cada feature del proyecto vive en un documento propio bajo `odd/tasks/`: qué se pidió, con qué specs, qué

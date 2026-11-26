@@ -23,11 +23,11 @@ Ajustar shell/workbench y start screen a paridad de estilos/componentes con `des
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Auditar y ajustar TopBar/ToolRail/ViewportHud/StatusBar a DS | S1 | inline | `212d4b3` |
-| T2 | Ajustar Browser/Inspector/FloatCard y StartScreen a DS | S1 | inline | `906ec14` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `906ec14` |
+| ID  | Tarea                                                        | Specs | Ruta   | Commit    |
+| --- | ------------------------------------------------------------ | ----- | ------ | --------- |
+| T1  | Auditar y ajustar TopBar/ToolRail/ViewportHud/StatusBar a DS | S1    | inline | `212d4b3` |
+| T2  | Ajustar Browser/Inspector/FloatCard y StartScreen a DS       | S1    | inline | `906ec14` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push                    | S1    | inline | `906ec14` |
 
 ## Log
 

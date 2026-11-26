@@ -19,11 +19,11 @@ Exponer snapshot serializable desde cam-view y renderizar viewport WebGL read-on
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Agregar comando Tauri de scene snapshot serializable (cam-view) | S1 | inline | `4a91aa2` |
-| T2 | Renderizar viewport Three.js con orbit/pan/zoom | S1 | inline | `4a91aa2` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `4a91aa2` |
+| ID  | Tarea                                                           | Specs | Ruta   | Commit    |
+| --- | --------------------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Agregar comando Tauri de scene snapshot serializable (cam-view) | S1    | inline | `4a91aa2` |
+| T2  | Renderizar viewport Three.js con orbit/pan/zoom                 | S1    | inline | `4a91aa2` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push                       | S1    | inline | `4a91aa2` |
 
 ## Log
 

@@ -19,10 +19,10 @@ refutados. Se cierra al final de la migración con una pasada de corrección ded
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| -- | ----- | ----- | ---- | ------ |
-| T1 | Crear la lista y sembrar los advisories de batches 1-7 | S1,S2 | inline | (este) |
-| T2 | Corregir cada advisory pendiente y marcar estado | S1 | inline | — |
+| ID  | Tarea                                                  | Specs | Ruta   | Commit |
+| --- | ------------------------------------------------------ | ----- | ------ | ------ |
+| T1  | Crear la lista y sembrar los advisories de batches 1-7 | S1,S2 | inline | (este) |
+| T2  | Corregir cada advisory pendiente y marcar estado       | S1    | inline | —      |
 
 ## Log
 
@@ -30,38 +30,38 @@ refutados. Se cierra al final de la migración con una pasada de corrección ded
 
 ### Batch 1 — `origin/master..4b53b4f` (review-2173b4080566240c)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R1-001 | risk | `crates/cam-cli/src/commands/export.rs:72-84` | Export escribe a path temporal predecible con `fs::write` (sigue symlinks); symlink pre-creado permite sobrescribir el target. |
-| R3-records-partial-parse | reliability | `scripts/check-records.sh:51-74` | Fallo de python3 tras output parcial puede dejar pasar el gate con filas incompletas. |
-| R3-timeout-doc-inconsistency | reliability | `scripts/parity/README.md:86-88` | README dice 20s, código usa 30s (`collect.py:52`); roadmap repite la inconsistencia. |
-| R4-001 | resilience | `.github/workflows/ci.yml:82` | `git diff` sobre `github.event.before` sin fallback ante push forzado; job de parity falla en vez de degradar a medir. |
-| R4-002 | resilience | `scripts/check-records.sh:181,193` | `engram search` sin guardar exit code bajo `set -euo pipefail`; falla closed pero pierde el summary. |
+| ID                           | Lente       | Ubicación                                     | Resumen                                                                                                                        |
+| ---------------------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| R1-001                       | risk        | `crates/cam-cli/src/commands/export.rs:72-84` | Export escribe a path temporal predecible con `fs::write` (sigue symlinks); symlink pre-creado permite sobrescribir el target. |
+| R3-records-partial-parse     | reliability | `scripts/check-records.sh:51-74`              | Fallo de python3 tras output parcial puede dejar pasar el gate con filas incompletas.                                          |
+| R3-timeout-doc-inconsistency | reliability | `scripts/parity/README.md:86-88`              | README dice 20s, código usa 30s (`collect.py:52`); roadmap repite la inconsistencia.                                           |
+| R4-001                       | resilience  | `.github/workflows/ci.yml:82`                 | `git diff` sobre `github.event.before` sin fallback ante push forzado; job de parity falla en vez de degradar a medir.         |
+| R4-002                       | resilience  | `scripts/check-records.sh:181,193`            | `engram search` sin guardar exit code bajo `set -euo pipefail`; falla closed pero pierde el summary.                           |
 
 ### Batch 2 — `4b53b4f..c5acd4f` (review-575701d5908b897b)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R1-drill-nan-depth-validation | risk | `crates/cam-cli/src/commands/drill.rs:185-189` | `parse_number` acepta NaN/Inf para `--cut-depth/--peck-depth/--start-depth`; NaN burla guards y produce G-code malformado. |
-| R1-drill-non-atomic-write | risk | `crates/cam-cli/src/commands/drill.rs:167-169` | `drill --out` usa `std::fs::write` directo (no atómico); un `.nc` truncado puede ejecutarse como programa completo. Cutout en el mismo cambio sí usa temp+rename. |
-| R3-001 | reliability | `crates/cam-ops/src/excellon_drill.rs:241-258` | `route_slots` no rechaza `RetractMode::Amount` no finito o negativo; retract Z inseguro/no finito. |
-| R3-002 | reliability | `crates/cam-cli/src/commands/drill.rs:168-172` | Mismo write no atómico de `--out` (duplicado de R1-drill-non-atomic-write). |
-| R3-003 | reliability | `crates/cam-cli/src/commands/drill.rs:185-189` | `parse_number` acepta no-finitos; fluyen a parámetros de mecanizado. (mismo tema que R1-drill-nan-depth-validation) |
-| R4-drill-non-atomic-output-write | resilience | `crates/cam-cli/src/commands/drill.rs:169-171` | Write no atómico puede dejar G-code truncado tras error (sin footer M5/M30). (mismo tema) |
+| ID                               | Lente       | Ubicación                                      | Resumen                                                                                                                                                           |
+| -------------------------------- | ----------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1-drill-nan-depth-validation    | risk        | `crates/cam-cli/src/commands/drill.rs:185-189` | `parse_number` acepta NaN/Inf para `--cut-depth/--peck-depth/--start-depth`; NaN burla guards y produce G-code malformado.                                        |
+| R1-drill-non-atomic-write        | risk        | `crates/cam-cli/src/commands/drill.rs:167-169` | `drill --out` usa `std::fs::write` directo (no atómico); un `.nc` truncado puede ejecutarse como programa completo. Cutout en el mismo cambio sí usa temp+rename. |
+| R3-001                           | reliability | `crates/cam-ops/src/excellon_drill.rs:241-258` | `route_slots` no rechaza `RetractMode::Amount` no finito o negativo; retract Z inseguro/no finito.                                                                |
+| R3-002                           | reliability | `crates/cam-cli/src/commands/drill.rs:168-172` | Mismo write no atómico de `--out` (duplicado de R1-drill-non-atomic-write).                                                                                       |
+| R3-003                           | reliability | `crates/cam-cli/src/commands/drill.rs:185-189` | `parse_number` acepta no-finitos; fluyen a parámetros de mecanizado. (mismo tema que R1-drill-nan-depth-validation)                                               |
+| R4-drill-non-atomic-output-write | resilience  | `crates/cam-cli/src/commands/drill.rs:169-171` | Write no atómico puede dejar G-code truncado tras error (sin footer M5/M30). (mismo tema)                                                                         |
 
 ### Batch 4 — `1f61cfa..3e2eae1` (review-110b47af8d9c69f1)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-001 | reliability | `scripts/baseline/pin.py:77-86` | `replace_all` deja temp file huérfano en el directorio baseline si falla un paso intermedio (staged solo se agrega tras escribir todo). |
-| R4-001 | resilience | `scripts/baseline/collect.py:152-157` | Timeout mata solo el hijo directo, no el process group; workers de FlatCAM quedan huérfanos consumiendo CPU/memoria. |
+| ID     | Lente       | Ubicación                             | Resumen                                                                                                                                 |
+| ------ | ----------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| R3-001 | reliability | `scripts/baseline/pin.py:77-86`       | `replace_all` deja temp file huérfano en el directorio baseline si falla un paso intermedio (staged solo se agrega tras escribir todo). |
+| R4-001 | resilience  | `scripts/baseline/collect.py:152-157` | Timeout mata solo el hijo directo, no el process group; workers de FlatCAM quedan huérfanos consumiendo CPU/memoria.                    |
 
 ### Batch 5 — `3e2eae1..4ed8d8e` (review-f9b99613922e7e9b)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-001 | reliability | `crates/cam-gerber/src/lib.rs:311` | Recuperación de región rota no guarda el rechazo de línea de largo cero dentro de región: región ya marcada rota + Line degenerada aborta el archivo entero en vez de ignorar. |
-| R4-image-silent-skip | resilience | `crates/cam-gerber/src/lib.rs:204-205` | `Gerber::image()` devuelve geometría parcial descartando constructs saltados; caller no puede detectar geometría omitida sin diagnóstico. |
+| ID                   | Lente       | Ubicación                              | Resumen                                                                                                                                                                        |
+| -------------------- | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R3-001               | reliability | `crates/cam-gerber/src/lib.rs:311`     | Recuperación de región rota no guarda el rechazo de línea de largo cero dentro de región: región ya marcada rota + Line degenerada aborta el archivo entero en vez de ignorar. |
+| R4-image-silent-skip | resilience  | `crates/cam-gerber/src/lib.rs:204-205` | `Gerber::image()` devuelve geometría parcial descartando constructs saltados; caller no puede detectar geometría omitida sin diagnóstico.                                      |
 
 ### Batch 6a — `4ed8d8e..4714f49` (review-a35c137faa633ad3)
 
@@ -69,21 +69,21 @@ Sin advisories.
 
 ### Batch 6b — `4714f49..420b2cb` (review-a794aa6be01f9c65)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-001 | reliability | `crates/cam-gerber/src/lib.rs:1621-1623` | Exención de región aplica a D01-D03: flash D03 dentro de G36/G37 sin aperture se acepta y descarta en silencio en vez de NoApertureSelected. |
-| R3-002 | reliability | `crates/cam-model/src/lib.rs:272-287` | Nuevos Drill/Slot sin validación de coordenadas finitas ni diámetro/width positivo; NaN/degenerados alcanzan bounds/transform. |
-| R3-003 | reliability | `crates/cam-app/src/command.rs:1189-1195` | Drill/Slot en transform/array-copy/align sin tests directos a nivel command. |
-| R3-004 | reliability | `crates/cam-export/src/dxf.rs:189-196` | Export DXF/SVG de Drill/Slot sin tests directos. |
-| R4-SVG-SLOT-SILENT-DROP | resilience | `crates/cam-export/src/svg.rs:386-389` | SVG export descarta un slot en silencio si falla la construcción stadium; retorna Ok sin geometría ni aviso. |
+| ID                      | Lente       | Ubicación                                 | Resumen                                                                                                                                      |
+| ----------------------- | ----------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| R3-001                  | reliability | `crates/cam-gerber/src/lib.rs:1621-1623`  | Exención de región aplica a D01-D03: flash D03 dentro de G36/G37 sin aperture se acepta y descarta en silencio en vez de NoApertureSelected. |
+| R3-002                  | reliability | `crates/cam-model/src/lib.rs:272-287`     | Nuevos Drill/Slot sin validación de coordenadas finitas ni diámetro/width positivo; NaN/degenerados alcanzan bounds/transform.               |
+| R3-003                  | reliability | `crates/cam-app/src/command.rs:1189-1195` | Drill/Slot en transform/array-copy/align sin tests directos a nivel command.                                                                 |
+| R3-004                  | reliability | `crates/cam-export/src/dxf.rs:189-196`    | Export DXF/SVG de Drill/Slot sin tests directos.                                                                                             |
+| R4-SVG-SLOT-SILENT-DROP | resilience  | `crates/cam-export/src/svg.rs:386-389`    | SVG export descarta un slot en silencio si falla la construcción stadium; retorna Ok sin geometría ni aviso.                                 |
 
 ### Batch 7 — `420b2cb..9e9d865` (review-d63ad080c1bf1aa9)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-flush-batch-merge-fallback | reliability | `crates/cam-gerber/src/lib.rs:686` | Si la unión batched en árbol logra unir pero el merge a imagen falla, `flush_pending_unions` propaga error sin fallback secuencial por región. |
-| R3-tip-snap-first-pass-guard | reliability | `crates/cam-geom/src/boolean.rs:358-366` | `push_fractions` registra snaps endpoint near-miss en rango (eps, 2*eps] también en el primer combine pass, donde `detect_near_misses` es false; cambia identificación de vértices. |
-| R4-001 | resilience | `crates/cam-gerber/src/lib.rs:657-719` | Batching de dark constructs pierde el índice de comando Gerber: errores reportan línea 0 (Invalid) en vez del comando origen. |
+| ID                            | Lente       | Ubicación                                | Resumen                                                                                                                                                                             |
+| ----------------------------- | ----------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R3-flush-batch-merge-fallback | reliability | `crates/cam-gerber/src/lib.rs:686`       | Si la unión batched en árbol logra unir pero el merge a imagen falla, `flush_pending_unions` propaga error sin fallback secuencial por región.                                      |
+| R3-tip-snap-first-pass-guard  | reliability | `crates/cam-geom/src/boolean.rs:358-366` | `push_fractions` registra snaps endpoint near-miss en rango (eps, 2*eps] también en el primer combine pass, donde `detect_near_misses` es false; cambia identificación de vértices. |
+| R4-001                        | resilience  | `crates/cam-gerber/src/lib.rs:657-719`   | Batching de dark constructs pierde el índice de comando Gerber: errores reportan línea 0 (Invalid) en vez del comando origen.                                                       |
 
 ### Batch 8/9/10 — docs+evidence y geom chico
 
@@ -91,10 +91,10 @@ Not-due (`under_budget`), sin review.
 
 ### Batch 11a — `085d55d..957692c` (review-620213087430eba3)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
+| ID     | Lente       | Ubicación                                  | Resumen                                                                                                                                                           |
+| ------ | ----------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | R3-001 | reliability | `crates/cam-geom/src/boolean.rs:2014-2019` | Near-miss retry: far-flip removal corre siempre que exista far-flip y adopta el set reducido como baseline; caso assemblable original puede volverse unchainable. |
-| R4-001 | resilience | `scripts/parity/collect.py:176-181` | Skip incondicional de artefactos con golden pinned skipped; crashes/parse errors/regresiones en esos 30 artefactos no se detectan hasta un-skip manual. |
+| R4-001 | resilience  | `scripts/parity/collect.py:176-181`        | Skip incondicional de artefactos con golden pinned skipped; crashes/parse errors/regresiones en esos 30 artefactos no se detectan hasta un-skip manual.           |
 
 ### Batch 11c — `dc3196e..8ff8d50` (review-9b3e4a593289c812, ESCALADO)
 
@@ -102,14 +102,15 @@ Review terminada en stop terminal (`native_stop_required`): el refuter corrobor�
 R4-001 y R4-002 (CRITICAL, deterministas) y R1-001 quedó con causalidad desconocida. Sin ruta
 de corrección nativa; se corrigieron por fuera del lineage en `7714fc1`:
 
-| ID | Lente | Ubicación | Resolución |
-| -- | ----- | --------- | ---------- |
-| R3-001 | reliability | `cam-ops/src/isolation.rs` (`unite_copper`) | Corregido en `7714fc1`: polaridad por profundidad de anidamiento, no por winding. |
-| R4-001 | resilience | `cam-ops/src/isolation.rs:43` | Corregido en `7714fc1` (misma raíz: clasificación additive/subtractive por signed_area). |
-| R4-002 | resilience | `cam-ops/src/isolation.rs` (keep_pours) | Corregido en `7714fc1`: la omisión total de paths interiores por keep_pours ya no se reporta como collapse falso. |
-| R1-001 | risk | (no verificado) | Causalidad desconocida; pendiente de diagnóstico manual. |
+| ID     | Lente       | Ubicación                                   | Resolución                                                                                                        |
+| ------ | ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| R3-001 | reliability | `cam-ops/src/isolation.rs` (`unite_copper`) | Corregido en `7714fc1`: polaridad por profundidad de anidamiento, no por winding.                                 |
+| R4-001 | resilience  | `cam-ops/src/isolation.rs:43`               | Corregido en `7714fc1` (misma raíz: clasificación additive/subtractive por signed_area).                          |
+| R4-002 | resilience  | `cam-ops/src/isolation.rs` (keep_pours)     | Corregido en `7714fc1`: la omisión total de paths interiores por keep_pours ya no se reporta como collapse falso. |
+| R1-001 | risk        | (no verificado)                             | Causalidad desconocida; pendiente de diagnóstico manual.                                                          |
 
 Hallazgos adicionales del writer (deuda, ver `094`):
+
 - Hole-collapse recovery es código muerto: `is_hole_collapse_error` y `is_clearance_exhausted`
   matchean strings que ningún error de cam-geom emite; todo el fix 066/S6 nunca corre.
 - El predicado de pours es tan amplio que `keep_pours` descarta todo path interior en cualquier
@@ -121,6 +122,7 @@ Hallazgos adicionales del writer (deuda, ver `094`):
 ### Batch 12 — `8ff8d50..a949ebe` (NCC + export writers, TRES generaciones)
 
 Review en tres generaciones con dos rondas de corrección (200 líneas cada una, al tope):
+
 - Gen 1 `review-7807a3bb21e8599d`: 6 hallazgos corregidos en el worktree de revisión —
   band area real en `outline_region_to_board` (R1-001/R3-001/R4-001), Lines con spans abiertos
   bypassing Region::normalize (R3-002/R4-002), seed inseteado por el radio (R3-003).
@@ -135,12 +137,12 @@ Pendiente registrado: diagnosticar R3-001 del gen 3 (el diff corregido está en
 
 ### Batch 13 — `a949ebe..bb90f0c` (review-d995330573914023)
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-002 | reliability | `cam-cli/src/commands/cutout.rs:335` | drill_moves cuenta detours de exc-areas como drill (cutout_moves pre-routing). |
-| R3-003 | reliability | `cam-post/src/emit.rs:377` | Toolchange por estilo escribe fuera del path de numeración: líneas sin número con LINE_NUMBER_*. |
-| R3-004 | reliability | `cam-ops/src/exc_travel.rs:71-80` | Detours de Retract emitidos como Move::Retract con X/Y; posts RETRACT_MOVE solo emiten Z → el XY del detour no se ejecuta. |
-| R4-003 | resilience | `cam-cli/src/commands/cutout.rs:335` | Duplicado de R3-002. |
+| ID     | Lente       | Ubicación                            | Resumen                                                                                                                    |
+| ------ | ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| R3-002 | reliability | `cam-cli/src/commands/cutout.rs:335` | drill_moves cuenta detours de exc-areas como drill (cutout_moves pre-routing).                                             |
+| R3-003 | reliability | `cam-post/src/emit.rs:377`           | Toolchange por estilo escribe fuera del path de numeración: líneas sin número con LINE_NUMBER_*.                           |
+| R3-004 | reliability | `cam-ops/src/exc_travel.rs:71-80`    | Detours de Retract emitidos como Move::Retract con X/Y; posts RETRACT_MOVE solo emiten Z → el XY del detour no se ejecuta. |
+| R4-003 | resilience  | `cam-cli/src/commands/cutout.rs:335` | Duplicado de R3-002.                                                                                                       |
 
 Refutados: R3-001, R4-001 (MarlinM6/RepetierPause spindle), R4-002 (muestreo 64).
 
@@ -150,8 +152,8 @@ Corregido en el worktree de revisión (2 rondas): inspector overlay al colapsar 
 sweep sampling acotado (R3-001/R4-SWEEP-UNBOUNDED gen 1; R4-SWEEP-STEP gen 2). Pendiente de
 replicar en `feat/tauri`: sweep step clamp + inspector early-return.
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
+| ID     | Lente       | Ubicación                      | Resumen                                                                                                                                                                                        |
+| ------ | ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | R3-002 | reliability | `cam-sim/src/sweep.rs:150-155` | Con el cap de 4096 pasos, intervalos efectivos > 0.5 mm en viajes largos con radio chico pueden saltarse regiones estrechas de colisión; el test nuevo solo prueba tiempo/crash, no precisión. |
 
 ### Batch 16a/16b — `c4ce3a1..a1748bb` (E6.1–E6.5, approved con 2 correcciones)
@@ -162,10 +164,10 @@ chicos; fan para cualquier contorno de muchos vértices).
 
 Ambas correcciones replicadas en `feat/tauri` (`f15bf60`, store fix).
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
+| ID            | Lente                  | Ubicación                                  | Resumen                                                                                                 |
+| ------------- | ---------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | R3-002/R4-001 | reliability/resilience | `cam-ui/src/tool_library/shell.rs:328-335` | open_tool_library mantiene snapshot stale si SQLite falla; el modal no distingue tools vivas de viejas. |
-| R3-003 | reliability | `cam-ui/src/shell/input.rs:313` | Ctrl+Shift+S también ejecuta Save (pisa sin dialogo); falta test. |
+| R3-003        | reliability            | `cam-ui/src/shell/input.rs:313`            | Ctrl+Shift+S también ejecuta Save (pisa sin dialogo); falta test.                                       |
 
 ### Batch 15a — `7bced6e` (visual review + goldens/design)
 
@@ -181,6 +183,7 @@ faltante sin warning → lineage escalado/terminal. El gap se cerró al replicar
 (`3ea400a`, warning por entidad faltante/no-contour en `collect_contours`).
 
 Follow-ups (del validator y reviewers, ver 094):
+
 - R3-004: max_depth del gouge considera toolpaths dropeados (enmascara sobre-profundidad).
 - R3-005: push_segment hardcodea feed/plunge/spindle; el preview ignora las rates guardadas.
 - R3-002: patrón continue-silencioso también en NCC y missing-entity IDs de collect_contours
@@ -192,12 +195,12 @@ Spikes Tauri/GPUI + plan migración + script ui-review-sway. R3-001 (unknown cau
 review; R3-001/R3-002 corroborados en `cam-ui` palette/panels (egui::Id::new deprecado → Id::unique,
 fix ya presente en feat/tauri vía egui moderno). Advisories a deuda:
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-004 | reliability | `scripts/ui-review-sway.sh:237` | set -e aborta en el diff Python; el rc=$? nunca se alcanza y el loop de escenas para en la primera falla. |
-| R3-005 | reliability | `scripts/ui-review-sway.sh:206` | Threshold 16 + diff_px==0 tratado como match exacto: regresión visual uniforme se reporta OK contradiciendo el comentario. |
-| R4-001 | resilience | `scripts/ui-review-sway.sh:127-238` | Ídem R3-004: una escena fallida esconde las demás y aborta el run. |
-| R4-002 | resilience | `scripts/ui-review-sway.sh:109-116` | Wait loop sin flag de éxito: un fallo de build/launch se reporta como falla visual tras el wait completo. |
+| ID     | Lente       | Ubicación                           | Resumen                                                                                                                    |
+| ------ | ----------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| R3-004 | reliability | `scripts/ui-review-sway.sh:237`     | set -e aborta en el diff Python; el rc=$? nunca se alcanza y el loop de escenas para en la primera falla.                  |
+| R3-005 | reliability | `scripts/ui-review-sway.sh:206`     | Threshold 16 + diff_px==0 tratado como match exacto: regresión visual uniforme se reporta OK contradiciendo el comentario. |
+| R4-001 | resilience  | `scripts/ui-review-sway.sh:127-238` | Ídem R3-004: una escena fallida esconde las demás y aborta el run.                                                         |
+| R4-002 | resilience  | `scripts/ui-review-sway.sh:109-116` | Wait loop sin flag de éxito: un fallo de build/launch se reporta como falla visual tras el wait completo.                  |
 
 ### Batch 20 — `24eaa31..b3f2f9c` (review-1bbeaee3ea6c0406, ESCALADO)
 
@@ -206,10 +209,10 @@ El refuter confirmó R4-002: el nuevo `scripts/check.sh` eliminó fmt/clippy/wor
 el batch 23** (`83758ce..0714240`, gates alineados a workspace: fmt/clippy/test vuelven al gate).
 Advisories:
 
-| ID | Lente | Ubicación | Resumen |
-| -- | ----- | --------- | ------- |
-| R3-004 | reliability | `vitest.config.ts:13` | passWithNoTests: true permite gate verde con 0 tests frontend. |
-| R4-003 | resilience | `scripts/check.sh:39` | Vitest reintenta cualquier falla y descarta el stderr del primer run: flaky pasa sin rastro. |
+| ID     | Lente       | Ubicación             | Resumen                                                                                      |
+| ------ | ----------- | --------------------- | -------------------------------------------------------------------------------------------- |
+| R3-004 | reliability | `vitest.config.ts:13` | passWithNoTests: true permite gate verde con 0 tests frontend.                               |
+| R4-003 | resilience  | `scripts/check.sh:39` | Vitest reintenta cualquier falla y descarta el stderr del primer run: flaky pasa sin rastro. |
 
 ### Batch 23 — move de crates (`59dcf88..0714240`)
 
@@ -230,9 +233,9 @@ cerrada por commit; `f29731f` review-c749e0c862e54104; `d6a88f6` passive). Sin n
 - Approved: batches 1, 2, 4, 5, 6a, 6b, 7, 11a, 11b (con corrección), 13, 14 (con 2 correcciones),
   16a (con corrección), 16b (con corrección).
 - Escalados con correcciones aplicadas y replicadas en feat/tauri: 12 (12 hallazgos), 17 (3 + gap
-del validador cerrado), 18 (advisories).
+  del validador cerrado), 18 (advisories).
 - Escalado sin corrección nativa: 11c (cerrado por fix manual replicado), 20 (gap de gate cerrado
-por batch 23).
+  por batch 23).
 - Not-due: 3, 8, 9, 10, 21, 22.
 - Sin review por decisión del usuario: 15a (assets), 19 (scaffolding).
 - Ya revisados al momento: 23 (move) y 24-27 (entrega por commit).

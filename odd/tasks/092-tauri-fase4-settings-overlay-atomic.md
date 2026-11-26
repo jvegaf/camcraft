@@ -22,12 +22,12 @@ Mover settings dentro de la app como overlay, ajustar select/combo al DS, y crea
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Settings como overlay dentro de la app (no ruta propia) | S1 | inline | `396f3c6` |
-| T2 | Ajustar estilos de select/combo a referencia DS | S2 | inline | `396f3c6` |
-| T3 | Crear skill de Atomic Design para agentes | S3 | inline | `396f3c6` |
-| T4 | Verificar, RDD, ODD/Engram, commit y push | S1, S2, S3 | inline | `396f3c6` |
+| ID  | Tarea                                                   | Specs      | Ruta   | Commit    |
+| --- | ------------------------------------------------------- | ---------- | ------ | --------- |
+| T1  | Settings como overlay dentro de la app (no ruta propia) | S1         | inline | `396f3c6` |
+| T2  | Ajustar estilos de select/combo a referencia DS         | S2         | inline | `396f3c6` |
+| T3  | Crear skill de Atomic Design para agentes               | S3         | inline | `396f3c6` |
+| T4  | Verificar, RDD, ODD/Engram, commit y push               | S1, S2, S3 | inline | `396f3c6` |
 
 ## Log
 

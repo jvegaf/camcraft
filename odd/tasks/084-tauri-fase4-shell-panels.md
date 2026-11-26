@@ -19,11 +19,11 @@ Migrar paneles del shell a estado real compartido del workbench.
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Store compartido de workbench y wiring de selección | S1 | inline | `fae81d8` |
-| T2 | Inspector/StatusBar/ViewportHud con estado real | S1 | inline | `fae81d8` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `fae81d8` |
+| ID  | Tarea                                               | Specs | Ruta   | Commit    |
+| --- | --------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Store compartido de workbench y wiring de selección | S1    | inline | `fae81d8` |
+| T2  | Inspector/StatusBar/ViewportHud con estado real     | S1    | inline | `fae81d8` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push           | S1    | inline | `fae81d8` |
 
 ## Log
 

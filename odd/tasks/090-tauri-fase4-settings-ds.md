@@ -15,11 +15,11 @@ Alinear la pantalla de settings al DS `design/camcraft-workbench-v2/04-settings.
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Aplicar layout DS de settings (dialog/sidebar/footer) | S1 | inline | `45a41fe` |
-| T2 | Conectar settings reales (theme) sin inventar opciones | S1 | inline | `45a41fe` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `45a41fe` |
+| ID  | Tarea                                                  | Specs | Ruta   | Commit    |
+| --- | ------------------------------------------------------ | ----- | ------ | --------- |
+| T1  | Aplicar layout DS de settings (dialog/sidebar/footer)  | S1    | inline | `45a41fe` |
+| T2  | Conectar settings reales (theme) sin inventar opciones | S1    | inline | `45a41fe` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push              | S1    | inline | `45a41fe` |
 
 ## Log
 

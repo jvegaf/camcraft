@@ -16,11 +16,11 @@ Mostrar start screen con TopBar y StatusBar visibles en la ventana principal.
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Envolver start screen con TopBar/StatusBar en ruta raíz | S1, S2 | inline | `c02988d` |
-| T2 | Ajustar StartScreen para embebido en shell | S1, S2 | inline | `c02988d` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1, S2 | inline | `c02988d` |
+| ID  | Tarea                                                   | Specs  | Ruta   | Commit    |
+| --- | ------------------------------------------------------- | ------ | ------ | --------- |
+| T1  | Envolver start screen con TopBar/StatusBar en ruta raíz | S1, S2 | inline | `c02988d` |
+| T2  | Ajustar StartScreen para embebido en shell              | S1, S2 | inline | `c02988d` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push               | S1, S2 | inline | `c02988d` |
 
 ## Log
 

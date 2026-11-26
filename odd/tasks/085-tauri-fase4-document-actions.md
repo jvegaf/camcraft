@@ -19,11 +19,11 @@ Cablear acciones y estado de documento real en TopBar, ToolRail y Browser del wo
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Extender store con document status y refresh | S1 | inline | `e03a2da` |
-| T2 | Cablear TopBar/ToolRail/Browser a acciones Tauri reales | S1 | inline | `e03a2da` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `e03a2da` |
+| ID  | Tarea                                                   | Specs | Ruta   | Commit    |
+| --- | ------------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Extender store con document status y refresh            | S1    | inline | `e03a2da` |
+| T2  | Cablear TopBar/ToolRail/Browser a acciones Tauri reales | S1    | inline | `e03a2da` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push               | S1    | inline | `e03a2da` |
 
 ## Log
 

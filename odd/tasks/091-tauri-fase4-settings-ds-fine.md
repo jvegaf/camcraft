@@ -14,10 +14,10 @@ Ajustar detalles visuales/componentes de settings para mayor paridad con `04-set
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Ajustar titlebar/search/sidebar/footer a DS | S1 | inline | `a96532b` |
-| T2 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `a96532b` |
+| ID  | Tarea                                       | Specs | Ruta   | Commit    |
+| --- | ------------------------------------------- | ----- | ------ | --------- |
+| T1  | Ajustar titlebar/search/sidebar/footer a DS | S1    | inline | `a96532b` |
+| T2  | Verificar, RDD, ODD/Engram, commit y push   | S1    | inline | `a96532b` |
 
 ## Log
 

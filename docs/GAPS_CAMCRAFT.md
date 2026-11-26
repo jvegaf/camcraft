@@ -1,6 +1,7 @@
 ---
-page-id: 32
----
+
+## page-id: 32
+
 # Análisis de gaps: campilot → camcraft
 
 **Propósito.** Documentar la distancia real entre el código de campilot en este worktree y lo que

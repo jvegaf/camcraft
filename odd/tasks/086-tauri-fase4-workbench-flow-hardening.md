@@ -18,11 +18,11 @@ Endurecer flujo end-to-end de documento en workbench: estado dirty/path/error co
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Estado de status con severidad y dirty/path visible | S1 | inline | `b9036f0` |
-| T2 | Refresh consistente tras open/save/save-as/new en workbench | S1 | inline | `b9036f0` |
-| T3 | Verificar, RDD, ODD/Engram, commit y push | S1 | inline | `b9036f0` |
+| ID  | Tarea                                                       | Specs | Ruta   | Commit    |
+| --- | ----------------------------------------------------------- | ----- | ------ | --------- |
+| T1  | Estado de status con severidad y dirty/path visible         | S1    | inline | `b9036f0` |
+| T2  | Refresh consistente tras open/save/save-as/new en workbench | S1    | inline | `b9036f0` |
+| T3  | Verificar, RDD, ODD/Engram, commit y push                   | S1    | inline | `b9036f0` |
 
 ## Log
 
