@@ -324,6 +324,10 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
       stream.segments.push(segment);
     }
   }
+  // Everything from here on is the cutout: the two loops split the stream by position, and routing
+  // rewrites each segment's moves in place without adding, dropping or reordering one, so the index
+  // still marks the boundary after it runs.
+  let drill_segments = stream.segments.len();
   for run in &runs {
     if !run.mouse_bite_moves.is_empty() {
       stream.segments.push(mouse_bite_segment(run, &flags));
@@ -337,11 +341,18 @@ pub fn program(rest: &[String]) -> Result<(), Failure> {
   )
   .map_err(|e| Failure::input(format!("{e}")))?;
 
-  let cutout_moves: usize = runs
-    .iter()
-    .map(|run| run.moves.len() + run.mouse_bite_moves.len())
-    .sum();
-  let drill_moves = stream.move_count().saturating_sub(cutout_moves);
+  // Counted on the routed stream, because the router inserts its detour moves *inside* the segment
+  // that travels: counting the cutout's moves before routing charged every detour it added to the
+  // drilling half by subtraction, so a board whose cutout stepped around a keep-out reported drilled
+  // moves no drill made (R3-002, R4-003).
+  let moves_in = |segments: &[Segment]| -> usize {
+    segments
+      .iter()
+      .map(|segment| segment.moves.len())
+      .sum()
+  };
+  let drill_moves = moves_in(&stream.segments[..drill_segments]);
+  let cutout_moves = moves_in(&stream.segments[drill_segments..]);
   let bite_hits: usize = runs
     .iter()
     .map(|run| {

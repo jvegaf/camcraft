@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{open, option_value, Failure};
 
@@ -68,20 +68,9 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
         )));
       }
       // Whole or not at all: a truncated `.dxf` beside a live document is worse than a refusal
-      // (R4-ATOMIC-OUT). The temporary sits beside the destination so the rename stays on one filesystem.
-      let temporary = path.with_extension(format!(
-        "{}.tmp",
-        path
-          .extension()
-          .map(|extension| extension.to_string_lossy().into_owned())
-          .unwrap_or_default()
-      ));
-      std::fs::write(&temporary, &bytes)
-        .map_err(|error| Failure::input(format!("{}: {error}", temporary.display())))?;
-      std::fs::rename(&temporary, &path).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
-        Failure::input(format!("{}: {error}", path.display()))
-      })?;
+      // (R4-ATOMIC-OUT), and the temporary's name is unpredictable so a symlink left at the name a
+      // derived one would have cannot redirect the write (R1-001).
+      write_atomically(&path, &bytes)?;
       eprintln!("wrote {} ({} bytes)", path.display(), bytes.len());
     }
     None => {
@@ -95,4 +84,55 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
     }
   }
   Ok(())
+}
+
+/// Write `bytes` to `path` whole or not at all.
+///
+/// The bytes go to a temporary in the destination's own directory, so the rename that puts them in
+/// place stays on one filesystem and is atomic: a destination that never receives a partial file is
+/// what keeps a truncated `.dxf` from reading as a drawing (R4-ATOMIC-OUT). `drill --out` reuses this,
+/// because the same argument holds for a `.nc` that a controller would run short.
+///
+/// Its name carries the process id, a counter and the clock rather than being derived from the
+/// destination. A derived name is a write primitive aimed wherever a pre-created symlink points —
+/// `fs::write` follows one, so the run reports success over somebody else's file (R1-001) — and
+/// `create_new` refuses an existing entry outright instead of following it, which closes the same
+/// door for a name that is guessed rather than derived.
+pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
+  let temporary = unique_temporary_beside(path);
+  let mut file = std::fs::OpenOptions::new()
+    .write(true)
+    .create_new(true)
+    .open(&temporary)
+    .map_err(|error| Failure::input(format!("{}: {error}", temporary.display())))?;
+  let written = file.write_all(bytes).and_then(|()| file.flush());
+  // Closed before the rename, so the file the rename publishes is the file the bytes were flushed to.
+  drop(file);
+  if let Err(error) = written {
+    let _ = std::fs::remove_file(&temporary);
+    return Err(Failure::input(format!("{}: {error}", temporary.display())));
+  }
+  std::fs::rename(&temporary, path).map_err(|error| {
+    let _ = std::fs::remove_file(&temporary);
+    Failure::input(format!("{}: {error}", path.display()))
+  })
+}
+
+/// A temporary path in `destination`'s own directory whose name nothing can predict.
+fn unique_temporary_beside(destination: &Path) -> PathBuf {
+  use std::sync::atomic::{AtomicU64, Ordering};
+  static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+  let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+  let nanos = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|elapsed| elapsed.subsec_nanos())
+    .unwrap_or(0);
+  let mut name = std::ffi::OsString::from(".");
+  name.push(
+    destination
+      .file_name()
+      .unwrap_or_else(|| std::ffi::OsStr::new("out")),
+  );
+  name.push(format!(".{}-{sequence}-{nanos}.tmp", std::process::id()));
+  destination.with_file_name(name)
 }

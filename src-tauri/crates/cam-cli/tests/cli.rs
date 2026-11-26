@@ -321,6 +321,44 @@ fn export_writes_the_document_back_out_in_both_formats() {
   );
 }
 
+/// A symlink somebody left at the temporary path must not become the file the export writes
+/// through (R1-001).
+///
+/// `std::fs::write` follows a symlink, so a temporary name derived predictably from `--out` is a
+/// write primitive aimed wherever that link points: the run reports success and the file it actually
+/// clobbered is somebody else's. The temporary now carries a name nothing can predict and is opened
+/// with `create_new`, which refuses an existing entry instead of following it.
+#[cfg(unix)]
+#[test]
+fn export_does_not_write_through_a_symlink_left_at_its_temporary_path() {
+  let directory = scratch("export-symlink");
+  let document = write_document(&directory, rectangle_contour(50.0, 25.0), None);
+  let out = directory.join("part.dxf");
+  let victim = directory.join("victim.txt");
+  std::fs::write(&victim, "not a drawing\n").expect("the victim writes");
+  // The name the export would derive from `--out`: `<stem>.<extension>.tmp`.
+  let predictable = directory.join("part.dxf.tmp");
+  std::os::unix::fs::symlink(&victim, &predictable).expect("the symlink is created");
+
+  let outcome = run(&[
+    "export",
+    document.to_str().expect("utf8"),
+    "--format",
+    "dxf",
+    "--out",
+    out.to_str().expect("utf8"),
+  ]);
+  assert_eq!(outcome.code, 0, "{}", outcome.stderr);
+  let written = std::fs::read_to_string(&out).expect("the drawing was written");
+  assert!(written.contains("LWPOLYLINE"), "{}", written);
+  assert_eq!(
+    std::fs::read_to_string(&victim).expect("the linked file survives"),
+    "not a drawing\n",
+    "the export must not write through a symlink left at its temporary path"
+  );
+  std::fs::remove_dir_all(&directory).ok();
+}
+
 #[test]
 fn tools_add_then_list_round_trips() {
   let directory = scratch("tools");

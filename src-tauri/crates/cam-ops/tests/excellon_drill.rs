@@ -37,7 +37,7 @@ impl ToolResolver for DiameterResolver {
 
 fn corpus_path(slug: &str) -> std::path::PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR"))
-    .join("../../fixtures/corpus")
+    .join("../../../fixtures/corpus")
     .join(slug)
     .join("drill.drl")
 }
@@ -157,15 +157,9 @@ impl ToolResolver for AmountResolver {
   }
 }
 
-/// One slot drilled in several pecks must never rapid while it changes Z.
-///
-/// A `RetractMode::Amount` retract stops above the cut floor but still below the surface, so a
-/// following rapid that also climbed to safe Z would move in XY and Z at once and drag the cutter
-/// out of the material diagonally. The machine's own rule is simpler: a rapid is a move at one
-/// height, and every change of height is a retract or a plunge.
-#[test]
-fn a_pecked_slot_never_rapids_while_it_changes_height() {
-  let excellon = cam_excellon::Excellon {
+/// One slot on a one-tool board, which is what both slot rules below need to have in hand.
+fn one_slot() -> cam_excellon::Excellon {
+  cam_excellon::Excellon {
     units: cam_excellon::Units::Metric,
     tools: vec![Tool {
       number: 1,
@@ -176,7 +170,52 @@ fn a_pecked_slot_never_rapids_while_it_changes_height() {
       from: cam_geom::Point2::new(10.0, 10.0),
       to: cam_geom::Point2::new(30.0, 10.0),
     }],
-  };
+  }
+}
+
+/// A retract amount with no number behind it, or one that lifts below the depth just cut, is refused
+/// at authoring (R3-001).
+///
+/// A slot pecked more than once retracts to `-depth + amount`, so `NaN` puts a Z no controller can
+/// read into the program and a negative amount retracts *downwards*, below the floor the peck just
+/// reached: a "retract" that plunges deeper. Neither is clamped or defaulted — a silently corrected
+/// amount changes how far the tool leaves the material between pecks, which is the number the caller
+/// asked for. The refusal is named, so the caller learns which parameter is not a real lift.
+#[test]
+fn a_pecked_slot_refuses_a_retract_amount_that_is_not_a_real_lift() {
+  for amount in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.5] {
+    let resolver = AmountResolver {
+      peck_depth: 1.0,
+      cut_depth: 2.0,
+      amount,
+    };
+    let error = plan_excellon_drill(
+      &one_slot(),
+      &resolver,
+      &Job::default_sheet(),
+      SlotMode::Trajectory,
+    )
+    .unwrap_err();
+    assert!(
+      matches!(error, ToolpathError::InvalidRetract { .. }),
+      "a retract of {amount} mm is not a lift: {error:?}"
+    );
+    assert!(
+      error.to_string().contains("retract amount"),
+      "the refusal names the parameter: {error}"
+    );
+  }
+}
+
+/// One slot drilled in several pecks must never rapid while it changes Z.
+///
+/// A `RetractMode::Amount` retract stops above the cut floor but still below the surface, so a
+/// following rapid that also climbed to safe Z would move in XY and Z at once and drag the cutter
+/// out of the material diagonally. The machine's own rule is simpler: a rapid is a move at one
+/// height, and every change of height is a retract or a plunge.
+#[test]
+fn a_pecked_slot_never_rapids_while_it_changes_height() {
+  let excellon = one_slot();
   let resolver = AmountResolver {
     peck_depth: 1.0,
     cut_depth: 2.0,

@@ -76,6 +76,19 @@ pub enum ToolpathError {
     /// The offending peck depth in millimetres.
     peck_depth: f64,
   },
+  /// A retract amount that is not a real lift between pecks.
+  ///
+  /// A pecked pass retracts to `-depth + amount`, so a non-finite amount puts a Z no controller can
+  /// read into the program, and a negative one retracts *downwards* — below the floor the peck just
+  /// reached, which is a "retract" that plunges deeper. Neither is clamped or defaulted: the amount
+  /// is how far the caller asked the tool to leave the material, and silently correcting it changes
+  /// what the program does. Refused by name so the caller learns which parameter is not a lift
+  /// (R3-001).
+  #[error("retract amount {amount} mm must be finite and not negative")]
+  InvalidRetract {
+    /// The offending retract amount in millimetres.
+    amount: f64,
+  },
   /// A hole is not a circle, so it has no centre to drill or to orbit.
   #[error("entity {entity:?} is not a circle, so it has no centre to work from")]
   NotACircle {

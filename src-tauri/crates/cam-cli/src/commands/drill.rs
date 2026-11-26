@@ -9,6 +9,7 @@ use cam_ops::{DrillParams, RetractMode, ToolSpec, ToolpathError};
 use cam_post::{emit, parse_post, ProgramMeta};
 use cam_units::Length;
 
+use crate::commands::export::write_atomically;
 use crate::{open, option_value, write_report, Failure};
 
 struct DiameterResolver {
@@ -166,8 +167,10 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
 
   match out {
     Some(path) => {
-      std::fs::write(&path, emitted.text.as_bytes())
-        .map_err(|error| Failure::input(format!("{}: {error}", path.display())))?;
+      // Whole or not at all: a truncated `.nc` runs short, and it runs short with no footer, no `M5`
+      // and no `M30` — the one failure a controller cannot tell from a finished program
+      // (R1-drill-non-atomic-write, R3-002, R4-drill-non-atomic-output-write).
+      write_atomically(&path, emitted.text.as_bytes())?;
       eprintln!("wrote {} ({} bytes)", path.display(), emitted.text.len());
     }
     None => {
@@ -183,9 +186,18 @@ pub fn run(rest: &[String]) -> Result<(), Failure> {
 }
 
 fn parse_number(value: &str, flag: &str) -> Result<f64, Failure> {
-  value
+  let number = value
     .parse::<f64>()
-    .map_err(|_| Failure::input(format!("{flag} expects a number, got {value:?}")))
+    .map_err(|_| Failure::input(format!("{flag} expects a number, got {value:?}")))?;
+  // `NaN` and `±inf` parse, and every depth guard downstream compares numbers: a comparison against
+  // `NaN` is false, so the guard lets it through and the program carries `ZNaN` into the material.
+  // The value is refused here, where the flag that carried it is still known by name (R3-003).
+  if !number.is_finite() {
+    return Err(Failure::input(format!(
+      "{flag} expects a finite number, got {value:?}"
+    )));
+  }
+  Ok(number)
 }
 
 fn build_stream(plan: &cam_ops::excellon_drill::ExcellonDrillPlan, _job: &Job) -> MoveStream {

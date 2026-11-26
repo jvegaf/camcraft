@@ -414,9 +414,167 @@ fn program_drills_then_cuts_the_board_out() {
   assert!(report.contains("1 cutout toolpath(s)"), "{report}");
 }
 
+/// One board, one hole: enough to have a drill pass and a cutout pass, and few enough that the
+/// travel onto the cutout can be aimed precisely from the test.
+fn write_single_hole_drill(directory: &Path) -> PathBuf {
+  let path = directory.join("one-hole.drl");
+  let text = "\
+M48
+FMAT,2
+METRIC
+T1C0.800
+%
+G90
+T1
+X5.0Y35.0
+";
+  std::fs::write(&path, text).expect("drill file writes");
+  path
+}
+
+/// The same 60 x 40 board, walked from its far corner, so the cutout's entry point is `(61, -1)`.
+///
+/// The travel onto the cutout then starts away from the machine origin, which is what lets a test put
+/// an exclusion area on that travel alone: the drill's own rapid runs from the origin to the hole, and
+/// a cutout entered at `(-1, -1)` would make the two lines a sliver with no room between them.
+fn document_entered_from_the_far_corner() -> Document {
+  let mut document = document(Vec::new());
+  let contour = Contour::from_points(
+    &[
+      Point2::new(60.0, 0.0),
+      Point2::new(60.0, 40.0),
+      Point2::new(0.0, 40.0),
+      Point2::new(0.0, 0.0),
+    ],
+    true,
+  )
+  .expect("the same rectangle, walked from its far corner");
+  document.layers[0].entities[0].kind = EntityKind::Contour { contour };
+  document
+}
+
+/// A square exclusion area at millimetre coordinates, the way a keep-out reaches the document.
+fn exclusion_area(x0: f64, y0: f64, x1: f64, y1: f64) -> cam_geom::region::Region {
+  cam_geom::region::Region::new(vec![
+    Contour::from_points(
+      &[
+        Point2::new(x0, y0),
+        Point2::new(x1, y0),
+        Point2::new(x1, y1),
+        Point2::new(x0, y1),
+      ],
+      true,
+    )
+    .expect("a closed square"),
+  ])
+  .expect("a region")
+}
+
+/// The two halves of `program`'s move report: `(drill moves, cutout moves)`.
+fn move_split(report: &str) -> (usize, usize) {
+  let line = report
+    .lines()
+    .find(|line| line.contains("drill move(s)"))
+    .unwrap_or_else(|| panic!("the report splits its moves: {report}"));
+  let numbers: Vec<usize> = line
+    .split(|character: char| !character.is_ascii_digit())
+    .filter(|word| !word.is_empty())
+    .map(|word| word.parse().expect("a count"))
+    .collect();
+  assert_eq!(numbers.len(), 2, "two counts on one line: {line}");
+  (numbers[0], numbers[1])
+}
+
+/// The program's total move count, from the line above the split.
+fn total_moves(report: &str) -> usize {
+  let line = report
+    .lines()
+    .find(|line| line.contains("cutout toolpath(s)"))
+    .unwrap_or_else(|| panic!("the report totals its moves: {report}"));
+  let numbers: Vec<usize> = line
+    .split(|character: char| !character.is_ascii_digit())
+    .filter(|word| !word.is_empty())
+    .map(|word| word.parse().expect("a count"))
+    .collect();
+  *numbers.last().expect("a total")
+}
+
+/// An exclusion area the router has to detour around is a cutout move, not a drilled one
+/// (R3-002, R4-003).
+///
+/// The split used to be `stream.move_count() - cutout_moves`, with `cutout_moves` counted *before*
+/// the stream was routed: every detour the router inserted anywhere fell into the drilling half by
+/// subtraction, so a board whose cutout travel steps around a keep-out reported drilled moves no
+/// drill ever made. Both halves are read off the routed stream now.
 #[test]
-fn program_requires_a_drill_file() {
-  let directory = scratch("no-drill");
+fn a_program_does_not_report_a_cutout_detour_as_a_drilled_move() {
+  // Two runs of the same board and the same hole; only one holds an exclusion area. Its square sits
+  // on the cutout's travel from the hole to its entry point and clear of the drill's own travel
+  // from the machine origin to that hole.
+  let plain = scratch("split-plain");
+  let detoured = scratch("split-detoured");
+  let plain_document = write_document(&plain, &document_entered_from_the_far_corner());
+  let mut with_area = document_entered_from_the_far_corner();
+  with_area
+    .exc_areas
+    .push(exclusion_area(29.5, 18.4, 30.5, 19.4));
+  let detoured_document = write_document(&detoured, &with_area);
+
+  let mut reports = Vec::new();
+  for (directory, document_path) in [(&plain, &plain_document), (&detoured, &detoured_document)] {
+    let drill = write_single_hole_drill(directory);
+    let post = directory.join("post.pp");
+    std::fs::write(&post, POST).expect("post writes");
+    let output = run(&[
+      "program",
+      document_path.to_string_lossy().as_ref(),
+      "--drill",
+      drill.to_string_lossy().as_ref(),
+      "--post",
+      post.to_string_lossy().as_ref(),
+      "--cut-depth",
+      "1.6",
+      "--diameter",
+      "2.0",
+      "--tool",
+      "3",
+    ]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    reports.push(stderr(&output));
+  }
+  let (plain_drill, plain_cutout) = move_split(&reports[0]);
+  let (detoured_drill, detoured_cutout) = move_split(&reports[1]);
+
+  // The detour happened: the routed program is longer, and the extra moves are the cutout's.
+  assert!(
+    detoured_cutout > plain_cutout,
+    "the exclusion area put a detour in the cutout travel: {:?} -> {:?}",
+    (plain_cutout, plain_drill),
+    (detoured_cutout, detoured_drill)
+  );
+  assert_eq!(
+    detoured_drill, plain_drill,
+    "no drill move was added by a cutout detour: {:?}",
+    reports[1]
+  );
+
+  // And the two halves still add up to the total the line above reports.
+  for (report, (drill, cutout)) in reports.iter().zip([
+    (plain_drill, plain_cutout),
+    (detoured_drill, detoured_cutout),
+  ]) {
+    assert_eq!(
+      drill + cutout,
+      total_moves(report),
+      "the split accounts for every move: {report}"
+    );
+  }
+  std::fs::remove_dir_all(&plain).ok();
+  std::fs::remove_dir_all(&detoured).ok();
+}
+
+#[test]
+fn program_requires_a_drill_file() {  let directory = scratch("no-drill");
   let document = write_document(&directory, &document(Vec::new()));
   let post = directory.join("post.pp");
   std::fs::write(&post, POST).expect("post writes");

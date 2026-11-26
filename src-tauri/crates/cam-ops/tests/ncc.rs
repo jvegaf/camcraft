@@ -128,7 +128,7 @@ fn envelope_covers_non_copper_area_on_corpus_layers() {
   // E4.1 criterion: cobertura del área de no-cobre dentro de tolerancia en el corpus.
   // Bounded/fast check on real corpus board outlines: the envelope covers exactly the non-copper
   // area inside the boundary (area(boundary) - area(united_copper)), within tolerance.
-  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
   let tol = TolerancePolicy::uniform(1.0e-6);
   let boards = ["kicad-2l-simple", "substitute-eagle", "substitute-altium"];
   let mut checked = 0usize;
@@ -220,7 +220,7 @@ fn envelope_covers_real_corpus_layer_geometry() {
   // E4.1 criterion: verify envelope coverage on real parsed corpus Gerber geometry.
   // Uses fast-parsing corpus layers (mask/silk/outline) as geometry sources to keep the
   // test deterministic and quick in debug, while still exercising real corpus boundaries.
-  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
   let tol = TolerancePolicy::uniform(1.0e-6);
   let cases = [
     ("kicad-2l-simple", "mask-top.gbr"),
@@ -692,7 +692,7 @@ fn measure_ncc_large_plate_benchmark() {
 fn measure_ncc_large_plate_kicad_large_pours() {
   use std::path::PathBuf;
   use std::time::Instant;
-  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
   let top =
     std::fs::read_to_string(root.join("fixtures/corpus/kicad-large-pours/top.gbr")).expect("top");
   let outline = std::fs::read_to_string(root.join("fixtures/corpus/kicad-large-pours/outline.gbr"))

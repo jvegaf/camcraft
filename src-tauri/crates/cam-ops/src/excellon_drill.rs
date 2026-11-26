@@ -251,6 +251,16 @@ fn route_slots(
   if peck < 0.0 {
     return Err(ToolpathError::InvalidPeckDepth { peck_depth: peck });
   }
+  // The intermediate retract of a pecked slot is `-depth + amount`, so an amount that is not a real
+  // lift either leaves a Z the controller cannot read (`NaN`, an infinity) or retracts below the floor
+  // the peck just reached (negative). Checked here, where the amount is still one named parameter,
+  // rather than downstream where it is only a Z (R3-001).
+  if let RetractMode::Amount { amount } = params.retract {
+    let amount = amount.mm();
+    if !amount.is_finite() || amount < 0.0 {
+      return Err(ToolpathError::InvalidRetract { amount });
+    }
+  }
   let pecks = if peck == 0.0 {
     vec![params.cut_depth.mm()]
   } else {
