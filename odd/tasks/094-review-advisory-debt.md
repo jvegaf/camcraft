@@ -19,9 +19,9 @@ refutados. Se cierra al final de la migración con una pasada de corrección ded
 
 ## Tasks
 
-| ID  | Tarea                                                  | Specs | Ruta   | Commit |
-| --- | ------------------------------------------------------ | ----- | ------ | ------ |
-| T1  | Crear la lista y sembrar los advisories de batches 1-7 | S1,S2 | inline | (este) |
+| ID  | Tarea                                                  | Specs | Ruta   | Commit                 |
+| --- | ------------------------------------------------------ | ----- | ------ | ---------------------- |
+| T1  | Crear la lista y sembrar los advisories de batches 1-7 | S1,S2 | inline | (este)                 |
 | T2  | Corregir cada advisory pendiente y marcar estado       | S1    | inline | `6 commits 2026-11-26` |
 
 ## Estado: delivered
