@@ -1,15 +1,28 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { applyTheme, readTheme, toggleTheme } from './theme';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  applyTheme,
+  loadThemePreference,
+  readTheme,
+  saveThemePreference,
+  toggleTheme
+} from './theme';
 
-// Shared mechanism contract (095 T3): the theme lives on `document.documentElement[data-theme]`.
-// `SettingsDialog` used to own this function; the TopBar theme action needs the same rule, so the
-// rule moved here and both call it. The three cases below are exactly the ones the dialog handled:
-// an explicit theme is written, anything else ("system") removes the attribute and falls back to the
-// default dark palette of `design/system.md`.
+// Shared mechanism contract (095 T3 + T5 follow-up): the theme lives on
+// `document.documentElement[data-theme]` and the preference is persisted through the settings
+// commands `SettingsDialog` already used (`get_settings` / `update_settings`). The dialog and the
+// TopBar theme action both go through this module, so the two of them can never disagree about
+// which theme was stored; before the persistence moved here the TopBar only flipped the attribute
+// and opening Settings silently reverted the visible theme to the stored one.
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+
 const reset = () => document.documentElement.removeAttribute('data-theme');
 
 describe('shared theme mechanism', () => {
-  afterEach(reset);
+  afterEach(() => {
+    reset();
+    invokeMock.mockReset();
+  });
 
   it('writes the explicit themes SettingsDialog writes', () => {
     applyTheme('light');
@@ -34,5 +47,25 @@ describe('shared theme mechanism', () => {
 
     expect(toggleTheme()).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('persists the chosen theme through update_settings and applies what was stored', async () => {
+    invokeMock.mockResolvedValue({ theme: 'light' });
+
+    await expect(saveThemePreference('light')).resolves.toBe('light');
+
+    expect(invokeMock).toHaveBeenCalledWith('update_settings', {
+      settings: { theme: 'light' }
+    });
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('applies the preference the backend has stored', async () => {
+    invokeMock.mockResolvedValue({ theme: 'light' });
+
+    await expect(loadThemePreference()).resolves.toBe('light');
+
+    expect(invokeMock).toHaveBeenCalledWith('get_settings');
+    expect(document.documentElement.dataset.theme).toBe('light');
   });
 });

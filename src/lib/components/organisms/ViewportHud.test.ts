@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { setSelection } from '../workbench/workbench.svelte';
 import ViewportHud from './ViewportHud.svelte';
 
-// Organism contract (095 T3, S4). Reference:
+// Organism contract (095 T3, S4 + S6 follow-up). Reference:
 // `design/camcraft-workbench-v2/02-floating-studio.html` `.hud` — the viewport label card and the
 // selection card. "2D Board" and " · Grid 1 mm" are chrome strings (verbatim); the selection count
-// is sample data in the artboard, so it is rendered from the real selection and omitted when there
-// is none.
+// is sample data in the artboard, so it is rendered from the real selection. With nothing selected
+// the selection card must still be there and say so (`design/system.md` «Accesibilidad y
+// comportamiento»: estados vacíos explícitos) instead of disappearing.
 describe('ViewportHud', () => {
   beforeEach(() => setSelection(null));
 
@@ -19,11 +20,13 @@ describe('ViewportHud', () => {
     expect(hud.textContent).toContain(' · Grid 1 mm');
   });
 
-  it('omits the selection count when nothing is selected', () => {
+  it('states Sin selección instead of dropping the selection card', () => {
     render(ViewportHud, {});
 
-    expect(screen.queryByText(/seleccionad/)).toBeNull();
-    expect(screen.queryByText('Sin selección')).toBeNull();
+    const hud = screen.getByLabelText('Estado de viewport');
+    expect(hud.textContent).toContain('Sin selección');
+    // The empty state is text, never a made-up count.
+    expect(hud.textContent).not.toMatch(/triángulo/);
   });
 
   it('renders the count of what is really selected', () => {
@@ -31,5 +34,6 @@ describe('ViewportHud', () => {
     render(ViewportHud, {});
 
     expect(screen.getByText('1 triángulo seleccionado')).toBeTruthy();
+    expect(screen.queryByText('Sin selección')).toBeNull();
   });
 });

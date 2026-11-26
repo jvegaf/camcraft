@@ -1,15 +1,16 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
-import { toggleTheme } from '$lib/ds/theme';
+import { saveThemePreference, toggleTheme } from '$lib/ds/theme';
 import { Icon, IconButton } from '../atoms';
 import { CommandSearch } from '../molecules';
-import { workbenchState } from '../workbench/workbench.svelte';
+import { setStatus, workbenchState } from '../workbench/workbench.svelte';
 
 // Organism (095 T3, S4): the app bar of
 // `design/camcraft-workbench-v2/02-floating-studio.html` `.topbar` — product mark, current project,
 // the command search in the centre and quiet icon actions on the right. It owns no document state:
 // the file actions are still the page's handlers (`WorkbenchShell` / `+page.svelte`), and the theme
-// action uses the same shared mechanism as `SettingsDialog`.
+// action applies *and stores* the theme through the shared mechanism in `src/lib/ds/theme.ts` — the
+// `update_settings` path `SettingsDialog` writes with — so the two surfaces can never disagree.
 interface Props {
   projectName?: string;
   onNew?: () => void;
@@ -49,21 +50,20 @@ const topbar = css({
 const mark = css({
   w: '26px',
   h: '26px',
-  borderRadius: '7px',
+  borderRadius: 'panel',
   display: 'grid',
   placeItems: 'center',
   background: 'raised',
   border: '1px solid',
   borderColor: 'border',
   color: 'sel',
-  fontSize: '12px',
-  fontWeight: '700',
+  textStyle: 'label',
+  fontWeight: 'bold',
   flex: 'none',
   cursor: 'pointer'
 });
 const product = css({
-  fontSize: '15px',
-  fontWeight: '600',
+  textStyle: 'title',
   color: 'textHi',
   letterSpacing: '-0.01em'
 });
@@ -74,9 +74,9 @@ const workspace = css({
   gap: '6px',
   px: '8px',
   py: '5px',
-  borderRadius: '6px',
+  borderRadius: 'panel',
   color: 'text',
-  fontSize: '12px',
+  textStyle: 'small',
   border: '1px solid transparent',
   cursor: 'pointer',
   _hover: { bg: 'raised', borderColor: 'hairline' }
@@ -91,19 +91,24 @@ const layoutPill = css({
   gap: '6px',
   px: '8px',
   py: '4px',
-  borderRadius: '6px',
+  borderRadius: 'panel',
   border: '1px solid',
   borderColor: 'hairline',
   bg: 'raised',
-  fontSize: '11px',
+  textStyle: 'small',
   color: 'textDim',
   '& b': { color: 'text', fontWeight: '500' }
 });
 
-function handleTheme() {
-  // Same shared mechanism `SettingsDialog` writes with; the bar only flips the applied theme, so it
-  // never pretends a preference was stored.
-  toggleTheme();
+async function handleTheme() {
+  // Apply first so the bar answers the click immediately, then store the preference: the dialog
+  // reads it back through `get_settings`, so a theme that is not stored would be reverted there.
+  const next = toggleTheme();
+  try {
+    await saveThemePreference(next);
+  } catch (e) {
+    setStatus(`Error: no se pudo guardar el tema (${String(e)})`, 'error');
+  }
 }
 </script>
 

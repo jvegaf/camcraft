@@ -19,6 +19,14 @@ export const camcraftPreset = definePreset({
           panel: { value: '6px' },
           overlay: { value: '8px' },
           dialog: { value: '10px' }
+        },
+        // `design/system.md` «Floating card» defines exactly one shadow, and it is the one the
+        // panel recipe used to inline: the floating surfaces (docked/floating cards, the viewport
+        // HUD cards) consume the token instead of repeating the literal.
+        shadows: {
+          float: {
+            value: '0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42)'
+          }
         }
       },
       semanticTokens: {
@@ -152,8 +160,7 @@ export const camcraftPreset = definePreset({
             border: '1px solid',
             borderColor: 'border',
             borderRadius: 'panel',
-            boxShadow:
-              '0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42)',
+            boxShadow: 'float',
             color: 'text'
           },
           variants: {

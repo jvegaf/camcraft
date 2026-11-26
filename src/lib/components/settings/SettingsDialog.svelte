@@ -1,12 +1,15 @@
 <script lang="ts">
-import { invoke } from '@tauri-apps/api/core';
 import { css } from 'styled-system/css';
 import {
   closeSettings,
   workbenchState
 } from '$lib/components/workbench/workbench.svelte';
-import { applyTheme } from '$lib/ds/theme';
+import { loadThemePreference, saveThemePreference } from '$lib/ds/theme';
 
+// The theme preference (095 T3 + T5 follow-up) is read and written through `src/lib/ds/theme.ts`,
+// which owns the `get_settings` / `update_settings` pair and the `data-theme` attribute. The TopBar
+// theme action calls the same module, so the dialog and the toggle can never disagree about the
+// stored theme.
 type Settings = { theme: string };
 const DEFAULTS: Settings = { theme: 'dark' };
 
@@ -26,8 +29,7 @@ function formatError(e: unknown): string {
 
 async function loadSettings() {
   try {
-    settings = await invoke<Settings>('get_settings');
-    applyTheme(settings.theme);
+    settings = { theme: await loadThemePreference() };
     loaded = true;
   } catch (e) {
     error = formatError(e);
@@ -38,8 +40,7 @@ async function saveSettings() {
   error = '';
   saved = false;
   try {
-    settings = await invoke<Settings>('update_settings', { settings });
-    applyTheme(settings.theme);
+    settings = { theme: await saveThemePreference(settings.theme) };
     saved = true;
     closeSettings();
   } catch (e) {

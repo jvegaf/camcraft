@@ -99,17 +99,40 @@ describe('OperationInspector', () => {
     expect(within(inspector).getByText('0:42')).toBeTruthy();
   });
 
-  it('shows an em dash instead of a value the selected operation does not expose', () => {
+  // The invariant the panel owes the operator: for an operation whose parameters the app does not
+  // have, every labelled value reads as unknown and no plausible number or unit is rendered.
+  it('renders no fabricated value for the parameters the operation does not expose', () => {
     setOperations([unknown]);
     selectOperation('op-3');
     render(OperationInspector);
 
     const inspector = screen.getByLabelText('Inspector');
-    expect(within(inspector).getByText('Tipo')).toBeTruthy();
-    expect(within(inspector).getByText('Tiempo')).toBeTruthy();
-    // Four field boxes plus the three key/value rows are unknown for this operation.
-    expect(within(inspector).getAllByText('—')).toHaveLength(7);
+
+    const fieldValue = (label: string): string => {
+      const labelEl = within(inspector).getByText(label);
+      const box = labelEl.parentElement as HTMLElement;
+      return (box.textContent ?? '').replace(label, '').trim();
+    };
+    const rowValue = (label: string): string => {
+      const term = within(inspector).getByText(label);
+      return term.nextElementSibling?.textContent?.trim() ?? '';
+    };
+
+    for (const label of ['Tipo', 'Herramienta', 'Z cut', 'Feed plunge']) {
+      expect(fieldValue(label), `${label} shows a fabricated value`).toBe('—');
+    }
+    for (const label of ['Hits', 'Herramientas', 'Tiempo']) {
+      expect(rowValue(label), `${label} shows a fabricated value`).toBe('—');
+    }
+
+    // No unit is claimed for a value the app does not have, and none of the artboard's sample
+    // parameters leak into the panel.
+    expect(within(inspector).queryByText('mm')).toBeNull();
+    expect(within(inspector).queryByText('mm/min')).toBeNull();
     expect(within(inspector).queryByText('Drill cycle G81')).toBeNull();
+    expect(within(inspector).queryByText('-1.8')).toBeNull();
+    expect(within(inspector).queryByText('120')).toBeNull();
+    expect(within(inspector).queryByText('0:42')).toBeNull();
   });
 
   it('renders the real workbench status message in the Estado block', async () => {

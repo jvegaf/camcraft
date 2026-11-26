@@ -22,7 +22,11 @@ const panelPos = css({
   maxH: 'calc(100% - 114px)'
 });
 const field = css({ display: 'grid', gap: '4px', mb: '10px' });
-const fieldLabel = css({ fontSize: '11px', color: 'textDim', px: '1px' });
+const fieldLabel = css({
+  textStyle: 'small',
+  color: 'textDim',
+  px: '1px'
+});
 const fieldValue = css({
   h: '30px',
   px: '10px',
@@ -34,13 +38,12 @@ const fieldValue = css({
   background: 'app',
   border: '1px solid',
   borderColor: 'border',
-  fontSize: '12px',
+  textStyle: 'small',
   color: 'text'
 });
 const unit = css({
   flex: 'none',
-  fontSize: '11px',
-  fontFamily: 'mono',
+  textStyle: 'mono',
   color: 'textOff'
 });
 const kv = css({
@@ -51,14 +54,14 @@ const kv = css({
   pt: '10px',
   borderTop: '1px solid',
   borderColor: 'hairline',
-  fontSize: '12px',
+  textStyle: 'small',
   '& dt': { color: 'textDim' },
-  '& dd': { m: '0', fontSize: '11px', fontFamily: 'mono', color: 'text' }
+  '& dd': { m: '0', textStyle: 'mono', color: 'text' }
 });
 const empty = css({
   px: '8px',
   py: '6px',
-  fontSize: '12px',
+  textStyle: 'small',
   lineHeight: '1.45',
   color: 'textOff'
 });
@@ -66,7 +69,7 @@ const stateCard = css({
   p: '10px',
   borderRadius: 'panel',
   border: '1px solid',
-  fontSize: '12px',
+  textStyle: 'small',
   lineHeight: '1.45',
   color: 'text'
 });

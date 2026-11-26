@@ -256,7 +256,8 @@ export const panelRowRecipe = defineSlotRecipe({
 
 export const commandSearchRecipe = defineSlotRecipe({
   className: 'commandSearch',
-  slots: ['root', 'field'],
+  description: 'Camcraft command search field',
+  slots: ['root', 'field', 'reason'],
   base: {
     root: {
       w: '380px',
@@ -284,7 +285,23 @@ export const commandSearchRecipe = defineSlotRecipe({
       color: 'text',
       textStyle: 'small',
       _placeholder: { color: 'textOff' },
-      _focus: { outline: 'none' }
+      _focus: { outline: 'none' },
+      // A field with no query handler is `disabled`: say so in the cursor instead of inviting a
+      // click that cannot do anything.
+      _disabled: { color: 'textOff', cursor: 'not-allowed' }
+    },
+    // The reason a field without `onquery` is unavailable. It is rendered as text (never a
+    // colour-only hint) and referenced by the field's `aria-describedby`; it shrinks before the
+    // field does so the artboard placeholder stays readable.
+    reason: {
+      flex: '0 1 auto',
+      minW: '0',
+      maxW: '60%',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      textStyle: 'small',
+      color: 'textOff'
     }
   }
 });

@@ -7,6 +7,10 @@ import { workbenchState } from '../workbench/workbench.svelte';
 // and the health indicator. The artboard coordinates are sample data; the real ones come from the
 // point `BoardCanvas` publishes on every pointer move, and when the pointer is not over the canvas
 // the cells show an em dash instead of a number nobody measured.
+//
+// The bar also carries the viewport selection readout the 3D workbench had before the chrome
+// rewrite (triangle index + average depth), so the information is not lost next to the artboard
+// labels.
 const statusBar = css({
   position: 'absolute',
   left: '0',
@@ -21,11 +25,11 @@ const statusBar = css({
   backdropFilter: 'blur(8px)',
   borderTop: '1px solid',
   borderColor: 'hairline',
-  fontSize: '11px',
+  textStyle: 'small',
   color: 'textDim',
   zIndex: '30'
 });
-const mono = css({ fontSize: '11px', fontFamily: 'mono', color: 'text' });
+const mono = css({ textStyle: 'mono', color: 'text' });
 const ok = css({ color: 'ok' });
 const err = css({ color: 'danger' });
 const info = css({ color: 'textDim' });
@@ -45,6 +49,11 @@ function coordinate(value: number | undefined): string {
   <span class={mono}>Z {coordinate(workbenchState.pointer?.z)}</span>
   <span class={sep} aria-hidden="true"></span>
   <span>mm · Grid 1 mm · GRBL</span>
+  {#if workbenchState.selection}
+    <span class={sep} aria-hidden="true"></span>
+    <span class={mono}>Tri {workbenchState.selection.index}</span>
+    <span class={mono}>{workbenchState.selection.avgDepthMm.toFixed(2)} mm</span>
+  {/if}
   <span class={spacer}></span>
   <span
     class={workbenchState.statusKind === 'error'

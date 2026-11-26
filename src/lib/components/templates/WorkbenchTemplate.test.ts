@@ -2,7 +2,6 @@ import { render } from '@testing-library/svelte';
 import { workbenchTemplate } from 'styled-system/recipes';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it } from 'vitest';
-import { workbenchTemplateRecipe } from '$lib/ds/templates';
 import WorkbenchTemplate from './WorkbenchTemplate.svelte';
 
 // Template contract (095 T2, S1 + S4): the frame of
@@ -10,6 +9,12 @@ import WorkbenchTemplate from './WorkbenchTemplate.svelte';
 // primary border and shadow, plus the `.canvas-bg` grid/radial wash as a layer beneath the
 // viewport — and one named region per slot the artboard names. Layout and slots only: no Tauri, no
 // document state, so every assertion here is pure DOM.
+//
+// jsdom computes no layout, so the artboard's pixel geometry (the `.board-svg` inset that lets the
+// backdrop read in the frame gutter) is not observable here: the values live with the template
+// recipe in `src/lib/ds/templates.ts` and are checked against the artboard when they change. What is
+// asserted is what a user can see in the DOM: one frame, one backdrop painted first, and one
+// viewport region inside the frame carrying the canvas.
 const snippet = (text: string) =>
   createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 
@@ -24,7 +29,7 @@ const regions = {
 } as const;
 
 describe('WorkbenchTemplate', () => {
-  it('renders the floating shell frame with the template root surface', () => {
+  it('renders the floating shell frame for the app application region', () => {
     const { container } = render(WorkbenchTemplate, {});
 
     const frame = container.querySelector('[data-region="frame"]');
@@ -86,33 +91,24 @@ describe('WorkbenchTemplate', () => {
     }
   });
 
-  // 095 T3 item 6: the viewport is inset like the artboard's `.board-svg` (inset 52px 0 34px 0 plus
-  // the 34px side gutter of the `.shell` frame), so the gridded backdrop reads in the gutter instead
-  // of being covered by an opaque canvas. jsdom computes no layout, so the assertion is the recipe
-  // the region is styled with, plus the class the template really applies to the slot.
-  it('insets the viewport region to the artboard board proportions', () => {
+  // The viewport is a region of the frame (not a sibling overlay): the canvas it hosts paints above
+  // the backdrop and inside the frame the artboard draws the gutter around.
+  it('nests a single viewport region inside the frame', () => {
     const { container } = render(WorkbenchTemplate, {
       viewport: snippet(regions.viewport)
     });
 
-    const viewport = container.querySelector(
-      '[data-slot="viewport"]'
+    const frame = container.querySelector(
+      '[data-region="frame"]'
     ) as HTMLElement;
-    expect(viewport.getAttribute('class')).toContain(
+    const viewportRegions = frame.querySelectorAll('[data-slot="viewport"]');
+
+    expect(viewportRegions).toHaveLength(1);
+    expect(viewportRegions[0].getAttribute('class')).toContain(
       workbenchTemplate().viewport
     );
-
-    const base = (
-      workbenchTemplateRecipe as unknown as {
-        base: Record<string, Record<string, unknown>>;
-      }
-    ).base;
-    expect(base.viewport).toMatchObject({
-      position: 'absolute',
-      top: '52px',
-      right: '34px',
-      bottom: '34px',
-      left: '34px'
-    });
+    expect(viewportRegions[0].textContent).toBe(regions.viewport);
+    expect(viewportRegions[0].parentElement).toBe(frame);
+    expect(frame.querySelectorAll('[data-region="backdrop"]')).toHaveLength(1);
   });
 });

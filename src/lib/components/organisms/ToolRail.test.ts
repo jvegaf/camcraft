@@ -1,6 +1,5 @@
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { atomButton } from 'styled-system/recipes';
 import { describe, expect, it, vi } from 'vitest';
 import ToolRail from './ToolRail.svelte';
 
@@ -36,16 +35,27 @@ describe('ToolRail', () => {
     }
   );
 
-  it('renders Generar plan with the primary Cut button atom', () => {
+  // The rail's shape as the operator reads it: the four artboard actions in order, and exactly one
+  // of them is the primary CAM (Cut) action — «Generar plan», the last one.
+  it('renders the four artboard actions in order with a single primary action', () => {
     render(ToolRail, { onOpen: vi.fn() });
 
-    const plan = screen.getByRole('button', { name: /^Generar plan/ });
-    const primary = atomButton({ variant: 'primary', size: 'sm' });
+    const rail = screen.getByLabelText('Acciones rápidas');
+    const buttons = within(rail).getAllByRole('button');
 
-    expect(plan.getAttribute('class')).toContain(primary);
     expect(
-      screen.getByRole('button', { name: 'Importar' }).getAttribute('class')
-    ).toContain(atomButton({ variant: 'secondary', size: 'sm' }));
+      buttons.map(button => button.textContent?.split('—')[0].trim())
+    ).toEqual(['Importar', 'Capas', 'Origen', 'Generar plan']);
+    expect(
+      buttons.filter(
+        button => button.getAttribute('data-variant') === 'primary'
+      ).length
+    ).toBe(1);
+    expect(
+      screen
+        .getByRole('button', { name: /^Generar plan/ })
+        .getAttribute('data-variant')
+    ).toBe('primary');
   });
 
   it('keeps the rail landmark of the artboard', () => {
