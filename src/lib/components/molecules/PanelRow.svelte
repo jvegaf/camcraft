@@ -8,11 +8,18 @@ import type { StatusDotTone } from '../atoms/tone';
 
 // Molecule: a panel row — leading dot or icon, label, and trailing meta such as ".gbr" or
 // "seleccionada". It is a real button only when it can be activated; a selected row is marked with
-// `aria-current`, not with color alone.
+// `aria-current`, not with color alone. A dot only carries meaning when the caller says what it
+// means (`dotLabel`), so a tonal row is announced instead of relying on color (design/system.md
+// «Browser» + «Accesibilidad y comportamiento»).
 interface Props {
   label: string;
   meta?: string;
   dot?: StatusDotTone;
+  /**
+   * Accessible name of the leading dot, e.g. `Estado: válido`. Without it the dot stays decorative
+   * (`aria-hidden`) and only the row's own text is announced.
+   */
+  dotLabel?: string;
   icon?: IconName;
   selected?: boolean;
   onclick?: (event: MouseEvent) => void;
@@ -23,6 +30,7 @@ let {
   label,
   meta,
   dot,
+  dotLabel,
   icon,
   selected = false,
   onclick,
@@ -36,7 +44,7 @@ let styles = $derived(
 
 {#snippet content()}
   {#if dot}
-    <StatusDot tone={dot} />
+    <StatusDot tone={dot} label={dotLabel} />
   {:else if icon}
     <Icon name={icon} />
   {/if}

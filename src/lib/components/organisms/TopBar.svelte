@@ -1,7 +1,7 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import { saveThemePreference, toggleTheme } from '$lib/ds/theme';
-import { Icon, IconButton } from '../atoms';
+import { IconButton } from '../atoms';
 import { CommandSearch } from '../molecules';
 import { setStatus, workbenchState } from '../workbench/workbench.svelte';
 

@@ -2,6 +2,7 @@ import { render } from '@testing-library/svelte';
 import { workbenchTemplate } from 'styled-system/recipes';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it } from 'vitest';
+import { camcraftPreset } from '../../ds/camcraft.preset';
 import WorkbenchTemplate from './WorkbenchTemplate.svelte';
 
 // Template contract (095 T2, S1 + S4): the frame of
@@ -11,10 +12,9 @@ import WorkbenchTemplate from './WorkbenchTemplate.svelte';
 // document state, so every assertion here is pure DOM.
 //
 // jsdom computes no layout, so the artboard's pixel geometry (the `.board-svg` inset that lets the
-// backdrop read in the frame gutter) is not observable here: the values live with the template
-// recipe in `src/lib/ds/templates.ts` and are checked against the artboard when they change. What is
-// asserted is what a user can see in the DOM: one frame, one backdrop painted first, and one
-// viewport region inside the frame carrying the canvas.
+// backdrop read in the frame gutter) is not observable in the DOM. It is pinned one layer down, in
+// the template recipe that emits the viewport class — the way `src/lib/ds/camcraft.preset.test.ts`
+// pins the radii to the system scale — and the rendered region is checked to wear that class.
 const snippet = (text: string) =>
   createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 
@@ -110,5 +110,32 @@ describe('WorkbenchTemplate', () => {
     expect(viewportRegions[0].textContent).toBe(regions.viewport);
     expect(viewportRegions[0].parentElement).toBe(frame);
     expect(frame.querySelectorAll('[data-region="backdrop"]')).toHaveLength(1);
+  });
+
+  // The artboard `.board-svg` is `inset:52px 0 34px 0` inside `.shell`; the frame insets the
+  // viewport to the same 52px top plus the 34px side/bottom gutter, so the gridded backdrop reads in
+  // the gutter (095 T3 item 6 / L8c). The four values are pinned on the recipe that emits the
+  // viewport class, and that class is checked above to be the one the rendered region wears.
+  it('resolves the viewport inset to 52/34/34/34 through the template recipe', () => {
+    const recipe = (
+      camcraftPreset as unknown as {
+        theme: {
+          extend: {
+            slotRecipes: {
+              workbenchTemplate: {
+                base: Record<string, Record<string, string>>;
+              };
+            };
+          };
+        };
+      }
+    ).theme.extend.slotRecipes.workbenchTemplate;
+
+    expect(recipe.base.viewport).toMatchObject({
+      top: '52px',
+      right: '34px',
+      bottom: '34px',
+      left: '34px'
+    });
   });
 });

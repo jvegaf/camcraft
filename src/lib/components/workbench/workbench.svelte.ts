@@ -108,7 +108,23 @@ export function setStatusMessage(message: string) {
   setStatus(message, kind);
 }
 
+/**
+ * Identity of the installed document as the app can know it today. `document_status` exposes no
+ * document id (`src-tauri/src/lib.rs:145-156`), only the path, and an unsaved document has none, so
+ * two distinct unsaved documents are indistinguishable here.
+ */
+function documentIdentity(document: DocumentStatus | null): string | null {
+  return document?.path ?? null;
+}
+
 export function setDocument(document: DocumentStatus | null) {
+  // Browser rows are fixed ids of the open document (`CamObjectBrowser`), so a board-object
+  // selection from another document would keep highlighting a row the new document does not own.
+  if (
+    documentIdentity(document) !== documentIdentity(workbenchState.document)
+  ) {
+    workbenchState.selectedBoardObjectId = null;
+  }
   workbenchState.document = document;
   if (document) {
     workbenchState.statusMessage = document.dirty

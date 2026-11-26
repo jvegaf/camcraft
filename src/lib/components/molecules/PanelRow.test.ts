@@ -23,6 +23,29 @@ describe('PanelRow', () => {
     expect(dot?.getAttribute('class')).toContain('statusDot--tone_ok');
   });
 
+  // `design/system.md` «Browser»: "Íconos/puntos de estado con significado (copper/drill/cut/ok),
+  // con texto/metadato" y «Accesibilidad»: nunca señalar sólo con color. A row that knows what its
+  // tone means passes the label; the decorative dot stays out of the accessibility tree.
+  it('announces the dot tone through a status label and keeps the decorative dot silent', () => {
+    const labelled = render(PanelRow, {
+      label: 'Stock FR-4 1.6mm',
+      meta: '100×80',
+      dot: 'ok',
+      dotLabel: 'Estado: válido'
+    });
+
+    const announced = screen.getByRole('img', { name: 'Estado: válido' });
+    expect(announced.getAttribute('data-tone')).toBe('ok');
+    expect(announced.getAttribute('aria-hidden')).toBeNull();
+    labelled.unmount();
+
+    render(PanelRow, { label: 'Top Copper', meta: '.gbr', dot: 'cut' });
+
+    const decorative = document.querySelector('[data-tone]');
+    expect(decorative?.getAttribute('aria-hidden')).toBe('true');
+    expect(decorative?.getAttribute('role')).toBeNull();
+  });
+
   it('renders a leading icon instead of a dot when asked', () => {
     render(PanelRow, { label: 'Importar', icon: 'import' });
 

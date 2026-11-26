@@ -1,6 +1,11 @@
-// The chrome organisms moved up to the atomic folder in 095 T3 and the CAM-content ones in T4; the
-// barrel keeps re-exporting them so `$lib/components/workbench` stays the single entry point for the
-// shell's consumers (S8).
+// Entry point of the workbench folder: `WorkbenchShell` and `BoardCanvas` live here and are
+// re-exported for the `/workbench` and `/workspace` routes.
+//
+// The chrome and CAM-content organisms live in the atomic folder `src/lib/components/organisms/`
+// and the re-exports below keep the older `$lib/components/workbench` imports working (S8). They
+// are a convenience, not the only path: `WorkbenchShell` imports the organisms from
+// `$lib/components/organisms` and the start page does the same, so a consumer may import an
+// organism from either place.
 export {
   CamObjectBrowser,
   OperationInspector,

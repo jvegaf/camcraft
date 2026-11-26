@@ -29,11 +29,19 @@ describe('ViewportHud', () => {
     expect(hud.textContent).not.toMatch(/triángulo/);
   });
 
-  it('renders the count of what is really selected', () => {
+  // The viewport selects one triangle per click (`workbench.svelte.ts`), so the card states that
+  // single selection. It never guesses a set the app cannot have: no plural wording, no count.
+  it('states the single selection the app can make, without a count it cannot have', () => {
     setSelection({ kind: 'triangle', index: 3, avgDepthMm: 0.4 });
     render(ViewportHud, {});
 
-    expect(screen.getByText('1 triángulo seleccionado')).toBeTruthy();
+    const hud = screen.getByLabelText('Estado de viewport');
+    expect(hud.textContent).toContain('2D Board');
+    // Exactly the single-selection wording: no count, no plural.
+    expect(screen.getByText('Triángulo seleccionado').textContent).toBe(
+      'Triángulo seleccionado'
+    );
+    expect(hud.textContent).not.toMatch(/triángulos/);
     expect(screen.queryByText('Sin selección')).toBeNull();
   });
 });

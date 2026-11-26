@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setStatus, workbenchState } from '../workbench/workbench.svelte';
 import TopBar from './TopBar.svelte';
 
 // Organism contract (095 T3, S4 + S8 + T5 follow-up). Reference:
@@ -18,6 +19,7 @@ const resetTheme = () => document.documentElement.removeAttribute('data-theme');
 describe('TopBar', () => {
   beforeEach(() => {
     resetTheme();
+    setStatus('Listo', 'ok');
     invokeMock.mockReset();
     // The backend echoes what it stored, exactly like `update_settings_impl` does.
     invokeMock.mockImplementation(
@@ -113,6 +115,80 @@ describe('TopBar', () => {
         settings: { theme: 'light' }
       })
     );
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  // Two rapid clicks used to overlap two writes, so the display was decided by whichever promise
+  // resolved last. They are serialized now: the second write does not even start until the first
+  // settles, and the stored preference follows the clicks.
+  it('stores two rapid toggles in click order', async () => {
+    const user = userEvent.setup();
+    const pending: Array<() => void> = [];
+    invokeMock.mockImplementation(
+      (_command: string, args?: { settings?: { theme: string } }) =>
+        new Promise(resolve =>
+          pending.push(() => resolve({ theme: args?.settings?.theme }))
+        )
+    );
+    render(TopBar, {});
+
+    const toggle = screen.getByRole('button', { name: 'Tema' });
+    await user.click(toggle);
+    await user.click(toggle);
+
+    // Only the first write is in flight; a racing second one would already be here.
+    await waitFor(() => expect(pending).toHaveLength(1));
+    pending[0]();
+
+    await waitFor(() => expect(pending).toHaveLength(2));
+    pending[1]();
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(2));
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'update_settings', {
+      settings: { theme: 'light' }
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'update_settings', {
+      settings: { theme: 'dark' }
+    });
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe('dark')
+    );
+  });
+
+  // A write the backend refused leaves nothing to restore from the click itself, so the bar goes
+  // back to the preference the backend confirmed and says so on the status line.
+  it('reports a failed theme write and restores the stored theme', async () => {
+    const user = userEvent.setup();
+    // The failure depends on the value written, so the test does not depend on which write runs first;
+    // `get_settings` reports what the backend really kept, which is where the bar rolls back to.
+    const persisted = { theme: 'dark' };
+    invokeMock.mockImplementation(
+      (command: string, args?: { settings?: { theme: string } }) => {
+        if (command === 'get_settings') return Promise.resolve(persisted);
+        const theme = args?.settings?.theme ?? '';
+        if (theme === 'dark') {
+          return Promise.reject(new Error('permission denied'));
+        }
+        persisted.theme = theme;
+        return Promise.resolve({ theme });
+      }
+    );
+    render(TopBar, {});
+
+    const toggle = screen.getByRole('button', { name: 'Tema' });
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe('light')
+    );
+
+    await user.click(toggle);
+
+    await waitFor(() =>
+      expect(workbenchState.statusMessage).toBe(
+        'Error: no se pudo guardar el tema (Error: permission denied)'
+      )
+    );
+    expect(workbenchState.statusKind).toBe('error');
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 

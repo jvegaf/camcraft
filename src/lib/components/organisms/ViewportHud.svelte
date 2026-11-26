@@ -30,22 +30,19 @@ const card = css({
 });
 const selText = css({ color: 'sel' });
 
-// The viewport selects one triangle at a time (`workbench.svelte.ts`), so a selection is always a
-// count of one piece of geometry.
-let selectedCount = $derived(workbenchState.selection ? 1 : 0);
+// The viewport selects one triangle at a time (`workbench.svelte.ts`: `ViewportSelection` is a
+// single triangle or nothing), so the card states that single selection instead of counting a set
+// the app cannot produce today. The plural branch this used to carry was unreachable and claimed a
+// multi-select that does not exist.
 let selectionLabel = $derived(
-  selectedCount === 0
-    ? 'Sin selección'
-    : selectedCount === 1
-      ? `${selectedCount} triángulo seleccionado`
-      : `${selectedCount} triángulos seleccionados`
+  workbenchState.selection ? 'Triángulo seleccionado' : 'Sin selección'
 );
 </script>
 
 <div class={hud} aria-label="Estado de viewport">
   <div class={card}><b>2D Board</b> · Grid 1 mm</div>
   <div class={card}>
-    {#if selectedCount > 0}
+    {#if workbenchState.selection}
       <span class={selText}>{selectionLabel}</span>
     {:else}
       <span>{selectionLabel}</span>

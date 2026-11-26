@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { CamOperation } from './workbench.svelte';
+import type { CamOperation, DocumentStatus } from './workbench.svelte';
 import {
   selectBoardObject,
   selectOperation,
+  setDocument,
   setOperations,
   setPointerPosition,
   setStatus,
@@ -102,5 +103,56 @@ describe('workbench CAM object presentation state', () => {
 
     setOperations([]);
     expect(workbenchState.selectedOperationId).toBeNull();
+  });
+});
+
+// The board-object rows are fixed ids of the document that is open (`WorkbenchShell` installs it
+// from `document_status`), so a selection kept across a document swap points at a row the new
+// document does not own. The selection is scoped to the document identity.
+const documentStatus: DocumentStatus = {
+  schema: 'cam-document-status@1',
+  documentSchema: 'camcraft.document/1',
+  dirty: false,
+  path: '/tmp/controller-board.cmc',
+  layerCount: 4,
+  toolpathCount: 3,
+  boardWidthMm: 100,
+  boardHeightMm: 80,
+  boardThicknessMm: 1.6
+};
+
+describe('workbench selection scoped to the document', () => {
+  beforeEach(() => {
+    setDocument(null);
+    workbenchState.selectedBoardObjectId = null;
+  });
+
+  it('drops the board-object selection when a second document is installed', () => {
+    setDocument(documentStatus);
+    selectBoardObject('size');
+    expect(workbenchState.selectedBoardObjectId).toBe('size');
+
+    setDocument({ ...documentStatus, path: '/tmp/panel-front.cmc' });
+
+    expect(workbenchState.selectedBoardObjectId).toBeNull();
+  });
+
+  it('keeps the board-object selection while the same document stays installed', () => {
+    setDocument(documentStatus);
+    selectBoardObject('size');
+
+    // A save flips `dirty` (and may change counts) without swapping the document.
+    setDocument({ ...documentStatus, dirty: true, layerCount: 5 });
+
+    expect(workbenchState.selectedBoardObjectId).toBe('size');
+  });
+
+  it('drops the board-object selection when no document is installed anymore', () => {
+    setDocument(documentStatus);
+    selectBoardObject('size');
+
+    setDocument(null);
+
+    expect(workbenchState.selectedBoardObjectId).toBeNull();
   });
 });
