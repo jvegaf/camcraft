@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "chosen": "02-floating-studio.html",
+  "chosen": "04-settings.html",
   "handoffs": {
     "02-floating-studio.html": {
       "status": "implemented",
@@ -13,10 +13,11 @@
     "04-settings.html": {
       "status": "implemented",
       "queued": false,
-      "sentAt": "2026-11-22T20:11:30.422Z",
-      "startedAt": "2026-11-22T20:11:41.750Z",
-      "implementedAt": "2026-11-22T20:22:39.196Z",
-      "note": "Implemented settings modal in cam-ui (egui): nav pages, search/title/footer, General controls wired to shell state; Appearance theme wired; Canvas snapping wired; other pages show domain placeholders. Settings button opens dialog; Esc closes without applying."
+      "sentAt": "2026-11-26T22:26:42.394Z",
+      "startedAt": "2026-11-26T22:26:44.797Z",
+      "implementedAt": "2026-11-26T22:35:30.721Z",
+      "note": "Ventana de Preferencias real: titlebar con búsqueda funcional (⌘F), lista de páginas agrupada con panelRow recipe, filas label+hint / control, segmented de tema y footer con Button atoms. Solo settings que el backend persiste (theme); el resto no se renderiza porque SettingsDto no las guarda.",
+      "previewUrl": "http://127.0.0.1:5173/"
     }
   }
 }
