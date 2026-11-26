@@ -986,16 +986,17 @@ pub fn stored_tool_for_id<'a>(tools: &'a [StoredTool], id: &str) -> Option<&'a S
   tools.iter().find(|tool| tool.geometry.id == id)
 }
 
-/// Resolve a tool for a toolpath: prefer stable `tool_id`, fall back to `tool_number`.
+/// Resolve a tool for a toolpath: a stable `tool_id` is authoritative. When the id is present but
+/// missing from the library (a broken stable binding), this returns `None` instead of silently
+/// falling back to `tool_number`, which may now name a different tool. Only a toolpath with no
+/// stable id falls back to the number.
 pub fn stored_tool_for_toolpath<'a>(
   tools: &'a [StoredTool],
   tool_id: Option<&str>,
   tool_number: u32,
 ) -> Option<&'a StoredTool> {
   if let Some(id) = tool_id {
-    if let Some(tool) = stored_tool_for_id(tools, id) {
-      return Some(tool);
-    }
+    return stored_tool_for_id(tools, id);
   }
   stored_tool_for_number(tools, tool_number)
 }
