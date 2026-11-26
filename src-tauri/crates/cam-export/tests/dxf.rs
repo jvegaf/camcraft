@@ -388,6 +388,137 @@ fn a_closed_contour_does_not_repeat_its_first_vertex() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Drill and slot entities (R3-004): the two kinds that are not a polyline of authored vertices.
+// ---------------------------------------------------------------------------------------------
+
+/// A document whose one `HOLES` drill layer holds the given drill/slot kinds as `E1`, `E2`, ...
+fn drill_slot_document(kinds: Vec<EntityKind>) -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "HOLES".to_owned(),
+    role: LayerRole::Drill,
+    side: cam_model::Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: cam_model::Provenance::default(),
+    entities: kinds
+      .into_iter()
+      .enumerate()
+      .map(|(index, kind)| Entity {
+        id: format!("E{}", index + 1),
+        kind,
+        source: cam_model::Provenance::default(),
+      })
+      .collect(),
+  });
+  document
+}
+
+fn drill_kind(center: Point2, diameter_mm: f64) -> EntityKind {
+  EntityKind::Drill {
+    center,
+    diameter: cam_units::Length::from_mm(diameter_mm),
+  }
+}
+
+fn slot_kind(start: Point2, end: Point2, width_mm: f64) -> EntityKind {
+  EntityKind::Slot {
+    start,
+    end,
+    width: cam_units::Length::from_mm(width_mm),
+  }
+}
+
+#[test]
+fn a_drill_goes_out_as_a_circle_record_carrying_its_radius() {
+  let pairs = pairs(&export(&drill_slot_document(vec![drill_kind(
+    Point2::new(10.0, 20.0),
+    1.0,
+  )])));
+
+  let circles = records(&pairs, "CIRCLE");
+  assert_eq!(circles.len(), 1, "one drill is one circle: {pairs:?}");
+  let record = &circles[0];
+  assert_eq!(value(record, 8), "HOLES", "the circle sits on its layer");
+  assert_eq!(value(record, 10), "10", "the centre's X");
+  assert_eq!(value(record, 20), "20", "the centre's Y");
+  assert_eq!(
+    value(record, 40),
+    "0.5",
+    "a DXF circle carries a radius, so the drill's diameter is halved"
+  );
+  assert!(
+    records(&pairs, "LWPOLYLINE").is_empty(),
+    "a drill is never written as a polyline: {pairs:?}"
+  );
+}
+
+#[test]
+fn a_slot_goes_out_as_a_closed_four_vertex_stadium() {
+  let pairs = pairs(&export(&drill_slot_document(vec![slot_kind(
+    Point2::new(30.0, 40.0),
+    Point2::new(50.0, 40.0),
+    1.0,
+  )])));
+
+  let polylines = records(&pairs, "LWPOLYLINE");
+  assert_eq!(polylines.len(), 1, "one slot is one stadium: {pairs:?}");
+  let record = &polylines[0];
+  assert_eq!(value(record, 8), "HOLES");
+  assert_eq!(value(record, 90), "4", "two ends and two flanks");
+  assert_eq!(value(record, 70), "1", "a stadium is a closed polyline");
+  // The flank offset is the radius, 0.5 either side of the slot's axis at y = 40, and each rounded
+  // end is a half turn: bulge 1 leaves the two vertices that sit on the axis' far side.
+  assert_eq!(values(record, 10), vec!["30", "50", "50", "30"]);
+  assert_eq!(values(record, 20), vec!["40.5", "40.5", "39.5", "39.5"]);
+  assert_eq!(values(record, 42), vec!["0", "1", "0", "1"]);
+}
+
+#[test]
+fn a_slot_with_no_length_goes_out_as_a_circle_at_its_midpoint() {
+  // A zero-length slot is a circle: its stadium has no axis to run along, so the writer draws the
+  // circle the slot describes instead of a degenerate polyline.
+  let pairs = pairs(&export(&drill_slot_document(vec![slot_kind(
+    Point2::new(60.0, 40.0),
+    Point2::new(60.0, 40.0),
+    1.0,
+  )])));
+
+  assert!(
+    records(&pairs, "LWPOLYLINE").is_empty(),
+    "a zero-length slot has no stadium to write: {pairs:?}"
+  );
+  let circles = records(&pairs, "CIRCLE");
+  assert_eq!(circles.len(), 1);
+  assert_eq!(value(&circles[0], 10), "60");
+  assert_eq!(value(&circles[0], 20), "40");
+  assert_eq!(value(&circles[0], 40), "0.5", "the width is the circle's diameter");
+}
+
+#[test]
+fn a_drill_and_a_slot_on_one_layer_keep_the_entity_order() {
+  let pairs = pairs(&export(&drill_slot_document(vec![
+    drill_kind(Point2::new(10.0, 20.0), 1.0),
+    slot_kind(Point2::new(30.0, 40.0), Point2::new(50.0, 40.0), 1.0),
+    drill_kind(Point2::new(70.0, 80.0), 2.0),
+  ])));
+
+  let kinds: Vec<&str> = pairs
+    .iter()
+    .filter(|(code, value)| *code == 0 && (value == "CIRCLE" || value == "LWPOLYLINE"))
+    .map(|(_, value)| value.as_str())
+    .collect();
+  assert_eq!(
+    kinds,
+    vec!["CIRCLE", "LWPOLYLINE", "CIRCLE"],
+    "records follow the document's entity order, whatever kind each is"
+  );
+  let circles = records(&pairs, "CIRCLE");
+  assert_eq!(values(&circles[1], 10), vec!["70"]);
+  assert_eq!(values(&circles[1], 40), vec!["1"], "the second drill's radius");
+}
+
+// ---------------------------------------------------------------------------------------------
 // Determinism, and the empty document.
 // ---------------------------------------------------------------------------------------------
 

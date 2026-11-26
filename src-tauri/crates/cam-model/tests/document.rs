@@ -2503,6 +2503,173 @@ fn drill_and_slot_entity_kinds_round_trip_with_source_metadata() {
   );
 }
 
+/// A document whose one drill layer holds exactly `entities`.
+fn document_with_drill_entities(entities: Vec<Entity>) -> Document {
+  let mut document = Document::new(Board::default_board());
+  document.layers.push(Layer {
+    id: "L-drill".to_owned(),
+    role: LayerRole::Drill,
+    side: Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: Provenance::default(),
+    entities,
+  });
+  document
+}
+
+fn drill(id: &str, center: Point2, diameter_mm: f64) -> Entity {
+  Entity {
+    id: id.to_owned(),
+    kind: EntityKind::Drill {
+      center,
+      diameter: Length::from_mm(diameter_mm),
+    },
+    source: Provenance::default(),
+  }
+}
+
+fn slot(id: &str, start: Point2, end: Point2, width_mm: f64) -> Entity {
+  Entity {
+    id: id.to_owned(),
+    kind: EntityKind::Slot {
+      start,
+      end,
+      width: Length::from_mm(width_mm),
+    },
+    source: Provenance::default(),
+  }
+}
+
+/// The refusal a malformed drill must produce, rendered: `NaN` is not equal to itself, so the
+/// message is what pins every offending number instead of a variant comparison.
+fn expected_drill_refusal(x: f64, y: f64, diameter: f64) -> String {
+  format!(
+    "drill entity \"D1\" on layer \"L-drill\" must have a finite centre and a positive finite \
+     diameter, got ({x} mm, {y} mm) with diameter {diameter} mm"
+  )
+}
+
+fn expected_slot_refusal(
+  start_x: f64,
+  start_y: f64,
+  end_x: f64,
+  end_y: f64,
+  width: f64,
+) -> String {
+  format!(
+    "slot entity \"S1\" on layer \"L-drill\" must have finite endpoints and a positive finite \
+     width, got ({start_x} mm, {start_y} mm) to ({end_x} mm, {end_y} mm) with width {width} mm"
+  )
+}
+
+// R3-002: a drill entity is geometry the document validates like any other kind, so a hole whose
+// centre is not a point or whose diameter is not a positive length is refused at load time instead
+// of reaching a toolpath that would emit a move no machine can make.
+#[test]
+fn a_drill_with_a_non_finite_centre_or_non_positive_diameter_is_refused() {
+  let cases = [
+    // (centre, diameter, the offending numbers as the refusal names them)
+    (Point2::new(f64::NAN, 20.0), 0.8, (f64::NAN, 20.0, 0.8)),
+    (Point2::new(10.0, f64::INFINITY), 0.8, (10.0, f64::INFINITY, 0.8)),
+    (Point2::new(10.0, 20.0), 0.0, (10.0, 20.0, 0.0)),
+    (Point2::new(10.0, 20.0), -0.8, (10.0, 20.0, -0.8)),
+    (Point2::new(10.0, 20.0), f64::NAN, (10.0, 20.0, f64::NAN)),
+    (Point2::new(10.0, 20.0), f64::INFINITY, (10.0, 20.0, f64::INFINITY)),
+  ];
+
+  for (center, diameter, (x, y, named_diameter)) in cases {
+    let document = document_with_drill_entities(vec![drill("D1", center, diameter)]);
+    let error = document
+      .validate()
+      .expect_err("a malformed drill entity must be refused");
+    assert!(
+      matches!(error, ModelError::DrillNotUsable { .. }),
+      "centre {center:?} and diameter {diameter} must be refused as a drill: {error:?}"
+    );
+    assert_eq!(
+      error.to_string(),
+      expected_drill_refusal(x, y, named_diameter),
+      "centre {center:?} and diameter {diameter} must be refused naming their values"
+    );
+  }
+}
+
+// R3-002: the same rule for a routed slot, whose two endpoints and width are the numbers a
+// drilling toolpath turns into motion.
+#[test]
+fn a_slot_with_a_non_finite_endpoint_or_non_positive_width_is_refused() {
+  let cases = [
+    // (start, end, width, the offending numbers as the refusal names them)
+    (
+      Point2::new(f64::NAN, 40.0),
+      Point2::new(50.0, 40.0),
+      1.2,
+      (f64::NAN, 40.0, 50.0, 40.0, 1.2),
+    ),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, f64::NEG_INFINITY),
+      1.2,
+      (30.0, 40.0, 50.0, f64::NEG_INFINITY, 1.2),
+    ),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      0.0,
+      (30.0, 40.0, 50.0, 40.0, 0.0),
+    ),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      -1.2,
+      (30.0, 40.0, 50.0, 40.0, -1.2),
+    ),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      f64::NAN,
+      (30.0, 40.0, 50.0, 40.0, f64::NAN),
+    ),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      f64::INFINITY,
+      (30.0, 40.0, 50.0, 40.0, f64::INFINITY),
+    ),
+  ];
+
+  for (start, end, width, (start_x, start_y, end_x, end_y, named_width)) in cases {
+    let document = document_with_drill_entities(vec![slot("S1", start, end, width)]);
+    let error = document
+      .validate()
+      .expect_err("a malformed slot entity must be refused");
+    assert!(
+      matches!(error, ModelError::SlotNotUsable { .. }),
+      "start {start:?}, end {end:?} and width {width} must be refused as a slot: {error:?}"
+    );
+    assert_eq!(
+      error.to_string(),
+      expected_slot_refusal(start_x, start_y, end_x, end_y, named_width),
+      "start {start:?}, end {end:?} and width {width} must be refused naming their values"
+    );
+  }
+}
+
+// R3-002's other half: the rule refuses only the numbers it names. A well-formed drill and slot,
+// including a zero-length slot whose width still describes a circle, load unchanged.
+#[test]
+fn well_formed_drill_and_slot_entities_still_validate() {
+  let document = document_with_drill_entities(vec![
+    drill("D1", Point2::new(10.0, 20.0), 0.8),
+    slot("S1", Point2::new(30.0, 40.0), Point2::new(50.0, 40.0), 1.2),
+    slot("S2", Point2::new(60.0, 40.0), Point2::new(60.0, 40.0), 0.6),
+  ]);
+  document
+    .validate()
+    .expect("finite, positive drill and slot numbers are valid");
+}
+
 #[test]
 fn a_drill_layer_accepts_legacy_contour_entities() {
   let mut document = Document::new(Board::default_board());
@@ -2607,4 +2774,58 @@ fn the_six_fabrication_roles_have_distinct_colors_and_labels() {
   assert!(LayerRole::CopperTop.is_copper());
   assert!(LayerRole::CopperBottom.is_copper());
   assert!(!LayerRole::Drill.is_copper());
+}
+
+// R3-LAYERROLE: `color_rgb` and `label` are exhaustive matches, so the compiler already refuses a
+// new variant there — but nothing forced a variant's colour or label to be checked. This test names
+// every variant through an exhaustive match of its own, with no wildcard arm: adding a `LayerRole`
+// stops this test compiling until the variant is named here with its colour and label, so the
+// per-role display values stay pinned instead of drifting silently.
+#[test]
+fn every_layer_role_keeps_its_own_color_and_label() {
+  use std::collections::BTreeSet;
+
+  /// The colour and label a role must keep, written as one exhaustive match over `LayerRole`.
+  fn pinned(role: LayerRole) -> ([u8; 3], &'static str) {
+    match role {
+      LayerRole::CopperTop => ([220, 90, 90], "Copper top"),
+      LayerRole::CopperBottom => ([90, 140, 230], "Copper bottom"),
+      LayerRole::Mask => ([90, 190, 130], "Mask"),
+      LayerRole::Silk => ([235, 225, 140], "Silk"),
+      LayerRole::Outline => ([230, 170, 80], "Outline"),
+      LayerRole::Drill => ([190, 190, 200], "Drill"),
+      LayerRole::Keepout => ([190, 110, 220], "Keepout"),
+    }
+  }
+
+  let roles = [
+    LayerRole::CopperTop,
+    LayerRole::CopperBottom,
+    LayerRole::Mask,
+    LayerRole::Silk,
+    LayerRole::Outline,
+    LayerRole::Drill,
+    LayerRole::Keepout,
+  ];
+
+  let mut colors = BTreeSet::new();
+  let mut labels = BTreeSet::new();
+  for role in roles {
+    let (color, label) = pinned(role);
+    assert_eq!(role.color_rgb(), color, "{role:?} must keep its colour");
+    assert_eq!(role.label(), label, "{role:?} must keep its label");
+    assert!(colors.insert(color), "{role:?} reuses another role's colour");
+    assert!(labels.insert(label), "{role:?} reuses another role's label");
+  }
+
+  assert_eq!(
+    colors.len(),
+    roles.len(),
+    "every role must be visually distinct"
+  );
+  assert_eq!(
+    labels.len(),
+    roles.len(),
+    "every role must have its own label"
+  );
 }

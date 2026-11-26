@@ -55,6 +55,11 @@
 //! preserved. The document has one entity kind, so a contour leaves as a path and never as a
 //! `<circle>` or `<rect>`, an ellipse's axis ratio is already gone by the time geometry reaches the
 //! model, and toolpaths are not geometry: they are not written, exactly as in the DXF writer.
+//!
+//! A drill leaves as the circle it is and a slot as its stadium, both as path data. A slot whose
+//! stadium cannot be built is **refused** with the entity and layer named, never omitted: an export
+//! that quietly left one out would be a valid SVG of a document that still holds geometry the file
+//! does not (R4-SVG-SLOT-SILENT-DROP).
 
 use std::f64::consts::PI;
 
@@ -110,9 +115,15 @@ pub fn export(document: &Document) -> Result<Vec<u8>, ExportError> {
         EntityKind::Drill { center, diameter } => {
           write_circle_path(&mut out, *center, diameter.mm() / 2.0, &page)
         }
-        EntityKind::Slot { start, end, width } => {
-          write_slot_path(&mut out, *start, *end, width.mm() / 2.0, &page)
-        }
+        EntityKind::Slot { start, end, width } => write_slot_path(
+          &mut out,
+          &layer.id,
+          &entity.id,
+          *start,
+          *end,
+          width.mm() / 2.0,
+          &page,
+        )?,
       }
     }
   }
@@ -369,10 +380,30 @@ fn write_circle_path(out: &mut String, center: Point2, radius: f64, page: &Page)
   ));
 }
 
-/// One slot as a stadium path (or a circle when degenerate).
-fn write_slot_path(out: &mut String, start: Point2, end: Point2, radius: f64, page: &Page) {
-  if radius <= 0.0 || !radius.is_finite() {
-    return;
+/// One slot as a stadium path (or a circle when it has no length).
+///
+/// A stadium this function cannot build is a **refusal**, never an omission: returning `Ok` from an
+/// export that silently left a slot out produced a file that is a valid SVG of a document that still
+/// holds geometry the file does not, and nobody would notice until the board was cut
+/// (R4-SVG-SLOT-SILENT-DROP). The refusal names the entity and its layer, because the document can
+/// be whole and only this magnitude unusable.
+fn write_slot_path(
+  out: &mut String,
+  layer: &str,
+  entity: &str,
+  start: Point2,
+  end: Point2,
+  radius: f64,
+  page: &Page,
+) -> Result<(), ExportError> {
+  // Unreachable through [`export`], which refuses a width that is not a finite positive number
+  // before this point; the guard is here so this function never drops geometry silently if it is
+  // ever reached another way.
+  if !(radius > 0.0 && radius.is_finite()) {
+    return Err(refused(format!(
+      "entity {entity:?} on layer {layer:?} is a slot whose width is not a finite positive number, \
+       so its stadium cannot be drawn"
+    )));
   }
   let dx = end.x - start.x;
   let dy = end.y - start.y;
@@ -380,13 +411,17 @@ fn write_slot_path(out: &mut String, start: Point2, end: Point2, radius: f64, pa
   if len < 1e-9 {
     let mid = Point2::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
     write_circle_path(out, mid, radius, page);
-    return;
+    return Ok(());
   }
 
   let Some(contour) = slot_contour(start, end, radius) else {
-    return;
+    return Err(refused(format!(
+      "entity {entity:?} on layer {layer:?} is a slot whose stadium cannot be built from its \
+       endpoints and width, and omitting it would lose geometry the document holds"
+    )));
   };
   write_path(out, &contour, page);
+  Ok(())
 }
 
 /// The stadium contour for a slot, matching the historical import/export shape.

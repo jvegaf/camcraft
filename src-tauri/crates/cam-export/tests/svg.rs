@@ -417,6 +417,142 @@ fn no_layer_name_reaches_the_file_because_an_svg_carries_no_layers() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Drill and slot entities (R3-004): the two kinds that are not a contour of authored vertices.
+// ---------------------------------------------------------------------------------------------
+
+/// A document whose one `HOLES` drill layer holds the given drill/slot kinds as `E1`, `E2`, ...
+fn drill_slot_document(kinds: Vec<EntityKind>) -> Document {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "HOLES".to_owned(),
+    role: LayerRole::Drill,
+    side: cam_model::Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: cam_model::Provenance::default(),
+    entities: kinds
+      .into_iter()
+      .enumerate()
+      .map(|(index, kind)| Entity {
+        id: format!("E{}", index + 1),
+        kind,
+        source: cam_model::Provenance::default(),
+      })
+      .collect(),
+  });
+  document
+}
+
+fn drill_kind(center: Point2, diameter_mm: f64) -> EntityKind {
+  EntityKind::Drill {
+    center,
+    diameter: cam_units::Length::from_mm(diameter_mm),
+  }
+}
+
+fn slot_kind(start: Point2, end: Point2, width_mm: f64) -> EntityKind {
+  EntityKind::Slot {
+    start,
+    end,
+    width: cam_units::Length::from_mm(width_mm),
+  }
+}
+
+#[test]
+fn a_drill_goes_out_as_a_circular_path_with_two_half_turns() {
+  let text = export(&drill_slot_document(vec![drill_kind(
+    Point2::new(10.0, 20.0),
+    1.0,
+  )]));
+
+  // The page is the hole's own bounds: 0.5 mm either side of its centre, so the user unit is a
+  // millimetre here too, and the drill is drawn as the circle it is.
+  assert_eq!(attribute(&text, "viewBox"), "9.5 19.5 1 1");
+  assert_eq!(
+    only_path(&text),
+    "M 10.5 20 A 0.5 0.5 0 1 0 9.5 20 A 0.5 0.5 0 1 0 10.5 20 Z",
+    "a drill is a circle of its own radius, drawn as two exact half turns"
+  );
+  let arcs = arcs(only_path(&text));
+  assert_eq!(arcs.len(), 2);
+  assert_eq!((arcs[0][0].as_str(), arcs[0][1].as_str()), ("0.5", "0.5"));
+  assert_eq!(arcs[0][3], "1", "a half turn is not a large arc");
+}
+
+#[test]
+fn a_slot_goes_out_as_a_closed_stadium_path() {
+  let text = export(&drill_slot_document(vec![slot_kind(
+    Point2::new(30.0, 40.0),
+    Point2::new(50.0, 40.0),
+    1.0,
+  )]));
+
+  // The page is the slot's footprint, 0.5 mm either side of its axis, so nothing the slot covers is
+  // outside the viewBox.
+  assert_eq!(attribute(&text, "viewBox"), "29.5 39.5 21 1");
+  assert_eq!(
+    only_path(&text),
+    "M 30 39.5 L 50 39.5 A 0.5 0.5 0 0 0 50 40.5 L 30 40.5 A 0.5 0.5 0 0 0 30 39.5 Z",
+    "a slot is two flanks and two half-turn ends, closed"
+  );
+  let d = only_path(&text);
+  let arcs = arcs(d);
+  assert_eq!(arcs.len(), 2, "one half turn per end: {d:?}");
+  assert_eq!(
+    (arcs[0][0].as_str(), arcs[0][1].as_str()),
+    ("0.5", "0.5"),
+    "each end's radius is half the slot's width"
+  );
+  assert!(d.ends_with(" Z"), "the stadium is closed: {d:?}");
+  assert_eq!(
+    d.matches(" L ").count(),
+    2,
+    "a stadium has two straight flanks: {d:?}"
+  );
+}
+
+#[test]
+fn a_slot_with_no_length_goes_out_as_a_circle_at_its_midpoint() {
+  // A zero-length slot is a circle: it has no axis for a stadium, so the writer draws the circle the
+  // slot describes rather than dropping it.
+  let text = export(&drill_slot_document(vec![slot_kind(
+    Point2::new(60.0, 40.0),
+    Point2::new(60.0, 40.0),
+    1.0,
+  )]));
+
+  assert_eq!(attribute(&text, "viewBox"), "59.5 39.5 1 1");
+  assert_eq!(
+    only_path(&text),
+    "M 60.5 40 A 0.5 0.5 0 1 0 59.5 40 A 0.5 0.5 0 1 0 60.5 40 Z"
+  );
+}
+
+#[test]
+fn a_drill_and_a_slot_on_one_layer_keep_the_entity_order() {
+  let text = export(&drill_slot_document(vec![
+    drill_kind(Point2::new(10.0, 20.0), 1.0),
+    slot_kind(Point2::new(30.0, 40.0), Point2::new(50.0, 40.0), 1.0),
+  ]));
+
+  let paths = paths(&text);
+  assert_eq!(paths.len(), 2, "one path per drill or slot: {text}");
+  // One page shared by both entities: the union of their footprints, 9.5..50.5 by 19.5..40.5, so
+  // both are placed in that page's reflected frame.
+  assert_eq!(attribute(&text, "viewBox"), "9.5 19.5 41 21");
+  assert!(
+    attribute(paths[0], "d").starts_with("M 10.5 40 A"),
+    "the drill is first: {}",
+    attribute(paths[0], "d")
+  );
+  assert!(
+    attribute(paths[1], "d").starts_with("M 30 19.5 L"),
+    "the slot follows: {}",
+    attribute(paths[1], "d")
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 // Determinism, and the refusals.
 // ---------------------------------------------------------------------------------------------
 
@@ -477,5 +613,37 @@ fn a_non_finite_coordinate_is_refused() {
   assert!(
     error.to_string().contains("not a finite number"),
     "got {error}"
+  );
+}
+
+#[test]
+fn a_slot_whose_stadium_cannot_be_built_is_refused_instead_of_dropped() {
+  // Every number here is finite and the width is positive, so the document passes the writer's
+  // own `refuse_unwritable`: at this magnitude the flank offset is below the coordinate's precision,
+  // so the stadium's vertices collapse onto each other and the kernel refuses the contour. Writing
+  // the file without the slot would be a valid SVG of a document that still holds geometry the
+  // file does not: a silent loss the user would only meet at the machine.
+  let slot = slot_kind(Point2::new(1.0e17, 1.0e17), Point2::new(2.0e17, 1.0e17), 0.002);
+  let document = drill_slot_document(vec![slot]);
+
+  let error = refusal(&document);
+
+  let reason = error.to_string();
+  assert!(
+    reason.starts_with("svg refused:"),
+    "the refusal must be this module's own: {reason}"
+  );
+  assert!(
+    reason.contains("E1") && reason.contains("HOLES"),
+    "the refusal must name the entity and its layer: {reason}"
+  );
+  assert!(
+    reason.contains("stadium"),
+    "the refusal must say what could not be built: {reason}"
+  );
+  assert_eq!(
+    document.entities().count(),
+    1,
+    "a refused export mutates nothing"
   );
 }

@@ -939,6 +939,53 @@ pub enum ModelError {
     /// The offending vertical spacing in millimetres.
     spacing_y: f64,
   },
+  /// A drill entity's centre is not a finite point, or its diameter is not a positive length.
+  ///
+  /// A drill is geometry the document validates like any other kind: a hole whose centre is not a
+  /// point or whose diameter is not a positive length cannot become a move any machine can make, so
+  /// it is refused at load time naming the entity, its layer and every number that was wrong
+  /// (invariant 3) instead of reaching a drilling toolpath.
+  #[error(
+    "drill entity {entity:?} on layer {layer:?} must have a finite centre and a positive finite \
+     diameter, got ({x} mm, {y} mm) with diameter {diameter} mm"
+  )]
+  DrillNotUsable {
+    /// The entity id.
+    entity: String,
+    /// The layer id.
+    layer: String,
+    /// The offending centre X in millimetres.
+    x: f64,
+    /// The offending centre Y in millimetres.
+    y: f64,
+    /// The offending diameter in millimetres.
+    diameter: f64,
+  },
+  /// A slot entity's endpoints are not finite points, or its width is not a positive length.
+  ///
+  /// A slot's two endpoints and its width are the numbers a routing move is built from, so the same
+  /// rule as [`ModelError::DrillNotUsable`] applies to it and the refusal names both endpoints and
+  /// the width (invariant 3).
+  #[error(
+    "slot entity {entity:?} on layer {layer:?} must have finite endpoints and a positive finite \
+     width, got ({start_x} mm, {start_y} mm) to ({end_x} mm, {end_y} mm) with width {width} mm"
+  )]
+  SlotNotUsable {
+    /// The entity id.
+    entity: String,
+    /// The layer id.
+    layer: String,
+    /// The offending start X in millimetres.
+    start_x: f64,
+    /// The offending start Y in millimetres.
+    start_y: f64,
+    /// The offending end X in millimetres.
+    end_x: f64,
+    /// The offending end Y in millimetres.
+    end_y: f64,
+    /// The offending width in millimetres.
+    width: f64,
+  },
   /// A nesting sheet is zero, negative or not a finite size, so it holds no part.
   ///
   /// The job's own rule (a stock that is not a positive finite size describes no rectangle) applies to
@@ -1316,11 +1363,66 @@ impl Document {
     }
 
     check_exc_areas(self)?;
+    check_entity_kinds(self)?;
     check_layers(self)?;
     check_nesting(self)?;
 
     Ok(())
   }
+}
+
+/// Check the numbers of every entity kind that carries its own geometry rather than a contour.
+///
+/// A contour is validated by the kernel when it is read, but a drill's centre and diameter and a
+/// slot's endpoints and width are plain numbers the model stores, so nothing else in this pass
+/// would look at them (R3-002). Both are geometry a drilling or routing toolpath turns into motion,
+/// so a non-finite coordinate or a diameter/width that is not a positive length is refused here,
+/// naming the entity, its layer and every offending value (invariant 3) instead of loading a hole no
+/// machine can make.
+///
+/// Only the numbers are refused. A zero-length slot whose width is still positive describes a
+/// circle, which is a shape a drill can cut and which the exporters already draw as one, so it
+/// stays valid.
+fn check_entity_kinds(document: &Document) -> Result<(), ModelError> {
+  for layer in &document.layers {
+    for entity in &layer.entities {
+      match &entity.kind {
+        EntityKind::Contour { .. } => {}
+        EntityKind::Drill { center, diameter } => {
+          let diameter = diameter.mm();
+          let finite = center.x.is_finite() && center.y.is_finite();
+          if !finite || diameter <= 0.0 || !diameter.is_finite() {
+            return Err(ModelError::DrillNotUsable {
+              entity: entity.id.clone(),
+              layer: layer.id.clone(),
+              x: center.x,
+              y: center.y,
+              diameter,
+            });
+          }
+        }
+        EntityKind::Slot { start, end, width } => {
+          let width = width.mm();
+          let finite = start.x.is_finite()
+            && start.y.is_finite()
+            && end.x.is_finite()
+            && end.y.is_finite();
+          if !finite || width <= 0.0 || !width.is_finite() {
+            return Err(ModelError::SlotNotUsable {
+              entity: entity.id.clone(),
+              layer: layer.id.clone(),
+              start_x: start.x,
+              start_y: start.y,
+              end_x: end.x,
+              end_y: end.y,
+              width,
+            });
+          }
+        }
+      }
+    }
+  }
+  Ok(())
 }
 
 fn check_exc_areas(document: &Document) -> Result<(), ModelError> {

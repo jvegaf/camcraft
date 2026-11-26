@@ -1765,6 +1765,398 @@ fn align_refuses_an_empty_selection_and_an_unknown_id_atomically() {
   assert_bounds(entity_contour(&app, "E1"), (0.0, 0.0), (10.0, 10.0), 1.0e-9);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Drill and slot entities through the editing commands (R3-003).
+//
+// `Drill` and `Slot` carry their own numbers instead of a contour, so every editing path that used
+// to be proven only on contours gets an entity of each kind here: the transform path (all four
+// transforms and the two refusals), the array-copy path and the align path.
+// ---------------------------------------------------------------------------------------------
+
+/// A document whose one drill layer holds one drill and one routed slot.
+fn state_with_drill_and_slot() -> AppState {
+  let mut document = Document::new(Job::default_sheet());
+  document.layers.push(Layer {
+    id: "L-drill".to_owned(),
+    role: LayerRole::Drill,
+    side: cam_model::Side::Both,
+    color: "#0000ff".to_owned(),
+    visible: true,
+    source: cam_model::Provenance::default(),
+    entities: vec![
+      Entity {
+        id: "D1".to_owned(),
+        kind: EntityKind::Drill {
+          center: Point2::new(10.0, 20.0),
+          diameter: Length::from_mm(0.8),
+        },
+        source: cam_model::Provenance::default(),
+      },
+      Entity {
+        id: "S1".to_owned(),
+        kind: EntityKind::Slot {
+          start: Point2::new(30.0, 40.0),
+          end: Point2::new(50.0, 40.0),
+          width: Length::from_mm(1.2),
+        },
+        source: cam_model::Provenance::default(),
+      },
+    ],
+  });
+  AppState::new(document)
+}
+
+/// The drill an entity id holds, as its `cam-model` accessor reports it.
+fn entity_drill(app: &AppState, id: &str) -> (Point2, Length) {
+  app
+    .document()
+    .entity(id)
+    .and_then(|entity| entity.kind.as_drill())
+    .expect("the entity exists and is a drill")
+}
+
+/// The slot an entity id holds, as its `cam-model` accessor reports it.
+fn entity_slot(app: &AppState, id: &str) -> (Point2, Point2, Length) {
+  app
+    .document()
+    .entity(id)
+    .and_then(|entity| entity.kind.as_slot())
+    .expect("the entity exists and is a slot")
+}
+
+/// The footprint of a drill or a slot entity: its centre or its path, widened by half its finished
+/// size. The commands align by this footprint, so the test reads it from the same numbers.
+fn drill_slot_bounds(app: &AppState, id: &str) -> cam_geom::Bounds {
+  let kind = &app
+    .document()
+    .entity(id)
+    .expect("the entity exists")
+    .kind;
+  let mut bounds = cam_geom::Bounds::empty();
+  let (points, half): (Vec<Point2>, f64) = match kind {
+    EntityKind::Drill { center, diameter } => (vec![*center], diameter.mm() / 2.0),
+    EntityKind::Slot { start, end, width } => (vec![*start, *end], width.mm() / 2.0),
+    EntityKind::Contour { .. } => panic!("{id} is not a drill or a slot"),
+  };
+  for point in points {
+    bounds = bounds
+      .include(Point2::new(point.x - half, point.y - half))
+      .include(Point2::new(point.x + half, point.y + half));
+  }
+  bounds
+}
+
+fn assert_point(actual: Point2, expected: Point2, what: &str) {
+  assert!(
+    (actual.x - expected.x).abs() < 1.0e-9 && (actual.y - expected.y).abs() < 1.0e-9,
+    "{what}: got {actual:?}, want {expected:?}"
+  );
+}
+
+#[test]
+fn every_transform_moves_a_drill_and_a_slot_by_their_own_numbers() {
+  let mut app = state_with_drill_and_slot();
+  let selection = vec!["D1".to_owned(), "S1".to_owned()];
+
+  let outcome = app
+    .execute_with_outcome(Command::TransformEntities {
+      entity_ids: selection.clone(),
+      transform: Transform::Translate {
+        delta: Vec2::new(5.0, -3.0),
+      },
+    })
+    .expect("translated");
+  assert_eq!(outcome.lost_arcs, 0, "a translation is exact");
+  assert!(
+    outcome.created_entities.is_empty(),
+    "a transform creates nothing"
+  );
+  assert_eq!(
+    entity_drill(&app, "D1"),
+    (Point2::new(15.0, 17.0), Length::from_mm(0.8)),
+    "a translated drill moves its centre and keeps its diameter"
+  );
+  assert_eq!(
+    entity_slot(&app, "S1"),
+    (
+      Point2::new(35.0, 37.0),
+      Point2::new(55.0, 37.0),
+      Length::from_mm(1.2)
+    ),
+    "a translated slot moves both endpoints and keeps its width"
+  );
+
+  app
+    .execute(Command::TransformEntities {
+      entity_ids: selection.clone(),
+      transform: Transform::Rotate {
+        radians: std::f64::consts::FRAC_PI_2,
+        about: Point2::ORIGIN,
+      },
+    })
+    .expect("rotated");
+  let (center, diameter) = entity_drill(&app, "D1");
+  assert_point(
+    center,
+    Point2::new(-17.0, 15.0),
+    "a quarter-turned drill centre",
+  );
+  assert_eq!(diameter, Length::from_mm(0.8), "a rotation keeps a drill's size");
+  let (start, end, width) = entity_slot(&app, "S1");
+  assert_point(start, Point2::new(-37.0, 35.0), "a quarter-turned slot start");
+  assert_point(end, Point2::new(-37.0, 55.0), "a quarter-turned slot end");
+  assert_eq!(width, Length::from_mm(1.2), "a rotation keeps a slot's width");
+
+  app
+    .execute(Command::TransformEntities {
+      entity_ids: selection.clone(),
+      transform: Transform::Mirror {
+        point: Point2::ORIGIN,
+        direction: Vec2::Y_AXIS,
+      },
+    })
+    .expect("mirrored");
+  let (center, _) = entity_drill(&app, "D1");
+  assert_point(center, Point2::new(17.0, 15.0), "a mirrored drill centre");
+  let (start, end, _) = entity_slot(&app, "S1");
+  assert_point(start, Point2::new(37.0, 35.0), "a mirrored slot start");
+  assert_point(end, Point2::new(37.0, 55.0), "a mirrored slot end");
+
+  app
+    .execute(Command::TransformEntities {
+      entity_ids: selection,
+      transform: Transform::Scale {
+        sx: 2.0,
+        sy: 2.0,
+        about: Point2::ORIGIN,
+        tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
+      },
+    })
+    .expect("scaled");
+  let (center, diameter) = entity_drill(&app, "D1");
+  assert_point(
+    center,
+    Point2::new(34.0, 30.0),
+    "a uniformly scaled drill centre",
+  );
+  assert!(
+    (diameter.mm() - 1.6).abs() < 1.0e-9,
+    "a uniformly scaled drill scales its diameter, got {diameter:?}"
+  );
+  let (start, end, width) = entity_slot(&app, "S1");
+  assert_point(start, Point2::new(74.0, 70.0), "a uniformly scaled slot start");
+  assert_point(end, Point2::new(74.0, 110.0), "a uniformly scaled slot end");
+  assert!(
+    (width.mm() - 2.4).abs() < 1.0e-9,
+    "a uniformly scaled slot scales its width, got {width:?}"
+  );
+}
+
+#[test]
+fn a_non_uniform_scale_of_a_drill_or_a_slot_is_refused_atomically() {
+  for (id, expectation) in [("D1", "drill"), ("S1", "slot")] {
+    let mut app = state_with_drill_and_slot();
+    let error = assert_refused_atomically(
+      &mut app,
+      Command::TransformEntities {
+        entity_ids: vec![id.to_owned()],
+        transform: Transform::Scale {
+          sx: 2.0,
+          sy: 1.0,
+          about: Point2::ORIGIN,
+          tolerance: cam_geom::TolerancePolicy::standard().with_chord(0.01),
+        },
+      },
+    );
+    let CommandError::Geometry(reason) = &error else {
+      panic!("a non-uniform scale of {id} must be a geometry refusal: {error:?}");
+    };
+    assert!(
+      reason.contains(expectation),
+      "the refusal must name the {expectation}: {reason}"
+    );
+    // Both entities are still where the fixture put them.
+    assert_eq!(
+      entity_drill(&app, "D1"),
+      (Point2::new(10.0, 20.0), Length::from_mm(0.8))
+    );
+    assert_eq!(
+      entity_slot(&app, "S1"),
+      (
+        Point2::new(30.0, 40.0),
+        Point2::new(50.0, 40.0),
+        Length::from_mm(1.2)
+      )
+    );
+  }
+}
+
+#[test]
+fn an_array_copy_replicates_a_drill_and_a_slot_on_their_own_layer() {
+  let mut app = state_with_drill_and_slot();
+  let outcome = app
+    .execute_with_outcome(array_copy(
+      vec!["D1".to_owned(), "S1".to_owned()],
+      2,
+      2,
+      100.0,
+      200.0,
+      1,
+    ))
+    .expect("array copied");
+
+  assert_eq!(
+    outcome.created_entities,
+    (1..=8).map(|n| format!("E{n}")).collect::<Vec<String>>(),
+    "two rows of two cells of two entities, ids minted from E1 in row-major order"
+  );
+  assert_eq!(outcome.lost_arcs, 0, "an array copy translates exactly");
+  assert_eq!(
+    app.document().entities().count(),
+    10,
+    "eight copies and the two sources"
+  );
+
+  for (index, (x, y)) in [
+    (0.0, 0.0),
+    (100.0, 0.0),
+    (0.0, 200.0),
+    (100.0, 200.0),
+  ]
+  .into_iter()
+  .enumerate()
+  {
+    let drill_copy = format!("E{}", index * 2 + 1);
+    let slot_copy = format!("E{}", index * 2 + 2);
+    assert_eq!(
+      entity_drill(&app, &drill_copy),
+      (
+        Point2::new(10.0 + x, 20.0 + y),
+        Length::from_mm(0.8)
+      ),
+      "copy {drill_copy} is the drill translated by ({x}, {y})"
+    );
+    assert_eq!(
+      entity_slot(&app, &slot_copy),
+      (
+        Point2::new(30.0 + x, 40.0 + y),
+        Point2::new(50.0 + x, 40.0 + y),
+        Length::from_mm(1.2)
+      ),
+      "copy {slot_copy} is the slot translated by ({x}, {y})"
+    );
+    assert_eq!(
+      layer_holding(&app, &drill_copy),
+      "L-drill",
+      "a copy stays on its source's layer"
+    );
+    assert_eq!(layer_holding(&app, &slot_copy), "L-drill");
+  }
+
+  // The sources stay put and every copy is a duplicate of its source, never a running accumulation.
+  assert_eq!(
+    entity_drill(&app, "D1"),
+    (Point2::new(10.0, 20.0), Length::from_mm(0.8))
+  );
+  assert_eq!(
+    entity_slot(&app, "S1"),
+    (
+      Point2::new(30.0, 40.0),
+      Point2::new(50.0, 40.0),
+      Length::from_mm(1.2)
+    )
+  );
+}
+
+#[test]
+fn align_moves_a_drill_and_a_slot_by_their_footprints() {
+  for (mode, axis) in [
+    (AlignMode::Left, "min.x"),
+    (AlignMode::Right, "max.x"),
+    (AlignMode::Bottom, "min.y"),
+    (AlignMode::Top, "max.y"),
+    (AlignMode::HorizontalCentre, "centre.x"),
+    (AlignMode::VerticalCentre, "centre.y"),
+  ] {
+    let mut app = state_with_drill_and_slot();
+    let drill_before = drill_slot_bounds(&app, "D1");
+    let slot_before = drill_slot_bounds(&app, "S1");
+    let combined = drill_before.union(slot_before);
+    let target = match axis {
+      "min.x" => combined.min.x,
+      "max.x" => combined.max.x,
+      "min.y" => combined.min.y,
+      "max.y" => combined.max.y,
+      "centre.x" => combined.center().x,
+      _ => combined.center().y,
+    };
+    let coordinate = |bounds: cam_geom::Bounds| match axis {
+      "min.x" => bounds.min.x,
+      "max.x" => bounds.max.x,
+      "min.y" => bounds.min.y,
+      "max.y" => bounds.max.y,
+      "centre.x" => bounds.center().x,
+      _ => bounds.center().y,
+    };
+
+    let outcome = app
+      .execute_with_outcome(Command::AlignEntities {
+        entity_ids: vec!["D1".to_owned(), "S1".to_owned()],
+        mode,
+      })
+      .expect("aligned");
+    assert_eq!(outcome.lost_arcs, 0, "{mode:?} only translates");
+
+    let drill_after = drill_slot_bounds(&app, "D1");
+    let slot_after = drill_slot_bounds(&app, "S1");
+    for (bounds, what) in [(drill_after, "the drill"), (slot_after, "the slot")] {
+      assert!(
+        (coordinate(bounds) - target).abs() < 1.0e-9,
+        "{mode:?} must put {what} on {axis} = {target}, got {}",
+        coordinate(bounds)
+      );
+    }
+
+    // Only the aligned axis moves: a drill's and a slot's footprints are exact numbers.
+    let (previous_drill, previous_slot) = (drill_before, slot_before);
+    if axis.ends_with('x') {
+      assert_eq!(
+        (drill_after.min.y, drill_after.max.y),
+        (previous_drill.min.y, previous_drill.max.y),
+        "{mode:?} must not move the drill in Y"
+      );
+      assert_eq!(
+        (slot_after.min.y, slot_after.max.y),
+        (previous_slot.min.y, previous_slot.max.y),
+        "{mode:?} must not move the slot in Y"
+      );
+    } else {
+      assert_eq!(
+        (drill_after.min.x, drill_after.max.x),
+        (previous_drill.min.x, previous_drill.max.x),
+        "{mode:?} must not move the drill in X"
+      );
+      assert_eq!(
+        (slot_after.min.x, slot_after.max.x),
+        (previous_slot.min.x, previous_slot.max.x),
+        "{mode:?} must not move the slot in X"
+      );
+    }
+
+    // Aligning moves the entities; it never resizes them.
+    assert_eq!(
+      entity_drill(&app, "D1").1,
+      Length::from_mm(0.8),
+      "{mode:?} keeps the drill's diameter"
+    );
+    assert_eq!(
+      entity_slot(&app, "S1").2,
+      Length::from_mm(1.2),
+      "{mode:?} keeps the slot's width"
+    );
+  }
+}
+
 #[test]
 fn undoing_a_transform_restores_the_document_exactly() {
   let mut app = state_with_layer();
