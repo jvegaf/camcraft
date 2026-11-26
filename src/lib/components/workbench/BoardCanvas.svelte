@@ -58,7 +58,9 @@ onMount(() => {
   let disposed = false;
   let raf = 0;
   let renderer: import('three').WebGLRenderer | undefined;
-  let controls: import('three/addons/controls/OrbitControls.js').OrbitControls | undefined;
+  let controls:
+    | import('three/addons/controls/OrbitControls.js').OrbitControls
+    | undefined;
   let ro: ResizeObserver | undefined;
   const frameTimes: number[] = [];
   let fpsWindowStart = performance.now();
