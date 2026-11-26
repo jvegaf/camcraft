@@ -58,7 +58,7 @@ onMount(() => {
   let disposed = false;
   let raf = 0;
   let renderer: import('three').WebGLRenderer | undefined;
-  let controls: any;
+  let controls: import('three').OrbitControls | undefined;
   let ro: ResizeObserver | undefined;
   const frameTimes: number[] = [];
   let fpsWindowStart = performance.now();
@@ -306,8 +306,10 @@ onMount(() => {
         fpsText = `FPS avg: ${fps.toFixed(1)}\nFPS min: ${minFps.toFixed(1)}\nFPS 1% low: ${low1.toFixed(1)}`;
         fpsWindowStart = now;
       }
-      controls.update();
-      renderer!.render(scene, camera);
+      controls?.update();
+      if (renderer) {
+        renderer.render(scene, camera);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
