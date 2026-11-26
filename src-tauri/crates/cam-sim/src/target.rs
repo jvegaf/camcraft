@@ -126,28 +126,21 @@ pub fn max_pcb_cut_depth_mm(document: &Document) -> f64 {
     .fold(0.0_f64, f64::max)
 }
 
-/// Gouge over the maximum declared PCB cut depth.
+/// Gouge and uncut against the maximum declared PCB cut depth.
 ///
-/// PCB preview has no per-operation geometric target; this reports only removal beyond the given
-/// maximum declared depth and leaves uncut at zero.
+/// PCB preview has no per-operation geometric target, so the whole simulated area is authorised the
+/// document's deepest declared cut: removal beyond it is gouge, and material left above it — the
+/// board surface a program never reached included — is uncut. [`deviations`] holds the arithmetic.
 pub fn pcb_gouge_over_max_depth(
   field: &Heightfield,
   max_depth_mm: f64,
   tolerance: Length,
 ) -> Deviation {
-  let mut deviation = Deviation::default();
-  let tol = tolerance.mm();
-  let area = field.grid().cell_area();
-  for row in 0..field.grid().rows {
-    for col in 0..field.grid().columns {
-      let removed = -field.surface(col, row);
-      if removed > max_depth_mm + tol {
-        deviation.gouge += (removed - max_depth_mm) * area;
-        deviation.gouge_cells += 1;
-      }
-    }
-  }
-  deviation
+  let target = Target {
+    grid: field.grid(),
+    authorised: vec![max_depth_mm.max(0.0); field.grid().cells()],
+  };
+  deviations(field, &target, tolerance).unwrap_or_default()
 }
 
 /// Derive the target surface for a whole document, on a grid of `cell` millimetres.
@@ -264,7 +257,7 @@ mod tests {
   }
 
   #[test]
-  fn pcb_gouge_over_max_depth_reports_only_excess_removal() {
+  fn pcb_gouge_over_max_depth_reports_excess_removal_and_left_standing_material() {
     let doc = pcb_doc(0.2);
     let mut field = Heightfield::new(&doc.board, Length::from_mm(1.0)).unwrap();
     let mut stream = MoveStream::new(Length::from_mm(5.0), cam_geom::Point2::new(0.0, 0.0));
@@ -291,6 +284,23 @@ mod tests {
     let dev = pcb_gouge_over_max_depth(&field, 0.2, Length::from_mm(0.01));
     assert!(dev.gouge > 0.0);
     assert!(dev.gouge_cells > 0);
+    // A program that clears part of the board leaves the rest of the simulated area uncut.
+    assert!(dev.uncut > 0.0);
+    assert!(dev.uncut_cells > 0);
+  }
+
+  #[test]
+  fn pcb_gouge_over_max_depth_reports_nothing_for_a_board_cut_to_the_declared_depth() {
+    let doc = pcb_doc(0.2);
+    let mut field = Heightfield::new(&doc.board, Length::from_mm(1.0)).unwrap();
+    for row in 0..field.grid().rows {
+      for column in 0..field.grid().columns {
+        field.lower(column, row, -0.2);
+      }
+    }
+    let dev = pcb_gouge_over_max_depth(&field, 0.2, Length::from_mm(0.01));
+    assert_eq!(dev.gouge, 0.0);
+    assert_eq!(dev.gouge_cells, 0);
     assert_eq!(dev.uncut, 0.0);
     assert_eq!(dev.uncut_cells, 0);
   }

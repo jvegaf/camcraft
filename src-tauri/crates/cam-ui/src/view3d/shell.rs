@@ -548,8 +548,8 @@ impl Shell {
       return;
     };
     cam_sim::sweep::apply(&stream, &mut field);
-    // PCB preview has no per-operation geometric target; report gouge as removal beyond the
-    // maximum declared cut depth and no whole-board uncut.
+    // PCB preview has no per-operation geometric target: the deepest declared cut authorises every
+    // cell, so gouge is removal beyond it and uncut is material left above it.
     let tolerance = cam_units::Length::from_mm(0.01);
     let max_depth = cam_sim::max_pcb_cut_depth_mm(app.document());
     let deviation = cam_sim::pcb_gouge_over_max_depth(&field, max_depth, tolerance);

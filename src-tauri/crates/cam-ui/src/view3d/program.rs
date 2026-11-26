@@ -40,11 +40,13 @@ pub fn build_preview_stream(
     };
     match &toolpath.operation {
       Operation::Isolation(params) => {
-        let contours = collect_contours(document, &toolpath.entity_ids);
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
         if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
           continue;
         }
         let Ok(copper) = unite_copper(&contours, tolerance) else {
+          warn_skipped(&toolpath.name, "copper could not be united", &mut warnings);
           continue;
         };
         let Ok(passes) = cam_ops::isolation_passes_with_kind(
@@ -57,6 +59,7 @@ pub fn build_preview_stream(
           params.keep_pours,
           tolerance,
         ) else {
+          warn_skipped(&toolpath.name, "isolation passes failed", &mut warnings);
           continue;
         };
         let mut moves = Vec::new();
@@ -75,12 +78,14 @@ pub fn build_preview_stream(
         }
       }
       Operation::NonCopperClear(params) => {
-        let contours = collect_contours(document, &toolpath.entity_ids);
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
         if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
           continue;
         }
         let Ok(moves) = cam_ops::ncc_moves(&contours, params.cut_depth.mm(), &document.board)
         else {
+          warn_skipped(&toolpath.name, "clearing moves failed", &mut warnings);
           continue;
         };
         if push_segment(&mut stream, toolpath, tool_shape, moves) {
@@ -88,18 +93,36 @@ pub fn build_preview_stream(
         }
       }
       Operation::Cutout(params) => {
-        let contours = collect_contours(document, &toolpath.entity_ids);
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
         if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
           continue;
         }
-        let mut moves = Vec::new();
-        for contour in contours {
-          push_contour_moves(
-            &mut moves,
-            &contour,
-            params.cut_depth.mm(),
-            stream.safe_z.mm(),
-          );
+        // The preview runs the command's own cutout planner (`camcut cutout` calls the same
+        // `cam_ops::cutout`), so margin, pass_depth and tabs reach the simulated moves. It cuts the
+        // contours this toolpath cites, as that command does: `cut_interiors` is a selection the
+        // document already made, so the preview does not widen it.
+        let tool = cam_ops::ToolSpec {
+          number: toolpath.tool_number,
+          diameter: Length::from_mm(tool_diameter_mm),
+          included_angle: None,
+          feed_rate: PREVIEW_FEED_MM_PER_MIN,
+          plunge_rate: PREVIEW_PLUNGE_MM_PER_MIN,
+          spindle_speed: PREVIEW_SPINDLE_RPM,
+        };
+        let request = cam_ops::CutoutRequest {
+          contours: &contours,
+          params,
+          tool: &tool,
+          job: &document.board,
+        };
+        let Ok(mut moves) = cam_ops::cutout(&request) else {
+          warn_skipped(&toolpath.name, "cutout moves failed", &mut warnings);
+          continue;
+        };
+        match cam_ops::mouse_bite_drills(&request) {
+          Ok(mut drills) => moves.append(&mut drills),
+          Err(_) => warn_skipped(&toolpath.name, "mouse-bite drills failed", &mut warnings),
         }
         if push_segment(&mut stream, toolpath, tool_shape, moves) {
           any = true;
@@ -110,6 +133,8 @@ pub fn build_preview_stream(
         let safe_z = stream.safe_z.mm();
         for entity_id in &toolpath.entity_ids {
           let Some(entity) = document.entity(entity_id.as_str()) else {
+            let reason = format!("entity '{entity_id}' is missing");
+            warn_skipped(&toolpath.name, &reason, &mut warnings);
             continue;
           };
           match &entity.kind {
@@ -151,8 +176,9 @@ pub fn build_preview_stream(
         }
       }
       Operation::Paint(params) => {
-        let contours = collect_contours(document, &toolpath.entity_ids);
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
         if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
           continue;
         }
         let mut moves = Vec::new();
@@ -273,17 +299,34 @@ fn push_slot(
   });
 }
 
-fn collect_contours(document: &Document, entity_ids: &[String]) -> Vec<cam_geom::Contour> {
+fn collect_contours(
+  document: &Document,
+  entity_ids: &[String],
+  toolpath: &str,
+  warnings: &mut Vec<String>,
+) -> Vec<cam_geom::Contour> {
   let mut out = Vec::new();
   for id in entity_ids {
     let Some(entity) = document.entity(id.as_str()) else {
+      warnings.push(format!(
+        "toolpath '{toolpath}' is not in the preview: entity {id:?} does not exist"
+      ));
       continue;
     };
     if let cam_model::EntityKind::Contour { contour } = &entity.kind {
       out.push(contour.clone());
+    } else {
+      warnings.push(format!(
+        "toolpath '{toolpath}' is not in the preview: entity {id:?} is not a contour"
+      ));
     }
   }
   out
+}
+
+/// Report a toolpath the preview could not generate, so a dropped program is never silent (R4).
+fn warn_skipped(name: &str, reason: &str, warnings: &mut Vec<String>) {
+  warnings.push(format!("toolpath '{name}' is not in the preview: {reason}"));
 }
 
 fn push_contour_moves(
@@ -324,8 +367,8 @@ mod tests {
   use super::*;
   use cam_geom::{Contour, Point2};
   use cam_model::{
-    Board, BoardSideUp, Document, Entity, EntityKind, IsolationKind, IsolationParams, Layer,
-    LayerRole, MillingDirection, Operation, Provenance, Side, Toolpath,
+    Board, BoardSideUp, CutoutParams, Document, Entity, EntityKind, IsolationKind, IsolationParams,
+    Layer, LayerRole, MillingDirection, Operation, Provenance, Side, TabKind, Toolpath,
   };
   use cam_store::tools::{CuttingData, StoredTool, ToolGeometry, ToolKind};
   use cam_units::{Length, UnitSystem};
@@ -482,5 +525,51 @@ mod tests {
     assert_eq!(stream.segments.len(), 1);
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("missing tool"));
+  }
+
+  #[test]
+  fn build_preview_stream_warns_and_keeps_other_toolpaths_when_an_entity_is_missing() {
+    let mut doc = doc_with_isolation();
+    let mut ghost = doc.toolpaths[0].clone();
+    ghost.name = "Ghost".into();
+    ghost.entity_ids = vec!["NOPE".into()];
+    doc.toolpaths.push(ghost);
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    assert_eq!(stream.expect("stream").segments.len(), 1);
+    assert!(warnings.join(" ").contains("Ghost"));
+    assert!(warnings.join(" ").contains("no usable contours"));
+  }
+
+  #[test]
+  fn build_preview_stream_cutout_uses_cutout_parameters() {
+    let mut doc = doc_with_isolation();
+    doc.toolpaths = vec![Toolpath {
+      id: "C1".into(),
+      name: "Cut".into(),
+      entity_ids: vec!["E1".into()],
+      tool_id: Some("G1".into()),
+      tool_number: 7,
+      operation: Operation::Cutout(CutoutParams {
+        margin: Length::from_mm(0.5),
+        tabs: vec![],
+        tab_kind: TabKind::Straight,
+        pass_depth: Length::from_mm(0.8),
+        cut_depth: Length::from_mm(1.6),
+        cut_interiors: false,
+      }),
+    }];
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 1.0)]);
+    let stream = stream.expect("stream");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let moves = &stream.segments[0].moves;
+    let xs = moves.iter().map(|m| m.destination().x.mm());
+    let max_x = xs.fold(f64::MIN, f64::max);
+    assert!(max_x > 30.5, "{max_x}");
+    let retracts = moves.iter().filter(|m| matches!(m, Move::Retract { .. }));
+    assert!(retracts.count() >= 2, "two passes");
+    // A cutout toolpath citing no geometry is refused with a warning, never silently dropped.
+    doc.toolpaths[0].entity_ids.clear();
+    let (_, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 1.0)]);
+    assert!(warnings.join(" ").contains("no usable contours"));
   }
 }
