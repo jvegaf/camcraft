@@ -898,3 +898,114 @@ fn a_left_click_opens_no_menu() {
     "a left click on an edge still picks it"
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Ctrl+Shift+S is Save As, not Save (R3-003, batch 16b)
+// ---------------------------------------------------------------------------------------------
+
+/// A directory in the system temp directory that removes itself when the test ends.
+///
+/// Outside the worktree on purpose: these tests write a real `.cmc` so the shell holds a real path, and a file
+/// beside the source would show up in `git status` the first time a test failed.
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+  fn new(name: &str) -> Self {
+    let path = std::env::temp_dir().join(format!("campilot-input-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).expect("scratch directory");
+    Self(path)
+  }
+
+  fn path(&self) -> &std::path::Path {
+    &self.0
+  }
+}
+
+impl Drop for Scratch {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_dir_all(&self.0);
+  }
+}
+
+#[test]
+fn ctrl_shift_s_asks_for_a_new_path_and_never_overwrites_the_open_file() {
+  let scratch = Scratch::new("ctrl-shift-s");
+  let path = scratch.path().join("part.cmc");
+  cam_store::document::save_document(&path, &document()).expect("the document is written");
+  let mut harness = Harness::new();
+  harness.shell.apply_action(
+    &mut harness.app,
+    &UiAction::OpenFile { path: path.clone() },
+  );
+  harness.frame(Vec::new());
+  let before = std::fs::read(&path).expect("the file reads");
+
+  let shift_command = egui::Modifiers {
+    command: true,
+    shift: true,
+    ..Default::default()
+  };
+  harness.frame(vec![egui::Event::Key {
+    key: egui::Key::S,
+    physical_key: None,
+    pressed: true,
+    repeat: false,
+    modifiers: shift_command,
+  }]);
+  let pressed = harness.output.clone();
+
+  assert_eq!(
+    pressed.actions,
+    vec![UiAction::RequestSaveAs],
+    "Ctrl+Shift+S is the operator asking for a new file: it must ask the host, not overwrite the open one"
+  );
+  assert_eq!(
+    std::fs::read(&path).expect("the file reads"),
+    before,
+    "Ctrl+Shift+S wrote the document it was supposed to leave alone"
+  );
+}
+
+#[test]
+fn ctrl_s_still_writes_the_file_the_window_holds() {
+  let scratch = Scratch::new("ctrl-s");
+  let path = scratch.path().join("part.cmc");
+  cam_store::document::save_document(&path, &document()).expect("the document is written");
+  let mut harness = Harness::new();
+  harness.shell.apply_action(
+    &mut harness.app,
+    &UiAction::OpenFile { path: path.clone() },
+  );
+  handle_action(
+    &mut harness.app,
+    &cam_ui::UiAction::AddRectangle {
+      width: 10.0,
+      height: 10.0,
+    },
+  )
+  .expect("added");
+  harness.frame(Vec::new());
+
+  harness.frame(vec![egui::Event::Key {
+    key: egui::Key::S,
+    physical_key: None,
+    pressed: true,
+    repeat: false,
+    modifiers: egui::Modifiers {
+      command: true,
+      ..Default::default()
+    },
+  }]);
+  let pressed = harness.output.clone();
+
+  assert_eq!(
+    pressed.actions,
+    vec![UiAction::Save],
+    "Ctrl+S without Shift is still the plain save of the file the window holds"
+  );
+  assert!(
+    !harness.app.is_dirty(),
+    "Ctrl+S must write the drawing it holds"
+  );
+}

@@ -802,3 +802,121 @@ fn rapid_crossing_exc_area_is_reported_as_collision_and_routed_travel_is_clean()
     "routed travel must not collide with exc_areas"
   );
 }
+
+#[test]
+fn a_capped_long_travel_catches_a_narrow_keepout_between_two_of_its_samples() {
+  // R3-002 (batch 14): the idle-travel clearance check never iterates without bound, so it samples a
+  // segment at `step = (radius * 0.5).clamp(0.05, 0.5)` and caps the count at 4096 samples. A 2 m rapid
+  // with a 1 mm cutter asks for one sample every 0.25 mm — 8000 of them — so the cap is what runs, and the
+  // effective interval is `2000 / 4096 = 0.488` mm: twice as coarse as the move asked for, and just under
+  // the 0.5 mm the sampler is never allowed to exceed.
+  use cam_geom::region::Region;
+  use cam_geom::{Contour, Point2 as G2, TolerancePolicy};
+  use cam_sim::sweep::apply_with_exc_areas;
+
+  let travel = 2000.0_f64;
+  let diameter = 1.0_f64;
+  let capped_steps = 4096.0_f64;
+  // The interval the sampler asks for is `radius * 0.5`, so a `diameter / 4`.
+  let asked_step = diameter / 4.0;
+
+  let radius = diameter / 2.0;
+  let interval = travel / capped_steps;
+  assert!(
+    travel / asked_step > capped_steps,
+    "the fixture must be long enough to reach the cap: {} samples asked for, {capped_steps} allowed",
+    travel / asked_step
+  );
+
+  // A narrow keepout is a spike standing under the travel: its apex is the boundary closest to the line the
+  // tool runs along, so a sample sees it when it is nearer than the cutter's radius — within
+  // `sqrt(radius^2 - height^2)` of the apex in `x`, whichever side it comes from.
+  let spike = |apex_x: f64, height: f64| {
+    Region::new(vec![
+      Contour::from_points(
+        &[
+          G2::new(apex_x, height),
+          G2::new(apex_x - 2.0, height + 10.0),
+          G2::new(apex_x + 2.0, height + 10.0),
+        ],
+        true,
+      )
+      .expect("the spike is a closed contour"),
+    ])
+    .expect("the spike is one closed boundary")
+  };
+  // The apex sits exactly midway between two samples, which is the one placement a sampler cannot get for
+  // free: `round` picks the sample below it and `interval / 2` moves the apex to the far side.
+  let between = |x: f64| (x / interval).round() * interval + interval / 2.0;
+  let detected_by = |height: f64| {
+    // The half-width of the window in which a sample is close enough to see the spike.
+    (radius * radius - height * height).max(0.0).sqrt()
+  };
+
+  let mut stream = MoveStream::new(Length::from_mm(5.0), G2::new(0.0, 0.0));
+  stream.segments.push(segment(
+    "long",
+    diameter,
+    vec![
+      Move::Rapid {
+        to: Point3::new(0.0, 0.0, 5.0),
+      },
+      Move::Rapid {
+        to: Point3::new(travel, 0.0, 5.0),
+      },
+    ],
+  ));
+
+  // A spike whose window is wider than the interval has to be seen: `0.3` mm below the line leaves a window
+  // `2 * sqrt(0.5^2 - 0.3^2) = 0.8` mm wide, and no run of 0.488 mm fits inside it without landing on a
+  // sample.
+  assert!(
+    detected_by(0.3) * 2.0 > interval,
+    "the wide fixture's window must be wider than the interval: {} vs {interval}",
+    detected_by(0.3) * 2.0
+  );
+  let mut wide = field(30.0, 0.5);
+  let caught = apply_with_exc_areas(
+    &stream,
+    &mut wide,
+    &[spike(between(1000.0), 0.3)],
+    TolerancePolicy::default(),
+  );
+  assert_eq!(
+    caught.crashes.len(),
+    1,
+    "a keepout the capped sampling passes over twice its interval must be reported"
+  );
+  assert_eq!(
+    caught.crashes[0].move_index, 1,
+    "the crash belongs to the long travel, not to the rapid that only establishes where it starts"
+  );
+
+  // The **approximation**, pinned so it cannot change without someone saying so. A spike whose window is
+  // narrower than the interval can sit between two samples, and the capped sampler passes it: `0.4999` mm
+  // leaves a window `2 * sqrt(0.5^2 - 0.4999^2) = 0.02` mm wide, and the nearest samples are half an interval
+  // away — 0.244 mm, a quarter of the cutter's own diameter, which is the coarsest this sampler gets.
+  //
+  // Closing this needs interval-bounded sampling in `cam_sim::sweep::segment_hits_region` (`cam-sim/src/
+  // sweep.rs`), which is the R3-002 batch 14 follow-up and outside this change's edit surface. When it lands,
+  // this case starts reporting the crash and this assertion is the thing that tells the author to rewrite
+  // it: the message says so, and the fixture beside it keeps the claim measurable.
+  assert!(
+    detected_by(0.4999) * 2.0 < interval,
+    "the narrow fixture's window must be narrower than the interval: {} vs {interval}",
+    detected_by(0.4999) * 2.0
+  );
+  let mut narrow = field(30.0, 0.5);
+  let missed = apply_with_exc_areas(
+    &stream,
+    &mut narrow,
+    &[spike(between(1200.0), 0.4999)],
+    TolerancePolicy::default(),
+  );
+  assert!(
+    missed.crashes.is_empty(),
+    "the capped sampling reported a keepout narrower than its own interval: the approximation documented \
+     here has been fixed, so this test's narrow case is now the wide one's rule and must be rewritten \
+     (R3-002, batch 14 follow-up)"
+  );
+}

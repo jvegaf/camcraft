@@ -306,11 +306,17 @@ impl Shell {
     }
 
     // Keyboard: undo/redo, save, delete, fit.
-    let (undo, redo, save, delete, fit) = ui.ctx().input(|input| {
+    //
+    // `Save` and `Save As` are told apart by Shift and by nothing else (R3-003, batch 16b): `Ctrl+S` writes the
+    // file the window already holds, and `Ctrl+Shift+S` is the operator asking for a *new* one. A `Save` that also
+    // answered Shift would overwrite the open file behind a dialog the operator had just asked for, which is the
+    // one outcome the pair of commands exists to make impossible.
+    let (undo, redo, save, save_as, delete, fit) = ui.ctx().input(|input| {
       (
         input.modifiers.command && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
         input.modifiers.command && input.key_pressed(egui::Key::Z) && input.modifiers.shift,
-        input.modifiers.command && input.key_pressed(egui::Key::S),
+        input.modifiers.command && input.key_pressed(egui::Key::S) && !input.modifiers.shift,
+        input.modifiers.command && input.key_pressed(egui::Key::S) && input.modifiers.shift,
         input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace),
         input.key_pressed(egui::Key::F) && !input.modifiers.command,
       )
@@ -327,6 +333,9 @@ impl Shell {
       } else {
         output.actions.push(UiAction::RequestSaveAs);
       }
+    }
+    if save_as {
+      output.actions.push(UiAction::RequestSaveAs);
     }
     if delete {
       output.actions.push(UiAction::DeleteSelection);

@@ -337,26 +337,6 @@ fn signed_area(points: &[Pos2]) -> f32 {
   area * 0.5
 }
 
-fn is_convex(points: &[Pos2]) -> bool {
-  let mut sign = 0.0f32;
-  let n = points.len();
-  for i in 0..n {
-    let a = points[i];
-    let b = points[(i + 1) % n];
-    let c = points[(i + 2) % n];
-    let turn = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-    if turn.abs() <= 1.0e-6 {
-      continue;
-    }
-    if sign == 0.0 {
-      sign = turn;
-    } else if sign * turn < 0.0 {
-      return false;
-    }
-  }
-  true
-}
-
 fn cross(a: Pos2, b: Pos2, c: Pos2) -> f32 {
   (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
@@ -394,4 +374,85 @@ fn paint_world_rect(
     points,
     Stroke::new(1.0, palette.get(Role::Border)),
   ));
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A concave contour of `spikes` points: a star of teeth, so the polygon turns both ways.
+  ///
+  /// Concave on purpose, because a convex contour is the case fan triangulation is correct for: the freeze
+  /// this test pins was a *concave* copper pour (R4-copper-fill-freeze), and the count is what decides which
+  /// triangulator runs.
+  fn star(spikes: usize) -> Vec<Pos2> {
+    (0..spikes * 2)
+      .map(|index| {
+        let angle = std::f32::consts::TAU * index as f32 / (spikes * 2) as f32;
+        let radius = if index % 2 == 0 { 100.0 } else { 40.0 };
+        Pos2::new(400.0 + radius * angle.cos(), 400.0 + radius * angle.sin())
+      })
+      .collect()
+  }
+
+  /// Whether a contour turns both ways, which is what makes it concave.
+  fn is_concave(points: &[Pos2]) -> bool {
+    let mut sign = 0.0f32;
+    let n = points.len();
+    for i in 0..n {
+      let turn = cross(
+        points[i],
+        points[(i + 1) % n],
+        points[(i + 2) % n],
+      );
+      if turn.abs() <= 1.0e-6 {
+        continue;
+      }
+      if sign == 0.0 {
+        sign = turn;
+      } else if sign * turn < 0.0 {
+        return true;
+      }
+    }
+    false
+  }
+
+  #[test]
+  fn a_concave_contour_of_hundreds_of_vertices_triangulates_through_the_fan_without_stalling() {
+    // R3-COPPER-EARCLIP-PERF (batch 16a). Ear clipping is O(n^2) guarded and O(n^3) in the worst case, per
+    // contour per frame, so a copper pour of a few hundred vertices froze the canvas. Past
+    // [`EARCLIP_MAX_POINTS`] the fill falls back to the bounded fan: `n - 2` triangles in one pass over the
+    // vertices. This pins that fallback — the path, the coverage and the time — because a dropped triangle
+    // would draw a hole in the pour and a re-enabled ear clip would freeze it again.
+    let points = star(200);
+    assert!(
+      points.len() > EARCLIP_MAX_POINTS,
+      "the fixture must be past the ear clip's own limit: {} vertices",
+      points.len()
+    );
+    assert!(
+      is_concave(&points),
+      "the fixture must be concave, which is the case the fan approximates"
+    );
+
+    let started = std::time::Instant::now();
+    let triangles = earclip(&points);
+    let elapsed = started.elapsed();
+
+    assert_eq!(
+      triangles,
+      fan_triangulate(&points),
+      "a contour this size must take the bounded fan, not the ear clip"
+    );
+    assert_eq!(
+      triangles.len(),
+      points.len() - 2,
+      "the fan must cover the whole contour: one triangle per vertex past the first two"
+    );
+    assert!(
+      elapsed < std::time::Duration::from_millis(250),
+      "triangulating {} vertices took {elapsed:?}, which is a frame the operator sees as a freeze",
+      points.len()
+    );
+  }
 }

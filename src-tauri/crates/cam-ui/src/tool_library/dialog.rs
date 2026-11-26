@@ -289,9 +289,10 @@ fn action_row(
 impl Shell {
   /// Why `Use this tool` cannot be honoured right now, or `None` when it can.
   ///
-  /// The order is the operator's: an empty library first, then the toolpath that opened the dialog, then the
-  /// choice itself. Each sentence names the thing that is missing, so a dark button is never a mystery — and
-  /// the button is not drawn at all while one is returned (camui-prancheta S9, L6).
+  /// The order is the operator's: a library this visit could not read first, then an empty library, then the
+  /// toolpath that opened the dialog, then the choice itself. Each sentence names the thing that is missing, so a
+  /// dark button is never a mystery — and the button is not drawn at all while one is returned (camui-prancheta
+  /// S9, L6).
   pub fn tool_library_refusal(&self, app: &AppState) -> Option<String> {
     self.refusal_for(
       app,
@@ -305,6 +306,14 @@ impl Shell {
   /// answer the operator sees must be about the row this frame selected, not the one the last frame had
   /// (L13's reporting rule, which the T3 task paid for).
   fn refusal_for(&self, app: &AppState, tool: Option<&StoredTool>) -> Option<String> {
+    // A library this visit could not read is not a library to bind a toolpath to (R3-002/R4-001, batch 16b).
+    // The rows on screen are the previous visit's snapshot — kept so the operator can still see what the window
+    // last held — so `Use this tool` would name a tool the file no longer confirms, and the crash this rule
+    // prevents is a toolpath retooled from a tool that is not there. The sentence is the read failure's own, so
+    // the modal says what happened instead of guessing that the library is empty.
+    if let Some(sentence) = &self.tool_library_error {
+      return Some(sentence.clone());
+    }
     if self.tools.is_empty() {
       return Some(EMPTY_LIBRARY.to_owned());
     }
@@ -625,7 +634,10 @@ impl Shell {
                 // (S11). A dark row is drawn and reported and is not a hit, which is the only shape the
                 // module's first rule allows.
                 ui.add_space(metrics.space(2));
-                let writes = self.tool_library_path.is_some();
+                // The four rows that write need a file this window may write *and* a snapshot the file still
+                // confirms: a library whose last read failed is not one to write over, so the same failure that
+                // takes `Use this tool` away darkens all four and draws its own sentence below (R4-001, batch 16b).
+                let writes = self.tool_library_path.is_some() && self.tool_library_error.is_none();
                 let has_tool = selected.is_some();
                 for row in [
                   vec![

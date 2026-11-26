@@ -43,6 +43,8 @@ mod library_file;
 mod preview;
 #[path = "tool_library/speeds.rs"]
 mod speeds;
+#[path = "tool_library/stale_library.rs"]
+mod stale_library;
 #[path = "tool_library/support.rs"]
 mod support;
 #[path = "tool_library/tree.rs"]
