@@ -22,7 +22,27 @@ refutados. Se cierra al final de la migración con una pasada de corrección ded
 | ID  | Tarea                                                  | Specs | Ruta   | Commit |
 | --- | ------------------------------------------------------ | ----- | ------ | ------ |
 | T1  | Crear la lista y sembrar los advisories de batches 1-7 | S1,S2 | inline | (este) |
-| T2  | Corregir cada advisory pendiente y marcar estado       | S1    | inline | —      |
+| T2  | Corregir cada advisory pendiente y marcar estado       | S1    | inline | `6 commits 2026-11-26` |
+
+## Estado: delivered
+
+T2 cerró toda la deuda en 6 commits por grupo (2026-11-26):
+
+1. `cam-model/app/export`: validación Drill/Slot, tests command-level y de export DXF/SVG, refusal
+   de slot SVG (1058 líneas).
+2. `cam-post/ops`: toolchanges numerados y detour de retract como rapids (247 líneas).
+3. `cam-cli/ops`: escrituras atómicas sin symlink, parámetros finitos, retract Amount validado
+   (InvalidRetract), split drill/cutout honesto, fixtures corpus ejecutándose.
+4. `scripts/ci`: check-records robusto, docs 30 s, pin/collect sin huérfanos y con killpg,
+   ui-review-sway continúa escenas y reporta px/arranque, vitest sin passWithNoTests (`55941`).
+5. `gerber/geom`: región rota tolerante, D03 sin aperture rechazado, fallback secuencial,
+   procedencia de comando, guard tip-snap fijado por test (`56770`).
+6. `ui/sim`: librería stale informa el fallo y rechaza operaciones vivas, Ctrl+Shift+S = Save As,
+   sweep/earclip fijados por test, clippy de cam-ui en verde.
+
+Quedan como follow-up fuera de alcance: kernel panic `boolean.rs:1019` con strips cerca de
+tolerancia; intervalo efectivo > 0.5 mm en viajes largos (aproximación documentada en test);
+causalidad desconocida R1-001 (batches 11c/18).
 
 ## Log
 
