@@ -75,6 +75,10 @@ def replace_all(targets: dict[Path, str]) -> None:
     try:
         for path, text in targets.items():
             handle, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+            # Registered before anything else can fail: `staged` is the list the `finally` unlinks, so a
+            # failure between `mkstemp` and the old append point (a write error, a permission that
+            # changed, an interrupt) left the temp file in the baseline directory for good.
+            staged.append((path, temporary))
             with os.fdopen(handle, "w", encoding="utf-8") as file:
                 file.write(text)
                 file.flush()
@@ -83,7 +87,6 @@ def replace_all(targets: dict[Path, str]) -> None:
             # a plain 0644 for a new one, rather than making the pinned set owner-only.
             mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
             os.chmod(temporary, mode)
-            staged.append((path, temporary))
         for path, temporary in staged:
             os.replace(temporary, path)
             installed.append(path)

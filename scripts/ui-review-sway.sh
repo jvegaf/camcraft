@@ -79,11 +79,15 @@ export SWAYSOCK WAYLAND_DISPLAY
 echo "sway headless pid=$SWAY_PID sock=$SWAYSOCK display=$WAYLAND_DISPLAY"
 
 status=0
+# Cada escena que falla se anota con su causa: el run completo tiene que decir cuáles fallaron y por
+# qué, no solo el último renglón que se alcanzó a imprimir.
+failed=()
 for scene in "${scene_ids[@]}"; do
   ref="$ROOT/fixtures/ui/$scene.png"
   if [[ ! -f "$ref" ]]; then
     echo "ui-review: $scene  SKIP  falta referencia $ref"
     status=1
+    failed+=("$scene: falta la referencia")
     continue
   fi
 
@@ -105,13 +109,27 @@ PY
   CAM_UI_SCENE="$scene" cargo run -p cam-desktop --manifest-path "$ROOT/Cargo.toml" >"$DIFF_DIR/$scene.app.log" 2>&1 &
   APP_PID=$!
 
-  # Esperar a que la ventana aparezca y se renderice.
+  # Esperar a que la ventana aparezca y se renderice. El flag distingue "arrancó y se capturó" de
+  # "nunca apareció": sin él, un fallo de build o de lanzamiento se reportaba como una diferencia
+  # visual tras esperar el loop completo, que es el diagnóstico equivocado.
+  launched=false
   for _ in $(seq 1 120); do
     if swaymsg -t get_tree | jq -e '.. | .name? // empty | select(.=="campilot")' >/dev/null 2>&1; then
+      launched=true
       break
     fi
     sleep 0.25
   done
+
+  if [[ "$launched" != true ]]; then
+    echo "ui-review: $scene  FAIL  arranque: la ventana no apareció (ver $DIFF_DIR/$scene.app.log)"
+    status=1
+    failed+=("$scene: no arrancó")
+    kill "$APP_PID" 2>/dev/null || true
+    wait "$APP_PID" 2>/dev/null || true
+    continue
+  fi
+
   sleep 1.5
   grim "$actual" || true
 
@@ -121,10 +139,15 @@ PY
   if [[ ! -f "$actual" ]]; then
     echo "ui-review: $scene  FAIL  no se pudo capturar"
     status=1
+    failed+=("$scene: no se pudo capturar")
     continue
   fi
 
-  python3 - "$ref" "$actual" "$diff" "$scene" <<'PY'
+  # `|| rc=$?` y no `rc=$?` en la línea siguiente: bajo `set -e` un python3 que sale distinto de cero
+  # aborta el script antes de capturar su código, y una escena fallida se llevaba por delante el
+  # informe de todas las demás. Guardado así, el loop sigue y el resumen final dice cuántas fallaron.
+  rc=0
+  python3 - "$ref" "$actual" "$diff" "$scene" <<'PY' || rc=$?
 import sys, struct, zlib, os
 ref_p, act_p, diff_p, name = sys.argv[1:5]
 
@@ -201,8 +224,8 @@ if (rw,rh)!=(aw,ah):
 total=rw*rh
 diff_px=0; channel=0
 diff_img=bytearray(total*4)
-# Umbral por pixel para ignorar ruido de AA/render entre rutas distintas.
-# Total de diff de canal (R+G+B+A) por pixel; por defecto 0 (estricto).
+# Umbral por pixel para ignorar ruido de AA/render entre rutas distintas: es un piso de ruido,
+# no un margen de igualdad. Total de diff de canal (R+G+B+A) por pixel; por defecto 16.
 pix_threshold=int(os.environ.get('UI_REVIEW_PIXEL_THRESHOLD','16'))
 for i in range(0,total*4,4):
     dr=abs(ref[i]-act[i]); dg=abs(ref[i+1]-act[i+1]); db=abs(ref[i+2]-act[i+2]); da=abs(ref[i+3]-act[i+3])
@@ -220,7 +243,13 @@ if diff_px==0:
     except: pass
     try: os.remove(act_p)
     except: pass
-    print(f"ui-review: {name}  OK  match exacto")
+    # Cero pixeles por encima del piso de ruido no es un match exacto: es un match dentro de la
+    # tolerancia por pixel, y decirlo así es la diferencia entre "no cambió nada" y "no cambió nada
+    # que supere el ruido". Con `UI_REVIEW_PIXEL_THRESHOLD=0` el piso desaparece y sí es exacto.
+    if pix_threshold == 0:
+        print(f"ui-review: {name}  OK  match byte a byte (0/{total} px distintos, umbral 0)")
+    else:
+        print(f"ui-review: {name}  OK  0/{total} px por encima del umbral por pixel ({pix_threshold}/canal); no es un match byte a byte")
     sys.exit(0)
 write_png(diff_p,rw,rh,diff_img)
 print(f"ui-review: {name}  DIFF  {diff_px}/{total} px ({pct:.3}%), channel_diff={channel}")
@@ -230,12 +259,18 @@ print(f"  diff:      {diff_p}")
 max_pct=0.50
 max_channel=total*4*2
 if pct<=max_pct and channel<=max_channel:
-    print(f"ui-review: {name}  OK  dentro de tolerancia ({pct:.3}%)")
+    print(f"ui-review: {name}  OK  dentro de tolerancia ({diff_px}/{total} px, {pct:.3f}%, channel_diff={channel})")
     sys.exit(0)
 sys.exit(1)
 PY
-  rc=$? || rc=$?
-  if [[ $rc -ne 0 ]]; then status=1; fi
+  if [[ $rc -ne 0 ]]; then
+    status=1
+    failed+=("$scene: diferencia visual (rc=$rc)")
+  fi
 done
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+  echo "ui-review: ${#failed[@]} escena(s) fallaron — ${failed[*]}" >&2
+fi
 
 exit $status

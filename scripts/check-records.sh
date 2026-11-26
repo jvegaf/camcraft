@@ -47,9 +47,18 @@ done
 index="odd/tasks/INDEX.md"
 [ -f "$index" ] || { echo "ERROR: no task index at $index" >&2; exit 1; }
 
+# Rows are read into a file, not into a variable, and the reader's exit status is checked explicitly.
+# A command substitution alone does not survive a partial read honestly: when the assignment's status
+# was ignored, a truncated last row was checked as if it were whole (the gate reported one task of an
+# index that carried three and exited 0), and when `set -e` did see the failure the script died with
+# no diagnostic at all. The file makes the two states distinguishable: either python3 finished and
+# wrote every row, or this gate says it could not read the index.
+rows_file=$(mktemp)
+trap 'rm -f "$rows_file"' EXIT
+
 # The index alone decides what is checked: a row that is not there is not a task, and a document
 # without a row is not reachable by anyone reading the index.
-rows=$(python3 - "$index" "$task" <<'PY'
+if ! python3 - "$index" "$task" >"$rows_file" <<'PY'
 import re, sys
 from pathlib import Path
 
@@ -71,7 +80,20 @@ for line in index.read_text(encoding="utf-8").splitlines():
     commit = cells[5].strip().strip("`")
     print("\t".join([number, slug, target, state, since, commit]))
 PY
-)
+then
+  echo "ERROR: could not read the task rows from $index (python3 did not finish), so the index was not checked" >&2
+  exit 1
+fi
+
+# Every row the reader emits is six tab-separated fields, the first a task number and the third the
+# document it points at. A row that is not that shape is a partial read whatever the exit status said,
+# and checking it would be checking a row that does not exist.
+if ! awk -F'\t' 'NF != 6 || $1 !~ /^[0-9]+$/ || $3 == "" { bad = 1 } END { exit bad }' "$rows_file"; then
+  echo "ERROR: $index produced task rows that are not well formed (expected 6 tab-separated fields)" >&2
+  exit 1
+fi
+
+rows=$(<"$rows_file")
 
 if [ -z "$rows" ]; then
   echo "ERROR: no task row${task:+ for task $task} in $index" >&2
@@ -178,8 +200,18 @@ fi
 while IFS=$'\t' read -r number slug; do
   [ -n "${number:-}" ] || continue
   echo "task $number: memory for '$slug'"
-  found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1 || true)
-  if echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
+  # The exit status is captured instead of being swallowed, and the first line is taken from the
+  # captured text rather than from a `| head -1` pipeline. Two things come from that: a CLI that
+  # cannot answer is never reported as a memory that does not exist (the opposite advice: save a
+  # memory that may already be saved), and every failure is counted and reported instead of aborting
+  # the run before its summary, so `--engram-required` still says how much it checked.
+  search_output=""
+  search_status=0
+  search_output=$(engram search "$slug" --all --limit 1 2>/dev/null) || search_status=$?
+  found=${search_output%%$'\n'*}
+  if [ "$search_status" -ne 0 ]; then
+    fail "the engram CLI exited $search_status while asking about '$slug', so its memory was not checked — this is not 'no memory'; fix the CLI or its daemon and re-run"
+  elif echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
     echo "  ✓ $found"
   else
     fail "no Engram memory mentions '$slug' (save one with topic_key 'camcraft/$slug' before delivering)"
@@ -190,8 +222,14 @@ done <<<"$memory_rows"
 if [ -n "${history_rows:-}" ] && command -v engram >/dev/null 2>&1 && engram ps 2>/dev/null | grep -q "running"; then
   while IFS=$'\t' read -r number slug; do
     [ -n "${number:-}" ] || continue
-    found=$(engram search "$slug" --all --limit 1 2>/dev/null | head -1 || true)
-    if ! echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
+    # Same guard as the memory half: an unanswered question is an advisory, not evidence of a gap.
+    search_output=""
+    search_status=0
+    search_output=$(engram search "$slug" --all --limit 1 2>/dev/null) || search_status=$?
+    found=${search_output%%$'\n'*}
+    if [ "$search_status" -ne 0 ]; then
+      echo "engram: ADVISORY — task $number ($slug) could not be checked: the engram CLI exited $search_status"
+    elif ! echo "$found" | grep -qE "Found [1-9][0-9]* memor"; then
       echo "engram: ADVISORY — task $number ($slug) was delivered with no memory; backfill it when touched"
     fi
   done <<<"$history_rows"

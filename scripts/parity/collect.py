@@ -171,6 +171,7 @@ def assumed_timeout(artefact: Path) -> dict:
 def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) -> dict:
     workers = worker_count()
     boards = {}
+    not_measured: list[str] = []
     for board in sorted(path for path in corpus.iterdir() if path.is_dir()):
         items = list(artefacts_of(board).items())
         pinned_skipped = pinned_skips(board)
@@ -205,12 +206,32 @@ def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) ->
         for role, artefact in items:
             ordered[role] = measured[role]
             artefact_path, reason = reasons[role]
-            if reason:
+            if role in skipped:
+                # `skipped` is a budget-closure record, not a measurement: the artefact is carried
+                # through without being run, so a crash or a parser regression in it is invisible to
+                # this run. The skip is kept (the budget decision stands) and named, one line per
+                # artefact, so the output says what was not checked and why — silence here read as
+                # "checked and fine".
+                kind = "SKIPPED" if role in pinned_skipped else "NOT MEASURED"
+                not_measured.append(f"{board.name}/{artefact_path.name}")
+                print(
+                    f"  advisory: {board.name}/{artefact_path.name}: {kind} — {reason}; "
+                    "not measured and not compared, so nothing about it was checked",
+                    file=sys.stderr,
+                )
+            elif reason:
                 print(
                     f"  {board.name}/{artefact_path.name}: {ordered[role]['status']} — {reason}",
                     file=sys.stderr,
                 )
         boards[board.name] = ordered
+    if not_measured:
+        print(
+            f"advisory: {len(not_measured)} artefact(s) were not measured or compared this run "
+            "because their golden says so; a crash or a regression in them stays invisible until "
+            "one is un-skipped",
+            file=sys.stderr,
+        )
     return {
         "flatten_tolerance_mm": FLATTEN_TOLERANCE_MM,
         "timeout_seconds": TIMEOUT_SECONDS,

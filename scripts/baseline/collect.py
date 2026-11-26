@@ -44,6 +44,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -53,6 +54,9 @@ from pathlib import Path
 # so this bound is generous on purpose: it is there to stop a hang, not to grade a machine. The bound is
 # recorded in every golden, so changing it is a change to review, never a silent retune.
 TIMEOUT_SECONDS = 300
+
+# How long a killed process group gets to be reaped before the measurement is reported anyway.
+GROUP_KILL_GRACE_SECONDS = 10
 
 # The roles the corpus is made of, in the order a board is read (the same list `scripts/parity/` uses).
 ROLES = (
@@ -137,6 +141,22 @@ def last_object(text: str) -> dict | None:
     return None
 
 
+def kill_group(process: subprocess.Popen) -> None:
+    """Kill the child and every process it started.
+
+    A timeout that kills only the direct child leaves FlatCAM's workers running: they keep the CPU and
+    the memory of a measurement nobody is waiting for, and the next artefact is measured next to the
+    orphans of the previous one. The child is started as its own session (`start_new_session=True`), so
+    it is a process-group leader and one `killpg` takes the whole tree.
+    """
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        # Already gone, or not ours to signal: fall back to the single process so the caller still
+        # reaps something instead of reporting a timeout over a live child.
+        process.kill()
+
+
 def measure(
     python: Path, script: Path, artefact: Path, environment: dict, operation: str = ""
 ) -> tuple[dict, str, float | None]:
@@ -151,22 +171,35 @@ def measure(
     def nothing(status: str) -> dict:
         return empty_operation(status) if operation else empty_import(status, drill)
 
+    # `subprocess.run(timeout=...)` is not used here: it kills the direct child only. `Popen` with a
+    # session of its own is what makes the group killable.
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        start_new_session=True,
+    )
     try:
-        completed = subprocess.run(
-            command, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, env=environment
-        )
+        stdout, stderr = process.communicate(timeout=TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
+        kill_group(process)
+        try:
+            process.communicate(timeout=GROUP_KILL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
         return nothing("timeout"), f"did not finish within {TIMEOUT_SECONDS}s", None
 
-    if completed.returncode != 0:
+    if process.returncode != 0:
         # A non-zero exit is the measurer failing — a crash, a killed process, a missing dependency —
         # and not FlatCAM refusing a file. It keeps its own status so the comparison fails instead of
         # quietly re-pinning a failure as if it were a measurement.
-        tail = completed.stderr.strip().splitlines()
-        reason = tail[-1] if tail else f"exit {completed.returncode}"
-        return nothing("error"), f"measurer exited {completed.returncode}: {reason}", None
+        tail = (stderr or "").strip().splitlines()
+        reason = tail[-1] if tail else f"exit {process.returncode}"
+        return nothing("error"), f"measurer exited {process.returncode}: {reason}", None
 
-    measured = last_object(completed.stdout)
+    measured = last_object(stdout or "")
     if measured is None:
         return nothing("error"), "the measurer printed no measurement", None
     boot = measured.pop("boot_seconds", None)

@@ -114,12 +114,18 @@ it to a kernel that does not finish (`timeout`). The cost is honest and visible:
 
 Those 22 are the important line. They are not the layers the reader rejects: they are layers the
 reader now _accepts_ and hands to the geometry kernel, which does not finish evaluating them inside the
-harness' 20 s bound, down from 30 s: at ten the run takes four minutes but loses two `substitute-easyeda`
-layers that do terminate between ten and thirty, so twenty is the largest saving that keeps every
-measurement. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
-moved from "the reader says no" to "the kernel does not finish", and `timeout` is the harness recording
-that honestly instead of hanging CI. Their measurement is zeroed and the status is compared, so the day
-one of them finishes, the divergence says so in a single line.
+harness' **30 s bound** (the `timeout_seconds` every golden records, set by `collect.py`). Thirty, not
+twenty, and the reason is stability rather than patience: two `substitute-easyeda` layers (mask-top,
+mask-bottom) terminate in roughly twenty seconds, so a twenty-second bound flips them between `parsed`
+and `timeout` from run to run — the goldens then disagree with the tree on a measurement nobody changed.
+Ten seconds is faster still and loses those two outright. The eighteen that never terminate dominate the
+run either way, so the honest saving is not a lower bound but not measuring when a push cannot move the
+measurement — a scope step that lived in the `parity` job before it became the migration placeholder it
+is today in `.github/workflows/ci.yml`, and that returns with the measurement. Before those waves the
+same artefacts were `refused` — cheaply and instantly — so the pin moved from "the reader says no" to
+"the kernel does not finish", and `timeout` is the harness recording that honestly instead of hanging
+CI. Their measurement is zeroed and the status is compared, so the day one of them finishes, the
+divergence says so in a single line.
 
 Two consequences worth keeping in view:
 

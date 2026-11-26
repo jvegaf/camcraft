@@ -10,6 +10,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.{test,spec}.{js,ts}'],
     globals: true,
-    passWithNoTests: true
+    // A suite that matches no file is not a pass: `passWithNoTests: true` let the gate go green with
+    // zero frontend tests, which says nothing about the app. Every run must have something to run.
+    passWithNoTests: false
   }
 });

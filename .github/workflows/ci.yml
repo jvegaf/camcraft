@@ -65,6 +65,11 @@ jobs:
       - name: Run project gates
         run: ./scripts/check.sh
 
+  # Deuda anotada donde el código va a volver: el paso de scope que decida si medir tiene que
+  # degradar a medir cuando `github.event.before` no es alcanzable (push forzado, rama recién creada,
+  # base ausente). Un `git diff "$before" "$sha"` sobre un commit que no está en el clon aborta el
+  # paso bajo `set -e` y el job falla en vez de medir. El paso original se eliminó con la migración
+  # (`7522996`, junto con su `fetch-depth: 0`); no se arregló.
   parity:
     name: parity
     runs-on: ubuntu-latest
