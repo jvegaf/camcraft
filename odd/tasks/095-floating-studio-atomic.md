@@ -29,13 +29,13 @@ Llevar el artboard `design/camcraft-workbench-v2/02-floating-studio.html` al sta
 
 ## Tasks
 
-| ID  | Tarea                                                                                 | Specs      | Ruta   | Commit |
-| --- | ------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
-| T1  | Átomos y moléculas del chrome (botón, icon-button, icono, dot, chip HUD, celda de status, hint de tecla, panel-section, panel-row, command-search) | S4, S6, S7 | worker | —      |
-| T2  | Template `WorkbenchTemplate` con slots: marco con radio/borde/sombra y backdrop de grilla, canvas dentro; shell y rutas migran a él | S1, S4, S8 | worker | —      |
-| T3  | Organismos de chrome a paridad: `TopBar` (acciones de archivo en iconos + botón de tema + command search), `ToolRail` (Importar/Capas/Origen/Generar plan primario), `ViewportHud` (2D Board · Grid 1 mm + selección), `StatusBar` (coordenadas mono + unidades/GRBL/health) | S4, S8 | worker | —      |
-| T4  | Organismos de contenido CAM: browser con Board/Setup/Operaciones/Salida (roles, conteos, estados) e inspector de operación (Tipo/Herramienta/Z cut/Feed/Hits/Tiempo/Estado), con estado de presentación en `workbench.svelte.ts` derivado de lo que ya existe | S5, S7 | worker | —      |
-| T5  | Convergencia de tokens, migración de rutas y cierre: `pnpm check`, `pnpm test`, `pnpm build`, verificación independiente y review | S6, S8 | inline | —      |
+| ID  | Tarea                                                                                                                                                                                                                                                                        | Specs      | Ruta   | Commit |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
+| T1  | Átomos y moléculas del chrome (botón, icon-button, icono, dot, chip HUD, celda de status, hint de tecla, panel-section, panel-row, command-search)                                                                                                                           | S4, S6, S7 | worker | —      |
+| T2  | Template `WorkbenchTemplate` con slots: marco con radio/borde/sombra y backdrop de grilla, canvas dentro; shell y rutas migran a él                                                                                                                                          | S1, S4, S8 | worker | —      |
+| T3  | Organismos de chrome a paridad: `TopBar` (acciones de archivo en iconos + botón de tema + command search), `ToolRail` (Importar/Capas/Origen/Generar plan primario), `ViewportHud` (2D Board · Grid 1 mm + selección), `StatusBar` (coordenadas mono + unidades/GRBL/health) | S4, S8     | worker | —      |
+| T4  | Organismos de contenido CAM: browser con Board/Setup/Operaciones/Salida (roles, conteos, estados) e inspector de operación (Tipo/Herramienta/Z cut/Feed/Hits/Tiempo/Estado), con estado de presentación en `workbench.svelte.ts` derivado de lo que ya existe                | S5, S7     | worker | —      |
+| T5  | Convergencia de tokens, migración de rutas y cierre: `pnpm check`, `pnpm test`, `pnpm build`, verificación independiente y review                                                                                                                                            | S6, S8     | inline | —      |
 
 ## Log
 
