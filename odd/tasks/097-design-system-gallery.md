@@ -3,6 +3,20 @@
 Catálogo visual del Atomic Design dentro de la app, dev-only: ver los átomos, moléculas, organismos y templates que ya existen en `src/lib/components/`, con la matriz de props y estados de cada uno, más un tablero que convierte el "progreso del atomic design" en números derivados del repositorio en vez de una sensación.
 Reemplaza la pregunta por Storybook: no se agrega un segundo pipeline de build ni dependencias nuevas.
 
+## Surfaces
+
+- `scripts/ds-inventory.mjs`
+- `src/lib/ds/inventory.ts`
+- `src/lib/ds/inventory.generated.ts`
+- `src/lib/ds/catalog.ts`
+- `src/routes/ds/+page.svelte`
+- `src/routes/ds/+layout.ts`
+- `src/routes/ds/[slug]/+page.svelte`
+- `package.json`
+- `docs/SYSTEM_DESIGN_CAMCRAFT.md`
+- `odd/tasks/097-design-system-gallery.md`
+- `odd/tasks/INDEX.md`
+
 ## Specs
 
 - **S1 (pedido original, verbatim).** «necesitamos un storybook poder visualizar el progreso del atomic design, ver los atomos, moleculas, organismos... que te parece https://storybook.js.org»
