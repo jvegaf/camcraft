@@ -147,8 +147,11 @@ fn segment_hits_region(
     }
   }
   let len = a.distance_to(b);
-  let step = (radius * 0.5).max(0.05);
-  let steps = ((len / step).ceil() as usize).max(2);
+  // Never sample coarser than the baseline 0.5 mm and never iterate without bound: a long segment
+  // with a small radius must not scale the loop, and a big radius must not skip clearance checks.
+  const MAX_STEPS: usize = 4096;
+  let step = (radius * 0.5).clamp(0.05, 0.5);
+  let steps = ((len / step).ceil() as usize).clamp(2, MAX_STEPS);
   for i in 0..=steps {
     let t = i as f64 / steps as f64;
     let p = Point2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);

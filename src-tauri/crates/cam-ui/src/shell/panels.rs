@@ -328,6 +328,10 @@ impl Shell {
     let bottom_margin = 16.0;
     let max_h = (canvas.max.y - top - bottom_margin).max(120.0);
 
+    if !self.inspector_open {
+      return;
+    }
+
     // Inspector: one interactable hover-sense Area so widgets receive clicks but empty panel
     // background does not block canvas clicks (hit-test fall-through).
     let inspector_pos = egui::pos2(canvas.max.x - inspector_w - 16.0, top);
