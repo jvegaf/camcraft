@@ -267,3 +267,13 @@ cerrada por commit; `f29731f` review-c749e0c862e54104; `d6a88f6` passive). Sin n
 3. **cam-model/app/export**: validación Drill/Slot + tests faltantes (6b R3-002/003/004).
 4. **cam-geom**: tip-snap first-pass guard (batch7).
 5. **scripts/CI**: check-records partial parse + engram guard (batch1), parity README 20s/30s (batch1), CI fallback push base (batch1), pin.py temp huérfano, collect.py process group (batch4).
+
+### Cobertura de T2 (094) — commits de corrección de deuda (2026-11-26)
+
+- scripts/CI (`32a7a46`): approved, `review-d7df61fd2c29e242` (advisory R4-001 sway launch probe).
+- post/ops (`5afb809`), cli/ops (`59b55dc`), ui/sim (`1133e83`), BoardCanvas/docs: not-due.
+- gerber/geom (`f5d4c20`): escalado — el validador rechazó la corrección porque el fixture
+  `fixtures/gerber/pour-with-clears.gbr` vive fuera del diff del candidato; falso positivo verificado
+  localmente (58 tests de cam-gerber compilan y pasan con la ruta de raíz). Documentado, sin acción.
+
+T2 completo: todos los advisories de la lista corregidos en `feat/tauri` y la rama pusheada.
