@@ -507,3 +507,41 @@ fn two_hundred_known_area_operations_hold() {
   }
   assert!(ops >= 200, "corpus must run >=200 operations, ran {ops}");
 }
+
+#[test]
+fn a_first_pass_does_not_weld_a_tip_to_tip_near_miss_gap() {
+  // Two squares a gap and a half epsilons apart, corner to corner. Welding those vertices is what
+  // the near-miss **retry** pass is for, and only after an arrangement refused to chain; the first
+  // pass leaves the gap alone. The observable is the two contours: a first-pass snap chains them
+  // into one loop through the welded points.
+  let tolerance = cam_geom::TolerancePolicy::uniform(1.0e-6);
+  let gap = 1.5e-6;
+  // A side short enough that the probes can still see a gap this wide: on a long edge the probe step
+  // is far wider than the gap, which is a separate limit of the tolerance.
+  let side = 1.0e-4;
+  let lower = rect(0.0, 0.0, side, side);
+  let upper = rect(0.0, side + gap, side, 2.0 * side + gap);
+  let Combined::Region { region, .. } = combine(&lower, &upper, BooleanOp::Union, tolerance)
+    .expect("two disjoint squares are resolvable")
+  else {
+    panic!("the union of two squares is not empty");
+  };
+
+  assert_eq!(
+    region.boundaries.len(),
+    2,
+    "the two squares stay two contours, the gap unwelded: {:?}",
+    region.boundaries
+  );
+  expect_close(area(&region), 2.0 * side * side, "both squares");
+  let mut lowest: Vec<f64> = region
+    .boundaries
+    .iter()
+    .map(|boundary| boundary.bounds().min.y)
+    .collect();
+  lowest.sort_by(|a, b| a.partial_cmp(b).expect("finite bounds"));
+  assert!(
+    (lowest[0] - 0.0).abs() < 1.0e-15 && (lowest[1] - (side + gap)).abs() < 1.0e-15,
+    "the upper square still starts a gap above the lower one: {lowest:?}"
+  );
+}

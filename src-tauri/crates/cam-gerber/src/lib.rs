@@ -244,7 +244,9 @@ impl Gerber {
     })?;
     // Consecutive dark (union) constructs are combined in a balanced tree and applied once, so a
     // layer of thousands of disjoint pads does not grow the accumulated image one construct at a time.
-    let mut pending_dark: Vec<Region> = Vec::new();
+    // Each region carries the command it came from, so a refusal in the batch names that construct
+    // instead of `command 0`.
+    let mut pending_dark: Vec<(usize, Region)> = Vec::new();
 
     let mut in_region = false;
     let mut region_segments: Vec<Segment> = Vec::new();
@@ -326,10 +328,10 @@ impl Gerber {
           match (region, broken) {
             (Some(region), _) => {
               if polarity == Polarity::Dark {
-                pending_dark.push(region);
+                pending_dark.push((index, region));
               } else {
                 image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
-                image = apply_region(image, &region, Polarity::Clear, tolerance, index)?;
+                image = apply_region(&image, &region, Polarity::Clear, tolerance, index)?;
               }
             }
             (None, Some((reason, location))) => skipped.push(Skipped {
@@ -349,13 +351,18 @@ impl Gerber {
             what: format!("command {index}: a line without a current point"),
           })?;
           if in_region {
+            // A zero-length line has no shape. It is refused while the region is still sound, because
+            // a contour that cannot close is not silently repaired; once the region is broken it is
+            // already on its way to being reported whole, so a degenerate segment inside it adds
+            // nothing to lose and refusing here would abort the rest of the file for no gain.
             if from.distance_to(to) == 0.0 {
-              return Err(GerberError::Unsupported {
-                line: 0,
-                what: format!("command {index}: a zero-length line in a region"),
-              });
-            }
-            if broken_region.is_none() {
+              if broken_region.is_none() {
+                return Err(GerberError::Unsupported {
+                  line: 0,
+                  what: format!("command {index}: a zero-length line in a region"),
+                });
+              }
+            } else if broken_region.is_none() {
               region_segments.push(Segment::Line(LineSeg::new(from, to)));
             }
           } else {
@@ -370,10 +377,10 @@ impl Gerber {
             match stroke_of(from, to, aperture, code, &self.macros, tolerance, index) {
               Ok(stroke) => {
                 if polarity == Polarity::Dark {
-                  pending_dark.push(stroke);
+                  pending_dark.push((index, stroke));
                 } else {
                   image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
-                  image = apply_region(image, &stroke, Polarity::Clear, tolerance, index)?;
+                  image = apply_region(&image, &stroke, Polarity::Clear, tolerance, index)?;
                 }
               }
               Err(error) => skipped.push(Skipped {
@@ -570,10 +577,10 @@ impl Gerber {
             }
           };
           if polarity == Polarity::Dark {
-            pending_dark.push(shape);
+            pending_dark.push((index, shape));
           } else {
             image = flush_pending_unions(image, &mut pending_dark, tolerance)?;
-            image = apply_region(image, &shape, Polarity::Clear, tolerance, index)?;
+            image = apply_region(&image, &shape, Polarity::Clear, tolerance, index)?;
           }
         }
       }
@@ -608,7 +615,7 @@ fn reason_of(error: &GerberError) -> String {
 }
 
 fn apply_region(
-  image: Region,
+  image: &Region,
   region: &Region,
   polarity: Polarity,
   tolerance: TolerancePolicy,
@@ -619,7 +626,7 @@ fn apply_region(
     Polarity::Clear => BooleanOp::Difference,
   };
   // `combine` may legitimately return `Combined::Empty` (an answer, not an error).
-  match combine(&image, region, op, tolerance) {
+  match combine(image, region, op, tolerance) {
     Ok(Combined::Empty) => Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
       line: 0,
       what: format!("command {index}: could not represent an empty image: {error}"),
@@ -635,32 +642,39 @@ fn apply_region(
 /// Union regions in a balanced tree. Pairwise sequential union into a growing accumulator is
 /// quadratic in layer size; combining disjoint/small constructs among themselves first keeps the
 /// operands small for most of the work.
-fn union_all(regions: Vec<Region>, tolerance: TolerancePolicy) -> Result<Region, GerberError> {
+///
+/// Each operand carries the command index it came from, so a refusal names a construct the file
+/// actually has rather than `command 0`; a merged pair keeps the earlier of the two, which is the
+/// first construct in the batch whose material the refusal is about.
+fn union_all(
+  regions: Vec<(usize, Region)>,
+  tolerance: TolerancePolicy,
+) -> Result<Region, GerberError> {
   let mut level = regions;
   while level.len() > 1 {
     let mut next = Vec::with_capacity(level.len().div_ceil(2));
     let mut it = level.into_iter();
-    while let Some(a) = it.next() {
+    while let Some((index, a)) = it.next() {
       match it.next() {
-        Some(b) => {
+        Some((_, b)) => {
           let merged = match combine(&a, &b, BooleanOp::Union, tolerance) {
             Ok(Combined::Empty) => {
               Region::new(Vec::new()).map_err(|error| GerberError::Invalid {
                 line: 0,
-                what: format!("could not represent an empty union: {error}"),
+                what: format!("command {index}: could not represent an empty union: {error}"),
               })?
             }
             Ok(Combined::Region { region, .. }) => region,
             Err(error) => {
               return Err(GerberError::Invalid {
                 line: 0,
-                what: format!("polarity could not be applied: {error}"),
+                what: format!("command {index}: polarity could not be applied: {error}"),
               })
             }
           };
-          next.push(merged);
+          next.push((index, merged));
         }
-        None => next.push(a),
+        None => next.push((index, a)),
       }
     }
     level = next;
@@ -669,31 +683,35 @@ fn union_all(regions: Vec<Region>, tolerance: TolerancePolicy) -> Result<Region,
     level
       .into_iter()
       .next()
+      .map(|(_, region)| region)
       .unwrap_or_else(|| Region::new(Vec::new()).expect("an empty region is representable")),
   )
 }
 
 fn flush_pending_unions(
   image: Region,
-  pending: &mut Vec<Region>,
+  pending: &mut Vec<(usize, Region)>,
   tolerance: TolerancePolicy,
 ) -> Result<Region, GerberError> {
   if pending.is_empty() {
     return Ok(image);
   }
   let batch = std::mem::take(pending);
-  match union_all(batch.clone(), tolerance) {
-    Ok(combined) => apply_region(image, &combined, Polarity::Dark, tolerance, 0),
-    Err(_) => {
-      // Batching changes the combination order and can hit a different kernel edge case; fall back
-      // to the sequential, in-order application which is slower but preserves previous behaviour.
-      let mut current = image;
-      for region in batch {
-        current = apply_region(current, &region, Polarity::Dark, tolerance, 0)?;
-      }
-      Ok(current)
+  let first = batch.first().map_or(0, |(index, _)| *index);
+  // Batching changes the combination order and can hit a kernel edge case the in-order application
+  // never meets: either while unioning the batch among themselves, or while merging that one union
+  // into the accumulated image. Both fall back to applying the regions one at a time, which is
+  // slower but preserves what each construct means on its own instead of losing the file.
+  if let Ok(combined) = union_all(batch.clone(), tolerance) {
+    if let Ok(merged) = apply_region(&image, &combined, Polarity::Dark, tolerance, first) {
+      return Ok(merged);
     }
   }
+  let mut current = image;
+  for (index, region) in batch {
+    current = apply_region(&current, &region, Polarity::Dark, tolerance, index)?;
+  }
+  Ok(current)
 }
 
 fn arc_from_gerber(
@@ -924,7 +942,7 @@ pub fn macro_region(
     } else {
       Polarity::Clear
     };
-    image = apply_region(image, &shape, polarity, tolerance, index)?;
+    image = apply_region(&image, &shape, polarity, tolerance, index)?;
   }
   Ok(image)
 }
@@ -1706,7 +1724,11 @@ pub fn parse(text: &str) -> Result<Gerber, GerberError> {
         if let Some(d) = parsed.d {
           match d {
             1..=3 => {
-              if !in_region {
+              // A D01 draw inside a region is that region's own boundary and needs no aperture. A D03
+              // flash is a stamp of the selected aperture wherever it appears, so the selection is
+              // required inside a region too: accepting it there would hand the caller a construct
+              // that names no shape.
+              if !in_region || d == 3 {
                 selected_aperture.ok_or(GerberError::NoApertureSelected { line })?;
               }
               let pt = current_point(x, y, line)?;

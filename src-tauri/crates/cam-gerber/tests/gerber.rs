@@ -1314,7 +1314,7 @@ fn a_pour_layer_with_several_clears_measures_its_material_area() {
   // no such layer (0 of 54 artefacts), so the measurable artefact is this fixture: one dark pour,
   // two clear keepouts and one clear flash, with the expected numbers exact rather than sampled.
   let gerber = parse(include_str!(
-    "../../../fixtures/gerber/pour-with-clears.gbr"
+    "../../../../fixtures/gerber/pour-with-clears.gbr"
   ))
   .expect("fixture parses");
   let image = gerber.image(TOLERANCE).expect("image builds");
@@ -1480,5 +1480,180 @@ fn a_fully_valid_layer_reports_nothing_and_image_matches_the_reporting_pass() {
   assert_eq!(
     plain.boundaries, reported.boundaries,
     "the reporting pass returns the same polygons"
+  );
+}
+
+#[test]
+fn a_zero_length_line_inside_an_already_broken_region_is_ignored() {
+  // A contour with fewer than three segments cannot close, so the whole region is reported and
+  // skipped. A zero-length line inside it adds no shape and takes none away: it must not turn that
+  // one skip into a refusal of the entire file.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\n%LPD*%\nD10*\nG36*\n\
+     X000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D02*\nX010000000Y010000000D01*\nG37*\n\
+     X040000000Y000000000D03*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let (image, skipped) = gerber
+    .image_reporting(TOLERANCE)
+    .expect("a degenerate segment inside a broken region does not refuse the file");
+
+  assert_eq!(skipped.len(), 1, "only the region is skipped: {skipped:?}");
+  assert_eq!(skipped[0].construct, "a region");
+  assert!(
+    skipped[0].reason.contains("fewer than three"),
+    "the skip says why: {}",
+    skipped[0].reason
+  );
+  assert_eq!(
+    image.boundaries.len(),
+    1,
+    "the flash after the region still lands: {:?}",
+    image.boundaries
+  );
+  assert!(
+    image.contains(Point2::new(40.0, 0.0), TOLERANCE),
+    "the flash is placed where the file says"
+  );
+}
+
+#[test]
+fn a_zero_length_line_in_a_healthy_region_is_still_refused() {
+  // Preserved: a region that has not broken yet still refuses a degenerate segment, because a
+  // contour that never closes is not silently repaired.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,1.0*%\n%LPD*%\nD10*\nG36*\n\
+     X000000000Y000000000D02*\nX010000000Y000000000D01*\nX010000000Y000000000D01*\n\
+     G37*\nM02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let error = gerber
+    .image_reporting(TOLERANCE)
+    .expect_err("a zero-length line in a region is refused");
+  assert!(
+    matches!(error, GerberError::Unsupported { .. }),
+    "{error:?}"
+  );
+  assert!(
+    error.to_string().contains("zero-length line in a region"),
+    "{error}"
+  );
+}
+
+#[test]
+fn refuses_a_d03_flash_inside_a_region_with_no_aperture_selected() {
+  // A flash is a stamp of the selected aperture wherever it appears, inside a G36/G37 region or
+  // not: a region's own boundary is drawn without one, but a D03 names no shape at all without it.
+  // Accepting the flash here would hand the caller a construct that cannot be built.
+  let err = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\nG01*\nG36*\n\
+     X000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D01*\nX000000000Y010000000D01*\n\
+     X000000000Y000000000D03*\nG37*\nM02*\n",
+  )
+  .expect_err("a flash with no aperture selected is refused");
+  assert!(
+    matches!(err, GerberError::NoApertureSelected { line: 10 }),
+    "the refusal names the line of the flash: {err:?}"
+  );
+  assert!(err.to_string().contains("aperture"), "{err}");
+}
+
+#[test]
+fn a_d03_flash_inside_a_region_with_a_selected_aperture_is_still_accepted() {
+  // Preserved: the aperture requirement is the only thing added here. A flash inside a region while
+  // an aperture is selected is kept as the flash it says it is.
+  let gerber = parse(
+    "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nD10*\nG01*\nG36*\n\
+     X000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D01*\nX000000000Y010000000D01*\n\
+     X000000000Y000000000D03*\nG37*\nM02*\n",
+  )
+  .expect("a selected aperture satisfies the flash");
+  assert!(
+    gerber
+      .commands
+      .iter()
+      .any(|command| matches!(command, Command::Flash { .. })),
+    "the flash is in the command stream: {:?}",
+    gerber.commands
+  );
+}
+
+#[test]
+fn a_batched_dark_union_that_cannot_be_merged_is_applied_one_at_a_time() {
+  // Three dark regions are batched: the first is flushed into the image by the clear polarity, and
+  // the last two are unioned together and merged into it in one step. That batched union cannot be
+  // merged here while applying the same two regions one at a time can, and losing the file over the
+  // faster path is not an answer.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nG01*\n\
+     G36*\nX000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D01*\nX000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     %LPC*%\n\
+     G36*\nX100000000Y100000000D02*\nX110000000Y100000000D01*\n\
+     X110000000Y110000000D01*\nX100000000Y110000000D01*\nX100000000Y100000000D01*\nG37*\n\
+     %LPD*%\n\
+     G36*\nX000000001Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D01*\nX000000001Y010000000D01*\nX000000001Y000000000D01*\nG37*\n\
+     G36*\nX005000000Y009999000D02*\nX006000000Y009999000D01*\n\
+     X006000000Y010001000D01*\nX005000000Y010001000D01*\nX005000000Y009999000D01*\nG37*\n\
+     M02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let image = gerber
+    .image(TOLERANCE)
+    .expect("the batch falls back to applying its regions one at a time");
+
+  assert!(
+    image.contains(Point2::new(0.5, 0.5), TOLERANCE),
+    "the first square is material: {:?}",
+    image.boundaries
+  );
+  assert!(
+    image.contains(Point2::new(5.5, 10.0005), TOLERANCE),
+    "the last region's material above the square is there: {:?}",
+    image.boundaries
+  );
+  assert!(
+    !image.contains(Point2::new(105.0, 105.0), TOLERANCE),
+    "the clear region is a hole, not material"
+  );
+  let area: f64 = image
+    .boundaries
+    .iter()
+    .map(|boundary| boundary.signed_area())
+    .sum::<f64>()
+    .abs();
+  assert!(
+    (area - 100.001).abs() < 1.0e-3,
+    "material area {area} is the square plus the strip above it"
+  );
+}
+
+#[test]
+fn a_refusal_in_a_dark_batch_names_the_command_it_came_from() {
+  // Two dark regions are batched. One of them is a rectangle far finer than the tolerance can
+  // resolve, so both the batched union and the one-at-a-time application refuse it. The refusal
+  // must name the construct that caused it, not `command 0`.
+  let file = "%FSLAX36Y36*%\n%MOMM*%\n%ADD10C,0.100*%\n%LPD*%\nG01*\n\
+     G36*\nX000000000Y000000000D02*\nX010000000Y000000000D01*\n\
+     X010000000Y010000000D01*\nX000000000Y010000000D01*\nX000000000Y000000000D01*\nG37*\n\
+     G36*\nX005000000Y009999999D02*\nX005000003Y009999999D01*\n\
+     X005000003Y010000000D01*\nX005000000Y010000000D01*\nX005000000Y009999999D01*\nG37*\n\
+     M02*\n";
+  let gerber = parse(file).expect("fixture parses");
+  let last_region_end = gerber
+    .commands
+    .iter()
+    .rposition(|command| matches!(command, Command::RegionEnd))
+    .expect("the fixture has a region");
+
+  let error = gerber
+    .image(TOLERANCE)
+    .expect_err("a region finer than the tolerance is refused");
+  let message = error.to_string();
+  assert!(
+    message.contains(&format!("command {last_region_end}")),
+    "the refusal names the construct it came from ({last_region_end}): {message}"
+  );
+  assert!(
+    !message.contains("command 0:"),
+    "the refusal does not blame the first command: {message}"
   );
 }
