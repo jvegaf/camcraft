@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { CamOperation } from './workbench.svelte';
 import {
+  selectBoardObject,
+  selectOperation,
+  setOperations,
   setPointerPosition,
   setStatus,
   setStatusMessage,
+  toggleSection,
   workbenchState
 } from './workbench.svelte';
 
@@ -39,5 +44,63 @@ describe('workbench pointer position', () => {
 
     setPointerPosition(null);
     expect(workbenchState.pointer).toBeNull();
+  });
+});
+
+// The Browser and the Inspector need presentation state that belongs to the workbench store (095
+// T4): which sections are collapsed, which board object and which operation are selected. Nothing
+// here duplicates document data; it is only what the operators picked in the panels.
+const operation: CamOperation = {
+  id: 'op-1',
+  index: 1,
+  name: 'Profile outline',
+  type: null,
+  tool: null,
+  zCutMm: null,
+  plungeFeedMmPerMin: null,
+  hitCount: null,
+  tools: null,
+  durationS: null
+};
+
+describe('workbench CAM object presentation state', () => {
+  beforeEach(() => {
+    workbenchState.operations = [];
+    workbenchState.selectedOperationId = null;
+    workbenchState.selectedBoardObjectId = null;
+    workbenchState.collapsedSections = [];
+  });
+
+  it('toggles a browser section open and closed', () => {
+    toggleSection('board');
+    expect(workbenchState.collapsedSections).toEqual(['board']);
+
+    toggleSection('setup');
+    expect(workbenchState.collapsedSections).toEqual(['board', 'setup']);
+
+    toggleSection('board');
+    expect(workbenchState.collapsedSections).toEqual(['setup']);
+  });
+
+  it('keeps the selected board object and operation', () => {
+    selectBoardObject('size');
+    selectOperation('op-1');
+
+    expect(workbenchState.selectedBoardObjectId).toBe('size');
+    expect(workbenchState.selectedOperationId).toBe('op-1');
+
+    selectBoardObject(null);
+    selectOperation(null);
+    expect(workbenchState.selectedBoardObjectId).toBeNull();
+    expect(workbenchState.selectedOperationId).toBeNull();
+  });
+
+  it('drops an operation selection the new operation list no longer has', () => {
+    setOperations([operation]);
+    selectOperation('op-1');
+    expect(workbenchState.selectedOperationId).toBe('op-1');
+
+    setOperations([]);
+    expect(workbenchState.selectedOperationId).toBeNull();
   });
 });

@@ -4,6 +4,8 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
 import {
+  CamObjectBrowser,
+  OperationInspector,
   StatusBar,
   ToolRail,
   TopBar,
@@ -11,8 +13,6 @@ import {
 } from '$lib/components/organisms';
 import { WorkbenchTemplate } from '$lib/components/templates';
 import BoardCanvas from './BoardCanvas.svelte';
-import BrowserPanel from './BrowserPanel.svelte';
-import InspectorPanel from './InspectorPanel.svelte';
 import {
   openSettings,
   refreshDocumentStatus,
@@ -43,20 +43,6 @@ async function handleOpen() {
     const status = await invoke<typeof workbenchState.document>(
       'open_document',
       { path: selected }
-    );
-    setDocument(status);
-    setStatus('Documento abierto', 'ok');
-    void refreshRecents();
-  } catch (e) {
-    setStatus(`Error: ${String(e)}`, 'error');
-  }
-}
-
-async function handleOpenRecent(path: string) {
-  try {
-    const status = await invoke<typeof workbenchState.document>(
-      'open_document',
-      { path }
     );
     setDocument(status);
     setStatus('Documento abierto', 'ok');
@@ -151,10 +137,10 @@ async function handleBack() {
     <ViewportHud />
   {/snippet}
   {#snippet browser()}
-    <BrowserPanel onOpenRecent={handleOpenRecent} />
+    <CamObjectBrowser />
   {/snippet}
   {#snippet inspector()}
-    <InspectorPanel />
+    <OperationInspector />
   {/snippet}
   {#snippet statusBar()}
     <StatusBar />

@@ -100,7 +100,11 @@ describe('WorkbenchShell', () => {
       })
     );
     await waitFor(() =>
-      expect(screen.getByText(/Documento abierto/)).toBeTruthy()
+      expect(
+        within(screen.getByLabelText('Barra de estado')).getByText(
+          /Documento abierto/
+        )
+      ).toBeTruthy()
     );
   });
 
