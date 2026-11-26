@@ -903,3 +903,25 @@ niveles), D6 (`.FlatPrj` fuera), y todo `RUST_PORT_LOGIC.md` como especificació
 
 **Cerrado en v0.1:** A1–A8 (§16.1), contrato del nodo (§4.6), encoding de artefactos (§4.7),
 dependencias justificadas (§6.2).
+
+---
+
+## 18. Catálogo del design system (solo desarrollo)
+
+`pnpm dev` expone en `http://localhost:1420/ds` un catálogo del Atomic Design derivado del
+repositorio: una ficha por componente con sus estados reales y un tablero con el progreso. No es una
+feature de la app: fuera de `pnpm dev` la ruta resuelve 404 y no se prerenderiza nada.
+
+El inventario se regenera desde el filesystem con:
+
+```bash
+pnpm ds:inventory
+```
+
+El tablero cuenta, por capa atómica, el total de componentes y cuántos tienen ficha en el catálogo,
+test hermano y están en uso (importados por algún archivo de `src/`; el propio catálogo no cuenta).
+La columna «Renderable» son las fichas que muestran instancias reales; «No renderable» las que
+dependen de IPC de Tauri, de un store vivo o de un canvas y solo muestran sus estados como datos.
+Cada ficha lista además cuántos consumidores tiene el componente y sus nombres. Los componentes
+fuera de `atoms/`, `molecules/`, `organisms/` y `templates/` se listan aparte como «sin clasificar»
+en vez de esconderse.
