@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "codegen": "panda codegen",
+    "ds:inventory": "node scripts/ds-inventory.mjs",
     "prepare": "svelte-kit sync || echo ''",
     "lint": "biome check .",
     "format": "biome check --write .",
