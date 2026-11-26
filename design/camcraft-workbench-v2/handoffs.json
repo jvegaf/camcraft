@@ -3,11 +3,12 @@
   "chosen": "02-floating-studio.html",
   "handoffs": {
     "02-floating-studio.html": {
-      "status": "sent",
+      "status": "implemented",
       "queued": false,
       "sentAt": "2026-11-26T03:10:35.892Z",
-      "startedAt": null,
-      "implementedAt": null
+      "startedAt": "2026-11-26T03:17:36.330Z",
+      "implementedAt": "2026-11-26T04:55:52.249Z",
+      "note": "Marco flotante, chrome a paridad y IA de paneles CAM implementados en feat/095-floating-studio-atomic (7 commits, 115 tests, gate verde, 5 slices de review aprobados). Sin preview: la app no está corriendo."
     },
     "04-settings.html": {
       "status": "implemented",
