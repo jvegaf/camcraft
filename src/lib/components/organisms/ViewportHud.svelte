@@ -35,7 +35,7 @@ const selText = css({ color: 'sel' });
 // the app cannot produce today. The plural branch this used to carry was unreachable and claimed a
 // multi-select that does not exist.
 let selectionLabel = $derived(
-  workbenchState.selection ? 'Triángulo seleccionado' : 'Sin selección'
+  workbenchState.selection ? '1 triángulo seleccionado' : 'Sin selección'
 );
 </script>
 

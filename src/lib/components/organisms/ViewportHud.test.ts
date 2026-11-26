@@ -38,8 +38,8 @@ describe('ViewportHud', () => {
     const hud = screen.getByLabelText('Estado de viewport');
     expect(hud.textContent).toContain('2D Board');
     // Exactly the single-selection wording: no count, no plural.
-    expect(screen.getByText('Triángulo seleccionado').textContent).toBe(
-      'Triángulo seleccionado'
+    expect(screen.getByText('1 triángulo seleccionado').textContent).toBe(
+      '1 triángulo seleccionado'
     );
     expect(hud.textContent).not.toMatch(/triángulos/);
     expect(screen.queryByText('Sin selección')).toBeNull();
