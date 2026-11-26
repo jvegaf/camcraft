@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "chosen": "04-settings.html",
+  "chosen": "02-floating-studio.html",
   "handoffs": {
     "02-floating-studio.html": {
       "status": "sent",
       "queued": false,
-      "sentAt": "2026-11-22T19:45:41.724Z",
+      "sentAt": "2026-11-26T03:10:35.892Z",
       "startedAt": null,
       "implementedAt": null
     },

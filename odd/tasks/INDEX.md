@@ -94,3 +94,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 092 | [tauri-fase4-settings-overlay-atomic](092-tauri-fase4-settings-overlay-atomic.md)   | delivered                | 2026-11-24 | `396f3c6`     |
 | 093 | [tauri-fase4-settings-ux-vite](093-tauri-fase4-settings-ux-vite.md)                 | delivered                | 2026-11-24 | `946f600`     |
 | 094 | [review-advisory-debt](094-review-advisory-debt.md)                                 | delivered                | 2026-11-26 | `f9271a5`     |
+| 095 | [floating-studio-atomic](095-floating-studio-atomic.md)                             | in progress              | 2026-11-26 | —             |
