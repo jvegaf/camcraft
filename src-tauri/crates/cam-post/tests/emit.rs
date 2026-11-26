@@ -391,3 +391,97 @@ fn a_post_without_helical_blocks_refuses_a_helical_program_by_name() {
     "and that it refuses rather than approximates: {message}"
   );
 }
+
+// --- style-specific tool changes and line numbering (R3-003) ---------------------------------
+
+/// A post that numbers its output lines *and* uses a style-specific tool change.
+///
+/// The style sequences are built by the emitter rather than authored as a block template, so they
+/// have to pass through the same numbering path as every authored line: a program whose `[N]` words
+/// stop at the tool change does not restart where the controller expects.
+const POST_NUMBERED_MARLIN: &str = "\
+POST_NAME = \"numbered marlin\"\n\
+UNITS = \"MM\"\n\
+LINE_ENDING = \"[13][10]\"\n\
+LINE_NUMBER_START = 0\n\
+LINE_NUMBER_INCREMENT = 10\n\
+TOOLCHANGE_STYLE = \"MARLIN_M6\"\n\
+VAR LINE_NUMBER = [N|A|N|1.0]\n\
+VAR X_POSITION = [X|A|X|1.3]\n\
+VAR Y_POSITION = [Y|A|Y|1.3]\n\
+VAR Z_POSITION = [Z|A|Z|1.3]\n\
+begin HEADER\n\"[N]G90\"\n\
+begin INITIAL_RAPID_MOVE\n\"[N]G0[X][Y]\"\n\
+begin FIRST_RAPID_MOVE\n\"[N]G0[X][Y]\"\n\
+begin RAPID_MOVE\n\"[N]G0[X][Y]\"\n";
+
+/// Two segments with different tools, so exactly one tool change is emitted between them.
+fn two_tool_stream() -> MoveStream {
+  let mut stream = MoveStream::new(Length::from_mm(5.0), Point2::new(0.0, 0.0));
+  for (tool, x) in [(1u32, 10.0), (2u32, 20.0)] {
+    stream.segments.push(Segment {
+      name: format!("Drill T{tool}"),
+      tool_number: tool,
+      tool: ToolShape::cylinder(Length::from_mm(1.0)),
+      feed_rate: 100.0,
+      plunge_rate: 30.0,
+      spindle_speed: 12_000,
+      moves: vec![Move::Rapid {
+        to: Point3::new(x, 0.0, 5.0),
+      }],
+    });
+  }
+  stream
+}
+
+#[test]
+fn a_style_specific_toolchange_is_numbered_like_every_other_block() {
+  let post = parse_post(POST_NUMBERED_MARLIN).expect("parses");
+  let emitted = emit(&post, &two_tool_stream(), &meta()).expect("emits");
+  let expected = [
+    "N0G90",
+    "N10G0X10.000Y0.000",
+    "N20M5",
+    "N30G0 Z5.000",
+    "N40T2",
+    "N50M6",
+    "N60(MSG, Change tool to T2)",
+    "N70M0",
+    "N80G0 Z5.000",
+    "N90G0X20.000Y0.000",
+  ];
+  assert_eq!(lines(&emitted.text), expected, "{}", emitted.text);
+  assert_eq!(emitted.lines, expected.len());
+}
+
+#[test]
+fn a_repetier_pause_toolchange_is_numbered_too() {
+  let post = parse_post(
+    "POST_NAME = \"numbered repetier\"\n\
+     UNITS = \"MM\"\n\
+     LINE_ENDING = \"[13][10]\"\n\
+     LINE_NUMBER_START = 0\n\
+     LINE_NUMBER_INCREMENT = 10\n\
+     TOOLCHANGE_STYLE = \"REPETIER_PAUSE\"\n\
+     VAR LINE_NUMBER = [N|A|N|1.0]\n\
+     VAR X_POSITION = [X|A|X|1.3]\n\
+     VAR Y_POSITION = [Y|A|Y|1.3]\n\
+     VAR Z_POSITION = [Z|A|Z|1.3]\n\
+     begin HEADER\n\"[N]G90\"\n\
+     begin INITIAL_RAPID_MOVE\n\"[N]G0[X][Y]\"\n\
+     begin FIRST_RAPID_MOVE\n\"[N]G0[X][Y]\"\n\
+     begin RAPID_MOVE\n\"[N]G0[X][Y]\"\n",
+  )
+  .expect("parses");
+  let emitted = emit(&post, &two_tool_stream(), &meta()).expect("emits");
+  let expected = [
+    "N0G90",
+    "N10G0X10.000Y0.000",
+    "N20G0 Z5.000",
+    "N30M84",
+    "N40@pause Change tool to T2",
+    "N50G0 Z5.000",
+    "N60G0X20.000Y0.000",
+  ];
+  assert_eq!(lines(&emitted.text), expected, "{}", emitted.text);
+}

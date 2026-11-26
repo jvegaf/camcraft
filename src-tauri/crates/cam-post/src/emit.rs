@@ -339,7 +339,7 @@ impl<'a> Writer<'a> {
           "M0".to_string(),
           format!("G0 Z{z}"),
         ];
-        self.emit_raw_lines(lines);
+        self.emit_generated_lines(BlockKind::Toolchange, lines, site)?;
         self.note_z_emitted(&z);
         Ok(())
       }
@@ -352,7 +352,7 @@ impl<'a> Writer<'a> {
           format!("@pause Change tool to T{tool}"),
           format!("G0 Z{z}"),
         ];
-        self.emit_raw_lines(lines);
+        self.emit_generated_lines(BlockKind::Toolchange, lines, site)?;
         self.note_z_emitted(&z);
         Ok(())
       }
@@ -383,35 +383,64 @@ impl<'a> Writer<'a> {
     format!("{scaled:.decimals$}")
   }
 
-  fn emit_raw_lines(&mut self, lines: Vec<String>) {
-    let ending = self.line_ending();
+  /// Emit lines this build generates rather than reads from a block template.
+  ///
+  /// The style-specific tool changes are assembled here, but their lines are output lines like any
+  /// other: each one goes through the same expansion and numbering path as a templated line, so a post
+  /// that combines `TOOLCHANGE_STYLE` with `LINE_NUMBER_*` numbers its tool change too (R3-003).
+  fn emit_generated_lines(
+    &mut self,
+    kind: BlockKind,
+    lines: Vec<String>,
+    site: &Site,
+  ) -> Result<(), EmitError> {
+    let numbered = self.numbers_lines();
     for line in lines {
       if line.trim().is_empty() {
         continue;
       }
-      self.out.push_str(&line);
-      self.out.push_str(&ending);
-      self.lines += 1;
+      let template = if numbered { format!("[N]{line}") } else { line };
+      self.emit_template_line(kind, &template, site)?;
     }
+    Ok(())
+  }
+
+  /// True when the post-processor numbers the lines it writes.
+  ///
+  /// Requiring both the increment and an `N` rule keeps a generated line honest: without them `[N]`
+  /// would resolve to nothing, or repeat a frozen start value, on every tool change.
+  fn numbers_lines(&self) -> bool {
+    self.post.line_number_increment.is_some() && self.by_source.contains_key("N")
   }
 
   fn emit_block(&mut self, kind: BlockKind, site: &Site) -> Result<(), EmitError> {
     let template: Vec<String> = self.post.block(kind).to_vec();
     for line in &template {
-      self.line_number_referenced = false;
-      let expanded = self.expand(line, kind, site)?;
-      if expanded.trim().is_empty() {
-        continue;
-      }
-      // Only a line that actually carries the block number consumes one: a comment line without
-      // `[N]` must not advance the sequence.
-      if self.line_number_referenced && self.post.line_number_increment.is_some() {
-        self.advance_line_number();
-      }
-      self.out.push_str(&expanded);
-      self.out.push_str(&self.line_ending());
-      self.lines += 1;
+      self.emit_template_line(kind, line, site)?;
     }
+    Ok(())
+  }
+
+  /// Expand one template line, then write it and consume a line number when it carries one.
+  fn emit_template_line(
+    &mut self,
+    kind: BlockKind,
+    template: &str,
+    site: &Site,
+  ) -> Result<(), EmitError> {
+    self.line_number_referenced = false;
+    let expanded = self.expand(template, kind, site)?;
+    if expanded.trim().is_empty() {
+      return Ok(());
+    }
+    // Only a line that actually carries the block number consumes one: a comment line without
+    // `[N]` must not advance the sequence.
+    if self.line_number_referenced && self.post.line_number_increment.is_some() {
+      self.advance_line_number();
+    }
+    self.out.push_str(&expanded);
+    self.out.push_str(&self.line_ending());
+    self.lines += 1;
     Ok(())
   }
 

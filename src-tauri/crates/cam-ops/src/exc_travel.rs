@@ -74,11 +74,29 @@ pub fn route_travel_around_exc_areas_with_tool(
       Move::Rapid { to } | Move::Retract { to } => {
         let radius = effective_radius(tool, clearance_mm, current.z.mm(), to.z.mm());
         let detour = detour_travel(current, to, exc_areas, radius, tolerance)?;
-        for p in detour {
-          out.push(match *mv {
-            Move::Retract { .. } => Move::Retract { to: p },
-            _ => Move::Rapid { to: p },
+        // A `RETRACT_MOVE` template carries only the Z word (`G00[Z]`), so detour points spelled as
+        // retracts would never reach the program: the tool would lift at the start point and the
+        // controller would read the next XY word from a position it never left. A detour's positioning
+        // is therefore horizontal rapid travel — a rapid block carries the XY — and the retract keeps its
+        // own destination and lifts in place (R3-004).
+        let retract = matches!(*mv, Move::Retract { .. });
+        // `detour_travel` returns the destination alone when the travel crossed nothing.
+        let detoured = retract && detour.len() > 1;
+        let horizontal_z = current.z.mm();
+        for p in &detour {
+          out.push(if detoured {
+            Move::Rapid {
+              to: Point3::new(p.x.mm(), p.y.mm(), horizontal_z),
+            }
+          } else {
+            match *mv {
+              Move::Retract { .. } => Move::Retract { to: *p },
+              _ => Move::Rapid { to: *p },
+            }
           });
+        }
+        if detoured {
+          out.push(*mv);
         }
         current = to;
       }
@@ -521,5 +539,87 @@ mod tests {
         prev = b;
       }
     }
+  }
+
+  #[test]
+  fn a_retract_detour_positions_the_tool_with_horizontal_rapids() {
+    // A `RETRACT_MOVE` template carries only Z (`G00[Z]` in the shipped posts), so a detour carried by
+    // retract moves would never reach the program: the tool would lift vertically at the start point and
+    // the next XY word would be read by the controller as a move from a position it never left. Every
+    // point of the detour — the destination's XY included — has to be reached by horizontal rapid moves,
+    // whose templates carry the XY, and only the final lift stays a retract.
+    let exc = [square(4.0, -1.0, 6.0, 1.0)];
+    let moves = vec![Move::Retract {
+      to: Point3::new(10.0, 0.0, 5.0),
+    }];
+    let (out, end) = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 0.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap();
+
+    assert!(out.len() > 2, "a detour was inserted: {out:?}");
+    let (last, positioning) = out.split_last().expect("a final move");
+    assert!(
+      matches!(last, Move::Retract { .. }),
+      "the lift itself stays a retract: {last:?}"
+    );
+    assert_eq!(
+      last.destination().z.mm(),
+      5.0,
+      "the retract lifts to safe Z"
+    );
+    assert_eq!(last.destination().x.mm(), 10.0);
+    assert_eq!(last.destination().y.mm(), 0.0);
+
+    // Positioning travels horizontally at the Z the tool was already at.
+    for mv in positioning {
+      assert!(
+        matches!(mv, Move::Rapid { .. }),
+        "detour positioning must be a rapid, not a retract: {mv:?}"
+      );
+      assert_eq!(mv.destination().z.mm(), 0.0, "horizontal at the start Z");
+    }
+    let detour_left_the_straight_line = positioning
+      .iter()
+      .any(|mv| mv.destination().y.mm().abs() > 1.0e-9);
+    assert!(
+      detour_left_the_straight_line,
+      "the detour's XY appears in the emitted rapids: {out:?}"
+    );
+    // The destination is reached horizontally before the Z-only retract lifts away from it.
+    let reached = positioning
+      .iter()
+      .any(|mv| mv.destination().x.mm() == 10.0 && mv.destination().y.mm() == 0.0);
+    assert!(
+      reached,
+      "the destination XY is a rapid before the lift: {out:?}"
+    );
+    assert_eq!(
+      end.z.mm(),
+      5.0,
+      "the routing's end position is the retract target Z"
+    );
+  }
+
+  #[test]
+  fn a_retract_that_crosses_nothing_stays_a_single_retract() {
+    let exc = [square(4.0, 20.0, 6.0, 21.0)];
+    let moves = vec![Move::Retract {
+      to: Point3::new(10.0, 0.0, 5.0),
+    }];
+    let (out, _) = route_travel_around_exc_areas(
+      &moves,
+      Point3::new(0.0, 0.0, 0.0),
+      &exc,
+      1.0,
+      TolerancePolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(out.len(), 1, "no detour, no extra moves: {out:?}");
+    assert!(matches!(out[0], Move::Retract { .. }), "{:?}", out[0]);
   }
 }
