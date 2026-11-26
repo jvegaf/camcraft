@@ -5,6 +5,7 @@ import {
   closeSettings,
   workbenchState
 } from '$lib/components/workbench/workbench.svelte';
+import { applyTheme } from '$lib/ds/theme';
 
 type Settings = { theme: string };
 const DEFAULTS: Settings = { theme: 'dark' };
@@ -21,12 +22,6 @@ function formatError(e: unknown): string {
     return err.code ? `${err.code}: ${err.message}` : err.message;
   }
   return String(e);
-}
-
-function applyTheme(theme: string) {
-  const root = document.documentElement;
-  if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
-  else root.removeAttribute('data-theme');
 }
 
 async function loadSettings() {

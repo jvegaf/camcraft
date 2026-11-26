@@ -3,9 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { css } from 'styled-system/css';
 import { goto } from '$app/navigation';
+import { StatusBar, TopBar } from '$lib/components/organisms';
 import { StartScreen } from '$lib/components/start-screen';
-import StatusBar from '$lib/components/workbench/StatusBar.svelte';
-import TopBar from '$lib/components/workbench/TopBar.svelte';
 import {
   openSettings,
   workbenchState

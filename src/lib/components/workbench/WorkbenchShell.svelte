@@ -1,16 +1,18 @@
 <script lang="ts">
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { css } from 'styled-system/css';
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
+import {
+  StatusBar,
+  ToolRail,
+  TopBar,
+  ViewportHud
+} from '$lib/components/organisms';
+import { WorkbenchTemplate } from '$lib/components/templates';
 import BoardCanvas from './BoardCanvas.svelte';
 import BrowserPanel from './BrowserPanel.svelte';
 import InspectorPanel from './InspectorPanel.svelte';
-import StatusBar from './StatusBar.svelte';
-import ToolRail from './ToolRail.svelte';
-import TopBar from './TopBar.svelte';
-import ViewportHud from './ViewportHud.svelte';
 import {
   openSettings,
   refreshDocumentStatus,
@@ -120,42 +122,41 @@ function handleSettings() {
 async function handleBack() {
   await goto('/');
 }
-
-const shell = css({
-  w: '100%',
-  h: '100%',
-  minH: '600px',
-  position: 'relative',
-  overflow: 'hidden',
-  bg: 'canvas',
-  color: 'text',
-  fontSize: '13px',
-  lineHeight: '1.4',
-  fontFamily: 'sans',
-  '& button, & input': {
-    font: 'inherit',
-    color: 'inherit',
-    bg: 'none',
-    border: 'none'
-  },
-  '& button': { cursor: 'pointer' }
-});
 </script>
 
-<div class={shell} role="application" aria-label="Camcraft Floating Studio">
-  <BoardCanvas />
-  <TopBar
-    projectName={workbenchState.document?.path?.split('/').pop() ?? projectName}
-    onNew={handleNew}
-    onOpen={handleOpen}
-    onSave={handleSave}
-    onSaveAs={handleSaveAs}
-    onSettings={handleSettings}
-    onBack={handleBack}
-  />
-  <ToolRail onOpen={handleOpen} onSave={handleSave} />
-  <ViewportHud />
-  <BrowserPanel onOpenRecent={handleOpenRecent} />
-  <InspectorPanel />
-  <StatusBar />
-</div>
+<!--
+  Organism/page controller: every Tauri handler, the mount-time bridge calls and the document
+  status/recents wiring stay here. `WorkbenchTemplate` (atomic tier: Template) only supplies the
+  frame, the backdrop and the region slots.
+-->
+<WorkbenchTemplate ariaLabel="Camcraft Floating Studio">
+  {#snippet viewport()}
+    <BoardCanvas />
+  {/snippet}
+  {#snippet topBar()}
+    <TopBar
+      projectName={workbenchState.document?.path?.split('/').pop() ?? projectName}
+      onNew={handleNew}
+      onOpen={handleOpen}
+      onSave={handleSave}
+      onSaveAs={handleSaveAs}
+      onSettings={handleSettings}
+      onBack={handleBack}
+    />
+  {/snippet}
+  {#snippet toolRail()}
+    <ToolRail onOpen={handleOpen} />
+  {/snippet}
+  {#snippet viewportHud()}
+    <ViewportHud />
+  {/snippet}
+  {#snippet browser()}
+    <BrowserPanel onOpenRecent={handleOpenRecent} />
+  {/snippet}
+  {#snippet inspector()}
+    <InspectorPanel />
+  {/snippet}
+  {#snippet statusBar()}
+    <StatusBar />
+  {/snippet}
+</WorkbenchTemplate>

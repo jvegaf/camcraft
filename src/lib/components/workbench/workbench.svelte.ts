@@ -4,6 +4,13 @@ export type ViewportSelection = {
   avgDepthMm: number;
 } | null;
 
+/**
+ * Board-space point under the pointer, as published by `BoardCanvas`: `x`/`y` are the board plane
+ * coordinates in mm and `z` is the height. `null` means the pointer is not over the canvas, so there
+ * is no position to report (095 T3).
+ */
+export type PointerPosition = { x: number; y: number; z: number } | null;
+
 export type DocumentStatus = {
   schema: string;
   documentSchema: string;
@@ -26,6 +33,7 @@ export type RecentProject = {
 
 export type WorkbenchState = {
   selection: ViewportSelection;
+  pointer: PointerPosition;
   statusMessage: string;
   statusKind: StatusKind;
   document: DocumentStatus | null;
@@ -35,6 +43,7 @@ export type WorkbenchState = {
 
 export const workbenchState: WorkbenchState = $state({
   selection: null,
+  pointer: null,
   statusMessage: 'Listo',
   statusKind: 'ok',
   document: null,
@@ -44,6 +53,10 @@ export const workbenchState: WorkbenchState = $state({
 
 export function setSelection(selection: ViewportSelection) {
   workbenchState.selection = selection;
+}
+
+export function setPointerPosition(pointer: PointerPosition) {
+  workbenchState.pointer = pointer;
 }
 
 export function setStatus(message: string, kind: StatusKind = 'info') {

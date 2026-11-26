@@ -1,5 +1,6 @@
 import { definePreset } from '@pandacss/dev';
 import { primitiveRecipes, primitiveSlotRecipes } from './primitives';
+import { templateSlotRecipes } from './templates';
 
 export const camcraftPreset = definePreset({
   name: 'camcraft',
@@ -90,7 +91,8 @@ export const camcraftPreset = definePreset({
         }
       },
       slotRecipes: {
-        ...primitiveSlotRecipes
+        ...primitiveSlotRecipes,
+        ...templateSlotRecipes
       },
       recipes: {
         ...primitiveRecipes,

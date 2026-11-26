@@ -1,7 +1,7 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import { onMount } from 'svelte';
-import { setSelection } from './workbench.svelte';
+import { setPointerPosition, setSelection } from './workbench.svelte';
 
 type Point3Dto = { x: number; y: number; z: number };
 type Line3Dto = { start: Point3Dto; end: Point3Dto };
@@ -193,6 +193,10 @@ onMount(() => {
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    // The board plane the pointer point is projected on when the ray misses the stock surface: the
+    // same y=0 plane the grid sits on, in scene axes (x = board X, y = board Z, z = -board Y).
+    const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const planePoint = new THREE.Vector3();
     let hoveredTri: number | null = null;
     let selectedTri: number | null = null;
 
@@ -219,18 +223,46 @@ onMount(() => {
     }
 
     function pickTriangle(event: PointerEvent): number | null {
-      if (!renderer) return null;
+      const hit = castPointer(event);
+      const faceIndex = hit?.faceIndex;
+      return faceIndex == null ? null : faceIndex;
+    }
+
+    // One ray per pointer event, reused by the hover pick and the published point.
+    function castPointer(event: PointerEvent) {
+      if (!renderer) return undefined;
       updatePointer(event);
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObject(surfaceMesh, false);
-      if (hits.length === 0) return null;
-      const faceIndex = hits[0].faceIndex;
-      if (faceIndex == null) return null;
-      return faceIndex;
+      return raycaster.intersectObject(surfaceMesh, false)[0];
+    }
+
+    // Publishes the board-space point under the pointer for the status bar: the stock surface under
+    // the ray when it hits, the board plane otherwise. Only the listener and the store call are new;
+    // the renderer, the scene, the camera and the controls are untouched.
+    function publishPointer(
+      event: PointerEvent,
+      hit: ReturnType<typeof castPointer>
+    ) {
+      if (hit) {
+        setPointerPosition({ x: hit.point.x, y: -hit.point.z, z: hit.point.y });
+        return;
+      }
+      if (!renderer) {
+        setPointerPosition(null);
+        return;
+      }
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const point = raycaster.ray.intersectPlane(boardPlane, planePoint);
+      setPointerPosition(
+        point ? { x: point.x, y: -point.z, z: point.y } : null
+      );
     }
 
     const onPointerMove = (event: PointerEvent) => {
-      const tri = pickTriangle(event);
+      const hit = castPointer(event);
+      publishPointer(event, hit);
+      const tri = hit?.faceIndex ?? null;
       if (tri === hoveredTri) return;
       hoveredTri = tri;
       if (tri == null) {
@@ -240,6 +272,10 @@ onMount(() => {
         hoverMesh.geometry = triGeometry(tri);
         hoverMesh.visible = tri !== selectedTri;
       }
+    };
+
+    const onPointerLeave = () => {
+      setPointerPosition(null);
     };
 
     const onClick = (event: PointerEvent) => {
@@ -268,6 +304,7 @@ onMount(() => {
 
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('click', onClick);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
 
     const resize = () => {
       if (!container || !renderer) return;
@@ -319,6 +356,7 @@ onMount(() => {
     return () => {
       renderer?.domElement.removeEventListener('pointermove', onPointerMove);
       renderer?.domElement.removeEventListener('click', onClick);
+      renderer?.domElement.removeEventListener('pointerleave', onPointerLeave);
     };
   })().then(cleanup => {
     if (disposed) cleanup?.();
@@ -329,6 +367,8 @@ onMount(() => {
     cancelAnimationFrame(raf);
     ro?.disconnect();
     controls?.dispose?.();
+    // No canvas, no coordinate: the status bar falls back to its em dash placeholders.
+    setPointerPosition(null);
     if (renderer) {
       renderer.dispose();
       renderer.domElement.remove();

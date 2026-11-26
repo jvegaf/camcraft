@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  setPointerPosition,
   setStatus,
   setStatusMessage,
   workbenchState
@@ -23,5 +24,20 @@ describe('workbench status line', () => {
     setStatusMessage('Listo');
 
     expect(workbenchState.statusKind).toBe('info');
+  });
+});
+
+// The status bar coordinates (095 T3) come from the canvas pointer, so the store needs a real place
+// to keep the point the renderer publishes and to clear it when the pointer leaves the canvas.
+describe('workbench pointer position', () => {
+  it('starts unknown and keeps the point the canvas publishes', () => {
+    setPointerPosition(null);
+    expect(workbenchState.pointer).toBeNull();
+
+    setPointerPosition({ x: 42.8, y: 31.2, z: 0 });
+    expect(workbenchState.pointer).toEqual({ x: 42.8, y: 31.2, z: 0 });
+
+    setPointerPosition(null);
+    expect(workbenchState.pointer).toBeNull();
   });
 });

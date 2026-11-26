@@ -1,7 +1,15 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
-import { workbenchState } from './workbench.svelte';
+import { toggleTheme } from '$lib/ds/theme';
+import { Icon, IconButton } from '../atoms';
+import { CommandSearch } from '../molecules';
+import { workbenchState } from '../workbench/workbench.svelte';
 
+// Organism (095 T3, S4): the app bar of
+// `design/camcraft-workbench-v2/02-floating-studio.html` `.topbar` — product mark, current project,
+// the command search in the centre and quiet icon actions on the right. It owns no document state:
+// the file actions are still the page's handlers (`WorkbenchShell` / `+page.svelte`), and the theme
+// action uses the same shared mechanism as `SettingsDialog`.
 interface Props {
   projectName?: string;
   onNew?: () => void;
@@ -74,58 +82,9 @@ const workspace = css({
   _hover: { bg: 'raised', borderColor: 'hairline' }
 });
 const muted = css({ color: 'textOff' });
-const search = css({
-  mx: 'auto',
-  w: '380px',
-  maxW: '40vw',
-  h: '30px',
-  borderRadius: '6px',
-  bg: 'app',
-  border: '1px solid',
-  borderColor: 'border',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  px: '10px',
-  color: 'textDim',
-  fontSize: '12px',
-  _focusWithin: {
-    borderColor: 'sel',
-    boxShadow: '0 0 0 2px token(colors.selSoft)'
-  },
-  '& kbd': {
-    ml: 'auto',
-    fontSize: '11px',
-    fontFamily: 'mono',
-    color: 'textOff',
-    px: '5px',
-    py: '1px',
-    borderRadius: '3px',
-    bg: 'raised',
-    border: '1px solid',
-    borderColor: 'hairline'
-  }
-});
+// `.search { margin:0 auto }` — the command search is the centred element of the bar.
+const search = css({ mx: 'auto' });
 const topActions = css({ display: 'flex', alignItems: 'center', gap: '4px' });
-const actionBtn = css({
-  h: '30px',
-  px: '10px',
-  borderRadius: '6px',
-  fontSize: '12px',
-  color: 'textDim',
-  cursor: 'pointer',
-  _hover: { bg: 'raised', color: 'textHi' }
-});
-const iconBtn = css({
-  w: '30px',
-  h: '30px',
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '6px',
-  color: 'textDim',
-  cursor: 'pointer',
-  _hover: { bg: 'raised', color: 'textHi' }
-});
 const layoutPill = css({
   display: 'flex',
   alignItems: 'center',
@@ -140,16 +99,12 @@ const layoutPill = css({
   color: 'textDim',
   '& b': { color: 'text', fontWeight: '500' }
 });
-const icon = css({
-  w: '16px',
-  h: '16px',
-  stroke: 'currentColor',
-  fill: 'none',
-  strokeWidth: '1.6',
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-  flex: 'none'
-});
+
+function handleTheme() {
+  // Same shared mechanism `SettingsDialog` writes with; the bar only flips the applied theme, so it
+  // never pretends a preference was stored.
+  toggleTheme();
+}
 </script>
 
 <header class={topbar}>
@@ -160,19 +115,20 @@ const icon = css({
     <span>{projectName}{workbenchState.document?.dirty ? ' •' : ''}</span>
     <span class={muted}>▾</span>
   </button>
-  <div class={search} role="search" aria-label="Buscar comando">
-    <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>
-    <span>Buscar comando, capa u operación…</span>
-    <kbd>⌘K</kbd>
-  </div>
+  <CommandSearch class={search} />
   <div class={topActions}>
-    <button class={actionBtn} onclick={onNew}>Nuevo</button>
-    <button class={actionBtn} onclick={onOpen}>Abrir</button>
-    <button class={actionBtn} onclick={onSave}>Guardar</button>
-    <button class={actionBtn} onclick={onSaveAs}>Guardar como</button>
+    <IconButton ariaLabel="Nuevo" icon="plus" onclick={onNew} />
+    <IconButton ariaLabel="Abrir" icon="folder" onclick={onOpen} />
+    <IconButton ariaLabel="Guardar" icon="import" onclick={onSave} />
+    {#if onSaveAs}
+      <IconButton ariaLabel="Guardar como" icon="import" onclick={onSaveAs} />
+    {/if}
     <div class={layoutPill} aria-label="Layout flotante"><b>Floating</b> layout</div>
-    <button class={iconBtn} aria-label="Configuración" onclick={onSettings}>
-      <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5c.1-.3.1-.7.1-1z"/></svg>
-    </button>
+    <IconButton ariaLabel="Tema" icon="theme" onclick={handleTheme} />
+    <IconButton
+      ariaLabel="Configuración"
+      icon="settings"
+      onclick={onSettings}
+    />
   </div>
 </header>

@@ -3,19 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { onMount } from 'svelte';
 import '../app.css';
 import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
+import { applyTheme } from '$lib/ds/theme';
 
 let { children } = $props();
 
 type Settings = { theme: string };
-
-function applyTheme(theme: string) {
-  const root = document.documentElement;
-  if (theme === 'light' || theme === 'dark') {
-    root.dataset.theme = theme;
-  } else {
-    root.removeAttribute('data-theme');
-  }
-}
 
 onMount(async () => {
   try {
