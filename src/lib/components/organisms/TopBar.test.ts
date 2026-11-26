@@ -38,6 +38,17 @@ describe('TopBar', () => {
     }
   });
 
+  it('gives Guardar and Guardar como their own glyphs', () => {
+    render(TopBar, { onSave: vi.fn(), onSaveAs: vi.fn() });
+
+    const glyphOf = (name: string) =>
+      screen.getByRole('button', { name }).querySelector('svg');
+
+    // 095 T5 (L8d): both actions import the same file, so they must not look identical.
+    expect(glyphOf('Guardar')?.getAttribute('data-icon')).toBe('save');
+    expect(glyphOf('Guardar como')?.getAttribute('data-icon')).toBe('save-as');
+  });
+
   it('omits Guardar como on a page that has no such handler', () => {
     render(TopBar, { onNew: vi.fn(), onOpen: vi.fn(), onSave: vi.fn() });
 

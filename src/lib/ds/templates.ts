@@ -6,8 +6,9 @@ import { defineSlotRecipe } from '@pandacss/dev';
 // for the frame geometry. Two values have no design-system token and are reported, not invented:
 //
 // - The shell radius. `system.md` «Geometría» tops out at `radius-dialog` (10px, the largest
-//   container radius); the artboard `.shell` draws 12px. The template consumes the semantic token
-//   (`radii.dialog`), so today it resolves to the preset's 12px and converges with `system.md` in T5.
+//   container radius) and the artboard `.shell` draws 12px; the system wins (S6). The template
+//   consumes the semantic token (`radii.dialog`), which 095 T5 converged to 10px, so the frame
+//   renders the system's largest container radius instead of the artboard's literal.
 // - The shell shadow. `system.md` only tokenizes the floating-card shadow
 //   (`--shadow-float`); the artboard `.shell` is the single source for the outer frame shadow.
 //

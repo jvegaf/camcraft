@@ -1,8 +1,7 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import type { StatusDotTone } from '../atoms/tone';
-import { PanelRow, PanelSection } from '../molecules';
-import FloatCard from '../workbench/FloatCard.svelte';
+import { FloatCard, PanelRow, PanelSection } from '../molecules';
 import type { CamOperation } from '../workbench/workbench.svelte';
 import {
   isSectionCollapsed,
@@ -26,9 +25,22 @@ import {
 //   · Operaciones — `toolpathCount` is real, the names and statuses are not exposed by any command,
 //     so the list stays empty until the store is fed and the section says so.
 //   · Salida — there is no export/post command in `src-tauri/src/lib.rs:496-505`.
+//   · Recientes — 095 T5 (L8e) restores the capability T4 dropped: the rows are exactly the
+//     `list_recents` entries the shell already loads into `workbenchState.recents`, capped at the
+//     same five the pre-T4 panel showed, and the section disappears entirely when there are none so
+//     the artboard's four-section IA holds on an empty list. No command is added and no entry is
+//     invented; activating a row only forwards its path to the shell's handler.
 // Collapsed sections and the selected board object/operation are workbench store state (S7), so this
 // organism reads the store and only ever calls its setters: no Tauri invoke lands here.
+type Props = {
+  /** Reopens a recent project. The shell owns the Tauri call; this organism only forwards the path. */
+  onOpenRecent?: (path: string) => void;
+};
+
+let { onOpenRecent }: Props = $props();
+
 type BoardObjectRow = { id: string; label: string; value: string };
+const MAX_RECENTS = 5;
 
 const panelPos = css({
   top: '64px',
@@ -67,6 +79,7 @@ let boardObjects = $derived<BoardObjectRow[]>(
     : []
 );
 let operations = $derived<CamOperation[]>(workbenchState.operations);
+let recents = $derived(workbenchState.recents.slice(0, MAX_RECENTS));
 </script>
 
 <FloatCard title="Browser" class={panelPos} ariaLabel="Browser">
@@ -148,4 +161,15 @@ let operations = $derived<CamOperation[]>(workbenchState.operations);
       >Sin salida generada: el backend no expone exportación ni post-procesador.</p
     >
   </PanelSection>
+
+  {#if recents.length > 0}
+    <PanelSection title="Recientes">
+      {#each recents as recent (recent.path)}
+        <PanelRow
+          label={recent.name}
+          onclick={() => onOpenRecent?.(recent.path)}
+        />
+      {/each}
+    </PanelSection>
+  {/if}
 </FloatCard>

@@ -143,6 +143,33 @@ describe('WorkbenchShell', () => {
     );
   });
 
+  // 095 T5 (L8e): the recents the shell already loads through `list_recents` must reach the
+  // Browser again, and activating one reopens it through the same `open_document` command.
+  it('lists the recents it loaded and reopens one through the bridge', async () => {
+    const user = userEvent.setup();
+    render(WorkbenchShell, {});
+
+    const browser = screen.getByLabelText('Browser');
+    const row = await within(browser).findByRole('button', {
+      name: recents[0].name
+    });
+
+    await user.click(row);
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('open_document', {
+        path: recents[0].path
+      })
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByLabelText('Barra de estado')).getByText(
+          /Documento abierto/
+        )
+      ).toBeTruthy()
+    );
+  });
+
   // 095 T3 item 4/5: the HUD and status bar read real state only.
   it('renders the artboard chrome labels without inventing coordinates', () => {
     render(WorkbenchShell, {});

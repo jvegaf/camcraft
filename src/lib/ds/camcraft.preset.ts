@@ -16,9 +16,9 @@ export const camcraftPreset = definePreset({
         },
         radii: {
           control: { value: '4px' },
-          panel: { value: '8px' },
-          overlay: { value: '10px' },
-          dialog: { value: '12px' }
+          panel: { value: '6px' },
+          overlay: { value: '8px' },
+          dialog: { value: '10px' }
         }
       },
       semanticTokens: {

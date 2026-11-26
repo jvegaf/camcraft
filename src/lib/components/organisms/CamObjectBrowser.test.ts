@@ -1,7 +1,10 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { DocumentStatus } from '../workbench/workbench.svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  DocumentStatus,
+  RecentProject
+} from '../workbench/workbench.svelte';
 import { setDocument, workbenchState } from '../workbench/workbench.svelte';
 import CamObjectBrowser from './CamObjectBrowser.svelte';
 
@@ -21,6 +24,19 @@ const documentStatus: DocumentStatus = {
   boardThicknessMm: 1.6
 };
 
+const recents: RecentProject[] = [
+  {
+    name: 'controller-board.cmc',
+    path: '/tmp/controller-board.cmc',
+    lastOpened: '2026-11-26T00:00:00Z'
+  },
+  {
+    name: 'panel-front.cmc',
+    path: '/tmp/panel-front.cmc',
+    lastOpened: '2026-11-25T00:00:00Z'
+  }
+];
+
 const sectionOf = (title: string) =>
   screen
     .getByRole('heading', { level: 3, name: title })
@@ -33,6 +49,7 @@ describe('CamObjectBrowser', () => {
     workbenchState.selectedOperationId = null;
     workbenchState.selectedBoardObjectId = null;
     workbenchState.collapsedSections = [];
+    workbenchState.recents = [];
   });
 
   it('renders the Browser header, the project row and the four section headers', () => {
@@ -155,5 +172,45 @@ describe('CamObjectBrowser', () => {
         .getByRole('button', { name: /Espesor/ })
         .getAttribute('aria-current')
     ).toBeNull();
+  });
+
+  // 095 T5 (L8e): T4 dropped the «Recientes» capability the browser had before it was reorganised
+  // by CAM object. It comes back as a conditional section so the artboard's four-section IA still
+  // holds exactly when the shell has no recents to show, and it never invents an entry.
+  it('hides the recents section when the shell loaded none', () => {
+    setDocument(documentStatus);
+    render(CamObjectBrowser);
+
+    expect(
+      screen.queryByRole('heading', { level: 3, name: 'Recientes' })
+    ).toBeNull();
+    for (const title of ['Board', 'Setup', 'Operaciones', 'Salida']) {
+      expect(
+        screen.getByRole('heading', { level: 3, name: title })
+      ).toBeTruthy();
+    }
+  });
+
+  it('lists the recents the shell loaded and opens one through its handler', async () => {
+    const onOpenRecent = vi.fn();
+    const user = userEvent.setup();
+    workbenchState.recents = recents;
+    render(CamObjectBrowser, { onOpenRecent });
+
+    const section = sectionOf('Recientes');
+    for (const recent of recents) {
+      expect(within(section).getByText(recent.name)).toBeTruthy();
+    }
+    expect(
+      within(section).getByRole('heading', { level: 3, name: 'Recientes' })
+    ).toBeTruthy();
+    // One row per real recent, nothing else.
+    expect(within(section).getAllByRole('button')).toHaveLength(recents.length);
+
+    await user.click(
+      within(section).getByRole('button', { name: recents[1].name })
+    );
+    expect(onOpenRecent).toHaveBeenCalledWith(recents[1].path);
+    expect(onOpenRecent).toHaveBeenCalledTimes(1);
   });
 });

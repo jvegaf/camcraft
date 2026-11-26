@@ -10,5 +10,4 @@ export {
   ViewportHud
 } from '../organisms';
 export { default as BoardCanvas } from './BoardCanvas.svelte';
-export { default as FloatCard } from './FloatCard.svelte';
 export { default as WorkbenchShell } from './WorkbenchShell.svelte';

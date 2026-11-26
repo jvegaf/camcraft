@@ -1,6 +1,10 @@
-// Icon set used by the workbench chrome. Every drawing is a 24x24 stroked path from the artboard
-// `design/camcraft-workbench-v2/02-floating-studio.html`, so no icon font or external file is
-// loaded. Shapes are data, not logic: the `Icon` atom just renders them.
+// Icon set used by the workbench chrome. Every drawing is a 24x24 stroked path in the same style as
+// `design/camcraft-workbench-v2/02-floating-studio.html`, so no icon font or external file is loaded.
+// Shapes are data, not logic: the `Icon` atom just renders them.
+//
+// 095 T5 (L8d): the artboard draws no save action, so `save` (floppy) and `save-as` (floppy with a
+// pen on its open right side) are drawn here for the two TopBar file actions that were sharing the
+// `import` glyph. They are distinct drawings, not a relabelled copy of the same shape.
 export type IconName =
   | 'arrow-right'
   | 'folder'
@@ -8,6 +12,8 @@ export type IconName =
   | 'layers'
   | 'origin'
   | 'plus'
+  | 'save'
+  | 'save-as'
   | 'search'
   | 'settings'
   | 'theme';
@@ -43,6 +49,26 @@ export const ICONS: Record<IconName, IconShape[]> = {
     { tag: 'path', d: 'M12 5v2M12 17v2M5 12h2M17 12h2' }
   ],
   plus: [{ tag: 'path', d: 'M12 5v14M5 12h14' }],
+  save: [
+    {
+      tag: 'path',
+      d: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'
+    },
+    { tag: 'path', d: 'M17 21v-8H7v8' },
+    { tag: 'path', d: 'M7 3v5h8' }
+  ],
+  'save-as': [
+    // Floppy open on its right side, where the pen writes: the file goes to a new path.
+    {
+      tag: 'path',
+      d: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8l4 4v2'
+    },
+    { tag: 'path', d: 'M7 3v5h5' },
+    {
+      tag: 'path',
+      d: 'M20.8 11.2a1.7 1.7 0 0 0-2.4 0l-5 5-.6 3 3-.6 5-5a1.7 1.7 0 0 0 0-2.4z'
+    }
+  ],
   search: [
     { tag: 'circle', cx: 11, cy: 11, r: 6 },
     { tag: 'path', d: 'M20 20l-4.2-4.2' }

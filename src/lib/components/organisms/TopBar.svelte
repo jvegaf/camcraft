@@ -119,9 +119,9 @@ function handleTheme() {
   <div class={topActions}>
     <IconButton ariaLabel="Nuevo" icon="plus" onclick={onNew} />
     <IconButton ariaLabel="Abrir" icon="folder" onclick={onOpen} />
-    <IconButton ariaLabel="Guardar" icon="import" onclick={onSave} />
+    <IconButton ariaLabel="Guardar" icon="save" onclick={onSave} />
     {#if onSaveAs}
-      <IconButton ariaLabel="Guardar como" icon="import" onclick={onSaveAs} />
+      <IconButton ariaLabel="Guardar como" icon="save-as" onclick={onSaveAs} />
     {/if}
     <div class={layoutPill} aria-label="Layout flotante"><b>Floating</b> layout</div>
     <IconButton ariaLabel="Tema" icon="theme" onclick={handleTheme} />

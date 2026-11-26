@@ -1,7 +1,6 @@
 <script lang="ts">
 import { css, cx } from 'styled-system/css';
-import { PanelSection } from '../molecules';
-import FloatCard from '../workbench/FloatCard.svelte';
+import { FloatCard, PanelSection } from '../molecules';
 import { workbenchState } from '../workbench/workbench.svelte';
 
 // Organism (095 T4, S5 + S7) — the Inspector of

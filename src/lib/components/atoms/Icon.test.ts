@@ -35,4 +35,26 @@ describe('Icon', () => {
       'icon--size_sm'
     );
   });
+
+  // 095 T5 (L8d): «Guardar» and «Guardar como» were sharing the import glyph because the set had no
+  // save shape. Each action now draws its own: the two svgs must differ in their path data, not only
+  // in the `data-icon` label.
+  it('draws Save and Save as as two different shapes', () => {
+    const save = render(Icon, { name: 'save' }).container.querySelector('svg');
+    const saveAs = render(Icon, { name: 'save-as' }).container.querySelector(
+      'svg'
+    );
+
+    expect(save?.getAttribute('data-icon')).toBe('save');
+    expect(saveAs?.getAttribute('data-icon')).toBe('save-as');
+
+    const drawn = (svg: SVGSVGElement | null) =>
+      Array.from(svg?.querySelectorAll('path, circle, rect') ?? []).map(
+        shape => shape.getAttribute('d') ?? shape.tagName
+      );
+
+    expect(drawn(save).length).toBeGreaterThan(0);
+    expect(drawn(saveAs).length).toBeGreaterThan(0);
+    expect(drawn(save)).not.toEqual(drawn(saveAs));
+  });
 });

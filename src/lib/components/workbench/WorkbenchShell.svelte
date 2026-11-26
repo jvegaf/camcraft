@@ -52,6 +52,20 @@ async function handleOpen() {
   }
 }
 
+async function handleOpenRecent(path: string) {
+  try {
+    const status = await invoke<typeof workbenchState.document>(
+      'open_document',
+      { path }
+    );
+    setDocument(status);
+    setStatus('Documento abierto', 'ok');
+    void refreshRecents();
+  } catch (e) {
+    setStatus(`Error: ${String(e)}`, 'error');
+  }
+}
+
 async function handleSave() {
   try {
     const path = workbenchState.document?.path ?? null;
@@ -137,7 +151,7 @@ async function handleBack() {
     <ViewportHud />
   {/snippet}
   {#snippet browser()}
-    <CamObjectBrowser />
+    <CamObjectBrowser onOpenRecent={handleOpenRecent} />
   {/snippet}
   {#snippet inspector()}
     <OperationInspector />

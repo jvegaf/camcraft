@@ -3,6 +3,11 @@ import { css, cx } from 'styled-system/css';
 import { panel } from 'styled-system/recipes';
 import type { Snippet } from 'svelte';
 
+// Molecule (095 T1, moved here in T5): the floating card surface of
+// `design/camcraft-workbench-v2/02-floating-studio.html` `.float` — header 38px with the caption
+// title, optional meta and quiet actions, then a scrolling body slot. It composes no organism logic:
+// the Browser and Inspector organisms decide its content, placement and handlers, and the panel
+// recipe supplies the `Overlay` surface with `radius-overlay` (S6).
 interface Props {
   title: string;
   meta?: string;
