@@ -286,7 +286,7 @@ fn the_six_corpus_drill_files_match_their_tools_and_hits() {
   }
 
   let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-    .join("../../fixtures/corpus")
+    .join("../../../fixtures/corpus")
     .canonicalize()
     .expect("fixtures/corpus is part of the repository");
 

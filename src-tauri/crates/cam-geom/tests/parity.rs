@@ -41,7 +41,7 @@ const REQUIRED_ROLES: [&str; 8] = [
 
 fn corpus_root() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR"))
-    .join("../../fixtures/corpus")
+    .join("../../../fixtures/corpus")
     .canonicalize()
     .expect("fixtures/corpus is part of the repository")
 }
