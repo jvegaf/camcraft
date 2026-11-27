@@ -5,6 +5,9 @@
 # index. `cargo` is a stub there because the gate's cargo steps are not what these tests judge.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# This harness builds throwaway repositories, so a caller's exported git environment (a pre-push hook
+# exports GIT_DIR and friends) would point those repositories at the caller's real checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX
 # A gate that runs inside one of the fixture repositories must not run this harness again.
 export GENTLE_TOOLING_TESTS=0
 
