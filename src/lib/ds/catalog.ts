@@ -7,6 +7,7 @@
 // reason, and its states are shown as data instead of pretending to be covered.
 import type { Component } from 'svelte';
 import Button from '$lib/components/atoms/Button.svelte';
+import Glyph from '$lib/components/atoms/Glyph.svelte';
 import Icon from '$lib/components/atoms/Icon.svelte';
 import IconButton from '$lib/components/atoms/IconButton.svelte';
 import KeyHint from '$lib/components/atoms/KeyHint.svelte';
@@ -15,8 +16,11 @@ import CommandSearch from '$lib/components/molecules/CommandSearch.svelte';
 import FloatCard from '$lib/components/molecules/FloatCard.svelte';
 import PanelRow from '$lib/components/molecules/PanelRow.svelte';
 import PanelSection from '$lib/components/molecules/PanelSection.svelte';
+import BoardCanvas from '$lib/components/organisms/BoardCanvas.svelte';
 import CamObjectBrowser from '$lib/components/organisms/CamObjectBrowser.svelte';
 import OperationInspector from '$lib/components/organisms/OperationInspector.svelte';
+import SettingsDialog from '$lib/components/organisms/SettingsDialog.svelte';
+import StartScreen from '$lib/components/organisms/StartScreen.svelte';
 import StatusBar from '$lib/components/organisms/StatusBar.svelte';
 import ToolRail from '$lib/components/organisms/ToolRail.svelte';
 import TopBar from '$lib/components/organisms/TopBar.svelte';
@@ -92,6 +96,21 @@ export const CATALOG: readonly CatalogEntry[] = [
         props: { variant: 'secondary', disabled: true },
         content: 'Capas'
       }
+    ]
+  },
+  {
+    slug: 'glyph',
+    name: 'Glyph',
+    layer: 'atom',
+    purpose:
+      'Glifo local de 24×24 que el diálogo de preferencias usa para su cruz de cierre.',
+    path: 'src/lib/components/atoms/Glyph.svelte',
+    component: asCatalogComponent(Glyph),
+    renderable: true,
+    states: [
+      { label: 'md', props: { name: 'close' } },
+      { label: 'sm', props: { name: 'close', size: 'sm' } },
+      { label: 'lg', props: { name: 'close', size: 'lg' } }
     ]
   },
   {
@@ -275,6 +294,18 @@ export const CATALOG: readonly CatalogEntry[] = [
     ]
   },
   {
+    slug: 'board-canvas',
+    name: 'BoardCanvas',
+    layer: 'organism',
+    purpose: 'Viewport three.js del board con el snapshot real de la escena.',
+    path: 'src/lib/components/organisms/BoardCanvas.svelte',
+    component: asCatalogComponent(BoardCanvas),
+    renderable: false,
+    reason:
+      'Necesita un canvas WebGL y el store vivo de workbench; no renderiza aislado.',
+    states: [{ label: 'estado del store y del canvas', props: {} }]
+  },
+  {
     slug: 'cam-object-browser',
     name: 'CamObjectBrowser',
     layer: 'organism',
@@ -300,6 +331,55 @@ export const CATALOG: readonly CatalogEntry[] = [
     renderable: false,
     reason: 'Lee el store vivo de workbench; no renderiza aislado.',
     states: [{ label: 'estado del store', props: {} }]
+  },
+  {
+    slug: 'settings-dialog',
+    name: 'SettingsDialog',
+    layer: 'organism',
+    purpose:
+      'Diálogo de preferencias: lee y escribe el tema persistido del backend.',
+    path: 'src/lib/components/organisms/SettingsDialog.svelte',
+    component: asCatalogComponent(SettingsDialog),
+    renderable: false,
+    reason:
+      'Escribe settings/theme por IPC de Tauri y lee el store vivo; no renderiza aislado.',
+    states: [{ label: 'estado del store (settingsOpen)', props: {} }]
+  },
+  {
+    slug: 'start-screen',
+    name: 'StartScreen',
+    layer: 'organism',
+    purpose:
+      'Pantalla de arranque: acciones de archivo, formulario de documento nuevo y recientes.',
+    path: 'src/lib/components/organisms/StartScreen.svelte',
+    component: asCatalogComponent(StartScreen),
+    renderable: true,
+    states: [
+      { label: 'sin recientes', props: {} },
+      {
+        label: 'con recientes',
+        props: {
+          recents: [
+            {
+              name: 'controller-board.cmc',
+              path: '/tmp/controller-board.cmc',
+              lastOpened: '2026-11-26T00:00:00Z'
+            }
+          ]
+        }
+      },
+      { label: 'con error', props: { error: 'state poisoned' } },
+      { label: 'nuevo proyecto', props: { showNew: true } },
+      {
+        label: 'con handlers',
+        props: {
+          onOpen: noop,
+          onOpenRecent: noop,
+          onCreate: noop,
+          onSettings: noop
+        }
+      }
+    ]
   },
   {
     slug: 'status-bar',

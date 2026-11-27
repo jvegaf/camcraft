@@ -21,7 +21,7 @@ const M = 'src/lib/components/molecules/M.svelte';
 const T = 'src/lib/components/templates/T.svelte';
 const ROUTE = 'src/routes/+page.svelte';
 const ATOM_INDEX = 'src/lib/components/atoms/index.ts';
-const SETTINGS = 'src/lib/components/settings/Z.svelte';
+const SETTINGS = 'src/lib/components/legacy/Z.svelte';
 const CATALOG = 'src/lib/ds/catalog.ts';
 const GENERATED = 'src/lib/ds/inventory.generated.ts';
 
@@ -44,7 +44,7 @@ const files: SourceFile[] = [
   { path: CATALOG, imports: ['$lib/components/atoms/A.svelte', 'B.svelte'] },
   // The generated inventory carries derived data only; it is never usage either.
   { path: GENERATED, imports: ['./inventory'] },
-  { path: 'src/lib/components/settings/Z.svelte', imports: [] }
+  { path: 'src/lib/components/legacy/Z.svelte', imports: [] }
 ];
 
 const barrels: BarrelFile[] = [{ path: ATOM_INDEX, imports: ['./A.svelte'] }];
@@ -80,9 +80,11 @@ describe('layerForPath', () => {
 
   it('marks components outside the atomic directories as unclassified', () => {
     expect(layerForPath(SETTINGS)).toBe('unclassified');
-    expect(
-      layerForPath('src/lib/components/workbench/BoardCanvas.svelte')
-    ).toBe('unclassified');
+    // The layer is the directory, never a declared claim (101 S3): a component that stays in a
+    // feature folder keeps counting as unclassified no matter what a manifest says about it.
+    expect(layerForPath('src/lib/components/legacy/BoardCanvas.svelte')).toBe(
+      'unclassified'
+    );
     expect(layerForPath('src/routes/+page.svelte')).toBe('unclassified');
   });
 });
