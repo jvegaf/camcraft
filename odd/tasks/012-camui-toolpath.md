@@ -36,21 +36,21 @@ access to the cutting tool library, and `cam-app` has no vocabulary for a toolpa
 
 ## Tasks
 
-| ID | Task | Specs | Route | Risk note |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `ffe4d68` — `stored_tool_for_number` in `cam-store`; `cam-ui` gains `cam-store` edge; current-tool card | S1 S2 S3 S4 S6 | worker | `ffe4d68` |
-| T2 | ✅ delivered `126febc` — `seconds_for` published; estimated cutting time in the shell | S1 S5 | worker | `126febc` |
-| T3 | ✅ delivered `0700467` — `AddToolpath`, `SetToolpathToolNumber`, `SetToolpathOperation`, `DeleteToolpath` | S7 | worker | `0700467` |
-| T4 | ✅ delivered `36e91cc` — `cam-toolpath::program_for` moved from `cam-cli::build_segment` | S5 S6 S7 | worker | `36e91cc` |
+| ID  | Task                                                                                                                 | Specs          | Route  | Risk note |
+| --- | -------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | --------- |
+| T1  | ✅ delivered `ffe4d68` — `stored_tool_for_number` in `cam-store`; `cam-ui` gains `cam-store` edge; current-tool card | S1 S2 S3 S4 S6 | worker | `ffe4d68` |
+| T2  | ✅ delivered `126febc` — `seconds_for` published; estimated cutting time in the shell                                | S1 S5          | worker | `126febc` |
+| T3  | ✅ delivered `0700467` — `AddToolpath`, `SetToolpathToolNumber`, `SetToolpathOperation`, `DeleteToolpath`            | S7             | worker | `0700467` |
+| T4  | ✅ delivered `36e91cc` — `cam-toolpath::program_for` moved from `cam-cli::build_segment`                             | S5 S6 S7       | worker | `36e91cc` |
 
 T1 and T2 are independent and can land in either order. T3 needs T1's list to pick a number from. T4 is what makes
-T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-coded `sample_tool()`.
+T2's estimate _about the user's document_ instead of about `cam-desktop`'s hard-coded `sample_tool()`.
 
 ## Log
 
-- **L1 (owner, verbatim).** The two dispositions this feature rests on: *"dale con todo"* (the three fronts after
-  the merge) and *"autorizado"*, given to the parent's question — *"¿se autoriza meter `cam-store`/`cam-toolpath` en
-  `cam-ui` y abrir autoría de toolpaths en el shell?"* Both were declined earlier for a measured reason and are now
+- **L1 (owner, verbatim).** The two dispositions this feature rests on: _"dale con todo"_ (the three fronts after
+  the merge) and _"autorizado"_, given to the parent's question — _"¿se autoriza meter `cam-store`/`cam-toolpath` en
+  `cam-ui` y abrir autoría de toolpaths en el shell?"_ Both were declined earlier for a measured reason and are now
   granted: T14 was recorded as unauthorised in L39/L40 of `camui-shell.md` precisely because the shell could not
   reach the library and the number would have had to be invented.
 - **L2 (evidence, the map).** A read-only exploration measured four things that decide the plan. `ToolLibrary` is a
@@ -88,7 +88,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `tool_type` is a `u8` whose mapping `cam-store` documents as unestablished, so the card draws the raw code rather
   than a table nobody evidenced. Both are the kind of hole a later slice should fill with a decision, not a guess.
   **The table's order was wrong about T2 and T4.** The estimated time cannot be shown honestly before the shell can
-  turn *the document's* toolpaths into a program: today the only program in the shell is `cam-desktop`'s sample, so
+  turn _the document's_ toolpaths into a program: today the only program in the shell is `cam-desktop`'s sample, so
   T2's visible half would have displayed a duration for something the user did not author. **T4 runs first**, then T2
   publishes the seconds and displays them against a program that belongs to the document.
   **Environment fact worth keeping**, because it cost two agents a diagnosis: this session's cgroup shipped
@@ -137,11 +137,11 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   explicitly non-blocking — the provider's own statement is that none opened a correction, none reopens the review,
   and no correction transition is offered for this candidate:
 
-  | ID | Lens | Location | Severity |
-  | --- | --- | --- | --- |
-  | R2-001 | readability | `crates/cam-toolpath/src/lib.rs:73-76` | SUGGESTION |
+  | ID     | Lens        | Location                                 | Severity   |
+  | ------ | ----------- | ---------------------------------------- | ---------- |
+  | R2-001 | readability | `crates/cam-toolpath/src/lib.rs:73-76`   | SUGGESTION |
   | R2-002 | readability | `crates/cam-toolpath/src/lib.rs:328-333` | SUGGESTION |
-  | R4-001 | resilience | `crates/cam-toolpath/src/lib.rs:1019` | WARNING |
+  | R4-001 | resilience  | `crates/cam-toolpath/src/lib.rs:1019`    | WARNING    |
 
   They are **later work, never a reason to re-run this review**. The message bodies live in the native receipt, not
   in the closure projection this session saw, so this document records their identity and location and nothing more
@@ -159,7 +159,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `cam-units`/`cam-geom`/`cam-move`/`cam-model` and S6 forbids it `cam-store`; `cam-app` sees neither `cam-store`
   nor `cam-toolpath`; **`cam-cli` is the only crate that sees both**, which is why T4's `program_tools` — the
   `StoredTool -> ProgramTool` mapping — ended up private inside that binary. `cam-ui` holds `cam-store` but not
-  `cam-toolpath`, so it cannot reach `program_for` at all, and the estimate can only be *about the document* if it
+  `cam-toolpath`, so it cannot reach `program_for` at all, and the estimate can only be _about the document_ if it
   does. Three ways out were put to the owner — duplicate the mapping, move it to a crate that sees both, or widen
   S6 and duplicate it under a shared test. The owner answered **`b`**.
   **So T2 becomes two work units.** **T2.0** is the extraction: a new workspace crate `cam-program` depending on
@@ -246,15 +246,15 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   `ff8270b..4c70387` — 9 paths / 416 lines, **approved**, authority burned, **no correction and no blocker**. Seven
   advisories came back, all `informational`:
 
-  | ID | Lens | Location | Severity |
-  | --- | --- | --- | --- |
-  | R2-001 | readability | `crates/cam-ui/src/chrome.rs:804-807` | WARNING |
-  | R2-002 | readability | `crates/cam-program/src/lib.rs:77-83` | SUGGESTION |
+  | ID     | Lens        | Location                                   | Severity   |
+  | ------ | ----------- | ------------------------------------------ | ---------- |
+  | R2-001 | readability | `crates/cam-ui/src/chrome.rs:804-807`      | WARNING    |
+  | R2-002 | readability | `crates/cam-program/src/lib.rs:77-83`      | SUGGESTION |
   | R2-003 | readability | `crates/cam-ui/tests/tool_card.rs:243-261` | SUGGESTION |
-  | R2-004 | readability | `crates/cam-ui/src/view3d.rs:708-709` | SUGGESTION |
-  | R3-001 | reliability | `crates/cam-ui/src/chrome.rs:804` | WARNING |
+  | R2-004 | readability | `crates/cam-ui/src/view3d.rs:708-709`      | SUGGESTION |
+  | R3-001 | reliability | `crates/cam-ui/src/chrome.rs:804`          | WARNING    |
   | R3-002 | reliability | `crates/cam-ui/tests/tool_card.rs:255-259` | SUGGESTION |
-  | R4-001 | resilience | `crates/cam-ui/src/chrome.rs:804` | WARNING |
+  | R4-001 | resilience  | `crates/cam-ui/src/chrome.rs:804`          | WARNING    |
 
   **The one thing worth reading twice, and it is a location and not a verdict.** Three independent lenses —
   readability, reliability and resilience — landed on the **same single line**, `chrome.rs:804`, which is the line
@@ -355,7 +355,7 @@ T2's estimate *about the user's document* instead of about `cam-desktop`'s hard-
   the load through `cam_store::document::DocumentFile::load` as one undoable replacement
   (`crates/cam-ui/src/lib.rs:2320-2336`). Uncommitted in the working tree when this entry was written; no gate here.
   **What this document's own hand-off still needs, unchanged:** the card resolves a toolpath's number against the
-  snapshot it is *handed*, and an open now empties that snapshot on purpose (`lib.rs:1013-1020`) instead of filling it
+  snapshot it is _handed_, and an open now empties that snapshot on purpose (`lib.rs:1013-1020`) instead of filling it
   from the opened document, so `Document.tools_ref` remains a filename only `cam-cli` resolves. The card is honest
   about the empty case — it says the number is not in the library it was given — but the library the CLI would open
   is still not loaded by any window, which is T1's remaining hole rather than a new one.

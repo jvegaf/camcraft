@@ -21,16 +21,16 @@ The document above holds a 100 mm square (`E1`) and one circle inside it (`E2`).
 square as its region and the circle as an island, which is the whole of the authoring surface: there
 is no "island" shape in the document, and nothing is inferred from the drawing.
 
-| Piece | Where |
-| --- | --- |
-| `Region`, `Normalized`, `Region::contains`, `subtract`, `normalize` | `cam-geom::region` |
-| The arrangement behind `normalize` | `cam-geom::boolean` |
-| `Region::offset`, `Region::raster_spans`, `RegionOffset` | `cam-geom::region_offset` |
-| The exact minimum distance between two segments | `cam-geom::distance` |
-| `winding_number`, `Membership::classify`, `Relation::relation` | `cam-geom::winding` |
-| `Toolpath.island_ids` and its validation | `cam-model` |
-| `--islands`, and the island count `inspect` prints | `cam-cli` |
-| Both pocket strategies over a region | `cam-toolpath::pocket` |
+| Piece                                                               | Where                     |
+| ------------------------------------------------------------------- | ------------------------- |
+| `Region`, `Normalized`, `Region::contains`, `subtract`, `normalize` | `cam-geom::region`        |
+| The arrangement behind `normalize`                                  | `cam-geom::boolean`       |
+| `Region::offset`, `Region::raster_spans`, `RegionOffset`            | `cam-geom::region_offset` |
+| The exact minimum distance between two segments                     | `cam-geom::distance`      |
+| `winding_number`, `Membership::classify`, `Relation::relation`      | `cam-geom::winding`       |
+| `Toolpath.island_ids` and its validation                            | `cam-model`               |
+| `--islands`, and the island count `inspect` prints                  | `cam-cli`                 |
+| Both pocket strategies over a region                                | `cam-toolpath::pocket`    |
 
 The contract rows for the document field and the CLI flag are in [format.md](format.md), and the
 decision history is the [feature document](../../odd/tasks/007-region-booleans.md) (D-RB-1 … D-RB-11,
@@ -52,7 +52,7 @@ A point that is `OnBoundary` for any boundary is not material at all.
 
 Consequences, in the order they matter:
 
-- **A hole is expressed by appending its boundary.** No subtraction is needed to *represent* one, and
+- **A hole is expressed by appending its boundary.** No subtraction is needed to _represent_ one, and
   `Region::subtract(hole)` is literally that append followed by normalization (A5). There is no
   boolean kernel entry point that a caller has to pick over another.
 - **A boss inside a hole needs no third concept.** Appending the boss's boundary flips the parity a
@@ -78,11 +78,11 @@ guess.
 
 The primitives underneath are exact and arc-native (S4):
 
-| Primitive | Contract |
-| --- | --- |
-| `winding_number(contour, point) -> i32` | The signed turns the contour makes about the point, computed from each segment's own geometry — a line contributes the signed angle between the vectors to its ends, an arc contributes the angle it subtends at the point. No tessellation, no sampling. |
-| `classify(contour, point, tolerance) -> Membership` | `Outside`, `Inside` or `OnBoundary` (within `tolerance` of any segment), so a caller never has to guess which of two touching contours owns an edge. |
-| `relation(first, second, tolerance) -> Relation` | `Disjoint`, `FirstInside`, `SecondInside`, `Crossing` or `Touching`, decided by segment intersections plus one interior point — never by bounding boxes, which is how a contour in a C-shaped pocket's notch stays outside the material while inside its bounds. |
+| Primitive                                           | Contract                                                                                                                                                                                                                                                         |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `winding_number(contour, point) -> i32`             | The signed turns the contour makes about the point, computed from each segment's own geometry — a line contributes the signed angle between the vectors to its ends, an arc contributes the angle it subtends at the point. No tessellation, no sampling.        |
+| `classify(contour, point, tolerance) -> Membership` | `Outside`, `Inside` or `OnBoundary` (within `tolerance` of any segment), so a caller never has to guess which of two touching contours owns an edge.                                                                                                             |
+| `relation(first, second, tolerance) -> Relation`    | `Disjoint`, `FirstInside`, `SecondInside`, `Crossing` or `Touching`, decided by segment intersections plus one interior point — never by bounding boxes, which is how a contour in a C-shaped pocket's notch stays outside the material while inside its bounds. |
 
 A single-point intersection counts as a crossing only when it lies **away from both segments' ends**;
 a `Point` at an end is a shared corner, so two squares meeting at one corner are `Touching` and not
@@ -146,11 +146,11 @@ i.e. 0.002 mm. A piece is one chained contour, kept or dropped whole (M4's granu
 
 The proof took three forms, and the first two were wrong for reasons worth keeping:
 
-| Form | Rule | What it missed |
-| --- | --- | --- |
-| Vertices (D-RB-9) | Every vertex at least `distance − slack` from every original boundary | The interior of an arc. A lens-shaped piece at a crossing stage has its two crossings as its *only* vertices, both exactly the requested distance away, while the arc between them bulges into the material. |
+| Form                                      | Rule                                                                                                                                                                                                                | What it missed                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vertices (D-RB-9)                         | Every vertex at least `distance − slack` from every original boundary                                                                                                                                               | The interior of an arc. A lens-shaped piece at a crossing stage has its two crossings as its _only_ vertices, both exactly the requested distance away, while the arc between them bulges into the material.                                                                                                                                                                  |
 | Arc-end stretches with a budget (D-RB-10) | Since the distance to a set changes by at most the distance travelled, split each stretch into sub-pieces whose interior stays within `s` of an endpoint and require every endpoint to clear `distance − slack + s` | The budget it first proposed was the stretch's **sagitta**. The farthest interior point of a stretch is about half a chord — hundreds of times its sagitta — so a sagitta budget does not pay for the step it was meant to justify. The budget is the stretch's **arc length**, which bounds the travel directly and is strictly finer. Straight pieces were still unchecked. |
-| Exact segment-to-segment (D-RB-11) | The minimum distance between the piece and every original segment, computed in closed form and compared once | Nothing: the minimum over the piece is attained at a measured point, so the comparison is a statement about every point of the piece. There is no resolution knob left. |
+| Exact segment-to-segment (D-RB-11)        | The minimum distance between the piece and every original segment, computed in closed form and compared once                                                                                                        | Nothing: the minimum over the piece is attained at a measured point, so the comparison is a statement about every point of the piece. There is no resolution knob left.                                                                                                                                                                                                       |
 
 **The two measurements that exposed the first two forms**, both recorded because neither was visible
 from reading the rule:
@@ -173,11 +173,11 @@ either at an **endpoint** of one of them, or at a point **interior to both** whe
 vector is perpendicular to both tangents. That second case collapses to a small finite set per pair
 type:
 
-| Pair | Interior candidates | Why that is all of them |
-| --- | --- | --- |
-| line / line | none beyond the four endpoint distances, plus `0` when they cross | Perpendicular to both straight tangents means the directions are parallel; between parallel segments the minimum is attained over an interval of the overlap, so an endpoint of one segment is always a minimum. |
-| line / arc | `C ± r·n`, the two points where the line's normal through the circle's centre leaves the circle, kept when they lie on the arc's sweep | Perpendicular to the line makes the connecting vector parallel to its normal; perpendicular to the arc makes it radial. Zero covers a crossing. |
-| arc / arc | `C1 ± r1·u` against `C2 ± r2·u`, where `u` is the unit centre line, kept when both points lie on their own sweeps | Radial for both curves puts the connecting vector on the centre line. Concentric arcs have no centre line direction and need none: an endpoint of one inside the other's sweep already returns `\|r1 − r2\|`. Zero covers a crossing. |
+| Pair        | Interior candidates                                                                                                                    | Why that is all of them                                                                                                                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| line / line | none beyond the four endpoint distances, plus `0` when they cross                                                                      | Perpendicular to both straight tangents means the directions are parallel; between parallel segments the minimum is attained over an interval of the overlap, so an endpoint of one segment is always a minimum.                      |
+| line / arc  | `C ± r·n`, the two points where the line's normal through the circle's centre leaves the circle, kept when they lie on the arc's sweep | Perpendicular to the line makes the connecting vector parallel to its normal; perpendicular to the arc makes it radial. Zero covers a crossing.                                                                                       |
+| arc / arc   | `C1 ± r1·u` against `C2 ± r2·u`, where `u` is the unit centre line, kept when both points lie on their own sweeps                      | Radial for both curves puts the connecting vector on the centre line. Concentric arcs have no centre line direction and need none: an endpoint of one inside the other's sweep already returns `\|r1 − r2\|`. Zero covers a crossing. |
 
 Every candidate is evaluated as a genuine distance **to the segment**, never to its supporting line or
 circle, so a candidate whose foot falls past an end is still correct — it simply is not the minimum.
@@ -192,22 +192,34 @@ which is why there is no check-point count, no step constant and no skip bound l
 A pocket toolpath carries `island_ids` beside `entity_ids`:
 
 ```json
-{ "id": "TP1", "name": "Pocket 1", "entity_ids": ["E1"], "island_ids": ["E2"],
+{
+  "id": "TP1",
+  "name": "Pocket 1",
+  "entity_ids": ["E1"],
+  "island_ids": ["E2"],
   "tool_number": 1,
-  "operation": { "kind": "pocket", "strategy": "offset", "allowance": 0.0,
-    "stepover": 3.0, "pass_depth": 6.0, "start_depth": 0.0, "cut_depth": 6.0 } }
+  "operation": {
+    "kind": "pocket",
+    "strategy": "offset",
+    "allowance": 0.0,
+    "stepover": 3.0,
+    "pass_depth": 6.0,
+    "start_depth": 0.0,
+    "cut_depth": 6.0
+  }
+}
 ```
 
 The field is omitted when empty, so a document with no islands is byte-identical to one written before
 islands existed. `Document::validate` refuses, by name and with the ids:
 
-| Refusal | Message |
-| --- | --- |
-| An island that is not a closed contour | `toolpath "TP1" island "E2" is not a closed contour` |
+| Refusal                                                        | Message                                                          |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| An island that is not a closed contour                         | `toolpath "TP1" island "E2" is not a closed contour`             |
 | An island not strictly inside one of the toolpath's boundaries | `toolpath "TP1" island "E2" is not inside any of its boundaries` |
-| Two islands that are not disjoint | `toolpath "TP1" islands "E2" and "E3" overlap or touch` |
-| The same island named twice | `duplicate island id "E2"` |
-| Islands on an operation that does not clear a region | `toolpath "TP1" takes islands only for a pocket or an inlay` |
+| Two islands that are not disjoint                              | `toolpath "TP1" islands "E2" and "E3" overlap or touch`          |
+| The same island named twice                                    | `duplicate island id "E2"`                                       |
+| Islands on an operation that does not clear a region           | `toolpath "TP1" takes islands only for a pocket or an inlay`     |
 
 The field is **not** pocket-only: an `inlay` male carries its region as `island_ids` and has no
 boundary entity at all, because its boundary is the job rectangle and the job is not an entity. That is
@@ -216,7 +228,7 @@ also how the document says which half of the pair a toolpath is — see
 reason.
 
 "Inside" is the exact containment question, not a bounds test, and it is asked island-first because
-`relation` is directional: a pocket's boundary *holds* its island, so the answer that means "valid" is
+`relation` is directional: a pocket's boundary _holds_ its island, so the answer that means "valid" is
 `FirstInside` with the island as the first argument. A contour sitting in a C-shaped pocket's notch is
 inside the pocket's bounds and outside its material, and is refused.
 
@@ -300,11 +312,11 @@ know, so it would pocket straight **through** an island the user asked to keep, 
 far worse than a refusal. A10 records this as D-M4-1's revisit trigger; the field is not inferred from
 anything the older build already reads, so no reader can be left guessing what it meant.
 
-| Reader | Behaviour |
-| --- | --- |
+| Reader           | Behaviour                                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `c2d/document@1` | Loads. `island_ids` is absent and therefore empty, so every toolpath is what it was. Saving writes `@2` and the toolpaths are byte-identical. |
-| `c2d/document@2` | Loads. |
-| Anything else | Refused with exit `3`, naming the found and the supported tag. |
+| `c2d/document@2` | Loads.                                                                                                                                        |
+| Anything else    | Refused with exit `3`, naming the found and the supported tag.                                                                                |
 
 The migration is an identity, not a transformation: `@1` only lacks the field. The contract rows are in
 [format.md](format.md#document-c2d).
@@ -316,15 +328,15 @@ The migration is an identity, not a transformation: `@1` only lacks the field. T
 `inset = 3 mm`, so stage `d = 3 + 4k`, and each stage offsets the boundary inward by `d` and the island
 outward by `d`:
 
-| Stage `d` | The region at that stage | Pieces cut |
-| --- | --- | --- |
-| 3 mm | 94 mm square, island ring `r = 13` | 2 |
-| 7 mm | 86 mm square, island ring `r = 17` | 2 |
-| 11 mm | 78 mm square, island ring `r = 21` | 2 |
-| 15 mm | 70 mm square, island ring `r = 25` | 2 |
-| 19 mm | 62 mm square, island ring `r = 29` — the last stage where the two are still separate | 2 |
-| 23 mm | island ring `r = 33` has crossed the 23…77 wall: four corner slivers survive (a corner is `27·√2 = 38.18` from the centre, outside the disc), and the lens-shaped pieces where the disc stands outside the wall are dropped by the distance proof | 4 |
-| 27 mm | nothing is 27 mm from both originals — the wall's own inset is nearer at 23 mm — so the kernel refuses and the ringing ends | — |
+| Stage `d` | The region at that stage                                                                                                                                                                                                                          | Pieces cut |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 3 mm      | 94 mm square, island ring `r = 13`                                                                                                                                                                                                                | 2          |
+| 7 mm      | 86 mm square, island ring `r = 17`                                                                                                                                                                                                                | 2          |
+| 11 mm     | 78 mm square, island ring `r = 21`                                                                                                                                                                                                                | 2          |
+| 15 mm     | 70 mm square, island ring `r = 25`                                                                                                                                                                                                                | 2          |
+| 19 mm     | 62 mm square, island ring `r = 29` — the last stage where the two are still separate                                                                                                                                                              | 2          |
+| 23 mm     | island ring `r = 33` has crossed the 23…77 wall: four corner slivers survive (a corner is `27·√2 = 38.18` from the centre, outside the disc), and the lens-shaped pieces where the disc stands outside the wall are dropped by the distance proof | 4          |
+| 27 mm     | nothing is 27 mm from both originals — the wall's own inset is nearer at 23 mm — so the kernel refuses and the ringing ends                                                                                                                       | —          |
 
 **14 rings**, and the island ring is two arcs where the wall ring is four straight moves. That is why
 the island's contribution shows up in the program as arc blocks rather than as extra lines.
@@ -335,11 +347,11 @@ The inset region is `3…97` on both axes and the grown island is `r = 13`, so t
 `y = 3 + 3k` that fits — 32 rows, the island-free row count, because an island inside the boundary
 cannot move the boundary:
 
-| Rows | `y` | Spans |
-| --- | --- | --- |
-| 23 rows | everywhere except `39 … 60` and `63` | one span `x = 3 … 97` |
-| 8 rows | `39, 42, … 60` (`\|y − 50\| < 13`) | two spans ending and resuming at `x = 50 ± √(169 − (y − 50)²)` |
-| 1 row | `63` (`\|63 − 50\| = 13`, exactly tangent) | resolved by the `1e-5 mm` retry, still one span |
+| Rows    | `y`                                        | Spans                                                          |
+| ------- | ------------------------------------------ | -------------------------------------------------------------- |
+| 23 rows | everywhere except `39 … 60` and `63`       | one span `x = 3 … 97`                                          |
+| 8 rows  | `39, 42, … 60` (`\|y − 50\| < 13`)         | two spans ending and resuming at `x = 50 ± √(169 − (y − 50)²)` |
+| 1 row   | `63` (`\|63 − 50\| = 13`, exactly tangent) | resolved by the `1e-5 mm` retry, still one span                |
 
 40 spans in total, each a straight move, and every cutting move stays at least `3 − 1e-6 mm` from the
 island.
@@ -349,7 +361,7 @@ island.
 `d = 3, 11, 19` are the only stages where the grown island (`r = 13, 21, 29`) is still strictly inside
 the shrunken wall (94, 78, 62 mm squares), so the pocket is **6 rings** — three stages of wall ring
 plus island ring — and `d = 27` is where the grown island has swallowed the pocket. A stage that
-leaves nothing is the collapse, not an error; only the *first* stage leaving nothing means the tool
+leaves nothing is the collapse, not an error; only the _first_ stage leaving nothing means the tool
 never fitted.
 
 ## Known limits, each a decision
@@ -360,7 +372,7 @@ never fitted.
   operation. It is not needed by a pocket, because validation refuses an island that is not strictly
   inside its boundary and refuses islands that overlap each other.
 - **A boundary that crosses itself is passed through** (L7). A4 asks normalization to resolve crossings
-  *between* boundaries; a self-crossing contour arrives and leaves as it is, unresolved rather than
+  _between_ boundaries; a self-crossing contour arrives and leaves as it is, unresolved rather than
   guessed at. The parity rule still answers for every point of it, and its orientation is never
   consulted, so the region remains usable — the arrangement simply has not been asked to fix it.
 - **An exact tangency in the arrangement is refused, not resolved** (recorded by K3, surfaced by

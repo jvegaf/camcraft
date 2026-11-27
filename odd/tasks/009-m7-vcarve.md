@@ -72,7 +72,7 @@ Requirements as stated by the owner:
   §6): "**The simulation's field and the program use different origins** (M6 L17). `cam_sim::grid::grid_for`
   builds the field at `(0, 0)` from `job.width/height` while programs are emitted in machine
   coordinates, so at any origin corner other than bottom-left the report and the preview disagree with
-  the document about *where* the cut is — for every strategy since M5". The roadmap's own remedy
+  the document about _where_ the cut is — for every strategy since M5". The roadmap's own remedy
   (verbatim): "the fix carries a **test per origin corner**; it moves the grid's origin and the sweep's
   cell mapping in one change, and the job frame is mapped onto the machine frame exactly once, at the
   field's boundary".
@@ -83,7 +83,7 @@ Requirements as stated by the owner:
   roadmap's §6 sketch proposed moving `grid_for`'s origin and the sweep's cell mapping together. The
   implementation found a cheaper and safer crossing point, and the reason is a tab: M5 places a tab by
   **arc length from the contour's start** (`Walk::walked_at`), and reflecting a contour reverses its
-  traversal, so mapping the *target's* geometry into the machine frame would move every tab to the other
+  traversal, so mapping the _target's_ geometry into the machine frame would move every tab to the other
   side at `top_left`. So the field, the target and the preview stay in the document frame, and the
   program is read into it once, in `sweep::apply_move`. What the sketch got right is the invariant —
   exactly one mapping, at exactly one boundary — and that is what the code does.
@@ -126,15 +126,15 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 - **A2 — The skeleton is verified, never guessed.** `cam-geom` exposes the medial axis of a region as
   branches; a point on a branch is a medial point **because the exact empty-ball test says so** — the
-  nearest boundary *points* (deduped by point, so a vertex shared by two segments is one point) number
+  nearest boundary _points_ (deduped by point, so a vertex shared by two segments is one point) number
   at least two, or the boundary is smooth there and every nearest point is at the same exact distance.
   A candidate that fails the test is dropped whole, never nudged into place, and the drop is counted.
   Candidates are generated from a nearest-feature lattice and refined by bisecting the two distances
   along a crossing lattice edge, which is what makes an exact certificate reachable without constructing
   a bisector; the refinement is a function of the region and the tolerance alone, so two runs give the
-  same branches in the same order. *(Amended by execution: the lattice+bisection route replaced "the
+  same branches in the same order. _(Amended by execution: the lattice+bisection route replaced "the
   bisectors of boundary element pairs" because a bisector involving an arc is a conic the kernel has no
-  type for — and bisecting a scalar needs none. See L10.)* **Topology is an answer, so it is tested**: a
+  type for — and bisecting a scalar needs none. See L10.)_ **Topology is an answer, so it is tested**: a
   finer tolerance never returns more branches than a coarser one, because a finer tolerance that
   fragmented one axis into thirteen would retract the tool thirteen times for a better measurement.
 
@@ -176,8 +176,8 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   bottom-left, that an arc and a helix cut where the document puts them, and that a crash is reported
   at the program's own coordinates. The bottom-left numbers are unchanged bit for bit. This is T0
   because A6 cannot be trusted while the blind spot that hid this defect for two milestones is open.
-  *(Widened during T0's own work: the arc handedness half was found by the implementation, not by this
-  document — see L6.)*
+  _(Widened during T0's own work: the arc handedness half was found by the implementation, not by this
+  document — see L6.)_
 
 - **A8 — Determinism, no new dependency, and the old bytes (S10).** Two runs of every new subcommand
   print and emit identical bytes, the branch order is asserted equal across runs, and a differential
@@ -189,12 +189,12 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 ## Decisions
 
 - **D-M7-1 — M7 is V-carve to the point: no relief pass, no flat bottom.** The owner's two decisions
-  (S2). Corner relief is *not needed for the carve to meet the vectors*, and that is a consequence of
+  (S2). Corner relief is _not needed for the carve to meet the vectors_, and that is a consequence of
   the law rather than an omission: at a boundary point `d = 0`, so the surface tapers to zero depth
   exactly at the edge, sharp corners included. What a real machine leaves in a corner is the tip's own
   finite radius, and that is `uncut` the simulation reports. Flat Depth, `DoFlatBottom` and
   `UseAreClearTool` (S6, S8) are recorded out of scope, not dropped: they change what the operation
-  *is*, and the milestone's risk is the skeleton.
+  _is_, and the milestone's risk is the skeleton.
 
 - **D-M7-2 — The medial axis is the toolpath, and the empty-ball test is the only thing that certifies
   it.** Candidate generation is cheap and unreliable (a bisector can be sampled anywhere); the
@@ -215,7 +215,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   *(Superseded in its premise by T2's implementation; the corrected decision is the one in force.) As
   written, this decision said arcs would be tessellated for the skeleton and counted, reasoning that
   every bisector involving an arc is a parabola or a hyperbola and the kernel has no conic. That is right
-  about *constructing* a bisector and wrong about *needing* one: the axis is found by bisecting the
+  about _constructing_ a bisector and wrong about _needing_ one: the axis is found by bisecting the
   scalar `dist(p, i) - dist(p, j)` along a lattice edge and certifying with exact nearest points, so no
   bisector is ever built and the arc's own geometry is asked throughout. Arcs are therefore **not**
   tessellated, the distance is arc-native in the certificate as well as in the clearance, and there is no
@@ -223,7 +223,7 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   reason: the walk emits linear feeds with per-vertex Z (D-M7-7), so the question does not arise.
 
 - **D-M7-5 — The tolerance is the lattice step, and its four costs are declared, not hidden.** It is the
-  same *kind* of knob as a post-calculation toolpath tolerance (S7) but not the same knob: that
+  same _kind_ of knob as a post-calculation toolpath tolerance (S7) but not the same knob: that
   tolerance simplifies a computed path afterwards to reduce file size, while M7 refines the axis to a step.
   The costs, measured: (1) the chording between certified vertices; (2) a piece shorter than the step is
   missed; (3) near a convex corner the carve leaves at most `tolerance` of material standing, because a
@@ -246,16 +246,16 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T0 | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner | A7, S17, D-M7-6, D-M7-8 | inline, test-first | `d8cb895` + `4d6849e` |
-| T1 | `cam-geom`: the exact distance from a point to a region's boundary, over every boundary segment, arcs native; property-checked against a sampled lower bound | A1, D-M7-2 | inline, test-first | |
-| T2 | `cam-geom::medial`: the verified medial axis — nearest-feature lattice, exact bisection, the empty-ball certificate (contacts deduped by point), a stitch pass over refused crossings, deterministic branch order, and the monotonicity property that a finer tolerance never returns more branches | A2, D-M7-2, D-M7-4, D-M7-5 | delegated, test-first (the milestone's research unit, three rounds: T2, T2b, T2c) | `1e5ce35` |
-| T3 | `cam-model`: `Operation::VCarve` + the parameter record, one shared law beside the tool, refusals at load, `@2` round trip | A1, A4 | inline, test-first | |
-| T4 | `cam-toolpath::vcarve`: walk the branches at `-d/tan(θ/2)`, per-vertex Z feeds, retract between branches, flat-tip and unangled-bit refusals | A3, D-M7-7, S14 | delegated, test-first | |
-| T5 | `cam-cli toolpath --kind vcarve`, the named refusals for every flag it does not have, `inspect`, `--start-depth` refused | A5, D-M7-3, S16 | inline, test-first | |
-| T6 | `cam-sim`: the distance-field claim for a V-carve, `simulate` integration, and the oracle in both signs (square, circle, island; thinned skeleton; too-deep path) | A6, S11 | delegated, test-first | |
-| T7 | Closing evidence: golden programs for a square and a circle region, `docs/m7-vcarve.md`, README status, roadmap §4.10 + M7 ✅ + §6 risk closure, `docs/format.md`, the `e0d39a3` differential, `./scripts/check.sh` | A1–A8 | delegated | |
+| ID  | Task                                                                                                                                                                                                                                                                                                | Specs                      | Route                                                                             | Commit                |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------- | --------------------- |
+| T0  | The frame is honoured at every boundary: one `cam-model::Frame` definition, the field's grid and the sweep's cell mapping, a crash's own coordinates, and the **handedness of arcs and helixes** (a reflection reverses orientation), with a test per origin corner                                 | A7, S17, D-M7-6, D-M7-8    | inline, test-first                                                                | `d8cb895` + `4d6849e` |
+| T1  | `cam-geom`: the exact distance from a point to a region's boundary, over every boundary segment, arcs native; property-checked against a sampled lower bound                                                                                                                                        | A1, D-M7-2                 | inline, test-first                                                                |                       |
+| T2  | `cam-geom::medial`: the verified medial axis — nearest-feature lattice, exact bisection, the empty-ball certificate (contacts deduped by point), a stitch pass over refused crossings, deterministic branch order, and the monotonicity property that a finer tolerance never returns more branches | A2, D-M7-2, D-M7-4, D-M7-5 | delegated, test-first (the milestone's research unit, three rounds: T2, T2b, T2c) | `1e5ce35`             |
+| T3  | `cam-model`: `Operation::VCarve` + the parameter record, one shared law beside the tool, refusals at load, `@2` round trip                                                                                                                                                                          | A1, A4                     | inline, test-first                                                                |                       |
+| T4  | `cam-toolpath::vcarve`: walk the branches at `-d/tan(θ/2)`, per-vertex Z feeds, retract between branches, flat-tip and unangled-bit refusals                                                                                                                                                        | A3, D-M7-7, S14            | delegated, test-first                                                             |                       |
+| T5  | `cam-cli toolpath --kind vcarve`, the named refusals for every flag it does not have, `inspect`, `--start-depth` refused                                                                                                                                                                            | A5, D-M7-3, S16            | inline, test-first                                                                |                       |
+| T6  | `cam-sim`: the distance-field claim for a V-carve, `simulate` integration, and the oracle in both signs (square, circle, island; thinned skeleton; too-deep path)                                                                                                                                   | A6, S11                    | delegated, test-first                                                             |                       |
+| T7  | Closing evidence: golden programs for a square and a circle region, `docs/m7-vcarve.md`, README status, roadmap §4.10 + M7 ✅ + §6 risk closure, `docs/format.md`, the `e0d39a3` differential, `./scripts/check.sh`                                                                                 | A1–A8                      | delegated                                                                         |                       |
 
 ## Recorded out of scope
 
@@ -314,11 +314,11 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   sweep) is the primitive the toolpath layer needs, which is why the two halves share one definition.
 - **L7 (execution, T0, the third site and a second half only the first fix revealed).** A first writer
   argued that `thread.rs` needed no change because its helix is built in machine coordinates, and the
-  argument is wrong in a way worth recording: only the orbit's *start* was in machine space. The
+  argument is wrong in a way worth recording: only the orbit's _start_ was in machine space. The
   strategy maps the centre but offsets the start along **+x**, which a Y reflection leaves alone, and
   computes the fractional turn's end point with `+sin` around that machine centre — so `top_left`
   emitted the opposite orbit (the read-back test measured `39.608` where `bottom_left` emits `60.392`)
-  *and* the opposite hand, which would have shipped a left-hand thread from a document that describes a
+  _and_ the opposite hand, which would have shipped a left-hand thread from a document that describes a
   right-hand one. Fixing `ccw` alone was therefore not enough, and the test that states the rule — a
   program read back into the document frame must be the program `bottom_left` emits — caught the second
   half only after the first was fixed. Three construction sites in the workspace build a `Move::Arc` or
@@ -345,19 +345,19 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
   on purpose: the module, its certificate and its tests are one indivisible claim, and the kernel
   additions exist only to answer "which point" for that certificate. Three rounds of measurement changed
   the design, and each is recorded because each was a test that failed.
-  *(1) The route.* This document said "candidates from the bisectors of boundary element pairs" and "arcs
+  _(1) The route._ This document said "candidates from the bisectors of boundary element pairs" and "arcs
   are tessellated for the skeleton only, and counted". Both were wrong for one reason: a bisector
   involving an arc is a conic, so the plan was to avoid arcs — but the implementation never needs to
-  *build* a bisector, only to bisect the scalar `dist(p,i) - dist(p,j)` along a lattice edge. So arcs stay
+  _build_ a bisector, only to bisect the scalar `dist(p,i) - dist(p,j)` along a lattice edge. So arcs stay
   arcs, nothing is tessellated, and the `arcs_tessellated` field this document asked for was structurally
   `0` and was removed (T2b). D-M7-4 is recorded as superseded in its premise rather than deleted, because
   its reasoning is exactly why the alternative looks necessary.
-  *(2) The certificate counted one contact as two.* The kernel's 16-arc ellipse arcs disagree about the
+  _(2) The certificate counted one contact as two._ The kernel's 16-arc ellipse arcs disagree about the
   vertex they share by up to `1.3e-5` mm, so a query just off a joint's normal gets an interior foot on
   one arc and the joint on the other at the same distance, and every joint grew a stub of "axis": the
   ellipse's single axis came back as **13 branches at a 0.1 mm tolerance**. The dedup now reads contacts
   at a tenth of the tolerance, which can only ever reject a candidate.
-  *(3) A refused candidate broke a branch in two,* because the cell-local walk ended on both sides of it.
+  _(3) A refused candidate broke a branch in two,_ because the cell-local walk ended on both sides of it.
   A stitch pass joins branch ends within two lattice steps when each points into the seam and the seam
   crosses nothing; no vertex is invented and none is recomputed. The square's 4 branches stayed 4, the
   L's 10 became 9, the ellipse's 13 became 1.
@@ -377,13 +377,13 @@ What "M7 delivered" means, testable through `cam-cli` unless the criterion names
 - **L12 (native review, refused twice, and the owner's disposition).** The M7 candidate was submitted
   twice and both times blocked in preflight with `lens_context_budget_exceeded`, `mutation_performed:
   false` — no authority was created, nothing was abandoned, and `retry_safe` was true. Two facts are
-  worth keeping. *(1) The base the provider picks is the push base, not the branch's own cut point.*
+  worth keeping. _(1) The base the provider picks is the push base, not the branch's own cut point._
   `inspect` reported `--base-ref=8a953ba ... --committed-only=true`, which would have made the candidate
   M6's 16 255 unreviewed lines plus M7's — the same whole-branch candidate M6's own review had refused.
   START was therefore given an explicit `baseRef` of `e0d39a3` (the `master` tip this branch was cut
   from) with `committedOnly: true`, which is the "reduce the candidate scope" the provider's own cause
   text asks for, and which reviews exactly this milestone's work. Even so it refused: **4 425 inserted
-  lines across 7 commits**. *(2) The budget is bounded by the candidate's size, not by the lens count.*
+  lines across 7 commits**. _(2) The budget is bounded by the candidate's size, not by the lens count._
   The second attempt asked for one lens (`risk`) instead of three and was refused identically, so tuning
   the lens selection cannot make an oversized candidate fit — only smaller commits can.
   **Owner disposition (verbatim: "2"):** disable the review switch for this clone and deliver M7 on its

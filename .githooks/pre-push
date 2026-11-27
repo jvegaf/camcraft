@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Gate antes de push. Corre el gate principal para mantener dev/feat consistente.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "pre-push: ./scripts/check.sh"
+./scripts/check.sh

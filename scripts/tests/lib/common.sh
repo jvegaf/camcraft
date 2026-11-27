@@ -67,14 +67,18 @@ summary() {
 }
 
 # A repository that looks enough like this one: the scripts, a task index and task documents with and
-# without a `## Surfaces` block. Sets MAIN, builds worktrees wt100…wt104 and a `cargo` stub, because
+# without a `## Surfaces` block. Sets MAIN, builds worktrees wt100…wt107 and a `cargo` stub, because
 # running the real workspace suite is not what these tests judge.
+#
+# The optional tag lets one test build a second, independent repository beside the first (`repo2`,
+# `wt1002`…). Without it every path is what the single-repository tests have always named.
 build_repo() {
-  MAIN="$WORK/repo"
+  local tag=${1:-}
+  MAIN="$WORK/repo$tag"
   mkdir -p "$MAIN/scripts" "$MAIN/odd/tasks" "$WORK/bin"
 
   local script
-  for script in claim-task release-task check-worktree check check-docs deliver-task; do
+  for script in claim-task release-task check-worktree check check-docs check-records deliver-task; do
     [ -f "$REPO_ROOT/scripts/$script.sh" ] && cp "$REPO_ROOT/scripts/$script.sh" "$MAIN/scripts/"
   done
   chmod +x "$MAIN"/scripts/*.sh
@@ -85,6 +89,27 @@ echo "cargo $*" >>"${CARGO_STUB_LOG:-/dev/null}"
 exit "${CARGO_STUB_EXIT:-0}"
 STUB
   chmod +x "$WORK/bin/cargo"
+
+  # `check-records.sh --engram-required` asks the real CLI only two questions: whether its daemon is
+  # running (`engram ps`) and whether a memory mentions the task (`engram search SLUG --all --limit 1`,
+  # whose first line must match `Found N memor…`). The fixture has no Engram store, so this answers
+  # both with a fixed reply instead of making delivery depend on the machine's memory.
+  cat >"$WORK/bin/engram" <<'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  ps)
+    echo "engram daemon: running"
+    ;;
+  search)
+    echo "Found 1 memory for '${2:-}'"
+    ;;
+  *)
+    echo "engram stub: unhandled command ${1:-}" >&2
+    ;;
+esac
+exit 0
+STUB
+  chmod +x "$WORK/bin/engram"
   export PATH="$WORK/bin:$PATH"
 
   cat >"$MAIN/odd/tasks/INDEX.md" <<'MD'
@@ -109,6 +134,18 @@ MD
 
 - `crates/cam-geom/src/boolean.rs`
 - `fixtures/corpus/`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/101-beta.md" <<'MD'
@@ -117,6 +154,18 @@ MD
 ## Surfaces
 
 - `crates/cam-geom/src/boolean.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/102-gamma.md" <<'MD'
@@ -125,19 +174,62 @@ MD
 ## Surfaces
 
 - `crates/cam-gerber/`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
+  # The empty `## Surfaces` heading is deliberate: `check-records.sh` requires the section, and the
+  # claim still falls back to the crate tokens because no paths are declared. Removing the heading
+  # (not the block) is what the legacy-claim cases assert against.
   cat >"$MAIN/odd/tasks/103-legacy.md" <<'MD'
 # 103 — legacy
 
-No surfaces block here; the claim has to fall back to the crate tokens in the text, which is
+## Surfaces
+
+No declared surfaces here; the claim has to fall back to the crate tokens in the text, which is
 `crates/cam-excellon` for this task.
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/104-legacy-clash.md" <<'MD'
 # 104 — legacy clash
 
+## Surfaces
+
 Also `crates/cam-excellon`, so it must collide with the previous task.
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/105-glob.md" <<'MD'
@@ -146,6 +238,18 @@ MD
 ## Surfaces
 
 - `crates/cam-geom/src/*.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/106-dotslash.md" <<'MD'
@@ -154,6 +258,18 @@ MD
 ## Surfaces
 
 - `./fixtures/corpus`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/107-root-glob.md" <<'MD'
@@ -162,6 +278,18 @@ MD
 ## Surfaces
 
 - `*.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   printf '# fixture justfile\n' >"$MAIN/justfile"
@@ -174,9 +302,57 @@ MD
   git -C "$MAIN" add -A
   git -C "$MAIN" -c user.email=t@t -c user.name=t commit -qm init
 
+  # A delivery records the merge commit and refuses a hash it cannot resolve, so the fixture exposes
+  # the one commit it really made instead of leaving the tests to invent `abc1234`.
+  FIXTURE_COMMIT=$(git -C "$MAIN" rev-parse HEAD)
+
   local n
   for n in 100 101 102 103 104 105 106 107; do
-    git -C "$MAIN" worktree add -q "$WORK/wt$n" -b "feat/$n" >/dev/null 2>&1 ||
-      git -C "$MAIN" worktree add -q "$WORK/wt$n" "feat/$n" >/dev/null 2>&1
+    git -C "$MAIN" worktree add -q "$WORK/wt$n$tag" -b "feat/$n" >/dev/null 2>&1 ||
+      git -C "$MAIN" worktree add -q "$WORK/wt$n$tag" "feat/$n" >/dev/null 2>&1
   done
+}
+
+# Rewrite a Markdown index in the shape Biome gives it: every cell padded to its column's width, the
+# separator row padded to the same widths. That is not what `build_repo` writes on purpose — the
+# delivery tests assert the hand-written table's single-space cells — so a test that needs the
+# formatted shape asks for it here instead of growing a second copy of the fixture.
+#
+# The width is the widest cell plus two spaces, with a floor of five because a separator needs three
+# dashes; both numbers are what `biome format` produces for the tables in this repository.
+format_index() {
+  python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+table = [i for i, line in enumerate(lines) if line.startswith("|")]
+if not table:
+    sys.exit(f"ERROR: no table in {path}")
+sep_at = table[1]
+separator = lines[sep_at].split("|")
+columns = len(separator) - 2
+widths = [0] * columns
+for i in table:
+    if i == sep_at:
+        continue
+    cells = lines[i].split("|")
+    if len(cells) - 2 != columns:
+        continue
+    for c in range(columns):
+        widths[c] = max(widths[c], len(cells[c + 1].strip()))
+widths = [max(w + 2, 5) for w in widths]
+out = list(lines)
+out[sep_at] = "|" + "|".join(" " + "-" * (w - 2) + " " for w in widths) + "|"
+for i in table:
+    if i == sep_at:
+        continue
+    cells = lines[i].split("|")
+    if len(cells) - 2 != columns:
+        continue
+    out[i] = "|" + "|".join(" " + cells[c + 1].strip().ljust(widths[c] - 1)
+                            for c in range(columns)) + "|"
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
 }

@@ -1,0 +1,108 @@
+{
+  "artefacts": {
+    "bottom": {
+      "contour_area_mm2": 0.0,
+      "peak_rss_kb": 511372,
+      "polygons": 0,
+      "seconds": 0.48924431199702667,
+      "status": "refused",
+      "vertices": 0
+    },
+    "drill": {
+      "features": 88,
+      "peak_rss_kb": 503548,
+      "seconds": 0.24548977200174704,
+      "status": "parsed",
+      "tools": 3
+    },
+    "mask-bottom": {
+      "contour_area_mm2": 0.0,
+      "peak_rss_kb": 504564,
+      "polygons": 0,
+      "seconds": 0.4195600039965939,
+      "status": "refused",
+      "vertices": 0
+    },
+    "mask-top": {
+      "contour_area_mm2": 140.72902262006664,
+      "peak_rss_kb": 509204,
+      "polygons": 126,
+      "seconds": 0.48181537100026617,
+      "status": "parsed",
+      "vertices": 21104
+    },
+    "outline": {
+      "contour_area_mm2": 1210.5793401090004,
+      "peak_rss_kb": 506056,
+      "polygons": 2,
+      "seconds": 0.30372811200504657,
+      "status": "parsed",
+      "vertices": 2158
+    },
+    "silk-bottom": {
+      "contour_area_mm2": 71.27098099808882,
+      "peak_rss_kb": 746992,
+      "polygons": 347,
+      "seconds": 1.36889495899959,
+      "status": "parsed",
+      "vertices": 324607
+    },
+    "silk-top": {
+      "contour_area_mm2": 36.972604384689475,
+      "peak_rss_kb": 588328,
+      "polygons": 152,
+      "seconds": 0.6176537569990614,
+      "status": "parsed",
+      "vertices": 109741
+    },
+    "top": {
+      "contour_area_mm2": 482.2125158364497,
+      "peak_rss_kb": 777512,
+      "polygons": 36,
+      "seconds": 4.97356879900326,
+      "status": "parsed",
+      "vertices": 78680
+    }
+  },
+  "environment": {
+    "flatcam": "1.3.6",
+    "platform": "offscreen",
+    "python": "3.14.4",
+    "shapely": "2.2.0"
+  },
+  "operation_parameters": {
+    "drill": {
+      "drill_z": -1.8,
+      "feedrate_z": 60.0,
+      "toolchange_z": 30.0,
+      "travel_z": 2.0
+    },
+    "isolation": {
+      "dia": 0.2,
+      "feedrate": 100.0,
+      "overlap": 15.0,
+      "passes": 2,
+      "z_cut": -0.1,
+      "z_move": 2.0
+    }
+  },
+  "operations": {
+    "drill": {
+      "cut_moves": 87,
+      "moves": 177,
+      "path_mm": 993.7182230012454,
+      "seconds": 0.2341578660052619,
+      "status": "measured",
+      "travel_moves": 90
+    },
+    "isolation": {
+      "cut_moves": 9,
+      "moves": 19,
+      "path_mm": 586.4144283090382,
+      "seconds": 0.834190599998692,
+      "status": "measured",
+      "travel_moves": 10
+    }
+  },
+  "timeout_seconds": 300
+}

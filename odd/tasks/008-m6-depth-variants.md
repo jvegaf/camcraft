@@ -110,7 +110,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
 - **A10 — Determinism and the old bytes (S6).** Two runs of every new subcommand print and emit
   identical bytes; the pre-existing subcommand differential still holds against `8a953ba` except for
   `--help`, the unknown-`--kind` sentence, the new commands themselves, and one error sentence an inlay
-  made false. (A10 said "twelve"; M5's own count was twelve *invocations* of ten subcommands — the
+  made false. (A10 said "twelve"; M5's own count was twelve _invocations_ of ten subcommands — the
   wording is corrected here and the differential is reported by invocation, per L18.)
 - **A11 — No new dependency, and the shell untouched.** `Cargo.lock` gains no `[[package]]`; the
   existing 795 tests keep passing unmodified except where a criterion above moves an expectation, and
@@ -176,7 +176,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   angle and the flat diameter through `ToolSpec`; a V-bit strategy given a tool without an angle exits
   as input error naming the tool, because defaulting to 90° would silently cut a different chamfer.
 - **D-M6-12 — The sweep interpolates Z along a cutting move, and a ramp is one move.** M5's D-M5-3
-  recorded that the sweep removes to a move's *destination* `z` over its whole footprint and "the vertical
+  recorded that the sweep removes to a move's _destination_ `z` over its whole footprint and "the vertical
   interpolation between the previous `z` and this one is not modelled", which was conservative while every
   cutting move was at a constant depth. A ramp is not: simulated at its destination depth, a linear ramp
   removes full depth along its whole travel. T4's first implementation worked around that by emitting the
@@ -223,29 +223,29 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   `(0, π)` at the library boundary and not only in the model's validation: a caller that bypasses the
   CLI must not receive an infinite Z. **Amended in L11:** the gate has to exist at every boundary that can see the
   flat, and they see different things — `cam-cli toolpath` sees the library before a toolpath is stored,
-  `cam-cli emit` sees the library *after* the document exists (the case that matters: a document authored
+  `cam-cli emit` sees the library _after_ the document exists (the case that matters: a document authored
   against a sharp bit and emitted against a flat one), and `cam-sim::target` sees the `ToolShape::VBit` the
   segment carries. One boundary cannot cover another, which is why all three refuse.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim | A8, S9, S10, D-M6-3 | inline, test-first | `ae44528` |
-| T2 | Chamfer: `Operation::Chamfer`, `ToolSpec.included_angle`, `cam-toolpath::chamfer`, CLI `--kind chamfer --chamfer-width`, sim arm, oracle, golden | A2, A8, A9, D-M6-2, D-M6-9, D-M6-10 | delegated (context backstop), test-first | `93795ee` |
-| T3 | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden | A3, A9, D-M6-4, D-M6-11 | delegated, test-first | `63694c0` |
-| T4 | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden | A4, A9, D-M6-5 | delegated, test-first | `93935c3` |
-| T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3) | A2, A8, D-M6-12 | delegated, test-first | `93935c3` |
-| T5 | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden | A5, A9, D-M6-6 | delegated, test-first | `8487140` |
-| T6 | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden | A6, A9, D-M6-7, D-M6-13 | delegated, test-first | `330309d` |
-| T7 | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5 | delegated, test-first, own commit (Risk item 3) | `7063fb3` |
-| T8 | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh` | A1–A11 | delegated | `b7153fb` |
+| ID  | Task                                                                                                                                                                 | Specs                               | Route                                           | Commit    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------- | --------- |
+| T1  | Tool shape on the move vocabulary: `cam_move::ToolShape`, `Segment.tool`, `cam-sim::sweep` cone footprint, `cam-sim::target` cone-aware claim                        | A8, S9, S10, D-M6-3                 | inline, test-first                              | `ae44528` |
+| T2  | Chamfer: `Operation::Chamfer`, `ToolSpec.included_angle`, `cam-toolpath::chamfer`, CLI `--kind chamfer --chamfer-width`, sim arm, oracle, golden                     | A2, A8, A9, D-M6-2, D-M6-9, D-M6-10 | delegated (context backstop), test-first        | `93795ee` |
+| T3  | Quick Engrave: `Operation::Engrave`, `cam-toolpath::engrave`, CLI `--kind engrave`, sim arm, oracle, golden                                                          | A3, A9, D-M6-4, D-M6-11             | delegated, test-first                           | `63694c0` |
+| T4  | Fluting: `Operation::Fluting`, `cam-toolpath::fluting` with the linear ramp, CLI, sim arm, oracle, golden                                                            | A4, A9, D-M6-5                      | delegated, test-first                           | `93935c3` |
+| T4b | The sweep interpolates Z along a cutting move, so a ramp is one linear move and not a staircase (amends D-M5-3)                                                      | A2, A8, D-M6-12                     | delegated, test-first                           | `93935c3` |
+| T5  | Texture: `Operation::Texture`, `cam-toolpath::texture` (spacing + angle over a region), CLI, sim arm, oracle, golden                                                 | A5, A9, D-M6-6                      | delegated, test-first                           | `8487140` |
+| T6  | Inlay pair: `Operation::Inlay`, two pocket toolpaths, CLI, sim arm, oracle, golden                                                                                   | A6, A9, D-M6-7, D-M6-13             | delegated, test-first                           | `330309d` |
+| T7  | Thread milling: `Move::Helix`, post helical block kinds + refusal, `cam-toolpath::thread`, CLI, helix sweep, oracle, golden. **Also lifts T4's `RampOnArc` refusal** | A7, A9, D-M6-8, D-M6-5              | delegated, test-first, own commit (Risk item 3) | `7063fb3` |
+| T8  | Docs and the closing gate: `docs/m6-toolpaths.md`, README status, roadmap §4.9 + M6 ✅, `docs/format.md`, `./scripts/check.sh`                                       | A1–A11                              | delegated                                       | `b7153fb` |
 
 ## Recorded out of scope
 
 - `BevelCarving` appears in S4's vocabulary but not in the roadmap's M6 row (S2):
   recorded here as named-but-unscheduled, not silently dropped.
-- `InlayColour`, `InlayStepDepth`/`InlayStepWidth` as *separate* step parameters: M6 derives the step
+- `InlayColour`, `InlayStepDepth`/`InlayStepWidth` as _separate_ step parameters: M6 derives the step
   from the tool library's `stepdown`/`stepover` the way profile and pocket already do (D-M6-9), so the
   pair ships with one depth and one stepover rather than two extra flags.
 - No toolpath form in the window (S13), no 3D or laser strategy (S12), no new crate or dependency (A11).
@@ -278,7 +278,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   and `cam-ui`'s preview carries the shape so its own field is cut by the tool the program names.
 - **L5 (execution, T1, and a sign error caught before it became a test that agreed with it).** The first
   form of the cone law was `removed = (x − flat/2) / tan(α)`, which is wrong: that is how far the cone's
-  surface sits *above* its tip at distance `x`, not how deep it cuts. A cone with its tip `d` below the
+  surface sits _above_ its tip at distance `x`, not how deep it cuts. A cone with its tip `d` below the
   surface removes `d − (x − flat/2)/tan(α)` at distance `x` from the vector and nothing past
   `radius_at(d)`. The method was renamed `rise_at_radius` so the name cannot be read as a depth again,
   and the mistake is recorded because the original reading would have produced a groove that widens with
@@ -305,13 +305,13 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   the tree constructs a segment. The next commits are the smaller ones the plan already had.
 - **L9 (review, T2, three defects found by the writer against its own spec).** Recording what the
   specification got wrong, because each one would have shipped as a number nobody questioned.
-  *(1) The oracle's arithmetic.* A9 asserted `L·w·d/2`; that is one flank. The cone is symmetric about
+  _(1) The oracle's arithmetic._ A9 asserted `L·w·d/2`; that is one flank. The cone is symmetric about
   the vector, so a bevel with material on both sides removes `w·d` per unit length, and the writer's
   circular-edge fixture measured `L·w·d`. Asserting `/2` is impossible against a correct implementation,
-  so A9 now names both cases and both get an oracle. *(2) A flat tip widens the bevel.* `depth()` omits
+  so A9 now names both cases and both get an oracle. _(2) A flat tip widens the bevel._ `depth()` omits
   the tip's flat, so a bit with `flat_diameter = f` cuts a bevel `w + f/2` wide — the target and the
   sweep agree (same shape) but the geometry is not what the user asked for. Refused by name (D-M6-10)
-  rather than absorbed. *(3) The library boundary had no gate.* `cam-toolpath/tests/errors.rs` was
+  rather than absorbed. _(3) The library boundary had no gate._ `cam-toolpath/tests/errors.rs` was
   outside T2's edit surface, so `chamfer()` first shipped with no error variant of its own and a direct
   caller could pass an angle of zero for an infinite Z; the surface was widened and the refusal added.
   One tolerance moved and was re-derived, not fitted: the chamfer oracle judges at `rise(cell/4)`
@@ -332,29 +332,29 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   library can change under a valid document rather than constructing a doctored fixture. T2 closes at **224
   tests** in the four crates it touched (cam-model 25, cam-toolpath 81, cam-sim 54, cam-cli 64) with the whole
   gate green.
-- **L12 (review, T3, four things the specification under-specified).** *(1) The claim needs the reach
-  test.* A3 said every cell in the window is authorised `cut_depth − rise(distance)`; with `rise = 0` for a
+- **L12 (review, T3, four things the specification under-specified).** _(1) The claim needs the reach
+  test._ A3 said every cell in the window is authorised `cut_depth − rise(distance)`; with `rise = 0` for a
   cylinder that authorises the whole rectangle, corners included, which is the opposite of the band the same
   paragraph demands. The writer kept the window as the outer loop and added `distance > reach`, which is the
   law `sweep_disc` already applies; a sharp V-bit self-clamps, a cylinder does not, and the uniform-band test
-  is what caught it. *(2) The oracle's end caps.* A straight vector of finite length also sweeps two end
+  is what caught it. _(2) The oracle's end caps._ A straight vector of finite length also sweeps two end
   caps, so `L·d²·tan(θ/2)` is the interior alone; the fixture runs the vector past both sheet edges, T2's L9
-  device, instead of widening a tolerance over the caps. *(3) `--start-depth` is taken* although A3 names
+  device, instead of widening a tolerance over the caps. _(3) `--start-depth` is taken_ although A3 names
   only `--cut-depth`, because the `cut_depth > start_depth` rule is otherwise unreachable through the CLI;
-  the refusal list is exactly the flags D-M6-4 names. *(4) A flat tip is not refused for engrave*, and that
+  the refusal list is exactly the flags D-M6-4 names. _(4) A flat tip is not refused for engrave_, and that
   is deliberate: an engrave's depth is authored rather than derived, so a flat widens the groove by `f/2`
   and `rise_at_radius` accounts for it in both the sweep and the claim. D-M6-10 stays chamfer-only. A fifth
   finding is a gap T3 found and did not widen its surface to fix: `crates/cam-toolpath/tests/errors.rs`
   matches every `ToolpathError` exhaustively, so a new variant is unrepresentable to a task that cannot edit
   it — that file is now part of every later strategy's surface, and T3 reuses `OpenContour` for its empty
   guard rather than shipping an unrepresentable variant.
-- **L13 (review, T4, two findings and one of them rejected the implementation).** *(1) The claim is an
-  envelope, and the writer is right.* A tip-only claim — the law at the cell's own arc-length position —
-  reports a **clean** flute as `gouge 149.2 mm³ over 120 cells`, because the tool's footprint extends *along*
+- **L13 (review, T4, two findings and one of them rejected the implementation).** _(1) The claim is an
+  envelope, and the writer is right._ A tip-only claim — the law at the cell's own arc-length position —
+  reports a **clean** flute as `gouge 149.2 mm³ over 120 cells`, because the tool's footprint extends _along_
   the path: a 6 mm end mill 3 mm further up the ramp is deeper there, and its flat bottom really does remove
   the cell. The claim computes the maximum the law allows anywhere the tool could have removed the cell, in
-  closed form rather than by sampling, and a clean flute then deviates by nothing. *(2) The staircase is
-  rejected.* Faced with the same finding from the other side — the sweep removes a move's depth over its
+  closed form rather than by sampling, and a clean flute then deviates by nothing. _(2) The staircase is
+  rejected._ Faced with the same finding from the other side — the sweep removes a move's depth over its
   whole travel, so one linear ramp move simulates as a full-depth plunge — the writer emitted the ramp as
   0.1 mm Z steps. That puts the simulator's limitation into the program the machine runs and cannot express
   a helix, so D-M6-12 fixes the sweep instead and T4b follows. The writer's own numbers are kept as the
@@ -364,16 +364,16 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   outside the surface), and `RAMP_STEP`'s coupling to cell size disappears with T4b.
 - **L14 (review, T4, four rounds and three implementations rejected).** T4 took four rounds, and each
   rejection was for the same reason: the program must not be bent to the simulator's convenience.
-  *(a) The staircase.* The first implementation emitted a ramped entry as 0.1 mm Z steps because M5's sweep
+  _(a) The staircase._ The first implementation emitted a ramped entry as 0.1 mm Z steps because M5's sweep
   removes a move's destination depth over its whole travel. Rejected; D-M6-12 makes the sweep interpolate.
-  *(b) The claim envelope.* Accepted, and the writer was right: a tip-only claim reports a clean flute as
+  _(b) The claim envelope._ Accepted, and the writer was right: a tip-only claim reports a clean flute as
   `gouge 149.2 mm³`, because a 6 mm end mill 3 mm further along the ramp is deeper there and its flat bottom
   removes the cell. The claim is the maximum the law allows anywhere the tool could have removed the cell, in
-  closed form. *(c) A document-global tolerance.* Fixing the sampler's residual by widening `simulate`'s
+  closed form. _(c) A document-global tolerance._ Fixing the sampler's residual by widening `simulate`'s
   judgement to the document's steepest grade would license 3 mm of deviation anywhere in a document that
   contains one steep ramp. Rejected; the sampler now takes `max(2·travel/cell, 16·|Δz|/cell)` steps so the
   residual is half the judgement by construction, and the constant-Z count is bit-identical (33,600 of
-  33,600 cell values against `9205816`). *(d) The chorded arc ramp.* A ramp across a contour arc was emitted
+  33,600 cell values against `9205816`). _(d) The chorded arc ramp._ A ramp across a contour arc was emitted
   as a straight chord: `gouge 33.228 mm³ over 22 cells` at r = 20. Rejected; refused by name instead, with
   `ramp = 0` on the same contour still emitting arcs, and T7 lifting the refusal when the helix exists. The
   claim's vertex gap the writer found on its own (`gouge 5.750 mm³ over 6 cells` for a correct flute, because
@@ -420,7 +420,7 @@ What "M6 delivered" means, testable through `cam-cli` unless the criterion names
   gap to the analytic is the crest, which is the thread, not a defect. T7 also **discovered a pre-existing
   defect it did not fix**: `grid_for` builds the field from `job.width/height` at origin `(0, 0)` while
   programs are emitted in machine coordinates, so for any origin corner other than bottom-left the field
-  and the program disagree about *where* everything is — for every strategy since M5, not for threads. It
+  and the program disagree about _where_ everything is — for every strategy since M5, not for threads. It
   is recorded here, with its severity, and it needs its own slice; every fixture and the default sheet are
   bottom-left, which is why nothing caught it.
 - **L18 (execution, T8, the closing evidence).** `docs/m6-toolpaths.md` is 655 lines in the shape

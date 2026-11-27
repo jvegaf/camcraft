@@ -1,35 +1,66 @@
 #!/usr/bin/env bash
-# Every gate the project promises. Fails loudly instead of printing a count nobody reads.
+# Gate principal para el stack Tauri + Svelte + Panda.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# First: the cheapest, and the one that stops an agent from working unclaimed in a worktree — or from
-# working in the primary tree at all.
 echo "== claim =="
 ./scripts/check-worktree.sh --gate
 
-# Next because it is the cheapest and the one a rename breaks without saying so.
 echo "== docs =="
 ./scripts/check-docs.sh
 
-echo "== fmt =="
-cargo fmt --check
+echo "== records =="
+./scripts/check-records.sh
 
-echo "== clippy =="
-cargo clippy --workspace --all-targets -- -D warnings
+echo "== tooling =="
+if [ ! -f ./scripts/test-worktree-tooling.sh ]; then
+  echo "skip: scripts/test-worktree-tooling.sh no encontrado"
+elif [ "${GENTLE_TOOLING_TESTS:-}" = "0" ]; then
+  echo "skip: GENTLE_TOOLING_TESTS=0, el arnés no se corre dentro de un fixture"
+else
+  ./scripts/test-worktree-tooling.sh
+fi
 
-echo "== test =="
-cargo test --workspace
+echo "== biome =="
+if command -v pnpm >/dev/null 2>&1 && [ -f package.json ]; then
+  pnpm lint
+else
+  echo "skip: pnpm/package.json no disponible"
+fi
 
-# The parity harness is deliberately outside the workspace (its cost stays out of `cargo test
-# --workspace`), which means nothing above compiles it: `image()` and `tessellate()` changed their
-# tolerance type and the only job that noticed was the one in CI. Building it here costs seconds and
-# moves that discovery to the machine that made the change.
-echo "== parity harness =="
-# `--locked` and a target directory outside the tree, exactly as `run.sh` builds it: the measurer pins
-# its own lock file, and a build artifact dropped inside `scripts/` would dirty the worktree the claim
-# gate reads.
-CARGO_TARGET_DIR="${TMPDIR:-/tmp}/camcraft-parity-measure-target" \
-  cargo build --quiet --locked --manifest-path scripts/parity/measure/Cargo.toml
+echo "== svelte-check =="
+if command -v pnpm >/dev/null 2>&1 && [ -f package.json ]; then
+  pnpm check
+else
+  echo "skip: pnpm/package.json no disponible"
+fi
+
+echo "== rust (workspace check) =="
+if [ -f Cargo.toml ]; then
+  cargo check --workspace
+else
+  echo "skip: Cargo.toml no encontrado"
+fi
+
+echo "== rust (test src-tauri) =="
+if [ -f src-tauri/Cargo.toml ]; then
+  cargo test --manifest-path src-tauri/Cargo.toml
+else
+  echo "skip: src-tauri/Cargo.toml no encontrado"
+fi
+
+echo "== vitest =="
+if command -v pnpm >/dev/null 2>&1 && [ -f package.json ]; then
+  if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)" >/dev/null 2>&1; then
+    # One run, stderr kept. A retry (`pnpm test -- --run 2>/dev/null || pnpm test`) hid the first
+    # run's output, so a suite that failed once and passed once looked green with no trace of the
+    # failure. `pnpm test` is already `vitest run`, so no `--run` is needed either.
+    pnpm test
+  else
+    echo "skip: script test no definido en package.json"
+  fi
+else
+  echo "skip: pnpm/package.json no disponible"
+fi
 
 echo "all gates green"

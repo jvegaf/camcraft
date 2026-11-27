@@ -1,0 +1,42 @@
+# 056 — W4a Drill desde tabla Excellon (E2.1 + E2.2 + E2.4)
+
+Ola 4, ítem W4a: drilling desde tabla Excellon con orden determinista y predicado de penetración puro, para habilitar el primer G-code de placa (junto a W4b).
+
+## Surfaces
+
+- `crates/cam-ops/src/peck.rs`
+- `crates/cam-ops/src/penetration.rs`
+- `crates/cam-cli/src/commands/drill.rs`
+- `crates/cam-ops/src/lib.rs`
+- `crates/cam-ops/Cargo.toml`
+- `crates/cam-cli/src/commands/mod.rs`
+- `crates/cam-cli/src/lib.rs`
+
+## Specs
+
+- **S1 (E2.1, verbatim ROADMAP).** «Drilling desde tabla Excellon: agrupado por diámetro, selección por herramienta, slots como taladros o como trayectorias». Criterio de salida: «Las 6 placas emiten un programa con la cantidad de hits y cambios de herramienta correctos».
+- **S2 (E2.2, verbatim ROADMAP).** «Ordenamiento determinista por herramienta (vecino más cercano + 2-opt con presupuesto de **iteraciones**, no de tiempo — invariante de determinismo)». Criterio de salida: «Dos corridas idénticas producen G-code byte a byte igual».
+- **S3 (E2.4, verbatim ROADMAP).** «Predicado de penetración (`_cut_model_overlaps_copper`) como función pura con tests». Criterio de salida: «Detecta penetración inyectada artificialmente; corre en CI».
+- **S4 (waves.md §6 W4a, verbatim).** «W4a | **E2.1 + E2.2 + E2.4** | Drill desde tabla Excellon agrupado por diámetro, orden determinista con 2-opt por iteraciones, predicado de penetración como función pura | `crates/cam-ops/src/peck.rs`, `crates/cam-ops/src/penetration.rs`, `crates/cam-cli/src/commands/drill.rs` | W3 (tolerancia), W2b».
+- **S5 (contexto/invariante).** «hoy no hay `isolate`, ni drill desde tabla Excellon, ni cutout de outline, ni el predicado de penetración (E2.4)» (waves §6). La preparación 055 ya partió `cam-cli/src/lib.rs` en `commands/`; W4a/W4b pueden agregar sus comandos en archivos propios y registrar el wiring compartido (`commands/mod.rs`, dispatch/HELP en `lib.rs`) coordinando el merge. `crates/cam-ops/src/peck.rs` ya implementa tour nearest-neighbour determinista, pecks/retract y drill bank sobre `DrillHole` geométricos; no consume `cam-excellon` ni hace 2-opt.
+
+## Tasks
+
+| ID  | Tarea                                                                                                                                                                                                                              | Specs      | Ruta   | Commit    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | --------- |
+| T1  | Predicado de penetración puro en `penetration.rs` (sweep/buffer por radio ∩ cobre, ratio > umbral) con tests que inyectan penetración; export en `lib.rs`                                                                          | S3, S4     | inline | `782fe6e` |
+| T2  | 2-opt determinista con presupuesto de iteraciones en el ordenamiento de `peck.rs` (por herramienta/grupo), preservando NN+semilla/desempates y determinismo byte a byte                                                            | S2, S4, S5 | inline | `782fe6e` |
+| T3  | Planificación de drill desde `cam_excellon::Excellon`: agrupar por diámetro/herramienta, mapear/seleccionar herramienta, soportar holes y slots (como taladros o trayectorias) y producir programa por grupo con conteos correctos | S1, S4, S5 | inline | `782fe6e` |
+| T4  | Comando CLI `drill` (`commands/drill.rs`) + registro en `commands/mod.rs` y `lib.rs`: entrada Excellon (y parámetros/herramientas necesarios), emisión de programa/G-code y reporte de hits/cambios de herramienta                 | S1, S2, S4 | inline | `782fe6e` |
+| T5  | Pruebas de integración/regresión: determinismo (misma entrada → igual), conteo de hits/cambios por herramienta sobre corpus/fixtures Excellon, no regresión de `peck` existente                                                    | S1, S2, S3 | inline | `782fe6e` |
+
+## Log
+
+- **L1 (pedido, verbatim).** «lee @odd/roadmap/waves.md. Eres el encargado de w4a»
+- **L2 (contexto).** Relevamiento inicial (`subagent mwh43sls-1-a1oj`): E2.1/2.2/2.4 según `docs/ROADMAP_CAMCRAFT.md:118-121`, `odd/roadmap/index.md:51-54`, `docs/GAPS_CAMCRAFT.md:335-338` (penetración: buffer de caminos por radio ∩ cobre erosionado, ratio > ~1e-9). Estado: `peck.rs` tiene NN determinista+pecks+bank sobre `DrillHole` sin 2-opt ni Excellon; no existe `penetration.rs` ni `commands/drill.rs`; `cam-excellon` expone `Excellon{units,tools,features Hole/Slot}` y corpus drills parsean (048). CLI modularizado (055). Deps W3(052)/W2b(048) entregadas. Ambigüedades a resolver en implementación: modo de slots (taladro vs trayectoria), mapeo de herramientas Excellon↔librería/cambios de herramienta, fuente de entrada del comando y firma exacta del predicado para drilling.
+- **L3 (coordinación).** Mensaje a w4b (sesión `01a1dca9-3925-74fb-8f99-6093e45aecab`, msg `3ab3398317dc39cf2b67b2b32a71a99a`): propuesta de reservar 056=W4a, 057=W4b, 058=W4c; superficies disjuntas salvo wiring compartido `commands/mod.rs`+dispatch/HELP en `lib.rs` a resolver por orden de merge (drill antes del ensamblado completo de W4b si E2.5 lo requiere).
+- **L4 (T1, E2.4).** `crates/cam-ops/src/penetration.rs`: `region_area`, `intersection_area`, `penetration_ratio`, `cut_model_overlaps_copper` con `PENETRATION_THRESHOLD=1e-9` (intersección `swept_cut ∩ protected_copper` / área de cobre protegido). Exportado en `cam-ops/src/lib.rs`. Tests `crates/cam-ops/tests/penetration.rs`: sin solapamiento, penetración inyectada (10% y pequeña inequívoca >1e-9), solapamiento total y cobre protegido vacío. `cargo test -p cam-ops` verde (incluye peck/rings existentes).
+- **L5 (T2, E2.2).** `crates/cam-ops/src/peck.rs`: tour NN (semilla lowest-y/lowest-x, desempate por id, distancias en centros de documento) + mejora 2-opt de camino abierto desde el origen máquina con presupuesto fijo `TWO_OPT_PASSES=64` (iteraciones, no tiempo), escaneo/decisión deterministas (`TIE`). `path_travel` recomputa el costo. `tests/peck.rs` agrega `two_opt_improves_a_nearest_neighbour_tour_with_a_fixed_budget` (mejora sobre NN y determinismo); suite `peck`/`peck_targets` existente sigue verde. La mejora aplica al orden de `drill()` (por grupo cuando se invoque por herramienta).
+- **L6 (T3, E2.1).** `crates/cam-ops/src/excellon_drill.rs` + exports en `lib.rs` y dep `cam-excellon` en `cam-ops/Cargo.toml`: `plan_excellon_drill` agrupa features por número de herramienta Excellon (orden ascendente), resuelve herramienta vía `ToolResolver`, cuenta hits/holes/slots por grupo y totales/cambios de herramienta. `SlotMode::{Drill,Trajectory}`: Drill convierte slots a punto central y los ordena junto a holes con NN+2-opt; Trajectory rutea slots como trayectorias (pecks/plunge-feed a lo largo del segmento) en orden determinista por índice. `ToolpathError::UnknownExcellonTool` en `shared.rs`. Tests `crates/cam-ops/tests/excellon_drill.rs`: conteos/grupos iguales al corpus Excellon en ambos modos (3/88, 6/692, 13/251, 10/526, 12/445, 7/165) y determinismo. `cargo test -p cam-ops` verde.
+- **L7 (T4).** `crates/cam-cli/src/commands/drill.rs` + registro en `commands/mod.rs`, dispatch/HELP en `lib.rs`, deps `cam-excellon`/`cam-ops` en `cam-cli/Cargo.toml`: `drill <excellon> --post <pp> --cut-depth <mm>` con `--peck-depth/--start-depth/--retract/--slot-mode/--job/--out`; usa diámetro Excellon como herramienta por grupo, emite G-code vía `cam-post` y reporta hits/herramientas/cambios por stderr. Verificación manual: las 6 placas del corpus emiten programa con conteos/herramientas/cambios correctos (88/3/2, 692/6/5, 251/13/12, 526/10/9, 445/12/11, 165/7/6) y salida determinista (kicad-4l-pours byte a byte igual en dos corridas). `cargo test -p cam-cli --lib` verde.
+- **L8 (T5, verificación).** `cargo test -p cam-ops --test excellon_drill` cubre las 6 placas del corpus en modos `Drill`/`Trajectory`: conteos por herramienta Excellon, totales (88,692,251,526,445,165), grupos/cambios y planes idénticos en corridas repetidas. `cargo test -p cam-ops` (incluye peck/peck_targets/penetration/rings existentes) y `cargo test -p cam-cli` completos en verde; `cargo fmt --all --check` en verde. Commit `782fe6e` (`feat(ops,cli): implement W4a drill from Excellon (E2.1-E2.4)`). Riesgo: `Risk: none`.larg

@@ -14,7 +14,7 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
   placements that overlap in area load without a refusal.
 - **S4 (what `Touching` must mean afterwards, derived from the enum's own doc):** the boundaries meet
   and **no interior of one crosses into the other's**: material may envelop material (an inscribed
-  circle, a part flush inside its board) but material may not overlap *partially* across a shared span.
+  circle, a part flush inside its board) but material may not overlap _partially_ across a shared span.
   The four cases that keep `Touching`: a shared edge with the interiors on opposite sides, a tangency,
   identical contours, and a containment at a tangency (the inscribed-circle fixture). Said the other
   way, and this is the sentence the enum carries: a shared span with the material on the **same** side
@@ -30,15 +30,15 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
   - **Containment first.** If any vertex of either contour is `Inside` the other, one contour is
     (or may be) inside the other, and the pair keeps `Touching` — this is the flush-part fixture
     (`nest_profile.rs:616-620`), whose opposite corners are inside the sheet.
-  - **A decisive witness.** `probe` is the *first* vertex (`winding.rs:331`), so one point can answer
+  - **A decisive witness.** `probe` is the _first_ vertex (`winding.rs:331`), so one point can answer
     `OnBoundary` for a flush pair or `Outside` from the large contour's side alone; a single probe
     therefore proves nothing. Escalation needs **no vertex of either contour `Inside` the other** and
     **a vertex of each strictly `Outside` the other** — a two-sided witness, which together say neither
     contour encloses the other. The one-sided form is wrong: a part flush against its board has every
     vertex `OnBoundary` while the board's far corners are `Outside` the part, so "some vertex of either
     is `Outside` the other" escalates exactly the fixtures S6 protects.
-  Overlapping interiors with no containment are exactly `Crossing`. Anything ambiguous — every vertex
-  `OnBoundary`, as with identical contours — keeps `Touching`.
+    Overlapping interiors with no containment are exactly `Crossing`. Anything ambiguous — every vertex
+    `OnBoundary`, as with identical contours — keeps `Touching`.
 - **S6 (repo law, unchanged):** a fix changes the diagnostic or the wording it was filed against,
   never the acceptance of valid input, and a pinned fixture is a contract. The four `Touching` cases of
   S4 are acceptance: they must still load, and `crates/cam-geom/tests/nest_profile.rs:616-620` (a part
@@ -46,13 +46,13 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `360936f` — same-side coincidence + two-sided `Outside` witness | S3 S4 S5 | parent | `360936f` |
-| T2 | ✅ delivered `360936f` — five cases pinned, 12→14 relation tests | S3 S4 S6 | parent | `360936f` |
-| T3 | ✅ delivered `360936f` — two consumer tests; flush fixtures untouched | S4 S6 | parent | `360936f` |
-| T4 | ✅ delivered `85abd7b` — `Touching` sentence + ledger entry | S4 | parent | `85abd7b` |
-| T5 | ✅ delivered — `assess` reported `reviewDue: false` (medium, under budget); no outside view | S1 | parent | `85abd7b` |
+| ID  | Task                                                                                        | Specs    | Route  | Commit    |
+| --- | ------------------------------------------------------------------------------------------- | -------- | ------ | --------- |
+| T1  | ✅ delivered `360936f` — same-side coincidence + two-sided `Outside` witness                | S3 S4 S5 | parent | `360936f` |
+| T2  | ✅ delivered `360936f` — five cases pinned, 12→14 relation tests                            | S3 S4 S6 | parent | `360936f` |
+| T3  | ✅ delivered `360936f` — two consumer tests; flush fixtures untouched                       | S4 S6    | parent | `360936f` |
+| T4  | ✅ delivered `85abd7b` — `Touching` sentence + ledger entry                                 | S4       | parent | `85abd7b` |
+| T5  | ✅ delivered — `assess` reported `reviewDue: false` (medium, under budget); no outside view | S1       | parent | `85abd7b` |
 
 ## Log
 
@@ -68,7 +68,7 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
   which side the interiors lie on. So the classifier must decide from the two segments it already
   holds.
   (b) **`probe` is the first vertex** (`winding.rs:331`), i.e. a boundary point, so `classify` answers
-  `OnBoundary` for exactly the pairs in question — which is why S5 needs a *decisive* witness and why
+  `OnBoundary` for exactly the pairs in question — which is why S5 needs a _decisive_ witness and why
   the ambiguous answer must not escalate.
   (c) **Three tests pin `Touching` where the interiors overlap**: `identical_contours_touch`
   (`tests/relation.rs:77-81`), `a_circle_tangent_to_the_inside_of_a_square_touches` (`:70-74`) and
@@ -95,7 +95,7 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
   **Outline error 1, corrected from evidence:** I wrote the witness as "some vertex of either is
   `Outside` the other", which is wrong — a part flush against its board has every vertex `OnBoundary`
   while the board's far corners are `Outside` the part, so the one-sided reading escalated three pinned
-  `nest_profile` fixtures. The witness must be **two-sided**: a vertex of *each* strictly outside the
+  `nest_profile` fixtures. The witness must be **two-sided**: a vertex of _each_ strictly outside the
   other, which is what "neither encloses the other" actually means.
   **Outline error 2:** I asked for a diamond inscribed in a square with equal bounds to be `Crossing`;
   it cannot be. Its bounds equal the square's, so it lies inside it, and it meets the square only at
@@ -113,7 +113,7 @@ L17 and `odd/tasks/024-advisory-debt-close.md` L8. Read **until `## Log`** befor
   and given a 300 000 mm sheet, and the comment now says why.
 - **L6 (T4, T5 and how this closes).** T4 is the `Relation::Touching` sentence, which now says what S4
   requires: "They meet without crossing and no interior of one lies inside the other… A shared span
-  with the material on the *same* side is `Crossing`, not this." T5 is **not due**: `assess` over
+  with the material on the _same_ side is `Crossing`, not this." T5 is **not due**: `assess` over
   `c8fa776..HEAD` reports `nativeRisk: medium`, 6 paths, 378 changed lines, `reviewDue: false` on
   `under_budget`, and a plan of writer self-verification with no independent verifier. RDD is on and
   the provider's tier decides, so this candidate gets no outside view — and the record says so instead

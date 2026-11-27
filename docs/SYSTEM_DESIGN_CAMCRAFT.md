@@ -1,4 +1,10 @@
+---
+
+## page-id: 35
+
 # System design: camcraft (v0.1 — para iterar)
+
+> **Nota de migración (2026-05-24).** Camcraft migró la decisión de shell desktop a **Tauri 2 + Svelte 5 + Panda CSS**. Este documento sigue siendo la referencia del dominio/arquitectura de producto, pero las secciones de UI/desktop (`cam-ui` egui, `cam-desktop` eframe) están en transición. Ver [`MIGRATION_TAURI.md`](MIGRATION_TAURI.md) para el plan y fases.
 
 **Estado.** Propuesta de arquitectura. Este documento **reemplaza**:
 
@@ -19,13 +25,13 @@ no escribe; la especificación de `camcraft/document@1` (§9.1) es trabajo del h
 
 ## 1. El pivote, asentado
 
-| # | Decisión | Consecuencia arquitectónica |
-| --- | --- | --- |
-| 1 | **camcraft es el producto; campilot es legado.** | El workspace se llama `camcraft`. El nombre `campilot` sobrevive solo como historia del repositorio, y su documentación histórica no se
-mantiene. |
-| 2 | **Solo PCB, al estilo de FlatCAM.** Todo el dominio de madera y mecanizado general **sale**. | `cam-toolpath` desaparece como crate. Se rescatan tres capacidades internas, no once estrategias. |
-| 3 | **Calidad sobre plazo, desarrollado con ODD, paralelizable en varios worktrees.** | La arquitectura se elige por **aislamiento de superficies de edición**, no por velocidad de arranque. Contratos congelados antes de fan-out. |
-| 4 | **`cam-app` se rediseña** (undo incluido). | Undo deja de ser snapshot del documento completo. §10. |
+| #         | Decisión                                                                                     | Consecuencia arquitectónica                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1         | **camcraft es el producto; campilot es legado.**                                             | El workspace se llama `camcraft`. El nombre `campilot` sobrevive solo como historia del repositorio, y su documentación histórica no se      |
+| mantiene. |
+| 2         | **Solo PCB, al estilo de FlatCAM.** Todo el dominio de madera y mecanizado general **sale**. | `cam-toolpath` desaparece como crate. Se rescatan tres capacidades internas, no once estrategias.                                            |
+| 3         | **Calidad sobre plazo, desarrollado con ODD, paralelizable en varios worktrees.**            | La arquitectura se elige por **aislamiento de superficies de edición**, no por velocidad de arranque. Contratos congelados antes de fan-out. |
+| 4         | **`cam-app` se rediseña** (undo incluido).                                                   | Undo deja de ser snapshot del documento completo. §10.                                                                                       |
 
 **La consecuencia en una línea:** camcraft es un CAM de PCB. Todo lo que no sirva a importar, aislar,
 taladrar, cortar, rellenar, panelizar o emitir una placa, sale del producto, del binario y de la UI.
@@ -48,7 +54,7 @@ no un diccionario de strings.
 
 Importación Gerber RS-274X, Excellon y DXF/SVG (geometría general, A1); importación de carpeta de
 fabricación; aislamiento (isolation)
-multipasada; *non-copper clearing* (NCC) por offsets con islas, paralelo y con rest machining; taladrado
+multipasada; _non-copper clearing_ (NCC) por offsets con islas, paralelo y con rest machining; taladrado
 desde tabla Excellon con slots y ordenamiento determinista; cutout con tabs y mouse-bites; paint;
 panelize; autolevelling como transformación del `MoveStream`; ruteo alrededor de áreas de exclusión;
 catálogo de dialectos `.pp`; exportación Gerber, Excellon, DXF y SVG; simulación volumétrica; previsualización de
@@ -58,22 +64,22 @@ toolpaths; CLI headless; UI completa; corpus, paridad, benchmarks y CI.
 
 Decisión consciente, no postergación. Nada de esto se implementa, se testea ni se muestra:
 
-| Sale | Dónde vivía | Qué se pierde |
-| --- | --- | --- |
-| Las 11 estrategias de mecanizado general | `cam-toolpath` (3.459 líneas) | profile, pocket, drill, chamfer, vcarve, engrave, fluting, texture, inlay, thread, moulding como *operaciones de usuario* |
-| Eje medial y V-carve | `cam-geom/src/medial.rs` (1.038 líneas) | nada del dominio PCB |
-| Nesting de piezas | `cam-geom/src/nest.rs`, `nest_profile.rs` | nada: panelize es un problema distinto (matriz rows×cols), no aprovechamiento de material |
-| Moulding, texto de un solo trazo, autoría vectorial avanzada | `cam-geom`, `cam-ui` | nada |
-| PDF / EPS / PNG raster trace | `cam-import` | nada del dominio PCB |
-| Cut list, print sheet HTML, command language de part lists | `cam-cli`, `cam-ui` | nada |
-| Formularios de las 11 estrategias | `cam-ui` | nada |
+| Sale                                                         | Dónde vivía                               | Qué se pierde                                                                                                             |
+| ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Las 11 estrategias de mecanizado general                     | `cam-toolpath` (3.459 líneas)             | profile, pocket, drill, chamfer, vcarve, engrave, fluting, texture, inlay, thread, moulding como _operaciones de usuario_ |
+| Eje medial y V-carve                                         | `cam-geom/src/medial.rs` (1.038 líneas)   | nada del dominio PCB                                                                                                      |
+| Nesting de piezas                                            | `cam-geom/src/nest.rs`, `nest_profile.rs` | nada: panelize es un problema distinto (matriz rows×cols), no aprovechamiento de material                                 |
+| Moulding, texto de un solo trazo, autoría vectorial avanzada | `cam-geom`, `cam-ui`                      | nada                                                                                                                      |
+| PDF / EPS / PNG raster trace                                 | `cam-import`                              | nada del dominio PCB                                                                                                      |
+| Cut list, print sheet HTML, command language de part lists   | `cam-cli`, `cam-ui`                       | nada                                                                                                                      |
+| Formularios de las 11 estrategias                            | `cam-ui`                                  | nada                                                                                                                      |
 
 **Lo que se rescata de `cam-toolpath`, como capacidad interna y sin nombre de operación de usuario:**
 
 1. **Anillos de offset con islas** (`pocket.rs:124-158,332-337`) → motor de isolation y NCC.
 2. **Peck / retract / drill bank** (`drill.rs:85-132`) → ejecución de taladrado.
-3. **Perfil con tabs** (`lib.rs:483`) → cuerpo del cutout. *(Su soporte de tabs hay que verificarlo
-   antes de asumirlo: GAPS §3 G3.6 lo marca A VERIFICAR.)*
+3. **Perfil con tabs** (`lib.rs:483`) → cuerpo del cutout. _(Su soporte de tabs hay que verificarlo
+   antes de asumirlo: GAPS §3 G3.6 lo marca A VERIFICAR.)_
 
 Estimado de código que sale del producto: **≈15.000 líneas** entre `cam-toolpath`, el subconjunto de
 `cam-geom`, `cam-import`, `cam-model`, `cam-cli` y `cam-ui`. Es el mayor recorte de deuda que el pivote
@@ -104,12 +110,12 @@ features; si un rescate necesita una decisión de diseño, va al PR siguiente.
 Los tres rescates de §2.2 aterrizan en un **`cam-ops` mínimo creado en el mismo PR 1** (tres módulos
 públicos con sus tests; el trait `Node` llega en C4). Es la semilla del crate y evita código muerto.
 
-| PR | Borra | Rescata | Verificación |
-| --- | --- | --- | --- |
-| **1** | `cam-toolpath` (3.459); el editor de estrategia de `cam-ui`; los subcomandos de estrategia de `cam-cli` | `rings` (`pocket.rs:124-158,332-337`), `peck` (`drill.rs:85-132`), `follow` (`lib.rs:483`) → `cam-ops` | los tests de las tres capacidades se mudan y quedan verdes; los tests de las 11 estrategias se borran con su código; `cam-ui` y `cam-cli` compilan |
-| **2** | `cam-geom`: `medial.rs` (1.038), `nest.rs`, `nest_profile.rs`, moulding, texto | nada | el kernel queda con primitivas, arrangement, offset y regiones; `just check` verde |
-| **3** | `cam-import`: PDF, EPS y PNG raster trace | DXF/SVG sin cambios | `Format` pierde tres variantes; los tests de DXF/SVG verdes |
-| **4** | `cam-model`: variantes de `Operation` de madera; `cam-cli`: `cutlist`, `parts`, `report`; `cam-ui`: autoría vectorial avanzada y paneles de part list | nada | el modelo queda listo para el schema PCB de §9.1 |
+| PR    | Borra                                                                                                                                                 | Rescata                                                                                                | Verificación                                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | `cam-toolpath` (3.459); el editor de estrategia de `cam-ui`; los subcomandos de estrategia de `cam-cli`                                               | `rings` (`pocket.rs:124-158,332-337`), `peck` (`drill.rs:85-132`), `follow` (`lib.rs:483`) → `cam-ops` | los tests de las tres capacidades se mudan y quedan verdes; los tests de las 11 estrategias se borran con su código; `cam-ui` y `cam-cli` compilan |
+| **2** | `cam-geom`: `medial.rs` (1.038), `nest.rs`, `nest_profile.rs`, moulding, texto                                                                        | nada                                                                                                   | el kernel queda con primitivas, arrangement, offset y regiones; `just check` verde                                                                 |
+| **3** | `cam-import`: PDF, EPS y PNG raster trace                                                                                                             | DXF/SVG sin cambios                                                                                    | `Format` pierde tres variantes; los tests de DXF/SVG verdes                                                                                        |
+| **4** | `cam-model`: variantes de `Operation` de madera; `cam-cli`: `cutlist`, `parts`, `report`; `cam-ui`: autoría vectorial avanzada y paneles de part list | nada                                                                                                   | el modelo queda listo para el schema PCB de §9.1                                                                                                   |
 
 **Riesgo del barrido:** borrar algo que un hito posterior quería. Mitigación: cada PR lista lo que
 borra y lo que conserva, y los tres rescates están nombrados con su rango de líneas de origen.
@@ -124,7 +130,7 @@ Si una decisión futura viola una, la discusión es sobre el invariante, no sobr
 - **I1 — El kernel primero, la operación después.** Ninguna operación PCB se considera terminada sin el
   instrumento que la juzga ya existente y en verde. Escribir NCC antes del predicado de penetración es
   escribir código que no se puede aprobar ni rechazar.
-- **I2 — Nada se aplana en silencio.** Los arcos son *first-class* de punta a punta. Toda operación
+- **I2 — Nada se aplana en silencio.** Los arcos son _first-class_ de punta a punta. Toda operación
   declara `ArcPolicy::Preserve` o `ArcPolicy::Flatten { chord }`, y el aplanado explícito es visible en
   el artefacto que lo produce. Un aplanado implícito es un bug, no una optimización.
 - **I3 — La tolerancia es un parámetro, nunca un literal ni un ambiente.** No hay `thread_local`, no hay
@@ -161,7 +167,7 @@ El modelo actual es plano: un documento tiene operaciones, cada operación lee e
 `MoveStream`. Eso funciona para once estrategias independientes sobre geometría chica. **No funciona
 para PCB**, por cuatro razones concretas:
 
-1. **Rest machining** (grueso→fino) necesita que una operación consuma *lo que otra dejó*: un artefacto
+1. **Rest machining** (grueso→fino) necesita que una operación consuma _lo que otra dejó_: un artefacto
    intermedio, no una posición en una lista.
 2. **NCC con islas** quiere paralelizarse por isla y reducir con orden estable: necesita nodos, no un
    bucle.
@@ -235,15 +241,15 @@ en lugar de servir geometría vieja con código nuevo. Es el bug clásico de tod
 
 ### 4.3 Lo que el grafo compra, uno por uno
 
-| Necesidad | Cómo la resuelve el grafo |
-| --- | --- |
-| Rest machining (E4.5) | Nodo `ncc` declara `rest` como salida; la herramienta siguiente lo declara como entrada. Sin lógica ad hoc. |
+| Necesidad                       | Cómo la resuelve el grafo                                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Rest machining (E4.5)           | Nodo `ncc` declara `rest` como salida; la herramienta siguiente lo declara como entrada. Sin lógica ad hoc.           |
 | Paralelismo determinista (E4.4) | Las islas son trabajo interno del nodo (§4.6), reducidas en orden estable; el orden de terminación no toca la salida. |
-| Recomputación incremental (UI) | El editor cambia el stepover → se invalida ese nodo y sus descendientes, y nada más. |
-| Benchmark por etapa (E0.7) | Cada nodo es medible por separado. "NCC es más rápido" se descompone en qué etapa lo es. |
-| Oráculo por etapa (D5) | El predicado L1 corre sobre el artefacto `Moves` de un nodo, no solo sobre el programa final. |
-| Cancelación y progreso (UI) | `EvalCx` lleva token y callback: NCC sobre una placa grande reporta isla por isla y se puede abortar. |
-| Desarrollo en paralelo (§13) | Cada operación es un nodo contra un trait congelado. Seis worktrees sin tocarse. |
+| Recomputación incremental (UI)  | El editor cambia el stepover → se invalida ese nodo y sus descendientes, y nada más.                                  |
+| Benchmark por etapa (E0.7)      | Cada nodo es medible por separado. "NCC es más rápido" se descompone en qué etapa lo es.                              |
+| Oráculo por etapa (D5)          | El predicado L1 corre sobre el artefacto `Moves` de un nodo, no solo sobre el programa final.                         |
+| Cancelación y progreso (UI)     | `EvalCx` lleva token y callback: NCC sobre una placa grande reporta isla por isla y se puede abortar.                 |
+| Desarrollo en paralelo (§13)    | Cada operación es un nodo contra un trait congelado. Seis worktrees sin tocarse.                                      |
 
 ### 4.4 Lo que el grafo **no** hace
 
@@ -267,11 +273,11 @@ $CAMCRAFT_CACHE_DIR  ó  $XDG_CACHE_HOME/camcraft  (Linux)  ó  %LOCALAPPDATA%\c
   artifacts/<key>.sha256   checksum del payload
 ```
 
-1. **La versión del formato de artefacto entra en la clave.** `kernel_version` cubre el algoritmo *y*
+1. **La versión del formato de artefacto entra en la clave.** `kernel_version` cubre el algoritmo _y_
    el encoding. Cambiar cualquiera de los dos invalida todo sin escribir una línea de eviction.
 2. **Escritura atómica** (`.tmp` + rename, como el documento). Un archivo a medio escribir nunca es
    visible con su nombre final.
-3. **Verificación al leer:** sha256 contra el `.sha256`; cualquier discrepancia es *cache miss* más
+3. **Verificación al leer:** sha256 contra el `.sha256`; cualquier discrepancia es _cache miss_ más
    borrado del par. **Una cache corrupta nunca es un error para el usuario.**
 4. **I9 se testea, no se espera:** correr el pipeline con cache fría y con cache caliente y exigir
    bytes idénticos (§8, regla 7).
@@ -295,7 +301,7 @@ de cobre comparten artefactos: panelizar variantes e iterar un diseño se vuelve
 ### 4.6 Reglas del nodo
 
 **`NodeKind` es cerrado y es un subconjunto de lo que el usuario edita.** Cada variante corresponde a
-una operación del documento o a una derivación que el usuario nombra —una herramienta de NCC *es* un
+una operación del documento o a una derivación que el usuario nombra —una herramienta de NCC _es_ un
 nodo—. Las islas de NCC **no** son nodos: son trabajo interno del nodo, porque el grafo es una
 proyección del documento y las islas no se editan.
 
@@ -341,10 +347,10 @@ integra la clave (§4.5.1), así que cambiarlo invalida artefactos de todos los 
 - **Canónico antes que compacto.** JSON con claves ordenadas (`BTreeMap`, nunca `HashMap`) y `f64` en su
   forma de ida y vuelta exacta —el workspace ya configura `serde_json` con `float_roundtrip`, y esa
   decisión ahora se vuelve load-bearing—. Bytes canónicos, diffables y depurables a mano.
-- **Lo que se hashea es lo que se escribe.** No hay re-encoding después de calcular la clave: un *hit* es
+- **Lo que se hashea es lo que se escribe.** No hay re-encoding después de calcular la clave: un _hit_ es
   copiar el archivo. Si el canónico y el escrito difirieran, el hash no probaría nada.
 - **`blake3` truncado a 128 bits** para `ArtifactKey`. Hashear decenas de MB de geometría con `sha256`
-  cuesta la mitad del presupuesto de un *hit*; `blake3` es SIMD y de un solo archivo (§6.2).
+  cuesta la mitad del presupuesto de un _hit_; `blake3` es SIMD y de un solo archivo (§6.2).
 - **El payload lleva su propia versión** en la primera clave (`"format": 3`), redundante a propósito: un
   archivo cuyo nombre diga una clave y cuyo contenido diga otra se descarta, no se interpreta.
 - **Sin referencias entre artefactos.** Al serializar, `Arc` se desarma; al leer, se rearma. Un artefacto
@@ -379,7 +385,7 @@ depende de `cam-boolean`, y por eso está después en el camino crítico (§14).
 D1 y sigue siendo válida. La prueba de distancia del offset ("nunca conserva un tramo que no midió") se
 conserva como invariante testeable.
 
-**Qué se reemplaza:** el *cleanup* de auto-intersección del offset, que hoy tessela, parte y se queda
+**Qué se reemplaza:** el _cleanup_ de auto-intersección del offset, que hoy tessela, parte y se queda
 con el loop más grande reportando `Flattened` (`offset.rs:403-491`), y el rechazo de
 `Region::offset` cuando el offset atraviesa la forma (`region_offset.rs:120-185`). Ese cleanup pasa a
 ser una operación de arrangement, y el rechazo pasa a ser un diagnóstico accionable. **Esta es la tarea
@@ -443,7 +449,7 @@ con cota. Además metería `wgpu`, `winit` y `ratatui` debajo de `cam-ui`, contr
 placa, que es 2.5D y tiene muchísimos movimientos:
 
 1. **Caras internas ocultas al inicio**, reveladas cuando el vecino se remueve: menos geometría en
-   pantalla y sin *popping*.
+   pantalla y sin _popping_.
 2. **Actualizaciones parciales de buffer** por frame, en lugar de re-subir el stock entero.
 3. **Batching de movimientos chicos por frame**, con modo paso a paso aparte para inspección.
 
@@ -462,35 +468,35 @@ Regla de granularidad, en este orden: **una crate propia cuando aporta (a) depen
 quieren, (b) benchmarks y goldens propios, o (c) una superficie de edición que justifica un worktree
 paralelo.** Si no, es un módulo. LOC son del relevamiento de GAPS o estimación marcada con ≈.
 
-| Crate | LOC | Veredicto | Rol |
-| --- | ---: | --- | --- |
-| `cam-units` | 228 | **intacto** | mm interno, formateo fixed-decimal |
-| `cam-prim` | ≈2.500 | **nuevo** (extraído de `cam-geom`) | primitivas arco-native, región, winding, teselado, política |
-| `cam-boolean` | ≈1.500 | **nuevo** (de `boolean.rs`) | arrangement + ∪ ∩ ∖ △ |
-| `cam-offset` | ≈1.200 | **nuevo** | offset arrangement-based, anillos, envolventes de clearance |
-| `cam-index` | ≈400 | **nuevo** | índice espacial como servicio |
-| `cam-move` | 311 | **intacto** | `Move`/`Segment`/`MoveStream` |
-| `cam-post` | 1.176 | **intacto** | parser `.pp` + emisor, golden byte a byte |
-| `cam-sim` | 2.506 | **adaptar** | keyed por artefacto; sin cambios de algoritmo |
-| `cam-model` | ≈2.000 | **reescrito** | documento PCB nativo, capas con rol, operaciones |
-| `cam-store` | ≈2.000 | **adaptar** | archivo `.cmc`; `tools.sqlite` y su escalera de migraciones intactos |
-| `cam-gerber` | ≈3.500 | **nuevo** | RS-274X: aperturas, macros, polaridad, G36/G37, G74/G75 |
-| `cam-excellon` | ≈1.200 | **nuevo** | herramientas, unidades, ceros omitidos, slots |
-| `cam-fabric` | ≈800 | **nuevo** | carpeta de fabricación → capas con rol, + informe |
-| `cam-import` | ≈2.000 | **conservado, recortado** | DXF/SVG import con subconjunto geométrico declarado; PDF/EPS/PNG se borran (A1) |
-| `cam-export` | ≈1.600 | **ampliado** | + escritores Gerber y Excellon; conserva y angosta DXF/SVG |
-| `cam-ops` | ≈600 | **nuevo** | trait `Node`, registro, ops livianas: drill, cutout, panelize, paint |
-| `cam-op-isolation` | ≈1.100 | **nuevo** | crate propia: depende de `cam-offset`, benchmarks propios |
-| `cam-op-ncc` | ≈2.500 | **nuevo** | crate propia: `rayon`, benchmarks propios, la promesa del producto |
-| `cam-graph` | ≈1.100 | **nuevo** | evaluador del DAG, cache en memoria y en disco, encoding versionado, cancelación, progreso |
-| `cam-oracle` | ≈900 | **nuevo** | predicado L1, paridad geométrica, corpus |
-| `cam-cli` | ≈3.000 | **reescrito** | 15→≈14 subcomandos PCB, exit codes estables, `script` conservado |
-| `cam-app` | ≈1.500 | **reescrito** | estado, comandos, undo estructural (§10) |
-| `cam-view` | 993 | **adaptar** | escena, picking, cache de mallas, culling |
-| `cam-ui` | ≈14.000 | **recortado y reestructurado** | shell egui: capas, árbol, formularios, preview, simulación |
-| `cam-desktop` | 377 | **intacto** | host eframe + diálogos |
-| ~~`cam-toolpath`~~ | 3.459 | **borrar** | se rescatan 3 capacidades internas (§2.2) |
-| ~~`cam-program`~~ | 652 | **reemplazar** | lo reemplaza `cam-graph` |
+| Crate              |     LOC | Veredicto                          | Rol                                                                                        |
+| ------------------ | ------: | ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `cam-units`        |     228 | **intacto**                        | mm interno, formateo fixed-decimal                                                         |
+| `cam-prim`         |  ≈2.500 | **nuevo** (extraído de `cam-geom`) | primitivas arco-native, región, winding, teselado, política                                |
+| `cam-boolean`      |  ≈1.500 | **nuevo** (de `boolean.rs`)        | arrangement + ∪ ∩ ∖ △                                                                      |
+| `cam-offset`       |  ≈1.200 | **nuevo**                          | offset arrangement-based, anillos, envolventes de clearance                                |
+| `cam-index`        |    ≈400 | **nuevo**                          | índice espacial como servicio                                                              |
+| `cam-move`         |     311 | **intacto**                        | `Move`/`Segment`/`MoveStream`                                                              |
+| `cam-post`         |   1.176 | **intacto**                        | parser `.pp` + emisor, golden byte a byte                                                  |
+| `cam-sim`          |   2.506 | **adaptar**                        | keyed por artefacto; sin cambios de algoritmo                                              |
+| `cam-model`        |  ≈2.000 | **reescrito**                      | documento PCB nativo, capas con rol, operaciones                                           |
+| `cam-store`        |  ≈2.000 | **adaptar**                        | archivo `.cmc`; `tools.sqlite` y su escalera de migraciones intactos                       |
+| `cam-gerber`       |  ≈3.500 | **nuevo**                          | RS-274X: aperturas, macros, polaridad, G36/G37, G74/G75                                    |
+| `cam-excellon`     |  ≈1.200 | **nuevo**                          | herramientas, unidades, ceros omitidos, slots                                              |
+| `cam-fabric`       |    ≈800 | **nuevo**                          | carpeta de fabricación → capas con rol, + informe                                          |
+| `cam-import`       |  ≈2.000 | **conservado, recortado**          | DXF/SVG import con subconjunto geométrico declarado; PDF/EPS/PNG se borran (A1)            |
+| `cam-export`       |  ≈1.600 | **ampliado**                       | + escritores Gerber y Excellon; conserva y angosta DXF/SVG                                 |
+| `cam-ops`          |    ≈600 | **nuevo**                          | trait `Node`, registro, ops livianas: drill, cutout, panelize, paint                       |
+| `cam-op-isolation` |  ≈1.100 | **nuevo**                          | crate propia: depende de `cam-offset`, benchmarks propios                                  |
+| `cam-op-ncc`       |  ≈2.500 | **nuevo**                          | crate propia: `rayon`, benchmarks propios, la promesa del producto                         |
+| `cam-graph`        |  ≈1.100 | **nuevo**                          | evaluador del DAG, cache en memoria y en disco, encoding versionado, cancelación, progreso |
+| `cam-oracle`       |    ≈900 | **nuevo**                          | predicado L1, paridad geométrica, corpus                                                   |
+| `cam-cli`          |  ≈3.000 | **reescrito**                      | 15→≈14 subcomandos PCB, exit codes estables, `script` conservado                           |
+| `cam-app`          |  ≈1.500 | **reescrito**                      | estado, comandos, undo estructural (§10)                                                   |
+| `cam-view`         |     993 | **adaptar**                        | escena, picking, cache de mallas, culling                                                  |
+| `cam-ui`           | ≈14.000 | **recortado y reestructurado**     | shell egui: capas, árbol, formularios, preview, simulación                                 |
+| `cam-desktop`      |     377 | **intacto**                        | host eframe + diálogos                                                                     |
+| ~~`cam-toolpath`~~ |   3.459 | **borrar**                         | se rescatan 3 capacidades internas (§2.2)                                                  |
+| ~~`cam-program`~~  |     652 | **reemplazar**                     | lo reemplaza `cam-graph`                                                                   |
 
 Neto: **≈18.500 líneas que se borran o se reemplazan, ≈24.800 nuevas.** El 70% de lo nuevo está en el
 kernel, los importadores y NCC — exactamente donde GAPS ubica los bloqueantes.
@@ -506,12 +512,12 @@ stream limpio, emisor con goldens byte a byte, mm interno con conversión en fro
 La regla del repositorio es "ninguna dependencia nueva salvo que una tarea demuestre que es necesaria".
 Estas cuatro vienen demostradas por el diseño, no por preferencia:
 
-| Dependencia | Para qué | Por qué no se escribe propia | Dónde |
-| --- | --- | --- | --- |
-| `rayon` | paralelismo por isla y evaluación de nodos independientes | un *work-stealing scheduler* correcto no es el problema que este producto resuelve | `cam-op-ncc`, `cam-graph` |
-| `rstar` | índice espacial (R-tree) | estructura probada en producción, con vecindad y consulta por ventana ya resueltas | `cam-index` |
-| `blake3` | hash de contenido de artefactos | velocidad SIMD, un solo archivo, sin la ceremonia de una librería criptográfica | `cam-graph` |
-| `criterion` | benchmarks por nodo (§12) | estándar de facto para benchmarks comparables en CI | `benches/` |
+| Dependencia | Para qué                                                  | Por qué no se escribe propia                                                       | Dónde                     |
+| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------- |
+| `rayon`     | paralelismo por isla y evaluación de nodos independientes | un _work-stealing scheduler_ correcto no es el problema que este producto resuelve | `cam-op-ncc`, `cam-graph` |
+| `rstar`     | índice espacial (R-tree)                                  | estructura probada en producción, con vecindad y consulta por ventana ya resueltas | `cam-index`               |
+| `blake3`    | hash de contenido de artefactos                           | velocidad SIMD, un solo archivo, sin la ceremonia de una librería criptográfica    | `cam-graph`               |
+| `criterion` | benchmarks por nodo (§12)                                 | estándar de facto para benchmarks comparables en CI                                | `benches/`                |
 
 Lo que **no** se agrega: ningún crate de geometría (`geo`, `i_overlay`, `clipper2`, `kurbo`, `lyon`,
 `cavalier_contours`, `parry`). D1 decidió kernel propio con arcos preservados, y el kernel **es** el
@@ -561,12 +567,12 @@ Tres reglas duras:
 
 ## 8. Contrato de determinismo
 
-La promesa del producto es performance *con* reproducibilidad. Estas siete reglas son la definición
+La promesa del producto es performance _con_ reproducibilidad. Estas siete reglas son la definición
 operativa de I5 e I6, y hay un test que las verifica.
 
 1. **Sin `HashMap` en el camino geométrico.** Todo mapa que afecte geometría u orden es `BTreeMap` o se
    ordena explícitamente antes de usar.
-2. **Sin reducciones de `f64` a través de hilos.** Las sumas y los mínimos se hacen en un *fold*
+2. **Sin reducciones de `f64` a través de hilos.** Las sumas y los mínimos se hacen en un _fold_
    secuencial sobre índices ordenados, después del trabajo paralelo.
 3. **Orden canónico, un solo lugar.** `(min.y, min.x, order)` para entidades y tramos — la convención
    que `boolean.rs:358-370` ya usa. Se extrae a `cam-prim` y se reusa.
@@ -686,12 +692,12 @@ Además del "undo restaura el documento exactamente" que ya existe:
 
 Cuatro instrumentos, cada uno con su costo y su lugar. Esta es la implementación de D2 e I1.
 
-| Instrumento | Qué juzga | Costo | Dónde corre |
-| --- | --- | --- | --- |
-| **Predicado L1** (penetración) | `sweep(caminos, radio) ∩ cobre_erosionado` → ratio de penetración > ~1e-9 | barato | CI, **cada** operación geométrica |
-| **Paridad geométrica** (`cam-oracle`) | conteo de polígonos, área (ε rel 1e-9), puntos tras aplanar, cobertura de cobre | medio | CI, sobre corpus versionado |
-| **Volumétrico L2** (`cam-sim`) | removed / gouge / uncut / crashes, con cota de cobertura documentada | caro | hitos y UX, no cada test |
-| **Golden G-code** (`cam-post`) | bytes exactos | barato | CI, por dialecto |
+| Instrumento                           | Qué juzga                                                                       | Costo  | Dónde corre                       |
+| ------------------------------------- | ------------------------------------------------------------------------------- | ------ | --------------------------------- |
+| **Predicado L1** (penetración)        | `sweep(caminos, radio) ∩ cobre_erosionado` → ratio de penetración > ~1e-9       | barato | CI, **cada** operación geométrica |
+| **Paridad geométrica** (`cam-oracle`) | conteo de polígonos, área (ε rel 1e-9), puntos tras aplanar, cobertura de cobre | medio  | CI, sobre corpus versionado       |
+| **Volumétrico L2** (`cam-sim`)        | removed / gouge / uncut / crashes, con cota de cobertura documentada            | caro   | hitos y UX, no cada test          |
+| **Golden G-code** (`cam-post`)        | bytes exactos                                                                   | barato | CI, por dialecto                  |
 
 **Corpus** (`cam-oracle/corpus/`): 6 placas versionadas — KiCad 2 capas, KiCad 4 capas con pours,
 EasyEDA, Eagle, Altium, y una grande >100×100 mm con pours. Cada una con `top/bottom/mask/silk/outline/drill`
@@ -771,15 +777,15 @@ Observaciones que importan:
 Archivos que **no** se tocan desde dos worktrees a la vez. Si un carril los necesita, mergea un cambio
 mínimo y avisa.
 
-| Superficie | Dueño | Regla |
-| --- | --- | --- |
-| `Cargo.toml` del workspace | kernel (C0/C1) | los carriles agregan miembros en PRs propios, no en un PR de feature |
-| `cam-model/src/lib.rs` | modelo | congelado tras C1 |
-| `cam-prim` (firma pública) | kernel | congelado tras C0; cambios = versión + invalidación de cache |
-| Registro de nodos (`cam-ops/src/registry.rs`) | cada op | **una línea por operación**; conflicto trivial, resolución trivial |
-| `cam-cli/src/lib.rs` | salida | subcomando nuevo = archivo nuevo + una línea de registro |
-| `cam-ui/src/shell/mod.rs` | UI | un carril por panel |
-| `.github/workflows` | oráculo | cambios en PR propio |
+| Superficie                                    | Dueño          | Regla                                                                |
+| --------------------------------------------- | -------------- | -------------------------------------------------------------------- |
+| `Cargo.toml` del workspace                    | kernel (C0/C1) | los carriles agregan miembros en PRs propios, no en un PR de feature |
+| `cam-model/src/lib.rs`                        | modelo         | congelado tras C1                                                    |
+| `cam-prim` (firma pública)                    | kernel         | congelado tras C0; cambios = versión + invalidación de cache         |
+| Registro de nodos (`cam-ops/src/registry.rs`) | cada op        | **una línea por operación**; conflicto trivial, resolución trivial   |
+| `cam-cli/src/lib.rs`                          | salida         | subcomando nuevo = archivo nuevo + una línea de registro             |
+| `cam-ui/src/shell/mod.rs`                     | UI             | un carril por panel                                                  |
+| `.github/workflows`                           | oráculo        | cambios en PR propio                                                 |
 
 ### 13.4 Práctica ODD
 
@@ -798,19 +804,19 @@ mínimo y avisa.
 Prefijo `C` (camcraft). Los identificadores `E*` de ROADMAP se conservan como tareas dentro de su hito
 cuando siguen siendo válidos; los que cambian se listan como delta.
 
-| Hito | Puerta medible | Qué desbloquea |
-| --- | --- | --- |
-| **C0 — Fundamentos** | Barrido de borrado completo (§2.4); `cam-prim` congelado; corpus de 6 placas versionado; `cam-oracle` con paridad geométrica; cache en disco con test fría/caliente (§4.5); `criterion` + CI (fmt, clippy, test, paridad, bench); baseline FlatCAM medido; contrato de determinismo en verde | Todo el fan-out |
-| **C1 — Motor de conjuntos** | 200 operaciones booleanas contra áreas conocidas con error < tolerancia; `proptest` sobre regiones aleatorias incluidas degeneradas; corpus sin errores de normalización | Gerber con polaridad, isolation, NCC, exclusiones |
-| **C2 — Offset** | Offset de cobre real sin aplanado silencioso y sin rechazo; anillos multipasada sin colisión entre sí; prueba de distancia contra todo contorno original; 3 pasadas con overlap 0.5 en el corpus | Isolation, NCC, clearance envelopes |
-| **C3 — Entrada y modelo** | 6 placas abren, guardan y recargan como `camcraft/document@1`; capas con rol correcto; Excellon con herramienta/diámetro/hits exactos; ninguna capa pierde geometría sin reporte | Todo el pipeline |
-| **C4 — Primer G-code** | Drilling + cutout por CLI con GRBL, aceptado por `cam-sim`, en las 6 placas; dos corridas byte a byte iguales | Producto usable |
-| **C5 — Isolation** | Isolation sin gouge en las 6 placas con predicado L1 en verde; V-bit con profundidad derivada verificada | El flujo que el usuario de PCB quiere primero |
-| **C6 — NCC** | **NCC más rápida que FlatCAM en la placa grande**, determinista con 1/4/8 hilos, reproducible desde CI; rest machining medido | La tesis del producto |
-| **C7 — Salida** | Catálogo `.pp` con golden por dialecto; autolevelling sobre warp simulado dentro de tolerancia; travel que cruza exclusión se desvía; export Gerber/Excellon con round-trip | G-code listo para máquina |
-| **C8 — UI** | Flujo completo sin tocar `cam-cli`: importar, configurar, generar, simular, exportar; undo estructural con proptest; shell usable con la placa grande; preview volumétrico según §5.5 (referencia `gsim-rs`) | Producto |
-| **C9 — Extensión** | Paint, panelize, film/punch según demanda | Alcance FlatCAM |
-| **C10 — Endurecimiento** | 20+ placas reales en CI bajo umbral; benchmarks publicados y reproducibles; empaquetado Windows+Linux firmado; guía de migración desde FlatCAM; alfa | Publicación |
+| Hito                        | Puerta medible                                                                                                                                                                                                                                                                               | Qué desbloquea                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **C0 — Fundamentos**        | Barrido de borrado completo (§2.4); `cam-prim` congelado; corpus de 6 placas versionado; `cam-oracle` con paridad geométrica; cache en disco con test fría/caliente (§4.5); `criterion` + CI (fmt, clippy, test, paridad, bench); baseline FlatCAM medido; contrato de determinismo en verde | Todo el fan-out                                   |
+| **C1 — Motor de conjuntos** | 200 operaciones booleanas contra áreas conocidas con error < tolerancia; `proptest` sobre regiones aleatorias incluidas degeneradas; corpus sin errores de normalización                                                                                                                     | Gerber con polaridad, isolation, NCC, exclusiones |
+| **C2 — Offset**             | Offset de cobre real sin aplanado silencioso y sin rechazo; anillos multipasada sin colisión entre sí; prueba de distancia contra todo contorno original; 3 pasadas con overlap 0.5 en el corpus                                                                                             | Isolation, NCC, clearance envelopes               |
+| **C3 — Entrada y modelo**   | 6 placas abren, guardan y recargan como `camcraft/document@1`; capas con rol correcto; Excellon con herramienta/diámetro/hits exactos; ninguna capa pierde geometría sin reporte                                                                                                             | Todo el pipeline                                  |
+| **C4 — Primer G-code**      | Drilling + cutout por CLI con GRBL, aceptado por `cam-sim`, en las 6 placas; dos corridas byte a byte iguales                                                                                                                                                                                | Producto usable                                   |
+| **C5 — Isolation**          | Isolation sin gouge en las 6 placas con predicado L1 en verde; V-bit con profundidad derivada verificada                                                                                                                                                                                     | El flujo que el usuario de PCB quiere primero     |
+| **C6 — NCC**                | **NCC más rápida que FlatCAM en la placa grande**, determinista con 1/4/8 hilos, reproducible desde CI; rest machining medido                                                                                                                                                                | La tesis del producto                             |
+| **C7 — Salida**             | Catálogo `.pp` con golden por dialecto; autolevelling sobre warp simulado dentro de tolerancia; travel que cruza exclusión se desvía; export Gerber/Excellon con round-trip                                                                                                                  | G-code listo para máquina                         |
+| **C8 — UI**                 | Flujo completo sin tocar `cam-cli`: importar, configurar, generar, simular, exportar; undo estructural con proptest; shell usable con la placa grande; preview volumétrico según §5.5 (referencia `gsim-rs`)                                                                                 | Producto                                          |
+| **C9 — Extensión**          | Paint, panelize, film/punch según demanda                                                                                                                                                                                                                                                    | Alcance FlatCAM                                   |
+| **C10 — Endurecimiento**    | 20+ placas reales en CI bajo umbral; benchmarks publicados y reproducibles; empaquetado Windows+Linux firmado; guía de migración desde FlatCAM; alfa                                                                                                                                         | Publicación                                       |
 
 **Reglas de puerta.** Una puerta que no abre detiene el hito siguiente, no todos los carriles. La regla
 de recorte es la del plan original y no cambia: **si algo se alarga, se recortan funciones, nunca la
@@ -818,36 +824,36 @@ calidad de la geometría ni los criterios de salida.**
 
 ### 14.1 Delta respecto de ROADMAP_CAMCRAFT.md
 
-| Cambio | Motivo |
-| --- | --- |
-| `cam-toolpath` fuera de alcance; 11 estrategias eliminadas | Pivote a solo PCB |
-| E0.1 se muda a C1 como hito propio, con `cam-boolean` como crate | Granularidad de worktree |
-| **Nuevo C2 (offset)** con puerta propia | G3.2 es BLOQUEANTE y no tenía tarea |
-| **Nuevo C0 incluye `cam-oracle` como crate**, no como script | El arnés de paridad es criterio de aceptación, no utilidad |
-| **Índice espacial sube de E4.3 a C0/C1** | Lo necesitan import, booleano, sim, NCC y picking |
-| Drilling + cutout se adelantan y se desacoplan del kernel | No dependen de `cam-boolean`; entregan G-code real antes |
-| Se elimina la migración `@2→@3` y el schema aditivo | No hay documentos de madera que importar |
+| Cambio                                                                                  | Motivo                                                                                                        |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `cam-toolpath` fuera de alcance; 11 estrategias eliminadas                              | Pivote a solo PCB                                                                                             |
+| E0.1 se muda a C1 como hito propio, con `cam-boolean` como crate                        | Granularidad de worktree                                                                                      |
+| **Nuevo C2 (offset)** con puerta propia                                                 | G3.2 es BLOQUEANTE y no tenía tarea                                                                           |
+| **Nuevo C0 incluye `cam-oracle` como crate**, no como script                            | El arnés de paridad es criterio de aceptación, no utilidad                                                    |
+| **Índice espacial sube de E4.3 a C0/C1**                                                | Lo necesitan import, booleano, sim, NCC y picking                                                             |
+| Drilling + cutout se adelantan y se desacoplan del kernel                               | No dependen de `cam-boolean`; entregan G-code real antes                                                      |
+| Se elimina la migración `@2→@3` y el schema aditivo                                     | No hay documentos de madera que importar                                                                      |
 | Se corrige la inconsistencia de ROADMAP §2 (`E0.3`/`E0.4` mal mapeados contra la tabla) | §2 decía "E0.3 arnés de paridad, E0.4 benchmarks"; la tabla dice E0.3 política, E0.4 paridad, E0.7 benchmarks |
-| Nesting, cutlist, print sheet, PDF/EPS/PNG fuera | Dominio distinto |
+| Nesting, cutlist, print sheet, PDF/EPS/PNG fuera                                        | Dominio distinto                                                                                              |
 
 ---
 
 ## 15. Riesgos
 
-| Riesgo | Prob. | Impacto | Mitigación / punto de decisión |
-| --- | --- | --- | --- |
-| Robustez del arrangement propio ante degeneraciones | Alta | Bloquea C5/C6 | Corpus + proptest desde C0. Umbral de abandono de D1: si no cierra con 200 operaciones, se reevalúa un kernel polígono-exacto con aplanado declarado |
-| **Offset no cierra sin aplanar** | Media-Alta | Isolation y NCC | Puerta C2 propia. La salida es mejorar el cleanup arrangement-based, **nunca** heurísticas dentro de la operación |
-| Paralelismo rompe determinismo | Media | Promesa del producto | §8 completo; test de buzón con 1/4/8 hilos |
-| NCC no alcanza a FlatCAM | Media | Tesis del producto | Baseline medido en C0; si C6 no abre, el problema es de algoritmo y hay que verlo antes de C8 |
-| Booleanas con Gerber reales (la fuente de errores más frecuente de FlatCAM) | Alta | C3 y C5 | Corpus grande desde C0; es la única defensa real |
-| **Superficies compartidas se pisan entre worktrees** | Media | Velocidad de desarrollo | §13.3 + contrato primero + una línea de registro por operación |
-| Rediseño de `cam-app`/undo introduce regresiones invisibles | Media | Corrección del editor | Proptest de round-trip inverso (§10.3) antes de migrar comandos |
-| UI con geometría grande congela el shell | Media | UX | §5.4: cache de mallas, cancelación, picking por índice |
-| Cache en disco corrupta o de otra versión sirve geometría mala | Media | Corrección silenciosa | §4.5: versión de formato en la clave, sha256 al leer, miss + borrado ante cualquier duda |
-| Cache real compartida entre tests los vuelve dependientes del orden | Media | Determinismo del CI | §4.5 regla 6: `CAMCRAFT_CACHE_DIR` por test o cache apagada |
-| La cache crece sin control en el disco del usuario | Media | UX | §4.5 regla 5 + `cache prune`; tope por defecto a definir (A6) |
-| La madera vuelve por la ventana (un "aprovechemos `pocket`") | Media | Alcance | §2.2 es una decisión, no una postergación. Reabrirlo requiere reabrir este documento |
+| Riesgo                                                                      | Prob.      | Impacto                 | Mitigación / punto de decisión                                                                                                                       |
+| --------------------------------------------------------------------------- | ---------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Robustez del arrangement propio ante degeneraciones                         | Alta       | Bloquea C5/C6           | Corpus + proptest desde C0. Umbral de abandono de D1: si no cierra con 200 operaciones, se reevalúa un kernel polígono-exacto con aplanado declarado |
+| **Offset no cierra sin aplanar**                                            | Media-Alta | Isolation y NCC         | Puerta C2 propia. La salida es mejorar el cleanup arrangement-based, **nunca** heurísticas dentro de la operación                                    |
+| Paralelismo rompe determinismo                                              | Media      | Promesa del producto    | §8 completo; test de buzón con 1/4/8 hilos                                                                                                           |
+| NCC no alcanza a FlatCAM                                                    | Media      | Tesis del producto      | Baseline medido en C0; si C6 no abre, el problema es de algoritmo y hay que verlo antes de C8                                                        |
+| Booleanas con Gerber reales (la fuente de errores más frecuente de FlatCAM) | Alta       | C3 y C5                 | Corpus grande desde C0; es la única defensa real                                                                                                     |
+| **Superficies compartidas se pisan entre worktrees**                        | Media      | Velocidad de desarrollo | §13.3 + contrato primero + una línea de registro por operación                                                                                       |
+| Rediseño de `cam-app`/undo introduce regresiones invisibles                 | Media      | Corrección del editor   | Proptest de round-trip inverso (§10.3) antes de migrar comandos                                                                                      |
+| UI con geometría grande congela el shell                                    | Media      | UX                      | §5.4: cache de mallas, cancelación, picking por índice                                                                                               |
+| Cache en disco corrupta o de otra versión sirve geometría mala              | Media      | Corrección silenciosa   | §4.5: versión de formato en la clave, sha256 al leer, miss + borrado ante cualquier duda                                                             |
+| Cache real compartida entre tests los vuelve dependientes del orden         | Media      | Determinismo del CI     | §4.5 regla 6: `CAMCRAFT_CACHE_DIR` por test o cache apagada                                                                                          |
+| La cache crece sin control en el disco del usuario                          | Media      | UX                      | §4.5 regla 5 + `cache prune`; tope por defecto a definir (A6)                                                                                        |
+| La madera vuelve por la ventana (un "aprovechemos `pocket`")                | Media      | Alcance                 | §2.2 es una decisión, no una postergación. Reabrirlo requiere reabrir este documento                                                                 |
 
 ---
 
@@ -855,16 +861,16 @@ calidad de la geometría ni los criterios de salida.**
 
 ### 16.1 Resueltas
 
-| ID | Decisión | Consecuencia | Dónde |
-| --- | --- | --- | --- |
-| **A1** | DXF/SVG import **y** export, geometría general (paridad FlatCAM) | `cam-import` sobrevive; subconjunto geométrico declarado; PDF/EPS/PNG se borran | §2.3 |
-| **A2** | Extensión **`.cmc`** | Asociación de archivo e icono en Windows; `.c2d` se rechaza, no se migra | §9.1 |
-| **A3** | Cache de artefactos **en disco desde v1** | Nuevo subsistema: invariante I9, siete reglas, `cache info` / `cache prune`, riesgos propios | §4.5 |
-| **A4** | Derivada de A1: `cam-import` es **crate propia**, `cam-fabric` no la absorbe | El import de carpeta de fabricación y el de geometría general evolucionan por separado | §6 |
-| **A5** | El barrido de borrado va **ahora, antes de C0**, en 4 PRs | Primer trabajo del proyecto; `cam-ops` nace con los tres rescates | §2.4 |
-| **A6** | Tope de la cache: **2 GB** por defecto, configurable por comando y por env, **no por UI** | Una preferencia más en un panel no paga su costo; `cache prune --max` es suficiente | §4.5 |
-| **A7** | La cache **se comparte entre documentos** | Panelizar variantes e iterar un diseño es casi gratis; borrar un `.cmc` no libera geometría, solo `prune` | §4.5 |
-| **A8** | El barrido de borrado va **antes que `cam-prim`** dentro de C0 | No depende de nada y reduce el diff de todo lo que venga después | §2.4 |
+| ID     | Decisión                                                                                  | Consecuencia                                                                                              | Dónde |
+| ------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----- |
+| **A1** | DXF/SVG import **y** export, geometría general (paridad FlatCAM)                          | `cam-import` sobrevive; subconjunto geométrico declarado; PDF/EPS/PNG se borran                           | §2.3  |
+| **A2** | Extensión **`.cmc`**                                                                      | Asociación de archivo e icono en Windows; `.c2d` se rechaza, no se migra                                  | §9.1  |
+| **A3** | Cache de artefactos **en disco desde v1**                                                 | Nuevo subsistema: invariante I9, siete reglas, `cache info` / `cache prune`, riesgos propios              | §4.5  |
+| **A4** | Derivada de A1: `cam-import` es **crate propia**, `cam-fabric` no la absorbe              | El import de carpeta de fabricación y el de geometría general evolucionan por separado                    | §6    |
+| **A5** | El barrido de borrado va **ahora, antes de C0**, en 4 PRs                                 | Primer trabajo del proyecto; `cam-ops` nace con los tres rescates                                         | §2.4  |
+| **A6** | Tope de la cache: **2 GB** por defecto, configurable por comando y por env, **no por UI** | Una preferencia más en un panel no paga su costo; `cache prune --max` es suficiente                       | §4.5  |
+| **A7** | La cache **se comparte entre documentos**                                                 | Panelizar variantes e iterar un diseño es casi gratis; borrar un `.cmc` no libera geometría, solo `prune` | §4.5  |
+| **A8** | El barrido de borrado va **antes que `cam-prim`** dentro de C0                            | No depende de nada y reduce el diff de todo lo que venga después                                          | §2.4  |
 
 **No quedan decisiones abiertas al cierre de v0.1.**
 
@@ -897,3 +903,38 @@ niveles), D6 (`.FlatPrj` fuera), y todo `RUST_PORT_LOGIC.md` como especificació
 
 **Cerrado en v0.1:** A1–A8 (§16.1), contrato del nodo (§4.6), encoding de artefactos (§4.7),
 dependencias justificadas (§6.2).
+
+---
+
+## 18. Catálogo del design system (solo desarrollo)
+
+El catálogo se lanza con `just ds` (o `pnpm ds` si no se usa `just`): antes de arrancar Vite detiene
+un servidor de desarrollo Vite anterior que retenga el puerto 1420 —nunca toca un listener que no sea
+Vite—, corre el codegen de Panda y refresca el inventario, así el tablero nunca queda desactualizado.
+Expone en `http://127.0.0.1:1420/ds` un catálogo del Atomic Design derivado del repositorio: una ficha
+por componente con sus estados reales y un tablero con el progreso. `pnpm dev` sigue exponiendo la
+ruta, pero no libera el puerto ni refresca el inventario. No es una feature de la app: fuera de
+desarrollo la ruta resuelve 404 y no se prerenderiza nada.
+
+El inventario se regenera desde el filesystem con:
+
+```bash
+pnpm ds:inventory
+```
+
+El tablero cuenta, por capa atómica, el total de componentes y cuántos tienen ficha en el catálogo,
+test hermano y están en uso. Un componente está en uso cuando algún archivo de `src/` lo alcanza
+**nombrando su binding** (`import { Button } from '../atoms'` acredita a `Button` y no a sus hermanos
+del barrel; un alias cuenta por el nombre exportado, así que `Button as B` sigue acreditando a
+`Button`). Sólo las formas que traen el módulo entero —`import * as ns`, el import de efecto
+`import './x.svelte'`, el default de un `.svelte` y `export * from`— acreditan todo lo que el módulo
+alcanza, porque cualquiera de sus miembros podría usarse a través de ellas. Los módulos de tipos
+(`import type`, `export type ... from`) no acreditan nada. El propio catálogo no cuenta. Un
+componente sin consumidores se muestra como tal: «en uso: no» en el tablero y `0 consumidores` en su
+ficha, sin conteo por barrel, «probablemente usado» ni otro fallback que lo disimule.
+
+La columna «Renderable» son las fichas que muestran instancias reales; «No renderable» las que
+dependen de IPC de Tauri, de un store vivo o de un canvas y solo muestran sus estados como datos.
+Cada ficha lista además cuántos consumidores tiene el componente y sus nombres. Los componentes
+fuera de `atoms/`, `molecules/`, `organisms/` y `templates/` se listan aparte como «sin clasificar»
+en vez de esconderse.

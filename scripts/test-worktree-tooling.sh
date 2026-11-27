@@ -5,6 +5,8 @@
 # index. `cargo` is a stub there because the gate's cargo steps are not what these tests judge.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# A gate that runs inside one of the fixture repositories must not run this harness again.
+export GENTLE_TOOLING_TESTS=0
 
 status=0
 for test in scripts/tests/*.sh; do

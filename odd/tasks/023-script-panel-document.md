@@ -25,13 +25,13 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `63e7aa4` — `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns | S1 S2 S4 | parent | `63e7aa4` |
-| T2 | ✅ delivered `63e7aa4` — The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified | S1 S3 | parent | `63e7aa4` |
-| T3 | ✅ delivered `63e7aa4` — The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged | S2 S3 | parent | `63e7aa4` |
-| T4 | ✅ delivered `63e7aa4` — The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it | S3 | parent | `63e7aa4` |
-| T5 | ✅ delivered `5332383` — `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1 | parent | `5332383` |
+| ID  | Task                                                                                                                                                                          | Specs    | Route  | Commit    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | --------- |
+| T1  | ✅ delivered `63e7aa4` — `cam-script`'s entry point takes a `&mut Document` instead of only a path, so a caller can run a script against a document it owns                   | S1 S2 S4 | parent | `63e7aa4` |
+| T2  | ✅ delivered `63e7aa4` — The panel calls that entry point with the shell's document, reports what the run did, and marks the document modified                                | S1 S3    | parent | `63e7aa4` |
+| T3  | ✅ delivered `63e7aa4` — The disk write leaves the panel's path: `cam-cli script` keeps it, the shell does not, and the differential proves the command is unchanged          | S2 S3    | parent | `63e7aa4` |
+| T4  | ✅ delivered `63e7aa4` — The record: `docs/m10-documents.md`'s "the panel edits a file on disk, not the shell's document" stops being true, and says what replaced it         | S3       | parent | `63e7aa4` |
+| T5  | ✅ delivered `5332383` — `R4-001` of the review: a run that produced the document it was given is not an edit, so it records no undo step and leaves the modified state alone | S1       | parent | `5332383` |
 
 ## Log
 
@@ -56,7 +56,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   document with no path yet", so an untitled document says what it is missing instead of pretending it
   does not exist. **RED first, and the first RED was not the one planned**: the five new tests in
   `crates/cam-cli/tests/script_in_memory.rs` failed to compile (no such function); after the entry point
-  existed, `open_is_refused…` failed on the *column* — the refusal was located at the path argument when
+  existed, `open_is_refused…` failed on the _column_ — the refusal was located at the path argument when
   the rule is about the command — so it moved to the word. Then the panel tests found a real defect in
   shipped code: `validate` demanded a document **path** because it went through `open_document`, which
   needs both, so an untitled document could not even be validated. `validate` now asks for
@@ -98,8 +98,8 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   **The gate**: `./scripts/check.sh` — `fmt --check`, `clippy -D warnings` and the whole suite — green at
   `CHECK_EXIT=0`; `cargo test --workspace -- --list` counts **1525 tests**. The first gate run failed on
   `cargo fmt --check` (the harness's own formatting, nothing semantic); `cargo fmt --all` was the fix.
-  **`assess`** answers `risk: medium`, `nativeRisk: unassessable` — *"untracked files require an explicit
-  declaration"*, the same trap `odd/tasks/021-debt-advisories.md` L7 named — with the plan
+  **`assess`** answers `risk: medium`, `nativeRisk: unassessable` — _"untracked files require an explicit
+  declaration"_, the same trap `odd/tasks/021-debt-advisories.md` L7 named — with the plan
   `writerSelfVerification: true`, `independentVerifier: false`, `writerProfileSource: runtime`. The native
   review was therefore not started: this candidate is medium, no Task Size high-risk item fired, and the
   self-verification the plan asks for is the gate plus the differential above.
@@ -127,7 +127,7 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   reading of it, marked as such rather than presented as the reviewer's words (the store blindness of
   `odd/tasks/021-debt-advisories.md` L9, one review later):
   - **`R2-001`** readability, `WARNING`, `crates/cam-cli/tests/script_in_memory.rs:112-126` — the `save`
-    refusal test. Read: it asserts the message *contains* `writes no file` instead of pinning the whole
+    refusal test. Read: it asserts the message _contains_ `writes no file` instead of pinning the whole
     diagnostic, so a rewrite of that sentence would pass the test.
   - **`R2-002`** readability, `SUGGESTION`, `crates/cam-cli/src/script.rs:325-327` — the `document_path`
     match. Read: the `(_, Some(path))` arm decides on one field while the other two decide on both, so
@@ -149,9 +149,9 @@ Read **until `## Log`** before touching code; the Log is the record, not the bri
   - **`R4-002`** resilience, `SUGGESTION`, `crates/cam-ui/src/script_panel.rs:256-261` — the same block. Read:
     the whole document is cloned on the frame that pressed `Run`, on the UI thread, which is the cost the
     module's own "synchronous, deliberately" rule already accepts for the run but does not name for the copy.
-  Per the provider, these are **separate later work and never a reason to re-run this candidate**. The one
-  with a behavioural edge is `R4-001`: a future task that guards the commit would close it, and would need
-  its own candidate and its own review.
+    Per the provider, these are **separate later work and never a reason to re-run this candidate**. The one
+    with a behavioural edge is `R4-001`: a future task that guards the commit would close it, and would need
+    its own candidate and its own review.
 - **L9 (`R4-001` closed in its own candidate, and the review of that candidate was not due).** `5332383`
   carries T5: RED first — `a_run_that_changed_nothing_does_not_mark_the_document_modified` failed with
   `is_dirty()` true after a successful `# nothing to do` script — then the commit in `chrome.rs` became

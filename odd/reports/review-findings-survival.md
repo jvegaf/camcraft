@@ -12,10 +12,10 @@ session will read it.
 The review authority store lives in `.git/gentle-ai`, in the repository. What it keeps depends on the
 **contract version of the lineage**, not on the severity of anything it found:
 
-| Lineage kind | What it leaves | Finding prose |
-| --- | --- | --- |
-| `v2` (older) | `<lineage>/review-state.json`, 4.6 KB to 23.9 KB | **Yes**: `state.admitted_role_results[].value` is a `gentle-ai.review-admitted-result/v2` carrying the admitted artifact, findings included |
-| `compact-v2` (what this repository's facade runs now) | `terminal-consumption/v1/<hash>.json`, **259 bytes**: `schema`, `repository`, `target`, `lineage` and nothing else | **No.** There is no state directory, no artifact, and no record of a finding beyond the ids the closure envelope happened to print |
+| Lineage kind                                          | What it leaves                                                                                                     | Finding prose                                                                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v2` (older)                                          | `<lineage>/review-state.json`, 4.6 KB to 23.9 KB                                                                   | **Yes**: `state.admitted_role_results[].value` is a `gentle-ai.review-admitted-result/v2` carrying the admitted artifact, findings included |
+| `compact-v2` (what this repository's facade runs now) | `terminal-consumption/v1/<hash>.json`, **259 bytes**: `schema`, `repository`, `target`, `lineage` and nothing else | **No.** There is no state directory, no artifact, and no record of a finding beyond the ids the closure envelope happened to print          |
 
 Measured, not inferred:
 
@@ -61,7 +61,7 @@ The three changes that would end the loss, most useful first:
    results (`rejected-results/<lineage>/<lens>-<n>-<hash>.json`) is the shape, and keeping it for admitted
    ones costs a few kilobytes per review.
 2. **Or carry the findings' prose in the closure envelope.** Today it carries id, lens, severity, location and
-   disposition, which is enough to *name* a finding and not enough to *understand* one. The relay already has
+   disposition, which is enough to _name_ a finding and not enough to _understand_ one. The relay already has
    the text in hand when it builds that envelope.
 3. **Or expose a read path**: a verb that prints the admitted artifacts of a lineage while its authority is
    live, so a caller can record them before acknowledging. The window is the transaction, so the verb has to

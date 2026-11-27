@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "purpose": "Referencias visuales canónicas para la UI de camcraft. El review compara renders reales de la UI contra estos PNGs. Estas referencias NO se sobreescriben automáticamente.",
+  "how_to_run": "Capturar la escena al tamaño de referencia y comparar contra fixtures/ui/<id>.png (sway headless/grim o harness webview cuando esté cableado).",
+  "diff_output": "target/ui-review-diffs/<id>.actual.png y <id>.diff.png",
+  "update_policy": "Las referencias en fixtures/ui son read-only para el tooling. Si una referencia cambia intencionalmente, reemplazá el PNG a mano y revisá el diff antes de commitear.",
+  "scenes": [
+    {
+      "id": "start-screen",
+      "reference": "start-screen.png",
+      "artboard": "design/start-screen/",
+      "artboard_section": "Start screen · misma familia",
+      "covers": [
+        "Start screen modal/layout",
+        "Brand/welcome copy",
+        "New/Open actions",
+        "Recent projects list",
+        "Dark theme shell background"
+      ],
+      "roadmap_gaps": []
+    },
+    {
+      "id": "floating-shell",
+      "reference": "floating-shell.png",
+      "artboard": "design/camcraft-workbench-v2/02-floating-studio.html",
+      "artboard_section": "Floating Studio main shell",
+      "covers": [
+        "Top bar (mark, product, document, search placeholder, layout/theme/settings actions)",
+        "Floating browser/palette panel over canvas",
+        "Floating inspector panel over canvas",
+        "Status bar zones",
+        "Canvas-dominant dark layout and border hierarchy"
+      ],
+      "roadmap_gaps": [
+        "E6.1 Board layer identity: UI still draws generic layers; artboard shows role-specific board entries.",
+        "E6.2 Project tree: no board→layers→operations tree in cam-ui; browser content differs from artboard structure.",
+        "E6.3 Operation forms: no PCB operation forms in cam-ui; inspector content differs from artboard drill form.",
+        "E6.4 Tool panel bound to PCB operations: partial.",
+        "E6.5 Shortcuts/Ctrl+S: partial.",
+        "E6.6 Integrated preview+simulation: partial, not PCB-specific."
+      ]
+    },
+    {
+      "id": "settings",
+      "reference": "settings.png",
+      "artboard": "design/camcraft-workbench-v2/04-settings.html",
+      "artboard_section": "Settings modal",
+      "covers": [
+        "Settings modal layout over shell",
+        "Navigation pages and search/title/footer",
+        "General page controls",
+        "Appearance/theme controls",
+        "Canvas snapping control"
+      ],
+      "roadmap_gaps": [
+        "Settings pages beyond wired controls may show placeholders by design until their backing state exists."
+      ]
+    }
+  ]
+}

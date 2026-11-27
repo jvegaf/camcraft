@@ -1,7 +1,7 @@
 # Nesting (M9)
 
-Nesting is the tenth milestone, and it emits no program at all: it answers *which board, and where on
-it*, for parts that are already drawn. Two owner decisions fix its shape — D4,
+Nesting is the tenth milestone, and it emits no program at all: it answers _which board, and where on
+it_, for parts that are already drawn. Two owner decisions fix its shape — D4,
 "Implementar nesting heurístico propio en v1", and S7, "Ship rectangle nesting first (covers cabinetry
 parts), free profiles second" — and they are the same decision seen twice: an **own** heuristic engine
 rather than a licensed one, rectangles before contours. So the milestone is two nesters and one
@@ -40,16 +40,16 @@ unplaced: none
 stored from there (S3). The distinction is the milestone's one arithmetic, and §"The one arithmetic"
 below is where it lives.
 
-| Piece | Where |
-| --- | --- |
-| Maxrects, the guillotine pass and the auto rule between them | `cam-geom::nest::{NestAlgorithm, NestOptions, NestPlan}` |
-| The rectangle plan's certificate (inside the sheet, a gap apart on it) | `cam-geom::nest::NestPlan::certifies` |
-| The free-profile no-fit heuristic and its coarse lattice | `cam-geom::nest_profile::{ProfileNestOptions, ProfileNestPlan}` |
-| The profile plan's certificate (inside the material, disjoint from every no-fit region) | `cam-geom::nest_profile::ProfileNestPlan::certifies` |
-| The `nesting` section: sheets, parts, placements, cost, and twelve refusals | `cam-model::Nesting`, `check_nesting` |
-| The one arithmetic for utilisation and waste | `cam-model::Document::nesting_utilisation`, `placement_footprint` |
-| `nest` — its flags, refusals, report, exit `7` and write-back | `cam-cli` |
-| The contract row for the section | this document, and `odd/tasks/020-m9-nesting.md` |
+| Piece                                                                                   | Where                                                             |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Maxrects, the guillotine pass and the auto rule between them                            | `cam-geom::nest::{NestAlgorithm, NestOptions, NestPlan}`          |
+| The rectangle plan's certificate (inside the sheet, a gap apart on it)                  | `cam-geom::nest::NestPlan::certifies`                             |
+| The free-profile no-fit heuristic and its coarse lattice                                | `cam-geom::nest_profile::{ProfileNestOptions, ProfileNestPlan}`   |
+| The profile plan's certificate (inside the material, disjoint from every no-fit region) | `cam-geom::nest_profile::ProfileNestPlan::certifies`              |
+| The `nesting` section: sheets, parts, placements, cost, and twelve refusals             | `cam-model::Nesting`, `check_nesting`                             |
+| The one arithmetic for utilisation and waste                                            | `cam-model::Document::nesting_utilisation`, `placement_footprint` |
+| `nest` — its flags, refusals, report, exit `7` and write-back                           | `cam-cli`                                                         |
+| The contract row for the section                                                        | this document, and `odd/tasks/020-m9-nesting.md`                  |
 
 ## What S1–S4 decided
 
@@ -57,18 +57,18 @@ The owner's four answers (L2) are the specification M9 had, and the decisions be
 They are recorded as D-M9-1 … D-M9-10 in the feature document; the ones that are law for a caller are
 here with what pins them.
 
-| Decision | What it means | Where it is pinned |
-| --- | --- | --- |
-| A **master document** holds N sheets and N instances (S1) | A part is a selection of the document's own entities plus an instance count. There is no parts library and no second document, and the instance count is the nester's unit of work | `NestingPart`, and the CLI placing one entry per instance |
-| The **placements** are stored in the document (S2) | A run writes `NestingPlacement`s, never a side file, and the document is rewritten in place or at `--out` | `a_nesting_section_round_trips_losslessly`, `nest_writes_the_out_path_and_leaves_the_input_document_alone` |
-| The **cost** is both the report and a stored field (S3) | `NestingCost` carries `sheets_used`, `utilisation` and `waste`; the report prints the same three from the same derivation | `the_utilisation_is_the_placed_area_over_the_used_sheet_area`, and every CLI golden |
-| The **sheets** are authored and live in the document (S4) | No sheet library, no default board: a run with no authored board names `--sheets` and exits `2`, and `--sheets` **replaces** the document's own list | `nest_refuses_a_document_with_no_parts_or_no_boards_by_name` |
-| A placement's `position` is the **placed** footprint's lower-left corner, and `rotation` turns the part before anchoring (D-M9-1) | A quarter turn about the part's own origin would put the footprint at negative X — the defect T1's tests caught — so the anchor is the placed corner | `a_rotated_placement_is_measured_by_its_turned_footprint`, `a_quarter_turn_places_a_part_the_board_only_holds_sideways` |
-| A placement's **footprint** is the part's turned axis-aligned bounding box (D-M9-2) | Load-time containment and overlap are therefore conservative for a free profile: the box is bigger than the part, never smaller | the L bracket's `0.200` in the report below |
-| Overlap reuses `cam_geom::winding::relation` (D-M9-3) | `Crossing` and containment overlap; `Touching` does not, because parts nested edge to edge are the point of nesting — except equal bounds, two copies on one spot, which is refused explicitly | `two_placements_that_overlap_on_a_sheet_are_refused`, `two_placements_that_share_an_edge_are_accepted` |
-| The **gap** is between parts and never insets the board's edges (D-M9-7) | A part exactly the board's size fits flush on all four edges; whether the board's edge leaves room for the cutter is the author's business | `the_certificate_holds_at_the_sheets_own_edges`, `a_part_flush_against_a_rectangular_board_is_placed_and_certified` |
-| A quarter turn is a **fallback**, never a tie-break (D-M9-8) | A part that fits upright is never turned, in either nester, which is why the cabinetry fixture's plan is all `None` | `a_part_is_turned_only_when_it_does_not_fit_upright`, `a_part_is_turned_only_when_no_upright_placement_exists` |
-| Two plans are equal only when the algorithm is (D-M9-9) | Identical placements from maxrects and guillotine are unequal plans; deliberate, and a caller comparing plans has to know it | `the_auto_rule_picks_the_better_of_the_two_and_names_it` |
+| Decision                                                                                                                          | What it means                                                                                                                                                                                  | Where it is pinned                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| A **master document** holds N sheets and N instances (S1)                                                                         | A part is a selection of the document's own entities plus an instance count. There is no parts library and no second document, and the instance count is the nester's unit of work             | `NestingPart`, and the CLI placing one entry per instance                                                               |
+| The **placements** are stored in the document (S2)                                                                                | A run writes `NestingPlacement`s, never a side file, and the document is rewritten in place or at `--out`                                                                                      | `a_nesting_section_round_trips_losslessly`, `nest_writes_the_out_path_and_leaves_the_input_document_alone`              |
+| The **cost** is both the report and a stored field (S3)                                                                           | `NestingCost` carries `sheets_used`, `utilisation` and `waste`; the report prints the same three from the same derivation                                                                      | `the_utilisation_is_the_placed_area_over_the_used_sheet_area`, and every CLI golden                                     |
+| The **sheets** are authored and live in the document (S4)                                                                         | No sheet library, no default board: a run with no authored board names `--sheets` and exits `2`, and `--sheets` **replaces** the document's own list                                           | `nest_refuses_a_document_with_no_parts_or_no_boards_by_name`                                                            |
+| A placement's `position` is the **placed** footprint's lower-left corner, and `rotation` turns the part before anchoring (D-M9-1) | A quarter turn about the part's own origin would put the footprint at negative X — the defect T1's tests caught — so the anchor is the placed corner                                           | `a_rotated_placement_is_measured_by_its_turned_footprint`, `a_quarter_turn_places_a_part_the_board_only_holds_sideways` |
+| A placement's **footprint** is the part's turned axis-aligned bounding box (D-M9-2)                                               | Load-time containment and overlap are therefore conservative for a free profile: the box is bigger than the part, never smaller                                                                | the L bracket's `0.200` in the report below                                                                             |
+| Overlap reuses `cam_geom::winding::relation` (D-M9-3)                                                                             | `Crossing` and containment overlap; `Touching` does not, because parts nested edge to edge are the point of nesting — except equal bounds, two copies on one spot, which is refused explicitly | `two_placements_that_overlap_on_a_sheet_are_refused`, `two_placements_that_share_an_edge_are_accepted`                  |
+| The **gap** is between parts and never insets the board's edges (D-M9-7)                                                          | A part exactly the board's size fits flush on all four edges; whether the board's edge leaves room for the cutter is the author's business                                                     | `the_certificate_holds_at_the_sheets_own_edges`, `a_part_flush_against_a_rectangular_board_is_placed_and_certified`     |
+| A quarter turn is a **fallback**, never a tie-break (D-M9-8)                                                                      | A part that fits upright is never turned, in either nester, which is why the cabinetry fixture's plan is all `None`                                                                            | `a_part_is_turned_only_when_it_does_not_fit_upright`, `a_part_is_turned_only_when_no_upright_placement_exists`          |
+| Two plans are equal only when the algorithm is (D-M9-9)                                                                           | Identical placements from maxrects and guillotine are unequal plans; deliberate, and a caller comparing plans has to know it                                                                   | `the_auto_rule_picks_the_better_of_the_two_and_names_it`                                                                |
 
 Three more rules are smaller and still refusals rather than defaults: a duplicate sheet or part id is
 refused through the model's existing `DuplicateId` (D-M9-4), because a lookup by id must be
@@ -87,10 +87,10 @@ fixed preference is what makes the answer reproducible. A plan names the algorit
 never `Auto`, so a report says which heuristic packed rather than leaving the caller to infer it from a
 module path.
 
-* **Maxrects** keeps a list of maximal free rectangles, splits every free rectangle a placement touches
+- **Maxrects** keeps a list of maximal free rectangles, splits every free rectangle a placement touches
   into the strips around it, and prunes the ones another contains. Because those rectangles overlap, a
   split can leave two adjacent strips where a single wider one would do.
-* **Guillotine** keeps free rectangles that never overlap: it packs into one and splits the remainder
+- **Guillotine** keeps free rectangles that never overlap: it packs into one and splits the remainder
   with a single cut running the **full length** of the rectangle being split, along the axis with more
   room left. That is the cut a panel saw can actually make, and it is why guillotine can win.
 
@@ -118,14 +118,14 @@ than the board is **unplaced**, not an error: it opens no board.
 Each nester exposes the promise as **one predicate** instead of restating the arithmetic at every call
 site — `StepoverLaw::covers`'s precedent from M8 — so a plan and its certificate cannot disagree.
 
-* `NestPlan::certifies(sheet, gap)` states that every placement lies **inside its sheet**, the sheet's
+- `NestPlan::certifies(sheet, gap)` states that every placement lies **inside its sheet**, the sheet's
   own edges included, and that every pair of placements **on one sheet** is at least the authored
   `gap` apart, measured as the larger of the two axis clearances. That is also the statement that no
-  two placements overlap. It is a *check*, not a precondition: the packer builds plans that satisfy it
+  two placements overlap. It is a _check_, not a precondition: the packer builds plans that satisfy it
   by construction, and a caller asserts it to prove the plan it was handed did. A gap that is not a
   distance certifies nothing, and a plan nested with one gap is not certified by asserting a smaller
   one.
-* `ProfileNestPlan::certifies(sheet, gap)` states that every outline is **inside the board's material**
+- `ProfileNestPlan::certifies(sheet, gap)` states that every outline is **inside the board's material**
   and that every ordered pair on one board is `Disjoint` from the other outline **and** from the other
   outline's no-fit region — the region a candidate may not enter, computed by growing the placed
   outline by the gap. Pairs are checked in one direction only, because the distance between two
@@ -145,11 +145,11 @@ Building it needs a boolean **union**: one placed part grown around each of its 
 and no intersection — so the polygon cannot be built, and the module claims no NFP anywhere. What it
 claims instead is the pair of properties that make a heuristic usable:
 
-* **Sound.** A placement is accepted only when the candidate's own outline is `Disjoint` from every
+- **Sound.** A placement is accepted only when the candidate's own outline is `Disjoint` from every
   outline already on that board, and from every no-fit region on it. Overlap is therefore impossible,
   not unlikely, and the no-overlap half never depends on the offset kernel's accuracy: it is decided
   between the parts themselves. The two halves are kept separate for that reason.
-* **Incomplete, and measured.** Candidate anchors come from a coarse lattice of `--step` millimetres
+- **Incomplete, and measured.** Candidate anchors come from a coarse lattice of `--step` millimetres
   (default **10**), so a placement that exists between two lattice points is missed.
 
 The price is pinned with every number written out (`the_coarse_search_step_misses_a_tight_placement_that_exists`):
@@ -162,14 +162,14 @@ certified and reports nothing unplaced. The step is the whole of the miss: the s
 **5** finds a one-board placement, and it lands at **`(50, 0)`** — the lattice point past the no-fit
 region, not on its corner. That second fact is the module's other declared cost: `Relation::Disjoint`
 is strict, so contact is refused, and a touching candidate is refused because a candidate lying
-*inside* a no-fit region and touching its boundary — a thin cap hugging the grown edge of the placed
+_inside_ a no-fit region and touching its boundary — a thin cap hugging the grown edge of the placed
 part — is also `Touching`. Refusing contact means the plan pays **one search step beyond the gap**,
 measured here as 10 mm where the gap is 5, and a zero gap means "further apart than touching": fewer
 placements than an exact nester would find, never an illegal one.
 
 Two more rules complete it. The gap is honoured as a **floor** — no two parts are closer than the gap,
 and the lattice decides how much further apart neighbours end up — and it is the room a cut needs
-*between* parts, so a part may sit flush against the board's own edge. A quarter turn is offered only
+_between_ parts, so a part may sit flush against the board's own edge. A quarter turn is offered only
 for a part that has **no** upright placement on any open board, never as a tie-break. Boards open one at
 a time, only when the parts already placed leave no room; the first anchor tried on an empty board is
 the board's own lower-left corner, so a part that fits an empty convex board is never reported unplaced.
@@ -185,7 +185,7 @@ stating in full because it is the module's soundness.
 Inside-ness is the board's **material**, never the mere absence of a crossing. A candidate whose outline
 meets the board nowhere is inside when `Relation::FirstInside` says so: its outline is connected and
 meets no boundary, so it and the material it encloses lie in the material's interior. A candidate that
-*touches* the board's boundary — a part flush against an edge, which is legal — is inside only when the
+_touches_ the board's boundary — a part flush against an edge, which is legal — is inside only when the
 material is on the part's side of that boundary, which is decided by **insetting the part by
 `INSET_STEP`** and asking the same relation again: a flush part insets to a part strictly inside the
 board, while a part outside a concave board insets to a part still outside it. `INSET_STEP` is **0.01
@@ -306,21 +306,21 @@ Twelve load-time refusals of its own, plus the model's existing duplicate-id rul
 it refused rather than a default or silence. The messages below are the `#[error]` templates, so `{…}`
 is the value the refusal names.
 
-| Refusal | Message |
-| --- | --- |
-| `NonPositiveSheetDimension` | `nesting sheet {sheet:?} {field} must be positive, got {value} mm` |
-| `DuplicateId` (kind `nesting sheet` / `nesting part`) | the model's existing rule, reused so a lookup by id is unambiguous |
-| `NestingPartTakesNoEntities` | `nesting part {part:?} names no entity ids, so there is nothing to cut it from` |
-| `NestingPartUnknownEntity` | `nesting part {part:?} references unknown entity {entity:?}` |
-| `NestingPlacementUnknownPart` | `nesting placement names unknown part {part:?}` |
-| `NestingPlacementUnknownSheet` | `nesting placement names unknown sheet {sheet:?}` |
-| `NestingPlacementPositionNotUsable` | `nesting placement of part {part:?} must sit at a non-negative finite point of its sheet, got {x} mm and {y} mm` |
-| `NestingPlacementOutsideSheet` | `nesting placement of part {part:?} on sheet {sheet:?} leaves the sheet: its footprint reaches x {x} mm and y {y} mm, the sheet is {width} mm by {height} mm` |
-| `NestingPlacementsOverlap` | `nesting placements of parts {first:?} and {second:?} overlap on sheet {sheet:?}` |
-| `NestingInstanceCountMismatch` | `nesting part {part:?} asks for {wanted} instances but {placed} placements name it` |
-| `NestingCostSheetCountMismatch` | `nesting cost records {recorded} sheets used but the placements name {placed} distinct sheets` |
-| `NestingCostFractionOutOfRange` | `nesting cost {field} must be a finite fraction between 0 and 1, got {value}` |
-| `NestingCostFractionMismatch` | `nesting cost {field} {recorded} is not the {derived} the document's own placements and sheets derive, within {tolerance}` |
+| Refusal                                               | Message                                                                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NonPositiveSheetDimension`                           | `nesting sheet {sheet:?} {field} must be positive, got {value} mm`                                                                                            |
+| `DuplicateId` (kind `nesting sheet` / `nesting part`) | the model's existing rule, reused so a lookup by id is unambiguous                                                                                            |
+| `NestingPartTakesNoEntities`                          | `nesting part {part:?} names no entity ids, so there is nothing to cut it from`                                                                               |
+| `NestingPartUnknownEntity`                            | `nesting part {part:?} references unknown entity {entity:?}`                                                                                                  |
+| `NestingPlacementUnknownPart`                         | `nesting placement names unknown part {part:?}`                                                                                                               |
+| `NestingPlacementUnknownSheet`                        | `nesting placement names unknown sheet {sheet:?}`                                                                                                             |
+| `NestingPlacementPositionNotUsable`                   | `nesting placement of part {part:?} must sit at a non-negative finite point of its sheet, got {x} mm and {y} mm`                                              |
+| `NestingPlacementOutsideSheet`                        | `nesting placement of part {part:?} on sheet {sheet:?} leaves the sheet: its footprint reaches x {x} mm and y {y} mm, the sheet is {width} mm by {height} mm` |
+| `NestingPlacementsOverlap`                            | `nesting placements of parts {first:?} and {second:?} overlap on sheet {sheet:?}`                                                                             |
+| `NestingInstanceCountMismatch`                        | `nesting part {part:?} asks for {wanted} instances but {placed} placements name it`                                                                           |
+| `NestingCostSheetCountMismatch`                       | `nesting cost records {recorded} sheets used but the placements name {placed} distinct sheets`                                                                |
+| `NestingCostFractionOutOfRange`                       | `nesting cost {field} must be a finite fraction between 0 and 1, got {value}`                                                                                 |
+| `NestingCostFractionMismatch`                         | `nesting cost {field} {recorded} is not the {derived} the document's own placements and sheets derive, within {tolerance}`                                    |
 
 The kernels refuse their own inputs by name too, through the crate's one `GeomError` (M9's T2b folded
 the nester's first, private error enum back into it): `GapNotMeasurable`, `SheetNotMeasurable`,
@@ -424,7 +424,7 @@ artifact had to bind `correction_target_identity` (the provider's `5226b038…`)
 `target_identity`, the transcription error that got the previous artifact refused.
 
 **Neither range contains `a5a82fe`, and that is the milestone's honest gap.** The document format — the
-`nesting` section, its refusals and the one utilisation — is the *base* of the first candidate,
+`nesting` section, its refusals and the one utilisation — is the _base_ of the first candidate,
 which git reads as excluded, and the full-range candidate that would have included it was the one refused
 with `lens_context_budget_exceeded`; once HEAD moved past it, that range could not be re-cut. `bc22942`,
 the `nest` command itself, sits between the two ranges and is covered by neither. So **M9's document
@@ -493,13 +493,13 @@ pre-existing command and nothing else on that surface moving at all.
 
 ## Where the record lives
 
-| Question | Where |
-| --- | --- |
-| What M9 had to be, and every decision behind it | `odd/tasks/020-m9-nesting.md` — S1 … S7, T1 … T6, L1 … L11 |
+| Question                                                   | Where                                                        |
+| ---------------------------------------------------------- | ------------------------------------------------------------ |
+| What M9 had to be, and every decision behind it            | `odd/tasks/020-m9-nesting.md` — S1 … S7, T1 … T6, L1 … L11   |
 | What the `nesting` section stores, and the document schema | this document, and `crates/cam-model/src/lib.rs`'s `Nesting` |
-| How the simulation authorises a cut | [m5-simulation.md](m5-simulation.md#the-target-surface) |
-| How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
-| How a V-carve's depth field behaves | [m7-vcarve.md](m7-vcarve.md) |
-| How a moulding's cross-section behaves | [m8-moulding.md](m8-moulding.md) |
-| What M9 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.12 |
-| The project-level summary | [README.md](../../README.md) |
+| How the simulation authorises a cut                        | [m5-simulation.md](m5-simulation.md#the-target-surface)      |
+| How the depth-variant strategies behave                    | [m6-toolpaths.md](m6-toolpaths.md)                           |
+| How a V-carve's depth field behaves                        | [m7-vcarve.md](m7-vcarve.md)                                 |
+| How a moulding's cross-section behaves                     | [m8-moulding.md](m8-moulding.md)                             |
+| What M9 delivered, and what it cost                        | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.12     |
+| The project-level summary                                  | [README.md](../../README.md)                                 |

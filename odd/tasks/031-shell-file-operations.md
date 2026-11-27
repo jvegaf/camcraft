@@ -15,11 +15,11 @@ picker. Read until `## Log` before touching code.
 
 ## Tasks
 
-| ID | Task | S | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `4b2b188` — `NewProject` action + `Command::NewProject` + host-free reset + material dialog | S1 | parent | `4b2b188` |
-| T2 | ✅ delivered `4b2b188` — `RequestImportFile` action + `Command::Import` wired to host picker | S2 | parent | `4b2b188` |
-| T3 | ✅ delivered `a377741`, `248d28d` — import modal reports parse and offers tolerance/join/smooth/position/adjust-material options before applying | S3 | parent | `a377741`, `248d28d` |
+| ID  | Task                                                                                                                                             | S   | Route  | Commit               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --- | ------ | -------------------- |
+| T1  | ✅ delivered `4b2b188` — `NewProject` action + `Command::NewProject` + host-free reset + material dialog                                         | S1  | parent | `4b2b188`            |
+| T2  | ✅ delivered `4b2b188` — `RequestImportFile` action + `Command::Import` wired to host picker                                                     | S2  | parent | `4b2b188`            |
+| T3  | ✅ delivered `a377741`, `248d28d` — import modal reports parse and offers tolerance/join/smooth/position/adjust-material options before applying | S3  | parent | `a377741`, `248d28d` |
 
 ## Log
 

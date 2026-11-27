@@ -42,13 +42,13 @@ Feature document for milestone **M12** of `odd/roadmap/index.md`. Read **until `
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | `cam-export`: the crate, its `Format`/error/dispatch shape mirroring `cam-import`'s, and the **DXF** writer — one `LWPOLYLINE` per contour carrying each vertex's bulge verbatim, `70=1` when closed, `$INSUNITS=4`, the layer table in document order | S2 S3 S5 | worker | `3af3e7b` |
-| T2 | The **SVG** writer — one `<path>` per contour with `A` derived from the same bulges and the Y reflection the reader inverts, `viewBox` and size derived from the document's own bounds so the mm scale is 1.0 | S3 S5 | worker | `3af3e7b` |
-| T3 | Round-trip tests: export → `cam-import` → the same geometry and layer order up to the known 10 mm placement, for both formats, with the loss each format carries asserted explicitly | S4 S5 | parent | `3af3e7b`, `4cf2627` |
-| T4 | `cam-cli export --format dxf\|svg --out`, the help row, `docs/format.md`'s command and exit-code rows, and the roadmap's evidence | S6 | parent | `3af3e7b`, `3671d0b` |
-| T5 | The review of this candidate | — | parent | `4cf2627` |
+| ID  | Task                                                                                                                                                                                                                                                   | Specs    | Route  | Commit               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------ | -------------------- |
+| T1  | `cam-export`: the crate, its `Format`/error/dispatch shape mirroring `cam-import`'s, and the **DXF** writer — one `LWPOLYLINE` per contour carrying each vertex's bulge verbatim, `70=1` when closed, `$INSUNITS=4`, the layer table in document order | S2 S3 S5 | worker | `3af3e7b`            |
+| T2  | The **SVG** writer — one `<path>` per contour with `A` derived from the same bulges and the Y reflection the reader inverts, `viewBox` and size derived from the document's own bounds so the mm scale is 1.0                                          | S3 S5    | worker | `3af3e7b`            |
+| T3  | Round-trip tests: export → `cam-import` → the same geometry and layer order up to the known 10 mm placement, for both formats, with the loss each format carries asserted explicitly                                                                   | S4 S5    | parent | `3af3e7b`, `4cf2627` |
+| T4  | `cam-cli export --format dxf\|svg --out`, the help row, `docs/format.md`'s command and exit-code rows, and the roadmap's evidence                                                                                                                      | S6       | parent | `3af3e7b`, `3671d0b` |
+| T5  | The review of this candidate                                                                                                                                                                                                                           | —        | parent | `4cf2627`            |
 
 T1 and T2 landed together in `3af3e7b` — the crate, both writers and their three test files in one commit.
 T3's comparator was rewritten in `4cf2627`, which is the same commit as T5's seven fixes and its Log section
@@ -125,6 +125,6 @@ T3's comparator was rewritten in `4cf2627`, which is the same commit as T5's sev
      them.
   7. `R2-001`: the SVG module's identity omitted `min.y` from `Page::place`'s formula, so the sentence that
      explains the Y reflection was false for any page not anchored at zero.
-  What the review did **not** find is as telling: neither writer lost an arc, a layer order or a closed
-  contour, and the round trip held through both formats on the first run — the byte-level tests the two
-  worker units were built against did their job.
+     What the review did **not** find is as telling: neither writer lost an arc, a layer order or a closed
+     contour, and the round trip held through both formats on the first run — the byte-level tests the two
+     worker units were built against did their job.

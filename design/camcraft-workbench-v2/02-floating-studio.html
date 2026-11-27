@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camcraft — Floating Studio</title>
+<style>
+  :root {
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
+    --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    --sel:#6fd3e8; --sel-soft:rgba(111,211,232,.13);
+    --cut:#f5a623; --cut-soft:rgba(245,166,35,.13);
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    --radius-control:4px; --radius-panel:6px; --radius-overlay:8px; --radius-dialog:10px;
+    --shadow-float:0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42);
+    --font: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:#0a0c10; color:var(--text); font:13px/1.4 var(--font); }
+  button,input { font:inherit; color:inherit; background:none; border:none; }
+  button { cursor:pointer; }
+  .page { padding:24px; display:flex; flex-direction:column; gap:20px; }
+  .intro { max-width:1320px; margin:0 auto; width:100%; display:flex; justify-content:space-between; gap:24px; align-items:flex-end; }
+  .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-off); margin:0 0 6px; }
+  h1 { margin:0; font-size:28px; line-height:1.15; font-weight:600; color:var(--text-hi); }
+  .lede { margin:8px 0 0; max-width:760px; color:var(--text-dim); font-size:14px; line-height:1.5; }
+  .chip-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { padding:4px 10px; border-radius:999px; background:var(--bg-raised); border:1px solid var(--line-hair); font-size:11px; color:var(--text-dim); }
+  .chip strong { color:var(--text); font-weight:500; }
+
+  /* Shell */
+  .shell { width:1440px; max-width:100%; height:900px; margin:0 auto; position:relative; overflow:hidden; border-radius:12px; border:1px solid var(--line-strong); box-shadow:0 24px 80px rgba(0,0,0,.45); background:var(--bg-canvas); }
+  .canvas-bg { position:absolute; inset:0; background:
+    linear-gradient(90deg, rgba(38,45,54,.32) 1px, transparent 1px) 0 0/80px 80px,
+    linear-gradient(180deg, rgba(38,45,54,.32) 1px, transparent 1px) 0 0/80px 80px,
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(111,211,232,.035), transparent 70%), var(--bg-canvas); }
+  .board-svg { position:absolute; inset:52px 0 34px 0; width:100%; height:calc(100% - 86px); }
+
+  /* Top bar - SolidCraft family: compact, command search central */
+  .topbar { position:absolute; top:0; left:0; right:0; height:48px; display:flex; align-items:center; gap:10px; padding:0 12px; background:rgba(23,27,33,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line-hair); z-index:30; }
+  .mark { width:26px; height:26px; border-radius:7px; display:grid; place-items:center; background:linear-gradient(180deg,#22303b,#18222b); border:1px solid var(--line-strong); color:var(--sel); font:700 12px var(--font); flex:none; }
+  .product { font-size:15px; font-weight:600; color:var(--text-hi); letter-spacing:-.01em; }
+  .sep { width:1px; height:18px; background:var(--line-hair); flex:none; }
+  .workspace { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; color:var(--text); font-size:12px; border:1px solid transparent; }
+  .workspace:hover { background:var(--bg-raised); border-color:var(--line-hair); }
+  .workspace .muted { color:var(--text-off); }
+  .search { margin:0 auto; width:380px; max-width:40vw; height:30px; border-radius:6px; background:rgba(18,21,26,.75); border:1px solid var(--line-strong); display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-dim); font-size:12px; }
+  .search:focus-within { border-color:rgba(111,211,232,.45); box-shadow:0 0 0 2px rgba(111,211,232,.12); }
+  .search kbd { margin-left:auto; font:11px var(--mono); color:var(--text-off); padding:1px 5px; border-radius:3px; background:var(--bg-raised); border:1px solid var(--line-hair); }
+  .top-actions { display:flex; align-items:center; gap:4px; }
+  .icon-btn { width:30px; height:30px; display:grid; place-items:center; border-radius:6px; color:var(--text-dim); }
+  .icon-btn:hover { background:var(--bg-raised); color:var(--text-hi); }
+  .icon-btn:focus-visible, .btn:focus-visible, .nav-item:focus-visible, .row:focus-visible, .workspace:focus-visible, .tool:focus-visible, .action:focus-visible, .recent:focus-visible { outline:2px solid var(--sel); outline-offset:-1px; }
+  .layout-pill { display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:6px; border:1px solid var(--line-hair); background:var(--bg-raised); font-size:11px; color:var(--text-dim); }
+  .layout-pill b { color:var(--text); font-weight:500; }
+
+  /* Floating cards - SolidCraft family: primary border, secondary header divider, tertiary internal separators */
+  .float { position:absolute; background:rgba(23,27,33,.94); backdrop-filter:blur(10px); border:1px solid var(--line-strong); border-radius:var(--radius-overlay); box-shadow:var(--shadow-float); z-index:20; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .float .head { height:38px; padding:0 10px 0 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line-hair); background:rgba(30,36,43,.35); flex:none; }
+  .float .head h2 { margin:0; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); }
+  .float .head .meta { margin-left:auto; font:11px var(--mono); color:var(--text-off); }
+  .float .head .head-btn { width:24px; height:24px; display:grid; place-items:center; border-radius:4px; color:var(--text-off); }
+  .float .head .head-btn:hover { background:var(--bg-raised); color:var(--text); }
+  .float .body { padding:10px; overflow:auto; min-height:0; }
+  .browser { top:64px; left:16px; width:284px; max-height:calc(100% - 114px); }
+  .inspector { top:64px; right:16px; width:324px; max-height:calc(100% - 114px); }
+
+  .section { margin-bottom:12px; }
+  .section:last-child { margin-bottom:0; }
+  .section h3 { margin:0 0 6px; padding:0 4px; font-size:11px; color:var(--text-off); font-weight:500; text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:8px; }
+  .section h3::after { content:""; flex:1; height:1px; background:var(--line-hair); opacity:.9; }
+  .nav-item,.row { width:100%; display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px; text-align:left; font-size:12px; color:var(--text); }
+  .nav-item:hover,.row:hover { background:var(--bg-raised); }
+  .nav-item[aria-current="true"],.row[aria-current="true"] { background:var(--sel-soft); color:var(--text-hi); box-shadow:inset 0 0 0 1px rgba(111,211,232,.12); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--line-strong); flex:none; }
+  .dot.copper{background:#c47a2c}.dot.drill{background:#7cc7ff}.dot.cut{background:var(--cut)}.dot.ok{background:var(--ok)}
+  .count { margin-left:auto; font:11px var(--mono); color:var(--text-off); white-space:nowrap; }
+  .badge { font-size:10px; padding:1px 6px; border-radius:999px; border:1px solid var(--line-hair); color:var(--text-dim); }
+  .badge.ok { color:var(--ok); border-color:rgba(94,194,127,.25); background:rgba(94,194,127,.08); }
+
+  /* Inspector fields */
+  .field { display:grid; gap:4px; margin-bottom:10px; }
+  .field label { font-size:11px; color:var(--text-dim); padding:0 1px; }
+  .input { height:30px; padding:0 10px; border-radius:var(--radius-control); background:rgba(18,21,26,.72); border:1px solid var(--line-strong); display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text); }
+  .input .u { color:var(--text-off); font:11px var(--mono); }
+  .kv { display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12px; padding:10px 0 0; border-top:1px solid var(--line-hair); margin:2px 0 0; }
+  .kv dt { color:var(--text-dim); } .kv dd { margin:0; font:11px var(--mono); color:var(--text); }
+  .state-card { padding:10px; border-radius:6px; background:rgba(94,194,127,.08); border:1px solid rgba(94,194,127,.22); color:var(--text); font-size:12px; line-height:1.45; }
+  .state-card strong { color:var(--ok); font-weight:500; }
+
+  /* Canvas overlays */
+  .tool-rail { position:absolute; top:64px; left:316px; display:flex; gap:6px; z-index:20; }
+  .tool { height:32px; padding:0 10px; border-radius:6px; background:rgba(23,27,33,.92); border:1px solid var(--line-strong); font-size:12px; color:var(--text); display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,.18); }
+  .tool:hover { background:var(--bg-raised); color:var(--text-hi); }
+  .tool.primary { color:var(--cut); border-color:rgba(245,166,35,.28); background:rgba(35,30,20,.92); }
+  .hud { position:absolute; right:356px; top:64px; display:flex; gap:8px; z-index:20; }
+  .hud-card { padding:7px 10px; border-radius:6px; background:rgba(23,27,33,.9); border:1px solid var(--line-strong); font-size:11px; color:var(--text-dim); box-shadow:0 4px 16px rgba(0,0,0,.18); }
+  .hud-card b { color:var(--text); font-weight:500; } .hud-card .sel { color:var(--sel); }
+
+  /* Status bar */
+  .status { position:absolute; left:0; right:0; bottom:0; height:34px; display:flex; align-items:center; gap:12px; padding:0 14px; background:rgba(23,27,33,.92); backdrop-filter:blur(8px); border-top:1px solid var(--line-hair); font-size:11px; color:var(--text-dim); z-index:30; }
+  .status .mono { font:11px var(--mono); color:var(--text); }
+  .status .ok { color:var(--ok); }
+  .status .spacer { flex:1; }
+  .status .sep { width:1px; height:14px; background:var(--line-hair); }
+
+  /* Start screen */
+  .start-demo { max-width:1440px; margin:0 auto; width:100%; }
+  .start-shell { height:520px; border:1px solid var(--line-strong); border-radius:12px; overflow:hidden; background:var(--bg-canvas); position:relative; box-shadow:0 24px 80px rgba(0,0,0,.35); display:grid; place-items:center; }
+  .start-shell::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px; }
+  .start-card { position:relative; width:940px; max-width:calc(100% - 48px); display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .s-panel { background:rgba(23,27,33,.95); border:1px solid var(--line-strong); border-radius:12px; box-shadow:var(--shadow-float); padding:24px; }
+  .s-panel h2 { margin:0; font-size:20px; font-weight:600; color:var(--text-hi); }
+  .s-panel p { margin:8px 0 0; color:var(--text-dim); font-size:13px; line-height:1.5; }
+  .action { width:100%; display:flex; align-items:center; gap:12px; padding:14px; margin-top:12px; border-radius:8px; background:var(--bg-raised); border:1px solid var(--line-hair); text-align:left; }
+  .action:hover { border-color:rgba(111,211,232,.3); background:#252d36; }
+  .action .ic { width:34px; height:34px; border-radius:8px; display:grid; place-items:center; background:var(--sel-soft); color:var(--sel); flex:none; }
+  .action.primary .ic { background:var(--cut-soft); color:var(--cut); }
+  .action strong { display:block; font-size:14px; color:var(--text-hi); font-weight:500; }
+  .action span { display:block; font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .recent { width:100%; display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line-hair); text-align:left; }
+  .recent:last-child { border-bottom:0; padding-bottom:0; }
+  .recent:hover .name { color:var(--text-hi); }
+  .recent .name { font-size:13px; color:var(--text); font-weight:500; }
+  .recent .path { font-size:11px; color:var(--text-off); font-family:var(--mono); margin-top:2px; }
+  .recent .when { margin-left:auto; font-size:11px; color:var(--text-off); }
+  .note { max-width:1440px; margin:0 auto; color:var(--text-dim); font-size:12px; line-height:1.6; }
+  .note strong { color:var(--text); font-weight:500; }
+  svg.icon { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <div>
+      <p class="eyebrow">Dirección 2 · Camcraft Workbench v2 · Familia SolidCraft</p>
+      <h1>Floating Studio</h1>
+      <p class="lede">Workspace flotante con viewport dominante: browser, inspector y operaciones son cards con jerarquía de bordes clara, command search central y status bar sobria. La IA se organiza por objetos CAM (Board, Setup, Operaciones, Salida), no por features CAD.</p>
+    </div>
+    <div class="chip-row">
+      <span class="chip"><strong>Estructura</strong> flotante</span>
+      <span class="chip"><strong>Jerarquía</strong> primary/secondary/tertiary</span>
+      <span class="chip"><strong>Foco</strong> canvas</span>
+    </div>
+  </header>
+
+  <div class="shell" role="application" aria-label="Camcraft Floating Studio">
+    <div class="canvas-bg" aria-hidden="true"></div>
+    <svg class="board-svg" viewBox="0 0 1440 810" role="img" aria-label="Placa PCB con paneles flotantes">
+      <rect x="390" y="150" width="660" height="470" rx="2" fill="rgba(112,92,66,.08)" stroke="#453726" stroke-width="1.5"/>
+      <path d="M440 200 L1000 200 L1000 570 L440 570 Z" fill="rgba(112,92,66,.16)" stroke="#ddc9a3" stroke-width="2"/>
+      <g stroke="#c47a2c" stroke-width="2.2" fill="none" stroke-linecap="round"><path d="M500 270h110v50h70v-40h110"/><path d="M500 360h70v70h150v-50h110"/><path d="M560 500h200v-60h90"/></g>
+      <g fill="none" stroke="#7cc7ff" stroke-width="1.5"><circle cx="500" cy="270" r="7"/><circle cx="500" cy="360" r="7"/><circle cx="570" cy="430" r="7"/><circle cx="720" cy="430" r="7"/><circle cx="830" cy="380" r="7"/><circle cx="940" cy="440" r="7"/></g>
+      <g fill="none" stroke="#6fd3e8" stroke-width="2"><circle cx="500" cy="270" r="11"/><circle cx="500" cy="360" r="11"/><circle cx="570" cy="430" r="11"/><circle cx="720" cy="430" r="11"/><circle cx="830" cy="380" r="11"/><circle cx="940" cy="440" r="11"/></g>
+      <g stroke="#f5a623" stroke-width="1.5" fill="none" stroke-dasharray="6 6"><path d="M432 192 L1008 192 L1008 578 L432 578 Z"/></g>
+      <g stroke="#5ec27f" stroke-width="1.8"><path d="M440 570h34M440 570v-34"/><circle cx="440" cy="570" r="3.5" fill="#5ec27f" stroke="none"/></g>
+    </svg>
+
+    <header class="topbar">
+      <div class="mark" aria-hidden="true">C</div>
+      <div class="product">Camcraft</div>
+      <div class="sep" aria-hidden="true"></div>
+      <button class="workspace" aria-label="Proyecto actual">
+        <span>controller-board.cam</span>
+        <span class="muted">▾</span>
+      </button>
+      <div class="search" role="search" aria-label="Buscar comando">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>
+        <span>Buscar comando, capa u operación…</span>
+        <kbd>⌘K</kbd>
+      </div>
+      <div class="top-actions">
+        <div class="layout-pill" aria-label="Layout flotante"><b>Floating</b> layout</div>
+        <button class="icon-btn" aria-label="Tema"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        <button class="icon-btn" aria-label="Configuración"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5c.1-.3.1-.7.1-1z"/></svg></button>
+      </div>
+    </header>
+
+    <div class="tool-rail" aria-label="Acciones rápidas">
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>Importar</button>
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 4v16"/></svg>Capas</button>
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg>Origen</button>
+      <button class="tool primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Generar plan</button>
+    </div>
+
+    <div class="hud" aria-label="Estado de viewport">
+      <div class="hud-card"><b>2D Board</b> · Grid 1 mm</div>
+      <div class="hud-card"><span class="sel">6 taladros seleccionados</span></div>
+    </div>
+
+    <aside class="float browser" aria-label="Browser">
+      <div class="head">
+        <h2>Browser</h2>
+        <span class="meta">Proyecto</span>
+        <button class="head-btn" aria-label="Buscar en browser"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></button>
+      </div>
+      <div class="body">
+        <div class="section">
+          <h3>Board</h3>
+          <button class="nav-item"><span class="dot copper"></span>Top Copper <span class="count">.gbr</span></button>
+          <button class="nav-item"><span class="dot copper"></span>Bottom Copper <span class="count">.gbr</span></button>
+          <button class="nav-item" aria-current="true"><span class="dot drill"></span>Drill Hits <span class="count">.drl</span></button>
+          <button class="nav-item"><span class="dot"></span>Board Outline <span class="count">.gbr</span></button>
+        </div>
+        <div class="section">
+          <h3>Setup</h3>
+          <button class="nav-item"><span class="dot ok"></span>Stock FR-4 1.6mm <span class="count">100×80</span></button>
+          <button class="nav-item"><span class="dot ok"></span>Origen bottom-left <span class="count">X0 Y0</span></button>
+        </div>
+        <div class="section">
+          <h3>Operaciones</h3>
+          <button class="nav-item"><span class="dot cut"></span>1 · Profile outline <span class="count">OK</span></button>
+          <button class="nav-item" aria-current="true"><span class="dot drill"></span>2 · Drill 0.8 / 1.0 <span class="count">seleccionada</span></button>
+          <button class="nav-item"><span class="dot copper"></span>3 · Isolation top <span class="count">draft</span></button>
+        </div>
+        <div class="section">
+          <h3>Salida</h3>
+          <button class="nav-item"><span class="dot"></span>Post GRBL <span class="count">.nc</span></button>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="float inspector" aria-label="Inspector">
+      <div class="head">
+        <h2>Inspector</h2>
+        <span class="meta">Drill 0.8 / 1.0</span>
+      </div>
+      <div class="body">
+        <div class="section">
+          <h3>Operación</h3>
+          <div class="field"><label>Tipo</label><div class="input">Drill cycle <span class="u">G81</span></div></div>
+          <div class="field"><label>Herramienta</label><div class="input">T1 Flat 0.8 mm <span class="u">cambiar</span></div></div>
+          <div class="field"><label>Z cut</label><div class="input">-1.8 <span class="u">mm</span></div></div>
+          <div class="field"><label>Feed plunge</label><div class="input">120 <span class="u">mm/min</span></div></div>
+          <dl class="kv"><dt>Hits</dt><dd>6</dd><dt>Herramientas</dt><dd>T1, T2</dd><dt>Tiempo</dt><dd>0:42</dd></dl>
+        </div>
+        <div class="section">
+          <h3>Estado</h3>
+          <div class="state-card"><strong>Listo para simular.</strong> Toolpath válido, sin colisiones detectadas en preview.</div>
+        </div>
+      </div>
+    </aside>
+
+
+
+    <footer class="status" aria-label="Barra de estado">
+      <span class="mono">X 42.80</span>
+      <span class="mono">Y 31.20</span>
+      <span class="mono">Z 2.00</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span>mm · Grid 1 mm · GRBL</span>
+      <span class="spacer"></span>
+      <span class="ok">● Sin errores</span>
+    </footer>
+  </div>
+
+  <section class="start-demo" aria-label="Start screen de la dirección 2">
+    <p class="eyebrow" style="margin-bottom:10px;">Start screen · misma familia</p>
+    <div class="start-shell">
+      <div class="start-card">
+        <div class="s-panel">
+          <p class="eyebrow">Camcraft</p>
+          <h2 style="margin:0 0 6px; font:600 28px/1.15 var(--font); color:var(--text-hi);">Bienvenido al estudio CAM</h2>
+          <p>Abrí una placa o retomá un proyecto. El shell usa superficies flotantes, jerarquía de bordes clara y command search central.</p>
+          <button class="action primary"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><strong>Nuevo proyecto PCB</strong><span>Configurar stock, origen y board</span></div></button>
+          <button class="action"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span><div><strong>Abrir proyecto</strong><span>.cam o fuentes de placa</span></div></button>
+        </div>
+        <div class="s-panel">
+          <h2>Recientes</h2>
+          <p>Retomá con contexto visible antes de abrir.</p>
+          <button class="recent"><div><div class="name">controller-board.cam</div><div class="path">~/Boards/controller/</div></div><div class="when">Hace 12 min</div></button>
+          <button class="recent"><div><div class="name">usb-adapter.cam</div><div class="path">~/Boards/adapters/</div></div><div class="when">Ayer</div></button>
+          <button class="recent"><div><div class="name">front-panel.cam</div><div class="path">~/Boards/panel/</div></div><div class="when">Hace 3 días</div></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note"><strong>Tradeoff:</strong> máxima presencia del canvas y sensación más cercana a SolidCraft gracias a cards flotantes y jerarquía de bordes primary/secondary/tertiary. A cambio, requiere disciplina de layout para que los paneles no tapen el trabajo ni generen ruido, especialmente en pantallas chicas.</p>
+</div>
+</body>
+</html>

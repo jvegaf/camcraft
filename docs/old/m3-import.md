@@ -22,13 +22,13 @@ error: 1 vector issue(s) found
 
 ## Formats
 
-| Format | Geometry | Arcs stay arcs | Units |
-| --- | --- | --- | --- |
-| DXF (ASCII) | `LINE`, `LWPOLYLINE`/`POLYLINE` with bulges, `ARC`, `CIRCLE`, `ELLIPSE` | yes: a bulge is an `Arc`, a circle is two half-turns | `$INSUNITS`, then `$MEASUREMENT`, then millimetres with a warning |
-| SVG | `<path>` (full grammar), `<line>`, `<polyline>`, `<polygon>`, `<rect>` with `rx`/`ry`, `<circle>`, `<ellipse>`, `transform` on any element and inherited through `<g>`, `viewBox` with `preserveAspectRatio`'s default `xMidYMid meet` | yes: a circular `A`, `<circle>` and a rounded `<rect>` corner stay exact `Arc`s | root `width`/`height`: unitless = px at 96 dpi, `mm`, `cm`, `in`, `pt`, `pc`, `px` accepted; on a shape a bare number is a user unit |
-| PDF | content-stream paths of every page, through `cm` and the `MediaBox` origin | no: PDF has no circular-arc operator | one user unit is one millimetre, with a warning (a PDF path carries no physical size) |
-| EPS / PS | `moveto lineto curveto rlineto rcurveto closepath arc arcn` under `translate scale rotate concat setmatrix`, painted by `stroke fill eofill clip` | yes: `arc`/`arcn` become `Arc`s, a full turn is a closed circle | PostScript points: 25.4 / 72 mm |
-| PNG | traced from a global threshold: luminance → mask → contours | no: a trace is a polyline by nature | `--dpi` (default 96) decides pixels per millimetre |
+| Format      | Geometry                                                                                                                                                                                                                               | Arcs stay arcs                                                                  | Units                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| DXF (ASCII) | `LINE`, `LWPOLYLINE`/`POLYLINE` with bulges, `ARC`, `CIRCLE`, `ELLIPSE`                                                                                                                                                                | yes: a bulge is an `Arc`, a circle is two half-turns                            | `$INSUNITS`, then `$MEASUREMENT`, then millimetres with a warning                                                                    |
+| SVG         | `<path>` (full grammar), `<line>`, `<polyline>`, `<polygon>`, `<rect>` with `rx`/`ry`, `<circle>`, `<ellipse>`, `transform` on any element and inherited through `<g>`, `viewBox` with `preserveAspectRatio`'s default `xMidYMid meet` | yes: a circular `A`, `<circle>` and a rounded `<rect>` corner stay exact `Arc`s | root `width`/`height`: unitless = px at 96 dpi, `mm`, `cm`, `in`, `pt`, `pc`, `px` accepted; on a shape a bare number is a user unit |
+| PDF         | content-stream paths of every page, through `cm` and the `MediaBox` origin                                                                                                                                                             | no: PDF has no circular-arc operator                                            | one user unit is one millimetre, with a warning (a PDF path carries no physical size)                                                |
+| EPS / PS    | `moveto lineto curveto rlineto rcurveto closepath arc arcn` under `translate scale rotate concat setmatrix`, painted by `stroke fill eofill clip`                                                                                      | yes: `arc`/`arcn` become `Arc`s, a full turn is a closed circle                 | PostScript points: 25.4 / 72 mm                                                                                                      |
+| PNG         | traced from a global threshold: luminance → mask → contours                                                                                                                                                                            | no: a trace is a polyline by nature                                             | `--dpi` (default 96) decides pixels per millimetre                                                                                   |
 
 Everything else is either converted or listed in the report — never dropped in silence.
 
@@ -36,16 +36,16 @@ Everything else is either converted or listed in the report — never dropped in
 
 Every import returns the same report, and the CLI prints it whole:
 
-| Line | Meaning |
-| --- | --- |
-| `format` | The format that was detected |
-| `tolerance` | The flattening tolerance applied to curves that could not stay arcs |
-| `unit scale` | The factor applied to reach millimetres (1.0 when the source is already mm) |
-| `contours` | Contours produced across all layers |
-| `flattened curves` | Curves that became line segments because they could not be exact arcs |
-| `sources` | How many of each source construct were converted (`LINE=3`, `<path>=2`, `re=1`, `region=4`) |
-| `skipped` | One entry per construct that produced no geometry, with the reason and a source location |
-| `warnings` | Assumptions a user must be able to see (an assumed unit, a lost alpha channel, a substituted default) |
+| Line               | Meaning                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `format`           | The format that was detected                                                                          |
+| `tolerance`        | The flattening tolerance applied to curves that could not stay arcs                                   |
+| `unit scale`       | The factor applied to reach millimetres (1.0 when the source is already mm)                           |
+| `contours`         | Contours produced across all layers                                                                   |
+| `flattened curves` | Curves that became line segments because they could not be exact arcs                                 |
+| `sources`          | How many of each source construct were converted (`LINE=3`, `<path>=2`, `re=1`, `region=4`)           |
+| `skipped`          | One entry per construct that produced no geometry, with the reason and a source location              |
+| `warnings`         | Assumptions a user must be able to see (an assumed unit, a lost alpha channel, a substituted default) |
 
 ## Rules that apply to every format
 
@@ -70,11 +70,11 @@ Every import returns the same report, and the CLI prints it whole:
 `cam-cli check <document>` reports the two problems that make a vector uncuttable, plus degenerate
 segments:
 
-| Line | Meaning |
-| --- | --- |
-| `E3 open: gap 0.0210 mm` | The contour's ends do not meet; the gap is what the tool would leave |
-| `E7 self-intersection at 12.500, 4.000 (segments 3, 7)` | The contour crosses itself; the segment indices locate it |
-| `E9 degenerate segment 2` | A segment shorter than the 1 µm tolerance |
+| Line                                                    | Meaning                                                              |
+| ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `E3 open: gap 0.0210 mm`                                | The contour's ends do not meet; the gap is what the tool would leave |
+| `E7 self-intersection at 12.500, 4.000 (segments 3, 7)` | The contour crosses itself; the segment indices locate it            |
+| `E9 degenerate segment 2`                               | A segment shorter than the 1 µm tolerance                            |
 
 Exit code `5` when anything was found, `0` with `all vectors valid` when the document is clean. `check`
 is what a build script should gate on: a profile cut through an open or self-crossing contour is a

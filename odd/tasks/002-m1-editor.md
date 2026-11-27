@@ -3,17 +3,17 @@
 Program plan: `odd/roadmap/index.md` (M1 = "2D editor shell"). This document is the executable
 specification for M1 only. Read this file until `## Evidence — commit per task
 
-| Task | Commit | Notes |
-| --- | --- | --- |
-| T1 | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
-| T2 | `a0950f4` | camera; 11 tests incl. a round-trip property test |
-| T3 | `527afc5` | commands; 10 tests, every refusal named |
-| T4 | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
-| T5 | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
-| T6 | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
-| T7 | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
-| T8 | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
-| T9 | `dabe910` | this documentation close-out |
+| Task | Commit    | Notes                                                                              |
+| ---- | --------- | ---------------------------------------------------------------------------------- |
+| T1   | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests                        |
+| T2   | `a0950f4` | camera; 11 tests incl. a round-trip property test                                  |
+| T3   | `527afc5` | commands; 10 tests, every refusal named                                            |
+| T4   | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate            |
+| T5   | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries               |
+| T6   | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids   |
+| T7   | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame         |
+| T8   | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T9   | `dabe910` | this documentation close-out                                                       |
 
 ## Log` before implementing any task.
 
@@ -32,8 +32,8 @@ Owner requirements in force (verbatim, unchanged from M0; S1 restated by the nam
 - **S5** — (this milestone's instruction, verbatim): "mergea primero lo que tenemos a master, y de
   master te sacas la de m1" then "dale con m1"
 
-M1 delivers the interactive editor the roadmap names: *"Interactive viewport: pan/zoom/snap, entity
-picking, undo/redo, layer dock"*.
+M1 delivers the interactive editor the roadmap names: _"Interactive viewport: pan/zoom/snap, entity
+picking, undo/redo, layer dock"_.
 
 ### Derived acceptance criteria (M1)
 
@@ -141,25 +141,25 @@ marks M1 delivered with the same evidence table style as M0, and this file recor
   Revisit trigger: if documents exceed a few MB (imported dense DXF), switch to a persistent data
   structure or a command journal, keeping the same `Command` API.
 - **D-M1-2 — The canvas is painted with `egui`'s painter in M1; the draw list is backend-agnostic.**
-  The roadmap named `wgpu` for `cam-view`. Splitting the *scene* (which is testable math) from the
-  *painter* keeps the wgpu decision intact while making M1 verifiable without a GPU: `cam-view` emits
+  The roadmap named `wgpu` for `cam-view`. Splitting the _scene_ (which is testable math) from the
+  _painter_ keeps the wgpu decision intact while making M1 verifiable without a GPU: `cam-view` emits
   `Scene`, and a wgpu backend consumes the same `Scene` when the 3D simulation (M5) actually needs the
   GPU. Revisit trigger: entity counts that stall the CPU painter, or M5's heightfield view — whichever
   comes first. Recorded as a deviation from the roadmap's crate description in the Log (L2).
 
 ## Evidence — commit per task
 
-| Task | Commit | Notes |
-| --- | --- | --- |
-| T1 | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests |
-| T2 | `a0950f4` | camera; 11 tests incl. a round-trip property test |
-| T3 | `527afc5` | commands; 10 tests, every refusal named |
-| T4 | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate |
-| T5 | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries |
-| T6 | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids |
-| T7 | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame |
-| T8 | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
-| T9 | `dabe910` | this documentation close-out |
+| Task | Commit    | Notes                                                                              |
+| ---- | --------- | ---------------------------------------------------------------------------------- |
+| T1   | `c03c06e` | `cam-app` state, snapshot history, bounded at 128; 12 tests                        |
+| T2   | `a0950f4` | camera; 11 tests incl. a round-trip property test                                  |
+| T3   | `527afc5` | commands; 10 tests, every refusal named                                            |
+| T4   | `5665faf` | scene + grid; 10 tests. Fixed: arc bounds were tessellation-approximate            |
+| T5   | `f9d3a60` | pick/marquee/snap; 13 tests. cam-geom gained public distance queries               |
+| T6   | `d4edea5` | egui shell; 16 headless frame tests. Fixed: entity id counter ignored loaded ids   |
+| T7   | `b71fedc` | input wiring; 10 tests with synthetic events. Fixed: status lagged a frame         |
+| T8   | `3c1fbf1` | eframe binary; built and launched under a compositor, screenshot in `docs/images/` |
+| T9   | `dabe910` | this documentation close-out                                                       |
 
 ## Log
 

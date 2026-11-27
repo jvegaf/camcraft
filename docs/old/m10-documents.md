@@ -1,6 +1,6 @@
 # Documents & scripting (M10)
 
-M10 is the milestone that adds no machining. It answers a different question — how a person *drives*
+M10 is the milestone that adds no machining. It answers a different question — how a person _drives_
 the document — and it answers it four times, once per owner decision, each quoted verbatim:
 
 - **S1**, "DSL de comandos, sin motor", so the scripting surface is a **command language** and not an
@@ -61,28 +61,28 @@ because a command line expects a progress line on stderr (§"The sink"). `0.160`
 it is `Document::nesting_utilisation`'s answer, 2 × 120 × 80 = 19 200 mm² over the 400 × 300 mm² board
 the placements name, and M9's one derivation read through a script.
 
-| Piece | Where |
-| --- | --- |
-| The language: the eleven-word dispatch table, the lexer, and the located diagnostics | `cam_cli::script` (`COMMANDS`, `Session::mutate`, `lex`) |
-| The five operations a script and a subcommand share | `cam_cli` (`validate_report`, `nest_args`/`nest_document`, `toolpath_args`/`append_toolpath`, `emit_args`/`emit_document`, `simulate_args`/`simulate_document`) |
-| The part list's dialect: four columns, a fixed order and its refusals | `cam_import::csv` (`COLUMNS`, `import`, `PartRow`) |
-| A part list authored into a document, and the cut list out | `cam_cli::pieces` (`author_parts`, `cut_list_document`, `save_report`) |
-| The HTML print sheet, escaped by hand | `cam_cli::printsheet` (`print_sheet`, `escape_html`) |
-| The minimal panel and its adapter boundary | `cam_ui::script_panel` (`ScriptPanel::run`, `ScriptPanel::ui`) |
-| The library target the shell calls (D-M10-1) | `crates/cam-cli/src/lib.rs`, and the 16-line `src/main.rs` |
-| The record | this document, and `odd/tasks/018-m10-documents.md` |
+| Piece                                                                                | Where                                                                                                                                                           |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The language: the eleven-word dispatch table, the lexer, and the located diagnostics | `cam_cli::script` (`COMMANDS`, `Session::mutate`, `lex`)                                                                                                        |
+| The five operations a script and a subcommand share                                  | `cam_cli` (`validate_report`, `nest_args`/`nest_document`, `toolpath_args`/`append_toolpath`, `emit_args`/`emit_document`, `simulate_args`/`simulate_document`) |
+| The part list's dialect: four columns, a fixed order and its refusals                | `cam_import::csv` (`COLUMNS`, `import`, `PartRow`)                                                                                                              |
+| A part list authored into a document, and the cut list out                           | `cam_cli::pieces` (`author_parts`, `cut_list_document`, `save_report`)                                                                                          |
+| The HTML print sheet, escaped by hand                                                | `cam_cli::printsheet` (`print_sheet`, `escape_html`)                                                                                                            |
+| The minimal panel and its adapter boundary                                           | `cam_ui::script_panel` (`ScriptPanel::run`, `ScriptPanel::ui`)                                                                                                  |
+| The library target the shell calls (D-M10-1)                                         | `crates/cam-cli/src/lib.rs`, and the 16-line `src/main.rs`                                                                                                      |
+| The record                                                                           | this document, and `odd/tasks/018-m10-documents.md`                                                                                                             |
 
 ## What S1–S4 decided
 
 The four owner answers are the whole specification M10 had. The decisions below are its reading, with
 what pins each one.
 
-| Decision | What it means | Where it is pinned |
-| --- | --- | --- |
-| The surface is a **command language**, not an engine (S1) | One command per line, a word and its arguments; `#` comments, blank lines ignored, `"…"` for an argument with a space — and no variables, no conditionals, no loops. A template engine for the sheet and a script engine for the language were refused for the same reason: the dependency would be a new reviewable surface | `COMMANDS` is the whole language; `the_help_lists_the_script_command_and_every_command_the_language_knows` |
-| A script **reads and mutates one document** (S2) | `open` reads it, every command changes it, `save` writes it. A script cannot name a second document, cannot reach a path the script or the command line did not name, and cannot write a document that would not load | `a_path_comes_from_the_script_or_the_command_line_and_nowhere_else`, `a_mutation_that_would_not_validate_is_refused_and_leaves_the_file_alone` |
-| The CSV is **both directions** (S3) | Parts in: one row, one part, no position. Cut list out: one row, one placed instance, no quantity | `csv`'s 13 tests, `pieces`' 10 |
-| The surface is **CLI plus a minimal panel** (S4) | The command line is the contract; the panel runs one script and shows one area, through the library, never through a process | `cam-ui`'s four frame tests, and `D-M10-1` |
+| Decision                                                  | What it means                                                                                                                                                                                                                                                                                                                | Where it is pinned                                                                                                                             |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| The surface is a **command language**, not an engine (S1) | One command per line, a word and its arguments; `#` comments, blank lines ignored, `"…"` for an argument with a space — and no variables, no conditionals, no loops. A template engine for the sheet and a script engine for the language were refused for the same reason: the dependency would be a new reviewable surface | `COMMANDS` is the whole language; `the_help_lists_the_script_command_and_every_command_the_language_knows`                                     |
+| A script **reads and mutates one document** (S2)          | `open` reads it, every command changes it, `save` writes it. A script cannot name a second document, cannot reach a path the script or the command line did not name, and cannot write a document that would not load                                                                                                        | `a_path_comes_from_the_script_or_the_command_line_and_nowhere_else`, `a_mutation_that_would_not_validate_is_refused_and_leaves_the_file_alone` |
+| The CSV is **both directions** (S3)                       | Parts in: one row, one part, no position. Cut list out: one row, one placed instance, no quantity                                                                                                                                                                                                                            | `csv`'s 13 tests, `pieces`' 10                                                                                                                 |
+| The surface is **CLI plus a minimal panel** (S4)          | The command line is the contract; the panel runs one script and shows one area, through the library, never through a process                                                                                                                                                                                                 | `cam-ui`'s four frame tests, and `D-M10-1`                                                                                                     |
 
 Two rules complete it. A word the table does not hold is refused **with the table in the message**
 ("expected one of open, sheet, part, nest, toolpath, validate, emit, simulate, save, parts, cutlist"),
@@ -111,19 +111,19 @@ point at the argument and not at the line.
 
 Eleven words, each one the subcommand of the same name:
 
-| Word | Line | What it runs |
-| --- | --- | --- |
-| `open` | `open <document>` | `cam_cli`'s own loader, the one every subcommand reads with — and only once, because a script mutates one document |
-| `sheet` | `sheet <width> <height>` | Authors a `NestingSheet` with `fresh_sheet_id`'s scan, the rule `nest` uses for a board it opens |
-| `part` | `part <instances> <entity>[,<entity>…]` | Authors a `NestingPart` with `fresh_part_id`'s scan |
-| `nest` | `nest [--sheets <WxH>] [--gap <mm>] [--rotation on\|off] [--algorithm <mode>] [--step <mm>]` | `nest_args` + `nest_document` |
-| `toolpath` | `toolpath --kind <kind> …` | `toolpath_args` + `append_toolpath` |
-| `validate` | `validate` | `Document::validate` + `validate_report` |
-| `emit` | `emit --post <file> [--library <path>]` | `emit_args` + `emit_document` |
-| `simulate` | `simulate [--library <path>] [--resolution <mm>]` | `simulate_args` + `simulate_document` |
-| `save` | `save <document>` | `cam_store::document::save_document`, which validates as it writes |
-| `parts` | `parts --csv <file> [--layer <name>]` | `parts_args` + `author_parts` |
-| `cutlist` | `cutlist [--out <path>]` | `cutlist_args` + `cut_list_document` |
+| Word       | Line                                                                                         | What it runs                                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `open`     | `open <document>`                                                                            | `cam_cli`'s own loader, the one every subcommand reads with — and only once, because a script mutates one document |
+| `sheet`    | `sheet <width> <height>`                                                                     | Authors a `NestingSheet` with `fresh_sheet_id`'s scan, the rule `nest` uses for a board it opens                   |
+| `part`     | `part <instances> <entity>[,<entity>…]`                                                      | Authors a `NestingPart` with `fresh_part_id`'s scan                                                                |
+| `nest`     | `nest [--sheets <WxH>] [--gap <mm>] [--rotation on\|off] [--algorithm <mode>] [--step <mm>]` | `nest_args` + `nest_document`                                                                                      |
+| `toolpath` | `toolpath --kind <kind> …`                                                                   | `toolpath_args` + `append_toolpath`                                                                                |
+| `validate` | `validate`                                                                                   | `Document::validate` + `validate_report`                                                                           |
+| `emit`     | `emit --post <file> [--library <path>]`                                                      | `emit_args` + `emit_document`                                                                                      |
+| `simulate` | `simulate [--library <path>] [--resolution <mm>]`                                            | `simulate_args` + `simulate_document`                                                                              |
+| `save`     | `save <document>`                                                                            | `cam_store::document::save_document`, which validates as it writes                                                 |
+| `parts`    | `parts --csv <file> [--layer <name>]`                                                        | `parts_args` + `author_parts`                                                                                      |
+| `cutlist`  | `cutlist [--out <path>]`                                                                     | `cutlist_args` + `cut_list_document`                                                                               |
 
 `sheet` and `part` are the two commands with no subcommand behind them, and that is deliberate: a
 script authors the records a nesting needs without a file for each. Their only gate is the model's own
@@ -135,11 +135,11 @@ This is the milestone's law, and the parser was the cheap half of it. Every subc
 **inside its argument-parsing arm**, so a script that dispatched to "the same command" would have
 reached either a copy of that logic or the arm's own printing. The extraction therefore came first:
 
-* `validate`'s body became `validate_report(&Document)`;
-* `nest`'s became `nest_args(&[String])` + `nest_document(&mut Document, &NestRequest)`;
-* `toolpath`'s became `toolpath_args(&[String])` + `append_toolpath(&mut Document, &Path, &ToolpathArgs)`;
-* `emit`'s became `emit_args(&[String])` + `emit_document(&Document, &Path, &EmitArgs)`;
-* `simulate`'s became `simulate_args(&[String])` + `simulate_document(&Document, &Path, &SimulateArgs)`.
+- `validate`'s body became `validate_report(&Document)`;
+- `nest`'s became `nest_args(&[String])` + `nest_document(&mut Document, &NestRequest)`;
+- `toolpath`'s became `toolpath_args(&[String])` + `append_toolpath(&mut Document, &Path, &ToolpathArgs)`;
+- `emit`'s became `emit_args(&[String])` + `emit_document(&Document, &Path, &EmitArgs)`;
+- `simulate`'s became `simulate_args(&[String])` + `simulate_document(&Document, &Path, &SimulateArgs)`.
 
 The subcommand's arm and the script's `Command` entry now hold the same two names, and there is no third
 path. Two consequences are worth stating plainly. A flag means one thing in both places, because both
@@ -149,15 +149,15 @@ resolution, because those defaults live in the one parser and the one request st
 
 The parity is a test, not a promise, and it is measured in **bytes**:
 
-* `a_script_that_nests_writes_the_document_the_nest_subcommand_writes` — the same nesting through both
+- `a_script_that_nests_writes_the_document_the_nest_subcommand_writes` — the same nesting through both
   routes produces the same document bytes.
-* `a_script_appends_the_toolpath_the_toolpath_subcommand_appends` and
+- `a_script_appends_the_toolpath_the_toolpath_subcommand_appends` and
   `a_script_emits_the_program_the_emit_subcommand_emits` — the report and the program are identical,
   including the `TPn` ids the authoring command chose.
-* `a_script_simulates_the_document_the_simulate_subcommand_simulates` — same report, same exit.
-* `the_script_reaches_both_commands_and_both_write_the_subcommands_bytes` — `parts` produces 63 bytes of
+- `a_script_simulates_the_document_the_simulate_subcommand_simulates` — same report, same exit.
+- `the_script_reaches_both_commands_and_both_write_the_subcommands_bytes` — `parts` produces 63 bytes of
   stdout and a 534-byte document through either route, `cutlist` 321 bytes.
-* `a_scripts_report_reaches_a_sink_byte_identical_to_the_binarys_stdout` — a script's captured buffer
+- `a_scripts_report_reaches_a_sink_byte_identical_to_the_binarys_stdout` — a script's captured buffer
   equals the binary's stdout for the same script, for a script that ends well **and** for one that ends
   in a finding, with non-vacuity needles (`format: csv`, `nest: 1 sheet(s)`, `valid: `,
   `added TP2 profile`) so an empty buffer cannot pass.
@@ -212,7 +212,7 @@ list writes through `write_report` into the session's report sink, and `save`'s 
 `pieces::save_report` — shared with `parts_command`, which said the same words — delivered through
 `Session::notice`. The proof is a test that runs `open`/`sheet`/`part`/`nest`/`cutlist`/`save` through
 `ScriptPanel::run` and asserts both the painted area and the captured text hold the cut-list header, its
-row and the `wrote …` line. A panel that shows *most* of a run is worse than one that fails.
+row and the `wrote …` line. A panel that shows _most_ of a run is worse than one that fails.
 
 ## The CSV dialect, and two formats that are not one schema
 
@@ -220,16 +220,16 @@ row and the `wrote …` line. A panel that shows *most* of a run is worse than o
 turning a row into a `NestingPart` and a rectangle is `cam-cli`'s task, because that is where the
 document, the entity ids and validation live. Each choice in the dialect has a reason that decides it:
 
-* **The header is required, in that fixed order.** A list whose `width` and `height` were swapped is
+- **The header is required, in that fixed order.** A list whose `width` and `height` were swapped is
   refused **at its own line and field** instead of silently rotating every part — which is the mistake a
   hand-written part list actually produces, and the one no downstream check could catch.
-* **Quoting is refused by name.** Any `"` in a field is a located error. A dialect that half-supports
+- **Quoting is refused by name.** Any `"` in a field is a located error. A dialect that half-supports
   quotes is worse than one that says it does not.
-* **A duplicate part name is refused, not summed.** `quantity` is already a column, so summing would
+- **A duplicate part name is refused, not summed.** `quantity` is already a column, so summing would
   change the number of copies the list asked for and hide the copy-paste that produced the row.
-* **Blank lines and `#` comments are skipped anywhere** — the script language's convention, not a second
+- **Blank lines and `#` comments are skipped anywhere** — the script language's convention, not a second
   one — and there are no trailing comments, so a part may be named `part#1`.
-* **A BOM and CRLF endings are tolerated**, because a part list is authored in a spreadsheet; a byte that
+- **A BOM and CRLF endings are tolerated**, because a part list is authored in a spreadsheet; a byte that
   is not UTF-8 is refused with its line, and a list with no rows is refused as nothing imported rather
   than handed back empty.
 
@@ -266,15 +266,15 @@ It is rendered **by hand**, one line at a time, for the same reason S1 refused a
 template engine is a dependency, and `Cargo.lock` is a reviewable surface. Three rules carry it, each a
 test:
 
-* **The document is escaped, not trusted.** Every id and name is user text and every one of them reaches
+- **The document is escaped, not trusted.** Every id and name is user text and every one of them reaches
   the sheet through `escape_html`, which covers `&`, `<`, `>`, `"` and `'` — the five characters that can
   open a tag, close one, end an attribute or start an entity reference. A layer named `<b>x</b>` prints
   as those characters.
-* **Two runs are the same bytes.** Nothing whose order the document does not fix is iterated (the one
+- **Two runs are the same bytes.** Nothing whose order the document does not fix is iterated (the one
   sorted collection is a `BTreeSet`), nothing is timestamped, and every number goes through `cam-cli`'s
   locale-free `decimal`. Measured on the sheet the script above produces: **59 lines, 2 349 bytes**, and
   two runs hash the same (`9e2a5b6d…`).
-* **It refuses rather than lying.** A document that does not validate is refused by `cam-cli`'s own
+- **It refuses rather than lying.** A document that does not validate is refused by `cam-cli`'s own
   loader before a byte is rendered, a document with no toolpath still renders and **says so**
   (`no toolpath: the document holds none, so there is nothing to cut.`), and the `Omitted` section names
   the three things a sheet cannot honestly report — the program, the simulation, and the file name,
@@ -356,17 +356,17 @@ correction: **3 800 lines**, tier high, three lenses (risk, readability, reliabi
 (`native-approved-acknowledgement-completed`, authority `burned`), and it emitted nine **advisory**
 findings, informational and later work, tagged by lineage:
 
-| Finding | Lens | Severity | Location in the frozen candidate |
-| --- | --- | --- | --- |
-| `bd99706d/R2-001` | readability | WARNING | `crates/cam-cli/src/script.rs:202-207` |
-| `bd99706d/R2-002` | readability | WARNING | `crates/cam-cli/src/script.rs:436-438` |
+| Finding           | Lens        | Severity   | Location in the frozen candidate       |
+| ----------------- | ----------- | ---------- | -------------------------------------- |
+| `bd99706d/R2-001` | readability | WARNING    | `crates/cam-cli/src/script.rs:202-207` |
+| `bd99706d/R2-002` | readability | WARNING    | `crates/cam-cli/src/script.rs:436-438` |
 | `bd99706d/R2-003` | readability | SUGGESTION | `crates/cam-cli/src/pieces.rs:224-225` |
-| `bd99706d/R2-004` | readability | SUGGESTION | `crates/cam-cli/src/main.rs:162-163` |
-| `bd99706d/R2-005` | readability | SUGGESTION | `crates/cam-cli/src/script.rs:37` |
-| `bd99706d/R2-006` | readability | WARNING | `crates/cam-cli/src/script.rs:129-131` |
-| `bd99706d/R3-001` | reliability | WARNING | `crates/cam-import/src/csv.rs:175-193` |
-| `bd99706d/R3-002` | reliability | WARNING | `crates/cam-cli/src/main.rs:860` |
-| `bd99706d/R3-003` | reliability | WARNING | `crates/cam-cli/src/main.rs:3003` |
+| `bd99706d/R2-004` | readability | SUGGESTION | `crates/cam-cli/src/main.rs:162-163`   |
+| `bd99706d/R2-005` | readability | SUGGESTION | `crates/cam-cli/src/script.rs:37`      |
+| `bd99706d/R2-006` | readability | WARNING    | `crates/cam-cli/src/script.rs:129-131` |
+| `bd99706d/R3-001` | reliability | WARNING    | `crates/cam-import/src/csv.rs:175-193` |
+| `bd99706d/R3-002` | reliability | WARNING    | `crates/cam-cli/src/main.rs:860`       |
+| `bd99706d/R3-003` | reliability | WARNING    | `crates/cam-cli/src/main.rs:3003`      |
 
 Six WARNINGs and three SUGGESTIONs, none blocking, none corrected. The three `main.rs` locations are the
 frozen candidate's: `main.rs` became `src/lib.rs` at `3297f4d`, so the same code sits in a different file
@@ -379,7 +379,7 @@ M7 and M9 hit — so T4b was cut as its own candidate: **781 lines** on `bbd2fe5
 lenses (risk, reliability), correction budget 200. Its refuter returned `correction_required` on one
 **CRITICAL** finding, `R3-001` (reliability): `ScriptPanel::run` decided whether to replace the output by
 asking `!text.is_empty()`, which conflates "failed before it wrote anything" with "succeeded and printed
-nothing" — so a successful script with no report left the *previous* run's text on screen with the error
+nothing" — so a successful script with no report left the _previous_ run's text on screen with the error
 cleared, and a failure that had written part of a report overwrote the output the panel's own rule says
 it keeps. The four frame tests could not see it because they covered a non-empty success and an empty
 failure and nothing between. The correction is one decision moved to the result instead of the buffer: a
@@ -470,17 +470,17 @@ base commit that reports zero differences in stdout, stderr, exit code and produ
 
 ## Where the record lives
 
-| Question | Where |
-| --- | --- |
-| What M10 had to be, and every decision behind it | `odd/tasks/018-m10-documents.md` — S1 … S6, T1 … T6, L1 … L7 |
-| The language's grammar, its diagnostics and its help text | this document, and `--help`'s `SCRIPTS:` block (HELP is `crates/cam-cli/src/lib.rs`) |
-| The part list's dialect in full | `crates/cam-import/src/csv.rs`'s module comment |
-| The cut list's columns and formatting | `crates/cam-cli/src/pieces.rs`'s module comment |
-| What the sheet renders, and what it refuses to | `crates/cam-cli/src/printsheet.rs`'s module comment |
-| The panel's boundary and its three rules | `crates/cam-ui/src/script_panel.rs`'s module comment |
-| Why `cam-cli` is a library (D-M10-1) | this document, and `odd/tasks/018-m10-documents.md` L4–L6 |
-| The `nesting` section the cut list reads | [m9-nesting.md](m9-nesting.md) |
-| How the simulation authorises a cut | [m5-simulation.md](m5-simulation.md#the-target-surface) |
-| What M10 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.13 |
-| The document and post-processor contracts | [format.md](format.md) — its command-line table predates M10's four commands (see Known limits) |
-| The project-level summary | [README.md](../../README.md) |
+| Question                                                  | Where                                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| What M10 had to be, and every decision behind it          | `odd/tasks/018-m10-documents.md` — S1 … S6, T1 … T6, L1 … L7                                    |
+| The language's grammar, its diagnostics and its help text | this document, and `--help`'s `SCRIPTS:` block (HELP is `crates/cam-cli/src/lib.rs`)            |
+| The part list's dialect in full                           | `crates/cam-import/src/csv.rs`'s module comment                                                 |
+| The cut list's columns and formatting                     | `crates/cam-cli/src/pieces.rs`'s module comment                                                 |
+| What the sheet renders, and what it refuses to            | `crates/cam-cli/src/printsheet.rs`'s module comment                                             |
+| The panel's boundary and its three rules                  | `crates/cam-ui/src/script_panel.rs`'s module comment                                            |
+| Why `cam-cli` is a library (D-M10-1)                      | this document, and `odd/tasks/018-m10-documents.md` L4–L6                                       |
+| The `nesting` section the cut list reads                  | [m9-nesting.md](m9-nesting.md)                                                                  |
+| How the simulation authorises a cut                       | [m5-simulation.md](m5-simulation.md#the-target-surface)                                         |
+| What M10 delivered, and what it cost                      | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.13                                        |
+| The document and post-processor contracts                 | [format.md](format.md) — its command-line table predates M10's four commands (see Known limits) |
+| The project-level summary                                 | [README.md](../../README.md)                                                                    |

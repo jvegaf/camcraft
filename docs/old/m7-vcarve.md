@@ -36,17 +36,17 @@ library's T1 is a 90° V-bit with a sharp point. Two commands appended two toolp
 what the shipped code prints: `1340.000 mm³` of the square's analytic `1333.333` and `3534.366` of the
 disc's analytic `3534.292` (the difference is the 1 mm grid's quadrature of `∫ d dA`, not lost material).
 
-| Piece | Where |
-| --- | --- |
-| The exact distance from a point to a region's boundary, arcs native | `cam-geom::region::Region::distance_to_boundary` (`region_distance.rs`) |
-| Which boundary point a segment is nearest at | `cam-geom::segment::Segment::nearest_point` |
-| The verified medial axis: branches, vertices, clearances, drops | `cam-geom::medial::{medial_axis, MedialAxis, MedialBranch, MedialVertex}` |
-| The parameter record and the depth law, once | `cam-model::VCarveParams`, `VCarveParams::depth` |
-| The walk | `cam-toolpath::vcarve` |
-| The frame that relates the document to the machine | `cam-model::Frame` |
-| The authorised depth for a V-carve cell | `cam-sim::target::claim_v_carve` |
-| `--kind vcarve`, `--tolerance` | `cam-cli` |
-| The contract row for the `v_carve` kind | [format.md](format.md#document-c2d) |
+| Piece                                                               | Where                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| The exact distance from a point to a region's boundary, arcs native | `cam-geom::region::Region::distance_to_boundary` (`region_distance.rs`)   |
+| Which boundary point a segment is nearest at                        | `cam-geom::segment::Segment::nearest_point`                               |
+| The verified medial axis: branches, vertices, clearances, drops     | `cam-geom::medial::{medial_axis, MedialAxis, MedialBranch, MedialVertex}` |
+| The parameter record and the depth law, once                        | `cam-model::VCarveParams`, `VCarveParams::depth`                          |
+| The walk                                                            | `cam-toolpath::vcarve`                                                    |
+| The frame that relates the document to the machine                  | `cam-model::Frame`                                                        |
+| The authorised depth for a V-carve cell                             | `cam-sim::target::claim_v_carve`                                          |
+| `--kind vcarve`, `--tolerance`                                      | `cam-cli`                                                                 |
+| The contract row for the `v_carve` kind                             | [format.md](format.md#document-c2d)                                       |
 
 The decisions are D-M7-1 … D-M7-8 and the log is L1 … L12 in the
 [feature document](../../odd/tasks/009-m7-vcarve.md); the milestone's evidence is §4.10 of the
@@ -149,10 +149,10 @@ there to that vertex's own depth, **one `Move::Feed` per further vertex carrying
 a **retract to `safe_z`** (A3). A branch that is a loop returns to its first vertex, so the loop's closing
 edge is cut too; a branch of one vertex — a disc's whole axis — is a plunge and a retract, which is exactly
 what a disc's V-carve is. Branches are separate walks and do not link (D-M4-6, unchanged): a branch that
-merely *looks* adjacent can be on the far side of a wall.
+merely _looks_ adjacent can be on the far side of a wall.
 
 **No arc move is emitted, and none is needed** (D-M7-7). `Move::Arc` is constant-Z by contract and a
-V-carve's Z is a function of *position*, so the walk is linear with a per-vertex Z. The alternative —
+V-carve's Z is a function of _position_, so the walk is linear with a per-vertex Z. The alternative —
 chording the level sets into arc blocks — would trade the law's exactness for a shorter file, and M7 had
 no evidence that file length matters at this scale. The existing `FEED_MOVE` block carries `[Z]`, so the
 post contract is untouched, and the sweep measures the move honestly (S12, S13).
@@ -163,10 +163,10 @@ and load round trip, and with the toolpath authored through `cam-cli toolpath`
 `…_authored_through_the_cli_…`, and the same three for `a_circle_v_carve_…`). Both are derived and then
 read against the geometry, never captured and blessed:
 
-| Fixture | Program | What reading it establishes |
-| --- | --- | --- |
-| 20 x 20 mm square, 90° bit, 0.1 mm axis | **413 lines**, 4 branches, 396 feed tips, 10 rapids | each branch starts 0.2 mm inside a corner at `Z-0.2000` and walks the diagonal to `(10, 10)` at `Z-10.0000`, the apex; consecutive tips are `0.1·√2 = 0.1414` mm apart; **every** Z equals the tip's own exact distance to the boundary (worst deviation `1.4e-15` mm), which is the field, line by line |
-| disc of radius 15 mm, 90° bit, 0.1 mm axis | **12 lines**, 1 tip, 0 lateral moves | one plunge at `(25, 15)` to `Z-15.0000`: the axis of a disc is its centre, so the whole carve is one cone |
+| Fixture                                    | Program                                             | What reading it establishes                                                                                                                                                                                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 20 x 20 mm square, 90° bit, 0.1 mm axis    | **413 lines**, 4 branches, 396 feed tips, 10 rapids | each branch starts 0.2 mm inside a corner at `Z-0.2000` and walks the diagonal to `(10, 10)` at `Z-10.0000`, the apex; consecutive tips are `0.1·√2 = 0.1414` mm apart; **every** Z equals the tip's own exact distance to the boundary (worst deviation `1.4e-15` mm), which is the field, line by line |
+| disc of radius 15 mm, 90° bit, 0.1 mm axis | **12 lines**, 1 tip, 0 lateral moves                | one plunge at `(25, 15)` to `Z-15.0000`: the axis of a disc is its centre, so the whole carve is one cone                                                                                                                                                                                                |
 
 ```console
 $ cam-cli emit part.c2d --post post_mm.pp --library tools.sqlite --out square.nc
@@ -196,15 +196,15 @@ per-vertex Z, asserted rather than assumed.
 A V-carve has two inputs of its own — the region and the bit — and no depth, no side, no stepover and no
 pass law. It refuses by name everything whose meaning it does not have (A5, S16's precedent from M6):
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `OpenContour` | the strategy | `cutting toolpaths need closed geometry` |
-| `InvalidIncludedAngle` | the strategy | `chamfer included angle 0 degrees must be strictly between 0 and 180` — the sentence names a chamfer because the refusal is shared, see below |
-| `VCarveNeedsAngledTool` | the strategy, and the CLI before it writes | `tool T3 has no included angle in the library, so a V-carve's depth cannot be derived: a V-carve needs a V-bit` |
-| `VCarveNeedsSharpBit` | the strategy, and the CLI before it writes | `tool T3 has a 0.4 mm flat tip, so it cannot carve to a sharp edge: a V-carve's depth law is the cone of a sharp point, so a V-carve needs a sharp V-bit` |
-| `MedialAxis` | `cam_geom::medial`, surfaced by the strategy | `the V-carve's medial axis could not be computed: a tolerance that would need an unbounded lattice …` |
-| `VCarveNothingToCarve` | the strategy, and the CLI before it writes | `the V-carve's 50 mm tolerance leaves nothing to carve in the 20 x 20 mm region: every point of the region is within that distance of its boundary, so the medial axis is empty and there is no tip to plunge` |
-| 17 flags its law does not have | `cam-cli toolpath` | one `--kind vcarve takes no <flag>: …` per flag |
+| Refusal                        | Raised by                                    | Message                                                                                                                                                                                                        |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OpenContour`                  | the strategy                                 | `cutting toolpaths need closed geometry`                                                                                                                                                                       |
+| `InvalidIncludedAngle`         | the strategy                                 | `chamfer included angle 0 degrees must be strictly between 0 and 180` — the sentence names a chamfer because the refusal is shared, see below                                                                  |
+| `VCarveNeedsAngledTool`        | the strategy, and the CLI before it writes   | `tool T3 has no included angle in the library, so a V-carve's depth cannot be derived: a V-carve needs a V-bit`                                                                                                |
+| `VCarveNeedsSharpBit`          | the strategy, and the CLI before it writes   | `tool T3 has a 0.4 mm flat tip, so it cannot carve to a sharp edge: a V-carve's depth law is the cone of a sharp point, so a V-carve needs a sharp V-bit`                                                      |
+| `MedialAxis`                   | `cam_geom::medial`, surfaced by the strategy | `the V-carve's medial axis could not be computed: a tolerance that would need an unbounded lattice …`                                                                                                          |
+| `VCarveNothingToCarve`         | the strategy, and the CLI before it writes   | `the V-carve's 50 mm tolerance leaves nothing to carve in the 20 x 20 mm region: every point of the region is within that distance of its boundary, so the medial axis is empty and there is no tip to plunge` |
+| 17 flags its law does not have | `cam-cli toolpath`                           | one `--kind vcarve takes no <flag>: …` per flag                                                                                                                                                                |
 
 The angle's sentence still says "chamfer", because `InvalidIncludedAngle` is the chamfer's refusal and M7
 reuses it rather than reword a message M6 pinned: the value, the range and the exit code are the same fact
@@ -237,31 +237,31 @@ legitimate program.
 
 ## The tolerance, and its four declared costs
 
-`--tolerance` is the axis's **lattice step**. It is the same *kind* of knob as a finishing-pass
+`--tolerance` is the axis's **lattice step**. It is the same _kind_ of knob as a finishing-pass
 tolerance, but not the same knob: a finishing-pass tolerance simplifies a computed path after the
 fact to shrink the file, while M7 refines the axis to a step.
 It is stored in the document (default `0.1` mm) because `emit` recomputes the axis from the document alone
 (S9, S10); a flag that was accepted and then dropped would make the program depend on a constant nobody
 named. The four costs are declared in `cam_geom::medial`'s module doc and measured, not asserted:
 
-| Cost | What it is | Measured |
-| --- | --- | --- |
-| The chording between certified vertices | the polyline between two tips is straight while the axis between them is not; bounded by the step | at a 0.1 mm step, consecutive tips are `0.1·√2` mm apart on a square's diagonal |
-| A piece shorter than the step | a spur of the axis shorter than the lattice step is missed entirely | the axis's balls still cover `0.99670`–`1.00000` of every fixture at 0.1 mm |
-| The convex-corner band | a tip whose clearance is at or below the step is not material, so the carve stops one step short of each convex corner | **0.20 mm** of missed depth at 0.5 mm, **0.00** at 0.1; on the oracle's 20 x 20 square on its 0.5 mm grid that is `uncut 0.207 mm³ over 4 cell(s)` at 0.5 and `0.000` at 0.1 |
-| A curvature extremum truncates a branch | at the ends of an ellipse's major axis the two nearest contacts converge on one region of boundary, so the coarse lattice stops offering a candidate | the 5 x 2 ellipse's axis reaches `|x| = 3.5` against its analytic `4.2` at 0.5 mm, and `4.8` at 0.1 mm |
+| Cost                                    | What it is                                                                                                                                           | Measured                                                                                                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The chording between certified vertices | the polyline between two tips is straight while the axis between them is not; bounded by the step                                                    | at a 0.1 mm step, consecutive tips are `0.1·√2` mm apart on a square's diagonal                                                                                              |
+| A piece shorter than the step           | a spur of the axis shorter than the lattice step is missed entirely                                                                                  | the axis's balls still cover `0.99670`–`1.00000` of every fixture at 0.1 mm                                                                                                  |
+| The convex-corner band                  | a tip whose clearance is at or below the step is not material, so the carve stops one step short of each convex corner                               | **0.20 mm** of missed depth at 0.5 mm, **0.00** at 0.1; on the oracle's 20 x 20 square on its 0.5 mm grid that is `uncut 0.207 mm³ over 4 cell(s)` at 0.5 and `0.000` at 0.1 |
+| A curvature extremum truncates a branch | at the ends of an ellipse's major axis the two nearest contacts converge on one region of boundary, so the coarse lattice stops offering a candidate | the 5 x 2 ellipse's axis reaches `                                                                                                                                           | x   | = 3.5`against its analytic`4.2`at 0.5 mm, and`4.8` at 0.1 mm |
 
 Coverage — the fraction of the region the axis's own balls reach — measured on six fixtures at both
 tolerances (`the_axis_balls_cover_the_region_at_both_tolerances`):
 
-| Fixture | 0.5 mm: branches, coverage, largest miss | 0.1 mm: branches, coverage, largest miss |
-| --- | --- | --- |
-| square 10 x 10 | 4, `0.98894`, `0.20000` mm | 4, `0.99696`, `0.00000` mm |
-| disc r10 | 1, `0.99997`, `0.00000` | 1, `0.99997`, `0.00000` |
-| rectangle 20 x 6 | 5, `0.98791`, `0.20000` | 5, `0.99670`, `0.00000` |
-| L 10 x 10 | 9, `0.98585`, `0.20000` | 9, `0.99855`, `0.00000` |
-| annulus 4/10 | 1, `0.99890`, `0.00750` | 1, `0.99996`, `0.00000` |
-| ellipse 5 x 2 | 1, `0.97694`, `0.19964` | 1, `1.00000`, `0.00000` |
+| Fixture          | 0.5 mm: branches, coverage, largest miss | 0.1 mm: branches, coverage, largest miss |
+| ---------------- | ---------------------------------------- | ---------------------------------------- |
+| square 10 x 10   | 4, `0.98894`, `0.20000` mm               | 4, `0.99696`, `0.00000` mm               |
+| disc r10         | 1, `0.99997`, `0.00000`                  | 1, `0.99997`, `0.00000`                  |
+| rectangle 20 x 6 | 5, `0.98791`, `0.20000`                  | 5, `0.99670`, `0.00000`                  |
+| L 10 x 10        | 9, `0.98585`, `0.20000`                  | 9, `0.99855`, `0.00000`                  |
+| annulus 4/10     | 1, `0.99890`, `0.00750`                  | 1, `0.99996`, `0.00000`                  |
+| ellipse 5 x 2    | 1, `0.97694`, `0.19964`                  | 1, `1.00000`, `0.00000`                  |
 
 Every one of the six is **one-signed**: the missing material is a band of at most the step along a convex
 corner, never a deeper cut. Stabilising the topology moved no coverage figure at all — it changed how many
@@ -276,13 +276,13 @@ toolpath's own parity union, so the claim and the walk read the same geometry. `
 a **0.5 mm** grid with a **0.1 mm** axis, four times finer than the simulation's default, so the volume
 arithmetic is measured on a lattice fine enough to see the field rather than its cell corners:
 
-| Fixture | Analytic | Removed | `uncut` | `gouge` | Deepest |
-| --- | --- | --- | --- | --- | --- |
-| 20 x 20 mm square, 90° | `w³/6 = 1333.333` | 1332.5 | `0.0` | **`0.0`** | −10 |
-| r = 15 mm disc, 90° | `πr³/3 = 3534.292` | 3534.152 | `0.0` | **`0.0`** | −15 |
-| the square's axis halved | 1333.333 | 1189.802 | `142.043` (642 cells) | **`0.0`** | −10 |
-| the square at 20% too deep | 1333.333 | 1962.155 | `0.0` | **`629.557`** (1937 cells) | −12 |
-| the square's axis at 0.5 mm | 1333.333 | 1332.5 | `0.207` (4 cells) | **`0.0`** | −10 |
+| Fixture                     | Analytic           | Removed  | `uncut`               | `gouge`                    | Deepest |
+| --------------------------- | ------------------ | -------- | --------------------- | -------------------------- | ------- |
+| 20 x 20 mm square, 90°      | `w³/6 = 1333.333`  | 1332.5   | `0.0`                 | **`0.0`**                  | −10     |
+| r = 15 mm disc, 90°         | `πr³/3 = 3534.292` | 3534.152 | `0.0`                 | **`0.0`**                  | −15     |
+| the square's axis halved    | 1333.333           | 1189.802 | `142.043` (642 cells) | **`0.0`**                  | −10     |
+| the square at 20% too deep  | 1333.333           | 1962.155 | `0.0`                 | **`629.557`** (1937 cells) | −12     |
+| the square's axis at 0.5 mm | 1333.333           | 1332.5   | `0.207` (4 cells)     | **`0.0`**                  | −10     |
 
 The two correct carves are short of the analytic volume by `0.833` and `0.140 mm³` — the cell-centre
 quadrature of `∫ d dA`, not lost material: `uncut` is exactly zero because every cell's own centre is
@@ -303,14 +303,14 @@ clearance.
 M6 recorded a defect and did not fix it: `cam_sim::grid::grid_for` built the field at `(0, 0)` from
 `job.width/height`, i.e. in document coordinates, while programs are emitted in machine coordinates, so at
 any origin corner other than `bottom_left` the report and the preview disagreed with the document about
-*where* the cut is (S17). M7's acceptance test is a simulation report, so the fix had to come first
+_where_ the cut is (S17). M7's acceptance test is a simulation report, so the fix had to come first
 (D-M7-6), and it is the roadmap's own recorded next step rather than new scope.
 
 `cam_model::Frame` is now the one definition of the mapping — a translation and, at `top_left`, a Y
 reflection — and it is honoured at every boundary: the field's grid and the sweep's cell mapping, the
 program's own coordinates, and the handedness of every arc. The implementation found a cheaper and safer
 crossing point than the roadmap's sketch, and the reason is a tab (D-M7-8): M5 places a tab by **arc length
-from the contour's start**, and reflecting a contour reverses its traversal, so mapping the *target's*
+from the contour's start**, and reflecting a contour reverses its traversal, so mapping the _target's_
 geometry into the machine frame would move every tab to the other side at `top_left`. The field, the target
 and the preview therefore stay in the document frame, and the program is read into it once, in
 `sweep::apply_move`. What the sketch got right is the invariant — exactly one mapping, at exactly one
@@ -319,11 +319,11 @@ boundary — and that is what the code does.
 Measured on M6's own fixture (an 80 x 30 mm band pocketed at `y = 60 … 90` in a 200 x 100 mm sheet, a 6 mm
 tool, 1 mm cells), before and after:
 
-| Origin | Before (`e0d39a3`) | After (`d8cb895` + `4d6849e`) |
-| --- | --- | --- |
-| `bottom_left` | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells | unchanged, byte for byte |
-| `top_left` | removed 14376.000, **gouge 14376.000 over 2396 cells**, **uncut 14400.000 over 2400 cells** | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells |
-| `center` | M6's record, on a 100 x 80 mm square: `removed` collapsed from 47976.000 to 2394.000 | the bottom-left numbers, measured on the same band fixture at every corner |
+| Origin        | Before (`e0d39a3`)                                                                          | After (`d8cb895` + `4d6849e`)                                              |
+| ------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `bottom_left` | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells                                   | unchanged, byte for byte                                                   |
+| `top_left`    | removed 14376.000, **gouge 14376.000 over 2396 cells**, **uncut 14400.000 over 2400 cells** | removed 14376.000, gouge 0.000, uncut 24.000 over 4 cells                  |
+| `center`      | M6's record, on a 100 x 80 mm square: `removed` collapsed from 47976.000 to 2394.000        | the bottom-left numbers, measured on the same band fixture at every corner |
 
 Two further defects came out of T0's own work and neither was anticipated by the feature document, which
 is why A7 was widened to cover arc **handedness** and T0 was widened with it:
@@ -335,7 +335,7 @@ is why A7 was widened to cover arc **handedness** and T0 was widened with it:
    a `G02` where the machine needs `G03`. That is not a reporting error: it is a wrong cut on real
    hardware, and no fixture noticed because every fixture is bottom-left.
 3. **The thread's helix had the same defect in a second half only the first fix revealed.** `thread.rs`
-   argued its helix was already in machine coordinates, and only the orbit's *start* was: the strategy
+   argued its helix was already in machine coordinates, and only the orbit's _start_ was: the strategy
    mapped the centre but offset the start along **+x**, which a Y reflection leaves alone, and computed the
    fractional turn's end with `+sin` around that machine centre. `top_left` emitted the opposite orbit and
    the opposite hand — a left-hand thread from a document that describes a right-hand one.
@@ -372,9 +372,9 @@ were hashed.
 
 **Two differ, and both are supposed to:**
 
-| Case | Before | After |
-| --- | --- | --- |
-| `--help` | lists the nine kinds and no `--tolerance` for a toolpath | lists the ten kinds, `--tolerance`, and what a V-carve's step costs |
+| Case             | Before                                                                                       | After                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--help`         | lists the nine kinds and no `--tolerance` for a toolpath                                     | lists the ten kinds, `--tolerance`, and what a V-carve's step costs                                  |
 | unknown `--kind` | `…; expected profile, pocket, drilling, chamfer, engrave, fluting, texture, inlay or thread` | `…; expected profile, pocket, drilling, chamfer, vcarve, engrave, fluting, texture, inlay or thread` |
 
 Everything else — the `--islands` refusals, the arc and helix post refusals, the five-toolpath `simulate`
@@ -412,7 +412,7 @@ golden programs and its differential — not on an outside review that never ran
   radius, which the simulation reports as `uncut`.
 - **No flat bottom** (`_vcpdFlatDepth`, `_vcpdDoFlatBottom`, `_vcpdUseAreClearTool`, the owner's "Nada
   extra: `simulate` lo reporta como uncut"). Recorded out of scope rather than dropped: it changes what the
-  operation *is*, and it is a milestone of its own.
+  operation _is_, and it is a milestone of its own.
 - **No `PreserveArcs`** (`_vcpdPreserveArcs`). It cannot apply: **arc output is not preserved because the
   walk is linear with a per-vertex Z.** A constant-`d` contour of the distance field is not a constant-Z
   curve, so `Move::Arc` — constant-Z by contract — cannot carry it (D-M7-7). The cost is file length, and
@@ -430,13 +430,13 @@ golden programs and its differential — not on an outside review that never ran
 
 ## Where the record lives
 
-| Question | Where |
-| --- | --- |
+| Question                                     | Where                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
 | What M7 had to be, and every amendment to it | `odd/tasks/009-m7-vcarve.md` — S1 … S18, A1 … A8, D-M7-1 … 8, L1 … L12 |
-| What the `v_carve` kind stores | [format.md](format.md#document-c2d), one row per `kind` |
-| What the simulation authorises | [m5-simulation.md](m5-simulation.md#the-target-surface) |
-| How a profile, a pocket and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
-| How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
-| How islands, parity and the `@2` tag work | [region-booleans.md](region-booleans.md) |
-| What M7 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.10 |
-| The project-level summary | [README.md](../../README.md) |
+| What the `v_carve` kind stores               | [format.md](format.md#document-c2d), one row per `kind`                |
+| What the simulation authorises               | [m5-simulation.md](m5-simulation.md#the-target-surface)                |
+| How a profile, a pocket and a drill behave   | [m4-toolpaths.md](m4-toolpaths.md)                                     |
+| How the depth-variant strategies behave      | [m6-toolpaths.md](m6-toolpaths.md)                                     |
+| How islands, parity and the `@2` tag work    | [region-booleans.md](region-booleans.md)                               |
+| What M7 delivered, and what it cost          | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.10               |
+| The project-level summary                    | [README.md](../../README.md)                                           |

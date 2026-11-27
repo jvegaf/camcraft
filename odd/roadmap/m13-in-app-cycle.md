@@ -43,4 +43,3 @@ and the rim **lighter** at `#ddc9a3`, because nothing darker clears 3:1 against 
 with its hue family and channel step, and the amber on the lit face), and the cost is stated in the palette
 and in `design/system.md`: the dark ramp narrows from 6.33:1 to 1.80:1, and the light set's amber over the
 deepest stop is 2.25:1 — under the floor, and not fixable by moving these three roles.
-

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Hook barato antes de commit: lint/format/docs según lo staged.
+# La gate completa vive en scripts/check.sh.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# Frontend/estilos/config: Biome
+if echo "$staged" | grep -qE '\.(js|jsx|ts|tsx|svelte|css|json|jsonc)$'; then
+  if command -v pnpm >/dev/null 2>&1; then
+    echo "pre-commit: pnpm lint"
+    pnpm lint
+  else
+    echo "pre-commit: skip pnpm lint (pnpm no disponible)"
+  fi
+fi
+
+# Rust del host Tauri
+if echo "$staged" | grep -qE '^src-tauri/.*\.rs$'; then
+  echo "pre-commit: cargo fmt --check (src-tauri)"
+  cargo fmt --manifest-path src-tauri/Cargo.toml --check
+fi
+
+# Docs markdown
+if echo "$staged" | grep -qE '\.md$'; then
+  echo "pre-commit: markdown links"
+  ./scripts/check-docs.sh
+fi

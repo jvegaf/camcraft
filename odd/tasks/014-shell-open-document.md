@@ -9,11 +9,11 @@ This feature connects the three.
 
 ## Specs
 
-- **S1 — the decision.** The owner's words, in order: *"vale"*, accepting the parent's offer to start with
-  *"abrir `.c2d` desde el shell, que es aditivo y no rompe nada"*, then this choice verbatim from the
-  question the parent asked: option *"Diálogo nativo con rfd"* — *"El botón Open abre el diálogo del
+- **S1 — the decision.** The owner's words, in order: _"vale"_, accepting the parent's offer to start with
+  _"abrir `.c2d` desde el shell, que es aditivo y no rompe nada"_, then this choice verbatim from the
+  question the parent asked: option _"Diálogo nativo con rfd"_ — _"El botón Open abre el diálogo del
   sistema. Es la feature real, pero suma una dependencia que el registro del proyecto dejó explícitamente
-  sin decidir."* The dependency is therefore taken on purpose, not by drift: the record at
+  sin decidir."_ The dependency is therefore taken on purpose, not by drift: the record at
   `odd/tasks/004-m3-import.md:113` ("`rfd` or equivalent is a later decision") is decided here.
 - **S2 — the capability.** The system's Open button (the glyph that exists unused at
   `cam-ui/src/icons.rs:1545-1552`) asks the host for a path; the host shows the platform file dialog; the
@@ -50,12 +50,12 @@ This feature connects the three.
 
 ## Log
 
-- **L1 (the request, verbatim).** *"vale"*, in answer to the parent's *"Si querés, arranco por el de
-  `.c2d`, que es aditivo y no cambia ningún contrato documentado"*, and the chosen surface, verbatim:
-  *"Diálogo nativo con rfd"*.
+- **L1 (the request, verbatim).** _"vale"_, in answer to the parent's _"Si querés, arranco por el de
+  `.c2d`, que es aditivo y no cambia ningún contrato documentado"_, and the chosen surface, verbatim:
+  _"Diálogo nativo con rfd"_.
 - **L2 (reconnaissance, before any write).** The load path is `DocumentFile::load`
   (`cam-store/src/document.rs:29`, archive scan `:40-64`, missing entry `:67-70`, `migrate()` `:74`,
-  `validate()` `:75-78`), and the CLI's *private* `open` helper (`cam-cli/src/main.rs:218-223`, used by
+  `validate()` `:75-78`), and the CLI's _private_ `open` helper (`cam-cli/src/main.rs:218-223`, used by
   `validate`, `inspect`, `check`, `emit` and `simulate` — there is no `open` subcommand) adds only exit-code
   classification on top of it, so the window can reuse the loader without re-implementing validation.
   `AppState::replace_document` (`cam-app/src/lib.rs:147-154`) clears history and selection and sets
@@ -70,7 +70,7 @@ This feature connects the three.
   the crate, `clippy -D warnings` and `fmt --check` clean — with seven new `shell.rs` tests and two pins
   moved on purpose (the app bar now reports `Undo, Redo, Open, Fit the job`, and the `untitled.c2d`
   assertion keeps its literal because it is still true with nothing open). Its honest limitation, worth
-  keeping: for a brand-new public API the intended pre-implementation failure is a *compile* failure, not
+  keeping: for a brand-new public API the intended pre-implementation failure is a _compile_ failure, not
   a per-assertion one, so the RED evidence is `variant not found in UiAction` rather than a failing
   assertion. It also disclosed a footgun instead of hiding it: `Shell::apply_action` is the only place
   that can see the shell, so a host calling `handle_action(OpenFile)` directly would get the swap and the
@@ -129,7 +129,7 @@ This feature connects the three.
   an accidental one was "one undo away". `odd/tasks/015-shell-save-document.md`'s verifier reproduced what that
   costs once the window can write: open `a.c2d`, open `b.c2d`, `Undo`, `Save` overwrote `b.c2d` with a's
   drawing and dropped its archive entries, because the recorded path kept naming `b` while the screen showed
-  `a`. The owner's decision, verbatim: *"Abrir deja de ser deshacible"*. An open now swaps through
+  `a`. The owner's decision, verbatim: _"Abrir deja de ser deshacible"_. An open now swaps through
   `replace_document`, entering no history entry, so no undo can cross a document boundary; the protection for
   unsaved work moved to the refusal added in the same feature, which is what S4's undo step was standing in
   for. The reason this entry exists: anyone reading S4 above will find a promise that no longer holds, and
@@ -142,7 +142,7 @@ This feature connects the three.
   `tools_ref` — a reference **relative to the document's own directory**, which is the meaning `docs/format.md`
   gives the field — through
   `tools_beside_document` (`:2752-2798`) and hands the entries to `set_tools`, so the snapshot S4 clears is the
-  *previous* document's library and no longer the last word about the new one. S4's sentence is left exactly as
+  _previous_ document's library and no longer the last word about the new one. S4's sentence is left exactly as
   written, because its rule is unchanged: nothing stale survives an open. The feature that owns the resolution
   is `odd/tasks/016-shell-tools-ref.md` (S2–S4), and it extends this document's own open rather than replacing it —
   same `DocumentFile::load`, same `replace_document` swap with no history entry (L6), same host dialog — with one

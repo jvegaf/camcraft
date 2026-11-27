@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "chosen": "04-settings.html",
+  "handoffs": {
+    "02-floating-studio.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-26T03:10:35.892Z",
+      "startedAt": "2026-11-26T03:17:36.330Z",
+      "implementedAt": "2026-11-26T04:55:52.249Z",
+      "note": "Marco flotante, chrome a paridad y IA de paneles CAM implementados en feat/095-floating-studio-atomic (7 commits, 115 tests, gate verde, 5 slices de review aprobados). Sin preview: la app no está corriendo."
+    },
+    "04-settings.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-26T22:26:42.394Z",
+      "startedAt": "2026-11-26T22:26:44.797Z",
+      "implementedAt": "2026-11-26T22:35:30.721Z",
+      "note": "Ventana de Preferencias real: titlebar con búsqueda funcional (⌘F), lista de páginas agrupada con panelRow recipe, filas label+hint / control, segmented de tema y footer con Button atoms. Solo settings que el backend persiste (theme); el resto no se renderiza porque SettingsDto no las guarda.",
+      "previewUrl": "http://127.0.0.1:5173/"
+    }
+  }
+}

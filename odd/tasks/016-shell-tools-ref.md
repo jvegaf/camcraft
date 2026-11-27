@@ -7,9 +7,9 @@ CLI does not have.
 
 ## Specs
 
-- **S1 — the decision.** The owner's words, verbatim: *"me parece bien pushea y continua con resolver"*,
-  answering the parent's *"seguimos con resolver `tools_ref` al abrir, que es el hueco que quedó declarado en
-  las dos features"*.
+- **S1 — the decision.** The owner's words, verbatim: _"me parece bien pushea y continua con resolver"_,
+  answering the parent's _"seguimos con resolver `tools_ref` al abrir, que es el hueco que quedó declarado en
+  las dos features"_.
 - **S2 — the resolution.** On a successful open, the shell resolves the loaded document's `tools_ref`
   **relative to that document's own directory** — which is what `docs/format.md:105` already says the field
   is — loads it through a **read-only** open, and hands the entries to `set_tools`. A document with no
@@ -42,7 +42,7 @@ CLI does not have.
   is named here and left visible. (Refinement, L5: the absolute half **is** incidentally pinned by
   `cam-cli/tests/cli.rs:974-995` and `:1017-1046`; it is the `..` half that nothing pins.)
 - **S8 — a library in WAL mode is refused, and that is the owner's decision.** The owner's words, verbatim:
-  *"Rechazar bibliotecas WAL"*, choosing among the closes for F1 (L5). `ToolLibrary::open_read_only` refuses a
+  _"Rechazar bibliotecas WAL"_, choosing among the closes for F1 (L5). `ToolLibrary::open_read_only` refuses a
   library whose own header declares WAL journal mode, **before any connection exists**, because opening one is
   precisely what makes SQLite create its `-shm` and `-wal` companions — and S3 says the window creates nothing,
   anywhere. The refusal is a `StoreError::ToolLibrary` naming the file and the journal mode, so the soft path of
@@ -67,7 +67,7 @@ CLI does not have.
 
 ## Log
 
-- **L1 (the request, verbatim).** *"me parece bien pushea y continua con resolver"*, after the save feature was
+- **L1 (the request, verbatim).** _"me parece bien pushea y continua con resolver"_, after the save feature was
   pushed at `5cd16a7`.
 - **L2 (reconnaissance, before any write).** The join is `.parent().unwrap_or(".").join(reference)`, written
   three times in the CLI — `emit` (`cam-cli/src/main.rs:1828-1844`), `simulate` (`:1924-1942`) and
@@ -89,8 +89,8 @@ CLI does not have.
   library this window was given…"]`), and both hostile tests failed on their guard; `shell.rs` went 98 → 104
   and the card now draws `T4 - Tool (6mm)` with a real estimate instead of "No estimated cutting time".
   **The hole it found in S3, recorded as a limit and not papered over:** containment is **lexical**, so a
-  symlink *inside* the document's directory that points outside is still followed and read. It cannot
-  *create* anything there, because `try_exists` follows the link and a dangling one reads as absent, so the
+  symlink _inside_ the document's directory that points outside is still followed and read. It cannot
+  _create_ anything there, because `try_exists` follows the link and a dangling one reads as absent, so the
   write surface is closed; what remains open is reading a file that whoever owns the directory put there.
   Canonicalising would close that read and would also refuse a legitimate shared-library symlink, which is a
   real arrangement in a shop, so the rule stays lexical and the trade is stated rather than taken silently.
@@ -136,14 +136,14 @@ CLI does not have.
   became "every component is a plain name or `.`", which refuses those by construction.
   **The independent verification** (a fresh read-only `gentle-ai-verify`, run after the incident below): **S1–S6
   met, S7 still true.** It executed the hostile cases rather than reading them: an absolute reference and
-  `../outside.sqlite` pointed at *existing* outside libraries are refused with `it is not inside the document's
+  `../outside.sqlite` pointed at _existing_ outside libraries are refused with `it is not inside the document's
   directory` and the outside bytes are untouched; a symlink to a 100-byte non-library leaves 100 bytes; a
-  hardlink to a 0-byte file leaves 0; a missing library reached through a *directory* symlink creates nothing;
+  hardlink to a 0-byte file leaves 0; a missing library reached through a _directory_ symlink creates nothing;
   a genuine hand-built v1 library is refused naming both versions with its bytes identical (no migration), and
   so is a v3 one. It also confirmed `open_read_only` has `SQLITE_OPEN_READ_ONLY`, no `create_dir_all`, no
   `migrate` and a version gate (`cam-store/src/tools.rs:259-296`), and that `git diff 5cd16a7..HEAD -- crates/cam-cli
   crates/cam-ui/src/chrome.rs` is **empty**, so S5's "what must not change" did not move.
-  **The refinement it made to S7:** the absolute half *is* incidentally pinned — `cam-cli/tests/cli.rs:974-995`
+  **The refinement it made to S7:** the absolute half _is_ incidentally pinned — `cam-cli/tests/cli.rs:974-995`
   and `:1017-1046` set an absolute `tools_ref` and require exit 0 — so "nothing in the repository pins that
   either way" was slightly overstated; the `..` half is pinned nowhere, which is what S7 actually needs decided.
   **F1, the advisory it produced, and it is caused by this feature:** a library in **WAL** mode reached through
@@ -173,14 +173,14 @@ CLI does not have.
   review of the same tree would have burned authority to learn what the store already records, so none was
   started. What the review's advisory list was is not recorded here, because the authority does not expose it
   after the burn; the one finding that mattered became code.
-- **L6 (F1 closed: a WAL library is refused, and that is S8).** The owner chose *"Rechazar bibliotecas WAL"*
+- **L6 (F1 closed: a WAL library is refused, and that is S8).** The owner chose _"Rechazar bibliotecas WAL"_
   over the two other closes, and the reasoning is worth keeping: `immutable=1` would stop the creation by
   making SQLite ignore the `-wal` content, which reads **stale** data — it fixes the symptom by denying the
   file half its state.
   **The rule lives in `cam-store`, before any connection exists.** `open_read_only` now calls `declares_wal`,
   which reads the file's own header — the magic `SQLite format 3\0`, and the file-format read and write
   versions at offsets 18 and 19 — and refuses when either is `2`. Reading the header instead of asking SQLite
-  *is* the fix: asking means opening, opening a WAL database is what creates `-shm` and `-wal`, so the question
+  _is_ the fix: asking means opening, opening a WAL database is what creates `-shm` and `-wal`, so the question
   had to be answered before there was a connection to answer it with. A file that cannot be read, or that is
   not a SQLite database at all, answers "not WAL" and falls through to the refusal it already had: one failure
   keeps saying one thing. The message names the file and the journals mode, so S4's soft path needed no change
@@ -189,7 +189,7 @@ CLI does not have.
   `a_read_only_open_refuses_a_wal_library_and_creates_no_sidecar_files` panicked on
   "a WAL library cannot be read without creating its companions" — `open_read_only` opened it and the
   companions appeared — and it passes now. It asserts the **directory listing** is unchanged, not only the
-  library's bytes, because F1 was about files that *appear*.
+  library's bytes, because F1 was about files that _appear_.
   **The two tests the verifier handed over are pinned too**, and they passed before the fix: they describe
   behaviour that already worked and had no test. A reference into a subdirectory resolves against the
   document's own directory (S2), and a directory symlink beside the document is followed for reading while
@@ -197,7 +197,7 @@ CLI does not have.
   `cam-store`'s `tools` 10 → 11.
   **Gate:** `./scripts/check.sh` exit 0 — 96 suites, **1 214 tests** (1 211 + the 3 above), 0 failed, run one
   cargo process at a time.
-  **The cost, stated because it is real:** a library in WAL mode can no longer be read *from the window* at
+  **The cost, stated because it is real:** a library in WAL mode can no longer be read _from the window_ at
   all. That is a total and honest refusal instead of a silent creation, and no library campilot writes is in
   WAL mode, so this costs nothing on our own files — but a shop library another tool left in WAL mode is
   refused by the window with a reason, while `cam-cli` keeps reading it through `open`.
@@ -250,17 +250,17 @@ CLI does not have.
   the unfixed code. That is correct — it pins an acceptance that was already right — and dressing it as red
   would have been a lie about what the test proved.
   **Gate:** `./scripts/check.sh` exit 0 — 96 suites, **1 218 tests**, 0 failed, one cargo process at a time.
-  **A coverage gap named rather than filled:** nothing tests the positive half of L3's trade — a *file* symlink
+  **A coverage gap named rather than filled:** nothing tests the positive half of L3's trade — a _file_ symlink
   to a clean library being read and reporting `opened`. The directory-symlink and empty-file tests cover
   adjacent ground, not that sentence.
 - **L9 (the closing pass: the guard holds, and what it still does not pin).** The final read-only verifier
-  built its own copy of the tree and probed every entrance. **Met:** a file symlink whose *target* carries a
+  built its own copy of the tree and probed every entrance. **Met:** a file symlink whose _target_ carries a
   non-empty log is refused with the honest note and the outside listing identical; a file symlink to a **clean**
-  library is *read* — `T4 - Tool (6mm)` on the card, nothing created on either side — which is the half L8 named
+  library is _read_ — `T4 - Tool (6mm)` on the card, nothing created on either side — which is the half L8 named
   as unpinned and the one thing this pass proved rather than assumed; a directory symlink behaves the same.
   **Attempts to break it, all benign:** a symlinked parent with a lexical `-wal` → refused; a symlink chain
   (`link` → `chain2` → real) → refused; a `-wal` existing **only** at the lexical name → accepted and creates
-  nothing, because SQLite names companions from the *resolved* target, so a log nobody would use is inert; a
+  nothing, because SQLite names companions from the _resolved_ target, so a log nobody would use is inert; a
   hardlink whose twin carries a log → accepted, creates nothing (that log is inert too, and the read sees the
   hardlink's own state — stale by inode semantics, never written). **Unchanged:** header WAL refused, non-empty
   log refused, 0-byte log opens and resolves its tool, below-head refused naming both versions without migrating,
@@ -278,7 +278,7 @@ CLI does not have.
   themselves).** The provider offered the **whole arc** (`e9630290..b23b0dd`, 4 paths, 528 lines) rather than
   the last commit, so it was reviewed as a whole: **approved**, lineage `review-d5e23887f517a70b`, authority
   **burned** (`gentle-ai.review-acknowledged/v1`). Two advisories, both non-blocking and both about the
-  *evidence* rather than the guard: **`R3-001`** (WARNING, `cam-ui/tests/shell.rs:4542-4546`) and **`R3-002`**
+  _evidence_ rather than the guard: **`R3-001`** (WARNING, `cam-ui/tests/shell.rs:4542-4546`) and **`R3-002`**
   (SUGGESTION, `cam-store/tests/tools.rs:408`) — they say the two companion tests assert the directory listing
   and stop there. That is the same sentence the closing verifier wrote in L9, and the reason it handed over a
   positive-half test. **Two independent views, one conclusion: the guard is proven, the evidence around it is

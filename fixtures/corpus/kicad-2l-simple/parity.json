@@ -4,7 +4,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "skipped"
     },
     "drill": {
       "features": 88,
@@ -15,37 +15,37 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "skipped"
     },
     "mask-top": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 140.7369041260022,
+      "points": 3516,
+      "polygons": 126,
+      "status": "parsed"
     },
     "outline": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 10.26068583471009,
+      "points": 168,
+      "polygons": 8,
+      "status": "parsed"
     },
     "silk-bottom": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "refused"
+      "status": "skipped"
     },
     "silk-top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     }
   },
   "flatten_tolerance_mm": 0.001,

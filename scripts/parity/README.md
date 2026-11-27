@@ -18,9 +18,9 @@ geometry). That test is what `cargo test --workspace` sees; the measurement itse
 
 ## What is measured, and against what
 
-Per artefact: `status` (`parsed`, `refused`, `timeout` or `error`), `polygons`, `contour_area_mm2` and `points`
-(after flattening at `flatten_tolerance_mm`) for a Gerber layer; `tools` and `features` for an Excellon
-file.
+Per artefact: `status` (`parsed`, `refused`, `timeout`, `skipped` or `error`), `polygons`,
+`contour_area_mm2` and `points` (after flattening at `flatten_tolerance_mm`) for a Gerber layer;
+`tools` and `features` for an Excellon file.
 
 - `polygons` is the number of boundaries of the layer's image.
 - `contour_area_mm2` is the **sum of the absolute contour areas**, which is the same rule this
@@ -36,6 +36,25 @@ the tolerances exactly. That epsilon is E0.4's and it is relative because the ar
 sum of hundreds of terms — an absolute epsilon would be a different rule for a small board and a large
 one.
 
+### Comparing against FlatCAM
+
+`scripts/parity/compare-flatcam.py` reads the two committed JSON files — this tree's goldens and
+`fixtures/baseline/`, which task 059 pinned from a real FlatCAM-Plus run — and reports, per artefact,
+where the two disagree. It measures nothing, so it needs no FlatCAM environment.
+
+Its rules: `status` compares exactly; `polygons` is reported and never failed, because FlatCAM flattens
+every arc in Shapely while this tree keeps arcs native and the two therefore count different things; an
+artefact measured on only one side is listed as not comparable and never as agreement.
+
+`contour_area_mm2` is the one field where the comparison has to be read with care, and the reason is in
+the section above: the field is the **sum of absolute contour areas**, so a boundary with a hole inside
+it contributes twice, while FlatCAM reports the material area. Where the two metrics coincide the areas
+agree to about `1e-4`; where a layer is drawn as a closed ring the tree's number is a different
+quantity and the comparison is not meaningful. The script uses a relative `1e-3`, which is loose enough
+to absorb arc flattening (observed `<= 9e-5`) and tight enough to still fail every genuine geometric
+divergence in the corpus (`>= 2.2e-3`), but a divergence it reports on an `outline` should be read as
+"these are different quantities" until a hole-aware material area exists (D2 / G0.2).
+
 **What this is not.** It is not parity against FlatCAM. D5 asks for an external oracle and that is a
 different instrument with its own cost; what this harness compares against is the tree's own recorded
 output over a fixed corpus, which is what "runs in CI over the minimum corpus and fails on divergence"
@@ -44,7 +63,7 @@ writes down instead of making.
 
 ## Two halves, and why the measurement lives outside the workspace
 
-`cargo test` runs the half it can bound: every artefact the goldens pin as *parsed* is measured again in
+`cargo test` runs the half it can bound: every artefact the goldens pin as _parsed_ is measured again in
 `crates/cam-geom/tests/parity.rs` and compared with the same rules, plus the corpus-integrity assertions.
 That half is fast (0.1 s today) and needs no external process.
 
@@ -76,18 +95,37 @@ to regenerate the measurer's lock file and commit the diff:
 cargo update --manifest-path scripts/parity/measure/Cargo.toml
 ```
 
-## What the corpus measures today (re-pinned 2026-11-14)
+## What the corpus measures today (re-pinned 2026-11-16, task 060)
 
-The W2 importers changed what the tree makes of the corpus, so the goldens were re-pinned. The shape of
-the current measurement is worth stating once, because it is the baseline every later change is compared
-against — of the **54 artefacts**: 12 are `parsed`, 24 are still `refused`, and **18 are `timeout`**.
+The W2 importers changed what the tree makes of the corpus, so the goldens were re-pinned; E1.7 then
+changed it again and they were re-pinned a second time. The shape of the current measurement is worth
+stating once, because it is the baseline every later change is compared against — of the **54
+artefacts**: 17 are `parsed`, 15 are still `refused`, and **22 are `timeout`**.
 
-Those 18 are the important line. They are not the layers the reader rejects: they are layers W2a/W2b
-now *accept* and hand to the geometry kernel, which does not finish evaluating them inside the harness'
-30 s bound. Before those waves the same artefacts were `refused` — cheaply and instantly — so the pin
-moved from "the reader says no" to "the kernel does not finish", and `timeout` is the harness recording
-that honestly instead of hanging CI. Their measurement is zeroed and the status is compared, so the day
-one of them finishes, the divergence says so in a single line.
+**What the E1.7 re-pin changed, and why it was not a regression.** The diff was classified with the
+rules below, and nothing that was already `parsed` moved a single number. Five `outline` layers went
+`refused` → `parsed` with real geometry (`kicad-2l-simple` 10.26 mm²/8 polygons, `kicad-4l-pours`
+28.52 mm²/7, `kicad-large-pours` 35.82 mm²/1, `substitute-altium` 129.78 mm²/1, `substitute-eagle`
+21.28 mm²/21), and four layers went `refused` → `timeout` (`kicad-2l-simple` bottom, mask-bottom and
+silk-bottom, `substitute-eagle/bottom`). One cause explains both moves: a Gerber layer that used to be
+refused whole over a construct it could not build (an arc whose centre cannot be derived, a region
+that is not a valid region) now imports the rest, so the reader accepts the layer (`parsed`) or hands
+it to a kernel that does not finish (`timeout`). The cost is honest and visible: four more 30 s bounds.
+
+Those 22 are the important line. They are not the layers the reader rejects: they are layers the
+reader now _accepts_ and hands to the geometry kernel, which does not finish evaluating them inside the
+harness' **30 s bound** (the `timeout_seconds` every golden records, set by `collect.py`). Thirty, not
+twenty, and the reason is stability rather than patience: two `substitute-easyeda` layers (mask-top,
+mask-bottom) terminate in roughly twenty seconds, so a twenty-second bound flips them between `parsed`
+and `timeout` from run to run — the goldens then disagree with the tree on a measurement nobody changed.
+Ten seconds is faster still and loses those two outright. The eighteen that never terminate dominate the
+run either way, so the honest saving is not a lower bound but not measuring when a push cannot move the
+measurement — a scope step that lived in the `parity` job before it became the migration placeholder it
+is today in `.github/workflows/ci.yml`, and that returns with the measurement. Before those waves the
+same artefacts were `refused` — cheaply and instantly — so the pin moved from "the reader says no" to
+"the kernel does not finish", and `timeout` is the harness recording that honestly instead of hanging
+CI. Their measurement is zeroed and the status is compared, so the day one of them finishes, the
+divergence says so in a single line.
 
 Two consequences worth keeping in view:
 
@@ -117,11 +155,11 @@ some afternoon.
 
 `5 parsed, 49 not parsed, of 54 artefacts`. That is not parity; it is the distance, quantified:
 
-| Artefacts | State | Why |
-| --- | --- | --- |
-| 42 Gerber layers | 38 refused, 4 timeout | three constructs stand between this reader and a real board: an aperture macro (`RoundRect`) with a non-zero rotation, an arc `D01` outside a `G36`/`G37` region, and the boolean engine refusing real copper with "the arrangement revisits a piece" |
-| 6 drill files | 2 parsed, 4 refused | routed slots written as `X…Y…G85X…Y…`, which the Excellon reader does not accept |
-| 3 Gerber layers parsed | 1 with geometry, 2 empty | `substitute-easyeda/outline` (2 polygons, 16 114.898 739 518 914 mm² of contour area), and two layers whose source file is legitimately empty of material |
+| Artefacts              | State                    | Why                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 42 Gerber layers       | 38 refused, 4 timeout    | three constructs stand between this reader and a real board: an aperture macro (`RoundRect`) with a non-zero rotation, an arc `D01` outside a `G36`/`G37` region, and the boolean engine refusing real copper with "the arrangement revisits a piece" |
+| 6 drill files          | 2 parsed, 4 refused      | routed slots written as `X…Y…G85X…Y…`, which the Excellon reader does not accept                                                                                                                                                                      |
+| 3 Gerber layers parsed | 1 with geometry, 2 empty | `substitute-easyeda/outline` (2 polygons, 16 114.898 739 518 914 mm² of contour area), and two layers whose source file is legitimately empty of material                                                                                             |
 
 Each refused artefact maps to an item the roadmap already names — `RoundRect` and the aperture macros to
 E3b, the arc stroke and the region re-entry to E1.4, the arrangement refusal to G0.1/G0.2, the slots to
@@ -144,6 +182,11 @@ A divergence is either progress or a regression, and the diff decides which:
 `error` is the measurer itself failing — a panic, an allocation failure — and it is deliberately not
 `refused`: `run.sh` stops on it before comparing or re-pinning (see `guard_errors.py`), and a golden may
 never hold it. A crash is not a measurement, so there is nothing for it to match.
+
+`skipped` is different: it is a deliberate "not checked now" record. An artefact pinned `skipped` is
+carried through without being measured or compared, so CI and local hooks do not spend time on it. It
+records a budget-closure or deferral decision, not a measurement. Changing one back to `timeout` or
+`parsed` is the moment it is checked again.
 
 The board set is fixed too. Both `compare.py` and the workspace test enumerate the six slugs E0.5 names
 and fail if the corpus holds a different set, so a board directory that disappears is a divergence

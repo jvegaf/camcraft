@@ -27,30 +27,30 @@ disabled; it is never faked with an in-memory library.
 **S3 — The factory catalogue is the reference's 22 tools in its six families.** `design/prancheta-reference/Screenshot 2026-11-03 032331.png` and `034320.png` are the source; the tool numbers are `T1`–`T22`, each
 used once, and this table is the whole set (Ø is the tool's diameter, `n` its flute count):
 
-| # | Name | Kind | Ø mm | n | shape |
-| --- | --- | --- | --- | --- | --- |
-| T1 | Flat end mill · 6 mm | FlatEndMill | 6 | 2 | — |
-| T2 | Flat end mill · 3.175 mm (1/8") | FlatEndMill | 3.175 | 2 | — |
-| T3 | Ball nose · 6 mm | BallNose | 6 | 2 | tip radius 3 |
-| T4 | V-bit · 90° · 12.7 mm | VBit | 12.7 | 2 | 90°, tip width 0.2 |
-| T5 | V-bit · 60° · 12.7 mm | VBit | 12.7 | 2 | 60°, tip width 0.2 |
-| T6 | Drill · 5 mm | Drill | 5 | 2 | 118°, shank 5, flute 30, overall 60 |
-| T7 | Flat end mill · 8 mm | FlatEndMill | 8 | 2 | — |
-| T8 | Flat end mill · 12 mm (roughing) | FlatEndMill | 12 | 2 | — |
-| T9 | Ball nose · 3.175 mm | BallNose | 3.175 | 2 | tip radius 1.5875 |
-| T10 | Ball nose · 1.5 mm (detail) | BallNose | 1.5 | 2 | tip radius 0.75 |
-| T11 | V-bit · 30° · 3.175 mm | VBit | 3.175 | 1 | 30°, tip width 0.1, flute 7.7, overall 38 |
-| T12 | Drill · 8 mm | Drill | 8 | 2 | 118° |
-| T13 | Single flute · 3.175 mm | FlatEndMill | 3.175 | 1 | — |
-| T14 | Single flute · 4 mm | FlatEndMill | 4 | 1 | — |
-| T15 | Compression · 6 mm | FlatEndMill | 6 | 2 | — |
-| T16 | Surfacing · 25 mm | FlatEndMill | 25 | 2 | — |
-| T17 | Engraving · 30° · 0.3 mm tip | Engraving | 3.175 | 1 | tip width 0.3 |
-| T18 | V-bit · 120° · 32 mm | VBit | 32 | 2 | 120°, tip width 0.2 |
-| T19 | Tapered ball · R0.25 · 3.6° per side | CornerRadius | 3.175 | 2 | tip radius 0.25 |
-| T20 | Tapered ball · R0.5 · 4.76° per side | CornerRadius | 6 | 2 | tip radius 0.5 |
-| T21 | Tapered ball · R0.75 · 6.42° per side | CornerRadius | 6 | 2 | tip radius 0.75 |
-| T22 | Flat end mill · 1 mm · 3.175 shank | FlatEndMill | 1 | 1 | shank 3.175, flute 8, overall 38 |
+| #   | Name                                  | Kind         | Ø mm  | n   | shape                                     |
+| --- | ------------------------------------- | ------------ | ----- | --- | ----------------------------------------- |
+| T1  | Flat end mill · 6 mm                  | FlatEndMill  | 6     | 2   | —                                         |
+| T2  | Flat end mill · 3.175 mm (1/8")       | FlatEndMill  | 3.175 | 2   | —                                         |
+| T3  | Ball nose · 6 mm                      | BallNose     | 6     | 2   | tip radius 3                              |
+| T4  | V-bit · 90° · 12.7 mm                 | VBit         | 12.7  | 2   | 90°, tip width 0.2                        |
+| T5  | V-bit · 60° · 12.7 mm                 | VBit         | 12.7  | 2   | 60°, tip width 0.2                        |
+| T6  | Drill · 5 mm                          | Drill        | 5     | 2   | 118°, shank 5, flute 30, overall 60       |
+| T7  | Flat end mill · 8 mm                  | FlatEndMill  | 8     | 2   | —                                         |
+| T8  | Flat end mill · 12 mm (roughing)      | FlatEndMill  | 12    | 2   | —                                         |
+| T9  | Ball nose · 3.175 mm                  | BallNose     | 3.175 | 2   | tip radius 1.5875                         |
+| T10 | Ball nose · 1.5 mm (detail)           | BallNose     | 1.5   | 2   | tip radius 0.75                           |
+| T11 | V-bit · 30° · 3.175 mm                | VBit         | 3.175 | 1   | 30°, tip width 0.1, flute 7.7, overall 38 |
+| T12 | Drill · 8 mm                          | Drill        | 8     | 2   | 118°                                      |
+| T13 | Single flute · 3.175 mm               | FlatEndMill  | 3.175 | 1   | —                                         |
+| T14 | Single flute · 4 mm                   | FlatEndMill  | 4     | 1   | —                                         |
+| T15 | Compression · 6 mm                    | FlatEndMill  | 6     | 2   | —                                         |
+| T16 | Surfacing · 25 mm                     | FlatEndMill  | 25    | 2   | —                                         |
+| T17 | Engraving · 30° · 0.3 mm tip          | Engraving    | 3.175 | 1   | tip width 0.3                             |
+| T18 | V-bit · 120° · 32 mm                  | VBit         | 32    | 2   | 120°, tip width 0.2                       |
+| T19 | Tapered ball · R0.25 · 3.6° per side  | CornerRadius | 3.175 | 2   | tip radius 0.25                           |
+| T20 | Tapered ball · R0.5 · 4.76° per side  | CornerRadius | 6     | 2   | tip radius 0.5                            |
+| T21 | Tapered ball · R0.75 · 6.42° per side | CornerRadius | 6     | 2   | tip radius 0.75                           |
+| T22 | Flat end mill · 1 mm · 3.175 shank    | FlatEndMill  | 1     | 1   | shank 3.175, flute 8, overall 38          |
 
 The taper angle of `T19`–`T21` lives in the name only: the store's corner-radius shape has no taper field,
 and adding one is not this feature. Every tool is stored with its declared kind (S4 of the editor document),
@@ -113,8 +113,8 @@ report's geometry, not from a captured image.
 slot 6 px in from the row's left edge and vertically centred, the title at `row.left + 34`, `row.top + 6`, and its
 `Ø6 · 2 cut(s)` subtitle at `row.top + 24`. The title's and subtitle's rectangles never intersect, and neither
 does the glyph's. The tree sits inside an inset card — rounded, `Role::Panel`, a hairline `Role::Border`, 4 px of
-padding — with a scrollbar when the list overflows. *(M15 follow-up: the first delivery painted the title and the
-subtitle on top of each other in a 29 px row with the glyph over the title, and drew no panel at all.)*
+padding — with a scrollbar when the list overflows. _(M15 follow-up: the first delivery painted the title and the
+subtitle on top of each other in a 29 px row with the glyph over the title, and drew no panel at all.)_
 
 **S12 — The form is one column of boxes.** `BOX_WIDTH` is 150 and every row's box shares its left and its right
 edge: right edge = the column body's right edge − `UNIT_SLOT`, left edge = that − `BOX_WIDTH`, the unit in the slot
@@ -140,12 +140,12 @@ left and its right for dimensions and a strip under the tip.
 Four **dimensions**, every one of them a 1 px line in `Role::PreviewDimension` with an arrowhead at both ends and a
 rotated (−90°) label for the vertical ones:
 
-| dimension | where | label |
-| --- | --- | --- |
-| overall length | vertical, in the left gutter, spanning shank top to cutting bottom | the overall length in mm, bare |
-| flute length | vertical, in the right gutter, spanning the cutting section | the flute length in mm, bare, drawn only when the record has one |
-| cutting diameter | horizontal, just under the tip | `Ø<diameter>` |
-| shank diameter | horizontal, just above the shank's top | `Ø<shank>`, drawn only when the record has one |
+| dimension        | where                                                              | label                                                            |
+| ---------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| overall length   | vertical, in the left gutter, spanning shank top to cutting bottom | the overall length in mm, bare                                   |
+| flute length     | vertical, in the right gutter, spanning the cutting section        | the flute length in mm, bare, drawn only when the record has one |
+| cutting diameter | horizontal, just under the tip                                     | `Ø<diameter>`                                                    |
+| shank diameter   | horizontal, just above the shank's top                             | `Ø<shank>`, drawn only when the record has one                   |
 
 A dimension the record does not hold is not drawn — the rule this module has kept since M14. Nothing is painted
 outside the card, and the drawing keeps its proportions when the tool is 1 mm in a 3.175 mm shank (a narrow cutting
@@ -188,21 +188,21 @@ lines across the branch, 1679 tests green in the workspace.
 
 ## Tasks
 
-| # | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 ✅ | The factory catalogue: 22 tools, six families, one derived speeds rule | S3, S4 | worker (`cam-store`) | `49f99a7` |
-| T2 ✅ | The app owns the library: data directory, first-launch creation, no `tools_ref` on open, the actions' gate | S1, S2, S8, S9 | parent inline | `0b410ea` |
-| T3 ✅ | Import asks replace or add; add skips duplicates by id, name or number | S5, S6 | worker (`cam-ui`) | `6c0a060` |
-| T4 ✅ | The reference's proportions and the light preview card | S7 | worker (`cam-ui`) | `4a78ec0` |
-| T5 ✅ | Close: roadmap M15 row and §4.18, the editor document's superseded note, README, whole suite | S10 | parent inline | the record commit |
-| T6 ✅ | An offscreen render of the modal, so the screen can be compared with the reference frame and not only measured | E3 | worker (`cam-ui`) | `b2fba96` |
-| T7 ✅ | Tree rows 46 px with a glyph slot and no overprinting; an inset panel with a scrollbar | S11 | worker (`cam-ui`) | the follow-up commit |
-| T8 ✅ | One column of 150 px boxes, values right-aligned, `Type` on one line, chipload as text | S12 | worker (`cam-ui`) | the follow-up commit |
-| T9 ✅ | The preview draws a solid shank, a proportional cutting section, an amber tip and four dimensions | S13 | parent inline | the follow-up commit |
-| T10 ✅ | Title `Choose tool`, footer `Cancel` before the primary | S14 | worker (`cam-ui`) | the follow-up commit |
-| T12 ✅ | `Tip width` — `flat_diameter` was stored and never drawn | S12 | parent inline | the follow-up commit |
-| T13 ✅ | A V-bit and a drill drawn as their cone, with the angle; no label on its own line | S13 | parent inline | the follow-up commit |
-| T14 ✅ | T22's flute and overall lengths, the numbers the reference states for it | S3 | parent inline | the follow-up commit |
+| #      | Task                                                                                                           | Specs          | Route                | Commit               |
+| ------ | -------------------------------------------------------------------------------------------------------------- | -------------- | -------------------- | -------------------- |
+| T1 ✅  | The factory catalogue: 22 tools, six families, one derived speeds rule                                         | S3, S4         | worker (`cam-store`) | `49f99a7`            |
+| T2 ✅  | The app owns the library: data directory, first-launch creation, no `tools_ref` on open, the actions' gate     | S1, S2, S8, S9 | parent inline        | `0b410ea`            |
+| T3 ✅  | Import asks replace or add; add skips duplicates by id, name or number                                         | S5, S6         | worker (`cam-ui`)    | `6c0a060`            |
+| T4 ✅  | The reference's proportions and the light preview card                                                         | S7             | worker (`cam-ui`)    | `4a78ec0`            |
+| T5 ✅  | Close: roadmap M15 row and §4.18, the editor document's superseded note, README, whole suite                   | S10            | parent inline        | the record commit    |
+| T6 ✅  | An offscreen render of the modal, so the screen can be compared with the reference frame and not only measured | E3             | worker (`cam-ui`)    | `b2fba96`            |
+| T7 ✅  | Tree rows 46 px with a glyph slot and no overprinting; an inset panel with a scrollbar                         | S11            | worker (`cam-ui`)    | the follow-up commit |
+| T8 ✅  | One column of 150 px boxes, values right-aligned, `Type` on one line, chipload as text                         | S12            | worker (`cam-ui`)    | the follow-up commit |
+| T9 ✅  | The preview draws a solid shank, a proportional cutting section, an amber tip and four dimensions              | S13            | parent inline        | the follow-up commit |
+| T10 ✅ | Title `Choose tool`, footer `Cancel` before the primary                                                        | S14            | worker (`cam-ui`)    | the follow-up commit |
+| T12 ✅ | `Tip width` — `flat_diameter` was stored and never drawn                                                       | S12            | parent inline        | the follow-up commit |
+| T13 ✅ | A V-bit and a drill drawn as their cone, with the angle; no label on its own line                              | S13            | parent inline        | the follow-up commit |
+| T14 ✅ | T22's flute and overall lengths, the numbers the reference states for it                                       | S3             | parent inline        | the follow-up commit |
 
 ## Log
 
@@ -254,4 +254,3 @@ writes `target/ui-snapshots/tool-library-{t22,vbit,import-question}.png` at 1240
 `egui_kittest`/wgpu, which is the same size the reference frame was captured at and the only way this work was
 compared to it. The report-driven tests still pin the geometry S10 asks for; the PNGs are how a person checks that
 the geometry adds up to the screen.
-

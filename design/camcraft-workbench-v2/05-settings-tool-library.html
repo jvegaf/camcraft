@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camcraft — Settings · Librería de herramientas</title>
+<style>
+  :root {
+    --bg-app:#12151a; --bg-canvas:#0d1014; --bg-panel:#171b21; --bg-raised:#1e242b; --bg-overlay:#232a32;
+    --line-hair:#262d36; --line-strong:#35404c;
+    --text-hi:#e7ecf3; --text:#c3ccd8; --text-dim:#8b95a3; --text-off:#5c6673;
+    --sel:#6fd3e8; --sel-soft:rgba(111,211,232,.13);
+    --cut:#f5a623; --cut-soft:rgba(245,166,35,.13);
+    --ok:#5ec27f; --warn:#f0b429; --danger:#f2635f;
+    --r-control:4px; --r-panel:6px; --r-dialog:10px;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 48px rgba(0,0,0,.5);
+    --font: Inter, "Inter UI", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; } }
+  * { box-sizing:border-box; } html,body { margin:0; min-height:100%; background:#0a0c10; color:var(--text); font:13px/1.4 var(--font); }
+  button,input,select { font:inherit; color:inherit; background:none; border:none; } button { cursor:pointer; }
+  .page { padding:24px; display:flex; flex-direction:column; gap:20px; }
+  .intro { max-width:1320px; margin:0 auto; width:100%; }
+  .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-off); margin:0 0 6px; }
+  h1 { margin:0; font-size:28px; line-height:1.15; font-weight:600; color:var(--text-hi); }
+  .lede { margin:8px 0 0; max-width:820px; color:var(--text-dim); font-size:14px; line-height:1.5; }
+  .shell { width:1440px; max-width:100%; height:900px; margin:0 auto; position:relative; overflow:hidden; border-radius:12px; border:1px solid var(--line-strong); box-shadow:0 24px 80px rgba(0,0,0,.45); background:var(--bg-canvas); }
+  .canvas-bg { position:absolute; inset:0; background:linear-gradient(90deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, linear-gradient(180deg, rgba(38,45,54,.22) 1px, transparent 1px) 0 0/80px 80px, var(--bg-canvas); }
+  .backdrop { position:absolute; inset:0; background:rgba(8,10,14,.45); }
+  .dialog { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:1040px; max-width:calc(100% - 48px); height:720px; max-height:calc(100% - 48px); background:var(--bg-panel); border:1px solid var(--line-strong); border-radius:var(--r-dialog); box-shadow:var(--shadow); display:grid; grid-template-rows:52px 1fr 56px; overflow:hidden; }
+  .titlebar { display:flex; align-items:center; gap:12px; padding:0 16px; border-bottom:1px solid var(--line-hair); }
+  .titlebar h2 { margin:0; font-size:15px; font-weight:600; color:var(--text-hi); }
+  .search { margin-left:auto; width:260px; height:30px; border-radius:6px; background:var(--bg-app); border:1px solid var(--line-strong); display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-dim); font-size:12px; }
+  .search kbd { margin-left:auto; font:11px var(--mono); color:var(--text-off); padding:1px 5px; border-radius:3px; background:var(--bg-raised); border:1px solid var(--line-hair); }
+  .icon-btn { width:30px; height:30px; display:grid; place-items:center; border-radius:6px; color:var(--text-dim); }
+  .icon-btn:hover { background:var(--bg-raised); color:var(--text-hi); }
+  .icon-btn:focus-visible, .page-item:focus-visible, .btn:focus-visible, .tool-row:focus-visible, .field input:focus-visible { outline:2px solid var(--sel); outline-offset:-1px; }
+  .content { display:grid; grid-template-columns:220px 1fr; min-height:0; }
+  .pages { background:rgba(13,16,20,.72); border-right:1px solid var(--line-hair); padding:12px 8px; overflow:auto; }
+  .group { margin:10px 8px 6px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-off); }
+  .page-item { width:100%; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; text-align:left; font-size:13px; color:var(--text); }
+  .page-item:hover { background:var(--bg-raised); }
+  .page-item[aria-current="page"] { background:var(--sel-soft); color:var(--text-hi); box-shadow:inset 0 0 0 1px rgba(111,211,232,.12); }
+  .page-item .ic { width:18px; height:18px; color:var(--text-dim); flex:none; display:grid; place-items:center; }
+  .page-item[aria-current="page"] .ic { color:var(--sel); }
+  .main { padding:20px 24px; overflow:hidden; min-height:0; display:flex; flex-direction:column; }
+  .main h3 { margin:0; font-size:20px; font-weight:600; color:var(--text-hi); }
+  .main .desc { margin:6px 0 16px; color:var(--text-dim); font-size:13px; line-height:1.5; }
+  .lib { flex:1; min-height:0; display:grid; grid-template-columns:260px minmax(0,1fr) 220px; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; background:var(--bg-app); }
+  .col { min-height:0; display:flex; flex-direction:column; }
+  .col + .col { border-left:1px solid var(--line-hair); }
+  .col-head { padding:10px 12px; border-bottom:1px solid var(--line-hair); display:flex; align-items:center; gap:8px; background:rgba(23,27,33,.45); }
+  .col-head h4 { margin:0; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); }
+  .col-head .spacer { flex:1; }
+  .small-btn { height:26px; padding:0 8px; border-radius:4px; font-size:11px; color:var(--text-dim); border:1px solid var(--line-hair); background:var(--bg-raised); }
+  .small-btn:hover { color:var(--text); border-color:var(--line-strong); }
+  .list { padding:8px; overflow:auto; min-height:0; flex:1; }
+  .tree-group { margin-bottom:10px; }
+  .tree-group h5 { margin:0 0 4px; padding:4px 8px; font-size:11px; font-weight:500; color:var(--text-off); text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; justify-content:space-between; }
+  .tool-row { width:100%; display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:5px; text-align:left; font-size:12px; color:var(--text); }
+  .tool-row:hover { background:var(--bg-raised); }
+  .tool-row[aria-current="true"] { background:var(--sel-soft); color:var(--text-hi); box-shadow:inset 0 0 0 1px rgba(111,211,232,.12); }
+  .tool-row .n { width:22px; height:22px; border-radius:4px; background:var(--bg-panel); border:1px solid var(--line-hair); display:grid; place-items:center; font:10px var(--mono); color:var(--text-dim); flex:none; }
+  .tool-row[aria-current="true"] .n { color:var(--sel); border-color:rgba(111,211,232,.25); }
+  .tool-row .meta { margin-left:auto; font:11px var(--mono); color:var(--text-off); }
+  .detail { padding:16px; overflow:auto; min-height:0; flex:1; }
+  .detail-title { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .detail-title h4 { margin:0; font-size:16px; font-weight:600; color:var(--text-hi); }
+  .badge { font-size:10px; padding:2px 8px; border-radius:999px; border:1px solid var(--line-hair); color:var(--text-dim); }
+  .badge.ok { color:var(--ok); border-color:rgba(94,194,127,.25); background:rgba(94,194,127,.08); }
+  .form-section { margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--line-hair); }
+  .form-section:last-child { border-bottom:0; margin-bottom:0; padding-bottom:0; }
+  .form-section h5 { margin:0 0 10px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-off); }
+  .fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .field { display:grid; gap:4px; }
+  .field.full { grid-column:1/-1; }
+  .field label { font-size:11px; color:var(--text-dim); }
+  .field input { height:30px; padding:0 10px; border-radius:var(--r-control); background:var(--bg-panel); border:1px solid var(--line-strong); color:var(--text); font-size:12px; }
+  .field .ro { height:30px; padding:0 10px; border-radius:var(--r-control); background:rgba(23,27,33,.6); border:1px solid var(--line-hair); color:var(--text-dim); font-size:12px; display:flex; align-items:center; justify-content:space-between; }
+  .field .u { font:11px var(--mono); color:var(--text-off); }
+  .preview { padding:16px; display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .preview-card { flex:1; min-height:180px; border-radius:8px; background:#0d1014; border:1px solid var(--line-hair); display:flex; justify-content:center; align-items:flex-start; padding:12px; position:relative; overflow:hidden; }
+  .preview-card svg { width:auto; height:auto; max-width:100%; max-height:100%; display:block; }
+  .preview-meta { font-size:11px; color:var(--text-dim); line-height:1.6; }
+  .preview-meta b { color:var(--text); font-weight:500; }
+  .footer { display:flex; align-items:center; gap:10px; padding:0 16px; border-top:1px solid var(--line-hair); background:rgba(23,27,33,.5); }
+  .footer .spacer { flex:1; }
+  .btn { height:32px; padding:0 14px; border-radius:6px; font-size:13px; font-weight:500; border:1px solid var(--line-strong); background:var(--bg-raised); color:var(--text); }
+  .btn:hover { background:#252d36; }
+  .btn.primary { background:var(--cut-soft); color:var(--cut); border-color:rgba(245,166,35,.28); }
+  .btn.ghost { background:transparent; border-color:transparent; color:var(--text-dim); }
+  .note { max-width:1440px; margin:0 auto; color:var(--text-dim); font-size:12px; line-height:1.6; }
+  .note strong { color:var(--text); font-weight:500; }
+  svg.icon { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <p class="eyebrow">Dirección 2 · Camcraft Workbench v2 · Familia SolidCraft</p>
+    <h1>Settings · Librería de herramientas</h1>
+    <p class="lede">Vista de detalle de la librería dentro de Preferencias: lista maestra por tipo, detalle editable y preview. Mantiene el patrón SolidCraft (estructura clara, bordes jerárquicos, densidad sobria) aplicado al dominio CAM.</p>
+  </header>
+
+  <div class="shell" role="application" aria-label="Preferencias de Camcraft">
+    <div class="canvas-bg" aria-hidden="true"></div>
+    <div class="backdrop" aria-hidden="true"></div>
+
+    <div class="dialog" role="dialog" aria-label="Preferencias - Librería de herramientas">
+      <div class="titlebar">
+        <h2>Preferencias</h2>
+        <div class="search" role="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>Buscar configuración… <kbd>⌘F</kbd></div>
+        <button class="icon-btn" aria-label="Cerrar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+
+      <div class="content">
+        <nav class="pages" aria-label="Páginas de preferencias">
+          <div class="group">General</div>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5z"/></svg></span>General</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg></span>Apariencia</button>
+          <div class="group">Workspace</div>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1"/><rect x="3" y="13" width="8" height="7" rx="1"/></svg></span>Layout</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-5 3 3 5-7"/></svg></span>Canvas</button>
+          <div class="group">CAM</div>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"/></svg></span>Manufactura</button>
+          <button class="page-item" aria-current="page"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.66 5.66L3 18l3 3 6.04-6.04a4 4 0 0 0 5.66-5.66l-3 3-2.7-2.7z"/></svg></span>Librería de herramientas</button>
+          <button class="page-item"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></span>Importar</button>
+        </nav>
+
+        <main class="main">
+          <h3>Librería de herramientas</h3>
+          <p class="desc">Herramientas disponibles para operaciones CAM. Seleccioná una herramienta para editar sus parámetros, feeds/speeds y ver su preview.</p>
+
+          <div class="lib" aria-label="Librería de herramientas">
+            <section class="col" aria-label="Herramientas">
+              <div class="col-head"><h4>Herramientas</h4><span class="spacer"></span><button class="small-btn">+ Nueva</button></div>
+              <div class="list">
+                <div class="tree-group">
+                  <h5>End mills <span>4</span></h5>
+                  <button class="tool-row"><span class="n">T1</span>Flat 1.0 mm <span class="meta">1F</span></button>
+                  <button class="tool-row"><span class="n">T2</span>Flat 2.0 mm <span class="meta">2F</span></button>
+                  <button class="tool-row"><span class="n">T3</span>Flat 3.175 mm <span class="meta">2F</span></button>
+                  <button class="tool-row" aria-current="true"><span class="n">T22</span>Fresa 1.0 mm <span class="meta">1F</span></button>
+                </div>
+                <div class="tree-group">
+                  <h5>Drills <span>2</span></h5>
+                  <button class="tool-row"><span class="n">T4</span>Drill 0.8 mm <span class="meta">118°</span></button>
+                  <button class="tool-row"><span class="n">T5</span>Drill 1.0 mm <span class="meta">118°</span></button>
+                </div>
+                <div class="tree-group">
+                  <h5>V-bits <span>1</span></h5>
+                  <button class="tool-row"><span class="n">T6</span>V-bit 30° <span class="meta">0.1</span></button>
+                </div>
+              </div>
+            </section>
+
+            <section class="col" aria-label="Detalle">
+              <div class="col-head"><h4>Detalle</h4><span class="spacer"></span><span class="badge ok">Válida</span></div>
+              <div class="detail">
+                <div class="detail-title"><h4>Fresa 1.0 mm</h4><span class="badge">T22</span></div>
+
+                <div class="form-section">
+                  <h5>Geometría</h5>
+                  <div class="fields">
+                    <div class="field full"><label>Nombre</label><input value="Fresa 1.0 mm - 3.175 mm"></div>
+                    <div class="field"><label>Tipo</label><div class="ro">End mill <span class="u">flat</span></div></div>
+                    <div class="field"><label>Número</label><input value="22"></div>
+                    <div class="field"><label>Diámetro</label><div class="ro">1.0 <span class="u">mm</span></div></div>
+                    <div class="field"><label>Flautas</label><input value="1"></div>
+                    <div class="field"><label>Largo de corte</label><div class="ro">8.0 <span class="u">mm</span></div></div>
+                    <div class="field"><label>Vástago</label><div class="ro">3.175 <span class="u">mm</span></div></div>
+                    <div class="field"><label>Largo total</label><div class="ro">38.0 <span class="u">mm</span></div></div>
+                  </div>
+                </div>
+
+                <div class="form-section">
+                  <h5>Feeds & speeds</h5>
+                  <div class="fields">
+                    <div class="field"><label>Spindle</label><div class="ro">18000 <span class="u">rpm</span></div></div>
+                    <div class="field"><label>Feed corte</label><div class="ro">800 <span class="u">mm/min</span></div></div>
+                    <div class="field"><label>Feed plunge</label><div class="ro">200 <span class="u">mm/min</span></div></div>
+                    <div class="field"><label>Paso lateral</label><div class="ro">40 <span class="u">%</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="col" aria-label="Preview">
+              <div class="col-head"><h4>Preview</h4></div>
+              <div class="preview">
+                <div class="preview-card">
+                  <svg viewBox="0 0 160 230" role="img" aria-label="Acercamiento de la zona de corte de la fresa seleccionada">
+                    <rect width="160" height="230" fill="#0d1014"/>
+                    <g transform="translate(44, 18)">
+                      <!-- vástago (gris, 3.175 mm) -->
+                      <rect x="0" y="0" width="56" height="96" fill="#5c6b7d" stroke="#c3ccd8" stroke-width="1"/>
+                      <!-- zona de corte (ocre, Ø1 mm, 8 mm de largo) -->
+                      <rect x="19" y="96" width="18" height="80" fill="#d9a441" stroke="#c39a3a" stroke-width="1"/>
+                      <!-- cota vertical de 8 mm (zona de corte) -->
+                      <g stroke="#7ea2ff" stroke-width="1.2" fill="none">
+                        <line x1="46" y1="96" x2="46" y2="176"/>
+                        <line x1="42" y1="96" x2="50" y2="96"/>
+                        <line x1="42" y1="176" x2="50" y2="176"/>
+                      </g>
+                      <text x="58" y="138" fill="#7ea2ff" font="12px ui-monospace, SFMono-Regular, Menlo, monospace" transform="rotate(-90 58,138)">8</text>
+                      <!-- cota inferior de Ø1 mm -->
+                      <g stroke="#7ea2ff" stroke-width="1.2" fill="none">
+                        <line x1="19" y1="182" x2="19" y2="192"/>
+                        <line x1="37" y1="182" x2="37" y2="192"/>
+                        <line x1="19" y1="186" x2="37" y2="186"/>
+                        <path d="M23 183 L19 186 L23 189" />
+                        <path d="M33 183 L37 186 L33 189" />
+                      </g>
+                      <text x="28" y="206" fill="#7ea2ff" font="12px ui-monospace, SFMono-Regular, Menlo, monospace" text-anchor="middle">Ø1</text>
+                    </g>
+                  </svg>
+                </div>
+                <div class="preview-meta">
+                  <div><b>Tipo:</b> End mill · flat</div>
+                  <div><b>Diámetro:</b> 1.0 mm</div>
+                  <div><b>Vástago:</b> 3.175 mm</div>
+                  <div><b>Corte:</b> 8.0 mm</div>
+                  <div><b>Uso típico:</b> contorno y aislamiento en PCB.</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+
+      <div class="footer">
+        <button class="btn ghost">Restaurar defaults</button>
+        <button class="btn ghost">Importar…</button>
+        <button class="btn ghost">Exportar…</button>
+        <div class="spacer"></div>
+        <button class="btn">Cerrar</button>
+        <button class="btn primary">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="note"><strong>Decisión de diseño:</strong> la librería se muestra como master-detail dentro de Settings (lista por tipo, detalle editable, preview) en vez de un modal separado, para que la gestión de herramientas tenga contexto y espacio. Las acciones destructivas/globales quedan en footer con jerarquía secundaria.</p>
+</div>
+</body>
+</html>

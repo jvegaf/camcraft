@@ -57,18 +57,18 @@ demas se rechaza nombrando el caracter.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| -- | ---- | ----- | ----- | ------ |
-| T1 | `Command::Polarity` en el flujo de comandos; `LPD`/`LPC` dejan `attributes`; cualquier otro `LP` se rechaza por nombre | S1 | delegated | — |
-| T2 | Un bloque `G36`/`G37` se convierte en un `Region` (lineas y arcos, cerrado) y el acumulador aplica `dark`/`clear` via `combine`; `Flash` y trazo se rechazan por nombre | S1, S2, S3, S4 | delegated | — |
-| T3 | `Flash` de apertura `C` (circulo) y `R` (rectangulo) entra al mismo acumulador | S3 | delegated | — |
-| T4 | G1.1 corregida en `docs/GAPS_CAMCRAFT.md` | S5 | inline | — |
-| T5 | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador | S6 | inline | `71f7883` |
-| T6 | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento | S6 | inline | L9 |
-| T7 | Un `D02` dentro de una region cierra el contorno actual y empieza otro | S7 | inline | L10 |
-| T8 | Evaluador de expresiones de macro: `$n`, `+ - x X * /`, producto con precedencia | S8 | inline | L11 |
-| T9 | Primitivas de macro 1, 20, 21 y 4 a `Region` | S8 | inline | L12 |
-| T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas | S8 | inline | L13 |
+| ID  | Task                                                                                                                                                                    | Specs          | Route     | Commit    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------- | --------- |
+| T1  | `Command::Polarity` en el flujo de comandos; `LPD`/`LPC` dejan `attributes`; cualquier otro `LP` se rechaza por nombre                                                  | S1             | delegated | —         |
+| T2  | Un bloque `G36`/`G37` se convierte en un `Region` (lineas y arcos, cerrado) y el acumulador aplica `dark`/`clear` via `combine`; `Flash` y trazo se rechazan por nombre | S1, S2, S3, S4 | delegated | —         |
+| T3  | `Flash` de apertura `C` (circulo) y `R` (rectangulo) entra al mismo acumulador                                                                                          | S3             | delegated | —         |
+| T4  | G1.1 corregida en `docs/GAPS_CAMCRAFT.md`                                                                                                                               | S5             | inline    | —         |
+| T5  | Un `D01` con apertura `C` fuera de region se vuelve una capsula y entra al acumulador                                                                                   | S6             | inline    | `71f7883` |
+| T6  | Un `D01` con apertura `R` fuera de region se vuelve su suma de Minkowski con el segmento                                                                                | S6             | inline    | L9        |
+| T7  | Un `D02` dentro de una region cierra el contorno actual y empieza otro                                                                                                  | S7             | inline    | L10       |
+| T8  | Evaluador de expresiones de macro: `$n`, `+ - x X * /`, producto con precedencia                                                                                        | S8             | inline    | L11       |
+| T9  | Primitivas de macro 1, 20, 21 y 4 a `Region`                                                                                                                            | S8             | inline    | L12       |
+| T10 | Una apertura que nombra una macro se vuelve la union de sus primitivas                                                                                                  | S8             | inline    | L13       |
 
 **Fuera de alcance, declarado:** step&repeat queda afuera. La apertura obround (`O`) sigue
 rechazandose por nombre: `crates/cam-geom/src/primitive.rs` tiene `circle` y `rectangle`, no una
@@ -173,7 +173,7 @@ en `c3c1fb0`, con la clave llevando la direccion con el intercambio de extremos 
 
 **Por que no lo habia visto nadie.** Los discos que ya probaba `boolean_operations.rs` **se intersecan**,
 y al cortarse en los puntos de cruce los extremos dejan de coincidir con la costura. Una union contra
-region vacia, o restarle un disco *contenido* a un rectangulo, no corta nada: la costura sobrevive y el
+region vacia, o restarle un disco _contenido_ a un rectangulo, no corta nada: la costura sobrevive y el
 dedup se come un arco. Ningun caso existente pasaba por ahi; un pad redondo de Gerber lo encontro en una
 llamada. Los generadores del proptest ahora incluyen un disco de dos arcos.
 

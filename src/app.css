@@ -1,0 +1,37 @@
+@layer reset, base, tokens, recipes, utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg-canvas);
+  }
+
+  :root {
+    --bg-app: token(colors.app);
+    --bg-canvas: token(colors.canvas);
+    --bg-panel: token(colors.panel);
+    --bg-raised: token(colors.raised);
+    --bg-overlay: token(colors.overlay);
+    --line-hair: token(colors.hairline);
+    --line-strong: token(colors.border);
+    --text-hi: token(colors.textHi);
+    --text: token(colors.text);
+    --text-dim: token(colors.textDim);
+    --text-off: token(colors.textOff);
+    --sel: token(colors.sel);
+    --sel-soft: token(colors.selSoft);
+    --cut: token(colors.cut);
+    --cut-soft: token(colors.cutSoft);
+    --ok: token(colors.ok);
+    --warn: token(colors.warn);
+    --danger: token(colors.danger);
+    --radius-control: token(radii.control);
+    --radius-panel: token(radii.panel);
+    --radius-overlay: token(radii.overlay);
+    --radius-dialog: token(radii.dialog);
+    --shadow-float: 0 1px 0 rgba(255,255,255,.03), 0 12px 32px rgba(0,0,0,.42);
+    --font: token(fonts.sans);
+    --mono: token(fonts.mono);
+  }
+}

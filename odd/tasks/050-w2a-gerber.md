@@ -22,12 +22,12 @@ Complete the W2a slice of E1.4: Gerber RS-274X constructs still rejected after t
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Flash de apertura `O` (obround): círculo cuando w==h, estadio si w!=h, centrado en el punto | S2, S6 | inline | `fdab0f1` |
-| T2 | Trazo `D01` con apertura `O` fuera de región | S1, S2, S6 | inline | `fdab0f1` |
-| T3 | Trazo `D01` con apertura por macro fuera de región (casos barribles) | S1, S3, S4, S6 | inline | `fdab0f1` |
-| T4 | Regresión: tests de cam-gerber y verificación de que D02-en-región sigue funcionando | S5, S6 | inline | `fdab0f1` |
+| ID  | Tarea                                                                                       | Specs          | Ruta   | Commit    |
+| --- | ------------------------------------------------------------------------------------------- | -------------- | ------ | --------- |
+| T1  | Flash de apertura `O` (obround): círculo cuando w==h, estadio si w!=h, centrado en el punto | S2, S6         | inline | `fdab0f1` |
+| T2  | Trazo `D01` con apertura `O` fuera de región                                                | S1, S2, S6     | inline | `fdab0f1` |
+| T3  | Trazo `D01` con apertura por macro fuera de región (casos barribles)                        | S1, S3, S4, S6 | inline | `fdab0f1` |
+| T4  | Regresión: tests de cam-gerber y verificación de que D02-en-región sigue funcionando        | S5, S6         | inline | `fdab0f1` |
 
 ## Log
 

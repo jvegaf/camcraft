@@ -1,0 +1,575 @@
+//! Generate a preview MoveStream from a document's PCB toolpaths.
+
+use cam_geom::{Point2, TolerancePolicy};
+use cam_model::{Document, Operation};
+use cam_move::{Move, MoveStream, Point3, Segment, ToolShape};
+use cam_ops::unite_copper;
+use cam_store::tools::{stored_tool_for_toolpath, StoredTool};
+use cam_units::Length;
+
+const PREVIEW_FEED_MM_PER_MIN: f64 = 100.0;
+const PREVIEW_PLUNGE_MM_PER_MIN: f64 = 30.0;
+const PREVIEW_SPINDLE_RPM: u32 = 18_000;
+const PREVIEW_DEFAULT_DIAMETER_MM: f64 = 1.0;
+
+/// Build a MoveStream for the document's PCB toolpaths for preview/simulation.
+/// Returns the stream when supported toolpaths were generated, and any warnings.
+pub fn build_preview_stream(
+  document: &Document,
+  tools: &[StoredTool],
+) -> (Option<MoveStream>, Vec<String>) {
+  let tolerance = TolerancePolicy::default();
+  let mut stream = MoveStream::new(
+    Length::from_mm(cam_model::DEFAULT_SAFE_Z_MM),
+    Point2::new(0.0, 0.0),
+  );
+  let mut warnings = Vec::new();
+  let mut any = false;
+  for toolpath in &document.toolpaths {
+    if matches!(toolpath.operation, Operation::Panelize(_)) {
+      continue;
+    }
+    let Some((tool_shape, tool_diameter_mm)) = resolve_preview_tool(
+      tools,
+      toolpath.tool_id.as_deref(),
+      toolpath.tool_number,
+      &toolpath.name,
+      &mut warnings,
+    ) else {
+      continue;
+    };
+    match &toolpath.operation {
+      Operation::Isolation(params) => {
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
+        if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
+          continue;
+        }
+        let Ok(copper) = unite_copper(&contours, tolerance) else {
+          warn_skipped(&toolpath.name, "copper could not be united", &mut warnings);
+          continue;
+        };
+        let Ok(passes) = cam_ops::isolation_passes_with_kind(
+          &copper,
+          tool_diameter_mm,
+          params.passes,
+          params.overlap,
+          params.direction,
+          params.kind,
+          params.keep_pours,
+          tolerance,
+        ) else {
+          warn_skipped(&toolpath.name, "isolation passes failed", &mut warnings);
+          continue;
+        };
+        let mut moves = Vec::new();
+        for pass in passes.passes {
+          for contour in pass.contours {
+            push_contour_moves(
+              &mut moves,
+              &contour,
+              params.cut_depth.mm(),
+              stream.safe_z.mm(),
+            );
+          }
+        }
+        if push_segment(&mut stream, toolpath, tool_shape, moves) {
+          any = true;
+        }
+      }
+      Operation::NonCopperClear(params) => {
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
+        if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
+          continue;
+        }
+        let Ok(moves) = cam_ops::ncc_moves(&contours, params.cut_depth.mm(), &document.board)
+        else {
+          warn_skipped(&toolpath.name, "clearing moves failed", &mut warnings);
+          continue;
+        };
+        if push_segment(&mut stream, toolpath, tool_shape, moves) {
+          any = true;
+        }
+      }
+      Operation::Cutout(params) => {
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
+        if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
+          continue;
+        }
+        // The preview runs the command's own cutout planner (`camcut cutout` calls the same
+        // `cam_ops::cutout`), so margin, pass_depth and tabs reach the simulated moves. It cuts the
+        // contours this toolpath cites, as that command does: `cut_interiors` is a selection the
+        // document already made, so the preview does not widen it.
+        let tool = cam_ops::ToolSpec {
+          number: toolpath.tool_number,
+          diameter: Length::from_mm(tool_diameter_mm),
+          included_angle: None,
+          feed_rate: PREVIEW_FEED_MM_PER_MIN,
+          plunge_rate: PREVIEW_PLUNGE_MM_PER_MIN,
+          spindle_speed: PREVIEW_SPINDLE_RPM,
+        };
+        let request = cam_ops::CutoutRequest {
+          contours: &contours,
+          params,
+          tool: &tool,
+          job: &document.board,
+        };
+        let Ok(mut moves) = cam_ops::cutout(&request) else {
+          warn_skipped(&toolpath.name, "cutout moves failed", &mut warnings);
+          continue;
+        };
+        match cam_ops::mouse_bite_drills(&request) {
+          Ok(mut drills) => moves.append(&mut drills),
+          Err(_) => warn_skipped(&toolpath.name, "mouse-bite drills failed", &mut warnings),
+        }
+        if push_segment(&mut stream, toolpath, tool_shape, moves) {
+          any = true;
+        }
+      }
+      Operation::Drilling(params) => {
+        let mut moves = Vec::new();
+        let safe_z = stream.safe_z.mm();
+        for entity_id in &toolpath.entity_ids {
+          let Some(entity) = document.entity(entity_id.as_str()) else {
+            let reason = format!("entity '{entity_id}' is missing");
+            warn_skipped(&toolpath.name, &reason, &mut warnings);
+            continue;
+          };
+          match &entity.kind {
+            cam_model::EntityKind::Drill { center, .. } => {
+              push_drill(
+                &mut moves,
+                center.x,
+                center.y,
+                params.cut_depth.mm(),
+                safe_z,
+              );
+            }
+            cam_model::EntityKind::Slot { start, end, .. } => {
+              push_slot(
+                &mut moves,
+                start.x,
+                start.y,
+                end.x,
+                end.y,
+                params.cut_depth.mm(),
+                safe_z,
+              );
+            }
+            cam_model::EntityKind::Contour { contour } => {
+              for v in contour.vertices() {
+                push_drill(
+                  &mut moves,
+                  v.point.x,
+                  v.point.y,
+                  params.cut_depth.mm(),
+                  safe_z,
+                );
+              }
+            }
+          }
+        }
+        if push_segment(&mut stream, toolpath, tool_shape, moves) {
+          any = true;
+        }
+      }
+      Operation::Paint(params) => {
+        let contours = collect_contours(document, &toolpath.entity_ids, &toolpath.name, &mut warnings);
+        if contours.is_empty() {
+          warn_skipped(&toolpath.name, "it cites no usable contours", &mut warnings);
+          continue;
+        }
+        let mut moves = Vec::new();
+        for contour in contours {
+          push_contour_moves(
+            &mut moves,
+            &contour,
+            params.cut_depth.mm(),
+            stream.safe_z.mm(),
+          );
+        }
+        if push_segment(&mut stream, toolpath, tool_shape, moves) {
+          any = true;
+        }
+      }
+      Operation::Panelize(_) => {}
+    }
+  }
+  if any {
+    (Some(stream), warnings)
+  } else {
+    (None, warnings)
+  }
+}
+
+fn resolve_preview_tool(
+  tools: &[StoredTool],
+  tool_id: Option<&str>,
+  tool_number: u32,
+  toolpath_name: &str,
+  warnings: &mut Vec<String>,
+) -> Option<(ToolShape, f64)> {
+  let Some(tool) = stored_tool_for_toolpath(tools, tool_id, tool_number) else {
+    warnings.push(format!(
+      "toolpath '{toolpath_name}' uses missing tool {tool_number}; skipped in preview"
+    ));
+    return None;
+  };
+  let diameter_mm = match tool.geometry.diameter.map(Length::mm).filter(|d| *d > 0.0) {
+    Some(d) => d,
+    None => {
+      let fallback_shape = if tool.geometry.included_angle.is_some() {
+        "v-bit"
+      } else {
+        "cylinder"
+      };
+      warnings.push(format!(
+        "toolpath '{toolpath_name}' has tool {tool_number} with missing/non-positive diameter; preview uses default {}mm {fallback_shape}",
+        PREVIEW_DEFAULT_DIAMETER_MM
+      ));
+      PREVIEW_DEFAULT_DIAMETER_MM
+    }
+  };
+  let shape = if let Some(angle) = tool.geometry.included_angle {
+    ToolShape::v_bit(
+      angle,
+      tool.geometry.flat_diameter.unwrap_or(Length::from_mm(0.0)),
+    )
+  } else {
+    ToolShape::cylinder(Length::from_mm(diameter_mm))
+  };
+  Some((shape, diameter_mm))
+}
+
+fn push_segment(
+  stream: &mut MoveStream,
+  toolpath: &cam_model::Toolpath,
+  tool: ToolShape,
+  moves: Vec<Move>,
+) -> bool {
+  if moves.is_empty() {
+    return false;
+  }
+  stream.segments.push(Segment {
+    name: toolpath.name.clone(),
+    tool_number: toolpath.tool_number,
+    tool,
+    feed_rate: PREVIEW_FEED_MM_PER_MIN,
+    plunge_rate: PREVIEW_PLUNGE_MM_PER_MIN,
+    spindle_speed: PREVIEW_SPINDLE_RPM,
+    moves,
+  });
+  true
+}
+
+fn push_drill(moves: &mut Vec<Move>, x: f64, y: f64, cut_depth: f64, safe_z: f64) {
+  moves.push(Move::Rapid {
+    to: Point3::new(x, y, safe_z),
+  });
+  moves.push(Move::Feed {
+    to: Point3::new(x, y, -cut_depth),
+  });
+  moves.push(Move::Retract {
+    to: Point3::new(x, y, safe_z),
+  });
+}
+
+fn push_slot(
+  moves: &mut Vec<Move>,
+  sx: f64,
+  sy: f64,
+  ex: f64,
+  ey: f64,
+  cut_depth: f64,
+  safe_z: f64,
+) {
+  moves.push(Move::Rapid {
+    to: Point3::new(sx, sy, safe_z),
+  });
+  moves.push(Move::Feed {
+    to: Point3::new(sx, sy, -cut_depth),
+  });
+  moves.push(Move::Feed {
+    to: Point3::new(ex, ey, -cut_depth),
+  });
+  moves.push(Move::Retract {
+    to: Point3::new(ex, ey, safe_z),
+  });
+}
+
+fn collect_contours(
+  document: &Document,
+  entity_ids: &[String],
+  toolpath: &str,
+  warnings: &mut Vec<String>,
+) -> Vec<cam_geom::Contour> {
+  let mut out = Vec::new();
+  for id in entity_ids {
+    let Some(entity) = document.entity(id.as_str()) else {
+      warnings.push(format!(
+        "toolpath '{toolpath}' is not in the preview: entity {id:?} does not exist"
+      ));
+      continue;
+    };
+    if let cam_model::EntityKind::Contour { contour } = &entity.kind {
+      out.push(contour.clone());
+    } else {
+      warnings.push(format!(
+        "toolpath '{toolpath}' is not in the preview: entity {id:?} is not a contour"
+      ));
+    }
+  }
+  out
+}
+
+/// Report a toolpath the preview could not generate, so a dropped program is never silent (R4).
+fn warn_skipped(name: &str, reason: &str, warnings: &mut Vec<String>) {
+  warnings.push(format!("toolpath '{name}' is not in the preview: {reason}"));
+}
+
+fn push_contour_moves(
+  moves: &mut Vec<Move>,
+  contour: &cam_geom::Contour,
+  cut_depth: f64,
+  safe_z: f64,
+) {
+  let vertices = contour.vertices();
+  if vertices.is_empty() {
+    return;
+  }
+  let first = vertices[0].point;
+  moves.push(Move::Rapid {
+    to: Point3::new(first.x, first.y, safe_z),
+  });
+  moves.push(Move::Feed {
+    to: Point3::new(first.x, first.y, -cut_depth),
+  });
+  for v in vertices.iter().skip(1) {
+    let p = v.point;
+    moves.push(Move::Feed {
+      to: Point3::new(p.x, p.y, -cut_depth),
+    });
+  }
+  if contour.is_closed() {
+    moves.push(Move::Feed {
+      to: Point3::new(first.x, first.y, -cut_depth),
+    });
+  }
+  moves.push(Move::Retract {
+    to: Point3::new(first.x, first.y, safe_z),
+  });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use cam_geom::{Contour, Point2};
+  use cam_model::{
+    Board, BoardSideUp, CutoutParams, Document, Entity, EntityKind, IsolationKind, IsolationParams,
+    Layer, LayerRole, MillingDirection, Operation, Provenance, Side, TabKind, Toolpath,
+  };
+  use cam_store::tools::{CuttingData, StoredTool, ToolGeometry, ToolKind};
+  use cam_units::{Length, UnitSystem};
+
+  fn doc_with_isolation() -> Document {
+    let mut doc = Document::new(Board {
+      width: Length::from_mm(100.0),
+      height: Length::from_mm(80.0),
+      thickness: Length::from_mm(1.6),
+      origin: cam_model::OriginCorner::BottomLeft,
+      side_up: BoardSideUp::Top,
+    });
+    let contour = Contour::from_points(
+      &[
+        Point2::new(10.0, 10.0),
+        Point2::new(30.0, 10.0),
+        Point2::new(30.0, 20.0),
+        Point2::new(10.0, 20.0),
+      ],
+      true,
+    )
+    .unwrap();
+    doc.layers.push(Layer {
+      id: "L1".into(),
+      role: LayerRole::CopperTop,
+      side: Side::Top,
+      color: "#0f0".into(),
+      visible: true,
+      source: Provenance::default(),
+      entities: vec![Entity {
+        id: "E1".into(),
+        kind: EntityKind::Contour { contour },
+        source: Provenance::default(),
+      }],
+    });
+    doc.toolpaths.push(Toolpath {
+      id: "T1".into(),
+      name: "Iso".into(),
+      entity_ids: vec!["E1".into()],
+      tool_id: Some("G1".into()),
+      tool_number: 7,
+      operation: Operation::Isolation(IsolationParams {
+        passes: 1,
+        overlap: 0.5,
+        direction: MillingDirection::Climb,
+        kind: IsolationKind::Full,
+        cut_depth: Length::from_mm(0.1),
+        keep_pours: false,
+      }),
+    });
+    doc
+  }
+
+  fn tool(id: &str, number: u32, diameter_mm: f64) -> StoredTool {
+    StoredTool {
+      geometry: ToolGeometry {
+        id: id.into(),
+        name_format: "{Diameter}".into(),
+        tool_type: ToolKind::IsolationMill.raw(),
+        units: UnitSystem::Mm,
+        diameter: Some(Length::from_mm(diameter_mm)),
+        included_angle: None,
+        flat_diameter: None,
+        num_flutes: Some(1),
+        flute_length: Some(Length::from_mm(5.0)),
+        tip_radius: None,
+        shank_diameter: Some(Length::from_mm(3.175)),
+        overall_length: Some(Length::from_mm(20.0)),
+        custom_attributes: None,
+      },
+      cutting: CuttingData {
+        id: format!("C{id}"),
+        rate_units: UnitSystem::Mm,
+        feed_rate: Some(100.0),
+        plunge_rate: Some(30.0),
+        spindle_speed: Some(18_000),
+        stepdown: Some(Length::from_mm(0.1)),
+        stepover: Some(Length::from_mm(0.2)),
+        clear_stepover: Some(Length::from_mm(0.2)),
+        tool_number: Some(number),
+        notes: None,
+      },
+    }
+  }
+
+  #[test]
+  fn build_preview_stream_uses_bound_tool_diameter_and_shape() {
+    let doc = doc_with_isolation();
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    let stream = stream.expect("stream");
+    assert!(warnings.is_empty());
+    let seg = &stream.segments[0];
+    assert_eq!(seg.tool_number, 7);
+    match seg.tool {
+      ToolShape::Cylinder { diameter } => assert!((diameter.mm() - 2.0).abs() < 1e-9),
+      _ => panic!("expected cylinder"),
+    }
+    assert!(seg.moves.len() > 1);
+  }
+
+  #[test]
+  fn build_preview_stream_reports_none_when_no_supported_ops() {
+    let mut doc = doc_with_isolation();
+    doc.toolpaths.clear();
+    let (stream, warnings) = build_preview_stream(&doc, &[]);
+    assert!(stream.is_none());
+    assert!(warnings.is_empty());
+  }
+
+  #[test]
+  fn build_preview_stream_warns_and_skips_when_bound_tool_is_missing() {
+    let doc = doc_with_isolation();
+    let (stream, warnings) = build_preview_stream(&doc, &[]);
+    assert!(stream.is_none());
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("missing tool"));
+  }
+
+  #[test]
+  fn build_preview_stream_keeps_valid_toolpaths_and_warns_for_missing_tools() {
+    let mut doc = doc_with_isolation();
+    let contour = Contour::from_points(
+      &[
+        Point2::new(50.0, 10.0),
+        Point2::new(60.0, 10.0),
+        Point2::new(60.0, 20.0),
+        Point2::new(50.0, 20.0),
+      ],
+      true,
+    )
+    .unwrap();
+    doc.layers[0].entities.push(Entity {
+      id: "E2".into(),
+      kind: EntityKind::Contour { contour },
+      source: Provenance::default(),
+    });
+    doc.toolpaths.push(Toolpath {
+      id: "T2".into(),
+      name: "Iso2".into(),
+      entity_ids: vec!["E2".into()],
+      tool_id: Some("MISSING".into()),
+      tool_number: 99,
+      operation: Operation::Isolation(IsolationParams {
+        passes: 1,
+        overlap: 0.5,
+        direction: MillingDirection::Climb,
+        kind: IsolationKind::Full,
+        cut_depth: Length::from_mm(0.1),
+        keep_pours: false,
+      }),
+    });
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    let stream = stream.expect("stream");
+    assert_eq!(stream.segments.len(), 1);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("missing tool"));
+  }
+
+  #[test]
+  fn build_preview_stream_warns_and_keeps_other_toolpaths_when_an_entity_is_missing() {
+    let mut doc = doc_with_isolation();
+    let mut ghost = doc.toolpaths[0].clone();
+    ghost.name = "Ghost".into();
+    ghost.entity_ids = vec!["NOPE".into()];
+    doc.toolpaths.push(ghost);
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 2.0)]);
+    assert_eq!(stream.expect("stream").segments.len(), 1);
+    assert!(warnings.join(" ").contains("Ghost"));
+    assert!(warnings.join(" ").contains("no usable contours"));
+  }
+
+  #[test]
+  fn build_preview_stream_cutout_uses_cutout_parameters() {
+    let mut doc = doc_with_isolation();
+    doc.toolpaths = vec![Toolpath {
+      id: "C1".into(),
+      name: "Cut".into(),
+      entity_ids: vec!["E1".into()],
+      tool_id: Some("G1".into()),
+      tool_number: 7,
+      operation: Operation::Cutout(CutoutParams {
+        margin: Length::from_mm(0.5),
+        tabs: vec![],
+        tab_kind: TabKind::Straight,
+        pass_depth: Length::from_mm(0.8),
+        cut_depth: Length::from_mm(1.6),
+        cut_interiors: false,
+      }),
+    }];
+    let (stream, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 1.0)]);
+    let stream = stream.expect("stream");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let moves = &stream.segments[0].moves;
+    let xs = moves.iter().map(|m| m.destination().x.mm());
+    let max_x = xs.fold(f64::MIN, f64::max);
+    assert!(max_x > 30.5, "{max_x}");
+    let retracts = moves.iter().filter(|m| matches!(m, Move::Retract { .. }));
+    assert!(retracts.count() >= 2, "two passes");
+    // A cutout toolpath citing no geometry is refused with a warning, never silently dropped.
+    doc.toolpaths[0].entity_ids.clear();
+    let (_, warnings) = build_preview_stream(&doc, &[tool("G1", 7, 1.0)]);
+    assert!(warnings.join(" ").contains("no usable contours"));
+  }
+}

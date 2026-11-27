@@ -7,22 +7,27 @@ depende de ningún otro hito.
 ## Specs
 
 **S1 — El dominio de mecanizado general sale del producto, del binario y de la UI.**
+
 > "solo vamos a hacer pcbs, al estilo de Flatcam, pero en rust, con mejor arquitectura ui y performace,
 > asi que como dice milei, todo lo de la madera....afueraaa"
 
 **S2 — Rescates primero, árbol verde, después borrar.**
+
 > "Un PR de borrado no cambia comportamiento ni agrega features; si un rescate necesita una decisión de
 > diseño, va al PR siguiente."
 
 **S3 — Los tres rescates aterrizan en un `cam-ops` mínimo creado en el mismo PR 1.**
+
 > "tres módulos públicos con sus tests; el trait `Node` llega en C4"
 
 Origen de cada rescate (§2.2 del diseño):
+
 > "**Anillos de offset con islas** (`pocket.rs:124-158,332-337`) → motor de isolation y NCC."
 > "**Peck / retract / drill bank** (`drill.rs:85-132`) → ejecución de taladrado."
 > "**Perfil con tabs** (`lib.rs:483`) → cuerpo del cutout."
 
 **S4 — Criterio de aceptación de cada PR.**
+
 > "los tests de las tres capacidades se mudan y quedan verdes; los tests de las 11 estrategias se borran
 > con su código; `cam-ui` y `cam-cli` compilan"
 
@@ -34,15 +39,15 @@ el Log con evidencia `path:line`.
 
 ## Tasks
 
-| ID | Tarea | Spec | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Mapear la blast radius real (read-only) | S5 | `gentle-ai-explore` | — |
-| T2 | Crear `cam-ops` con **copias** de `rings` (pocket completo), `peck` (drill) y `follow` (profile) + sus tests | S3, S4 | `gentle-ai-worker` | commit 1 |
-| T3 | PR 1: borrar `cam-toolpath`, `cam-program`, el editor de estrategia de `cam-ui`, los oráculos de estrategia de `cam-sim` y los subcomandos `toolpath`/`emit`/`simulate` de `cam-cli`; árbol verde | S1, S4, S5 | inline | commit 2 |
-| T4 | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto) | S1, S4 | `gentle-ai-worker` | `7916278` + `31c317c` + `17b9c44` |
-| T5 | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import` | S1, S4 | `gentle-ai-worker` | `cc9199d` |
-| T6 | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui` | S1, S4 | plegada a C3 (L23) | — |
-| T7 | Verificación independiente del barrido (riesgo item 3: contrato de CLI) | S4 | `gentle-ai-verify` | — |
+| ID  | Tarea                                                                                                                                                                                             | Spec       | Ruta                | Commit                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------- | --------------------------------- |
+| T1  | Mapear la blast radius real (read-only)                                                                                                                                                           | S5         | `gentle-ai-explore` | —                                 |
+| T2  | Crear `cam-ops` con **copias** de `rings` (pocket completo), `peck` (drill) y `follow` (profile) + sus tests                                                                                      | S3, S4     | `gentle-ai-worker`  | commit 1                          |
+| T3  | PR 1: borrar `cam-toolpath`, `cam-program`, el editor de estrategia de `cam-ui`, los oráculos de estrategia de `cam-sim` y los subcomandos `toolpath`/`emit`/`simulate` de `cam-cli`; árbol verde | S1, S4, S5 | inline              | commit 2                          |
+| T4  | PR 2: borrar extras de `cam-geom` (medial, nest, nest_profile, moulding, texto)                                                                                                                   | S1, S4     | `gentle-ai-worker`  | `7916278` + `31c317c` + `17b9c44` |
+| T5  | PR 3: borrar PDF/EPS/PNG raster trace de `cam-import`                                                                                                                                             | S1, S4     | `gentle-ai-worker`  | `cc9199d`                         |
+| T6  | PR 4: limpiar `Operation` de madera en `cam-model`, `cutlist`/`parts`/`report` en `cam-cli`, autoría avanzada en `cam-ui`                                                                         | S1, S4     | plegada a C3 (L23)  | —                                 |
+| T7  | Verificación independiente del barrido (riesgo item 3: contrato de CLI)                                                                                                                           | S4         | `gentle-ai-verify`  | —                                 |
 
 ## Delivery
 
@@ -50,14 +55,14 @@ el Log con evidencia `path:line`.
 5.737 líneas y el proveedor de review lo rechazó en preflight (Log L16). Desde ahí, cada candidato es un
 commit que compila y deja sus tests verdes por separado.
 
-| # | Rama | Contenido | Líneas | Review |
-| --- | --- | --- | ---: | --- |
-| 1 | `camcraft-sweep-c1` | system design + esta especificación | 971 | **approved** (riesgo `low`, sin lentes) |
-| 2 | `camcraft-sweep-c2` | `shared` + `follow` (profile + tabs) | 1.409 | pendiente |
-| 3 | `camcraft-sweep-c3` | `rings` (pocket completo) + tests de anillos | 1.218 | pendiente |
-| 4 | `camcraft-sweep-c4` | esta spec: cadena, Log y tareas al día | 72 | **approved** (riesgo `low`, sin lentes) |
-| 5 | `camcraft-sweep-c5` | tests de islas de `rings` | 1.069 | **salteado** (L20) |
-| 6 | `camcraft-sweep-c6` | `peck` (taladrado) | 1.043 | **salteado** (L20) |
+| #   | Rama                | Contenido                                    | Líneas | Review                                  |
+| --- | ------------------- | -------------------------------------------- | -----: | --------------------------------------- |
+| 1   | `camcraft-sweep-c1` | system design + esta especificación          |    971 | **approved** (riesgo `low`, sin lentes) |
+| 2   | `camcraft-sweep-c2` | `shared` + `follow` (profile + tabs)         |  1.409 | pendiente                               |
+| 3   | `camcraft-sweep-c3` | `rings` (pocket completo) + tests de anillos |  1.218 | pendiente                               |
+| 4   | `camcraft-sweep-c4` | esta spec: cadena, Log y tareas al día       |     72 | **approved** (riesgo `low`, sin lentes) |
+| 5   | `camcraft-sweep-c5` | tests de islas de `rings`                    |  1.069 | **salteado** (L20)                      |
+| 6   | `camcraft-sweep-c6` | `peck` (taladrado)                           |  1.043 | **salteado** (L20)                      |
 
 **El orden follow -> rings -> islas -> peck no es arbitrario.** `follow` es el único modulo que alcanza
 todos los helpers de `shared`; empezar por `peck` dejaria `push_horizontal`, `piece_endpoints` y
@@ -95,6 +100,7 @@ con el slice sin rebanar. **Los PRs no se crearon: es decisión del dueño.**
 ## Log
 
 **L1** (usuario, autoriza el pivote):
+
 > "1. camcraft es el producto y campilot el legado. 2. solo vamos a hacer pcbs, al estilo de Flatcam,
 > pero en rust, con mejor arquitectura ui y performace, asi que como dice milei, todo lo de la
 > madera....afueraaa 3. los plazos no me importan, quiero algo de calidad, desarrollado con ODD, y que se
@@ -141,7 +147,7 @@ Sobreviven en `cam-cli`: `validate`, `inspect`, `postp`, `import`, `export`, `ch
 
 **L10** (decisión de plan, ajuste 1): **se rescata `pocket` completo (rings **y** raster)**, no sólo los
 anillos. Partir el módulo obligaría a rediseñar su API dentro de un PR de borrado (viola S2), y NCC va a
-querer el método *lines* (E4.6), que es exactamente el raster. Separarlos es una decisión de C5.
+querer el método _lines_ (E4.6), que es exactamente el raster. Separarlos es una decisión de C5.
 
 **L11** (decisión de plan, ajuste 2): **los rescates se copian, no se mueven**, y el PR 1 pasa a tener
 dos commits. Commit 1 crea `cam-ops` con copias + tests propios, con `cam-toolpath` intacto y verde: así
@@ -170,8 +176,8 @@ todos los helpers de `shared`, asi que va primero o clippy rompe por `pub(crate)
 de islas se separan de `rings` para que el candidato de `rings` quepa sin forzar nada.
 
 **L16** (provider stop, evidencia): el slice único de 5.737 líneas fue rechazado en `preflight` con
-`lens_context_budget_exceeded`: *"the candidate's complete reviewer evidence exceeds the native context
-budget, so no review authority was created"*. `mutation_performed: false`, nada que abandonar ni reparar,
+`lens_context_budget_exceeded`: _"the candidate's complete reviewer evidence exceeds the native context
+budget, so no review authority was created"_. `mutation_performed: false`, nada que abandonar ni reparar,
 y reintentar el mismo candidato no puede funcionar. **`size:exception` deja de ser una opcion: el techo es
 el contexto del revisor.** El proveedor mismo indica partir en candidatos mas chicos.
 
@@ -212,7 +218,7 @@ borrado atomico que produjo el worker, verificado con `git diff`.
 
 **Lo que se perdio de verdad:** 55 tests de `cam-ui/tests/view3d` (2.743 lineas, 7 archivos) murieron
 junto con `tests/view3d/support.rs`, que construia los programas con `cam_program::program_for_snapshot` y
-las fixtures con `PocketParams`/`ProfileParams`. Los tests eran de *playback, escena y overlay*, que
+las fixtures con `PocketParams`/`ProfileParams`. Los tests eran de _playback, escena y overlay_, que
 sobreviven como producto, pero su mobiliario era maquinaria borrada. **Consecuencia para C8: hay que
 reconstruir la cobertura de preview 3D y playback, no solo la UI.** Queda escrito para que no se descubra
 tarde.
@@ -278,15 +284,15 @@ Los otros seis son aditivos o limpieza y pueden mergearse por separado, cada uno
 Sobre una cadena lineal y mergeable el tracker no aporta nada, asi que se entrega como **PRs apilados**:
 cada rama apunta a su padre y la primera apunta a `master`.
 
-| PR | Rama | Cabeza | Que trae | Mergeable solo |
-| --- | --- | --- | --- | --- |
-| P1 | `camcraft-sweep-01-docs` | `e0ee403` | system design + spec del barrido | si (docs) |
-| P2 | `camcraft-sweep-02-rescue` | `3f1a524` | `cam-ops`: shared, follow, rings, islas, peck (+73 tests) | si (aditivo) |
-| P3 | `camcraft-sweep-03-docs` | `8300d13` | cierre de cadena, calibracion del CRITICAL, gsim-rs | si (docs) |
-| P4 | `camcraft-sweep-04-oracles` | `da5ccd9` | los 89 oraculos de estrategia de `cam-sim` | si (tests) |
-| P5 | `camcraft-sweep-05-deletion` | `fdb87cf` | el dominio de mecanizado general afuera | **no**: sin `emit`/`simulate` hasta C4 |
-| P6 | `camcraft-sweep-06-cleanup` | `fcd83d9` | `medial` + los 7 hallazgos de review | si (borrado muerto + tests) |
-| P7 | `camcraft-sweep-07-docs` | esta punta | L21-L24 y la reparacion del README | si (docs) |
+| PR  | Rama                         | Cabeza     | Que trae                                                  | Mergeable solo                         |
+| --- | ---------------------------- | ---------- | --------------------------------------------------------- | -------------------------------------- |
+| P1  | `camcraft-sweep-01-docs`     | `e0ee403`  | system design + spec del barrido                          | si (docs)                              |
+| P2  | `camcraft-sweep-02-rescue`   | `3f1a524`  | `cam-ops`: shared, follow, rings, islas, peck (+73 tests) | si (aditivo)                           |
+| P3  | `camcraft-sweep-03-docs`     | `8300d13`  | cierre de cadena, calibracion del CRITICAL, gsim-rs       | si (docs)                              |
+| P4  | `camcraft-sweep-04-oracles`  | `da5ccd9`  | los 89 oraculos de estrategia de `cam-sim`                | si (tests)                             |
+| P5  | `camcraft-sweep-05-deletion` | `fdb87cf`  | el dominio de mecanizado general afuera                   | **no**: sin `emit`/`simulate` hasta C4 |
+| P6  | `camcraft-sweep-06-cleanup`  | `fcd83d9`  | `medial` + los 7 hallazgos de review                      | si (borrado muerto + tests)            |
+| P7  | `camcraft-sweep-07-docs`     | esta punta | L21-L24 y la reparacion del README                        | si (docs)                              |
 
 Las ramas de andamiaje (`-c1`..`-c6`, `-s1`, `-dA/dB/dC`) quedan como historia local: los recibos de
 review estan atados a identidades de target, no a nombres de rama, asi que no hacen falta para entregar, y
@@ -391,8 +397,8 @@ vuelve verdadera. Regla que queda: un commit de borrado no puede adelantar la ex
 todavía no aterrizó, aunque el árbol final esté verde.
 
 **L35** (decisión del dueño — la historia se rebanó, y por qué): el candidato completo se ofreció al
-review del proveedor con tres lentes y volvió **stop en preflight**: `lens_context_budget_exceeded`, *"no
-review authority was created"*, `mutation_performed: false`. Los tamaños explican el rebote: candidato
+review del proveedor con tres lentes y volvió **stop en preflight**: `lens_context_budget_exceeded`, _"no
+review authority was created"_, `mutation_performed: false`. Los tamaños explican el rebote: candidato
 completo 14.040 supresiones en 46 archivos; el corte de kernel 8.405; el de import 5.613; el de docs 86.
 El techo medido en esta misma tarea sigue entre 1.409 (aprobado) y 5.762 (rebotado), así que el candidato
 grande no entra ni partido en dos. Decisión del dueño, entre tres opciones: **rebanar más fino y revisar
@@ -405,9 +411,10 @@ como `sweep-backup` (`7a6e6f5`), con sus cinco commits, y no se borra.
 **L36** (evidencia — los cinco cortes, cada uno verde por separado): `7916278` texto (1.660 líneas
 authored, 1304 tests), `31c317c` moulding (1.285, 1280), `cc9199d` import (5.612, 1221), `17b9c44` nesting
 (5.377, 1167) y el commit de docs que sigue. La aritmética cierra por corte: 1323 - 19 = 1304; - 24 = 1280;
+
 - 59 = 1221; - 54 = 1167. El árbol de `17b9c44` es **idéntico** al de `sweep-backup` en todo lo que no es
-documentación (`git diff sweep-backup 17b9c44` sólo muestra README y `odd/tasks/`), así que rebanar cambió
-la presentación, no el contenido.
+  documentación (`git diff sweep-backup 17b9c44` sólo muestra README y `odd/tasks/`), así que rebanar cambió
+  la presentación, no el contenido.
 
 **L37** (lo que aprendí de la reconstrucción, para no repetirlo): `git checkout <rama> -- <dir>` restaura
 archivos pero **no borra** los que la rama origen ya no tiene: en `crates/cam-import` quedaron `pdf.rs`,
@@ -419,13 +426,13 @@ borrado va con `git rm`, nunca se infiere de un checkout.
 ofreció como candidato propio, con `committedOnly` y base en el corte anterior, lentes `risk` +
 `reliability` para el código y ninguna para docs (L17).
 
-| Corte | Rango | Veredicto del proveedor | Linaje |
-| --- | --- | --- | --- |
-| docs | `17b9c44..e3beceb` | **approved**, `risk_tier: low`, `non_executable_only`, sin lentes | `review-2b8db92b2d855ac6` |
-| texto | `f11a629..7916278` | **approved** tras 2 corridas (1.660 líneas, tier `high`, `correction_budget` 200); acknowledgement quemó la autoridad | `review-11610ba54a726679` |
+| Corte    | Rango              | Veredicto del proveedor                                                                                                                                                                       | Linaje                    |
+| -------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| docs     | `17b9c44..e3beceb` | **approved**, `risk_tier: low`, `non_executable_only`, sin lentes                                                                                                                             | `review-2b8db92b2d855ac6` |
+| texto    | `f11a629..7916278` | **approved** tras 2 corridas (1.660 líneas, tier `high`, `correction_budget` 200); acknowledgement quemó la autoridad                                                                         | `review-11610ba54a726679` |
 | moulding | `7916278..31c317c` | **escalated** (`native_stop_required`): R3-001 BLOCKER inferencial, degradado por el propio proveedor (`downgraded_causal_findings: unverified_location`, `candidate_causal_finding_ids: []`) | `review-e344c2b7641c9a5f` |
-| import | `31c317c..cc9199d` | **stop en preflight**: `lens_context_budget_exceeded`, sin autoridad | `review-23e442de4e4e24f4` |
-| nesting | `cc9199d..17b9c44` | **stop en preflight**: idem | `review-d9aebe81962bba3b` |
+| import   | `31c317c..cc9199d` | **stop en preflight**: `lens_context_budget_exceeded`, sin autoridad                                                                                                                          | `review-23e442de4e4e24f4` |
+| nesting  | `cc9199d..17b9c44` | **stop en preflight**: idem                                                                                                                                                                   | `review-d9aebe81962bba3b` |
 
 **R3-001 es un falso positivo, y queda medido.** El revisor apoyó un BLOCKER en un comentario del propio
 `moulding.rs` borrado (`:300-301`), que decía que `cam-toolpath::moulding` emitía la pasada y

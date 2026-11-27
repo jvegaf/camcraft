@@ -6,6 +6,10 @@ this script drives it once per artefact so that a layer that does not terminate 
 `timeout(1)` and recorded as `status: "timeout"` instead of hanging CI. A function call cannot be
 interrupted from inside the process; a process can.
 
+An artefact pinned as `skipped` in its golden is intentionally not measured or compared now (a
+budget-closure decision recorded in the golden). The harness carries that status through without
+running the measurer, so CI and local hooks do not spend time on it.
+
 The document this prints is what `run.sh` compares against the goldens and, with `--update`, what it
 splits into one `parity.json` per board (a board's golden is stored next to the board, so a diff over
 one board is a diff over one file):
@@ -21,15 +25,16 @@ one board is a diff over one file):
       }
     }
 
-`status` is one of `parsed`, `refused`, `timeout`, `error`. Everything else is a number the comparison checks;
-the parser's own refusal message is not stored, because a golden should move when the geometry moves,
-not when a diagnostic is reworded. `collect.py` prints the reasons to stderr so a person can read them
-without them becoming part of the fixture.
+`status` is one of `parsed`, `refused`, `timeout`, `skipped`, `error`. Everything else is a number the
+comparison checks; the parser's own refusal message is not stored, because a golden should move when
+the geometry moves, not when a diagnostic is reworded. `collect.py` prints the reasons to stderr so a
+person can read them without them becoming part of the fixture.
 
 Keys are sorted and floats are written with Python's shortest round-trip repr, so two runs that measure
 the same thing produce the same bytes.
 """
 
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -37,7 +42,33 @@ import sys
 from pathlib import Path
 
 FLATTEN_TOLERANCE_MM = 0.001
-TIMEOUT_SECONDS = 30
+
+# The bound an artefact gets before it is recorded as `timeout` instead of hanging the job.
+#
+# Thirty seconds, and the number is now known to be about stability rather than about speed: two
+# layers of `substitute-easyeda` (mask-top, mask-bottom) terminate in roughly twenty seconds, so a
+# twenty-second bound flips them between `parsed` and `timeout` from run to run — the goldens then
+# disagree with the tree on a measurement nobody changed. Ten seconds is faster still and loses those
+# two outright. The eighteen that never terminate dominate the run either way; the honest saving is
+# not to lower the bound but to skip the measurement when a push cannot move it (see the `parity` job
+# in `.github/workflows/ci.yml`).
+#
+# The bound is recorded in every golden, so changing it is a change to review, never a silent retune.
+# `CAMCRAFT_PARITY_TIMEOUT_SECONDS` overrides it for local experiments; comparisons against committed
+# goldens will only match when the recorded bound matches.
+def timeout_seconds() -> int:
+    override = os.environ.get("CAMCRAFT_PARITY_TIMEOUT_SECONDS")
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    return 30
+
+
+TIMEOUT_SECONDS = timeout_seconds()
 
 ROLES = (
     "top",
@@ -103,16 +134,104 @@ def measure(binary: Path, artefact: Path) -> tuple[dict, str]:
     return measured, reason
 
 
-def document(corpus: Path, binary: Path) -> dict:
+def worker_count() -> int:
+    """Bounded parallelism for the per-artefact measurer processes.
+
+    Each artefact runs in its own process with a fixed timeout, so a handful of workers cuts the wall
+    time of a corpus run substantially without changing what is measured. The cap keeps a local push
+    from saturating the machine. `CAMCRAFT_PARITY_JOBS` overrides the default when set to a positive
+    integer (capped at 8).
+    """
+    jobs = min(os.cpu_count() or 1, 4)
+    override = os.environ.get("CAMCRAFT_PARITY_JOBS")
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                jobs = value
+        except ValueError:
+            pass
+    return max(1, min(jobs, 8))
+
+
+def zero_measurement(artefact: Path, status: str) -> dict:
+    kind = "tools" if artefact.suffix == ".drl" else "polygons"
+    zero = {"tools": 0, "features": 0} if kind == "tools" else {
+        "polygons": 0,
+        "contour_area_mm2": 0.0,
+        "points": 0,
+    }
+    return {"status": status, **zero}
+
+
+def assumed_timeout(artefact: Path) -> dict:
+    return zero_measurement(artefact, "timeout")
+
+
+def document(corpus: Path, binary: Path, assume_known_timeouts: bool = False) -> dict:
+    workers = worker_count()
     boards = {}
+    not_measured: list[str] = []
     for board in sorted(path for path in corpus.iterdir() if path.is_dir()):
+        items = list(artefacts_of(board).items())
+        pinned_skipped = pinned_skips(board)
+        skipped = dict(pinned_skipped)
+        if assume_known_timeouts:
+            for role, artefact in items:
+                if golden_status(board, role) == "timeout":
+                    skipped.setdefault(role, "assumed timeout (pinned in golden; skipped)")
+        to_measure = [(role, artefact) for role, artefact in items if role not in skipped]
         measured = {}
-        for role, artefact in artefacts_of(board).items():
-            value, reason = measure(binary, artefact)
-            measured[role] = value
-            if reason:
-                print(f"  {board.name}/{artefact.name}: {value['status']} — {reason}", file=sys.stderr)
-        boards[board.name] = measured
+        reasons = {}
+
+        for role, artefact in items:
+            if role in skipped:
+                status = golden_status(board, role) or "skipped"
+                measured[role] = zero_measurement(artefact, status)
+                reasons[role] = (artefact, skipped[role])
+
+        if to_measure:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(measure, binary, artefact): (role, artefact)
+                    for role, artefact in to_measure
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    role, artefact = futures[future]
+                    value, reason = future.result()
+                    measured[role] = value
+                    reasons[role] = (artefact, reason)
+
+        ordered = {}
+        for role, artefact in items:
+            ordered[role] = measured[role]
+            artefact_path, reason = reasons[role]
+            if role in skipped:
+                # `skipped` is a budget-closure record, not a measurement: the artefact is carried
+                # through without being run, so a crash or a parser regression in it is invisible to
+                # this run. The skip is kept (the budget decision stands) and named, one line per
+                # artefact, so the output says what was not checked and why — silence here read as
+                # "checked and fine".
+                kind = "SKIPPED" if role in pinned_skipped else "NOT MEASURED"
+                not_measured.append(f"{board.name}/{artefact_path.name}")
+                print(
+                    f"  advisory: {board.name}/{artefact_path.name}: {kind} — {reason}; "
+                    "not measured and not compared, so nothing about it was checked",
+                    file=sys.stderr,
+                )
+            elif reason:
+                print(
+                    f"  {board.name}/{artefact_path.name}: {ordered[role]['status']} — {reason}",
+                    file=sys.stderr,
+                )
+        boards[board.name] = ordered
+    if not_measured:
+        print(
+            f"advisory: {len(not_measured)} artefact(s) were not measured or compared this run "
+            "because their golden says so; a crash or a regression in them stays invisible until "
+            "one is un-skipped",
+            file=sys.stderr,
+        )
     return {
         "flatten_tolerance_mm": FLATTEN_TOLERANCE_MM,
         "timeout_seconds": TIMEOUT_SECONDS,
@@ -120,11 +239,64 @@ def document(corpus: Path, binary: Path) -> dict:
     }
 
 
+def load_golden(board: Path) -> dict:
+    golden_path = board / "parity.json"
+    if not golden_path.is_file():
+        return {}
+    try:
+        return json.loads(golden_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def golden_status(board: Path, role: str) -> str | None:
+    value = load_golden(board).get("artefacts", {}).get(role, {})
+    status = value.get("status")
+    return status if isinstance(status, str) else None
+
+
+def pinned_skips(board: Path) -> dict[str, str]:
+    """Artefacts whose committed golden marks them as intentionally skipped.
+
+    A skipped golden means "do not measure or compare this artefact now". Unlike a timeout, this is a
+    deliberate budget-closure record, so it is carried through even on a normal run: measuring it would
+    spend time on a layer nobody is checking yet.
+    """
+    artefacts = load_golden(board).get("artefacts", {})
+    return {
+        role: "skipped (pinned in golden; not checked)"
+        for role, value in artefacts.items()
+        if value.get("status") == "skipped"
+    }
+
+
+def known_timeouts(board: Path) -> set[str]:
+    """Artefacts whose committed golden is already a timeout.
+
+    Skipping them is an opt-in local speedup: it cannot discover that a layer now finishes, so it must
+    never be used when pinning goldens.
+    """
+    artefacts = load_golden(board).get("artefacts", {})
+    return {role for role, value in artefacts.items() if value.get("status") == "timeout"}
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: collect.py <corpus-root> <parity-measure>", file=sys.stderr)
+    args = [a for a in sys.argv[1:] if a != "--"]
+    assume_known = False
+    positional = []
+    for arg in args:
+        if arg == "--assume-known-timeouts":
+            assume_known = True
+        elif arg.startswith("--"):
+            print(f"usage: collect.py [--assume-known-timeouts] <corpus-root> <parity-measure>", file=sys.stderr)
+            return 2
+        else:
+            positional.append(arg)
+
+    if len(positional) != 2:
+        print("usage: collect.py [--assume-known-timeouts] <corpus-root> <parity-measure>", file=sys.stderr)
         return 2
-    corpus, binary = Path(sys.argv[1]), Path(sys.argv[2])
+    corpus, binary = Path(positional[0]), Path(positional[1])
     if not corpus.is_dir():
         print(f"ERROR: {corpus} is not a corpus directory", file=sys.stderr)
         return 2
@@ -132,7 +304,7 @@ def main() -> int:
         print(f"ERROR: {binary} is not executable; build it first", file=sys.stderr)
         return 2
 
-    measured = document(corpus, binary)
+    measured = document(corpus, binary, assume_known_timeouts=assume_known)
     print(json.dumps(measured, indent=2, sort_keys=True))
     parsed = sum(
         1

@@ -38,16 +38,16 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
 
 ## Tasks
 
-| ID | Tarea | Specs | Ruta | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | Escribir `odd/roadmap/waves.md` con las olas, agentes, superficies y orden de merge | S1 | inline | `40195e1` |
-| T2 | Enlazar el mapa desde `odd/roadmap/index.md` | S1 | inline | `40195e1` |
-| T3 | Tests de comportamiento del tooling, uno por comportamiento para que cada commit lleve el suyo: claim, gate, deliver | S4 | inline | `6b7af24` `6917f42` `bf80cd7` |
-| T4 | `claim-task.sh`: reclamar superficies del bloque `## Surfaces`, con mensaje de colisión por superficie | S2b, S4 | inline | `6b7af24` |
-| T5 | `check.sh`: fallar en worktree vinculado sin claim y en el árbol primario con trabajo | S2a | inline | `6917f42` |
-| T6 | `deliver-task.sh` + `just deliver`: INDEX y liberación del claim en el merge | S2c | inline | `bf80cd7` |
-| T7 | `justfile`/`AGENTS.md`: worktrees desde herdr en `~/.herdr/worktrees` | S3 | inline | `bf80cd7` `7e29f68` |
-| T8 | Verificación: test del tooling en verde y `./scripts/check-docs.sh` | S1–S4 | inline | — |
+| ID  | Tarea                                                                                                                | Specs   | Ruta   | Commit                        |
+| --- | -------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ----------------------------- |
+| T1  | Escribir `odd/roadmap/waves.md` con las olas, agentes, superficies y orden de merge                                  | S1      | inline | `40195e1`                     |
+| T2  | Enlazar el mapa desde `odd/roadmap/index.md`                                                                         | S1      | inline | `40195e1`                     |
+| T3  | Tests de comportamiento del tooling, uno por comportamiento para que cada commit lleve el suyo: claim, gate, deliver | S4      | inline | `6b7af24` `6917f42` `bf80cd7` |
+| T4  | `claim-task.sh`: reclamar superficies del bloque `## Surfaces`, con mensaje de colisión por superficie               | S2b, S4 | inline | `6b7af24`                     |
+| T5  | `check.sh`: fallar en worktree vinculado sin claim y en el árbol primario con trabajo                                | S2a     | inline | `6917f42`                     |
+| T6  | `deliver-task.sh` + `just deliver`: INDEX y liberación del claim en el merge                                         | S2c     | inline | `bf80cd7`                     |
+| T7  | `justfile`/`AGENTS.md`: worktrees desde herdr en `~/.herdr/worktrees`                                                | S3      | inline | `bf80cd7` `7e29f68`           |
+| T8  | Verificación: test del tooling en verde y `./scripts/check-docs.sh`                                                  | S1–S4   | inline | —                             |
 
 ## Log
 
@@ -70,14 +70,14 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
 - **L5.** Corte en commits revisables, a pedido del humano, antes de abrir RDD sobre el candidato. Los
   slices son, en orden, los que quedaron en la rama `feat/042-parallel-waves`:
 
-  | Slice | Commit | Qué lleva |
-  | --- | --- | --- |
-  | 1 | `40195e1` | `docs(roadmap)` — auditoría F0–F8 del índice y el mapa de olas |
-  | 2 | `ee26aba` | `docs(odd)` — este documento y su fila en el INDEX |
-  | 3 | `6b7af24` | `feat(claims)` — claim por superficies, con su fixture y su test |
-  | 4 | `6917f42` | `feat(gate)` — `--gate` y el gate que corre el claim |
-  | 5 | `bf80cd7` | `feat(claims)` — `deliver-task.sh`, su test y las recetas del `justfile` |
-  | 6 | `7e29f68` | `docs(agents)` — las reglas que el agente lee |
+  | Slice | Commit    | Qué lleva                                                                |
+  | ----- | --------- | ------------------------------------------------------------------------ |
+  | 1     | `40195e1` | `docs(roadmap)` — auditoría F0–F8 del índice y el mapa de olas           |
+  | 2     | `ee26aba` | `docs(odd)` — este documento y su fila en el INDEX                       |
+  | 3     | `6b7af24` | `feat(claims)` — claim por superficies, con su fixture y su test         |
+  | 4     | `6917f42` | `feat(gate)` — `--gate` y el gate que corre el claim                     |
+  | 5     | `bf80cd7` | `feat(claims)` — `deliver-task.sh`, su test y las recetas del `justfile` |
+  | 6     | `7e29f68` | `docs(agents)` — las reglas que el agente lee                            |
 
   El slice 3 pasó las ~400 líneas autoradas (≈480): el claim nuevo y el arnés de test que lo prueba son
   una sola unidad — el arnés sin la implementación no pasa y la implementación sin el arnés no se
@@ -90,7 +90,6 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
 - **L7.** El review nativo (RDD) sobre el candidato de esta rama, `sha256:07e6e697…`, linaje
   `review-f8d00f1d61933e35`: tier **high**, 1.012 líneas cambiadas, presupuesto de corrección 200,
   cuatro lentes (risk, resilience, readability, reliability) más refuter y validador dirigido.
-
   1. Refuter: **siete hallazgos CRITICAL, todos `introduced`** — `deliver` corrible desde un worktree
      vinculado; globs de superficie que no colisionaban; el gate parseando `git status` (rename staged
      invisible, `|| true` convirtiendo un fallo en limpio); claim escrito en el archivo final con el
@@ -153,4 +152,3 @@ que varios agentes puedan trabajar en worktrees sin pisarse. Documento de tarea 
   `just deliver 042 794b5c5` marcó la fila `delivered` y liberó el claim. Los tres linajes de review de
   esta feature: `review-f8d00f1d61933e35` (escalado, corrección rechazada), `review-db8530b23d8a207a`
   (aprobado) y `review-7de47d5a8514bf37` (aprobado).
-

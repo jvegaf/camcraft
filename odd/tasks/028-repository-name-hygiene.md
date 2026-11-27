@@ -53,21 +53,21 @@ L5). Read **until `## Log`** before touching anything.
 
 ## Slices
 
-| Slice | Task | Commit | What it holds |
-| --- | --- | --- | --- |
-| 1 | T1 + T2 | `54aaf25` | 41 files: `evidence/` deleted, the README re-grounded row by row, the mention out of `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`, fifteen documents renamed with every inbound link, and the branch renamed. Two edits the worker could not reach — `cam-post/src/lib.rs`'s module comment and four dead `.gitignore` lines — were taken by the parent in the same commit. Gate green at 1605 tests. |
-| 2 | T4 + T5 | `9a7784a` | 12 files under `odd/` and `docs/`: the dossier's citations replaced by the facts they established, the stand-ins ("the original", "their dialect", `.crv`, a second product of the same vendor) written out as properties, the milestone's duplicate of the owner's quote turned into a pointer, and the roadmap header corrected to M0-M13. |
-| 3 | T3 | — | The history note this document owes the reader, and the rewrite itself if the owner's authorisation stands. |
+| Slice | Task    | Commit    | What it holds                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----- | ------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | T1 + T2 | `54aaf25` | 41 files: `evidence/` deleted, the README re-grounded row by row, the mention out of `docs/`, `crates/`, the `.pp` fixtures and `Cargo.toml`, fifteen documents renamed with every inbound link, and the branch renamed. Two edits the worker could not reach — `cam-post/src/lib.rs`'s module comment and four dead `.gitignore` lines — were taken by the parent in the same commit. Gate green at 1605 tests. |
+| 2     | T4 + T5 | `9a7784a` | 12 files under `odd/` and `docs/`: the dossier's citations replaced by the facts they established, the stand-ins ("the original", "their dialect", `.crv`, a second product of the same vendor) written out as properties, the milestone's duplicate of the owner's quote turned into a pointer, and the roadmap header corrected to M0-M13.                                                                     |
+| 3     | T3      | —         | The history note this document owes the reader, and the rewrite itself if the owner's authorisation stands.                                                                                                                                                                                                                                                                                                      |
 
 ## Tasks
 
-| ID | What | S | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `54aaf25` — prose sweep, evidence deleted | S1–S5 S8 | worker | `54aaf25` |
-| T4 | ✅ delivered `9a7784a` — dossier citations replaced | S1 S4 S8 | worker | `9a7784a` |
-| T2 | ✅ delivered `54aaf25` — 13 docs renamed, links updated | S2 S6 S7 | inline | `54aaf25` |
-| T5 | ✅ delivered `9a7784a` — stand-ins replaced | S1 S3 S8 | worker | `9a7784a` |
-| T3 | ✅ delivered — the roadmap's note: what the tree now says, and where the rewritten history lives (two published branches, the swap left to the owner) | S5 | inline | — |
+| ID  | What                                                                                                                                                  | S        | Route  | Commit    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | --------- |
+| T1  | ✅ delivered `54aaf25` — prose sweep, evidence deleted                                                                                                | S1–S5 S8 | worker | `54aaf25` |
+| T4  | ✅ delivered `9a7784a` — dossier citations replaced                                                                                                   | S1 S4 S8 | worker | `9a7784a` |
+| T2  | ✅ delivered `54aaf25` — 13 docs renamed, links updated                                                                                               | S2 S6 S7 | inline | `54aaf25` |
+| T5  | ✅ delivered `9a7784a` — stand-ins replaced                                                                                                           | S1 S3 S8 | worker | `9a7784a` |
+| T3  | ✅ delivered — the roadmap's note: what the tree now says, and where the rewritten history lives (two published branches, the swap left to the owner) | S5       | inline | —         |
 
 ## Log
 
@@ -80,7 +80,7 @@ L5). Read **until `## Log`** before touching anything.
   as a requirement in `m13-in-app-cycle.md` L5 the moment it arrived, so it cannot be lost if the
   session ends between the two.
 - **L3 (T1 delivered, and the two edits the parent took back).** The prose sweep landed with the gate green
-  at 1605 workspace tests: `README.md`'s opening now says what campilot *is*, its rationale table's left
+  at 1605 workspace tests: `README.md`'s opening now says what campilot _is_, its rationale table's left
   column is a reason ("portable domain", "one geometry feeding many cuts", "the program is data", "arcs carry
   a centre", "certificates", "the schema tag") instead of an observation, and the seventh row was deleted
   because it restated the first. `evidence/` is gone, both `.pp` fixtures changed one comment line each with
@@ -91,7 +91,7 @@ L5). Read **until `## Log`** before touching anything.
   `/evidence/...` lines in `.gitignore`. The comment now says what the dialect is — thirteen directives and
   twenty output blocks, all of which the parser and the emitter know — and claims nothing about who wrote it
   first (S8).
-- **L4 (T4, found by the final grep).** Deleting the dossier is not the same as deleting the *citation of*
+- **L4 (T4, found by the final grep).** Deleting the dossier is not the same as deleting the _citation of_
   it: `odd/` still says a spec's vocabulary was "recovered by REA (verbatim, `evidence/analysis-report.md:191`)"
   — seven clauses across `m0`, `m3`, `m4`, `m6`, `m7` and the roadmap's L3, each quoting strings "from" a file
   that no longer exists. They are the same claim the sweep exists to remove, one layer down, and they get their
@@ -141,4 +141,3 @@ L5). Read **until `## Log`** before touching anything.
   (`native-approved-acknowledgement-not-current`) and the receipt could only be burned by returning HEAD to the
   approved candidate first. **Findings are written into the session before the burn; the commit that records
   them comes after it.**
-

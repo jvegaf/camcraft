@@ -76,16 +76,16 @@ its report, not by pixels.
 
 ## Tasks
 
-| ID | Specs | Route | State |
-| --- | --- | --- | --- |
-| T1 | S4, S5, S10 | inline | done — `a21b56a` (kinds, migration v3), `6b84b31` (validation, three writers) |
-| T2 | S1, S2, S4-S9, S12 | worker | done — `d04d8c6` (header, three columns, editor, preview, footer) |
-| T3 | S9, S6 | worker | done — `d04d8c6` (drafts, combo, validation, computed chipload) |
-| T4 | S1, S2, S14 | worker | done — `d04d8c6` (the suite rewritten as behaviour over the report) |
-| T5 | S11 | inline + worker | done — `c760cf8` (format), `ac09d07` (dialogs) |
-| T6 | S13, S14 | worker | done — `d04d8c6` (`default_tools()` retired, no fabricated library) |
-| T7 | S3, S10, S11 | worker | done — `ac09d07` (three rows, four writers, two dialogs) |
-| T8 | — | inline | done — M14 row and §4.17 in `odd/roadmap/index.md`, gate green |
+| ID  | Specs              | Route           | State                                                                         |
+| --- | ------------------ | --------------- | ----------------------------------------------------------------------------- |
+| T1  | S4, S5, S10        | inline          | done — `a21b56a` (kinds, migration v3), `6b84b31` (validation, three writers) |
+| T2  | S1, S2, S4-S9, S12 | worker          | done — `d04d8c6` (header, three columns, editor, preview, footer)             |
+| T3  | S9, S6             | worker          | done — `d04d8c6` (drafts, combo, validation, computed chipload)               |
+| T4  | S1, S2, S14        | worker          | done — `d04d8c6` (the suite rewritten as behaviour over the report)           |
+| T5  | S11                | inline + worker | done — `c760cf8` (format), `ac09d07` (dialogs)                                |
+| T6  | S13, S14           | worker          | done — `d04d8c6` (`default_tools()` retired, no fabricated library)           |
+| T7  | S3, S10, S11       | worker          | done — `ac09d07` (three rows, four writers, two dialogs)                      |
+| T8  | —                  | inline          | done — M14 row and §4.17 in `odd/roadmap/index.md`, gate green                |
 
 ## Log
 
@@ -97,7 +97,7 @@ tienes que conseguir que el modal del library tools sea igual que en estas captu
 /home/th3g3ntl3man/Code/campilot/design/prancheta-reference/Screenshot 2026-11-03 032737.png
 ```
 
-**L2** — the owner's answer on language: matching the reference's *shape*, not its words.
+**L2** — the owner's answer on language: matching the reference's _shape_, not its words.
 
 ```
 Question: Las capturas están en portugués ("Escolher ferramenta", "Diâmetro", "Avanço"...) y toda la app
@@ -180,13 +180,13 @@ One line, now pinned by `editing::cancel_discards_the_draft_…`.
 
 **L9** — delivery. One branch, and the commits are the review units:
 
-| commit | lines | what a reviewer reads |
-| --- | --- | --- |
-| `a21b56a` | 331 | the schema and the six kinds |
-| `6b84b31` | ~830 | the validation rules and the three writers |
-| `c760cf8` | ~300 | the file format |
-| `02ea9ef` | ~120 | the unit correction |
-| `d04d8c6` | ~1500 | the modal itself, and its suite |
+| commit    | lines | what a reviewer reads                      |
+| --------- | ----- | ------------------------------------------ |
+| `a21b56a` | 331   | the schema and the six kinds               |
+| `6b84b31` | ~830  | the validation rules and the three writers |
+| `c760cf8` | ~300  | the file format                            |
+| `02ea9ef` | ~120  | the unit correction                        |
+| `d04d8c6` | ~1500 | the modal itself, and its suite            |
 
 The modal commit is far past the 400-line slice and cannot be cut smaller without a commit that does not
 compile: `form.rs` is a new file, and the unit correction surfaces through it. If the owner wants chained
@@ -208,11 +208,11 @@ dialog rather than in a second place that could disagree with it.
 continuation is to split it. The seven commits were already the seams, so each slice was reviewed from a
 detached checkout at its own commit against its own parent.
 
-| slice | lineage | outcome |
-| --- | --- | --- |
-| `a21b56a` | `review-cc568f2c1444c30f` | **approved**, receipt burned |
-| `6b84b31` | `review-fc3de7e877f7f52d` | **approved after one correction**, receipt burned — see below |
-| `edec330`, `f49cfc9`, `50a72c9`, `389785e`, `a980b9c` | — | not started |
+| slice                                                 | lineage                   | outcome                                                       |
+| ----------------------------------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `a21b56a`                                             | `review-cc568f2c1444c30f` | **approved**, receipt burned                                  |
+| `6b84b31`                                             | `review-fc3de7e877f7f52d` | **approved after one correction**, receipt burned — see below |
+| `edec330`, `f49cfc9`, `50a72c9`, `389785e`, `a980b9c` | —                         | not started                                                   |
 
 **The correction was a real defect of mine, and it is the reason this round was worth the money.** `R4-001`
 (CRITICAL, resilience): `write_tool`'s `ON CONFLICT` arm assigned `excluded.material_id` and

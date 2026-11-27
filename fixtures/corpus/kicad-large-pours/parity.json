@@ -4,7 +4,7 @@
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     },
     "drill": {
       "features": 251,
@@ -12,40 +12,40 @@
       "tools": 13
     },
     "mask-bottom": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 839.7188494834807,
+      "points": 15568,
+      "polygons": 246,
+      "status": "parsed"
     },
     "mask-top": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 836.0438494834814,
+      "points": 15560,
+      "polygons": 245,
+      "status": "parsed"
     },
     "outline": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 31703.180253981638,
+      "points": 26,
+      "polygons": 2,
+      "status": "parsed"
     },
     "silk-bottom": {
-      "contour_area_mm2": 12.388840172240187,
+      "contour_area_mm2": 12.38884017224019,
       "points": 164,
       "polygons": 6,
       "status": "parsed"
     },
     "silk-top": {
-      "contour_area_mm2": 0.0,
-      "points": 0,
-      "polygons": 0,
-      "status": "refused"
+      "contour_area_mm2": 5066.308824402197,
+      "points": 13742,
+      "polygons": 376,
+      "status": "parsed"
     },
     "top": {
       "contour_area_mm2": 0.0,
       "points": 0,
       "polygons": 0,
-      "status": "timeout"
+      "status": "skipped"
     }
   },
   "flatten_tolerance_mm": 0.001,

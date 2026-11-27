@@ -13,9 +13,9 @@ Evidence: every frame in `design/prancheta-reference/`.
 
 **S2 — There is no stage bar.** The reference has no `Design → Edit → Toolpaths → Simulate → G-code` strip; the
 workflow is carried by the rail and by the state of the task open in the right panel. The existing `stage_bar` is
-removed. Owner's exact words: *"Sacarla, modelo Prancheta puro"*.
+removed. Owner's exact words: _"Sacarla, modelo Prancheta puro"_.
 
-**S3 — All UI copy is English.** Owner's exact words: *"Inglés (mantener lo actual)"*. The reference is pt-BR;
+**S3 — All UI copy is English.** Owner's exact words: _"Inglés (mantener lo actual)"_. The reference is pt-BR;
 what we take is structure, behaviour and layout, never its strings. `Usinagem` → `Machining`, `Percursos` →
 `Toolpaths`, `Camadas` → `Layers`, `Encaixes` → `Snaps`, `Escolher ferramenta` → `Choose tool`.
 
@@ -55,49 +55,49 @@ toolpath".` and `Generate toolpath` / `Cancel`. A choice that needs a picture us
 (`Screenshot 2026-11-03 034023.png`).
 
 **S11 — The 15 reference frames live in `design/prancheta-reference/` with an annotated README.** Owner's exact
-words: *"design/prancheta-reference/ + README"*.
+words: _"design/prancheta-reference/ + README"_.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T0 | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame | S11 | inline | `c38e3d0` |
-| T1 | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five | S1 S2 | inline | `0a4aabb` |
-| T2a | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie | S4 | inline | `15c3a61` |
-| T2b-i | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click | S4 | inline | `7d264df` |
-| T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10) | S4 | inline | `7bb59f4` |
-| T3 | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state | S6 | inline | `91cb573` |
-| T4 | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end | S7 | inline | `a9e3ed3` |
-| T5 | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20) | S5 | worker | `e1a68ce` |
-| T6 | ✅ delivered — `2D \| 3D` as a mode that splits the canvas, with the overlay row of four checkboxes plus `Centre` and `?`, the home button, the `TOP`/`FRONT`/`RIGHT` triad and the playback bar. Merged into `master` as `5ebdb79`; the refuter's two defects corrected in `6a669e7` (L23) | S8 | inline | `be33e3f` |
-| T7 | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `26c4e1c`; the units finding corrected in `dc95de0` (L25) | S9 | inline | `475c341` |
-| T8 | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `5e3cc1c`; two CRITICAL findings corrected in `a48e43d` (L27) | S10 | inline | `0e7d25b` |
-| T8b | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `c92e9dd`, reviewed and approved on the first pass (L29) | S10 | worker | `1241963` |
-| T9 | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `d9fa59a` (system) `5824453` (01) `2532e05` (02) `86a6e47` (04) `4684ec8` (03 + manifest), mergeados en `master` vía `5bdb81a` (L31–L33) | S1 | inline | `d9fa59a..4684ec8` |
+| ID     | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Specs | Route  | Commit             |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | ------------------ |
+| T0     | ✅ delivered — `design/prancheta-reference/`: 15 frames moved out of `Screenshots/` and annotated per frame                                                                                                                                                                                                                                                                                                                                                                | S11   | inline | `c38e3d0`          |
+| T1     | ✅ delivered — `Stage`, `Readiness`, `counted`, `Shell::stage`, `Shell::set_stage`, `stage_bar` and `DrawnState::stage` all removed; the rail is the whole command table, and the two sentences worth keeping became `next_step(app)` on the Job tab. `palette.rs` pins one palette instead of five                                                                                                                                                                        | S1 S2 | inline | `0a4aabb`          |
+| T2a    | ✅ delivered — `Group` renamed to the reference's five (`File`, `Draw`, `Edit`, `Organise`, `ShowAndSelect`) with its words, and every command reassigned. FILE is deliberately not drawn yet: every file command still lives in the app bar, and a heading over no chips is a lie                                                                                                                                                                                         | S4    | inline | `15c3a61`          |
+| T2b-i  | ✅ delivered — `Open`/`Save`/`SaveAs`/`Import`/`FitJob`/`Undo`/`Redo` moved into the rail's FILE group and out of the app bar, `Command::ALL` reordered so each group is contiguous in S4's order, and every heading folds its group on click                                                                                                                                                                                                                              | S4    | inline | `7d264df`          |
+| T2b-ii | ✅ delivered — the brand block at the foot of the rail: the product name, the crate version, and the document's own `Saved …` stamp or `Unsaved changes` (L7, L10)                                                                                                                                                                                                                                                                                                         | S4    | inline | `7bb59f4`          |
+| T3     | ✅ delivered — the ribbon of three glyph categories, the task-editor container with its name and painted `✓`/`✕`, and `LAYERS` as its own folding block; the selection's numbers became the panel's idle state                                                                                                                                                                                                                                                             | S6    | inline | `91cb573`          |
+| T4     | ✅ delivered — the bar's three zones: `X … Y …` with the zoom and the undo/redo steps, the five snap chips where `Grid` names its step, and the last action's sentence at the right end                                                                                                                                                                                                                                                                                    | S7    | inline | `a9e3ed3`          |
+| T5     | ✅ delivered — two 22 px bands (`ruler.rs`) numbering the world coordinates in mm with `mm` on the top one, an amber `Role::Cut` marker on both edges while the pointer is on the sheet, and the drawing area inset so a press on a band is chrome (L20)                                                                                                                                                                                                                   | S5    | worker | `e1a68ce`          |
+| T6     | ✅ delivered — `2D \| 3D` as a mode that splits the canvas, with the overlay row of four checkboxes plus `Centre` and `?`, the home button, the `TOP`/`FRONT`/`RIGHT` triad and the playback bar. Merged into `master` as `5ebdb79`; the refuter's two defects corrected in `6a669e7` (L23)                                                                                                                                                                                | S8    | inline | `be33e3f`          |
+| T7     | ✅ delivered — the tool library as a master-detail modal: search, family tree, a detail form grouped by family, the tool drawn to scale with callouts, and the footer actions. Merged as `26c4e1c`; the units finding corrected in `dc95de0` (L25)                                                                                                                                                                                                                         | S9    | inline | `475c341`          |
+| T8     | ✅ delivered — one strategy surface for creating and editing, with the name field, the current-tool card, `Quick parameter edit`, the image cards and the verbatim note. Merged as `5e3cc1c`; two CRITICAL findings corrected in `a48e43d` (L27)                                                                                                                                                                                                                           | S10   | inline | `0e7d25b`          |
+| T8b    | ✅ delivered — the toolpath rename the editor was missing: `Command::SetToolpathName`, its refusal, and the name field live in both modes (L28). Merged as `c92e9dd`, reviewed and approved on the first pass (L29)                                                                                                                                                                                                                                                        | S10   | worker | `1241963`          |
+| T9     | ✅ delivered — `design/system.md` rewritten as the authority (21 roles × 2 palettes, eight styles, the metrics that build the frame, nine zones with the sources' own strings), `system.html` re-rendered from it, the four artboards re-synced to the delivered shell, and `design.json` saying what they now draw. Five slices: `d9fa59a` (system) `5824453` (01) `2532e05` (02) `86a6e47` (04) `4684ec8` (03 + manifest), mergeados en `master` vía `5bdb81a` (L31–L33) | S1    | inline | `d9fa59a..4684ec8` |
 
 ## Backlog
 
 Debt this feature knowingly leaves open. None of it blocks delivery; all of it is recorded so it is not
 rediscovered. The advisory details live in the `Advisories` paragraph of each review entry in `## Log`, not here.
 
-| Item | What | Where it is recorded |
-| --- | --- | --- |
-| `chrome.rs` frame diagram | the module doc still draws `│ 52 │` for the rail while `palette_width` is 200 and `chrome.rs:414` applies it — a comment that disagrees with the code it heads, outside a design task's surfaces | `chrome.rs:12`, `theme.rs:373` |
-| Advisories ×44 | `informational` findings from this feature's review receipts, none of them blocking. The count is the one the last review states it is owed | the `Advisories` paragraph of each review entry in `## Log` |
-| `PASSES` unit bug | the readout prints `Length` in mm whatever `rate_units` says — a true sentence about the wrong unit | L25 |
-| Dead `segmented` wrapper | left behind by `6a669e7`; no live caller | the entry that records `6a669e7` |
+| Item                      | What                                                                                                                                                                                             | Where it is recorded                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `chrome.rs` frame diagram | the module doc still draws `│ 52 │` for the rail while `palette_width` is 200 and `chrome.rs:414` applies it — a comment that disagrees with the code it heads, outside a design task's surfaces | `chrome.rs:12`, `theme.rs:373`                              |
+| Advisories ×44            | `informational` findings from this feature's review receipts, none of them blocking. The count is the one the last review states it is owed                                                      | the `Advisories` paragraph of each review entry in `## Log` |
+| `PASSES` unit bug         | the readout prints `Length` in mm whatever `rate_units` says — a true sentence about the wrong unit                                                                                              | L25                                                         |
+| Dead `segmented` wrapper  | left behind by `6a669e7`; no live caller                                                                                                                                                         | the entry that records `6a669e7`                            |
 
 ## Log
 
 - **L1 (the request, verbatim).** "analiza las capturas que hice de la app prancheta, porque tenemos que
   implementar asi la ui"
-- **L2.** Owner's three decisions, verbatim: *"Inglés (mantener lo actual)"*, *"Sacarla, modelo Prancheta puro"*,
-  *"design/prancheta-reference/ + README"*. Recorded as S3, S2 and S11.
+- **L2.** Owner's three decisions, verbatim: _"Inglés (mantener lo actual)"_, _"Sacarla, modelo Prancheta puro"_,
+  _"design/prancheta-reference/ + README"_. Recorded as S3, S2 and S11.
 - **L3 (T1: the stage bar and the stage are gone).** `0a4aabb`, 1210 tests pass. What went: the `Stage` enum,
   `Readiness`, `counted`, `Stage::{ALL,label,note,readiness,count,hover,runs}`, `Shell::stage`,
   `Shell::set_stage`, `Shell::stage_bar`, `DrawnState::stage`. What replaced the one thing the strip did that
   was worth keeping: `next_step(app)` — the same two facts (no vectors on the sheet, no toolpaths in the
-  document) asked of the *document* instead of the mode, and drawn on the Job tab. The rail now derives from
+  document) asked of the _document_ instead of the mode, and drawn on the Job tab. The rail now derives from
   `Command::ALL` alone, so `palette_runs` lost its filter and `palette.rs` pins one golden instead of five.
   `shell.rs` lost four tests that existed only to describe the strip and gained
   `the_frame_draws_no_stage_bar_and_the_rail_offers_every_group_at_once` and
@@ -117,7 +117,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   executable. **Fixed after the review** (`chmod 644`), because the review's frozen candidate cannot be edited
   and a permission bit is not a reason to reopen it — it is a reason to make the next commit clean.
   **Advisories, all non-blocking and all about the evidence rather than the change:** `R2-001` (readability,
-  `shell.rs:361` — the new "no stage bar" test asserts the *absence of words*, which is the weakest thing a
+  `shell.rs:361` — the new "no stage bar" test asserts the _absence of words_, which is the weakest thing a
   headless test can say), `R2-002` (readability, `shell.rs:481`), `R3-001` (reliability, `shell.rs:481-502` —
   the same test), and `R2-003` (readability, `README.md:100`).
   **Taken:** `R2-003`, because it was simply false — the README still said "Nothing yet" after T1 had already
@@ -141,14 +141,14 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      count nobody measured. The full single-key map changes the canvas input model, not chrome, and it is its
      own decision.
   3. **The `Updated on …` line is not drawn.** In the reference it sits in the brand block beside an info icon,
-     on a fresh untitled document, which makes it a *build* stamp rather than a document stamp. Producing one
+     on a fresh untitled document, which makes it a _build_ stamp rather than a document stamp. Producing one
      needs a build script and a timestamp in the binary — a reproducibility question about delivery (Task Size
      risk item 5), not a rail question. Until the owner says which stamp that line carries, the brand block
      carries the name and the crate version only.
-  The group words reached the F1 help panel for free: it already walks `Group::ALL`, so FILE now heads its
-  commands there without a second list.
+     The group words reached the F1 help panel for free: it already walks `Group::ALL`, so FILE now heads its
+     commands there without a second list.
 - **L7 (the `Updated on …` line stamps the document, not the build).** The owner's decision, verbatim:
-  *"documento"*. The reference's line is ambiguous — on a fresh untitled document, beside an info icon, it could
+  _"documento"_. The reference's line is ambiguous — on a fresh untitled document, beside an info icon, it could
   be the build, the document or the tool library — and copying an ambiguity is not fidelity. A build stamp would
   need a `build.rs` and a timestamp in the binary (delivery risk item 5, and it breaks reproducible builds), and
   it would be strictly worse than the version string already in the block, which is comparable where a timestamp
@@ -201,7 +201,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   `Layout::bottom_up`, which put the brand at the foot and silently broke every click on the rail: inside a
   bottom-up layout the scroll area's content is laid out from the bottom, so the point a frame reported was
   not the point the next frame drew the chip at — three rail click tests and the seven-commands test failed
-  with actions arriving from the *neighbouring* chip. It is a bottom `Panel` now, which reserves its height
+  with actions arriving from the _neighbouring_ chip. It is a bottom `Panel` now, which reserves its height
   before the chips are laid out, and the coordinates hold still. Nothing about this is visible in a
   screenshot, which is why it is written down here rather than in a comment that would be deleted by the next
   refactor.
@@ -260,15 +260,15 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      from what is open, so a host keeps one call and the panel keeps one answer. The enum was not deleted
      mid-feature: `design/camui-shell/01-shell-2d.html` still draws tabs, and re-drawing that artboard is T9 —
      deleting the type now would leave the artboard describing something the code cannot express.
-  The two glyphs are **painted**, not typeset, for the same reason the rail's caret is (L8): `✓` and `✕` are a
-  font bet and an affordance that renders as a box is worse than a drawn mark.
-  **A reporting defect the tests caught and this task fixed:** the panel reported its state *before* handling the
-  click, so the frame that folded `LAYERS` still drew its rows and the frame that closed a task still named it.
-  Both answers are now read after the click, which is what makes "a folded block draws no row" true in the frame
-  it happens rather than one frame later.
-  **Two PRESERVE tests changed shape, not meaning:** `the_tools_tab_offers_every_authoring_command` and
-  `the_palette_and_the_tools_tab_build_the_same_seven_actions` now open the `TOOLPATHS` task first, because the
-  authoring body is one click further from the idle panel than it was. Their assertions are untouched.
+     The two glyphs are **painted**, not typeset, for the same reason the rail's caret is (L8): `✓` and `✕` are a
+     font bet and an affordance that renders as a box is worse than a drawn mark.
+     **A reporting defect the tests caught and this task fixed:** the panel reported its state _before_ handling the
+     click, so the frame that folded `LAYERS` still drew its rows and the frame that closed a task still named it.
+     Both answers are now read after the click, which is what makes "a folded block draws no row" true in the frame
+     it happens rather than one frame later.
+     **Two PRESERVE tests changed shape, not meaning:** `the_tools_tab_offers_every_authoring_command` and
+     `the_palette_and_the_tools_tab_build_the_same_seven_actions` now open the `TOOLPATHS` task first, because the
+     authoring body is one click further from the idle panel than it was. Their assertions are untouched.
 - **L14 (the first correction: the `Import` chip was a command the rail could not run).** The review of the T3
   candidate rejected it: `R3-001` (CRITICAL, reliability, `help.rs:419`) — T2b let `Import` into the rail because
   S4 lists it in FILE, but this shell has **no import route**. `ImportFile` is what a host applies after its own
@@ -309,7 +309,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   `DrawnState::status_chips` — word and pressable point — so a test presses what the frame drew instead of
   guessing at the layout, the contract `palette_hits` and `category_hits` already keep.
   **Two things left the bar, each for its own reason:**
-  1. `saved` / `modified`. The rail's brand block already names *when* the document was written (`Saved
+  1. `saved` / `modified`. The rail's brand block already names _when_ the document was written (`Saved
      2026-11-03 19:30 UTC`, `Unsaved changes` — T2b-ii); the bar printed the same fact a second time, without
      the moment. What stays is the two facts nothing else on the frame reports: the zoom and the steps
      available in each direction. The test that pinned the save state in the bar is now
@@ -322,10 +322,10 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      sentence from a clipped one, and a test claiming to would be `R2-001`'s weakness with a new name. The
      three tests on the sentence's content stay; the truncation is recorded here instead of pretended to be
      tested.
-  **Slice:** 253 authored lines across two files, under the ~400-line guidance, and one commit because the two
-  report fields, the paint and the tests describe one rule. It is the seventh slice on this branch (T0+T1,
-  T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `c0d20bd`,
-  and splitting the delivery into chained PRs remains the owner's decision (L11).
+     **Slice:** 253 authored lines across two files, under the ~400-line guidance, and one commit because the two
+     report fields, the paint and the tests describe one rule. It is the seventh slice on this branch (T0+T1,
+     T2a, T2b-i, T2b-ii, T3, T4); the whole-branch projection still means every review re-reads from `c0d20bd`,
+     and splitting the delivery into chained PRs remains the owner's decision (L11).
 - **L17 (the T4 review: two harness failures, then a narrowed candidate and an approval).** Lineage
   `review-ba4913842ce49c58`, tier **high** (`process_boundary` — `crates/cam-ui/src/lib.rs` starts
   subprocesses), two lenses (`readability`, `reliability`), 3 paths, 341 original lines, correction budget 171
@@ -356,8 +356,8 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   undocumented and the grid chip wearing both contracts. `33f78f0` moves the doc block back. A function whose
   documentation describes another function is worse than an unreviewed follow-up — but **`33f78f0` is not
   covered by this receipt**, and it is written down here so the next candidate knows it.
-- **L18 (the owner's delivery decision: one branch per task).** The owner's exact words: *"mergea, limpia y
-  arrancamos una rama por task"*. That settles the question L11, L16 and L17 kept handing back: the merged unit
+- **L18 (the owner's delivery decision: one branch per task).** The owner's exact words: _"mergea, limpia y
+  arrancamos una rama por task"_. That settles the question L11, L16 and L17 kept handing back: the merged unit
   is T0-T4 (18 commits, `c0d20bd..e29dcd6`) into `master`, **locally — `origin/master` is untouched, and a push
   stays the owner's decision**; the feature branch is deleted with the merge, because a merged branch is not a
   place to keep working; and from T5 on every task gets its own branch cut from `master`.
@@ -384,7 +384,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   correction. What the static read was worth: three findings, none cosmetic, all taken.
   1. **One new test could not fail.** `the_drawing_is_still_framed_inside_the_rulers` checked the document's
      corners against a rect derived from `output.canvas`, and the fit's 32 px padding is wider than the 22 px
-     band, so a fit measured against the *un-inset* area would have passed it. It now requires the drawing
+     band, so a fit measured against the _un-inset_ area would have passed it. It now requires the drawing
      area to start exactly where the band ends and the fit's padding to be measured from that area. **Observed
      RED:** dropping the inset from `CanvasRect` fails it with `canvas.y 40 against band (200.0, 40.0, 712.0,
      22.0)`.
@@ -399,9 +399,9 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      longer zooms — as it already did not over the rail or the dock — and neither does middle-drag pan nor the
      canvas context menu. That is right: a band is chrome. `the_wheel_zooms_over_the_sheet_but_not_over_a_ruler`
      pins both halves, so the day it changes it changes on purpose.
-  **`ShellOutput::canvas` changed meaning** — from the central area to the drawing area. No consumer outside
-  `cam-ui` reads it (`cam-cli` and `cam-desktop` do not), so the blast radius is this crate's tests, and the
-  doc comment on the field says which rect it is.
+     **`ShellOutput::canvas` changed meaning** — from the central area to the drawing area. No consumer outside
+     `cam-ui` reads it (`cam-cli` and `cam-desktop` do not), so the blast radius is this crate's tests, and the
+     doc comment on the field says which rect it is.
 - **L21 (the T5 review: approved on the first receipt, after two harness failures).** Lineage
   `review-54750e7c98594128`, tier **high** (`process_boundary`), **three lenses** (`risk`, `readability`,
   `reliability`), 5 paths, 1 080 changed lines, correction budget 200 — **unused, nothing to correct**. Three
@@ -418,14 +418,14 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   time; the rule is now explicit rather than re-derived per session.
   **Three advisories, all `informational`, none blocking:** `R2-001` (`lib.rs:1938-1948`), `R2-002`
   (`ruler.rs:112-132`, a suggestion), `R3-001` (`lib.rs:1940-1948`). They join the twenty-four this feature
-  already owes. Note what the candidate *already* contained when the reviewers saw it: `b0c732d`, the two test
+  already owes. Note what the candidate _already_ contained when the reviewers saw it: `b0c732d`, the two test
   corrections and the wheel test that the independent read demanded. The review judged the corrected tree, not
   the first delivery.
 - **L22 (T6: the split, and six existing tests that had to change).** `2D | 3D` moved out of the app bar and
   into the band strip above the drawing area, where a press cannot also pick or draw underneath it, and 3D
   became **a mode that splits** the canvas into two columns: the reference frame splits left to right, and this
   sheet is wider than it is tall, so a horizontal split would take the drawing's long side from it. The 2D half
-  *is* the canvas — `ShellOutput::canvas`, the camera viewport, fit, picking, drawing, marquee, pan, zoom, the
+  _is_ the canvas — `ShellOutput::canvas`, the camera viewport, fit, picking, drawing, marquee, pan, zoom, the
   context menu and the rulers all live there — and the 3D half inherits the 22 px band inset from L20 and owns
   the orbit plus S8's chrome: the overlay row (`Material` `Vectors` `Toolpaths` `Tool`, each checkbox hiding its
   own layer, proven by per-layer painted counts including the surface), `Centre` re-framing at the current
@@ -436,11 +436,11 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   · Z 5.000` built from the one formatter set (`progress_text`, `clock_text`, `elapsed`/`duration`) — no second
   time formula anywhere.
   **One structure decision carries the frame ordering:** `Preview3d::show` was split into `take_gestures` and
-  `paint_scene`, and `Preview3d::controls` deleted, so the 3D half can register its chrome *before* the picture
-  (so a press on a chip is the chip's) and paint it *after* (so it sits on top). Every press is applied in the
+  `paint_scene`, and `Preview3d::controls` deleted, so the 3D half can register its chrome _before_ the picture
+  (so a press on a chip is the chip's) and paint it _after_ (so it sits on top). Every press is applied in the
   frame it lands in, which is L13's rule applied to a second surface.
   **Six existing tests changed, each for a reason the spec forced**, and the first one matters because S8
-  reverses a claim M5 shipped: `the_two_views_are_exclusive` asserted the 2D scene and grid are *not* painted in
+  reverses a claim M5 shipped: `the_two_views_are_exclusive` asserted the 2D scene and grid are _not_ painted in
   3D mode, which a split makes false by design, so it became
   `the_split_paints_both_halves_and_closing_it_paints_one` (M5's real claim — closing 3D restores the drawing
   exactly — is kept and now checked against both halves). The others: triangle counts became per-layer
@@ -478,23 +478,23 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      `ui.painter().with_clip_rect(layout.picture)` while `half_layout` puts the bar **below** the picture, so
      every rectangle of the bar, its chips, the scrubber and the readout were clipped away — **invisible, with
      live hit areas**. The fix gives the bar its own painter clipped to its own strip.
-  2. `R2-002` (CRITICAL): the canvas `2D | 3D` widget was laid out and painted *before* `ruler::paint`, and egui
+  2. `R2-002` (CRITICAL): the canvas `2D | 3D` widget was laid out and painted _before_ `ruler::paint`, and egui
      paints in order, so the band and its numbers covered the control that enters 3D — in 2D mode, where it is
      the only way in. The fix splits `chrome::segmented` into `segmented_cells` (allocate, click, report) and
      `paint_segmented` (paint), so the toggle is laid out early — which keeps L13's rule that the press frame is
      the split frame — and painted **once**, after the band.
-  **The lesson this review paid for:** a headless test reads *shapes*, and a clipped shape is still a shape. The
-  43 view3d tests were green while the bar was invisible, because `bar_rects` located the bar by sharing the
-  surface's clip rect — it had encoded the clipping bug as its own locator. The correction had to change that
-  helper too, and it is recorded here so the next person does not read the helper's clip filter as a rule.
-  **Process, three failures worth not repeating:** the START was first rejected `lenses-invalid` (same input,
-  fresh idempotency key, accepted); the targeted-validator binding was rejected twice — once because it was
-  reconstructed **without** `validationRequest`, and `gentle_review_capture` refuses to run from `codemode` —
-  and only the provider's **whole** object, passed as a direct call, was accepted. The candidate itself was
-  committed as `be33e3f` + `2acfdb4` and corrected by `6a669e7`; the workspace has **1 256 tests, exit 0** after
-  the correction.
-  **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
-  `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
+     **The lesson this review paid for:** a headless test reads _shapes_, and a clipped shape is still a shape. The
+     43 view3d tests were green while the bar was invisible, because `bar_rects` located the bar by sharing the
+     surface's clip rect — it had encoded the clipping bug as its own locator. The correction had to change that
+     helper too, and it is recorded here so the next person does not read the helper's clip filter as a rule.
+     **Process, three failures worth not repeating:** the START was first rejected `lenses-invalid` (same input,
+     fresh idempotency key, accepted); the targeted-validator binding was rejected twice — once because it was
+     reconstructed **without** `validationRequest`, and `gentle_review_capture` refuses to run from `codemode` —
+     and only the provider's **whole** object, passed as a direct call, was accepted. The candidate itself was
+     committed as `be33e3f` + `2acfdb4` and corrected by `6a669e7`; the workspace has **1 256 tests, exit 0** after
+     the correction.
+     **Two advisories left after the validator, both `informational`:** `R2-003` (`view3d.rs:1118-1119`) and
+     `R2-004` (`view3d.rs:664-667`). They join the twenty-seven this feature already owes.
 - **L24 (T7: the tool library, and the formatting debt paid before it).** Two commits, in this order and on
   purpose: `14890ec` formats the crate, `475c341` is T7. **L22 assumed the formatting debt was one file; it was
   four** — `ruler.rs`, `view3d.rs`, `tests/shell.rs` and `tests/view3d.rs` were all dirty against the
@@ -520,22 +520,22 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
      that exists: five buttons that emitted nothing would be exactly the CRITICAL finding L14 paid for. The
      footer instead names the five actions and the reason, and a test pins **both** halves — the sentence and
      the absence of the buttons.
-  **What it refused, and the rule it followed:** no invented tool length (the drawing's vertical extent is the
-  frame's edge, with no callout, exactly as `view3d::paint_tool` refuses to draw a spindle to a guessed length);
-  the flute length is drawn only when the record holds one; no new glyph; and no `Use this tool` when the target
-  cannot be honoured — `a_tool_with_no_number_…`, `an_empty_library_…` and `a_library_opened_without_a_toolpath_…`
-  each pin a different refusal.
-  **L23's lesson applied before a reviewer had to find it:** the modal reports only points the frame actually
-  showed (`Spot` + `pressable` filtered by clip), so a row the scroll area hides is not reported as pressable —
-  the mirror image of the playback bar that was clickable while invisible.
-  **Honest note on the RED:** the worker implemented first and produced each rule's RED by reverting it and
-  capturing the failure — not the test-first order this document prefers. Two of those mutations found real
-  bugs in its first cut (the modal reported the *previous* selection for one frame, which is L13's defect one
-  layer down), which is why the tree is drawn first and the detail resolved between the columns.
-  **Workspace: 1 273 tests, exit 0** (baseline 1 256; cam-ui 228 → 245). **One loose end, not T7's:** `segmented`
-  is now dead code — `6a669e7` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
-  without a caller, so the crate carries a `never used` warning that pre-dates this task. It gets its own commit,
-  outside any review candidate, rather than riding in T7's diff.
+     **What it refused, and the rule it followed:** no invented tool length (the drawing's vertical extent is the
+     frame's edge, with no callout, exactly as `view3d::paint_tool` refuses to draw a spindle to a guessed length);
+     the flute length is drawn only when the record holds one; no new glyph; and no `Use this tool` when the target
+     cannot be honoured — `a_tool_with_no_number_…`, `an_empty_library_…` and `a_library_opened_without_a_toolpath_…`
+     each pin a different refusal.
+     **L23's lesson applied before a reviewer had to find it:** the modal reports only points the frame actually
+     showed (`Spot` + `pressable` filtered by clip), so a row the scroll area hides is not reported as pressable —
+     the mirror image of the playback bar that was clickable while invisible.
+     **Honest note on the RED:** the worker implemented first and produced each rule's RED by reverting it and
+     capturing the failure — not the test-first order this document prefers. Two of those mutations found real
+     bugs in its first cut (the modal reported the _previous_ selection for one frame, which is L13's defect one
+     layer down), which is why the tree is drawn first and the detail resolved between the columns.
+     **Workspace: 1 273 tests, exit 0** (baseline 1 256; cam-ui 228 → 245). **One loose end, not T7's:** `segmented`
+     is now dead code — `6a669e7` split it into `segmented_cells`/`paint_segmented` and left the one-shot wrapper
+     without a caller, so the crate carries a `never used` warning that pre-dates this task. It gets its own commit,
+     outside any review candidate, rather than riding in T7's diff.
 - **L25 (the T7 review: one finding, and it was about units).** Lineage `review-e4268ddae85fe9c0`, tier
   **high**, **three lenses**, 5 paths, 2 509 changed lines, correction budget 200 of which **47 were spent**.
   Three reviewer runs (≈120 kB of prompt each) produced a `provider_refuter` request; the refuter accepted
@@ -546,7 +546,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   so an inch-library tool read `Feed 100.00 mm/s` in `SPEEDS` while `MACHINE` read `Rates in/s` — one number
   carrying two units, which is the one thing a rate cannot do.
   **It was not a label bug, and treating it as one would have been worse.** `cam-store` documents the field as
-  *"Units the rates were authored in. Stored rates are millimetres per second."* Renaming the suffix would have
+  _"Units the rates were authored in. Stored rates are millimetres per second."_ Renaming the suffix would have
   left a millimetre-per-second number wearing an inch label. `dc95de0` therefore **converts** the stored value
   into the authored unit (`/ MM_PER_INCH`) and labels it with that unit, so the two rows agree and the number is
   the one the operator typed. `a_rate_is_shown_in_the_units_the_library_authored_it_in` pins the inch path
@@ -588,7 +588,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   it painted, so a card with no picture fails a test. **No screenshot of the reference app is used as product
   art**, and the module doc says what a real thumbnail would need: a rendered preview of the toolpath, which does
   not exist before `Generate toolpath` and which this shell has no renderer for (the 3D half renders a
-  *program*).
+  _program_).
   **Three existing tests changed, each with a reason the spec forced:** two header expectations
   (`task_editor` was the word `TOOLPATHS`, and S10 makes it `New toolpath · Profile 1` / `Edit · <name>`), and
   `tall_input` from 2 000 to 2 600 px so its own promise — "tall enough for every button to be pressable" — stays
@@ -610,7 +610,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   refuter accepted **two CRITICAL findings**, both introduced, and both children of one unconditional method.
   The targeted validator approved the corrected tree (`sha256:174b27d2…`), authority **burned**
   (`gentle-ai.review-acknowledged/v1`). **Workspace: 1 289 tests, exit 0.**
-  **`R3-001`:** pressing the kind card the strategy *already was* re-defaulted the operation, silently discarding
+  **`R3-001`:** pressing the kind card the strategy _already was_ re-defaulted the operation, silently discarding
   every number typed into `CUT` and the quick block, and the pocket's clearing pattern — then `Generate` wrote
   those defaults into the document. **`R2-001`:** while editing, pressing `Pocket` rewrote the draft's name to
   `Pocket 1` even though `Generate` emits only `SetToolpathOperation` and cannot rename, so the header read
@@ -639,7 +639,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   **The ordering is the parent's, and it is the one decision worth reading twice.** The worker pushed the rename
   first and the operation second, and flagged in its own report that the pair was not atomic: a kernel refusal
   of the operation would already have written the new name, with a failure message that could not explain it.
-  Inverted to operation-first, the only reachable failure changes nothing — and a rename that failed *after* the
+  Inverted to operation-first, the only reachable failure changes nothing — and a rename that failed _after_ the
   operation cannot happen in one frame, because `refusal` already refuses a blank name before either action is
   built. The test that pinned the order was updated with that reason rather than to accommodate the code.
   **Six new tests:** three in `cam-app` (it renames; a blank name is refused and writes nothing; an absent
@@ -690,7 +690,7 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   rendered only 16 of the 21 roles (`system.html`) and left four undeclared anywhere. `01-shell-2d.html` drew the
   stage bar S2 removed, the tabs S6 replaced, and Portuguese content (`FARMÁCIA`, `SÃO JOÃO`,
   `letreiro-farmacia.c2d`) in a shell whose copy is English by S3. `02-stages.html` argued five stages with gates
-  and claimed the shell *today* is one flat column of `ui.label` — true before `camui-shell`, false since.
+  and claimed the shell _today_ is one flat column of `ui.label` — true before `camui-shell`, false since.
   `03-iconography.html` counted 70 glyphs where `icons.rs` asserts 71. `04-tokens.html` drew a tabbed inspector
   and a `2D | 3D | snap 1 mm` pill row that do not exist.
   **Three premises in my own brief were false, and the writers found them by reading the source instead of
@@ -754,11 +754,11 @@ rediscovered. The advisory details live in the `Advisories` paragraph of each re
   the frozen repository). Admission consumed nothing; STATUS reoffered the same slot, the second run satisfied it,
   and the refused bytes were never resubmitted.
   **Every tier came back `medium` for a reason the provider states and I did not anticipate:** an `.html` artefact
-  counts as an *executable change* (`risk_reasons: executable_change`), so the design boards are reviewed as
+  counts as an _executable change_ (`risk_reasons: executable_change`), so the design boards are reviewed as
   software, not as prose. That is why each slice cost one real reviewer run instead of closing instantly like the
   documentation-only candidate in L30 did.
   **Delivery state, and it is the owner's:** `feat/camui-prancheta-t9` @ `4d17aca` holds the seven commits, all five
   artefact slices carry burned receipts, the branch is **not merged into `master` and not pushed**, and `master`
   stayed at `6310702` throughout. The review lifecycle stops at acknowledgement; commit, push and merge follow
   ordinary repository policy.
-- **L33 (saneado y entrega registrada, verdad de `git`).** Pedido del owner: *"sanea el documento y dejalo como delivered"*. Se verificó en `git`: `4d17aca` y el merge `5bdb81a` ("merge: camui-prancheta T9, the design artefacts re-synced to the delivered shell") ya son ancestros de `master`/`HEAD` (`68f56b8` al sanear), y los artefactos de T9 están en el árbol. L31/L32 quedan como registro histórico del momento en que se escribieron (antes del merge); este saneo alinea la evidencia, la fila de T9 y el `INDEX` con el estado real. `odd/tasks/INDEX.md` actualizado a `delivered` con último commit `5bdb81a` (sin claim activo). El backlog no bloqueante registrado en este documento permanece abierto salvo decisión posterior.
+- **L33 (saneado y entrega registrada, verdad de `git`).** Pedido del owner: _"sanea el documento y dejalo como delivered"_. Se verificó en `git`: `4d17aca` y el merge `5bdb81a` ("merge: camui-prancheta T9, the design artefacts re-synced to the delivered shell") ya son ancestros de `master`/`HEAD` (`68f56b8` al sanear), y los artefactos de T9 están en el árbol. L31/L32 quedan como registro histórico del momento en que se escribieron (antes del merge); este saneo alinea la evidencia, la fila de T9 y el `INDEX` con el estado real. `odd/tasks/INDEX.md` actualizado a `delivered` con último commit `5bdb81a` (sin claim activo). El backlog no bloqueante registrado en este documento permanece abierto salvo decisión posterior.

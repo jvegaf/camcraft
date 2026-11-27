@@ -13,10 +13,9 @@ el grafo de dependencias. Donde hay dependencia técnica no hay ola: hay serie.
 
 ## 1. Reglas de juego
 
-1. **Un agente = un worktree = un claim.** Los worktrees los crea el humano desde `herdr` bajo
-   `~/.herdr/worktrees/`; el tooling no crea ninguno y no asume `.worktrees/`. El claim se toma
-   desde el worktree, con `just claim N`, y `scripts/claim-task.sh` compara **superficies**, no
-   crates.
+1. **Un agente = un worktree = un claim.** `just worktree N` crea el worktree dentro del repo, en
+   `.worktrees/N`, con la rama `feat/N-<slug>`. El claim se toma desde ese worktree, con
+   `just claim N`, y `scripts/claim-task.sh` compara **superficies**, no crates.
 2. **La tarea declara sus superficies antes de empezar.** Un bloque `## Surfaces` en el documento de
    la tarea, con paths o globs relativos al repo. Sin ese bloque, el claim cae al modo viejo (tokens
    `crates/<name>` en el texto) y avisa.
@@ -31,7 +30,8 @@ el grafo de dependencias. Donde hay dependencia técnica no hay ola: hay serie.
    entero (45 G en el árbol primario hoy). Cuatro agentes en paralelo es disco y CPU, no sólo
    coordinación.
 7. **Merge en el orden que dice la ola**, y quien mergea actualiza el INDEX. Un merge fuera de orden
-   reordena el índice de la siguiente ola, no el código.
+   reordena el índice de la siguiente ola, no el código. Las ramas de ola mergean en **`dev`**; `master`
+   recibe sólo PRs desde `dev`, con tag de release (`odd/roadmap/workflow.md`).
 
 ---
 
@@ -58,11 +58,11 @@ E1.1 modelo de placa (035) ──► todo test que construye un Document
 Objetivo: que a partir de acá toda afirmación sea medible. Es lo que `docs/ROADMAP_CAMCRAFT.md` §15
 pide primero, y hoy está en 0 de 5.
 
-| # | Ítem | Qué entrega | Superficies reclamadas | Depende de |
-| --- | --- | --- | --- | --- |
-| W1a | **E0.5 corpus + E0.4 arnés de paridad** | 6 placas de fabricación versionadas (`top/bottom/mask/silk/outline/drill`) y el arnés que compara conteo de polígonos, área total (ε relativo 1e-9) y puntos tras aplanar | `fixtures/corpus/`, `scripts/parity/`, `crates/cam-geom/tests/parity.rs` | — |
-| W1b | **E0.8 CI** | `.github/workflows` con fmt + clippy + test + check-docs, y las recetas `just` correspondientes | `.github/`, `justfile`, `scripts/check.sh` | W1c y W1a para agregar sus jobs (mergea **último**) |
-| W1c | **E0.7 benchmarks** | `criterion` en `cam-geom` y `cam-ops`, baseline guardado, job de regresión | `crates/cam-geom/benches/`, `crates/cam-ops/benches/`, `Cargo.toml` | — |
+| #   | Ítem                                    | Qué entrega                                                                                                                                                               | Superficies reclamadas                                                   | Depende de                                          |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
+| W1a | **E0.5 corpus + E0.4 arnés de paridad** | 6 placas de fabricación versionadas (`top/bottom/mask/silk/outline/drill`) y el arnés que compara conteo de polígonos, área total (ε relativo 1e-9) y puntos tras aplanar | `fixtures/corpus/`, `scripts/parity/`, `crates/cam-geom/tests/parity.rs` | —                                                   |
+| W1b | **E0.8 CI**                             | `.github/workflows` con fmt + clippy + test + check-docs, y las recetas `just` correspondientes                                                                           | `.github/`, `justfile`, `scripts/check.sh`                               | W1c y W1a para agregar sus jobs (mergea **último**) |
+| W1c | **E0.7 benchmarks**                     | `criterion` en `cam-geom` y `cam-ops`, baseline guardado, job de regresión                                                                                                | `crates/cam-geom/benches/`, `crates/cam-ops/benches/`, `Cargo.toml`      | —                                                   |
 
 **Por qué W1a es un solo agente y una sola unidad:** un arnés sin corpus no juzga nada y un corpus
 sin arnés es un ZIP de Gerbers. Juntos cierran además el criterio de salida de **E0.2**, que hoy es
@@ -81,12 +81,12 @@ los otros dos.
 Objetivo: que una carpeta de fabricación real entre al modelo. Cuatro crates distintos, superficies
 disjuntas: es la ola más limpia que tiene el roadmap.
 
-| # | Ítem | Qué entrega | Superficies reclamadas | Depende de |
-| --- | --- | --- | --- | --- |
-| W2a | **E1.4 Gerber** | Trazo `D01` fuera de región, aperturas `O`/`RoundRect`, aperturas por macro, segundo `D02` dentro de `G36/G37` | `crates/cam-gerber/` | — |
-| W2b | **E1.6 Excellon** | Ceros omitidos, dialecto completo, slots y tabla de herramientas probados contra archivos reales | `crates/cam-excellon/` | — |
-| W2c | **E1.3 importador de carpeta** | Detectar y agrupar `top/bottom/mask/silk/outline/drill` por nombre y contenido; abrir la carpeta como placa | `crates/cam-import/` | W2a y W2b para el contenido, no para el agrupamiento |
-| W2d | **E1.8 librería PCB** | Fresa de aislamiento como tipo real, V-bit con ángulo y punta end-to-end, `tools add` completo | `crates/cam-store/`, `crates/cam-cli/src/lib.rs` | — |
+| #   | Ítem                           | Qué entrega                                                                                                    | Superficies reclamadas                           | Depende de                                           |
+| --- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| W2a | **E1.4 Gerber**                | Trazo `D01` fuera de región, aperturas `O`/`RoundRect`, aperturas por macro, segundo `D02` dentro de `G36/G37` | `crates/cam-gerber/`                             | —                                                    |
+| W2b | **E1.6 Excellon**              | Ceros omitidos, dialecto completo, slots y tabla de herramientas probados contra archivos reales               | `crates/cam-excellon/`                           | —                                                    |
+| W2c | **E1.3 importador de carpeta** | Detectar y agrupar `top/bottom/mask/silk/outline/drill` por nombre y contenido; abrir la carpeta como placa    | `crates/cam-import/`                             | W2a y W2b para el contenido, no para el agrupamiento |
+| W2d | **E1.8 librería PCB**          | Fresa de aislamiento como tipo real, V-bit con ángulo y punta end-to-end, `tools add` completo                 | `crates/cam-store/`, `crates/cam-cli/src/lib.rs` | —                                                    |
 
 **Colisión declarada y cómo se resuelve:** W2d toca `cam-cli` (el `tools add`). Nadie más lo toca en
 esta ola: el `import` de W2c ya existe y no cambia.
@@ -100,9 +100,9 @@ agente, después del merge de ambos.
 
 ## 5. Ola 3 — Geometría, en solitario (1 agente)
 
-| # | Ítem | Qué entrega | Superficies reclamadas |
-| --- | --- | --- | --- |
-| W3 | **E0.3 política de tolerancia** | Un objeto de tolerancia explícito que cada operación recibe; ningún literal propio en operación pública | `crates/cam-geom/src/` |
+| #   | Ítem                            | Qué entrega                                                                                             | Superficies reclamadas |
+| --- | ------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------- |
+| W3  | **E0.3 política de tolerancia** | Un objeto de tolerancia explícito que cada operación recibe; ningún literal propio en operación pública | `crates/cam-geom/src/` |
 
 **Nadie más toca `cam-geom/src/` en esa ventana.** Es el cambio de raíz del kernel: hacerlo en
 paralelo con cualquier otra cosa geométrica garantiza conflicto semántico, no sólo textual. Si dos
@@ -120,11 +120,11 @@ Excellon, ni cutout de outline, ni el predicado de penetración (E2.4).
 es un archivo único de más de 500 líneas y **es el cuello de botella de todo paralelismo futuro**: dos
 agentes que agregan dos comandos chocan en el mismo archivo aunque no compartan una línea de lógica.
 
-| # | Ítem | Qué entrega | Superficies reclamadas | Depende de |
-| --- | --- | --- | --- | --- |
-| W4a | **E2.1 + E2.2 + E2.4** | Drill desde tabla Excellon agrupado por diámetro, orden determinista con 2-opt por iteraciones, predicado de penetración como función pura | `crates/cam-ops/src/peck.rs`, `crates/cam-ops/src/penetration.rs`, `crates/cam-cli/src/commands/drill.rs` | W3 (tolerancia), W2b |
-| W4b | **E2.3 + E2.5** | Cutout desde el outline con tabs y mouse-bites, y el programa completo taladros + cutout por CLI con post GRBL | `crates/cam-ops/src/follow.rs`, `crates/cam-cli/src/commands/cutout.rs`, `crates/cam-post/` (datos) | W3, W1a (para juzgarlo) |
-| W4c | **E3.1 + E3.2** | Unión de cobre previa y multipasada acumulada con la ley de offset y dirección por tipo de fresado | `crates/cam-ops/src/isolation.rs` | W3, W2a, W1a |
+| #   | Ítem                   | Qué entrega                                                                                                                                | Superficies reclamadas                                                                                    | Depende de              |
+| --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------- |
+| W4a | **E2.1 + E2.2 + E2.4** | Drill desde tabla Excellon agrupado por diámetro, orden determinista con 2-opt por iteraciones, predicado de penetración como función pura | `crates/cam-ops/src/peck.rs`, `crates/cam-ops/src/penetration.rs`, `crates/cam-cli/src/commands/drill.rs` | W3 (tolerancia), W2b    |
+| W4b | **E2.3 + E2.5**        | Cutout desde el outline con tabs y mouse-bites, y el programa completo taladros + cutout por CLI con post GRBL                             | `crates/cam-ops/src/follow.rs`, `crates/cam-cli/src/commands/cutout.rs`, `crates/cam-post/` (datos)       | W3, W1a (para juzgarlo) |
+| W4c | **E3.1 + E3.2**        | Unión de cobre previa y multipasada acumulada con la ley de offset y dirección por tipo de fresado                                         | `crates/cam-ops/src/isolation.rs`                                                                         | W3, W2a, W1a            |
 
 W4a y W4b son paralelos **sólo** si la preparación de `cam-cli` ya está mergeada; si no, la colisión
 en `cam-cli/src/lib.rs` es segura. W4c comparte `cam-ops` con W4a: se reclama `crates/cam-ops/src/isolation.rs`
@@ -138,6 +138,14 @@ Nada de esto tiene ola asignada, y no es un olvido: **F4 (NCC), E4.3, E4.4, E5.3
 E6.x y E7.x** dependen de que existan E3.1/E3.2 y de que el arnés de W1a pueda medirlos. Asignarles
 agente hoy sería asignarles una interfaz imaginaria.
 
+**Después de que se complete la UI de placa (E6.x)**, y no antes: **el tope por artefacto del arnés de
+paridad (E0.4)**. Hoy el tope es único (30 s) y lo pagan por igual las dieciocho capas que no terminan y
+las doce que sí; un tope por artefacto —corto para las que no terminan, largo para las que el golden ya
+registra como terminantes— baja la corrida de diez minutos a unos cinco y la vuelve determinista (hoy dos
+capas de `substitute-easyeda` oscilan alrededor de los 20 s). Va detrás de la UI porque mueve
+`timeout_seconds` de campo por placa a campo por artefacto: es un cambio de esquema de los goldens, con
+su review y un único re-pin, y no conviene mezclarlo con la ola que está en curso.
+
 Lo único de las fases tardías que se puede adelantar sin riesgo es **E5.5 (escritores Gerber/Excellon
 en `cam-export`)**: no depende de nada del kernel, sólo de que W2a/W2b fijen el dialecto que se
 escribe. Cabe como ola 2c de un agente, con superficie `crates/cam-export/` y el round-trip contra
@@ -148,11 +156,11 @@ escribe. Cabe como ola 2c de un agente, con superficie `crates/cam-export/` y el
 ## 8. Cómo se abre cada ola, en concreto
 
 ```bash
-# 1. El humano crea el worktree desde herdr (no con `just worktree`).
-#    Ruta: ~/.herdr/worktrees/<slug>, rama feat/<NNN>-<slug>.
+# 1. Crea el worktree dentro del repo (desde el árbol primario).
+just worktree 042       # crea .worktrees/042 y la rama feat/042-<slug>
 
 # 2. Desde ese worktree, el agente reclama la tarea.
-cd ~/.herdr/worktrees/<slug>
+cd .worktrees/042
 just claim 042          # falla si otra tarea ya reclamó una superficie superpuesta
 
 # 3. Trabaja, y antes de pedir merge:

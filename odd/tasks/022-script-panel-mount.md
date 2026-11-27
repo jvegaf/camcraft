@@ -7,8 +7,8 @@ before touching code; the Log is the record, not the brief.
 
 - **S1 (user, verbatim option label chosen for "¿Dónde montás el ScriptPanel en el shell?"):** "Modal
   sobre el canvas (precedente S9)". The surface is a window over the canvas, not a new zone of the
-  frame: the delivered artboards say *"Five zones and nothing else … The strip has no place left to be
-  drawn in"* (`design/camui-shell/02-stages.html:358`), and the S9 tool library already set the
+  frame: the delivered artboards say _"Five zones and nothing else … The strip has no place left to be
+  drawn in"_ (`design/camui-shell/02-stages.html:358`), and the S9 tool library already set the
   precedent for a surface too large for a zone.
 - **S2 (measured, not assumed):** the mount re-baselines **no goldens** — `cam-ui` keeps no shell
   snapshot, no `*.golden*` and no snapshot directory, and its tests assert geometry and text lists
@@ -26,11 +26,11 @@ before touching code; the Log is the record, not the brief.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered (working tree) — The panel's body becomes bounded and scrollable, so a window can hold it: output that grows without limit cannot be a modal's content | S1 S4 | parent | working tree |
-| T2 | ✅ delivered (working tree) — The shell grows one field, one entry point and one window: the panel opens from the palette, draws over the canvas, and leaves `output.canvas` untouched | S1 S2 | parent | working tree |
-| T3 | ✅ delivered (working tree) — The record: `docs/m10-documents.md`'s known limit stops saying "not mounted", and this document says what the artboards do **not** draw | S3 | parent | working tree |
+| ID  | Task                                                                                                                                                                                   | Specs | Route  | Commit       |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | ------------ |
+| T1  | ✅ delivered (working tree) — The panel's body becomes bounded and scrollable, so a window can hold it: output that grows without limit cannot be a modal's content                    | S1 S4 | parent | working tree |
+| T2  | ✅ delivered (working tree) — The shell grows one field, one entry point and one window: the panel opens from the palette, draws over the canvas, and leaves `output.canvas` untouched | S1 S2 | parent | working tree |
+| T3  | ✅ delivered (working tree) — The record: `docs/m10-documents.md`'s known limit stops saying "not mounted", and this document says what the artboards do **not** draw                  | S3    | parent | working tree |
 
 ## Log
 
@@ -79,15 +79,15 @@ before touching code; the Log is the record, not the brief.
 - **L6 (the review of the mount, and a BLOCKER that is inverted).** Lineage **`review-5eb75a623cbfc72e`**,
   tier `high`, 286 lines, four reviewer runs and then a **refuter**. The refuter returned
   **`correction_required`** on one finding, `R3-001`, severe, `deterministic`, `introduced`:
-  **`crates/cam-ui/src/chrome.rs:1380`** — *"The new script modal is constructed with
+  **`crates/cam-ui/src/chrome.rs:1380`** — _"The new script modal is constructed with
   `egui::Id::unique(...)`, which is not an `egui::Id` constructor; `egui::Id` exposes `new`, so this line
-  prevents the crate from compiling and the modal cannot be built or tested."* **Every clause of that is
+  prevents the crate from compiling and the modal cannot be built or tested."_ **Every clause of that is
   false, and the evidence is one command away**: `egui-0.37.0/src/id.rs:91` declares
   `pub fn unique(source: impl Hash + Debug) -> Self` (with doc examples at `:88-95`); the identical call
   already exists twice in this crate (`tool_library.rs:691`, `chrome.rs:1212`); and
   `cargo build -p cam-ui` plus the modal's own test both pass. The owner authorised the one bounded
   correction anyway, to let the review close — and that **cannot be done**: `egui::Id::new`, the spelling
-  the finding demands, is **deprecated** in 0.37 (*"Use `Id::unique` … instead"*), so the demanded edit
+  the finding demands, is **deprecated** in 0.37 (_"Use `Id::unique` … instead"_), so the demanded edit
   turns a green `clippy -D warnings` gate red. The rename was made, the deprecation appeared, and it was
   reverted; the tree is back at `Id::unique` and `cargo clippy -p cam-ui --all-targets -D warnings` is
   clean. **State: the lineage is left in `correction_required`, authority unburned and the correction

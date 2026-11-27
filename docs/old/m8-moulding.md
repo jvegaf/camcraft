@@ -8,10 +8,10 @@ rather than one number, and `odd/roadmap/index.md` gave it a milestone of its ow
 
 What it cost is worth stating against M6 and M7, because M8 is the cheap one. M6 discovered that no tool
 geometry reached the toolpath layer and opened with two prerequisites. M7 spent a research unit on the
-medial axis. M8 changed **no post contract** — a moulding's Z is constant *within* a pass, so
+medial axis. M8 changed **no post contract** — a moulding's Z is constant _within_ a pass, so
 `FEED_MOVE`'s `[N]G01[X][Y][Z]` carries it as it stands — added **no** variant to `c2d/document@2`
 beyond `Operation::Moulding` itself, and needed no new dependency. What it did need was geometry: a rail
-walked by **arc length** with the contour's arcs kept as arcs, a cross-section that is a *function* of
+walked by **arc length** with the contour's arcs kept as arcs, a cross-section that is a _function_ of
 lateral distance, and a stepover law whose coverage is a certificate rather than a hope.
 
 ```console
@@ -32,17 +32,17 @@ passes are rows 50, 48 and 46 at 1, 3 and 1 mm deep: 60 columns of 1 mm cells ×
 `300.000 mm³` above, and both deviation signs are zero because the claim and the program read the same
 rail, the same profile and the same stepover.
 
-| Piece | Where |
-| --- | --- |
-| The rail: arc-length parametrisation, exact normals, arcs native | `cam-geom::moulding::{Rail, RailSample}` |
-| The cross-section as one depth per lateral distance | `cam-geom::moulding::CrossSection` |
-| The swept band and its containment certificate | `cam-geom::moulding::SweptBand` |
-| The pass family and its coverage radius | `cam-geom::moulding::StepoverLaw` |
-| The parameter record (`profile`, `stepover`) and its validation | `cam-model::MouldingParams`, `check_moulding` |
-| The walk | `cam-toolpath::moulding` |
-| The authorised depth for a moulding cell | `cam-sim::target::claim_moulding` |
-| `--kind moulding`, `--profile`, `--stepover`, its refusals, `inspect` | `cam-cli` |
-| The contract row for the `moulding` kind | [format.md](format.md#document-c2d) |
+| Piece                                                                 | Where                                         |
+| --------------------------------------------------------------------- | --------------------------------------------- |
+| The rail: arc-length parametrisation, exact normals, arcs native      | `cam-geom::moulding::{Rail, RailSample}`      |
+| The cross-section as one depth per lateral distance                   | `cam-geom::moulding::CrossSection`            |
+| The swept band and its containment certificate                        | `cam-geom::moulding::SweptBand`               |
+| The pass family and its coverage radius                               | `cam-geom::moulding::StepoverLaw`             |
+| The parameter record (`profile`, `stepover`) and its validation       | `cam-model::MouldingParams`, `check_moulding` |
+| The walk                                                              | `cam-toolpath::moulding`                      |
+| The authorised depth for a moulding cell                              | `cam-sim::target::claim_moulding`             |
+| `--kind moulding`, `--profile`, `--stepover`, its refusals, `inspect` | `cam-cli`                                     |
+| The contract row for the `moulding` kind                              | [format.md](format.md#document-c2d)           |
 
 The owner's scope decision (S3, verbatim: "Sección Z barrida por el rail" — "the Z section swept by the
 rail", with "el rail va en XY, el perfil dice (distancia lateral, profundidad Z), stepover son pasadas
@@ -52,13 +52,13 @@ The feature document is `odd/tasks/019-m8-moulding.md`; the milestone's evidence
 
 ## What S3 decided, in five decisions
 
-| Decision | What it means | Where it is pinned |
-| --- | --- | --- |
-| Lateral is measured **to the right of travel** | `Rail::normal_at` is the tangent turned clockwise, so a rail along `+X` has its positive lateral side towards `-Y`, and a **counter-clockwise closed rail has its positive side outside the loop** | `cam-geom`'s moulding tests and the closed-rail oracle: a profile of `-3` at laterals `-2` and `+2` and `-5` on a circle's rail claims material inside **and** outside the loop and nothing in the middle |
-| The rail is **open or closed** | An open rail sweeps a strip; a closed rail sweeps a frame. The document refuses neither | `check_moulding` and the closed-rail oracles in `cam-sim` |
-| The profile's laterals **strictly increase** | A cross-section is one depth per lateral distance, so a profile that doubles back would be two depths for one place; refused by name at load, in the strategy and in the claim | `cam-model::check_moulding`, `cam-toolpath`'s `MouldingProfileLateral`, the CLI's `--profile` refusal |
-| A stepover **equal to** the profile's width is the **two edge passes** | The law's start-and-step produces them and does not collapse them into one | `StepoverLaw`'s own docs and its tests |
-| A stepover **wider than** the profile is **one centred pass** | With that spacing no second distinct pass exists, and a pass at one edge would cut one authored edge and leave the other; the centre is the honest single answer, and its coverage radius is still half the *profile's* width, which is less than half the requested stepover | `StepoverLaw`'s tests, and the V-bit oracle below (a 0.5 mm profile at a 10 mm stepover is one pass on `y = 50.25`) |
+| Decision                                                               | What it means                                                                                                                                                                                                                                                                 | Where it is pinned                                                                                                                                                                                        |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lateral is measured **to the right of travel**                         | `Rail::normal_at` is the tangent turned clockwise, so a rail along `+X` has its positive lateral side towards `-Y`, and a **counter-clockwise closed rail has its positive side outside the loop**                                                                            | `cam-geom`'s moulding tests and the closed-rail oracle: a profile of `-3` at laterals `-2` and `+2` and `-5` on a circle's rail claims material inside **and** outside the loop and nothing in the middle |
+| The rail is **open or closed**                                         | An open rail sweeps a strip; a closed rail sweeps a frame. The document refuses neither                                                                                                                                                                                       | `check_moulding` and the closed-rail oracles in `cam-sim`                                                                                                                                                 |
+| The profile's laterals **strictly increase**                           | A cross-section is one depth per lateral distance, so a profile that doubles back would be two depths for one place; refused by name at load, in the strategy and in the claim                                                                                                | `cam-model::check_moulding`, `cam-toolpath`'s `MouldingProfileLateral`, the CLI's `--profile` refusal                                                                                                     |
+| A stepover **equal to** the profile's width is the **two edge passes** | The law's start-and-step produces them and does not collapse them into one                                                                                                                                                                                                    | `StepoverLaw`'s own docs and its tests                                                                                                                                                                    |
+| A stepover **wider than** the profile is **one centred pass**          | With that spacing no second distinct pass exists, and a pass at one edge would cut one authored edge and leave the other; the centre is the honest single answer, and its coverage radius is still half the _profile's_ width, which is less than half the requested stepover | `StepoverLaw`'s tests, and the V-bit oracle below (a 0.5 mm profile at a 10 mm stepover is one pass on `y = 50.25`)                                                                                       |
 
 The stepover law itself is: start at the cross-section's minimum lateral distance, step by the stepover
 while the next pass stays inside the span, and always make the maximum lateral distance a pass. That
@@ -78,7 +78,7 @@ and that walk chords an arc to `DEFAULT_CHORD_TOLERANCE` (`0.001` mm). The walk 
 segment end**, which means a corner appears **twice**, once arriving and once leaving: a corner really
 does have two normals, and averaging them would invent a direction the rail never has and cut across
 the corner. Both the strategy and the claim use that same walk (`Rail::samples(DEFAULT_CHORD_TOLERANCE)`),
-and that shared walk is what makes the containment argument below a *statement* rather than a
+and that shared walk is what makes the containment argument below a _statement_ rather than a
 coincidence.
 
 ## What the walk emits
@@ -92,11 +92,11 @@ cam-cli toolpath <document> --kind moulding --entities <rail ids> --tool <n>
 Per pass, in the stepover law's order: a **rapid** to the pass's first point at the job's `safe_z`, a
 **plunge** there to the depth the cross-section authors at that lateral offset, **one `Move::Feed` per
 point of the pass's offset walk** ([`Rail::offset_walk`]) at that same Z, and a **retract** to `safe_z`
-(D-M4-6's rule between passes, unchanged: a pass that merely *looks* adjacent can be on the far side of
+(D-M4-6's rule between passes, unchanged: a pass that merely _looks_ adjacent can be on the far side of
 a wall). The walk is one function in the kernel and not a convention each boundary restates, because
 the claim authorises against the same polyline: `offset_walk` is the samples offset by the pass's
 lateral, plus the **closing edge** a closed rail needs when its seam sits on a corner — where the
-walk's last sample and its first are the same *point* carrying two different normals — and nothing at
+walk's last sample and its first are the same _point_ carrying two different normals — and nothing at
 all when the seam is in the middle of an edge, where the two tangents are collinear and the two offset
 points are one point up to `SEAM_EPSILON`.
 
@@ -111,9 +111,9 @@ in the frame golden below, and the price of not averaging two real normals into 
 Two whole programs are pinned byte for byte, each asserted **three ways** — as built, after a `c2d` save
 and load round trip, and with the toolpath authored through `cam-cli toolpath`:
 
-| Fixture | Program | What reading it establishes |
-| --- | --- | --- |
-| a 60 mm open rail, profile `-1, -3, -1` at laterals `0, 2, 4`, 2 mm stepover | **21 lines**, 3 passes, 3 plunges | the passes are rows 50, 48 and 46 at `Z-1.0000`, `Z-3.0000`, `Z-1.0000` — the law's laterals and the profile's depths, one rapid, one plunge, one feed and one retract each |
+| Fixture                                                                                           | Program                                     | What reading it establishes                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a 60 mm open rail, profile `-1, -3, -1` at laterals `0, 2, 4`, 2 mm stepover                      | **21 lines**, 3 passes, 3 plunges           | the passes are rows 50, 48 and 46 at `Z-1.0000`, `Z-3.0000`, `Z-1.0000` — the law's laterals and the profile's depths, one rapid, one plunge, one feed and one retract each                                                                                       |
 | a 40 x 20 mm closed frame, flat profile 2 mm wide at `-2`, 2 mm stepover (the two-edge-pass case) | **33 lines**, 2 passes, 4 bare `G01` blocks | the inner pass is the frame itself with a repeated corner sample per corner, and the outer pass is the frame 2 mm out with a 45 degree diagonal across each corner (`N180G01X72.5000Y40.5000`) — the offset family's corner, not a chamfer the rail does not have |
 
 ## Why `gouge` is zero by construction
@@ -122,7 +122,7 @@ The argument is **coverage plus a monotone tool law**, and it is different from 
 on a 1-Lipschitz distance field):
 
 1. **The claim's footprint contains the program's.** Both walk the rail with the same
-   `Rail::samples(DEFAULT_CHORD_TOLERANCE)`, so the pass *polyline* the claim measures is the polyline
+   `Rail::samples(DEFAULT_CHORD_TOLERANCE)`, so the pass _polyline_ the claim measures is the polyline
    the program cuts. The sweep then samples that polyline more finely (half a cell per move), and every
    one of its samples lies **on** it, so a cell's distance to the program's nearest sample is never
    smaller than its distance to the polyline. With `REACH_SLACK` (`1e-9` mm), every cell the program
@@ -141,7 +141,7 @@ claim wins (D-M5-2), which a test pins by sweeping two mouldings along one rail.
 
 **One corner of that argument was false as M8 first shipped it, and the fix is the walk's own law.** A
 **closed** rail whose vertex list **starts at a corner** has a seam where the walk's last sample and its
-first are the same *point* carrying two different normals: the strategy bridges them with one closing
+first are the same _point_ carrying two different normals: the strategy bridges them with one closing
 feed across the corner, and while the claim measured a walked path with `windows(2)` alone, that
 diagonal was an edge of the program that nothing authorised. On the 40 x 20 mm frame below it was
 **`gouge 2.000 mm³` over one cell** — cell `(29, 39)`, the seam diagonal's own centre — on a program
@@ -164,17 +164,17 @@ computed from the document alone; the deepest claim wins and nothing is summed. 
 pass at a whole lateral distance lands on a **row of cell centres** and the arithmetic is an equality
 rather than a bound:
 
-| Fixture | Claimed | Removed | `uncut` | `gouge` | Deepest |
-| --- | --- | --- | --- | --- | --- |
-| straight rail, 5 passes at `1, 2.5, 4, 2.5, 1` mm | `660.000` | `660.000` | **`0.0`** | **`0.0`** | −4 |
-| … the same, 1 mm shallow at every pass | `660.000` | `360.000` | `300.000` (300 cells) | **`0.0`** | −3 |
-| … the same, 1 mm deep at every pass | `660.000` | `960.000` | `0.0` | **`300.000`** (300 cells) | −5 |
-| closed frame, 2 passes at `-2` mm | `496.000` | `496.000` | **`0.0`** | **`0.0`** | −2 |
-| … the frame, 1 mm shallow at both passes | `496.000` | `248.000` | `248.000` (248 cells) | **`0.0`** | −1 |
-| … the frame, 1 mm deep at both passes | `496.000` | `744.000` | `0.0` | **`248.000`** (248 cells) | −3 |
-| V-bit cone (90°), one pass at `-4` mm | `1027.127` | `1027.127` | **`0.0`** | **`0.0`** | −3.75 |
-| … the cone, 1 mm deeper | `1027.127` | `1630.974` | `0.0` | **`603.671`** (676 cells) | −4.75 |
-| the frame **whose seam is a corner**, correct program | `496.000` (248 cells) | `496.000` | **`0.0`** | **`0.0`** | −2 |
+| Fixture                                               | Claimed               | Removed    | `uncut`               | `gouge`                   | Deepest |
+| ----------------------------------------------------- | --------------------- | ---------- | --------------------- | ------------------------- | ------- |
+| straight rail, 5 passes at `1, 2.5, 4, 2.5, 1` mm     | `660.000`             | `660.000`  | **`0.0`**             | **`0.0`**                 | −4      |
+| … the same, 1 mm shallow at every pass                | `660.000`             | `360.000`  | `300.000` (300 cells) | **`0.0`**                 | −3      |
+| … the same, 1 mm deep at every pass                   | `660.000`             | `960.000`  | `0.0`                 | **`300.000`** (300 cells) | −5      |
+| closed frame, 2 passes at `-2` mm                     | `496.000`             | `496.000`  | **`0.0`**             | **`0.0`**                 | −2      |
+| … the frame, 1 mm shallow at both passes              | `496.000`             | `248.000`  | `248.000` (248 cells) | **`0.0`**                 | −1      |
+| … the frame, 1 mm deep at both passes                 | `496.000`             | `744.000`  | `0.0`                 | **`248.000`** (248 cells) | −3      |
+| V-bit cone (90°), one pass at `-4` mm                 | `1027.127`            | `1027.127` | **`0.0`**             | **`0.0`**                 | −3.75   |
+| … the cone, 1 mm deeper                               | `1027.127`            | `1630.974` | `0.0`                 | **`603.671`** (676 cells) | −4.75   |
+| the frame **whose seam is a corner**, correct program | `496.000` (248 cells) | `496.000`  | **`0.0`**             | **`0.0`**                 | −2      |
 
 The straight rail's numbers are exact for a reason worth keeping: the rail is at `y = 50.5`, so the pass
 at lateral `L` lies on the centre line of row `50 − L`, and the profile `-1` at lateral 0, `-4` at
@@ -187,7 +187,7 @@ cells at 2 mm.
 
 The V-bit rows are the cone's own field: a 90° bit at 4 mm reaches `4 − d` at a cell `d` millimetres from
 the pass, so the swept solid is the triangle's prism (`2 × ½ × 4 × 4 × 60 = 960 mm³`) **plus** the two
-half-disc caps a cone swept along a *segment* leaves at its ends — measured `1027.127 mm³`, and equal to
+half-disc caps a cone swept along a _segment_ leaves at its ends — measured `1027.127 mm³`, and equal to
 the claim to the last bit. The two zeros in that row are the point of it: a claim that assumed a
 cylinder's flat band would report a correct bevel as `uncut`, and a program that reached one cell
 further out as `gouge`.
@@ -212,7 +212,7 @@ End to end through the binary, three reports say the same thing on the CLI's own
 **The gouge sign cannot be reached through the CLI by a document that validates**, and that is the
 argument above rather than a gap in the tests: the claim's footprint contains the program's, both read
 the same authored cross-section and the same tool, so no valid document emits a program that cuts
-deeper than its own claim. It is proved where it *can* be produced — a program written 1 mm too deep at
+deeper than its own claim. It is proved where it _can_ be produced — a program written 1 mm too deep at
 every pass, in the oracle. The `uncut` sign needs no such help, which is why the exit-6 test states it as
 a defect of the document.
 
@@ -222,17 +222,17 @@ A moulding has three inputs — the rail, the cross-section and the stepover —
 pass law, no allowance, no tab and no tolerance. It refuses by name everything whose meaning it does not
 have (S16's precedent from M6):
 
-| Refusal | Raised by | Message |
-| --- | --- | --- |
-| `MouldingProfileTooShort` | the strategy, and the claim | `a moulding profile needs at least two points, got 1` |
-| `MouldingProfileLateral` (the strategy's) / `MouldingProfileLateralOrder` (the kernel's) | the loader, the strategy and the claim | `moulding profile point 1 at lateral 2 mm must be greater than the previous 2 mm: a cross-section is one depth per lateral distance` — one sentence, three boundaries |
-| `InvalidStepover` (the strategy's) / `MouldingStepoverNotPositive` (the kernel's) | the loader and the strategy restate it; the claim keeps the kernel's words | `stepover 0 mm must be greater than zero` from the strategy, `a moulding stepover must be a positive number of millimetres, got 0 mm` from the kernel |
-| `MouldingProfilePointNotFinite` | the kernel, surfaced at all three boundaries | `a moulding profile point must use finite millimetres, got lateral NaN mm and depth -1 mm` |
-| `InvalidToolDiameter` | the strategy | `tool diameter must be greater than zero` — a tool with no diameter is not a tool |
-| `MouldingGeometry` | the strategy, and the claim as `TargetError::Geometry` | `the moulding's geometry could not be built: …`, with the kernel's own sentence after it — `a moulding rail needs a length to sweep along, got 0 mm` for a rail with no length |
-| no rail at all | the claim, before it authorises anything | `it names no rail, and a moulding sweeps a cross-section along one` — authorising nothing would report every cell the program cuts as gouge |
-| a named entity that is not a contour | the claim | `entity "gone" is not a contour in this document` |
-| 22 flags its law does not have | `cam-cli toolpath` | one `--kind moulding takes no <flag>: …` per flag, exit `2`, the document byte-identical |
+| Refusal                                                                                  | Raised by                                                                  | Message                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MouldingProfileTooShort`                                                                | the strategy, and the claim                                                | `a moulding profile needs at least two points, got 1`                                                                                                                          |
+| `MouldingProfileLateral` (the strategy's) / `MouldingProfileLateralOrder` (the kernel's) | the loader, the strategy and the claim                                     | `moulding profile point 1 at lateral 2 mm must be greater than the previous 2 mm: a cross-section is one depth per lateral distance` — one sentence, three boundaries          |
+| `InvalidStepover` (the strategy's) / `MouldingStepoverNotPositive` (the kernel's)        | the loader and the strategy restate it; the claim keeps the kernel's words | `stepover 0 mm must be greater than zero` from the strategy, `a moulding stepover must be a positive number of millimetres, got 0 mm` from the kernel                          |
+| `MouldingProfilePointNotFinite`                                                          | the kernel, surfaced at all three boundaries                               | `a moulding profile point must use finite millimetres, got lateral NaN mm and depth -1 mm`                                                                                     |
+| `InvalidToolDiameter`                                                                    | the strategy                                                               | `tool diameter must be greater than zero` — a tool with no diameter is not a tool                                                                                              |
+| `MouldingGeometry`                                                                       | the strategy, and the claim as `TargetError::Geometry`                     | `the moulding's geometry could not be built: …`, with the kernel's own sentence after it — `a moulding rail needs a length to sweep along, got 0 mm` for a rail with no length |
+| no rail at all                                                                           | the claim, before it authorises anything                                   | `it names no rail, and a moulding sweeps a cross-section along one` — authorising nothing would report every cell the program cuts as gouge                                    |
+| a named entity that is not a contour                                                     | the claim                                                                  | `entity "gone" is not a contour in this document`                                                                                                                              |
+| 22 flags its law does not have                                                           | `cam-cli toolpath`                                                         | one `--kind moulding takes no <flag>: …` per flag, exit `2`, the document byte-identical                                                                                       |
 
 The 22 refused flags are `--cut-depth`, `--start-depth`, `--pass-depth`, `--allowance`, `--side`,
 `--tab`, `--lead-in`, `--lead-out`, `--ramp`, `--spacing`, `--angle`, `--pitch`, `--thread-direction`,
@@ -281,13 +281,13 @@ is an input error naming the flag rather than a defaulted spacing.
 
 ## Where the record lives
 
-| Question | Where |
-| --- | --- |
+| Question                                        | Where                                                       |
+| ----------------------------------------------- | ----------------------------------------------------------- |
 | What M8 had to be, and every decision behind it | `odd/tasks/019-m8-moulding.md` — S1 … S7, T1 … T7, L1 … L12 |
-| What the `moulding` kind stores | [format.md](format.md#document-c2d), one row per `kind` |
-| What the simulation authorises | [m5-simulation.md](m5-simulation.md#the-target-surface) |
-| How the depth-variant strategies behave | [m6-toolpaths.md](m6-toolpaths.md) |
-| How a V-carve's depth field behaves | [m7-vcarve.md](m7-vcarve.md) |
-| How a profile, a pocket and a drill behave | [m4-toolpaths.md](m4-toolpaths.md) |
-| What M8 delivered, and what it cost | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.11 |
-| The project-level summary | [README.md](../../README.md) |
+| What the `moulding` kind stores                 | [format.md](format.md#document-c2d), one row per `kind`     |
+| What the simulation authorises                  | [m5-simulation.md](m5-simulation.md#the-target-surface)     |
+| How the depth-variant strategies behave         | [m6-toolpaths.md](m6-toolpaths.md)                          |
+| How a V-carve's depth field behaves             | [m7-vcarve.md](m7-vcarve.md)                                |
+| How a profile, a pocket and a drill behave      | [m4-toolpaths.md](m4-toolpaths.md)                          |
+| What M8 delivered, and what it cost             | [odd/roadmap/index.md](../../odd/roadmap/index.md) §4.11    |
+| The project-level summary                       | [README.md](../../README.md)                                |

@@ -14,11 +14,11 @@ not inherited as a number — and `L18` records the arithmetic and each contradi
 historical figure is **nine**; the difference is exactly the point `L18` cannot resolve, and the rows below
 are what the record supports:
 
-| ID | Register | Why editing cannot close it |
-| --- | --- | --- |
-| `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003` | M9's review | six metadata-only advisories; three anchors name `crates/cam-cli/src/main.rs`, a file `3297f4d` split down to 16 lines |
-| `1ab52143/R2-002`, `R2-003`, `R3-002` | M9's nesting review | three metadata-only advisories; `R1-STEP-DOS` from the same lineage is **closed** (the 4M anchor cap, L11) |
-| `b5fe4921/R3-001` | M10's own debt review (L9) | reliability WARNING at `crates/cam-import/src/csv.rs:180-193`, the successor inside the very block `T2` added; its wording burned with its receipt |
+| ID                                                                  | Register                   | Why editing cannot close it                                                                                                                        |
+| ------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003` | M9's review                | six metadata-only advisories; three anchors name `crates/cam-cli/src/main.rs`, a file `3297f4d` split down to 16 lines                             |
+| `1ab52143/R2-002`, `R2-003`, `R3-002`                               | M9's nesting review        | three metadata-only advisories; `R1-STEP-DOS` from the same lineage is **closed** (the 4M anchor cap, L11)                                         |
+| `b5fe4921/R3-001`                                                   | M10's own debt review (L9) | reliability WARNING at `crates/cam-import/src/csv.rs:180-193`, the successor inside the very block `T2` added; its wording burned with its receipt |
 
 **Closed — six:** the four advisories `T1`-`T4` closed (three with the reviewer's own words recovered, the
 fourth's subject read off the code), `12219c3f/R1-001` (`99a8b33`), and `1ab52143/R1-STEP-DOS` (the 4M
@@ -45,7 +45,7 @@ document waits on anyone now.
 - **S2 (user, verbatim answer to the store question):** "Sí, solo lectura" — read-only access to the
   review authority store under `.git/gentle-ai` for the findings' text; nothing there is written or
   staged.
-- **S3 (consequence of S1, not a user string):** an advisory can only be *closed as resolved* when its
+- **S3 (consequence of S1, not a user string):** an advisory can only be _closed as resolved_ when its
   finding's subject is established. A finding whose reviewer text is unrecoverable and whose anchor no
   longer identifies its subject is **not** closed by a plausible-looking edit: it stays open, named as
   unrecoverable, and is re-filed by a review of the current tree if the owner wants it back.
@@ -58,39 +58,39 @@ document waits on anyone now.
 
 ## Tasks
 
-| ID | Task | Specs | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ delivered `a8952d6` — The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column *inside* the token instead of one past it | S1 S3 | parent | `a8952d6` |
-| T2 | ✅ delivered `6bde4a5` — The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal | S1 S4 | parent | `6bde4a5` |
-| T3 | ✅ delivered `a8952d6` — `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document | S1 S4 | parent | `a8952d6` |
-| T4 | ✅ delivered `99a8b33` — The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory | S1 S3 | parent | `99a8b33` |
-| T5 | ✅ delivered `27f958e` — The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5 | parent | `27f958e` + `bb3eead` |
+| ID  | Task                                                                                                                                                                                                       | Specs | Route  | Commit                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | --------------------- |
+| T1  | ✅ delivered `a8952d6` — The quoted-token `end_column` off-by-one: a missing argument after a quoted token reports the column _inside_ the token instead of one past it                                    | S1 S3 | parent | `a8952d6`             |
+| T2  | ✅ delivered `6bde4a5` — The CSV quote check runs before the field-count check, so a quoted field containing a comma is refused as a wrong field count instead of the promised quoted-field refusal        | S1 S4 | parent | `6bde4a5`             |
+| T3  | ✅ delivered `a8952d6` — `const HELP`'s scripted `toolpath` and `nest` lines claim to take "every other" flag while the script refuses `--out` and a positional document                                   | S1 S4 | parent | `a8952d6`             |
+| T4  | ✅ delivered `99a8b33` — The `script_panel` test fixture joins a caller-supplied name onto `/var/tmp` and `remove_dir_all`s the result, so a name with a separator escapes the scratch directory           | S1 S3 | parent | `99a8b33`             |
+| T5  | ✅ delivered `27f958e` — The search step's lattice: a step whose anchor count over the board exceeds 4 000 000 is refused with the step, the columns, the rows and the cap, in the simulator's cap dialect | S5    | parent | `27f958e` + `bb3eead` |
 
 ## Log
 
 - **L1 (user, verbatim):** "si, la deuda".
 - **L2 (store reconnaissance, delegated; the findings' provenance).** The review authority store at
   `.git/gentle-ai` holds **three** complete lineages (`review-61e0b405dc7f498b`,
-  `review-305eaa8746f90d29`, `review-3592c554bf15c02f`) and only *terminal-consumption* records for
+  `review-305eaa8746f90d29`, `review-3592c554bf15c02f`) and only _terminal-consumption_ records for
   `bd99706d`, `12219c3f` and `1ab52143` — id, lineage and three hashes, no findings. So **10 of the 14
   advisories exist only as metadata** (lens, severity, path:line) in `docs/m10-documents.md:355-370`,
   `odd/tasks/018-m10-documents.md:160`, `docs/m9-nesting.md:392-396`, `odd/roadmap/index.md:813,899`.
   The reviewer's own words survive for the four below, through `review-61e0b405dc7f498b`, documented as
   `bd99706d`'s superseded predecessor over the same code with shifted lines:
-  1. *readability WARNING* — "`end_column` is computed as `token.column + token.text.len()`, but for a
+  1. _readability WARNING_ — "`end_column` is computed as `token.column + token.text.len()`, but for a
      quoted token `Token::column` points at the opening quote while `text` excludes the quotes… reports
      a column one short". Verified live: `crates/cam-cli/src/script.rs:491-493`, lexer sets
      `column: start + 1` at the `"` (`script.rs:452-486`). **T1.**
-  2. *readability SUGGESTION* — "The new script help says `toolpath` takes 'every other toolpath flag',
+  2. _readability SUGGESTION_ — "The new script help says `toolpath` takes 'every other toolpath flag',
      but the scripted command deliberately refuses `--out` (and a positional document path) with
      `NO_OUT`/`NO_POSITIONAL`. The help therefore misstates the accepted options". Verified live:
      `crates/cam-cli/src/lib.rs:172`; `NO_OUT`/`NO_POSITIONAL` at `script.rs:42,45`; `nest`'s help line
      carries the identical false claim. **T3.**
-  3. *reliability WARNING* — "The field-count check runs before the quote check, so a quoted field
+  3. _reliability WARNING_ — "The field-count check runs before the quote check, so a quoted field
      containing a comma, a common spreadsheet export, is refused as a field-count error instead of the
      promised quoted-field refusal". Verified live: `crates/cam-import/src/csv.rs:175-183` (count)
      precedes `:185-196` (quote scan). **T2.**
-  4. *risk WARNING* — `crates/cam-ui/tests/script_panel.rs:29-31`, the `scratch` fixture: a hard-coded
+  4. _risk WARNING_ — `crates/cam-ui/tests/script_panel.rs:29-31`, the `scratch` fixture: a hard-coded
      `/var/tmp` joined with a caller-supplied `name`, then `remove_dir_all`. Text unrecovered; the
      subject is the code's own shape, so T4 fixes the escape and does **not** claim the finding by name.
 - **L3 (why the other ten stay open).** `bd99706d/R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`,
@@ -101,7 +101,7 @@ document waits on anyone now.
   anchors (`cam-geom/src/nest.rs:348`, `nest_profile.rs:241-246`) land on **doc comments**, so the
   finding is a doc-versus-behaviour claim nobody can now read. Guessing a fix for those would manufacture
   a resolution the record cannot support (S3).
-- **L4 (deferred to the owner, not fixed here).** The one M9 advisory whose subject *is* inferable from
+- **L4 (deferred to the owner, not fixed here).** The one M9 advisory whose subject _is_ inferable from
   the code: `crates/cam-geom/src/nest_profile.rs:171-175` refuses a step that is not finite or not
   positive, and sets no floor, so `--step 0.001` pays an unbounded lattice (`lattice_steps` at `:537`,
   used at `:521-522`). A floor **refuses input that used to be accepted**, which is a contract change —
@@ -130,7 +130,7 @@ document waits on anyone now.
   forecast given before it ran. Closure was **`approved`** on the first admitted event with **no
   correction**, and the receipt was burned (`gentle-ai.review-acknowledged/v1`, consumed revision
   `sha256:c6f0aa64ca3876e06c1900d5d6ddabec1464b810db221840647e053376679d0e`). Its one finding is
-  **`R3-001`** — reliability, WARNING, *informational* — at `crates/cam-import/src/csv.rs:180-193`,
+  **`R3-001`** — reliability, WARNING, _informational_ — at `crates/cam-import/src/csv.rs:180-193`,
   which is inside the very block T2 added: this fix has a successor advisory of its own. **And that
   finding's wording is already gone.** The lineage never gets a state directory —
   `review-transactions/v2/` holds only `review-61e0b405dc7f498b`, `review-305eaa8746f90d29` and
@@ -157,8 +157,8 @@ document waits on anyone now.
   `744200` and is still the caller's to choose; a 1000 x 600 board at 0.2 mm asks `5001 x 3001 =
   15008001` and is refused at the command's own door with exit `2` and the document untouched. The
   counts saturate, so a step fine enough to overflow `usize` is refused instead of panicking. New error
-  `GeomError::SearchLatticeTooFine` speaks M5's dialect — *"… needs N anchors, over the C anchor cap;
-  use a coarser --step"*. RED first: the 0.5 mm plan **succeeded** while the test demanded the refusal;
+  `GeomError::SearchLatticeTooFine` speaks M5's dialect — _"… needs N anchors, over the C anchor cap;
+  use a coarser --step"_. RED first: the 0.5 mm plan **succeeded** while the test demanded the refusal;
   after the check `cargo test -p cam-geom --test nest_profile` is **18 passed**, which includes the
   fixtures that author 20 mm, 5 mm and 200 mm — a floor in millimetres would have had to argue with
   those, and a cap does not. `const HELP` and `docs/m9-nesting.md` (the "the step is the caller's"
@@ -169,15 +169,15 @@ document waits on anyone now.
   readability, reliability), closed **`approved`** on the first admitted event with no correction, receipt
   burned (`sha256:59108c52…`). Its two advisories are defects `27f958e` **introduced**, both
   `causal_disposition: introduced`, and **this time their words survived**: the lineage kept a state
-  directory, and reading it *before* the acknowledgement is what kept them — the discipline L9 asked for,
-  paying for itself one review later. **`R2-001`** (readability, `crates/cam-cli/tests/cli.rs:7678`): *"The
+  directory, and reading it _before_ the acknowledgement is what kept them — the discipline L9 asked for,
+  paying for itself one review later. **`R2-001`** (readability, `crates/cam-cli/tests/cli.rs:7678`): _"The
   under-cap branch only asserts `outcome.code != 2`; a failure with any other nonzero code (including a
   panic) would satisfy it, so the test does not prove the stated accepted behavior and can hide
-  regressions in the new cap boundary."* **`R3-001`** (reliability,
-  `crates/cam-geom/src/nest_profile.rs:284`): *"The new anchor-cap check runs before the existing
+  regressions in the new cap boundary."_ **`R3-001`** (reliability,
+  `crates/cam-geom/src/nest_profile.rs:284`): _"The new anchor-cap check runs before the existing
   part-closed loop, so a document that is both over the anchor cap and contains an open part now reports
   SearchLatticeTooFine instead of PartNotClosed; the step error masks the geometry error that identifies
-  the offending part."* Both fixed in **`bb3eead`**: the cap check moved after the part loop (RED first —
+  the offending part."_ Both fixed in **`bb3eead`**: the cap check moved after the part loop (RED first —
   an open-part document at an over-cap step answered `SearchLatticeTooFine` where `PartNotClosed { part: 1
   }` is the answer), and the accepted-step branch now asserts the run ends in `0` or `7` **and** that the
   report names the step it searched with, instead of "not 2". `cam-geom`'s nest_profile target: **19
@@ -186,11 +186,11 @@ document waits on anyone now.
   **`review-85153ac6e3a443c8`** — the whole step-cap feature including its two corrections, tier `high`,
   206 changed lines, four host-relay runs — closed **`approved`** on the first admitted event, receipt
   burned (`sha256:57192970…`). One advisory, severity **SUGGESTION**: **`R3-CAP-BOUNDARY`**
-  (reliability, `crates/cam-geom/src/nest_profile.rs:292`): *"The new cap's inclusive boundary is not
+  (reliability, `crates/cam-geom/src/nest_profile.rs:292`): _"The new cap's inclusive boundary is not
   pinned by a test: `anchors > MAX_SEARCH_ANCHORS` allows exactly 4,000,000 anchors, but the added tests
   exercise only 11,895,003 (refused) and 744,200 (accepted), so a mutation to `>=` would not be caught.
   Cheap cases are a 1999x1999 board at step 1 (2000x2000 = 4,000,000 anchors) and a 2000x2000 board at
-  step 1 (2001x2001 = 4,004,001)."* Taken in the reviewer's own two cases:
+  step 1 (2001x2001 = 4,004,001)."_ Taken in the reviewer's own two cases:
   `the_anchor_cap_is_inclusive_at_exactly_the_cap` asserts 4 000 000 accepted and 4 004 001 refused —
   and, because it passed on the first attempt, it was proven by **installing the mutation**: with `>=`
   in place the test **fails**, restored it passes, and the source was restored byte-identical. The
@@ -222,7 +222,7 @@ document waits on anyone now.
   `odd/tasks/020-m9-nesting.md` L13); its receipt is burned, so these words exist only because the
   lineage kept a state directory and it was read **before** the acknowledgement. They are informational
   and none of them reopens anything. Tagged by lineage, as the register requires — `39a6d85c/…`:
-  1. *risk WARNING* (`cam-model/src/lib.rs:1763-1783`, `R1-nesting-footprint-bypass`) — "`check_nesting`
+  1. _risk WARNING_ (`cam-model/src/lib.rs:1763-1783`, `R1-nesting-footprint-bypass`) — "`check_nesting`
      treats a `None` footprint as a zero-area placement and skips the off-sheet and overlap checks.
      `placement_footprint` returns `None` not only for degenerate parts but also when any referenced
      entity is not a contour (`NestingPart::bounds` uses `as_contour()?`) or when the transform fails,
@@ -232,36 +232,36 @@ document waits on anyone now.
      trusts the load-time certificate may act on an unchecked placement." — the corrected half of this is
      closed by `14a8f0e`; the "non-contour entity" half is **unconstructible** (`EntityKind` has one
      variant) and is kept as the record of a claim that named a path the type system closes.
-  2. *risk WARNING* (`cam-model/src/lib.rs:1786-1805`, `R1-quadratic-overlap-validation`) — "The new
+  2. _risk WARNING_ (`cam-model/src/lib.rs:1786-1805`, `R1-quadratic-overlap-validation`) — "The new
      overlap validation nests two loops over every placement and only filters by sheet inside the loop, so
      it performs O(n^2) iterations regardless of sheet distribution. A large or crafted nesting document
      therefore makes `Document::validate` consume quadratic CPU and block the CLI; there is no spatial
      index or placement-count cap bounding the work." **Open, and the most valuable of the six.**
-  3. *resilience WARNING* (`cam-model/src/lib.rs:1786-1797`, `R4-002`) — the same double loop measured in
+  3. _resilience WARNING_ (`cam-model/src/lib.rs:1786-1797`, `R4-002`) — the same double loop measured in
      pairs: "calls `cam_geom::winding::relation` for each same-sheet pair. For N placements this is
      N(N-1)/2 pair visits, **49,995,000 for 10,000 placements**, with no per-sheet grouping or spatial
      index, so a large authored nesting makes document load/validation quadratic in placement count and
      can exhaust CPU/time on the normal load path." **Open.**
-  4. *resilience WARNING* (`cam-model/src/lib.rs:1879-1881`, `R4-003`) — "When `nesting_utilisation()`
+  4. _resilience WARNING_ (`cam-model/src/lib.rs:1879-1881`, `R4-003`) — "When `nesting_utilisation()`
      returns None because there are no sheets or no placements, `check_nesting_cost` returns Ok after only
      the sheet-count and range checks. A cost record with arbitrary in-range values therefore survives
      validation with no placements to support it; deleting all placements while leaving the cost field
      yields a document that still loads and can report the stale utilisation/waste." **Open.**
-  5. *readability WARNING* (`cam-model/src/lib.rs:979-987`, `R2-001`) — "`NestingPart::bounds` documents
+  5. _readability WARNING_ (`cam-model/src/lib.rs:979-987`, `R2-001`) — "`NestingPart::bounds` documents
      `None` as coming only from an empty selection or an unknown entity, but the implementation also
      returns `None` through `as_contour()?` for any entity that is not a contour. That hidden third case
      flows into `Document::placement_footprint` … Either the loader should refuse non-contour entities by
      name or the doc and handling should make this case explicit." The handling is now explicit at the
      refusal site; **the `bounds` doc sentence is still the one the finding quotes**, and the validator's
      own follow-up says the `placement_footprint` enumeration omits the non-contour case. **Open, cheap.**
-  6. *readability SUGGESTION* (`cam-model/src/lib.rs:1830`, `R2-002`) — "The constant is named
+  6. _readability SUGGESTION_ (`cam-model/src/lib.rs:1830`, `R2-002`) — "The constant is named
      `NESTING_COST_SUM_TOLERANCE`, but T1c deleted the sum rule; it is now only the absolute tolerance for
      comparing each recorded fraction with the derived utilisation or its complement. The misleading name
      keeps the old mental model alive … Rename it to a fraction/tolerance name and align the surrounding
      doc." **Open, one-line plus its doc.**
-  The method conclusion, now paid for twice: reading the state directory in the same session that receives
-  the findings is the **only** thing that keeps them (L9 lost `R3-001` this way, L12 kept two, this review
-  kept six). It is not optional ceremony — for this store it is the whole record.
+     The method conclusion, now paid for twice: reading the state directory in the same session that receives
+     the findings is the **only** thing that keeps them (L9 lost `R3-001` this way, L12 kept two, this review
+     kept six). It is not optional ceremony — for this store it is the whole record.
 - **L16 (the overlap sweep reviewed: approved first pass, one BLOCKER refuted, three follow-ups worth having).**
   Lineage **`review-94cfd23437f72a47`** over the sweep — tier `high`, 5 paths, 305 changed lines, budget
   153, four host-relay reviewer runs plus a refuter, closure **`approved`** (`sha256:b44d3526…`) with the
@@ -271,32 +271,32 @@ document waits on anyone now.
   scan whose reference walks pairs in document order, which caught the first version naming `P3/P7` where
   the document order says `P1/P3`, because a sweep in x meets pairs in a different order. Its six
   findings, tagged by lineage as `94cfd234/…`, captured from the store before the acknowledgement:
-  1. *readability BLOCKER* (`lib.rs:1869`, `R2-001`) — **refuted, correctly.** The claim was that
+  1. _readability BLOCKER_ (`lib.rs:1869`, `R2-001`) — **refuted, correctly.** The claim was that
      `sheet_id` is `&&str` (iterating `&BTreeMap<&str, _>`) while `first_offence` is
      `Option<(usize, usize, &str)>`, "and Rust does not apply deref coercion to tuple-literal elements",
      so the crate fails to type-check. The refuter threw it out and the build proves it: a tuple
      expression is a coercion site, so `&&str` coerces to `&str` there — the whole workspace compiles and
      its 1 529 tests pass.
-  2. *risk WARNING* (`lib.rs:1869`, `R1-001`) and 3. *resilience WARNING* (`lib.rs:1844-1880`,
+  2. _risk WARNING_ (`lib.rs:1869`, `R1-001`) and 3. _resilience WARNING_ (`lib.rs:1844-1880`,
      `R4-001`) — **one finding, real, accepted with its trade named**: "a large invalid document with an
      early overlap and many later placements whose x ranges meet now performs the full candidate scan
      before refusing, whereas the baseline returned immediately on the first pair." That is exactly the
-     price of preserving the message, and it is the *failure* path: the sweep is strictly cheaper on a
+     price of preserving the message, and it is the _failure_ path: the sweep is strictly cheaper on a
      valid document, which must visit every pair, and only the invalid-early-overlap case pays. A real
      early exit needs a spatial index, not an accumulation — **open, and the largest of the six**.
-  4. *reliability WARNING* (`lib.rs:1850-1854`, `R3-PRUNE-TOLERANCE`) — "the soundness of the
+  3. _reliability WARNING_ (`lib.rs:1850-1854`, `R3-PRUNE-TOLERANCE`) — "the soundness of the
      optimization rests on that prune threshold matching the separation tolerance used inside
      `footprints_overlap`/`winding::relation` … it never exercises the tolerance term and never exercises
      a pair where the AABB predicate and the winding predicate could disagree." **Open, cheap, and the
      one to do first**: a sub-tolerance fixture is a few lines.
-  5. *reliability SUGGESTION* (`lib.rs:1830-1834`, `R3-MULTISHEET-PRUNE`) — "every added test constructs
+  4. _reliability SUGGESTION_ (`lib.rs:1830-1834`, `R3-MULTISHEET-PRUNE`) — "every added test constructs
      exactly one sheet. The baseline cross-sheet behaviours are therefore not asserted: two placements on
      different sheets that coincide in coordinates must remain accepted, and when multiple sheets each
      contain an overlap the named pair must be the globally earliest one. A mis-keyed bucket or a
      per-bucket (rather than global) minimum would pass the added tests." Same shape: cheap, real.
-  6. *readability SUGGESTION* (`tests/document.rs:1751`, `R2-002`) — the reference's justification says
+  5. _readability SUGGESTION_ (`tests/document.rs:1751`, `R2-002`) — the reference's justification says
      strict inequalities are exact "because coordinates are whole millimetres", but the real reason a
-     shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (*equal* bounds only). The
+     shared edge is not an overlap is `footprints_overlap`'s `Touching` rule (_equal_ bounds only). The
      code is right and the reason is the wrong one — the comment should say which rule it relies on.
 - **L17 (the sweep's seven, and a sixteenth advisory that the sweep found).** Feature document
   `odd/tasks/024-advisory-debt-close.md` (S1-S6, T1-T8, L1-L9). Branch `feat/advisory-debt-close`, three
@@ -309,13 +309,13 @@ document waits on anyone now.
   **The sixteenth, and it is not one of the fourteen: `relation` calls overlapping material
   `Touching` when two edges are collinear.** Measured, not inferred: `cam_geom::winding::relation` over
   `[0,0]-[100,100]` and `[50,0]-[150,100]` answers `Relation::Touching`, though the two rectangles
-  share 5 000 mm² of interior. The same pair with the edges *not* collinear
+  share 5 000 mm² of interior. The same pair with the edges _not_ collinear
   (`[0,0]-[100,100]` against `[80,80]-[130,280]`) answers `Crossing`, which is why the workspace never
   noticed. Cause read off `crates/cam-geom/src/winding.rs:245-280`: a coincident edge sets `touching`
   and no segment pair contributes an interior-to-interior intersection, so the function returns
   `Touching` before containment is ever probed — the classification never asks whether the interiors
   overlap, which its own doc claims it is deciding ("They meet without crossing").
-  **What it costs**: `footprints_overlap` accepts `Touching` unless the two bounds are *equal*
+  **What it costs**: `footprints_overlap` accepts `Touching` unless the two bounds are _equal_
   (`crates/cam-model/src/lib.rs`), so two nested placements that overlap in area while sharing a
   horizontal or vertical edge load without a refusal — the rule M8 and M9 exist to enforce;
   `cam-geom/src/nest_profile.rs:657` asks the same predicate for `!= Disjoint`, so the profile nester's
@@ -325,13 +325,13 @@ document waits on anyone now.
   with four consumers (`cam-model`'s nesting, `nest_profile`, `region_offset`, `cam-toolpath`'s inlay)
   and needs its own document and review. Flagged for the owner in the same turn.
 - **L18 (the ledger reconciled: the arithmetic, and why the answer is a list rather than a number).** An
-audit of this document could not reconcile its totals, and the reconciliation is recorded here rather
-than by rewriting the entries above. **Three contradictions, each checkable against the text.**
+  audit of this document could not reconcile its totals, and the reconciliation is recorded here rather
+  than by rewriting the entries above. **Three contradictions, each checkable against the text.**
   (a) `L2` says "**10 of the 14** advisories exist only as metadata", while `L3` enumerates **eleven**
   metadata-only advisories — `bd99706d` ×6 (`R2-001`, `R2-003`, `R2-005`, `R2-006`, `R3-002`, `R3-003`),
   `12219c3f/R1-001` and `1ab52143` ×4 — so the register enumerates **15** findings, not 14. (b) `L14`'s
   "of the **fourteen** … **six** are closed and **nine** are not" sums to fifteen, which is only
-  consistent if the successor is counted *outside* the fourteen — the opposite of what the same entry
+  consistent if the successor is counted _outside_ the fourteen — the opposite of what the same entry
   says one sentence later ("the fifteenth … was recorded nowhere in this ledger before this line").
   (c) The section on the nine carries the parenthetical "`bd99706d` ×6, `1ab52143` ×3,
   `b5fe4921/R3-001`", which sums to **ten** and re-includes `1ab52143/R1-STEP-DOS`, closed at L11.
@@ -358,12 +358,12 @@ than by rewriting the entries above. **Three contradictions, each checkable agai
   open and named unrecoverable, and the owner's choice between re-filing it and accepting it is the last
   line of `## State of the debt`.
 - **L19 (the owner's decision on the last open question).** Asked whether to re-file `b5fe4921/R3-001`
-against a fresh review of `crates/cam-import/src/csv.rs` (301 lines, which the budget that refused M9's
-8 770 and M10's 4 425 does not obviously refuse) or to accept it as unclosable, the owner answered,
-verbatim: **"aceptaremos como irrecuperable"**. So it is accepted, not resolved: no re-filing, no further
-work on it, and `## State of the debt` now carries the decision where it used to carry the question. The
-nine metadata-only advisories are covered by the same answer, and L18's arithmetic is left as it stands
-rather than tidied — the point of that entry is that the number was never the record.
+  against a fresh review of `crates/cam-import/src/csv.rs` (301 lines, which the budget that refused M9's
+  8 770 and M10's 4 425 does not obviously refuse) or to accept it as unclosable, the owner answered,
+  verbatim: **"aceptaremos como irrecuperable"**. So it is accepted, not resolved: no re-filing, no further
+  work on it, and `## State of the debt` now carries the decision where it used to carry the question. The
+  nine metadata-only advisories are covered by the same answer, and L18's arithmetic is left as it stands
+  rather than tidied — the point of that entry is that the number was never the record.
 
 ## Successor advisories: the sweep's review, re-filed by its own candidate
 
@@ -371,13 +371,13 @@ Filed here as the register requires, because their words exist only in Engram ob
 `odd/tasks/024-advisory-debt-close.md` L9. Lineage **`review-ca5c7eda65951600`**, closure `approved`, receipt
 burned. The provider marked all five informational against that candidate; three are open work.
 
-| ID | Lens | Severity | Subject | Status |
-| --- | --- | --- | --- | --- |
-| `ca5c7eda/R2-001` | readability | WARNING | the two prune-tolerance tests asserted only that `validate` succeeds, so a prune that wrongly skipped the pair left both green | **closed** by `b9ccdd6` — the test is renamed for the boundary it pins and the differential below can fail |
-| `ca5c7eda/R3-002` | reliability | WARNING | no case asserted a **refusal** near the tolerance, so an unsound prune was invisible | **closed** by `b9ccdd6` — `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` plus the tolerance-scale differential |
-| `ca5c7eda/R2-002` | readability | SUGGESTION | the index was four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint | **closed** by `c60dff1` — per-sheet `SheetGrid`, `sheet_of` derived by an iterator |
-| `ca5c7eda/R1-001` | risk | WARNING | the load regression, from the risk lens | **answered** by `5635855` |
-| `ca5c7eda/R3-001` | reliability | WARNING | the same, from the reliability lens | **answered** by `5635855` |
+| ID                | Lens        | Severity   | Subject                                                                                                                        | Status                                                                                                                        |
+| ----------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ca5c7eda/R2-001` | readability | WARNING    | the two prune-tolerance tests asserted only that `validate` succeeds, so a prune that wrongly skipped the pair left both green | **closed** by `b9ccdd6` — the test is renamed for the boundary it pins and the differential below can fail                    |
+| `ca5c7eda/R3-002` | reliability | WARNING    | no case asserted a **refusal** near the tolerance, so an unsound prune was invisible                                           | **closed** by `b9ccdd6` — `an_overlap_of_twice_the_tolerance_is_refused_on_either_axis` plus the tolerance-scale differential |
+| `ca5c7eda/R2-002` | readability | SUGGESTION | the index was four parallel arrays with `0`/`""` sentinels and nothing enforcing one assignment per footprint                  | **closed** by `c60dff1` — per-sheet `SheetGrid`, `sheet_of` derived by an iterator                                            |
+| `ca5c7eda/R1-001` | risk        | WARNING    | the load regression, from the risk lens                                                                                        | **answered** by `5635855`                                                                                                     |
+| `ca5c7eda/R3-001` | reliability | WARNING    | the same, from the reliability lens                                                                                            | **answered** by `5635855`                                                                                                     |
 
 **The sixteenth is closed** (`odd/tasks/030-winding-collinear-overlap.md`, S2 = "Ruta B: arreglar en la
 raíz"). `winding::relation` now escalates a shared span to `Crossing` when the two interiors lie on the
@@ -424,7 +424,7 @@ in this environment**, and the reason is a number rather than an opinion:
 - Re-filing a finding means putting its **subject** in front of a reviewer, and each of the nine lives
   inside a milestone range that the provider has **already refused for budget**: M9's and M10's
   candidates were rejected with `lens_context_budget_exceeded` at 8770 lines over 14 paths and at 4425
-  lines with three lenses *and* with one, and that is why those milestones shipped on their own
+  lines with three lenses _and_ with one, and that is why those milestones shipped on their own
   evidence with their advisories as metadata only. There is no smaller candidate that contains them:
   their anchors are `crates/cam-model/src/lib.rs` (2 413 lines), `crates/cam-geom/src/nest.rs` (712),
   `crates/cam-geom/src/nest_profile.rs` (688) and `crates/cam-import/src/csv.rs` (301) — 4 114 lines of
@@ -432,12 +432,12 @@ in this environment**, and the reason is a number rather than an opinion:
 - The whole-tree alternative is worse by two orders of magnitude: the repository is **267 files and
   133 149 insertions** since its first commit, and `inspect` on a clean worktree offers no candidate at
   all (`current-changes`, `paths: []`, `empty_candidate_base_ref_required`).
-- `review reopen-results` is not this route either: it quarantines an *unusable admitted result* inside a
+- `review reopen-results` is not this route either: it quarantines an _unusable admitted result_ inside a
   live lineage and preserves the frozen scope, which is a different thing from re-filing a finding whose
   lineage is long closed.
 
 So the nine are **closed as unrecoverable**, and the closure is the measurement above, not a concession.
-What is *not* closed is the cause: the two mechanisms that make a recurrence visible were installed by
+What is _not_ closed is the cause: the two mechanisms that make a recurrence visible were installed by
 the work that found this, and both are in force — a finding's words are written to Engram and into this
 ledger **in the session that receives them and before any acknowledgement burns the receipt** (L9, L12,
 L15 and every review since), and `odd/reports/review-findings-survival.md` records what the store does

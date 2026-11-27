@@ -12,15 +12,15 @@ Force agents to develop exclusively in git worktrees (one agent = one worktree =
 
 ## Tasks
 
-| ID | Task | S | Route | Commit |
-| --- | --- | --- | --- | --- |
-| T1 | ✅ Add convention to `odd/README.md` and `AGENTS.md` (worktree-only per task) | S2 | inline | `2dd0122` |
-| T2 | ✅ Add `just` recipes for worktree creation/claim/release | S2,S3 | inline | `c0c2e53` |
-| T3 | ✅ Create claim mechanism (`odd/tasks/.claims/NNN.json`) with collision detection | S2,S3 | inline | `9dd659c` |
-| T4 | ✅ Add validation script (`scripts/check-worktree.sh`) and recipes integration | S2,S3 | inline | `9dd659c` |
-| T5 | ✅ Integrate with ODD workflow/docs (`odd/README.md`, `AGENTS.md`) | S3 | inline | `2dd0122` |
-| T6 | ✅ Harden claim/worktree enforcement after review (shared claims, primary-tree refusal, crate collisions, atomic claim) | S2,S3 | inline | `9dd659c` |
-| T7 | ✅ Require claim ownership on release; release from any worktree subdirectory | S2,S3 | inline | `4fc46a6`, `e3369d7` |
+| ID  | Task                                                                                                                    | S     | Route  | Commit               |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ----- | ------ | -------------------- |
+| T1  | ✅ Add convention to `odd/README.md` and `AGENTS.md` (worktree-only per task)                                           | S2    | inline | `2dd0122`            |
+| T2  | ✅ Add `just` recipes for worktree creation/claim/release                                                               | S2,S3 | inline | `c0c2e53`            |
+| T3  | ✅ Create claim mechanism (`odd/tasks/.claims/NNN.json`) with collision detection                                       | S2,S3 | inline | `9dd659c`            |
+| T4  | ✅ Add validation script (`scripts/check-worktree.sh`) and recipes integration                                          | S2,S3 | inline | `9dd659c`            |
+| T5  | ✅ Integrate with ODD workflow/docs (`odd/README.md`, `AGENTS.md`)                                                      | S3    | inline | `2dd0122`            |
+| T6  | ✅ Harden claim/worktree enforcement after review (shared claims, primary-tree refusal, crate collisions, atomic claim) | S2,S3 | inline | `9dd659c`            |
+| T7  | ✅ Require claim ownership on release; release from any worktree subdirectory                                           | S2,S3 | inline | `4fc46a6`, `e3369d7` |
 
 ## Log
 

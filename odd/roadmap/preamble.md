@@ -19,12 +19,11 @@ the script panel's mount (`odd/tasks/022-script-panel-mount.md`) and the panel's
 
 Owner decisions taken at plan time (verbatim from the decision record, see `## Log`):
 
-| # | Decision |
-| --- | --- |
-| D1 | Stack: **Rust**, viewport **wgpu**, UI shell `egui`/`cxx-qt` |
-| D2 | Scope: **all toolpath strategies except 3D machining and Laser** |
-| D3 | Document format: **own open format (ZIP + JSON)**, interop via DXF/SVG/PDF/EPS import |
-| D4 | Nesting: **own heuristic engine**, in v1 |
+| #   | Decision                                                                              |
+| --- | ------------------------------------------------------------------------------------- |
+| D1  | Stack: **Rust**, viewport **wgpu**, UI shell `egui`/`cxx-qt`                          |
+| D2  | Scope: **all toolpath strategies except 3D machining and Laser**                      |
+| D3  | Document format: **own open format (ZIP + JSON)**, interop via DXF/SVG/PDF/EPS import |
+| D4  | Nesting: **own heuristic engine**, in v1                                              |
 
 ---
-

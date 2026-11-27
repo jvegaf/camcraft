@@ -7,19 +7,19 @@ raster contract. The owner has now taken that decision.
 
 ## Specs
 
-- **S1 — the decision.** The owner's words, in order: *"si, acepto"*, answering the parent's proposal
-  verbatim: *"D-M5-12 (raster de simulación, 984 mm³ sin cortar) … necesita tu decisión porque cambia
-  el contrato de M4"*. The requirement itself is the record it accepted, from
-  `odd/tasks/006-m5-simulation.md:178-188`, verbatim: *"The fix is a boundary pass — one row at the
+- **S1 — the decision.** The owner's words, in order: _"si, acepto"_, answering the parent's proposal
+  verbatim: _"D-M5-12 (raster de simulación, 984 mm³ sin cortar) … necesita tu decisión porque cambia
+  el contrato de M4"_. The requirement itself is the record it accepted, from
+  `odd/tasks/006-m5-simulation.md:178-188`, verbatim: _"The fix is a boundary pass — one row at the
   offset region's far edge — and it is deliberately **not** taken here: M4's raster contract says
   'rows on the `min.y + k·stepover` grid' and pins '32 rows at y = 3, 6, … 96', so adding a finishing
-  row changes a documented contract and belongs to a decision the owner takes"*. That decision is
+  row changes a documented contract and belongs to a decision the owner takes"_. That decision is
   taken: **the contract changes**.
 - **S2 — the rule.** When the grid `bounds.min.y + k·stepover` stops short of the region's far edge
   `bounds.max.y`, the raster emits **one additional row at exactly `bounds.max.y`**, after the last
   grid row. When a grid row already lands exactly on `bounds.max.y` — the strict `y > bounds.max.y`
   break makes that row real today — **no additional row is emitted**. One rule, no shape special cases.
-- **S3 — what must not change.** A row that lands *on* a boundary keeps being retried by `row_spans`
+- **S3 — what must not change.** A row that lands _on_ a boundary keeps being retried by `row_spans`
   on both sides (`ROW_RETRY_NUDGE`), so the near edge and an already-reached far edge are untouched;
   island clipping and even-odd pairing, the zigzag direction, span order, the offset and profile
   strategies, and every non-raster emitted program stay byte-identical. The raster programs whose
@@ -56,12 +56,12 @@ raster contract. The owner has now taken that decision.
 
 ## Log
 
-- **L1 (the request, verbatim).** *"que queda pendiente"* → *"me pareve bien tu recomendacion"* → the
-  parent's offer *"D-M5-12 (raster de simulación, 984 mm³ sin cortar) … necesita tu decisión porque
-  cambia el contrato de M4"* → *"si, acepto"*.
+- **L1 (the request, verbatim).** _"que queda pendiente"_ → _"me pareve bien tu recomendacion"_ → the
+  parent's offer _"D-M5-12 (raster de simulación, 984 mm³ sin cortar) … necesita tu decisión porque
+  cambia el contrato de M4"_ → _"si, acepto"_.
 - **L2 (the reconnaissance, before any write).** The far edge is already in scope at `pocket.rs:300` as
   `bounds.max.y` over `region_bounds(&offset.region)` — the region the ring path cuts, boundary plus
-  islands. The loop breaks on `y > bounds.max.y` (`pocket.rs:305-307`), so a row *on* the far edge is
+  islands. The loop breaks on `y > bounds.max.y` (`pocket.rs:305-307`), so a row _on_ the far edge is
   already emitted and retried today: 1…99 at a 2 mm stepover, 3…57 at 9 mm, and the inlay male at 97.
   Every one of those would double under an unconditional append. No golden file exists anywhere — every
   golden is an inline `const &str` in `crates/cam-cli/tests/cli.rs` — and `984.000 mm3 over 164 cell(s)`
@@ -114,7 +114,7 @@ raster contract. The owner has now taken that decision.
   and 64 095 bytes, results 1 104 and 1 646 bytes) and the authority is **burned**
   (`gentle-ai.review-acknowledged/v1`, consumed revision `sha256:6d078d5c…`).
   **One thing to record honestly about the scope:** the provider chose the committed range from
-  `ca476b57`, so the candidate included the *previous* feature's `cam-geom` commit as well as this one's
+  `ca476b57`, so the candidate included the _previous_ feature's `cam-geom` commit as well as this one's
   two. That was its projection decision and it was followed unchanged, not narrowed to the commit the
   parent would have picked — but it means this receipt covers slightly more than this document does.
   **One advisory came back, `informational`, not a correction:** `R3-001` at
