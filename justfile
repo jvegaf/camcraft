@@ -33,8 +33,7 @@ dev:
 
 # Catálogo del design system (dev-only)
 ds:
-  @echo "Catálogo del design system: http://127.0.0.1:1420/ds"
-  pnpm dev
+  bash scripts/ds-dev.sh
 
 tauri-dev:
   pnpm codegen
