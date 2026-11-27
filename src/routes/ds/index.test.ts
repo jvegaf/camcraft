@@ -84,6 +84,27 @@ describe('ds index route', () => {
     }
   });
 
+  // 102 T3 (S3): a component with no consumers must read as not in use. The zero is shown, not
+  // borrowed from a barrel. No component in this repository ends at zero today, so the existing
+  // badge path is exercised by zeroing one entry of the derived data for the duration of a render.
+  it('renders a zero-consumer component as not in use', () => {
+    const target = inventory.find(component => component.name === 'Glyph');
+    if (!target) throw new Error('missing inventory entry: Glyph');
+    const consumers = target.consumers;
+    target.consumers = [];
+    try {
+      const { container } = render(Page);
+      const badge = container.querySelector(
+        `[data-component-path="${target.path}"] [data-badge-inuse]`
+      );
+
+      expect(badge?.getAttribute('data-badge-inuse')).toBe('no');
+      expect(badge?.textContent?.trim()).toBe('en uso no');
+    } finally {
+      target.consumers = consumers;
+    }
+  });
+
   it('shows the sheet, sibling-test and template-consumer facts as badges', () => {
     const { container } = render(Page);
     const catalogPaths = new Set(CATALOG.map(entry => entry.path));
