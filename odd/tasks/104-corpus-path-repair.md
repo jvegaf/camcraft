@@ -22,10 +22,10 @@ Tres tests del workspace resuelven `fixtures/corpus` un nivel de más, así que 
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                         | Specs      | Ruta   | Commit |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
+| ID  | Tarea                                                                                                                                          | Specs      | Ruta   | Commit |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
 | T1  | Los tres `tests` con la profundidad corregida; `cargo test --workspace --exclude cam-ui --exclude cam-desktop` corrido y reportado con totales | S1, S2, S4 | worker | —      |
-| T2  | Con la suite verde, `.github/workflows/ci.yml` vuelve a los tests del workspace, y `workflow.md` más `E0.8` dejan de declarar el hueco          | S3         | worker | —      |
+| T2  | Con la suite verde, `.github/workflows/ci.yml` vuelve a los tests del workspace, y `workflow.md` más `E0.8` dejan de declarar el hueco         | S3         | worker | —      |
 | T3  | Este documento y su fila en el índice                                                                                                          | S1, S3     | worker | —      |
 
 ## Log

@@ -109,6 +109,15 @@ release N:
 deliver N commit="":
   @./scripts/deliver-task.sh {{N}} {{commit}}
 
+hooks:
+  @git config --local core.hooksPath .githooks
+  @echo "Hooks installed: core.hooksPath = .githooks"
+  @echo "Now live: .githooks/pre-commit and .githooks/pre-push"
+
+hooks-off:
+  @git config --local --unset core.hooksPath || true
+  @echo "Hooks off: core.hooksPath unset, git runs no repo hooks"
+
 test-tooling:
   ./scripts/test-worktree-tooling.sh
 
