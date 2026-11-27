@@ -142,6 +142,10 @@ let settings = $state<Settings>({ ...DEFAULTS });
 let error = $state('');
 let query = $state('');
 let activePageId = $state(FIRST_PAGE.id);
+// The library panel is mounted on its first visit and stays mounted while the dialog is open, so
+// switching pages cannot destroy an unconfirmed draft (finding R3-001). It is hidden, not destroyed,
+// while another page is active.
+let toolLibraryMounted = $state(false);
 let searchSlot: HTMLDivElement | undefined = $state();
 let toolLibraryPanel: ToolLibraryPanelApi | undefined = $state();
 
@@ -204,9 +208,10 @@ async function saveSettings() {
   try {
     // The library's draft is confirmed by the same `Save changes` that confirms the theme. Its
     // save reports a failure through the shared error line and returns false, so nothing closes on
-    // a false success.
-    if (activePage.body === 'tool-library') {
-      const saved = await toolLibraryPanel?.save();
+    // a false success. The panel stays mounted after its first visit, so this reaches its draft
+    // even when another preferences page is active.
+    if (toolLibraryPanel) {
+      const saved = await toolLibraryPanel.save();
       if (saved === false) return;
     }
     const theme = await saveThemePreference(settings.theme);
@@ -262,6 +267,7 @@ $effect(() => {
     error = '';
     query = '';
     activePageId = FIRST_PAGE.id;
+    toolLibraryMounted = false;
     stored = { ...DEFAULTS };
     settings = { ...DEFAULTS };
     void loadSettings();
@@ -511,6 +517,7 @@ const noteText = css({
                 aria-current={activePageId === page.id ? 'page' : undefined}
                 onclick={() => {
                   activePageId = page.id;
+                  if (page.body === 'tool-library') toolLibraryMounted = true;
                 }}
               >
                 <Icon name={page.icon} />
@@ -527,10 +534,16 @@ const noteText = css({
           <h3 class={pageTitle} id={`${uid}-page-title`}>{activePage.title}</h3>
           <p class={pageDescription}>{activePage.description}</p>
 
-          {#if activePage.body === 'tool-library'}
+          {#if toolLibraryMounted}
             <!-- The panel owns the library commands and fills the page's three snippet props with
-                 the tree, the detail form and the preview (107 T5/T6/T7 + wiring). -->
-            <div class={pageBody}>
+                 the tree, the detail form and the preview (107 T5/T6/T7 + wiring). It stays mounted
+                 after the first visit and is hidden rather than destroyed when another page is
+                 active, so its draft survives navigation and `Save changes` can still reach it. -->
+            <div
+              class={pageBody}
+              hidden={activePage.body !== 'tool-library'}
+              style:display={activePage.body === 'tool-library' ? undefined : 'none'}
+            >
               <ToolLibraryPanel
                 bind:this={toolLibraryPanel}
                 onerror={message => {
@@ -538,51 +551,55 @@ const noteText = css({
                 }}
               />
             </div>
-          {:else if noResults}
-            <div class={emptyState} role="status">
-              <p class={emptyTitle}>
-                No results for “{query.trim()}”
-              </p>
-              <p class={emptyHint}>
-                Try another word or clear the search to see all the options.
-              </p>
-              <Button variant="ghost" size="sm" onclick={clearSearch}>
-                Clear search
-              </Button>
-            </div>
-          {:else}
-            {#each visibleSections as sectionData (sectionData.id)}
-              <div class={section}>
-                <h4 class={sectionCaption}>{sectionData.caption}</h4>
-                {#each sectionData.rows as row (row.id)}
-                  <div class={setting}>
-                    <div>
-                      <div class={settingLabel}>{row.label}</div>
-                      <div class={settingHint} id={`${uid}-${row.id}-hint`}>
-                        {row.hint}
+          {/if}
+
+          {#if activePage.body !== 'tool-library'}
+            {#if noResults}
+              <div class={emptyState} role="status">
+                <p class={emptyTitle}>
+                  No results for “{query.trim()}”
+                </p>
+                <p class={emptyHint}>
+                  Try another word or clear the search to see all the options.
+                </p>
+                <Button variant="ghost" size="sm" onclick={clearSearch}>
+                  Clear search
+                </Button>
+              </div>
+            {:else}
+              {#each visibleSections as sectionData (sectionData.id)}
+                <div class={section}>
+                  <h4 class={sectionCaption}>{sectionData.caption}</h4>
+                  {#each sectionData.rows as row (row.id)}
+                    <div class={setting}>
+                      <div>
+                        <div class={settingLabel}>{row.label}</div>
+                        <div class={settingHint} id={`${uid}-${row.id}-hint`}>
+                          {row.hint}
+                        </div>
+                      </div>
+                      <div>
+                        {#if row.control === 'theme'}
+                          <div class={seg} role="group" aria-label={row.label}>
+                            {#each THEME_OPTIONS as option (option.value)}
+                              <button
+                                type="button"
+                                class={segOption}
+                                aria-pressed={settings.theme === option.value}
+                                aria-describedby={`${uid}-${row.id}-hint`}
+                                onclick={() => selectTheme(option.value)}
+                              >
+                                {option.label}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
                       </div>
                     </div>
-                    <div>
-                      {#if row.control === 'theme'}
-                        <div class={seg} role="group" aria-label={row.label}>
-                          {#each THEME_OPTIONS as option (option.value)}
-                            <button
-                              type="button"
-                              class={segOption}
-                              aria-pressed={settings.theme === option.value}
-                              aria-describedby={`${uid}-${row.id}-hint`}
-                              onclick={() => selectTheme(option.value)}
-                            >
-                              {option.label}
-                            </button>
-                          {/each}
-                        </div>
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/each}
+                  {/each}
+                </div>
+              {/each}
+            {/if}
           {/if}
         </section>
       </div>

@@ -157,14 +157,20 @@ const request = (): ToolSaveRequest | null => {
 export async function save(): Promise<boolean> {
   const body = request();
   if (body === null) return true;
+  const token = selection;
   try {
     await invoke<ToolDetail>('tool_library_save', { request: body });
     // The store is the authority: read the record back instead of trusting the typed draft.
     const stored = await invoke<ToolDetail | null>('tool_detail', {
       id: body.id
     });
-    detail = stored;
-    draft = {};
+    // The same guard `loadDetail` uses: if another tool was selected while the re-read was in
+    // flight, this response belongs to the previous row. Discard it instead of painting over the
+    // newer selection and clearing its draft.
+    if (token === selection && selectedId === body.id) {
+      detail = stored;
+      draft = {};
+    }
     // The tree is a separate read: refresh it so an edited name or number reaches the left column
     // now instead of on the next remount. It is not rebuilt from the detail payload, so the tree
     // stays the store's projection and keeps its own grouping and meta.

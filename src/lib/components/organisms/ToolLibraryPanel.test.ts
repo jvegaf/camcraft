@@ -33,6 +33,27 @@ const tree = {
   ]
 };
 
+const drillDetail = {
+  schema: 'tool-detail@1',
+  id: 'drill-4',
+  name: 'Drill 0.8 mm',
+  kind: 'drill',
+  kindLabel: 'Drill',
+  number: 4,
+  diameterMm: 0.8,
+  flutes: 2,
+  cutLengthMm: 8.0,
+  shankMm: 3.175,
+  overallLengthMm: 38.0,
+  includedAngleDeg: 118,
+  flatDiameterMm: null,
+  spindleRpm: 12000,
+  cutFeedMmPerMin: 400,
+  plungeFeedMmPerMin: 100,
+  stepoverMm: null,
+  stepoverPercent: null
+};
+
 const detail = {
   schema: 'tool-detail@1',
   id: 'flat-22',
@@ -241,6 +262,102 @@ describe('ToolLibraryPanel', () => {
       call => call[0] === 'tool_detail'
     );
     expect(detailCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps an unconfirmed library edit when the operator navigates to another preferences page', async () => {
+    const user = await openToolLibrary();
+    await selectFlat22(user);
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'End mill kept across pages');
+
+    const nav = screen.getByRole('navigation', {
+      name: 'Preferences pages'
+    });
+    await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
+
+    // Coming back shows the same unconfirmed draft: navigation did not destroy it.
+    await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
+    expect(
+      (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value
+    ).toBe('End mill kept across pages');
+
+    // Confirming from another page still reaches the panel's draft and saves it.
+    await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('tool_library_save', {
+        request: {
+          id: 'flat-22',
+          name: 'End mill kept across pages',
+          number: 22,
+          flutes: 1
+        }
+      })
+    );
+  });
+
+  it('discards a post-save re-read that arrives after another tool was selected', async () => {
+    let flatDetailCalls = 0;
+    let resolveReread!: (value: unknown) => void;
+    const reread = new Promise(resolve => {
+      resolveReread = resolve;
+    });
+
+    bridge(async (command, args) => {
+      if (command === 'tool_library_tree') return tree;
+      if (command === 'tool_detail') {
+        const { id } = args as { id: string };
+        if (id === 'flat-22') {
+          flatDetailCalls += 1;
+          // The first read is the selection; the next one is the save's re-read, held open so the
+          // operator can select another tool while it is in flight.
+          return flatDetailCalls > 1 ? reread : { ...detail };
+        }
+        if (id === 'drill-4') return { ...drillDetail };
+        return null;
+      }
+      if (command === 'tool_library_save') return { ...detail };
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    const user = userEvent.setup();
+    const result = render(ToolLibraryPanel);
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+    await user.click(rowOf(/T22\b/));
+    await screen.findByRole('heading', {
+      level: 4,
+      name: 'End mill 1.0 mm'
+    });
+
+    const flatName = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(flatName);
+    await user.type(flatName, 'Draft on the end mill');
+
+    const saving = result.component.save();
+    await waitFor(() => expect(flatDetailCalls).toBe(2));
+
+    // A newer selection lands while the save's re-read is still pending.
+    await user.click(rowOf(/T4\b/));
+    await screen.findByRole('heading', { level: 4, name: 'Drill 0.8 mm' });
+    const drillName = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(drillName);
+    await user.type(drillName, 'Draft on the drill');
+
+    resolveReread({ ...detail, name: 'End mill 1.0 mm (stored)' });
+    await act(async () => {
+      await saving;
+    });
+
+    // The late response belongs to the previous tool, so it cannot paint over the drill.
+    expect(
+      screen.getByRole('heading', { level: 4, name: 'Draft on the drill' })
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value
+    ).toBe('Draft on the drill');
   });
 
   it('surfaces a structured save error and leaves the dialog open without a false success', async () => {
