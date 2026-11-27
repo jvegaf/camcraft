@@ -1,11 +1,19 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import WorkbenchShell from './WorkbenchShell.svelte';
-import { setDocument, setStatus, workbenchState } from './workbench.svelte';
+import {
+  setDocument,
+  setStatus,
+  workbenchState
+} from '$lib/components/workbench/workbench.svelte';
+import WorkbenchPage from './+page.svelte';
 
-// Shell contract (095 T2, S8): the organism keeps every Tauri handler it has today and mounts the
-// regions through `WorkbenchTemplate`. The bridge is mocked at `@tauri-apps/api/core` — the module
+// Page contract (101 T2, S2): `WorkbenchShell` stopped being a component and became the body of
+// `/workbench`, so this test lives next to the route it exercises. SvelteKit reserves every
+// `+`-prefixed file under `src/routes`, so the test is `page.test.ts`: with `+page.test.ts` the
+// router would try to serve it and `pnpm check` / `pnpm build` would break (task 097).
+//
+// The page keeps every Tauri handler the shell had and mounts the regions through `WorkbenchTemplate`. The bridge is mocked at `@tauri-apps/api/core` — the module
 // the shell and `workbench.svelte.ts` both import — so the assertions are about the rendered DOM
 // and the commands that reach the bridge, not internal component state.
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -34,7 +42,7 @@ const recents = [
   }
 ];
 
-describe('WorkbenchShell', () => {
+describe('workbench page', () => {
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockImplementation((command: string) => {
@@ -61,7 +69,7 @@ describe('WorkbenchShell', () => {
   });
 
   it('renders the frame and every region the artboard names', () => {
-    const { container } = render(WorkbenchShell, {});
+    const { container } = render(WorkbenchPage, {});
 
     expect(container.querySelector('[data-region="frame"]')).not.toBeNull();
     expect(container.querySelector('[data-region="backdrop"]')).not.toBeNull();
@@ -74,7 +82,7 @@ describe('WorkbenchShell', () => {
   });
 
   it('asks the bridge for document status and recents on mount', async () => {
-    const { container } = render(WorkbenchShell, {});
+    const { container } = render(WorkbenchPage, {});
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('document_status'));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('list_recents'));
@@ -89,7 +97,7 @@ describe('WorkbenchShell', () => {
     const dialog = await import('@tauri-apps/plugin-dialog');
     vi.mocked(dialog.open).mockResolvedValue('/tmp/otro.cmc');
     const user = userEvent.setup();
-    render(WorkbenchShell, {});
+    render(WorkbenchPage, {});
 
     const [openButton] = screen.getAllByRole('button', { name: 'Abrir' });
     await user.click(openButton);
@@ -115,7 +123,7 @@ describe('WorkbenchShell', () => {
     vi.mocked(dialog.open).mockResolvedValue('/tmp/otro.cmc');
     vi.mocked(dialog.save).mockResolvedValue('/tmp/copiado.cmc');
     const user = userEvent.setup();
-    render(WorkbenchShell, {});
+    render(WorkbenchPage, {});
 
     for (const name of ['Nuevo', 'Abrir', 'Guardar', 'Guardar como']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
@@ -147,7 +155,7 @@ describe('WorkbenchShell', () => {
   // Browser again, and activating one reopens it through the same `open_document` command.
   it('lists the recents it loaded and reopens one through the bridge', async () => {
     const user = userEvent.setup();
-    render(WorkbenchShell, {});
+    render(WorkbenchPage, {});
 
     const browser = screen.getByLabelText('Browser');
     const row = await within(browser).findByRole('button', {
@@ -172,7 +180,7 @@ describe('WorkbenchShell', () => {
 
   // 095 T3 item 4/5: the HUD and status bar read real state only.
   it('renders the artboard chrome labels without inventing coordinates', () => {
-    render(WorkbenchShell, {});
+    render(WorkbenchPage, {});
 
     const hud = screen.getByLabelText('Estado de viewport');
     expect(hud.textContent).toContain('2D Board');

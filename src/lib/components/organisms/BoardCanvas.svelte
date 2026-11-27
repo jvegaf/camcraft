@@ -1,7 +1,10 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
 import { onMount } from 'svelte';
-import { setPointerPosition, setSelection } from './workbench.svelte';
+import {
+  setPointerPosition,
+  setSelection
+} from '$lib/components/workbench/workbench.svelte';
 
 type Point3Dto = { x: number; y: number; z: number };
 type Line3Dto = { start: Point3Dto; end: Point3Dto };

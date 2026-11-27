@@ -2,10 +2,12 @@
 import { cx } from 'styled-system/css';
 import { icon as iconRecipe } from 'styled-system/recipes';
 
-// Local glyphs of the settings surface. `design/camcraft-workbench-v2/04-settings.html` draws a
-// close cross (titlebar) that `$lib/components/atoms/icons.ts` does not have, and that file is a
-// shared surface this task must not edit, so the few strokes the dialog needs live next to the
-// dialog. The artboard's chevron and check marks are not drawn: they belong to the `select` and the
+// Glyph atom (101 T1). `design/camcraft-workbench-v2/04-settings.html` draws a close cross
+// (titlebar) that `$lib/components/atoms/icons.ts` does not have, and that file was a shared surface
+// task 090 must not edit, so the few strokes it needs live in this atom. It started as a private
+// file of the settings folder; 101 moved it to `atoms/` because it is a single visual primitive —
+// the layer is the directory, so the board classifies it as an atom by where it lives (S3).
+// The artboard's chevron and check marks are not drawn: they belong to the `select` and the
 // checkbox rows, and neither control survived into the real settings contract (theme only), so
 // drawing them would be decoration for options the app does not have.
 //
