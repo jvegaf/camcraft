@@ -11,7 +11,7 @@ static TMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn corpus_dir(name: &str) -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("../../fixtures/corpus")
+    .join("../../../fixtures/corpus")
     .join(name)
 }
 
@@ -600,9 +600,11 @@ fn kicad_corpus_folder_groups_all_fabrication_roles_by_name() {
   // fully evaluate (parsing content depends on W2a/W2b; see waves.md). Grouping/detection is the
   // core of E1.3 and must correctly identify every fabrication role in a KiCad folder.
   let dir = corpus_dir("kicad-2l-simple");
-  if !dir.is_dir() {
-    return;
-  }
+  assert!(
+    dir.is_dir(),
+    "fixtures/corpus is part of the repository: {} is missing",
+    dir.display()
+  );
   let options = ImportOptions::default();
   let mut entries: Vec<_> = fs::read_dir(&dir)
     .unwrap()

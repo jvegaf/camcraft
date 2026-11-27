@@ -19,7 +19,7 @@ two places where "green" could mean different things.
 
 | Trunk    | Receives                | Runs in CI                                                                                                                                              |
 | -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `master` | every integrated change | `gate` on push and pull request — the frontend unit tests (`pnpm test`) and the Tauri host package's tests (`cargo test --manifest-path src-tauri/Cargo.toml`); `parity` and `bench` only by `workflow_dispatch` |
+| `master` | every integrated change | `gate` on push and pull request — the frontend unit tests (`pnpm test`) and the Rust workspace's tests (`cargo test --workspace --exclude cam-ui --exclude cam-desktop`, minus the two crates that need a display); `parity` and `bench` only by `workflow_dispatch` |
 
 `master` is protected — in the repository's settings, not in this file: no force-push, no deletion,
 conversation resolution required, a pull request required to merge, and the administrator bypass
@@ -86,7 +86,7 @@ is just the branch everything lands on.
 
 | Event                    | Jobs                                                       |
 | ------------------------ | ---------------------------------------------------------- |
-| push to `master`         | `gate`: `pnpm test` (vitest) and the Tauri host package's tests (`cargo test --manifest-path src-tauri/Cargo.toml`) |
+| push to `master`         | `gate`: `pnpm test` (vitest) and the Rust workspace's tests (`cargo test --workspace --exclude cam-ui --exclude cam-desktop`) |
 | pull request to `master` | the same `gate`                                            |
 | `workflow_dispatch`      | `gate`, and `parity`/`bench` when dispatched by hand       |
 
@@ -94,13 +94,11 @@ For now CI runs unit tests only: the claim, docs, records and tooling checks are
 path, and neither is the corpus measurement. `scripts/check.sh` is still the full local gate, and
 `just check` is how to run it.
 
-The Rust half of `gate` is the Tauri host package only — `cargo test --manifest-path
-src-tauri/Cargo.toml`, the same invocation `scripts/check.sh` runs and the one CI demonstrably kept
-green. The workspace crates' unit suites are not gated yet: three of their test files resolve
-`fixtures/corpus` one directory too high (`src-tauri/fixtures/corpus`, which exists nowhere), and they
-only surfaced now that `gate` asked for them. A gate that fails on a path bug it just discovered is not
-coverage, it is noise; enabling those suites is its own repair task, with those test files as its
-starting surface.
+The Rust half of `gate` is the whole workspace: `cargo test --workspace --exclude cam-ui
+--exclude cam-desktop`, the same invocation `just test-rust-workspace` runs locally. Every workspace
+crate's unit suite is gated. The two exclusions are `cam-ui` and `cam-desktop`, and the reason is the
+same for both: they need a display to build and run, and a CI runner has none — a gate that cannot
+run them would fail on the environment, not on the change.
 
 ## The hooks, and what they are not
 

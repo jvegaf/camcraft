@@ -82,15 +82,12 @@ jobs:
       - name: Run frontend tests
         run: pnpm test
 
-      # Cobertura Rust que el pipeline puede avalar hoy: el paquete host de Tauri, exactamente
-      # `cargo test --manifest-path src-tauri/Cargo.toml`, lo mismo que corre `scripts/check.sh`.
-      # Las suites de los crates del workspace no corren: tres de sus archivos de test resuelven
-      # `fixtures/corpus` un nivel de más (`../../` desde `src-tauri/crates/<crate>` cae en
-      # `src-tauri/fixtures/`, que no existe) y nunca corrieron en CI —
-      # `cam-import/tests/folder.rs`, `cam-geom/tests/parity.rs`, `cam-excellon/tests/excellon.rs`.
-      # Habilitarlas es una tarea de reparación, no un cambio de workflow.
+      # Las suites de Rust del workspace entero, no sólo el paquete host: cada crate del workspace
+      # (`cam-import`, `cam-geom`, `cam-excellon`, `cam-ops`, …) corre en `gate`, igual que en
+      # `just test-rust-workspace`. `cam-ui` y `cam-desktop` quedan fuera porque necesitan un
+      # display para compilar y correr, y un runner de CI no lo tiene.
       - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --workspace --exclude cam-ui --exclude cam-desktop
 
   # Deuda anotada donde el código va a volver: el paso de scope que decida si medir tiene que
   # degradar a medir cuando `github.event.before` no es alcanzable (push forzado, rama recién creada,
