@@ -245,20 +245,25 @@ pub struct CamOperationsDto {
 /// A model operation always serializes a `kind`, so a miss here is a broken invariant rather than a
 /// legitimate absence: it fails as a structured command error instead of publishing an empty type.
 fn operation_type(operation: &cam_model::Operation) -> Result<String, CommandErrorDto> {
-  serde_json::to_value(operation)
-    .ok()
-    .and_then(|value| {
-      value
-        .get("kind")
-        .and_then(|kind| kind.as_str())
-        .map(str::to_string)
-    })
-    .ok_or_else(|| {
-      CommandErrorDto::new(
-        "operation_type_missing",
-        "model operation serialized without a kind tag",
-      )
-    })
+  let value = serde_json::to_value(operation).map_err(|_| operation_type_missing())?;
+  operation_type_from_value(&value)
+}
+
+/// The same read, from an already serialized operation, so the failure contract can be exercised
+/// with a payload no valid `Operation` produces.
+fn operation_type_from_value(value: &serde_json::Value) -> Result<String, CommandErrorDto> {
+  value
+    .get("kind")
+    .and_then(|kind| kind.as_str())
+    .map(str::to_string)
+    .ok_or_else(operation_type_missing)
+}
+
+fn operation_type_missing() -> CommandErrorDto {
+  CommandErrorDto::new(
+    "operation_type_missing",
+    "model operation serialized without a kind tag",
+  )
 }
 
 /// The operation's cut depth. Each variant that cuts carries its own `cut_depth`; `panelize` has
@@ -1006,6 +1011,32 @@ mod tests {
     let dto = cam_operations_impl(&rt).expect("cam operations");
     assert_eq!(dto.schema, "cam-operations@1");
     assert!(dto.operations.is_empty());
+  }
+
+  #[test]
+  fn operation_type_without_a_kind_tag_is_a_structured_error() {
+    // A model operation always serializes a `kind`, so this payload is what a broken model would
+    // produce. Driving the value-level helper with it reaches the branch a valid `Operation`
+    // cannot, which is the only way to prove the failure contract: no valid input can. Nothing in
+    // production changes to make it testable.
+    let payload = serde_json::json!({ "passes": 2, "overlap": 0.5, "keep_pours": false });
+    let err = operation_type_from_value(&payload)
+      .expect_err("an operation payload without a kind tag is an error, not an empty type");
+
+    // The failure as the frontend receives it: the stable code and its message, never an empty
+    // `operationType` string.
+    assert_eq!(err.code, "operation_type_missing");
+    assert_eq!(
+      serde_json::to_value(&err).expect("json"),
+      serde_json::json!({
+        "code": "operation_type_missing",
+        "message": "model operation serialized without a kind tag"
+      })
+    );
+
+    // The same helper still reads a real operation's own tag, so the branch above is not dead code.
+    assert_eq!(operation_type(&isolation(1.8)).expect("type"), "isolation");
+    assert_eq!(operation_type(&panelize()).expect("type"), "panelize");
   }
 
   #[test]
