@@ -17,8 +17,8 @@ two places where "green" could mean different things.
 
 ## The trunk
 
-| Trunk    | Receives                | Runs in CI                                                                                                                                              |
-| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trunk    | Receives                | Runs in CI                                                                                                                                                                                                       |
+| -------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `master` | every integrated change | `gate` on push and pull request — the frontend unit tests (`pnpm test`) and the Tauri host package's tests (`cargo test --manifest-path src-tauri/Cargo.toml`); `parity` and `bench` only by `workflow_dispatch` |
 
 `master` is protected — in the repository's settings, not in this file: no force-push, no deletion,
@@ -84,11 +84,11 @@ is just the branch everything lands on.
 
 ## CI: what runs, and when
 
-| Event                    | Jobs                                                       |
-| ------------------------ | ---------------------------------------------------------- |
+| Event                    | Jobs                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | push to `master`         | `gate`: `pnpm test` (vitest) and the Tauri host package's tests (`cargo test --manifest-path src-tauri/Cargo.toml`) |
-| pull request to `master` | the same `gate`                                            |
-| `workflow_dispatch`      | `gate`, and `parity`/`bench` when dispatched by hand       |
+| pull request to `master` | the same `gate`                                                                                                     |
+| `workflow_dispatch`      | `gate`, and `parity`/`bench` when dispatched by hand                                                                |
 
 For now CI runs unit tests only: the claim, docs, records and tooling checks are not on the automatic
 path, and neither is the corpus measurement. `scripts/check.sh` is still the full local gate, and
