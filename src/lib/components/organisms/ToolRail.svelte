@@ -28,30 +28,30 @@ const rail = css({
 });
 </script>
 
-<div class={rail} role="group" aria-label="Acciones rápidas">
+<div class={rail} role="group" aria-label="Quick actions">
   <Button variant="secondary" size="sm" onclick={onOpen}>
     <Icon name="import" size="sm" />
-    Importar
+    Import
   </Button>
   <Button variant="secondary" size="sm" disabled>
     <Icon name="layers" size="sm" />
-    Capas
+    Layers
     <span class={visuallyHidden()}
-      >— todavía no disponible: el árbol de capas no está cableado.</span
+      >— not available yet: the layer tree is not wired.</span
     >
   </Button>
   <Button variant="secondary" size="sm" disabled>
     <Icon name="origin" size="sm" />
-    Origen
+    Origin
     <span class={visuallyHidden()}
-      >— todavía no disponible: el origen del setup no está cableado.</span
+      >— not available yet: the setup origin is not wired.</span
     >
   </Button>
   <Button variant="primary" size="sm" disabled>
     <Icon name="arrow-right" size="sm" />
-    Generar plan
+    Generate plan
     <span class={visuallyHidden()}
-      >— todavía no disponible: el backend no expone generación de planes.</span
+      >— not available yet: the backend does not expose plan generation.</span
     >
   </Button>
 </div>

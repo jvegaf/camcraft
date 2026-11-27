@@ -107,31 +107,31 @@ async function handleTheme() {
   try {
     await saveThemePreference(next);
   } catch (e) {
-    setStatus(`Error: no se pudo guardar el tema (${String(e)})`, 'error');
+    setStatus(`Error: could not save the theme (${String(e)})`, 'error');
   }
 }
 </script>
 
 <header class={topbar}>
-  <button class={mark} aria-label="Inicio" onclick={onBack}>C</button>
+  <button class={mark} aria-label="Home" onclick={onBack}>C</button>
   <div class={product}>Camcraft</div>
   <div class={sep} aria-hidden="true"></div>
-  <button class={workspace} aria-label="Proyecto actual" onclick={onOpen}>
+  <button class={workspace} aria-label="Current project" onclick={onOpen}>
     <span>{projectName}{workbenchState.document?.dirty ? ' •' : ''}</span>
     <span class={muted}>▾</span>
   </button>
   <CommandSearch class={search} />
   <div class={topActions}>
-    <IconButton ariaLabel="Nuevo" icon="plus" onclick={onNew} />
-    <IconButton ariaLabel="Abrir" icon="folder" onclick={onOpen} />
-    <IconButton ariaLabel="Guardar" icon="save" onclick={onSave} />
+    <IconButton ariaLabel="New" icon="plus" onclick={onNew} />
+    <IconButton ariaLabel="Open" icon="folder" onclick={onOpen} />
+    <IconButton ariaLabel="Save" icon="save" onclick={onSave} />
     {#if onSaveAs}
-      <IconButton ariaLabel="Guardar como" icon="save-as" onclick={onSaveAs} />
+      <IconButton ariaLabel="Save as" icon="save-as" onclick={onSaveAs} />
     {/if}
-    <div class={layoutPill} aria-label="Layout flotante"><b>Floating</b> layout</div>
-    <IconButton ariaLabel="Tema" icon="theme" onclick={handleTheme} />
+    <div class={layoutPill} aria-label="Floating layout"><b>Floating</b> layout</div>
+    <IconButton ariaLabel="Theme" icon="theme" onclick={handleTheme} />
     <IconButton
-      ariaLabel="Configuración"
+      ariaLabel="Settings"
       icon="settings"
       onclick={onSettings}
     />

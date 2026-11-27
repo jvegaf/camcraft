@@ -22,9 +22,9 @@ describe('Icon', () => {
   });
 
   it('exposes an accessible name when a label is provided', () => {
-    render(Icon, { name: 'origin', label: 'Origen' });
+    render(Icon, { name: 'origin', label: 'Origin' });
 
-    const svg = screen.getByRole('img', { name: 'Origen' });
+    const svg = screen.getByRole('img', { name: 'Origin' });
     expect(svg.getAttribute('aria-hidden')).toBeNull();
   });
 

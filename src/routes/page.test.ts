@@ -52,13 +52,13 @@ describe('start screen route', () => {
     render(Page);
 
     expect(
-      screen.getByRole('button', { name: /Nuevo proyecto PCB/ })
+      screen.getByRole('button', { name: /New PCB project/ })
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Abrir proyecto/ })).toBeTruthy();
-    expect(screen.getByLabelText('Barra de estado')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Open project/ })).toBeTruthy();
+    expect(screen.getByLabelText('Status bar')).toBeTruthy();
     const banner = screen.getByRole('banner');
     expect(
-      within(banner).getByRole('button', { name: 'Proyecto actual' })
+      within(banner).getByRole('button', { name: 'Current project' })
         .textContent
     ).toContain('Camcraft');
 
@@ -80,13 +80,11 @@ describe('start screen route', () => {
     await waitFor(() => expect(gotoMock).toHaveBeenCalledWith('/workspace'));
   });
 
-  it('creates a document through the Nuevo action', async () => {
+  it('creates a document through the New action', async () => {
     const user = userEvent.setup();
     render(Page);
 
-    await user.click(
-      screen.getByRole('button', { name: /Nuevo proyecto PCB/ })
-    );
+    await user.click(screen.getByRole('button', { name: /New PCB project/ }));
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
@@ -97,12 +95,12 @@ describe('start screen route', () => {
     await waitFor(() => expect(gotoMock).toHaveBeenCalledWith('/workspace'));
   });
 
-  it('opens a document through the Abrir action', async () => {
+  it('opens a document through the Open action', async () => {
     openMock.mockResolvedValue('/tmp/otro.cmc');
     const user = userEvent.setup();
     render(Page);
 
-    await user.click(screen.getByRole('button', { name: /Abrir proyecto/ }));
+    await user.click(screen.getByRole('button', { name: /Open project/ }));
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('open_document', {
@@ -119,12 +117,16 @@ describe('start screen route', () => {
     render(Page);
     render(SettingsDialog);
 
-    await user.click(screen.getByRole('button', { name: 'Configuración' }));
+    await user.click(
+      within(screen.getByRole('banner')).getByRole('button', {
+        name: 'Settings'
+      })
+    );
 
     await waitFor(() => expect(workbenchState.settingsOpen).toBe(true));
-    const dialog = await screen.findByRole('dialog', { name: 'Preferencias' });
+    const dialog = await screen.findByRole('dialog', { name: 'Preferences' });
     expect(
-      within(dialog).getByRole('heading', { name: 'Apariencia' })
+      within(dialog).getByRole('heading', { name: 'Appearance' })
     ).toBeTruthy();
   });
 });

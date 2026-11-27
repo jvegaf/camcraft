@@ -24,7 +24,7 @@ type SceneSnapshotDto = {
 
 let container: HTMLDivElement | undefined = $state();
 let fpsText = $state('FPS: --');
-let statusText = $state('Cargando escena...');
+let statusText = $state('Loading scene...');
 
 const wrap = css({
   position: 'absolute',
@@ -80,7 +80,7 @@ onMount(() => {
     try {
       snapshot = await invoke<SceneSnapshotDto>('scene_snapshot');
     } catch (e) {
-      statusText = `Error escena: ${String(e)}`;
+      statusText = `Scene error: ${String(e)}`;
       return;
     }
     if (disposed || !container) return;

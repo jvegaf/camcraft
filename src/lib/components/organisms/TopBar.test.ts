@@ -19,7 +19,7 @@ const resetTheme = () => document.documentElement.removeAttribute('data-theme');
 describe('TopBar', () => {
   beforeEach(() => {
     resetTheme();
-    setStatus('Listo', 'ok');
+    setStatus('Ready', 'ok');
     invokeMock.mockReset();
     // The backend echoes what it stored, exactly like `update_settings_impl` does.
     invokeMock.mockImplementation(
@@ -40,10 +40,10 @@ describe('TopBar', () => {
     render(TopBar, { onNew, onOpen, onSave, onSaveAs });
 
     const actions = [
-      ['Nuevo', onNew],
-      ['Abrir', onOpen],
-      ['Guardar', onSave],
-      ['Guardar como', onSaveAs]
+      ['New', onNew],
+      ['Open', onOpen],
+      ['Save', onSave],
+      ['Save as', onSaveAs]
     ] as const;
 
     for (const [name, handler] of actions) {
@@ -54,23 +54,23 @@ describe('TopBar', () => {
     }
   });
 
-  it('gives Guardar and Guardar como their own glyphs', () => {
+  it('gives Save and Save as their own glyphs', () => {
     render(TopBar, { onSave: vi.fn(), onSaveAs: vi.fn() });
 
     const glyphOf = (name: string) =>
       screen.getByRole('button', { name }).querySelector('svg');
 
     // 095 T5 (L8d): both actions import the same file, so they must not look identical.
-    expect(glyphOf('Guardar')?.getAttribute('data-icon')).toBe('save');
-    expect(glyphOf('Guardar como')?.getAttribute('data-icon')).toBe('save-as');
+    expect(glyphOf('Save')?.getAttribute('data-icon')).toBe('save');
+    expect(glyphOf('Save as')?.getAttribute('data-icon')).toBe('save-as');
   });
 
-  it('omits Guardar como on a page that has no such handler', () => {
+  it('omits Save as on a page that has no such handler', () => {
     render(TopBar, { onNew: vi.fn(), onOpen: vi.fn(), onSave: vi.fn() });
 
-    expect(screen.queryByRole('button', { name: 'Guardar como' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save as' })).toBeNull();
     // The actions the start screen does pass keep rendering.
-    expect(screen.getByRole('button', { name: 'Nuevo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New' })).toBeTruthy();
   });
 
   // 095 T5 follow-up: the bar passes no query handler, so the search renders the artboard
@@ -79,21 +79,21 @@ describe('TopBar', () => {
     render(TopBar, {});
 
     const landmark = screen.getByRole('search');
-    expect(landmark.getAttribute('aria-label')).toBe('Buscar comando');
+    expect(landmark.getAttribute('aria-label')).toBe('Search command');
 
     const field = screen.getByRole('searchbox') as HTMLInputElement;
     expect(field.getAttribute('placeholder')).toBe(
-      'Buscar comando, capa u operación…'
+      'Search command, layer or operation…'
     );
     expect(field.disabled).toBe(true);
-    expect(landmark.textContent).toMatch(/todavía no disponible/);
+    expect(landmark.textContent).toMatch(/not available yet/);
   });
 
   it('flips data-theme on the document element from the theme action', async () => {
     const user = userEvent.setup();
     render(TopBar, {});
 
-    const toggle = screen.getByRole('button', { name: 'Tema' });
+    const toggle = screen.getByRole('button', { name: 'Theme' });
 
     expect(document.documentElement.dataset.theme).toBeUndefined();
     await user.click(toggle);
@@ -108,7 +108,7 @@ describe('TopBar', () => {
     const user = userEvent.setup();
     render(TopBar, {});
 
-    await user.click(screen.getByRole('button', { name: 'Tema' }));
+    await user.click(screen.getByRole('button', { name: 'Theme' }));
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('update_settings', {
@@ -132,7 +132,7 @@ describe('TopBar', () => {
     );
     render(TopBar, {});
 
-    const toggle = screen.getByRole('button', { name: 'Tema' });
+    const toggle = screen.getByRole('button', { name: 'Theme' });
     await user.click(toggle);
     await user.click(toggle);
 
@@ -175,7 +175,7 @@ describe('TopBar', () => {
     );
     render(TopBar, {});
 
-    const toggle = screen.getByRole('button', { name: 'Tema' });
+    const toggle = screen.getByRole('button', { name: 'Theme' });
     await user.click(toggle);
     await waitFor(() =>
       expect(document.documentElement.dataset.theme).toBe('light')
@@ -185,7 +185,7 @@ describe('TopBar', () => {
 
     await waitFor(() =>
       expect(workbenchState.statusMessage).toBe(
-        'Error: no se pudo guardar el tema (Error: permission denied)'
+        'Error: could not save the theme (Error: permission denied)'
       )
     );
     expect(workbenchState.statusKind).toBe('error');
@@ -197,10 +197,10 @@ describe('TopBar', () => {
     const onSettings = vi.fn();
     render(TopBar, { onSettings });
 
-    expect(screen.getByLabelText('Layout flotante').textContent).toBe(
+    expect(screen.getByLabelText('Floating layout').textContent).toBe(
       'Floating layout'
     );
-    await user.click(screen.getByRole('button', { name: 'Configuración' }));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(onSettings).toHaveBeenCalledTimes(1);
   });
 });

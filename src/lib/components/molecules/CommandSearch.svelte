@@ -23,9 +23,9 @@ interface Props {
 }
 
 let {
-  placeholder = 'Buscar comando, capa u operación…',
+  placeholder = 'Search command, layer or operation…',
   shortcut = '⌘K',
-  ariaLabel = 'Buscar comando',
+  ariaLabel = 'Search command',
   value = '',
   onquery,
   class: className = ''
@@ -56,7 +56,7 @@ function handleInput(event: Event) {
     <KeyHint keys={shortcut} />
   {:else}
     <span id={reasonId} data-reason="no-query-handler" class={styles.reason}
-      >Búsqueda todavía no disponible</span
+      >Search not available yet</span
     >
   {/if}
 </div>

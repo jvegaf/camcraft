@@ -31,10 +31,10 @@ describe('PanelRow', () => {
       label: 'Stock FR-4 1.6mm',
       meta: '100×80',
       dot: 'ok',
-      dotLabel: 'Estado: válido'
+      dotLabel: 'Status: valid'
     });
 
-    const announced = screen.getByRole('img', { name: 'Estado: válido' });
+    const announced = screen.getByRole('img', { name: 'Status: valid' });
     expect(announced.getAttribute('data-tone')).toBe('ok');
     expect(announced.getAttribute('aria-hidden')).toBeNull();
     labelled.unmount();
@@ -47,7 +47,7 @@ describe('PanelRow', () => {
   });
 
   it('renders a leading icon instead of a dot when asked', () => {
-    render(PanelRow, { label: 'Importar', icon: 'import' });
+    render(PanelRow, { label: 'Import', icon: 'import' });
 
     expect(document.querySelector('[data-icon="import"]')).not.toBeNull();
     expect(document.querySelector('[data-tone]')).toBeNull();
@@ -75,7 +75,7 @@ describe('PanelRow', () => {
   it('applies the selected variant class and leaves unselected rows unmarked', () => {
     const first = render(PanelRow, {
       label: '2 · Drill 0.8 / 1.0',
-      meta: 'seleccionada',
+      meta: 'selected',
       selected: true,
       onclick: () => {}
     });

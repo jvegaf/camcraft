@@ -15,11 +15,11 @@ describe('CommandSearch', () => {
     render(CommandSearch, { onquery: vi.fn() });
 
     const landmark = screen.getByRole('search');
-    expect(landmark.getAttribute('aria-label')).toBe('Buscar comando');
+    expect(landmark.getAttribute('aria-label')).toBe('Search command');
 
     const field = screen.getByRole('searchbox');
     expect(field.getAttribute('placeholder')).toBe(
-      'Buscar comando, capa u operación…'
+      'Search command, layer or operation…'
     );
     expect(screen.getByText('⌘K').tagName).toBe('KBD');
   });
@@ -44,11 +44,11 @@ describe('CommandSearch', () => {
     const field = screen.getByRole('searchbox') as HTMLInputElement;
     expect(field.disabled).toBe(true);
     expect(field.getAttribute('placeholder')).toBe(
-      'Buscar comando, capa u operación…'
+      'Search command, layer or operation…'
     );
 
-    const reason = screen.getByText(/todavía no disponible/);
-    expect(reason.textContent).toMatch(/búsqueda/i);
+    const reason = screen.getByText(/not available yet/);
+    expect(reason.textContent).toMatch(/search/i);
     expect(reason.textContent).not.toBe('');
     expect(field.getAttribute('aria-describedby')).toBe(reason.id);
     expect(reason.id).not.toBe('');
@@ -61,17 +61,17 @@ describe('CommandSearch', () => {
 
   it('lets the caller override the placeholder, shortcut and accessible name', () => {
     render(CommandSearch, {
-      placeholder: 'Buscar en browser…',
+      placeholder: 'Search in browser…',
       shortcut: '⌘F',
-      ariaLabel: 'Buscar en browser',
+      ariaLabel: 'Search in browser',
       onquery: vi.fn()
     });
 
     expect(screen.getByRole('search').getAttribute('aria-label')).toBe(
-      'Buscar en browser'
+      'Search in browser'
     );
     expect(screen.getByRole('searchbox').getAttribute('placeholder')).toBe(
-      'Buscar en browser…'
+      'Search in browser…'
     );
     expect(screen.getByText('⌘F')).toBeTruthy();
   });

@@ -76,7 +76,7 @@ async function openRecent(path: string) {
 }
 
 void refreshRecents();
-workbenchState.statusMessage = 'Listo';
+workbenchState.statusMessage = 'Ready';
 workbenchState.statusKind = 'ok';
 
 const shell = css({

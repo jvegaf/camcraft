@@ -48,7 +48,7 @@ describe('OperationInspector', () => {
     workbenchState.operations = [];
     workbenchState.selectedOperationId = null;
     workbenchState.collapsedSections = [];
-    setStatus('Listo', 'ok');
+    setStatus('Ready', 'ok');
   });
 
   it('shows an honest empty state when no operation is selected', () => {
@@ -58,13 +58,13 @@ describe('OperationInspector', () => {
       screen.getByRole('heading', { level: 2, name: 'Inspector' })
     ).toBeTruthy();
 
-    const operacion = sectionOf('Operación');
+    const operacion = sectionOf('Operation');
     const empty = operacion.querySelector('[data-empty="operation"]');
     expect(empty).not.toBeNull();
-    expect(empty?.textContent).toMatch(/Sin operación seleccionada/);
+    expect(empty?.textContent).toMatch(/No operation selected/);
 
     // No field is rendered for an operation the app does not have, so no plausible constant either.
-    expect(within(operacion).queryByText('Tipo')).toBeNull();
+    expect(within(operacion).queryByText('Type')).toBeNull();
     expect(within(operacion).queryByText('Drill cycle G81')).toBeNull();
     expect(within(operacion).queryByText('120')).toBeNull();
   });
@@ -78,13 +78,13 @@ describe('OperationInspector', () => {
     expect(within(inspector).getByText('Drill 0.8 / 1.0')).toBeTruthy();
 
     for (const label of [
-      'Tipo',
-      'Herramienta',
+      'Type',
+      'Tool',
       'Z cut',
       'Feed plunge',
       'Hits',
-      'Herramientas',
-      'Tiempo'
+      'Tools',
+      'Time'
     ]) {
       expect(within(inspector).getByText(label)).toBeTruthy();
     }
@@ -118,10 +118,10 @@ describe('OperationInspector', () => {
       return term.nextElementSibling?.textContent?.trim() ?? '';
     };
 
-    for (const label of ['Tipo', 'Herramienta', 'Z cut', 'Feed plunge']) {
+    for (const label of ['Type', 'Tool', 'Z cut', 'Feed plunge']) {
       expect(fieldValue(label), `${label} shows a fabricated value`).toBe('—');
     }
-    for (const label of ['Hits', 'Herramientas', 'Tiempo']) {
+    for (const label of ['Hits', 'Tools', 'Time']) {
       expect(rowValue(label), `${label} shows a fabricated value`).toBe('—');
     }
 
@@ -135,19 +135,19 @@ describe('OperationInspector', () => {
     expect(within(inspector).queryByText('0:42')).toBeNull();
   });
 
-  it('renders the real workbench status message in the Estado block', async () => {
-    setStatus('Toolpath válido, sin colisiones detectadas', 'ok');
+  it('renders the real workbench status message in the Status block', async () => {
+    setStatus('Valid toolpath, no collisions detected', 'ok');
     render(OperationInspector);
 
-    const estado = sectionOf('Estado');
+    const estado = sectionOf('Status');
     expect(
-      within(estado).getByText('Toolpath válido, sin colisiones detectadas')
+      within(estado).getByText('Valid toolpath, no collisions detected')
     ).toBeTruthy();
 
-    setStatus('Error: no hay documento abierto', 'error');
+    setStatus('Error: no document open', 'error');
     await waitFor(() =>
       expect(
-        within(sectionOf('Estado')).getByText('Error: no hay documento abierto')
+        within(sectionOf('Status')).getByText('Error: no document open')
       ).toBeTruthy()
     );
   });

@@ -43,7 +43,7 @@ function coordinate(value: number | undefined): string {
 }
 </script>
 
-<footer class={statusBar} aria-label="Barra de estado">
+<footer class={statusBar} aria-label="Status bar">
   <span class={mono}>X {coordinate(workbenchState.pointer?.x)}</span>
   <span class={mono}>Y {coordinate(workbenchState.pointer?.y)}</span>
   <span class={mono}>Z {coordinate(workbenchState.pointer?.z)}</span>
@@ -63,6 +63,6 @@ function coordinate(value: number | undefined): string {
         : info}>{workbenchState.statusMessage}</span
   >
   {#if workbenchState.statusKind !== 'error'}
-    <span class={ok}>● Sin errores</span>
+    <span class={ok}>● No errors</span>
   {/if}
 </footer>

@@ -28,9 +28,9 @@ describe('StatusDot', () => {
   });
 
   it('becomes an accessible dot when a label is provided', () => {
-    render(StatusDot, { tone: 'ok', label: 'Sin errores' });
+    render(StatusDot, { tone: 'ok', label: 'No errors' });
 
-    const dot = screen.getByRole('img', { name: 'Sin errores' });
+    const dot = screen.getByRole('img', { name: 'No errors' });
     expect(dot.getAttribute('aria-hidden')).toBeNull();
   });
 });

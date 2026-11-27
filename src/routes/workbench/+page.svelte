@@ -34,7 +34,7 @@ interface Props {
   projectName?: string;
 }
 
-let { projectName = 'documento.cam' }: Props = $props();
+let { projectName = 'document.cam' }: Props = $props();
 
 onMount(() => {
   void refreshDocumentStatus();
@@ -53,7 +53,7 @@ async function handleOpen() {
       { path: selected }
     );
     setDocument(status);
-    setStatus('Documento abierto', 'ok');
+    setStatus('Document opened', 'ok');
     void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
@@ -67,7 +67,7 @@ async function handleOpenRecent(path: string) {
       { path }
     );
     setDocument(status);
-    setStatus('Documento abierto', 'ok');
+    setStatus('Document opened', 'ok');
     void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
@@ -82,7 +82,7 @@ async function handleSave() {
       { path }
     );
     setDocument(status);
-    setStatus('Documento guardado', 'ok');
+    setStatus('Document saved', 'ok');
     void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
@@ -100,7 +100,7 @@ async function handleSaveAs() {
       { path: target }
     );
     setDocument(status);
-    setStatus('Documento guardado', 'ok');
+    setStatus('Document saved', 'ok');
     void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');
@@ -116,7 +116,7 @@ async function handleNew() {
       }
     );
     setDocument(status);
-    setStatus('Nuevo documento', 'ok');
+    setStatus('New document', 'ok');
     void refreshRecents();
   } catch (e) {
     setStatus(`Error: ${String(e)}`, 'error');

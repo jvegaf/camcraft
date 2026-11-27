@@ -16,7 +16,7 @@ import { inventory } from '$lib/ds/inventory.generated';
 
 function sheetFor(slug: string | undefined): CatalogEntry {
   const entry = findCatalogEntry(slug ?? '');
-  if (!entry) error(404, `Componente desconocido: ${slug ?? ''}`);
+  if (!entry) error(404, `Unknown component: ${slug ?? ''}`);
   return entry;
 }
 
@@ -190,7 +190,7 @@ const dataRow = css({
   {@const consumers = consumersOf(entry)}
   <div class={sheet}>
     <div class={inner}>
-      <a class={back} href="/ds">← Catálogo</a>
+      <a class={back} href="/ds">← Catalog</a>
 
       <header class={header}>
         <div>
@@ -199,7 +199,7 @@ const dataRow = css({
           <p class={purpose}>{entry.purpose}</p>
           <p class={usage}>
             <span
-              >En uso: <b data-ds-consumer-count>{consumers.length}</b> consumidores</span
+              >In use: <b data-ds-consumer-count>{consumers.length}</b> consumers</span
             >
             {#if consumers.length > 0}
               <span class={usageNames} data-ds-consumer-names
@@ -208,20 +208,20 @@ const dataRow = css({
             {/if}
           </p>
         </div>
-        <div class={themeSwitch} role="group" aria-label="Tema de la ficha">
+        <div class={themeSwitch} role="group" aria-label="Sheet theme">
           <button
             type="button"
             class={cx(themeButton, theme === 'light' && themeActive)}
             data-theme-option="light"
             aria-pressed={theme === 'light'}
-            onclick={() => setTheme('light')}>Claro</button
+            onclick={() => setTheme('light')}>Light</button
           >
           <button
             type="button"
             class={cx(themeButton, theme === 'dark' && themeActive)}
             data-theme-option="dark"
             aria-pressed={theme === 'dark'}
-            onclick={() => setTheme('dark')}>Oscuro</button
+            onclick={() => setTheme('dark')}>Dark</button
           >
         </div>
       </header>
@@ -244,7 +244,7 @@ const dataRow = css({
         </div>
       {:else}
         <p class={note} data-ds-render-note
-          >No renderiza aislado: {entry.reason} Sus estados quedan como datos.</p
+          >Does not render in isolation: {entry.reason} Its states stay as data.</p
         >
         <ul class={dataList}>
           {#each entry.states as state (state.label)}

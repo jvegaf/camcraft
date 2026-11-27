@@ -10,17 +10,17 @@ import ToolRail from './ToolRail.svelte';
 // have no command in the app yet, so they must render as visibly unavailable controls instead of
 // buttons that swallow a click and do nothing.
 describe('ToolRail', () => {
-  it('opens a document from Importar', async () => {
+  it('opens a document from Import', async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
     render(ToolRail, { onOpen });
 
-    await user.click(screen.getByRole('button', { name: 'Importar' }));
+    await user.click(screen.getByRole('button', { name: 'Import' }));
 
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['Capas', 'Origen', 'Generar plan'])(
+  it.each(['Layers', 'Origin', 'Generate plan'])(
     'renders %s as an unavailable control that says why',
     name => {
       render(ToolRail, { onOpen: vi.fn() });
@@ -31,7 +31,7 @@ describe('ToolRail', () => {
 
       expect(button.disabled).toBe(true);
       // The reason is part of the control's own text, so it is not a hover-only affordance.
-      expect(button.textContent).toContain('todavía no');
+      expect(button.textContent).toContain('not available yet');
     }
   );
 
@@ -40,12 +40,12 @@ describe('ToolRail', () => {
   it('renders the four artboard actions in order with a single primary action', () => {
     render(ToolRail, { onOpen: vi.fn() });
 
-    const rail = screen.getByLabelText('Acciones rápidas');
+    const rail = screen.getByLabelText('Quick actions');
     const buttons = within(rail).getAllByRole('button');
 
     expect(
       buttons.map(button => button.textContent?.split('—')[0].trim())
-    ).toEqual(['Importar', 'Capas', 'Origen', 'Generar plan']);
+    ).toEqual(['Import', 'Layers', 'Origin', 'Generate plan']);
     expect(
       buttons.filter(
         button => button.getAttribute('data-variant') === 'primary'
@@ -53,7 +53,7 @@ describe('ToolRail', () => {
     ).toBe(1);
     expect(
       screen
-        .getByRole('button', { name: /^Generar plan/ })
+        .getByRole('button', { name: /^Generate plan/ })
         .getAttribute('data-variant')
     ).toBe('primary');
   });
@@ -61,6 +61,6 @@ describe('ToolRail', () => {
   it('keeps the rail landmark of the artboard', () => {
     render(ToolRail, {});
 
-    expect(screen.getByLabelText('Acciones rápidas')).toBeTruthy();
+    expect(screen.getByLabelText('Quick actions')).toBeTruthy();
   });
 });

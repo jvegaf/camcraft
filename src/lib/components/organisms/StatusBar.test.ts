@@ -21,7 +21,7 @@ describe('StatusBar', () => {
   beforeEach(() => {
     setPointerPosition(null);
     setSelection(null);
-    setStatus('Listo', 'ok');
+    setStatus('Ready', 'ok');
     setDocument(null);
   });
 
@@ -47,7 +47,7 @@ describe('StatusBar', () => {
     render(StatusBar, {});
 
     expect(screen.getByText('mm · Grid 1 mm · GRBL')).toBeTruthy();
-    expect(screen.getByText('● Sin errores')).toBeTruthy();
+    expect(screen.getByText('● No errors')).toBeTruthy();
   });
 
   it('reads out the selected triangle index and its average depth', () => {
@@ -59,7 +59,7 @@ describe('StatusBar', () => {
     // The artboard labels the bar owns stay: coordinates, units and health.
     expect(screen.getByText('X —')).toBeTruthy();
     expect(screen.getByText('mm · Grid 1 mm · GRBL')).toBeTruthy();
-    expect(screen.getByText('● Sin errores')).toBeTruthy();
+    expect(screen.getByText('● No errors')).toBeTruthy();
   });
 
   it('shows no selection readout while nothing is selected', () => {
@@ -74,6 +74,6 @@ describe('StatusBar', () => {
     render(StatusBar, {});
 
     expect(screen.getByText('Error: no project open')).toBeTruthy();
-    expect(screen.queryByText('● Sin errores')).toBeNull();
+    expect(screen.queryByText('● No errors')).toBeNull();
   });
 });

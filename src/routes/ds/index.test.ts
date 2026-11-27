@@ -18,13 +18,13 @@ describe('ds index route', () => {
     expect(sections).toEqual(['atom', 'molecule', 'organism', 'template']);
   });
 
-  it('labels the third coverage fact as componentes en uso', () => {
+  it('labels the third coverage fact as components in use', () => {
     const { container } = render(Page);
     const headers = Array.from(container.querySelectorAll('thead th')).map(
       header => header.textContent?.trim()
     );
 
-    expect(headers).toContain('Componentes en uso');
+    expect(headers).toContain('Components in use');
     expect(headers.join(' ')).not.toContain('template');
   });
 
@@ -99,7 +99,7 @@ describe('ds index route', () => {
       );
 
       expect(badge?.getAttribute('data-badge-inuse')).toBe('no');
-      expect(badge?.textContent?.trim()).toBe('en uso no');
+      expect(badge?.textContent?.trim()).toBe('in use no');
     } finally {
       target.consumers = consumers;
     }

@@ -19,13 +19,13 @@ describe('PanelSection', () => {
 
   it('renders an optional count next to the heading without renaming it', () => {
     render(PanelSection, {
-      title: 'Operaciones',
+      title: 'Operations',
       count: 3,
       children: rows('1 · Profile outline')
     });
 
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Operaciones' })
+      screen.getByRole('heading', { level: 3, name: 'Operations' })
     ).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
   });
@@ -33,16 +33,16 @@ describe('PanelSection', () => {
   it('renders an optional right slot in the header', () => {
     render(PanelSection, {
       title: 'Browser',
-      count: 'Proyecto',
+      count: 'Project',
       right: createRawSnippet(() => ({
-        render: () => `<button type="button">Buscar en browser</button>`
+        render: () => `<button type="button">Search in browser</button>`
       })),
       children: rows('Top Copper')
     });
 
     expect(
-      screen.getByRole('button', { name: 'Buscar en browser' })
+      screen.getByRole('button', { name: 'Search in browser' })
     ).toBeTruthy();
-    expect(screen.getByText('Proyecto')).toBeTruthy();
+    expect(screen.getByText('Project')).toBeTruthy();
   });
 });

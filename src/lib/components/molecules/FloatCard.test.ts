@@ -8,10 +8,10 @@ import FloatCard from './FloatCard.svelte';
 // organisms share, so it lives with the other molecules instead of in the workbench folder. It is a
 // surface only: title, optional meta, optional header action and a body slot — no store, no Tauri.
 const body = createRawSnippet(() => ({
-  render: () => '<p>Contenido del panel</p>'
+  render: () => '<p>Panel content</p>'
 }));
 const action = createRawSnippet(() => ({
-  render: () => '<button type="button">Acción del panel</button>'
+  render: () => '<button type="button">Panel action</button>'
 }));
 
 describe('FloatCard', () => {
@@ -28,7 +28,7 @@ describe('FloatCard', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Browser' })
     ).toBeTruthy();
-    expect(screen.getByText('Contenido del panel')).toBeTruthy();
+    expect(screen.getByText('Panel content')).toBeTruthy();
     expect(container.querySelector('aside')).not.toBeNull();
   });
 
@@ -42,9 +42,7 @@ describe('FloatCard', () => {
 
     const surface = screen.getByLabelText('Inspector');
     expect(surface.textContent).toContain('Drill 0.8 / 1.0');
-    expect(
-      screen.getByRole('button', { name: 'Acción del panel' })
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Panel action' })).toBeTruthy();
     expect(
       screen.getByRole('heading', { level: 2, name: 'Inspector' })
     ).toBeTruthy();
@@ -52,14 +50,14 @@ describe('FloatCard', () => {
 
   it('uses its own aria label when the title is not the accessible name', () => {
     render(FloatCard, {
-      title: 'Operación',
+      title: 'Operation',
       ariaLabel: 'Inspector',
       children: body
     });
 
     expect(screen.getByLabelText('Inspector')).toBeTruthy();
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Operación' })
+      screen.getByRole('heading', { level: 2, name: 'Operation' })
     ).toBeTruthy();
   });
 });

@@ -11,9 +11,9 @@ const label = (text: string) =>
 // accent the artboard uses for the CAM action.
 describe('Button', () => {
   it('renders its label as the accessible name with the primary variant class', () => {
-    render(Button, { variant: 'primary', children: label('Generar plan') });
+    render(Button, { variant: 'primary', children: label('Generate plan') });
 
-    const button = screen.getByRole('button', { name: 'Generar plan' });
+    const button = screen.getByRole('button', { name: 'Generate plan' });
     expect(button.getAttribute('type')).toBe('button');
     expect(button.getAttribute('class')).toContain(
       'atomButton--variant_primary'
@@ -21,10 +21,10 @@ describe('Button', () => {
   });
 
   it('defaults to the secondary variant at medium size', () => {
-    render(Button, { children: label('Importar') });
+    render(Button, { children: label('Import') });
 
     const classes = screen
-      .getByRole('button', { name: 'Importar' })
+      .getByRole('button', { name: 'Import' })
       .getAttribute('class');
     expect(classes).toContain('atomButton--variant_secondary');
     expect(classes).toContain('atomButton--size_md');
@@ -34,11 +34,11 @@ describe('Button', () => {
     render(Button, {
       variant: 'ghost',
       size: 'sm',
-      children: label('Capas')
+      children: label('Layers')
     });
 
     const classes = screen
-      .getByRole('button', { name: 'Capas' })
+      .getByRole('button', { name: 'Layers' })
       .getAttribute('class');
     expect(classes).toContain('atomButton--variant_ghost');
     expect(classes).toContain('atomButton--size_sm');
@@ -47,9 +47,9 @@ describe('Button', () => {
   it('emits one click per press', async () => {
     const user = userEvent.setup();
     const onclick = vi.fn();
-    render(Button, { onclick, children: label('Generar plan') });
+    render(Button, { onclick, children: label('Generate plan') });
 
-    await user.click(screen.getByRole('button', { name: 'Generar plan' }));
+    await user.click(screen.getByRole('button', { name: 'Generate plan' }));
 
     expect(onclick).toHaveBeenCalledTimes(1);
   });
@@ -60,10 +60,10 @@ describe('Button', () => {
     render(Button, {
       disabled: true,
       onclick,
-      children: label('Generar plan')
+      children: label('Generate plan')
     });
 
-    const button = screen.getByRole('button', { name: 'Generar plan' });
+    const button = screen.getByRole('button', { name: 'Generate plan' });
     expect(button.hasAttribute('disabled')).toBe(true);
 
     await user.click(button);

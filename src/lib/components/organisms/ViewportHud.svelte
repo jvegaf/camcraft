@@ -35,11 +35,11 @@ const selText = css({ color: 'sel' });
 // the app cannot produce today. The plural branch this used to carry was unreachable and claimed a
 // multi-select that does not exist.
 let selectionLabel = $derived(
-  workbenchState.selection ? '1 triángulo seleccionado' : 'Sin selección'
+  workbenchState.selection ? '1 triangle selected' : 'No selection'
 );
 </script>
 
-<div class={hud} aria-label="Estado de viewport">
+<div class={hud} aria-label="Viewport status">
   <div class={card}><b>2D Board</b> · Grid 1 mm</div>
   <div class={card}>
     {#if workbenchState.selection}

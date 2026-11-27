@@ -77,7 +77,7 @@ export type WorkbenchState = {
 export const workbenchState: WorkbenchState = $state({
   selection: null,
   pointer: null,
-  statusMessage: 'Listo',
+  statusMessage: 'Ready',
   statusKind: 'ok',
   document: null,
   recents: [],
@@ -127,9 +127,7 @@ export function setDocument(document: DocumentStatus | null) {
   }
   workbenchState.document = document;
   if (document) {
-    workbenchState.statusMessage = document.dirty
-      ? 'Cambios sin guardar'
-      : 'Listo';
+    workbenchState.statusMessage = document.dirty ? 'Unsaved changes' : 'Ready';
     workbenchState.statusKind = document.dirty ? 'info' : 'ok';
   }
 }

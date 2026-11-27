@@ -11,18 +11,18 @@ import { inventory } from '$lib/ds/inventory.generated';
 const board = buildBoard(inventory, CATALOG);
 
 const SECTIONS: { layer: Layer; title: string }[] = [
-  { layer: 'atom', title: 'Átomos' },
-  { layer: 'molecule', title: 'Moléculas' },
-  { layer: 'organism', title: 'Organismos' },
+  { layer: 'atom', title: 'Atoms' },
+  { layer: 'molecule', title: 'Molecules' },
+  { layer: 'organism', title: 'Organisms' },
   { layer: 'template', title: 'Templates' }
 ];
 
 const LAYER_LABEL: Record<Layer, string> = {
-  atom: 'átomo',
-  molecule: 'molécula',
-  organism: 'organismo',
+  atom: 'atom',
+  molecule: 'molecule',
+  organism: 'organism',
   template: 'template',
-  unclassified: 'sin clasificar'
+  unclassified: 'unclassified'
 };
 
 function componentsOf(layer: Layer): ComponentEntry[] {
@@ -154,22 +154,22 @@ const sectionTotal = (layer: Layer) =>
   <div class={inner}>
     <h1 class={heading}>Design system</h1>
     <p class={lead}>
-      Catálogo del Atomic Design derivado del repositorio. Solo existe bajo
+      Atomic Design catalog derived from the repository. Only exists under
       <code> pnpm dev</code>.
     </p>
 
-    <section class={card} aria-label="Tablero de progreso">
-      <h2 class={cardTitle}>Tablero de progreso</h2>
+    <section class={card} aria-label="Progress board">
+      <h2 class={cardTitle}>Progress board</h2>
       <table class={boardTable}>
         <thead>
           <tr>
-            <th class={boardLayer}>Capa</th>
+            <th class={boardLayer}>Layer</th>
             <th class={boardHead}>Total</th>
-            <th class={boardHead}>Ficha</th>
+            <th class={boardHead}>Sheet</th>
             <th class={boardHead}>Test</th>
-            <th class={boardHead}>Componentes en uso</th>
-            <th class={boardHead}>Renderable</th>
-            <th class={boardHead}>No renderable</th>
+            <th class={boardHead}>Components in use</th>
+            <th class={boardHead}>Renders in isolation</th>
+            <th class={boardHead}>Does not render in isolation</th>
           </tr>
         </thead>
         <tbody>
@@ -192,10 +192,10 @@ const sectionTotal = (layer: Layer) =>
       </table>
     </section>
 
-    <section class={card} aria-label="Componentes sin clasificar">
-      <h2 class={cardTitle}>Sin clasificar ({board.unclassified.length})</h2>
+    <section class={card} aria-label="Unclassified components">
+      <h2 class={cardTitle}>Unclassified ({board.unclassified.length})</h2>
       {#if board.unclassified.length === 0}
-        <p class={empty}>Todos los componentes están en una capa atómica.</p>
+        <p class={empty}>Every component lives in an atomic layer.</p>
       {:else}
         {#each board.unclassified as component (component.path)}
           <div class={unclassifiedRow} data-unclassified-item={component.path}>
@@ -221,12 +221,12 @@ const sectionTotal = (layer: Layer) =>
             <span
               class={cx(badge, hasSheet(component) ? badgeYes : badgeNo)}
               data-badge-sheet={hasSheet(component) ? 'yes' : 'no'}
-              >ficha {hasSheet(component) ? 'sí' : 'no'}</span
+              >sheet {hasSheet(component) ? 'yes' : 'no'}</span
             >
             <span
               class={cx(badge, component.test ? badgeYes : badgeNo)}
               data-badge-test={component.test ? 'yes' : 'no'}
-              >test {component.test ? 'sí' : 'no'}</span
+              >test {component.test ? 'yes' : 'no'}</span
             >
             <span
               class={cx(
@@ -234,12 +234,12 @@ const sectionTotal = (layer: Layer) =>
                 component.consumers.length > 0 ? badgeYes : badgeNo
               )}
               data-badge-inuse={component.consumers.length > 0 ? 'yes' : 'no'}
-              >en uso {component.consumers.length > 0 ? 'sí' : 'no'}</span
+              >in use {component.consumers.length > 0 ? 'yes' : 'no'}</span
             >
             {#if hasSheet(component)}
-              <a class={sheetLink} href={`/ds/${slugOf(component)}`}>Ficha →</a>
+              <a class={sheetLink} href={`/ds/${slugOf(component)}`}>Sheet →</a>
             {:else}
-              <span class={noSheet}>Sin ficha</span>
+              <span class={noSheet}>No sheet</span>
             {/if}
           </div>
         {/each}

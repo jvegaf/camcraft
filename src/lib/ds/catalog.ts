@@ -65,7 +65,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'button',
     name: 'Button',
     layer: 'atom',
-    purpose: 'Botón etiquetado con las variantes de acento y los dos tamaños.',
+    purpose: 'Labelled button with the accent variants and both sizes.',
     path: 'src/lib/components/atoms/Button.svelte',
     component: asCatalogComponent(Button),
     renderable: true,
@@ -73,28 +73,28 @@ export const CATALOG: readonly CatalogEntry[] = [
       {
         label: 'primary',
         props: { variant: 'primary' },
-        content: 'Generar plan'
+        content: 'Generate plan'
       },
       {
         label: 'secondary',
         props: { variant: 'secondary' },
-        content: 'Importar'
+        content: 'Import'
       },
-      { label: 'ghost', props: { variant: 'ghost' }, content: 'Cancelar' },
+      { label: 'ghost', props: { variant: 'ghost' }, content: 'Cancel' },
       {
         label: 'sm',
         props: { variant: 'secondary', size: 'sm' },
-        content: 'Guardar'
+        content: 'Save'
       },
       {
         label: 'md',
         props: { variant: 'secondary', size: 'md' },
-        content: 'Guardar'
+        content: 'Save'
       },
       {
         label: 'disabled',
         props: { variant: 'secondary', disabled: true },
-        content: 'Capas'
+        content: 'Layers'
       }
     ]
   },
@@ -103,7 +103,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: 'Glyph',
     layer: 'atom',
     purpose:
-      'Glifo local de 24×24 que el diálogo de preferencias usa para su cruz de cierre.',
+      'Local 24×24 glyph the preferences dialog uses for its close cross.',
     path: 'src/lib/components/atoms/Glyph.svelte',
     component: asCatalogComponent(Glyph),
     renderable: true,
@@ -118,7 +118,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: 'Icon',
     layer: 'atom',
     purpose:
-      'Dibujo 24×24 del set de iconos; decorativo salvo que reciba label.',
+      '24×24 drawing from the icon set; decorative unless it receives label.',
     path: 'src/lib/components/atoms/Icon.svelte',
     component: asCatalogComponent(Icon),
     renderable: true,
@@ -127,8 +127,8 @@ export const CATALOG: readonly CatalogEntry[] = [
       { label: 'md', props: { name: 'search' } },
       { label: 'lg', props: { name: 'search', size: 'lg' } },
       {
-        label: 'con label',
-        props: { name: 'settings', label: 'Configuración' }
+        label: 'with label',
+        props: { name: 'settings', label: 'Settings' }
       }
     ]
   },
@@ -136,19 +136,19 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'icon-button',
     name: 'IconButton',
     layer: 'atom',
-    purpose: 'Control cuadrado solo-icono; el nombre accesible es obligatorio.',
+    purpose: 'Square icon-only control; the accessible name is required.',
     path: 'src/lib/components/atoms/IconButton.svelte',
     component: asCatalogComponent(IconButton),
     renderable: true,
     states: [
-      { label: 'md', props: { ariaLabel: 'Abrir', icon: 'folder' } },
+      { label: 'md', props: { ariaLabel: 'Open', icon: 'folder' } },
       {
         label: 'sm',
-        props: { ariaLabel: 'Guardar', icon: 'save', size: 'sm' }
+        props: { ariaLabel: 'Save', icon: 'save', size: 'sm' }
       },
       {
         label: 'disabled',
-        props: { ariaLabel: 'Capas', icon: 'layers', disabled: true }
+        props: { ariaLabel: 'Layers', icon: 'layers', disabled: true }
       }
     ]
   },
@@ -156,20 +156,21 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'key-hint',
     name: 'KeyHint',
     layer: 'atom',
-    purpose: 'Chip de atajo de teclado del chrome de la app.',
+    purpose: 'Keyboard shortcut chip of the app chrome.',
     path: 'src/lib/components/atoms/KeyHint.svelte',
     component: asCatalogComponent(KeyHint),
     renderable: true,
     states: [
-      { label: 'por defecto', props: {} },
-      { label: 'personalizado', props: { keys: 'Esc' } }
+      { label: 'default', props: {} },
+      { label: 'custom', props: { keys: 'Esc' } }
     ]
   },
   {
     slug: 'status-dot',
     name: 'StatusDot',
     layer: 'atom',
-    purpose: 'Punto tonal; sin label es decorativo y no comunica por color.',
+    purpose:
+      'Tonal dot; without label it is decorative and does not communicate by colour.',
     path: 'src/lib/components/atoms/StatusDot.svelte',
     component: asCatalogComponent(StatusDot),
     renderable: true,
@@ -181,7 +182,7 @@ export const CATALOG: readonly CatalogEntry[] = [
       { label: 'cut', props: { tone: 'cut' } },
       { label: 'warn', props: { tone: 'warn' } },
       { label: 'danger', props: { tone: 'danger' } },
-      { label: 'con label', props: { tone: 'ok', label: 'Estado: válido' } }
+      { label: 'with label', props: { tone: 'ok', label: 'Status: valid' } }
     ]
   },
   {
@@ -189,15 +190,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: 'CommandSearch',
     layer: 'molecule',
     purpose:
-      'Campo de búsqueda del app bar; sin onquery queda deshabilitado y dice por qué.',
+      'App bar search field; without onquery it stays disabled and says why.',
     path: 'src/lib/components/molecules/CommandSearch.svelte',
     component: asCatalogComponent(CommandSearch),
     renderable: true,
     states: [
-      { label: 'sin handler', props: {} },
+      { label: 'without handler', props: {} },
       {
         label: 'enabled',
-        props: { onquery: noopQuery, placeholder: 'Buscar comando…' }
+        props: { onquery: noopQuery, placeholder: 'Search command…' }
       }
     ]
   },
@@ -205,20 +206,20 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'float-card',
     name: 'FloatCard',
     layer: 'molecule',
-    purpose: 'Superficie flotante con cabecera y cuerpo desplazable.',
+    purpose: 'Floating surface with a header and a scrollable body.',
     path: 'src/lib/components/molecules/FloatCard.svelte',
     component: asCatalogComponent(FloatCard),
     renderable: true,
     states: [
       {
-        label: 'sin meta',
+        label: 'without meta',
         props: { title: 'Inspector' },
-        content: 'Contenido de la tarjeta.'
+        content: 'Card content.'
       },
       {
-        label: 'con meta',
-        props: { title: 'Browser', meta: '3 capas' },
-        content: 'Contenido de la tarjeta.'
+        label: 'with meta',
+        props: { title: 'Browser', meta: '3 layers' },
+        content: 'Card content.'
       }
     ]
   },
@@ -226,29 +227,29 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'panel-row',
     name: 'PanelRow',
     layer: 'molecule',
-    purpose: 'Fila de panel con punto o icono, etiqueta y meta.',
+    purpose: 'Panel row with a dot or icon, a label and meta.',
     path: 'src/lib/components/molecules/PanelRow.svelte',
     component: asCatalogComponent(PanelRow),
     renderable: true,
     states: [
-      { label: 'etiqueta', props: { label: 'Proyecto', meta: 'board.cmc' } },
+      { label: 'label', props: { label: 'Project', meta: 'board.cmc' } },
       {
-        label: 'con punto',
+        label: 'with dot',
         props: {
           label: 'Board',
-          meta: '2 capas',
+          meta: '2 layers',
           dot: 'ok',
-          dotLabel: 'Estado: válido'
+          dotLabel: 'Status: valid'
         }
       },
       {
-        label: 'con icono',
-        props: { label: 'Operaciones', meta: '1', icon: 'layers' }
+        label: 'with icon',
+        props: { label: 'Operations', meta: '1', icon: 'layers' }
       },
       {
         label: 'selected',
         props: {
-          label: 'Tamaño',
+          label: 'Size',
           meta: '120×80 mm',
           selected: true,
           onclick: noop
@@ -261,15 +262,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: 'PanelSection',
     layer: 'molecule',
     purpose:
-      'Bloque de panel con cabecera, conteo y cuerpo, opcionalmente colapsable.',
+      'Panel block with a header, a count and a body, optionally collapsible.',
     path: 'src/lib/components/molecules/PanelSection.svelte',
     component: asCatalogComponent(PanelSection),
     renderable: true,
     states: [
       {
-        label: 'con conteo',
+        label: 'with count',
         props: { title: 'Board', count: 2 },
-        content: 'Filas de la sección.'
+        content: 'Section rows.'
       },
       {
         label: 'collapsible',
@@ -279,17 +280,17 @@ export const CATALOG: readonly CatalogEntry[] = [
           collapsed: false,
           ontoggle: noop
         },
-        content: 'Filas de la sección.'
+        content: 'Section rows.'
       },
       {
         label: 'collapsed',
         props: {
-          title: 'Salida',
+          title: 'Output',
           collapsible: true,
           collapsed: true,
           ontoggle: noop
         },
-        content: 'Filas de la sección.'
+        content: 'Section rows.'
       }
     ]
   },
@@ -297,67 +298,65 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'board-canvas',
     name: 'BoardCanvas',
     layer: 'organism',
-    purpose: 'Viewport three.js del board con el snapshot real de la escena.',
+    purpose: 'three.js viewport of the board with the real scene snapshot.',
     path: 'src/lib/components/organisms/BoardCanvas.svelte',
     component: asCatalogComponent(BoardCanvas),
     renderable: false,
     reason:
-      'Necesita un canvas WebGL y el store vivo de workbench; no renderiza aislado.',
-    states: [{ label: 'estado del store y del canvas', props: {} }]
+      'Needs a WebGL canvas and the live workbench store; does not render in isolation.',
+    states: [{ label: 'store and canvas state', props: {} }]
   },
   {
     slug: 'cam-object-browser',
     name: 'CamObjectBrowser',
     layer: 'organism',
-    purpose: 'Browser del workbench organizado por objeto CAM.',
+    purpose: 'Workbench browser organised by CAM object.',
     path: 'src/lib/components/organisms/CamObjectBrowser.svelte',
     component: asCatalogComponent(CamObjectBrowser),
     renderable: false,
     reason:
-      'Lee el store vivo de workbench y el documento abierto; no renderiza aislado.',
+      'Reads the live workbench store and the open document; does not render in isolation.',
     states: [
-      { label: 'sin handler', props: {} },
-      { label: 'con onOpenRecent', props: { onOpenRecent: noop } }
+      { label: 'without handler', props: {} },
+      { label: 'with onOpenRecent', props: { onOpenRecent: noop } }
     ]
   },
   {
     slug: 'operation-inspector',
     name: 'OperationInspector',
     layer: 'organism',
-    purpose:
-      'Inspector de la operación seleccionada y del estado del workbench.',
+    purpose: 'Inspector of the selected operation and the workbench state.',
     path: 'src/lib/components/organisms/OperationInspector.svelte',
     component: asCatalogComponent(OperationInspector),
     renderable: false,
-    reason: 'Lee el store vivo de workbench; no renderiza aislado.',
-    states: [{ label: 'estado del store', props: {} }]
+    reason: 'Reads the live workbench store; does not render in isolation.',
+    states: [{ label: 'store state', props: {} }]
   },
   {
     slug: 'settings-dialog',
     name: 'SettingsDialog',
     layer: 'organism',
     purpose:
-      'Diálogo de preferencias: lee y escribe el tema persistido del backend.',
+      'Preferences dialog: reads and writes the backend-persisted theme.',
     path: 'src/lib/components/organisms/SettingsDialog.svelte',
     component: asCatalogComponent(SettingsDialog),
     renderable: false,
     reason:
-      'Escribe settings/theme por IPC de Tauri y lee el store vivo; no renderiza aislado.',
-    states: [{ label: 'estado del store (settingsOpen)', props: {} }]
+      'Writes settings/theme over Tauri IPC and reads the live store; does not render in isolation.',
+    states: [{ label: 'store state (settingsOpen)', props: {} }]
   },
   {
     slug: 'start-screen',
     name: 'StartScreen',
     layer: 'organism',
-    purpose:
-      'Pantalla de arranque: acciones de archivo, formulario de documento nuevo y recientes.',
+    purpose: 'Start screen: file actions, new-document form and recents.',
     path: 'src/lib/components/organisms/StartScreen.svelte',
     component: asCatalogComponent(StartScreen),
     renderable: true,
     states: [
-      { label: 'sin recientes', props: {} },
+      { label: 'without recents', props: {} },
       {
-        label: 'con recientes',
+        label: 'with recents',
         props: {
           recents: [
             {
@@ -368,10 +367,10 @@ export const CATALOG: readonly CatalogEntry[] = [
           ]
         }
       },
-      { label: 'con error', props: { error: 'state poisoned' } },
-      { label: 'nuevo proyecto', props: { showNew: true } },
+      { label: 'with error', props: { error: 'state poisoned' } },
+      { label: 'new project', props: { showNew: true } },
       {
-        label: 'con handlers',
+        label: 'with handlers',
         props: {
           onOpen: noop,
           onOpenRecent: noop,
@@ -385,62 +384,61 @@ export const CATALOG: readonly CatalogEntry[] = [
     slug: 'status-bar',
     name: 'StatusBar',
     layer: 'organism',
-    purpose:
-      'Barra de estado con coordenadas, selección y salud del workbench.',
+    purpose: 'Status bar with coordinates, selection and workbench health.',
     path: 'src/lib/components/organisms/StatusBar.svelte',
     component: asCatalogComponent(StatusBar),
     renderable: false,
     reason:
-      'Lee el puntero, la selección y el estado vivos del workbench; no renderiza aislado.',
-    states: [{ label: 'estado del store', props: {} }]
+      'Reads the live pointer, selection and workbench state; does not render in isolation.',
+    states: [{ label: 'store state', props: {} }]
   },
   {
     slug: 'tool-rail',
     name: 'ToolRail',
     layer: 'organism',
-    purpose: 'Rail de acciones rápidas del viewport.',
+    purpose: 'Viewport quick-action rail.',
     path: 'src/lib/components/organisms/ToolRail.svelte',
     component: asCatalogComponent(ToolRail),
     renderable: true,
     states: [
-      { label: 'sin handler', props: {} },
-      { label: 'con onOpen', props: { onOpen: noop } }
+      { label: 'without handler', props: {} },
+      { label: 'with onOpen', props: { onOpen: noop } }
     ]
   },
   {
     slug: 'top-bar',
     name: 'TopBar',
     layer: 'organism',
-    purpose: 'App bar con marca, proyecto, búsqueda y acciones de archivo.',
+    purpose: 'App bar with brand, project, search and file actions.',
     path: 'src/lib/components/organisms/TopBar.svelte',
     component: asCatalogComponent(TopBar),
     renderable: false,
     reason:
-      'La acción de tema llama a update_settings por IPC de Tauri y lee el store vivo; no renderiza aislado.',
-    states: [{ label: 'sin handlers', props: {} }]
+      'The theme action calls update_settings over Tauri IPC and reads the live store; does not render in isolation.',
+    states: [{ label: 'without handlers', props: {} }]
   },
   {
     slug: 'viewport-hud',
     name: 'ViewportHud',
     layer: 'organism',
-    purpose: 'Tarjetas del HUD del viewport con la selección real.',
+    purpose: 'Viewport HUD cards with the real selection.',
     path: 'src/lib/components/organisms/ViewportHud.svelte',
     component: asCatalogComponent(ViewportHud),
     renderable: false,
-    reason: 'Lee la selección viva del workbench; no renderiza aislado.',
-    states: [{ label: 'estado del store', props: {} }]
+    reason: 'Reads the live workbench selection; does not render in isolation.',
+    states: [{ label: 'store state', props: {} }]
   },
   {
     slug: 'workbench-template',
     name: 'WorkbenchTemplate',
     layer: 'template',
-    purpose: 'Marco de la app con una región por slot del artboard.',
+    purpose: 'App frame with one region per artboard slot.',
     path: 'src/lib/components/templates/WorkbenchTemplate.svelte',
     component: asCatalogComponent(WorkbenchTemplate),
     renderable: true,
     states: [
-      { label: 'regiones vacías', props: {} },
-      { label: 'con ariaLabel', props: { ariaLabel: 'Camcraft' } }
+      { label: 'empty regions', props: {} },
+      { label: 'with ariaLabel', props: { ariaLabel: 'Camcraft' } }
     ]
   }
 ];

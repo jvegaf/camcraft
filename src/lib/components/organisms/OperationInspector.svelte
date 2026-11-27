@@ -115,14 +115,14 @@ function timecode(seconds: number): string {
   class={panelPos}
   ariaLabel="Inspector"
 >
-  <PanelSection title="Operación">
+  <PanelSection title="Operation">
     {#if operation}
       <div class={field}>
-        <span class={fieldLabel}>Tipo</span>
+        <span class={fieldLabel}>Type</span>
         <div class={fieldValue}><span>{operation.type ?? UNKNOWN}</span></div>
       </div>
       <div class={field}>
-        <span class={fieldLabel}>Herramienta</span>
+        <span class={fieldLabel}>Tool</span>
         <div class={fieldValue}><span>{operation.tool ?? UNKNOWN}</span></div>
       </div>
       <div class={field}>
@@ -142,20 +142,20 @@ function timecode(seconds: number): string {
       <dl class={kv}>
         <dt>Hits</dt>
         <dd>{operation.hitCount ?? UNKNOWN}</dd>
-        <dt>Herramientas</dt>
+        <dt>Tools</dt>
         <dd>{toolsLabel}</dd>
-        <dt>Tiempo</dt>
+        <dt>Time</dt>
         <dd>{operation.durationS === null ? UNKNOWN : timecode(operation.durationS)}</dd>
       </dl>
     {:else}
       <p class={empty} data-empty="operation"
-        >Sin operación seleccionada. El documento expone el conteo de toolpaths, no sus
-        nombres ni sus parámetros.</p
+        >No operation selected. The document exposes the toolpath count, not its names
+        or parameters.</p
       >
     {/if}
   </PanelSection>
 
-  <PanelSection title="Estado">
+  <PanelSection title="Status">
     <div class={stateClass}>{workbenchState.statusMessage}</div>
   </PanelSection>
 </FloatCard>

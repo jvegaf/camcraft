@@ -248,7 +248,7 @@ const inputCls = input();
       <div class={topRow}>
         <div>
           <p class={eyebrow}>Camcraft</p>
-          <h2 class={welcome}>Bienvenido al estudio CAM</h2>
+          <h2 class={welcome}>Welcome to the CAM studio</h2>
         </div>
         {#if onSettings}
           <button class={settingsBtn} type="button" onclick={onSettings} aria-label="Settings">
@@ -256,12 +256,12 @@ const inputCls = input();
           </button>
         {/if}
       </div>
-      <p class={lead}>Abrí una placa o retomá un proyecto. El shell usa superficies flotantes, jerarquía de bordes clara y command search central.</p>
+      <p class={lead}>Open a board or resume a project. The shell uses floating surfaces, a clear border hierarchy and central command search.</p>
       <button class={action} type="button" onclick={() => (showNew = !showNew)}>
         <span class={`${actionIcon} ${actionIconPrimary}`}>
           <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </span>
-        <div><strong class={actionTitle}>Nuevo proyecto PCB</strong><span class={actionDesc}>Configurar stock, origen y board</span></div>
+        <div><strong class={actionTitle}>New PCB project</strong><span class={actionDesc}>Configure stock, origin and board</span></div>
       </button>
       {#if showNew}
         <form class={newDocForm} onsubmit={submitNew}>
@@ -278,15 +278,15 @@ const inputCls = input();
         <span class={actionIcon}>
           <svg class={icon} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
         </span>
-        <div><strong class={actionTitle}>Abrir proyecto</strong><span class={actionDesc}>.cam o fuentes de placa</span></div>
+        <div><strong class={actionTitle}>Open project</strong><span class={actionDesc}>.cam or board sources</span></div>
       </button>
       {#if error}
         <p class={errorText}>{error}</p>
       {/if}
     </div>
     <div class={panel}>
-      <h2 class={heading}>Recientes</h2>
-      <p class={lead}>Retomá con contexto visible antes de abrir.</p>
+      <h2 class={heading}>Recent</h2>
+      <p class={lead}>Resume with visible context before opening.</p>
       {#if recents.length === 0}
         <p class={emptyText}>No recent documents yet.</p>
       {:else}

@@ -15,18 +15,18 @@ describe('ViewportHud', () => {
   it('labels the viewport with the artboard 2D Board and grid strings', () => {
     render(ViewportHud, {});
 
-    const hud = screen.getByLabelText('Estado de viewport');
+    const hud = screen.getByLabelText('Viewport status');
     expect(hud.textContent).toContain('2D Board');
     expect(hud.textContent).toContain(' · Grid 1 mm');
   });
 
-  it('states Sin selección instead of dropping the selection card', () => {
+  it('states No selection instead of dropping the selection card', () => {
     render(ViewportHud, {});
 
-    const hud = screen.getByLabelText('Estado de viewport');
-    expect(hud.textContent).toContain('Sin selección');
+    const hud = screen.getByLabelText('Viewport status');
+    expect(hud.textContent).toContain('No selection');
     // The empty state is text, never a made-up count.
-    expect(hud.textContent).not.toMatch(/triángulo/);
+    expect(hud.textContent).not.toMatch(/triangle/);
   });
 
   // The viewport selects one triangle per click (`workbench.svelte.ts`), so the card states that
@@ -35,13 +35,13 @@ describe('ViewportHud', () => {
     setSelection({ kind: 'triangle', index: 3, avgDepthMm: 0.4 });
     render(ViewportHud, {});
 
-    const hud = screen.getByLabelText('Estado de viewport');
+    const hud = screen.getByLabelText('Viewport status');
     expect(hud.textContent).toContain('2D Board');
     // Exactly the single-selection wording: no count, no plural.
-    expect(screen.getByText('1 triángulo seleccionado').textContent).toBe(
-      '1 triángulo seleccionado'
+    expect(screen.getByText('1 triangle selected').textContent).toBe(
+      '1 triangle selected'
     );
-    expect(hud.textContent).not.toMatch(/triángulos/);
-    expect(screen.queryByText('Sin selección')).toBeNull();
+    expect(hud.textContent).not.toMatch(/triangles/);
+    expect(screen.queryByText('No selection')).toBeNull();
   });
 });

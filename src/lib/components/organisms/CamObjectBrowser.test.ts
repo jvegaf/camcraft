@@ -60,10 +60,10 @@ describe('CamObjectBrowser', () => {
     expect(
       within(browser).getByRole('heading', { level: 2, name: 'Browser' })
     ).toBeTruthy();
-    expect(within(browser).getByText('Proyecto')).toBeTruthy();
+    expect(within(browser).getByText('Project')).toBeTruthy();
     expect(within(browser).getByText('controller-board.cmc')).toBeTruthy();
 
-    for (const title of ['Board', 'Setup', 'Operaciones', 'Salida']) {
+    for (const title of ['Board', 'Setup', 'Operations', 'Output']) {
       expect(
         within(browser).getByRole('heading', { level: 3, name: title })
       ).toBeTruthy();
@@ -75,18 +75,18 @@ describe('CamObjectBrowser', () => {
     render(CamObjectBrowser);
 
     const board = sectionOf('Board');
-    expect(within(board).getByText('Tamaño')).toBeTruthy();
+    expect(within(board).getByText('Size')).toBeTruthy();
     expect(within(board).getByText('100×80 mm')).toBeTruthy();
-    expect(within(board).getByText('Espesor')).toBeTruthy();
+    expect(within(board).getByText('Thickness')).toBeTruthy();
     expect(within(board).getByText('1.6 mm')).toBeTruthy();
     // `document_status` exposes how many layers the document has, so that real count sits in the
     // section header; the layer names themselves are not exposed and are not invented as rows.
     expect(within(board).getByText('4')).toBeTruthy();
 
-    const operations = sectionOf('Operaciones');
+    const operations = sectionOf('Operations');
     expect(within(operations).getByText('3')).toBeTruthy();
     expect(
-      within(operations).getByText(/3 operaciones sin detalle/)
+      within(operations).getByText(/3 operations without detail/)
     ).toBeTruthy();
   });
 
@@ -96,8 +96,8 @@ describe('CamObjectBrowser', () => {
     for (const [title, key] of [
       ['Board', 'board'],
       ['Setup', 'setup'],
-      ['Operaciones', 'operations'],
-      ['Salida', 'output']
+      ['Operations', 'operations'],
+      ['Output', 'output']
     ] as const) {
       const section = sectionOf(title);
       const empty = section.querySelector(`[data-empty="${key}"]`);
@@ -106,7 +106,7 @@ describe('CamObjectBrowser', () => {
     }
 
     expect(
-      within(sectionOf('Board')).getByText(/Sin documento abierto/)
+      within(sectionOf('Board')).getByText(/No document open/)
     ).toBeTruthy();
 
     // The artboard's sample rows are data, not strings to hardcode (S4/S5).
@@ -116,7 +116,7 @@ describe('CamObjectBrowser', () => {
       'Drill Hits .drl',
       'Board Outline .gbr',
       'Stock FR-4 1.6mm 100×80',
-      'Origen bottom-left X0 Y0',
+      'Origin bottom-left X0 Y0',
       '1 · Profile outline',
       '2 · Drill 0.8 / 1.0',
       '3 · Isolation top',
@@ -124,7 +124,7 @@ describe('CamObjectBrowser', () => {
     ]) {
       expect(screen.queryByText(sample)).toBeNull();
     }
-    expect(screen.queryByText('Tamaño')).toBeNull();
+    expect(screen.queryByText('Size')).toBeNull();
   });
 
   it('collapses a section through the store and keeps its header', async () => {
@@ -132,7 +132,7 @@ describe('CamObjectBrowser', () => {
     const user = userEvent.setup();
     render(CamObjectBrowser);
 
-    const collapse = screen.getByRole('button', { name: 'Contraer Board' });
+    const collapse = screen.getByRole('button', { name: 'Collapse Board' });
     expect(collapse.getAttribute('aria-expanded')).toBe('true');
 
     await user.click(collapse);
@@ -140,14 +140,14 @@ describe('CamObjectBrowser', () => {
     expect(
       screen.getByRole('heading', { level: 3, name: 'Board' })
     ).toBeTruthy();
-    expect(screen.queryByText('Tamaño')).toBeNull();
+    expect(screen.queryByText('Size')).toBeNull();
     expect(workbenchState.collapsedSections).toEqual(['board']);
 
-    const expand = screen.getByRole('button', { name: 'Expandir Board' });
+    const expand = screen.getByRole('button', { name: 'Expand Board' });
     expect(expand.getAttribute('aria-expanded')).toBe('false');
 
     await user.click(expand);
-    expect(screen.getByText('Tamaño')).toBeTruthy();
+    expect(screen.getByText('Size')).toBeTruthy();
     expect(workbenchState.collapsedSections).toEqual([]);
   });
 
@@ -156,20 +156,18 @@ describe('CamObjectBrowser', () => {
     const user = userEvent.setup();
     render(CamObjectBrowser);
 
-    const row = screen.getByRole('button', { name: /Tamaño/ });
+    const row = screen.getByRole('button', { name: /Size/ });
     expect(row.getAttribute('aria-current')).toBeNull();
 
     await user.click(row);
 
     expect(workbenchState.selectedBoardObjectId).toBe('size');
     expect(
-      screen
-        .getByRole('button', { name: /Tamaño/ })
-        .getAttribute('aria-current')
+      screen.getByRole('button', { name: /Size/ }).getAttribute('aria-current')
     ).toBe('true');
     expect(
       screen
-        .getByRole('button', { name: /Espesor/ })
+        .getByRole('button', { name: /Thickness/ })
         .getAttribute('aria-current')
     ).toBeNull();
   });
@@ -182,9 +180,9 @@ describe('CamObjectBrowser', () => {
     render(CamObjectBrowser);
 
     expect(
-      screen.queryByRole('heading', { level: 3, name: 'Recientes' })
+      screen.queryByRole('heading', { level: 3, name: 'Recent' })
     ).toBeNull();
-    for (const title of ['Board', 'Setup', 'Operaciones', 'Salida']) {
+    for (const title of ['Board', 'Setup', 'Operations', 'Output']) {
       expect(
         screen.getByRole('heading', { level: 3, name: title })
       ).toBeTruthy();
@@ -197,12 +195,12 @@ describe('CamObjectBrowser', () => {
     workbenchState.recents = recents;
     render(CamObjectBrowser, { onOpenRecent });
 
-    const section = sectionOf('Recientes');
+    const section = sectionOf('Recent');
     for (const recent of recents) {
       expect(within(section).getByText(recent.name)).toBeTruthy();
     }
     expect(
-      within(section).getByRole('heading', { level: 3, name: 'Recientes' })
+      within(section).getByRole('heading', { level: 3, name: 'Recent' })
     ).toBeTruthy();
     // One row per real recent, nothing else.
     expect(within(section).getAllByRole('button')).toHaveLength(recents.length);

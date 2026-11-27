@@ -55,20 +55,20 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
     pages: [
       {
         id: 'appearance',
-        label: 'Apariencia',
+        label: 'Appearance',
         icon: 'theme',
-        title: 'Apariencia',
+        title: 'Appearance',
         description:
-          'Configuración visual de Camcraft. Se muestran solo las opciones que el backend guarda hoy.',
+          'Camcraft visual configuration. Only the options the backend stores today are shown.',
         sections: [
           {
             id: 'theme',
-            caption: 'Tema',
+            caption: 'Theme',
             rows: [
               {
                 id: 'theme',
-                label: 'Apariencia de la interfaz',
-                hint: 'Elegí el tema por defecto de Camcraft. Se guarda al aplicar los cambios.',
+                label: 'Interface appearance',
+                hint: 'Pick the default Camcraft theme. It is stored when you apply the changes.',
                 control: 'theme'
               }
             ]
@@ -81,9 +81,9 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
 
 /** The values `src/lib/ds/theme.ts` knows how to apply; the labels are the UI copy. */
 const THEME_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'dark', label: 'Oscuro' },
-  { value: 'light', label: 'Claro' },
-  { value: 'system', label: 'Sistema' }
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+  { value: 'system', label: 'System' }
 ];
 
 const SETTINGS_PAGES = SETTINGS_GROUPS.flatMap(group => group.pages);
@@ -403,14 +403,14 @@ const noteText = css({
       if (event.target === event.currentTarget) closeSettings();
     }}
   >
-    <div class={dialog} role="dialog" aria-label="Preferencias">
+    <div class={dialog} role="dialog" aria-label="Preferences">
       <div class={titlebar}>
-        <h2 class={title}>Preferencias</h2>
+        <h2 class={title}>Preferences</h2>
         <div class={searchArea} bind:this={searchSlot}>
           <CommandSearch
-            placeholder="Buscar configuración…"
+            placeholder="Search settings…"
             shortcut="⌘F"
-            ariaLabel="Buscar configuración"
+            ariaLabel="Search settings"
             value={query}
             onquery={value => {
               query = value;
@@ -420,7 +420,7 @@ const noteText = css({
         <button
           type="button"
           class={closeButton}
-          aria-label="Cerrar"
+          aria-label="Close"
           onclick={closeSettings}
         >
           <Glyph name="close" />
@@ -428,7 +428,7 @@ const noteText = css({
       </div>
 
       <div class={content}>
-        <nav class={pages} aria-label="Páginas de preferencias">
+        <nav class={pages} aria-label="Preferences pages">
           {#each SETTINGS_GROUPS as group (group.id)}
             <div class={groupCaption}>{group.caption}</div>
             {#each group.pages as page (page.id)}
@@ -454,14 +454,13 @@ const noteText = css({
           {#if noResults}
             <div class={emptyState} role="status">
               <p class={emptyTitle}>
-                Sin resultados para «{query.trim()}»
+                No results for “{query.trim()}”
               </p>
               <p class={emptyHint}>
-                Probá con otra palabra o limpiá la búsqueda para ver todas las
-                opciones.
+                Try another word or clear the search to see all the options.
               </p>
               <Button variant="ghost" size="sm" onclick={clearSearch}>
-                Limpiar búsqueda
+                Clear search
               </Button>
             </div>
           {:else}
@@ -503,19 +502,19 @@ const noteText = css({
 
       <div class={footer}>
         <Button variant="ghost" onclick={restoreDefaults}>
-          Restaurar valores
+          Restore defaults
         </Button>
         <div class={footerStatus}>
           {#if error}
             <p class={errorText} aria-live="assertive">{error}</p>
           {:else if dirty}
             <p class={noteText} aria-live="polite">
-              Cambios sin aplicar: usá Aplicar para guardarlos.
+              Unsaved changes: use Apply to store them.
             </p>
           {/if}
         </div>
-        <Button onclick={closeSettings}>Cancelar</Button>
-        <Button variant="primary" onclick={saveSettings}>Aplicar</Button>
+        <Button onclick={closeSettings}>Cancel</Button>
+        <Button variant="primary" onclick={saveSettings}>Apply</Button>
       </div>
     </div>
   </div>

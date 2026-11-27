@@ -64,7 +64,7 @@ describe('workbench page', () => {
       }
     });
     setDocument(null);
-    setStatus('Listo', 'info');
+    setStatus('Ready', 'info');
     workbenchState.recents = [];
   });
 
@@ -73,11 +73,11 @@ describe('workbench page', () => {
 
     expect(container.querySelector('[data-region="frame"]')).not.toBeNull();
     expect(container.querySelector('[data-region="backdrop"]')).not.toBeNull();
-    expect(screen.getByLabelText('Acciones rápidas')).toBeTruthy();
-    expect(screen.getByLabelText('Estado de viewport')).toBeTruthy();
+    expect(screen.getByLabelText('Quick actions')).toBeTruthy();
+    expect(screen.getByLabelText('Viewport status')).toBeTruthy();
     expect(screen.getByLabelText('Browser')).toBeTruthy();
     expect(screen.getByLabelText('Inspector')).toBeTruthy();
-    expect(screen.getByLabelText('Barra de estado')).toBeTruthy();
+    expect(screen.getByLabelText('Status bar')).toBeTruthy();
     expect(screen.getByText('Camcraft')).toBeTruthy();
   });
 
@@ -99,7 +99,7 @@ describe('workbench page', () => {
     const user = userEvent.setup();
     render(WorkbenchPage, {});
 
-    const [openButton] = screen.getAllByRole('button', { name: 'Abrir' });
+    const [openButton] = screen.getAllByRole('button', { name: 'Open' });
     await user.click(openButton);
 
     await waitFor(() =>
@@ -109,9 +109,7 @@ describe('workbench page', () => {
     );
     await waitFor(() =>
       expect(
-        within(screen.getByLabelText('Barra de estado')).getByText(
-          /Documento abierto/
-        )
+        within(screen.getByLabelText('Status bar')).getByText(/Document opened/)
       ).toBeTruthy()
     );
   });
@@ -125,25 +123,25 @@ describe('workbench page', () => {
     const user = userEvent.setup();
     render(WorkbenchPage, {});
 
-    for (const name of ['Nuevo', 'Abrir', 'Guardar', 'Guardar como']) {
+    for (const name of ['New', 'Open', 'Save', 'Save as']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
 
-    await user.click(screen.getByRole('button', { name: 'Nuevo' }));
+    await user.click(screen.getByRole('button', { name: 'New' }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('new_document', {
         request: { width: 100, height: 100, thickness: 1.6 }
       })
     );
 
-    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('save_document', {
         path: documentStatus.path
       })
     );
 
-    await user.click(screen.getByRole('button', { name: 'Guardar como' }));
+    await user.click(screen.getByRole('button', { name: 'Save as' }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('save_document', {
         path: '/tmp/copiado.cmc'
@@ -171,9 +169,7 @@ describe('workbench page', () => {
     );
     await waitFor(() =>
       expect(
-        within(screen.getByLabelText('Barra de estado')).getByText(
-          /Documento abierto/
-        )
+        within(screen.getByLabelText('Status bar')).getByText(/Document opened/)
       ).toBeTruthy()
     );
   });
@@ -182,7 +178,7 @@ describe('workbench page', () => {
   it('renders the artboard chrome labels without inventing coordinates', () => {
     render(WorkbenchPage, {});
 
-    const hud = screen.getByLabelText('Estado de viewport');
+    const hud = screen.getByLabelText('Viewport status');
     expect(hud.textContent).toContain('2D Board');
     expect(hud.textContent).toContain(' · Grid 1 mm');
     expect(screen.getByText('X —')).toBeTruthy();

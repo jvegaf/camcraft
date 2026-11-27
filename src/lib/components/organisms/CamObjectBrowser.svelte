@@ -67,12 +67,12 @@ let boardObjects = $derived<BoardObjectRow[]>(
     ? [
         {
           id: 'size',
-          label: 'Tamaño',
+          label: 'Size',
           value: `${doc.boardWidthMm}×${doc.boardHeightMm} mm`
         },
         {
           id: 'thickness',
-          label: 'Espesor',
+          label: 'Thickness',
           value: `${doc.boardThicknessMm} mm`
         }
       ]
@@ -83,7 +83,7 @@ let recents = $derived(workbenchState.recents.slice(0, MAX_RECENTS));
 </script>
 
 <FloatCard title="Browser" class={panelPos} ariaLabel="Browser">
-  <PanelRow label="Proyecto" meta={projectName} dot={projectDot} />
+  <PanelRow label="Project" meta={projectName} dot={projectDot} />
 
   <PanelSection
     title="Board"
@@ -94,7 +94,7 @@ let recents = $derived(workbenchState.recents.slice(0, MAX_RECENTS));
   >
     {#if boardObjects.length === 0}
       <p class={empty} data-empty="board"
-        >Sin documento abierto: abrí o creá un documento para ver su board.</p
+        >No document open: open or create a document to see its board.</p
       >
     {:else}
       {#each boardObjects as object (object.id)}
@@ -115,13 +115,13 @@ let recents = $derived(workbenchState.recents.slice(0, MAX_RECENTS));
     ontoggle={() => toggleSection('setup')}
   >
     <p class={empty} data-empty="setup"
-      >Sin datos de setup: el origen de trabajo y el material del stock no están
-      expuestos por el backend.</p
+      >No setup data: the work origin and the stock material are not exposed by the
+      backend.</p
     >
   </PanelSection>
 
   <PanelSection
-    title="Operaciones"
+    title="Operations"
     count={doc?.toolpathCount}
     collapsible
     collapsed={isSectionCollapsed('operations')}
@@ -137,33 +137,33 @@ let recents = $derived(workbenchState.recents.slice(0, MAX_RECENTS));
       {/each}
     {:else if !doc}
       <p class={empty} data-empty="operations"
-        >Sin documento abierto: no hay operaciones para listar.</p
+        >No document open: there are no operations to list.</p
       >
     {:else if doc.toolpathCount === 0}
       <p class={empty} data-empty="operations"
-        >Sin operaciones: el documento no tiene toolpaths.</p
+        >No operations: the document has no toolpaths.</p
       >
     {:else}
       <p class={empty} data-empty="operations"
-        >{doc.toolpathCount} operaciones sin detalle: el documento expone el conteo,
-        no los nombres ni los estados.</p
+        >{doc.toolpathCount} operations without detail: the document exposes the count,
+        not the names or the states.</p
       >
     {/if}
   </PanelSection>
 
   <PanelSection
-    title="Salida"
+    title="Output"
     collapsible
     collapsed={isSectionCollapsed('output')}
     ontoggle={() => toggleSection('output')}
   >
     <p class={empty} data-empty="output"
-      >Sin salida generada: el backend no expone exportación ni post-procesador.</p
+      >No output generated: the backend exposes neither export nor post-processor.</p
     >
   </PanelSection>
 
   {#if recents.length > 0}
-    <PanelSection title="Recientes">
+    <PanelSection title="Recent">
       {#each recents as recent (recent.path)}
         <PanelRow
           label={recent.name}

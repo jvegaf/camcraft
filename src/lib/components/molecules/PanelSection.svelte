@@ -69,7 +69,7 @@ const toggle = css({
         type="button"
         class={toggle}
         aria-expanded={!collapsed}
-        aria-label={`${collapsed ? 'Expandir' : 'Contraer'} ${title}`}
+        aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
         onclick={ontoggle}
       >
         <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
