@@ -280,3 +280,70 @@ describe('ToolLibraryPanel', () => {
     );
   });
 });
+
+describe('ToolLibraryPanel tree refresh after save', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    closeSettings();
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('reloads the tree after a successful save so the edited row matches the store', async () => {
+    let stored: Record<string, unknown> = { ...detail };
+    const currentTree = () => ({
+      schema: 'tool-tree@1',
+      groups: [
+        {
+          kind: 'flat-end-mill',
+          label: 'Flat end mill',
+          count: 1,
+          tools: [
+            {
+              id: 'flat-22',
+              number: stored.number,
+              name: stored.name,
+              meta: '1F'
+            }
+          ]
+        }
+      ]
+    });
+    bridge(async (command, args) => {
+      if (command === 'tool_library_tree') return currentTree();
+      if (command === 'tool_detail') {
+        const { id } = args as { id: string };
+        return stored.id === id ? { ...stored } : null;
+      }
+      if (command === 'tool_library_save') {
+        const { request } = args as { request: SavedTool };
+        stored = { ...stored, ...request };
+        return { ...stored };
+      }
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    const user = userEvent.setup();
+    const result = render(ToolLibraryPanel);
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+    await user.click(rowOf(/T22\b/));
+    await screen.findByRole('heading', {
+      level: 4,
+      name: 'End mill 1.0 mm'
+    });
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Renamed by the operator');
+
+    await act(async () => {
+      await result.component.save();
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /Renamed by the operator/ })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /End mill 1.0 mm/ })
+    ).toBeNull();
+  });
+});

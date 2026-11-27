@@ -165,6 +165,10 @@ export async function save(): Promise<boolean> {
     });
     detail = stored;
     draft = {};
+    // The tree is a separate read: refresh it so an edited name or number reaches the left column
+    // now instead of on the next remount. It is not rebuilt from the detail payload, so the tree
+    // stays the store's projection and keeps its own grouping and meta.
+    await loadTree();
     return true;
   } catch (e) {
     onerror?.(formatError(e));
