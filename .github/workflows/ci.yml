@@ -7,7 +7,9 @@ name: CI
 #
 # `parity` y `bench` miden el corpus y cuestan minutos, así que no se disparan solos: corren sólo
 # por `workflow_dispatch`, a pedido. Los nombres de job `gate`, `parity` y `bench` se mantienen
-# porque la protección de rama los nombra: renombrar uno lo desrequiere en silencio.
+# porque el nombre del job es el status context: renombrar uno borra en silencio cualquier requisito
+# futuro construido sobre él. Hoy no hay ningún check requerido, y `parity`/`bench` no pueden
+# requerirse mientras sean dispatch-only.
 
 on:
   push:
@@ -75,9 +77,8 @@ jobs:
       - name: Run frontend tests
         run: pnpm test
 
-      # El workspace de la raíz lista los crates del dominio: `test-rust-workspace` corre sus
-      # unitarios excluyendo `cam-ui` y `cam-desktop`, que necesitan display. `test-rust` sólo
-      # probaría el paquete Tauri del host, no los crates.
+      # `--workspace` corre los unitarios de todos los crates del workspace de la raíz; `cam-ui` y
+      # `cam-desktop` quedan fuera porque necesitan display.
       - name: Run Rust tests
         run: cargo test --workspace --exclude cam-ui --exclude cam-desktop
 

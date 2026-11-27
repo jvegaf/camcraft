@@ -106,6 +106,7 @@ something a local command would have caught:
   copy of CI.
 
 They are **not** the gate. The gate is `scripts/check.sh`, and `pre-push` runs it on demand; a hook can
-be skipped with `git push --no-verify`, and any hook that took as long as CI would be. A skipped step in
-`pre-push` says so, with the reason, rather than passing quietly. What cannot be skipped is the unit
-suite CI runs on every push and pull request to `master`.
+be skipped with `git push --no-verify`, and a hook that took as long as CI would be the first thing
+anyone skips. That is exactly why CI, not the hook, is the thing that cannot be talked out of the unit
+suite: a skipped step in `pre-push` says so, with the reason, rather than passing quietly, and the unit
+suite still runs on every push and pull request to `master`.

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The workflow has one trunk: push and pull requests target `master`, and `parity`/`bench` only run
-# when a human dispatches them. Branch protection names the three job names, so they stay.
+# when a human dispatches them. The job names stay because a job name is the status context: renaming
+# one would silently drop any future requirement built on it. No check is required today, and
+# `parity`/`bench` cannot be required while they are dispatch-only.
 set -uo pipefail
 # shellcheck source=scripts/tests/lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
