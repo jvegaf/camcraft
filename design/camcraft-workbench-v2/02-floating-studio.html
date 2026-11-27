@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -136,20 +136,20 @@
 <div class="page">
   <header class="intro">
     <div>
-      <p class="eyebrow">Dirección 2 · Camcraft Workbench v2 · Familia SolidCraft</p>
+      <p class="eyebrow">Direction 2 · Camcraft Workbench v2 · SolidCraft family</p>
       <h1>Floating Studio</h1>
-      <p class="lede">Workspace flotante con viewport dominante: browser, inspector y operaciones son cards con jerarquía de bordes clara, command search central y status bar sobria. La IA se organiza por objetos CAM (Board, Setup, Operaciones, Salida), no por features CAD.</p>
+      <p class="lede">Floating workspace with a dominant viewport: browser, inspector and operations are cards with clear border hierarchy, a central command search and a restrained status bar. The IA is organized by CAM objects (Board, Setup, Operations, Output), not by CAD features.</p>
     </div>
     <div class="chip-row">
-      <span class="chip"><strong>Estructura</strong> flotante</span>
-      <span class="chip"><strong>Jerarquía</strong> primary/secondary/tertiary</span>
-      <span class="chip"><strong>Foco</strong> canvas</span>
+      <span class="chip"><strong>Structure</strong> floating</span>
+      <span class="chip"><strong>Hierarchy</strong> primary/secondary/tertiary</span>
+      <span class="chip"><strong>Focus</strong> canvas</span>
     </div>
   </header>
 
   <div class="shell" role="application" aria-label="Camcraft Floating Studio">
     <div class="canvas-bg" aria-hidden="true"></div>
-    <svg class="board-svg" viewBox="0 0 1440 810" role="img" aria-label="Placa PCB con paneles flotantes">
+    <svg class="board-svg" viewBox="0 0 1440 810" role="img" aria-label="PCB board with floating panels">
       <rect x="390" y="150" width="660" height="470" rx="2" fill="rgba(112,92,66,.08)" stroke="#453726" stroke-width="1.5"/>
       <path d="M440 200 L1000 200 L1000 570 L440 570 Z" fill="rgba(112,92,66,.16)" stroke="#ddc9a3" stroke-width="2"/>
       <g stroke="#c47a2c" stroke-width="2.2" fill="none" stroke-linecap="round"><path d="M500 270h110v50h70v-40h110"/><path d="M500 360h70v70h150v-50h110"/><path d="M560 500h200v-60h90"/></g>
@@ -163,39 +163,39 @@
       <div class="mark" aria-hidden="true">C</div>
       <div class="product">Camcraft</div>
       <div class="sep" aria-hidden="true"></div>
-      <button class="workspace" aria-label="Proyecto actual">
+      <button class="workspace" aria-label="Current project">
         <span>controller-board.cam</span>
         <span class="muted">▾</span>
       </button>
-      <div class="search" role="search" aria-label="Buscar comando">
+      <div class="search" role="search" aria-label="Search command">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>
-        <span>Buscar comando, capa u operación…</span>
+        <span>Search command, layer or operation…</span>
         <kbd>⌘K</kbd>
       </div>
       <div class="top-actions">
-        <div class="layout-pill" aria-label="Layout flotante"><b>Floating</b> layout</div>
-        <button class="icon-btn" aria-label="Tema"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
-        <button class="icon-btn" aria-label="Configuración"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5c.1-.3.1-.7.1-1z"/></svg></button>
+        <div class="layout-pill" aria-label="Floating layout"><b>Floating</b> layout</div>
+        <button class="icon-btn" aria-label="Theme"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        <button class="icon-btn" aria-label="Settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-1.8-3.1-2.3.8a7 7 0 0 0-1.7-1l-.3-2.4h-3.6l-.3 2.4a7 7 0 0 0-1.7 1l-2.3-.8L4.1 9.5 6.1 11a7 7 0 0 0 0 2l-2 1.5 1.8 3.1 2.3-.8a7 7 0 0 0 1.7 1l.3 2.4h3.6l.3-2.4a7 7 0 0 0 1.7-1l2.3.8 1.8-3.1-2-1.5c.1-.3.1-.7.1-1z"/></svg></button>
       </div>
     </header>
 
-    <div class="tool-rail" aria-label="Acciones rápidas">
-      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>Importar</button>
-      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 4v16"/></svg>Capas</button>
-      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg>Origen</button>
-      <button class="tool primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Generar plan</button>
+    <div class="tool-rail" aria-label="Quick actions">
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>Import</button>
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 4v16"/></svg>Layers</button>
+      <button class="tool"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg>Origin</button>
+      <button class="tool primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Generate plan</button>
     </div>
 
-    <div class="hud" aria-label="Estado de viewport">
+    <div class="hud" aria-label="Viewport status">
       <div class="hud-card"><b>2D Board</b> · Grid 1 mm</div>
-      <div class="hud-card"><span class="sel">6 taladros seleccionados</span></div>
+      <div class="hud-card"><span class="sel">6 selected drill hits</span></div>
     </div>
 
     <aside class="float browser" aria-label="Browser">
       <div class="head">
         <h2>Browser</h2>
-        <span class="meta">Proyecto</span>
-        <button class="head-btn" aria-label="Buscar en browser"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></button>
+        <span class="meta">Project</span>
+        <button class="head-btn" aria-label="Search in browser"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></button>
       </div>
       <div class="body">
         <div class="section">
@@ -208,16 +208,16 @@
         <div class="section">
           <h3>Setup</h3>
           <button class="nav-item"><span class="dot ok"></span>Stock FR-4 1.6mm <span class="count">100×80</span></button>
-          <button class="nav-item"><span class="dot ok"></span>Origen bottom-left <span class="count">X0 Y0</span></button>
+          <button class="nav-item"><span class="dot ok"></span>Origin bottom-left <span class="count">X0 Y0</span></button>
         </div>
         <div class="section">
-          <h3>Operaciones</h3>
+          <h3>Operations</h3>
           <button class="nav-item"><span class="dot cut"></span>1 · Profile outline <span class="count">OK</span></button>
-          <button class="nav-item" aria-current="true"><span class="dot drill"></span>2 · Drill 0.8 / 1.0 <span class="count">seleccionada</span></button>
+          <button class="nav-item" aria-current="true"><span class="dot drill"></span>2 · Drill 0.8 / 1.0 <span class="count">selected</span></button>
           <button class="nav-item"><span class="dot copper"></span>3 · Isolation top <span class="count">draft</span></button>
         </div>
         <div class="section">
-          <h3>Salida</h3>
+          <h3>Output</h3>
           <button class="nav-item"><span class="dot"></span>Post GRBL <span class="count">.nc</span></button>
         </div>
       </div>
@@ -230,56 +230,56 @@
       </div>
       <div class="body">
         <div class="section">
-          <h3>Operación</h3>
-          <div class="field"><label>Tipo</label><div class="input">Drill cycle <span class="u">G81</span></div></div>
-          <div class="field"><label>Herramienta</label><div class="input">T1 Flat 0.8 mm <span class="u">cambiar</span></div></div>
+          <h3>Operation</h3>
+          <div class="field"><label>Type</label><div class="input">Drill cycle <span class="u">G81</span></div></div>
+          <div class="field"><label>Tool</label><div class="input">T1 Flat 0.8 mm <span class="u">change</span></div></div>
           <div class="field"><label>Z cut</label><div class="input">-1.8 <span class="u">mm</span></div></div>
           <div class="field"><label>Feed plunge</label><div class="input">120 <span class="u">mm/min</span></div></div>
-          <dl class="kv"><dt>Hits</dt><dd>6</dd><dt>Herramientas</dt><dd>T1, T2</dd><dt>Tiempo</dt><dd>0:42</dd></dl>
+          <dl class="kv"><dt>Hits</dt><dd>6</dd><dt>Tools</dt><dd>T1, T2</dd><dt>Time</dt><dd>0:42</dd></dl>
         </div>
         <div class="section">
-          <h3>Estado</h3>
-          <div class="state-card"><strong>Listo para simular.</strong> Toolpath válido, sin colisiones detectadas en preview.</div>
+          <h3>Status</h3>
+          <div class="state-card"><strong>Ready to simulate.</strong> Valid toolpath, no collisions detected in preview.</div>
         </div>
       </div>
     </aside>
 
 
 
-    <footer class="status" aria-label="Barra de estado">
+    <footer class="status" aria-label="Status bar">
       <span class="mono">X 42.80</span>
       <span class="mono">Y 31.20</span>
       <span class="mono">Z 2.00</span>
       <span class="sep" aria-hidden="true"></span>
       <span>mm · Grid 1 mm · GRBL</span>
       <span class="spacer"></span>
-      <span class="ok">● Sin errores</span>
+      <span class="ok">● No errors</span>
     </footer>
   </div>
 
-  <section class="start-demo" aria-label="Start screen de la dirección 2">
-    <p class="eyebrow" style="margin-bottom:10px;">Start screen · misma familia</p>
+  <section class="start-demo" aria-label="Direction 2 start screen">
+    <p class="eyebrow" style="margin-bottom:10px;">Start screen · same family</p>
     <div class="start-shell">
       <div class="start-card">
         <div class="s-panel">
           <p class="eyebrow">Camcraft</p>
-          <h2 style="margin:0 0 6px; font:600 28px/1.15 var(--font); color:var(--text-hi);">Bienvenido al estudio CAM</h2>
-          <p>Abrí una placa o retomá un proyecto. El shell usa superficies flotantes, jerarquía de bordes clara y command search central.</p>
-          <button class="action primary"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><strong>Nuevo proyecto PCB</strong><span>Configurar stock, origen y board</span></div></button>
-          <button class="action"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span><div><strong>Abrir proyecto</strong><span>.cam o fuentes de placa</span></div></button>
+          <h2 style="margin:0 0 6px; font:600 28px/1.15 var(--font); color:var(--text-hi);">Welcome to the CAM studio</h2>
+          <p>Open a board or resume a project. The shell uses floating surfaces, clear border hierarchy and a central command search.</p>
+          <button class="action primary"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><strong>New PCB project</strong><span>Configure stock, origin and board</span></div></button>
+          <button class="action"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span><div><strong>Open project</strong><span>.cam or board sources</span></div></button>
         </div>
         <div class="s-panel">
-          <h2>Recientes</h2>
-          <p>Retomá con contexto visible antes de abrir.</p>
-          <button class="recent"><div><div class="name">controller-board.cam</div><div class="path">~/Boards/controller/</div></div><div class="when">Hace 12 min</div></button>
-          <button class="recent"><div><div class="name">usb-adapter.cam</div><div class="path">~/Boards/adapters/</div></div><div class="when">Ayer</div></button>
-          <button class="recent"><div><div class="name">front-panel.cam</div><div class="path">~/Boards/panel/</div></div><div class="when">Hace 3 días</div></button>
+          <h2>Recent</h2>
+          <p>Resume with visible context before opening.</p>
+          <button class="recent"><div><div class="name">controller-board.cam</div><div class="path">~/Boards/controller/</div></div><div class="when">12 min ago</div></button>
+          <button class="recent"><div><div class="name">usb-adapter.cam</div><div class="path">~/Boards/adapters/</div></div><div class="when">Yesterday</div></button>
+          <button class="recent"><div><div class="name">front-panel.cam</div><div class="path">~/Boards/panel/</div></div><div class="when">3 days ago</div></button>
         </div>
       </div>
     </div>
   </section>
 
-  <p class="note"><strong>Tradeoff:</strong> máxima presencia del canvas y sensación más cercana a SolidCraft gracias a cards flotantes y jerarquía de bordes primary/secondary/tertiary. A cambio, requiere disciplina de layout para que los paneles no tapen el trabajo ni generen ruido, especialmente en pantallas chicas.</p>
+  <p class="note"><strong>Tradeoff:</strong> maximum canvas presence and a feel closer to SolidCraft thanks to floating cards and primary/secondary/tertiary border hierarchy. In exchange, it requires layout discipline so panels do not cover the work or add noise, especially on small screens.</p>
 </div>
 </body>
 </html>
