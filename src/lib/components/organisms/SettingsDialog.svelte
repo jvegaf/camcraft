@@ -8,7 +8,7 @@ import { loadThemePreference, saveThemePreference } from '$lib/ds/theme';
 import { Button, Glyph, Icon, type IconName } from '../atoms';
 import { CommandSearch } from '../molecules';
 import { closeSettings, workbenchState } from '../workbench/workbench.svelte';
-import ToolLibraryPage from './ToolLibraryPage.svelte';
+import ToolLibraryPanel from './ToolLibraryPanel.svelte';
 
 // Preferences dialog of `design/camcraft-workbench-v2/04-settings.html`: titlebar with a real search,
 // a page list on the left, two-column setting rows on the right and a Restaurar / Cancelar / Aplicar
@@ -48,6 +48,9 @@ type PageBody = 'sections' | 'tool-library';
 
 /** Dialog geometry per artboard: 04 draws 920×680, 05 needs 1040×720 for its three columns (S6). */
 type DialogSize = 'standard' | 'wide';
+
+/** The one action the library panel exposes: write its draft when the dialog confirms. */
+type ToolLibraryPanelApi = { save: () => Promise<boolean> };
 
 type SettingsPage = {
   id: string;
@@ -136,6 +139,7 @@ let error = $state('');
 let query = $state('');
 let activePageId = $state(FIRST_PAGE.id);
 let searchSlot: HTMLDivElement | undefined = $state();
+let toolLibraryPanel: ToolLibraryPanelApi | undefined = $state();
 
 const uid = $props.id();
 const pageRow = panelRowRecipe({ interactive: true });
@@ -194,6 +198,12 @@ async function loadSettings() {
 async function saveSettings() {
   error = '';
   try {
+    // The library's draft is confirmed by the same Apply that confirms the theme. Its save reports
+    // a failure through the shared error line and returns false, so nothing closes on a false success.
+    if (activePage.body === 'tool-library') {
+      const saved = await toolLibraryPanel?.save();
+      if (saved === false) return;
+    }
     const theme = await saveThemePreference(settings.theme);
     stored = { theme };
     settings = { theme };
@@ -513,10 +523,15 @@ const noteText = css({
           <p class={pageDescription}>{activePage.description}</p>
 
           {#if activePage.body === 'tool-library'}
-            <!-- The library page body; its tree, detail and preview arrive through the organism's
-                 snippet props in 107 T5/T6/T7, so they mount empty here. -->
+            <!-- The panel owns the library commands and fills the page's three snippet props with
+                 the tree, the detail form and the preview (107 T5/T6/T7 + wiring). -->
             <div class={pageBody}>
-              <ToolLibraryPage />
+              <ToolLibraryPanel
+                bind:this={toolLibraryPanel}
+                onerror={message => {
+                  error = message;
+                }}
+              />
             </div>
           {:else if noResults}
             <div class={emptyState} role="status">
