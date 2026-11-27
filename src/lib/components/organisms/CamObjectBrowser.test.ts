@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   DocumentStatus,
@@ -90,7 +91,7 @@ describe('CamObjectBrowser', () => {
     ).toBeTruthy();
   });
 
-  it('renders an honest empty state per section when there is no document', () => {
+  it('renders an honest empty state per section when there is no document', async () => {
     render(CamObjectBrowser);
 
     for (const [title, key] of [
@@ -109,22 +110,32 @@ describe('CamObjectBrowser', () => {
       within(sectionOf('Board')).getByText(/No document open/)
     ).toBeTruthy();
 
-    // The artboard's sample rows are data, not strings to hardcode (S4/S5).
-    for (const sample of [
-      'Top Copper .gbr',
-      'Bottom Copper .gbr',
-      'Drill Hits .drl',
-      'Board Outline .gbr',
-      'Stock FR-4 1.6mm 100×80',
-      'Origin bottom-left X0 Y0',
-      '1 · Profile outline',
-      '2 · Drill 0.8 / 1.0',
-      '3 · Isolation top',
-      'Post GRBL .nc'
-    ]) {
-      expect(screen.queryByText(sample)).toBeNull();
-    }
+    // The Browser's rows are the component's own data, not the artboard's sample strings (S4/S5),
+    // so the guard asserts the real rendered output instead of artboard literals: with no document
+    // the Board section prints its empty state and no row at all, and once the real document is
+    // installed it prints exactly its own rows. A sample row that slides back to Spanish changes
+    // this output, which the artboard literals could no longer catch.
+    const boardRows = () =>
+      within(sectionOf('Board'))
+        .queryAllByRole('button')
+        .filter(row => row.getAttribute('aria-label') === null);
+    const boardEmpty = sectionOf('Board').querySelector('[data-empty="board"]');
+
+    expect(boardRows()).toHaveLength(0);
+    // The empty state is the only child the body gets: an invented row — button or plain div —
+    // would add a second one.
+    expect(boardEmpty?.parentElement?.children).toHaveLength(1);
+    expect(boardEmpty?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'No document open: open or create a document to see its board.'
+    );
     expect(screen.queryByText('Size')).toBeNull();
+
+    setDocument(documentStatus);
+    await tick();
+
+    expect(
+      boardRows().map(row => row.textContent?.replace(/\s+/g, ' ').trim())
+    ).toEqual(['Size 100×80 mm', 'Thickness 1.6 mm']);
   });
 
   it('collapses a section through the store and keeps its header', async () => {

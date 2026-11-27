@@ -17,14 +17,6 @@ const SECTIONS: { layer: Layer; title: string }[] = [
   { layer: 'template', title: 'Templates' }
 ];
 
-const LAYER_LABEL: Record<Layer, string> = {
-  atom: 'atom',
-  molecule: 'molecule',
-  organism: 'organism',
-  template: 'template',
-  unclassified: 'unclassified'
-};
-
 function componentsOf(layer: Layer): ComponentEntry[] {
   return inventory
     .filter(component => component.layer === layer)
@@ -175,7 +167,7 @@ const sectionTotal = (layer: Layer) =>
         <tbody>
           {#each board.layers as summary (summary.layer)}
             <tr data-board-layer={summary.layer}>
-              <th class={boardLayer}>{LAYER_LABEL[summary.layer]}</th>
+              <th class={boardLayer}>{summary.layer}</th>
               <td class={boardCell} data-board-total>{summary.total}</td>
               <td class={boardCell} data-board-sheet>{summary.withSheet}</td>
               <td class={boardCell} data-board-test>{summary.withTest}</td>
@@ -216,7 +208,7 @@ const sectionTotal = (layer: Layer) =>
           <div class={row} data-component-path={component.path}>
             <span class={name}>{component.name}</span>
             <span class={layerTag} data-layer={component.layer}
-              >{LAYER_LABEL[component.layer]}</span
+              >{component.layer}</span
             >
             <span
               class={cx(badge, hasSheet(component) ? badgeYes : badgeNo)}
