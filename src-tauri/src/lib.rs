@@ -5,6 +5,8 @@ use std::sync::Mutex;
 use cam_app::{AppState, Viewport};
 use cam_model::{Board, Document, Job, OriginCorner};
 use cam_sim::Heightfield;
+use cam_store::tool_edit::rendered_name;
+use cam_store::tools::{StoredTool, ToolKind, ToolLibrary};
 use cam_units::Length;
 use cam_view::{Camera3d, build_stock_box, build_surface};
 use serde::{Deserialize, Serialize};
@@ -682,6 +684,277 @@ fn cam_output(runtime: State<'_, AppRuntime>) -> Result<CamOutputDto, CommandErr
   cam_output_impl(&runtime)
 }
 
+/// The file the application's tool library lives in, inside its own data directory.
+///
+/// A library belongs to the application and not to any document (the shell already keeps one
+/// `tools.sqlite` per installation, `cam-ui/src/tool_library/library.rs`): one set of tools for every
+/// document that is open, still there after one is closed. A document may carry a `tools_ref` and
+/// `cam-cli` still honours it; these commands do not read it, so the page can never show a different
+/// library than the one the next document would edit.
+const TOOL_LIBRARY_FILE: &str = "tools.sqlite";
+
+fn tool_library_path(state: &RuntimeState) -> Result<PathBuf, CommandErrorDto> {
+  state
+    .data_dir
+    .as_ref()
+    .map(|dir| dir.join(TOOL_LIBRARY_FILE))
+    .ok_or_else(|| {
+      CommandErrorDto::new(
+        "tool_library_path_missing",
+        "no application data directory, so the tool library has no location",
+      )
+    })
+}
+
+/// The library read as a snapshot: every tool, in the library's own order.
+///
+/// Read-only, and never a writer. A library file that does not exist yet is not an error and not a
+/// reason to create one, so it reads as the empty library it would be; every refusal the store itself
+/// makes — an older schema version, a WAL library, a file that is not a library — is reported as a
+/// structured error naming the file and the reason. Validation of a tool is the store's too
+/// (`cam_store::tool_edit::validate_tool`, run by `save_tool`), so nothing here repeats it.
+fn read_tool_library(runtime: &AppRuntime) -> Result<Vec<StoredTool>, CommandErrorDto> {
+  let path = {
+    let state = runtime
+      .0
+      .lock()
+      .map_err(|_| CommandErrorDto::state_poisoned())?;
+    tool_library_path(&state)?
+  };
+  match fs::metadata(&path) {
+    Ok(_) => {}
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+    Err(err) => {
+      return Err(CommandErrorDto::new(
+        "tool_library_unreadable",
+        format!("{}: {err}", path.display()),
+      ));
+    }
+  }
+  let library = ToolLibrary::open_read_only(&path)
+    .map_err(|err| CommandErrorDto::new("tool_library_unreadable", err.to_string()))?;
+  library
+    .tools()
+    .map_err(|err| CommandErrorDto::new("tool_library_unreadable", err.to_string()))
+}
+
+/// One row of the tool tree: what the master list shows, and what a selection names.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRowDto {
+  /// The library's stable geometry id, which is what `tool_detail` is asked for.
+  pub id: String,
+  /// The program number the cutting data records; `None` for a tool the library holds without one.
+  /// The page renders the `T` notation, because the model stores a number.
+  pub number: Option<u32>,
+  /// The display name: the stored `name_format` rendered the way the store renders it for its own
+  /// screen, which is the tool's literal name when the record holds a plain string rather than a
+  /// template. S9 leaves open whether that name comes from the file or from the template; publishing
+  /// the store's own rendering does not decide it.
+  pub name: String,
+  /// The kind's distinguishing number, derived from the record: see [`row_meta`].
+  pub meta: String,
+}
+
+/// One kind's group in the tool tree.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolGroupDto {
+  /// The kind's file slug, the stable half of `ToolKind`'s vocabulary (`flat-end-mill`).
+  pub kind: String,
+  /// The kind's own singular word (`Flat end mill`). A plural heading such as `End mills` is page
+  /// copy and is not derived here: the model publishes one label per kind and nothing that plurals it.
+  pub label: String,
+  /// How many tools the group holds.
+  pub count: usize,
+  pub tools: Vec<ToolRowDto>,
+}
+
+/// The tool tree: groups by kind, each with its count and its rows.
+///
+/// A group appears exactly when the library holds a tool of its kind, and groups appear in
+/// first-appearance order in the library's own order rather than in a second ordering table here: the
+/// artboard's `End mills`, `Drills`, `V-bits` is what a library numbered in that order produces
+/// without anybody hard-coding it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolTreeDto {
+  pub schema: String,
+  pub groups: Vec<ToolGroupDto>,
+}
+
+/// A number a row can show without the zeroes a reader does not need (`1`, `0.1`, `3.175`).
+///
+/// Three decimals is the precision the store writes, and the same trimming the old shell's rows do;
+/// this crate does not link `cam-ui`, so the one-line rule is restated rather than imported.
+fn trimmed_number(value: f64) -> String {
+  let text = cam_units::Format::fixed(3).apply(value);
+  let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+  if trimmed.is_empty() {
+    "0".to_owned()
+  } else {
+    trimmed.to_owned()
+  }
+}
+
+/// An angle in degrees, at the precision the library is written at.
+///
+/// The model stores an angle in radians, so `degrees()` of a stored `118.0` reads back
+/// `118.00000000000001`: the value is the record's, the noise is the unit round trip. Three decimals
+/// is the precision the store writes, so that is the number published for a page to put in a box.
+fn degrees_at_library_precision(degrees: f64) -> f64 {
+  cam_units::Format::fixed(3).round(degrees)
+}
+
+/// A row's dim meta: the number that says which tool of its kind this is.
+///
+/// S9's artboard quotes a different number per kind — `1F` for an end mill, `118°` for a drill, `0.1`
+/// for a V-bit — because the number that tells two tools of one kind apart is the kind's own. The rule
+/// is read off the record rather than written per kind as a constant: a kind whose tip is a cone is
+/// quoted by that cone (a drill by its included angle, a V-bit by the flat at its tip, which is what
+/// distinguishes two V-bits of one angle), and every other kind by its flute count. A number the
+/// record does not hold falls through to the next, and a record holding none of them is a dash — never
+/// an invented zero.
+fn row_meta(tool: &StoredTool) -> String {
+  let geometry = &tool.geometry;
+  let angle = geometry
+    .included_angle
+    .map(|angle| format!("{}°", trimmed_number(angle.degrees())));
+  let flat = geometry.flat_diameter.map(|flat| trimmed_number(flat.mm()));
+  let flutes = geometry.num_flutes.map(|flutes| format!("{flutes}F"));
+  match ToolKind::of(geometry) {
+    ToolKind::Drill => angle.or(flutes).or(flat),
+    ToolKind::VBit => flat.or(angle).or(flutes),
+    _ => flutes.or(angle).or(flat),
+  }
+  .unwrap_or_else(|| "—".to_owned())
+}
+
+fn tool_tree_impl(runtime: &AppRuntime) -> Result<ToolTreeDto, CommandErrorDto> {
+  let tools = read_tool_library(runtime)?;
+  let mut groups: Vec<ToolGroupDto> = Vec::new();
+  for tool in &tools {
+    let kind = ToolKind::of(&tool.geometry);
+    let row = ToolRowDto {
+      id: tool.geometry.id.clone(),
+      number: tool.cutting.tool_number,
+      name: rendered_name(tool),
+      meta: row_meta(tool),
+    };
+    match groups.iter_mut().find(|group| group.kind == kind.slug()) {
+      Some(group) => {
+        group.count += 1;
+        group.tools.push(row);
+      }
+      None => groups.push(ToolGroupDto {
+        kind: kind.slug().to_string(),
+        label: kind.label().to_string(),
+        count: 1,
+        tools: vec![row],
+      }),
+    }
+  }
+  Ok(ToolTreeDto {
+    schema: "tool-tree@1".into(),
+    groups,
+  })
+}
+
+/// One tool's detail, as the two sections of S10 read it.
+///
+/// Every value is the record's own or the model's own rendering of it; a value the library does not
+/// hold is `None`, never a sample number. Which of these the page lets an operator edit is the page's
+/// decision (S10 reads it off the artboard's `.ro` rows against its `<input>` rows), so nothing here
+/// marks a field writable or read-only.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolDetailDto {
+  pub schema: String,
+  /// The library's stable geometry id, the same one the tree row carries.
+  pub id: String,
+  /// The display name, rendered from the record's `name_format` exactly as the tree row's name is.
+  pub name: String,
+  /// The kind's file slug (`flat-end-mill`).
+  pub kind: String,
+  /// The kind's own word (`Flat end mill`). S10's `Type` also shows a shape word (`flat`): the shape
+  /// families are `cam-ui`'s (`ToolFamily`), and this crate does not link that crate, so no shape is
+  /// published rather than a second copy of the rule kept here.
+  pub kind_label: String,
+  pub number: Option<u32>,
+  pub diameter_mm: Option<f64>,
+  pub flutes: Option<u32>,
+  /// The usable flute length, S10's `Cut length`.
+  pub cut_length_mm: Option<f64>,
+  pub shank_mm: Option<f64>,
+  pub overall_length_mm: Option<f64>,
+  /// A conical tip's included angle, which S10's `Type` row and a V-bit's or drill's shape need.
+  pub included_angle_deg: Option<f64>,
+  /// The flat at a V-bit's tip.
+  pub flat_diameter_mm: Option<f64>,
+  pub spindle_rpm: Option<u32>,
+  pub cut_feed_mm_per_min: Option<f64>,
+  pub plunge_feed_mm_per_min: Option<f64>,
+  pub stepover_mm: Option<f64>,
+  /// Absent, and published as absent: the model stores a stepover as a length in millimetres and
+  /// holds no percentage of the diameter, so S10's `40 %` cannot be read off the record and is not
+  /// derived here from a basis the model never states.
+  pub stepover_percent: Option<f64>,
+}
+
+fn tool_detail_of(tool: &StoredTool) -> ToolDetailDto {
+  let geometry = &tool.geometry;
+  let cutting = &tool.cutting;
+  let kind = ToolKind::of(geometry);
+  ToolDetailDto {
+    schema: "tool-detail@1".into(),
+    id: geometry.id.clone(),
+    name: rendered_name(tool),
+    kind: kind.slug().to_string(),
+    kind_label: kind.label().to_string(),
+    number: cutting.tool_number,
+    diameter_mm: geometry.diameter.map(Length::mm),
+    flutes: geometry.num_flutes,
+    cut_length_mm: geometry.flute_length.map(Length::mm),
+    shank_mm: geometry.shank_diameter.map(Length::mm),
+    overall_length_mm: geometry.overall_length.map(Length::mm),
+    included_angle_deg: geometry
+      .included_angle
+      .map(|angle| degrees_at_library_precision(angle.degrees())),
+    flat_diameter_mm: geometry.flat_diameter.map(Length::mm),
+    spindle_rpm: cutting.spindle_speed,
+    cut_feed_mm_per_min: cutting.feed_rate,
+    plunge_feed_mm_per_min: cutting.plunge_rate,
+    stepover_mm: cutting.stepover.map(Length::mm),
+    stepover_percent: None,
+  }
+}
+
+/// One tool's detail, looked up by the geometry id a tree row carries.
+///
+/// A tool the library no longer holds is `None`, which the frontend receives as `null`: a selection
+/// that names nothing is an absence and not an empty tool made of nulls.
+fn tool_detail_impl(
+  runtime: &AppRuntime,
+  id: &str,
+) -> Result<Option<ToolDetailDto>, CommandErrorDto> {
+  let tools = read_tool_library(runtime)?;
+  // The store's own resolver, so a selection resolves to exactly the tool the emitter would.
+  Ok(cam_store::tools::stored_tool_for_id(&tools, id).map(tool_detail_of))
+}
+
+#[tauri::command]
+fn tool_library_tree(runtime: State<'_, AppRuntime>) -> Result<ToolTreeDto, CommandErrorDto> {
+  tool_tree_impl(&runtime)
+}
+
+#[tauri::command]
+fn tool_detail(
+  runtime: State<'_, AppRuntime>,
+  id: String,
+) -> Result<Option<ToolDetailDto>, CommandErrorDto> {
+  tool_detail_impl(&runtime, &id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -726,7 +999,9 @@ pub fn run() {
       scene_snapshot,
       cam_context,
       cam_operations,
-      cam_output
+      cam_output,
+      tool_library_tree,
+      tool_detail
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -1239,6 +1514,323 @@ mod tests {
     }));
     let got2 = get_settings_impl(&rt2).expect("get2");
     assert_eq!(got2.theme, "light");
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// A scratch directory for one test's library, removed by the test that made it.
+  fn library_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+      "camcraft-tauri-{name}-{}-{}",
+      std::process::id(),
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("mkdir");
+    dir
+  }
+
+  /// A runtime whose application data directory holds the tool library, which is how the window
+  /// finds it: `data_dir/tools.sqlite`.
+  fn runtime_with_data_dir(dir: &Path) -> AppRuntime {
+    AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(Document::new(Board::default_board())),
+      path: None,
+      data_dir: Some(dir.to_path_buf()),
+      recents: Vec::new(),
+      settings: SettingsDto::default(),
+    }))
+  }
+
+  /// One stored tool with the fields every command reads; each test sets what it needs on top.
+  fn library_tool(
+    id: &str,
+    name: &str,
+    kind: cam_store::tools::ToolKind,
+    number: Option<u32>,
+  ) -> cam_store::tools::StoredTool {
+    cam_store::tools::StoredTool {
+      geometry: cam_store::tools::ToolGeometry {
+        id: id.to_string(),
+        name_format: name.to_string(),
+        tool_type: kind.raw(),
+        units: cam_units::UnitSystem::Mm,
+        diameter: Some(Length::from_mm(1.0)),
+        included_angle: None,
+        flat_diameter: None,
+        num_flutes: Some(1),
+        flute_length: None,
+        tip_radius: None,
+        shank_diameter: None,
+        overall_length: None,
+        custom_attributes: None,
+      },
+      cutting: cam_store::tools::CuttingData {
+        id: format!("{id}-cut"),
+        rate_units: cam_units::UnitSystem::Mm,
+        feed_rate: None,
+        plunge_rate: None,
+        spindle_speed: None,
+        stepdown: None,
+        stepover: None,
+        clear_stepover: None,
+        tool_number: number,
+        notes: None,
+      },
+    }
+  }
+
+  /// Write a real library file through the store's own writer, in `dir`, and close it.
+  fn seed_library(dir: &Path, tools: &[cam_store::tools::StoredTool]) {
+    let library = cam_store::tools::ToolLibrary::open(dir.join("tools.sqlite"))
+      .expect("the owner writes the library");
+    for (position, tool) in tools.iter().enumerate() {
+      library.put_geometry(&tool.geometry).expect("geometry");
+      library.put_cutting_data(&tool.cutting).expect("cutting");
+      library
+        .link(
+          &format!("link-{position}"),
+          &tool.geometry.id,
+          &tool.cutting.id,
+          None,
+          None,
+        )
+        .expect("link");
+    }
+  }
+
+  #[test]
+  fn tool_tree_of_an_empty_library_reports_no_groups() {
+    let dir = library_dir("tool-tree-empty");
+    let rt = runtime_with_data_dir(&dir);
+
+    // No library file yet. Reading a library must not create one, so the tree is empty rather than
+    // an error and the file is still absent afterwards.
+    let dto = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(dto.schema, "tool-tree@1");
+    assert!(dto.groups.is_empty());
+    assert!(
+      fs::metadata(dir.join("tools.sqlite")).is_err(),
+      "a read command never creates the library it reads"
+    );
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({ "schema": "tool-tree@1", "groups": [] })
+    );
+
+    // A library that exists and holds nothing reads the same way: empty groups, no invented heading.
+    seed_library(&dir, &[]);
+    assert_eq!(
+      serde_json::to_value(tool_tree_impl(&rt).expect("tree")).expect("json"),
+      serde_json::json!({ "schema": "tool-tree@1", "groups": [] })
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_tree_groups_tools_by_kind_with_a_count_and_a_derived_meta() {
+    let dir = library_dir("tool-tree");
+
+    let mut flat_one = library_tool(
+      "flat-1",
+      "Flat 1.0 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      Some(1),
+    );
+    flat_one.geometry.num_flutes = Some(1);
+
+    let mut flat_two = library_tool(
+      "flat-2",
+      "Flat 2.0 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      Some(2),
+    );
+    flat_two.geometry.diameter = Some(Length::from_mm(2.0));
+    flat_two.geometry.num_flutes = Some(2);
+
+    // A record the library holds without a number and without a flute count: both are published as
+    // absent, a `null` number and a dash meta, never as an invented zero.
+    let mut flat_bare = library_tool(
+      "flat-bare",
+      "End mill 3.175 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      None,
+    );
+    flat_bare.geometry.diameter = Some(Length::from_mm(3.175));
+    flat_bare.geometry.num_flutes = None;
+
+    let mut drill = library_tool(
+      "drill-08",
+      "Drill 0.8 mm",
+      cam_store::tools::ToolKind::Drill,
+      Some(4),
+    );
+    drill.geometry.diameter = Some(Length::from_mm(0.8));
+    drill.geometry.included_angle = Some(cam_units::Angle::from_degrees(118.0));
+
+    let mut vbit = library_tool(
+      "vbit-30",
+      "V-bit 30°",
+      cam_store::tools::ToolKind::VBit,
+      Some(6),
+    );
+    vbit.geometry.included_angle = Some(cam_units::Angle::from_degrees(30.0));
+    vbit.geometry.flat_diameter = Some(Length::from_mm(0.1));
+
+    seed_library(&dir, &[flat_one, flat_two, flat_bare, drill, vbit]);
+    let rt = runtime_with_data_dir(&dir);
+
+    let dto = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(dto.schema, "tool-tree@1");
+    assert_eq!(dto.groups.len(), 3, "one group per kind the library holds");
+    assert_eq!(dto.groups[0].count, 3);
+    assert_eq!(dto.groups[1].count, 1);
+    assert_eq!(dto.groups[2].count, 1);
+
+    // The payload as the frontend receives it: every key, the group order the library's own order
+    // produces, and the meta of each kind derived from the record instead of a per-kind constant.
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({
+        "schema": "tool-tree@1",
+        "groups": [
+          {
+            "kind": "flat-end-mill",
+            "label": "Flat end mill",
+            "count": 3,
+            "tools": [
+              { "id": "flat-1", "number": 1, "name": "Flat 1.0 mm", "meta": "1F" },
+              { "id": "flat-2", "number": 2, "name": "Flat 2.0 mm", "meta": "2F" },
+              { "id": "flat-bare", "number": null, "name": "End mill 3.175 mm", "meta": "—" }
+            ]
+          },
+          {
+            "kind": "drill",
+            "label": "Drill",
+            "count": 1,
+            "tools": [
+              { "id": "drill-08", "number": 4, "name": "Drill 0.8 mm", "meta": "118°" }
+            ]
+          },
+          {
+            "kind": "v-bit",
+            "label": "V-bit",
+            "count": 1,
+            "tools": [
+              { "id": "vbit-30", "number": 6, "name": "V-bit 30°", "meta": "0.1" }
+            ]
+          }
+        ]
+      })
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_detail_reports_the_geometry_and_feeds_the_library_holds() {
+    let dir = library_dir("tool-detail");
+
+    let mut flat = library_tool(
+      "flat-1",
+      "End mill 1.0 mm - 3.175 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      Some(22),
+    );
+    flat.geometry.diameter = Some(Length::from_mm(1.0));
+    flat.geometry.num_flutes = Some(1);
+    flat.geometry.flute_length = Some(Length::from_mm(8.0));
+    flat.geometry.shank_diameter = Some(Length::from_mm(3.175));
+    flat.geometry.overall_length = Some(Length::from_mm(38.0));
+    flat.cutting.spindle_speed = Some(18_000);
+    flat.cutting.feed_rate = Some(800.0);
+    flat.cutting.plunge_rate = Some(200.0);
+    flat.cutting.stepover = Some(Length::from_mm(0.4));
+
+    let mut drill = library_tool(
+      "drill-08",
+      "Drill 0.8 mm",
+      cam_store::tools::ToolKind::Drill,
+      Some(4),
+    );
+    drill.geometry.diameter = Some(Length::from_mm(0.8));
+    drill.geometry.included_angle = Some(cam_units::Angle::from_degrees(118.0));
+
+    seed_library(&dir, &[flat, drill]);
+    let rt = runtime_with_data_dir(&dir);
+
+    let dto = tool_detail_impl(&rt, "flat-1")
+      .expect("the query runs")
+      .expect("the library holds flat-1");
+    assert_eq!(dto.schema, "tool-detail@1");
+    assert_eq!(dto.number, Some(22));
+
+    // The payload as the frontend receives it. `stepoverPercent` is an explicit absence: the model
+    // stores a stepover as a length in millimetres and holds no percentage, so no percentage is
+    // published for the page to echo as if the library had said it.
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({
+        "schema": "tool-detail@1",
+        "id": "flat-1",
+        "name": "End mill 1.0 mm - 3.175 mm",
+        "kind": "flat-end-mill",
+        "kindLabel": "Flat end mill",
+        "number": 22,
+        "diameterMm": 1.0,
+        "flutes": 1,
+        "cutLengthMm": 8.0,
+        "shankMm": 3.175,
+        "overallLengthMm": 38.0,
+        "includedAngleDeg": null,
+        "flatDiameterMm": null,
+        "spindleRpm": 18000,
+        "cutFeedMmPerMin": 800.0,
+        "plungeFeedMmPerMin": 200.0,
+        "stepoverMm": 0.4,
+        "stepoverPercent": null
+      })
+    );
+
+    // The lookup resolves the tool the caller named, not its neighbour, and a drill's own numbers
+    // read back where a mill's are absent.
+    let drill = tool_detail_impl(&rt, "drill-08")
+      .expect("the query runs")
+      .expect("the library holds drill-08");
+    assert_eq!(drill.kind, "drill");
+    assert_eq!(drill.included_angle_deg, Some(118.0));
+    assert_eq!(drill.flutes, Some(1));
+    assert_eq!(drill.cut_feed_mm_per_min, None);
+    assert_eq!(drill.stepover_mm, None);
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_detail_of_a_tool_the_library_does_not_hold_is_absent() {
+    let dir = library_dir("tool-detail-missing");
+    seed_library(
+      &dir,
+      &[library_tool(
+        "flat-1",
+        "Flat 1.0 mm",
+        cam_store::tools::ToolKind::FlatEndMill,
+        Some(1),
+      )],
+    );
+    let rt = runtime_with_data_dir(&dir);
+
+    // A selection the library no longer holds is an absence, not a made-up empty tool.
+    let dto = tool_detail_impl(&rt, "no-such-tool").expect("the query runs");
+    assert_eq!(dto, None);
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!(null)
+    );
 
     let _ = fs::remove_dir_all(&dir);
   }
