@@ -86,6 +86,30 @@ describe('ds component sheet', () => {
     }
   });
 
+  // 102 T3 (S3): a zero is reported as a zero. The sheet has one usage state, driven by the
+  // derived list; a component nobody imports renders `0 consumidores` and no names, never a
+  // "probably used" fallback. No real component is at zero today, so the same path is exercised
+  // by zeroing one entry of the derived data for the duration of a render.
+  it('renders a zero-consumer component as zero, without names', () => {
+    const entry = findCatalogEntry('glyph');
+    if (!entry) throw new Error('missing catalog entry: glyph');
+    const component = inventory.find(item => item.path === entry.path);
+    if (!component) throw new Error(`missing inventory entry: ${entry.path}`);
+    const consumers = component.consumers;
+    component.consumers = [];
+    try {
+      pageMock.params.slug = entry.slug;
+      const { container } = render(Sheet);
+
+      expect(
+        container.querySelector('[data-ds-consumer-count]')?.textContent
+      ).toBe('0');
+      expect(container.querySelector('[data-ds-consumer-names]')).toBeNull();
+    } finally {
+      component.consumers = consumers;
+    }
+  });
+
   it('links back to the catalog index', () => {
     const { container } = render(Sheet);
 

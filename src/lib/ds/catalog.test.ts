@@ -60,6 +60,52 @@ describe('catalog manifest', () => {
     }
   });
 
+  // --- Exact consumers (102 T3, S2) --------------------------------------------------------------
+
+  it('credits an atom only to the file that names it, not to its barrel siblings', () => {
+    // Before 102 every importer of `atoms/index.ts` counted as a consumer of all six atoms: three
+    // files x six atoms. With the named binding, `ToolRail` (Button, Icon) no longer credits
+    // `Glyph`, `KeyHint` or `StatusDot`, and each atom keeps only its real importers.
+    const atoms = Object.fromEntries(
+      inventory
+        .filter(component => component.layer === 'atom')
+        .map(component => [
+          component.name,
+          component.consumers.map(consumer => consumer.split('/').pop())
+        ])
+    );
+
+    expect(atoms).toEqual({
+      Button: ['SettingsDialog.svelte', 'ToolRail.svelte'],
+      Glyph: ['SettingsDialog.svelte'],
+      Icon: [
+        'IconButton.svelte',
+        'CommandSearch.svelte',
+        'PanelRow.svelte',
+        'SettingsDialog.svelte',
+        'ToolRail.svelte'
+      ],
+      IconButton: ['TopBar.svelte'],
+      KeyHint: ['CommandSearch.svelte'],
+      StatusDot: ['PanelRow.svelte']
+    });
+  });
+
+  it('counts in-use from those exact consumers and reports every zero honestly', () => {
+    const board = buildBoard(inventory, CATALOG);
+    const inUse = inventory.filter(component => component.consumers.length > 0);
+    const zero = inventory.filter(
+      component => component.consumers.length === 0
+    );
+
+    expect(board.layers.reduce((total, layer) => total + layer.inUse, 0)).toBe(
+      inUse.length
+    );
+    // 102 S3: no fallback re-inflates a zero. Today no component ends at zero; the list is derived,
+    // so the board can say so whenever one does.
+    expect(zero.map(component => component.name)).toEqual([]);
+  });
+
   it('finds an entry by slug and returns undefined for anything else', () => {
     expect(findCatalogEntry('button')?.name).toBe('Button');
     expect(findCatalogEntry('nope')).toBeUndefined();

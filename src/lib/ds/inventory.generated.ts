@@ -12,8 +12,7 @@ export const inventory: ComponentEntry[] = [
     test: 'src/lib/components/atoms/Button.test.ts',
     consumers: [
       'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
+      'src/lib/components/organisms/ToolRail.svelte'
     ]
   },
   {
@@ -21,11 +20,7 @@ export const inventory: ComponentEntry[] = [
     name: 'Glyph',
     layer: 'atom',
     test: null,
-    consumers: [
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
-    ]
+    consumers: ['src/lib/components/organisms/SettingsDialog.svelte']
   },
   {
     path: 'src/lib/components/atoms/Icon.svelte',
@@ -37,8 +32,7 @@ export const inventory: ComponentEntry[] = [
       'src/lib/components/molecules/CommandSearch.svelte',
       'src/lib/components/molecules/PanelRow.svelte',
       'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
+      'src/lib/components/organisms/ToolRail.svelte'
     ]
   },
   {
@@ -46,35 +40,21 @@ export const inventory: ComponentEntry[] = [
     name: 'IconButton',
     layer: 'atom',
     test: 'src/lib/components/atoms/IconButton.test.ts',
-    consumers: [
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
-    ]
+    consumers: ['src/lib/components/organisms/TopBar.svelte']
   },
   {
     path: 'src/lib/components/atoms/KeyHint.svelte',
     name: 'KeyHint',
     layer: 'atom',
     test: 'src/lib/components/atoms/KeyHint.test.ts',
-    consumers: [
-      'src/lib/components/molecules/CommandSearch.svelte',
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
-    ]
+    consumers: ['src/lib/components/molecules/CommandSearch.svelte']
   },
   {
     path: 'src/lib/components/atoms/StatusDot.svelte',
     name: 'StatusDot',
     layer: 'atom',
     test: 'src/lib/components/atoms/StatusDot.test.ts',
-    consumers: [
-      'src/lib/components/molecules/PanelRow.svelte',
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/ToolRail.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
-    ]
+    consumers: ['src/lib/components/molecules/PanelRow.svelte']
   },
   {
     path: 'src/lib/components/molecules/CommandSearch.svelte',
@@ -82,8 +62,6 @@ export const inventory: ComponentEntry[] = [
     layer: 'molecule',
     test: 'src/lib/components/molecules/CommandSearch.test.ts',
     consumers: [
-      'src/lib/components/organisms/CamObjectBrowser.svelte',
-      'src/lib/components/organisms/OperationInspector.svelte',
       'src/lib/components/organisms/SettingsDialog.svelte',
       'src/lib/components/organisms/TopBar.svelte'
     ]
@@ -95,9 +73,7 @@ export const inventory: ComponentEntry[] = [
     test: 'src/lib/components/molecules/FloatCard.test.ts',
     consumers: [
       'src/lib/components/organisms/CamObjectBrowser.svelte',
-      'src/lib/components/organisms/OperationInspector.svelte',
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
+      'src/lib/components/organisms/OperationInspector.svelte'
     ]
   },
   {
@@ -105,12 +81,7 @@ export const inventory: ComponentEntry[] = [
     name: 'PanelRow',
     layer: 'molecule',
     test: 'src/lib/components/molecules/PanelRow.test.ts',
-    consumers: [
-      'src/lib/components/organisms/CamObjectBrowser.svelte',
-      'src/lib/components/organisms/OperationInspector.svelte',
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
-    ]
+    consumers: ['src/lib/components/organisms/CamObjectBrowser.svelte']
   },
   {
     path: 'src/lib/components/molecules/PanelSection.svelte',
@@ -119,9 +90,7 @@ export const inventory: ComponentEntry[] = [
     test: 'src/lib/components/molecules/PanelSection.test.ts',
     consumers: [
       'src/lib/components/organisms/CamObjectBrowser.svelte',
-      'src/lib/components/organisms/OperationInspector.svelte',
-      'src/lib/components/organisms/SettingsDialog.svelte',
-      'src/lib/components/organisms/TopBar.svelte'
+      'src/lib/components/organisms/OperationInspector.svelte'
     ]
   },
   {
@@ -129,99 +98,63 @@ export const inventory: ComponentEntry[] = [
     name: 'BoardCanvas',
     layer: 'organism',
     test: null,
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/CamObjectBrowser.svelte',
     name: 'CamObjectBrowser',
     layer: 'organism',
     test: 'src/lib/components/organisms/CamObjectBrowser.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/OperationInspector.svelte',
     name: 'OperationInspector',
     layer: 'organism',
     test: 'src/lib/components/organisms/OperationInspector.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/SettingsDialog.svelte',
     name: 'SettingsDialog',
     layer: 'organism',
     test: 'src/lib/components/organisms/SettingsDialog.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/+layout.svelte']
   },
   {
     path: 'src/lib/components/organisms/StartScreen.svelte',
     name: 'StartScreen',
     layer: 'organism',
     test: null,
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/StatusBar.svelte',
     name: 'StatusBar',
     layer: 'organism',
     test: 'src/lib/components/organisms/StatusBar.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/+page.svelte', 'src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/ToolRail.svelte',
     name: 'ToolRail',
     layer: 'organism',
     test: 'src/lib/components/organisms/ToolRail.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/TopBar.svelte',
     name: 'TopBar',
     layer: 'organism',
     test: 'src/lib/components/organisms/TopBar.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/+page.svelte', 'src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/organisms/ViewportHud.svelte',
     name: 'ViewportHud',
     layer: 'organism',
     test: 'src/lib/components/organisms/ViewportHud.test.ts',
-    consumers: [
-      'src/routes/+layout.svelte',
-      'src/routes/+page.svelte',
-      'src/routes/workbench/+page.svelte'
-    ]
+    consumers: ['src/routes/workbench/+page.svelte']
   },
   {
     path: 'src/lib/components/templates/WorkbenchTemplate.svelte',

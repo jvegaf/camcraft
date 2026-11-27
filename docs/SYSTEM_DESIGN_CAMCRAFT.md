@@ -923,7 +923,16 @@ pnpm ds:inventory
 ```
 
 El tablero cuenta, por capa atómica, el total de componentes y cuántos tienen ficha en el catálogo,
-test hermano y están en uso (importados por algún archivo de `src/`; el propio catálogo no cuenta).
+test hermano y están en uso. Un componente está en uso cuando algún archivo de `src/` lo alcanza
+**nombrando su binding** (`import { Button } from '../atoms'` acredita a `Button` y no a sus hermanos
+del barrel; un alias cuenta por el nombre exportado, así que `Button as B` sigue acreditando a
+`Button`). Sólo las formas que traen el módulo entero —`import * as ns`, el import de efecto
+`import './x.svelte'`, el default de un `.svelte` y `export * from`— acreditan todo lo que el módulo
+alcanza, porque cualquiera de sus miembros podría usarse a través de ellas. Los módulos de tipos
+(`import type`, `export type ... from`) no acreditan nada. El propio catálogo no cuenta. Un
+componente sin consumidores se muestra como tal: «en uso: no» en el tablero y `0 consumidores` en su
+ficha, sin conteo por barrel, «probablemente usado» ni otro fallback que lo disimule.
+
 La columna «Renderable» son las fichas que muestran instancias reales; «No renderable» las que
 dependen de IPC de Tauri, de un store vivo o de un canvas y solo muestran sus estados como datos.
 Cada ficha lista además cuántos consumidores tiene el componente y sus nombres. Los componentes

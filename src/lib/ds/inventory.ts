@@ -40,16 +40,40 @@ export type ComponentEntry = {
   consumers: string[];
 };
 
-/** A source file and the module specifiers its imports/re-exports point at. */
-export type SourceFile = { path: string; imports: string[] };
+/** One module specifier and the names the importing file binds from it (102 T1, S2). */
+export type ImportBinding = {
+  /** The raw specifier, e.g. `$lib/components/atoms` or `./Button.svelte`. */
+  specifier: string;
+  /**
+   * `null` when the whole module is reachable: a namespace import, a side-effect import, a default
+   * import, or an `export * from`. Otherwise exactly the names the file binds, reported under their
+   * exported name (so `import { Button as B }` contributes `Button`), never the local alias.
+   */
+  bindings: string[] | null;
+  /** `import type` / `export type`: a type module exposes no component, so it credits nothing. */
+  typeOnly: boolean;
+};
 
-/** An `index.ts` barrel and the specifiers it re-exports, so a barrel import resolves to targets. */
-export type BarrelFile = { path: string; imports: string[] };
+/** A source file and the module bindings its imports point at. */
+export type SourceFile = { path: string; imports: ImportBinding[] };
+
+/** One re-export of a barrel: what it exposes and the module it comes from (102 T1, S2). */
+export type BarrelExport = {
+  /** The name the barrel exposes, or `null` for `export * from` (the whole module). */
+  name: string | null;
+  /** The name in the re-exported module, or `null` when the whole module is re-exported. */
+  local: string | null;
+  specifier: string;
+  typeOnly: boolean;
+};
+
+/** An `index.ts` barrel and the names it re-exports, so a barrel import resolves to targets. */
+export type BarrelFile = { path: string; exports: BarrelExport[] };
 
 export type InventoryInput = {
   /** Component sources, repository-relative. */
   components: string[];
-  /** Every source file the generator scanned, with its raw import specifiers. */
+  /** Every source file the generator scanned, with the names its imports bind. */
   files: SourceFile[];
   /** Barrels found next to the components. */
   barrels: BarrelFile[];
@@ -117,18 +141,21 @@ function unique(values: string[]): string[] {
 }
 
 /**
- * Resolve one import specifier to the component sources it reaches. Direct file imports and barrel
- * imports (`$lib/components/atoms`, `../molecules`) are both followed, so a component consumed
- * through an `index.ts` is still credited to the file that imported the barrel.
+ * Resolve one import to the component sources it reaches. The name the importer bound decides the
+ * target (102 S2): a named binding only credits the member it names, while the whole-module forms
+ * (`import * as`, side-effect, default, `export * from`) credit everything the module reaches,
+ * because any member could be used through them. Type-only bindings never credit anything.
  */
 export function resolveImportTargets(
   specifier: string,
+  bindings: string[] | null,
   importerPath: string,
   components: readonly string[],
   barrels: readonly BarrelFile[]
 ): string[] {
   return resolveTargets(
     specifier,
+    bindings,
     importerPath,
     new Set(components),
     new Map(barrels.map(barrel => [barrel.path, barrel])),
@@ -136,8 +163,58 @@ export function resolveImportTargets(
   );
 }
 
+function resolveBarrel(
+  barrel: BarrelFile,
+  bindings: string[] | null,
+  components: ReadonlySet<string>,
+  barrels: ReadonlyMap<string, BarrelFile>,
+  visitedBarrels: ReadonlySet<string>
+): string[] {
+  const resolveExport = (entry: BarrelExport): string[] => {
+    const inner =
+      entry.local === null || entry.local === 'default' ? null : [entry.local];
+    return resolveTargets(
+      entry.specifier,
+      inner,
+      barrel.path,
+      components,
+      barrels,
+      visitedBarrels
+    );
+  };
+  const reExportsWholeModule = barrel.exports.filter(
+    entry => !entry.typeOnly && entry.name === null
+  );
+
+  if (bindings === null) {
+    return unique(
+      barrel.exports
+        .filter(entry => !entry.typeOnly)
+        .flatMap(entry => resolveExport(entry))
+    );
+  }
+
+  const reached: string[] = [];
+  for (const binding of bindings) {
+    const exact = barrel.exports.find(
+      entry => !entry.typeOnly && entry.name === binding
+    );
+    if (exact) {
+      reached.push(...resolveExport(exact));
+      continue;
+    }
+    // `export * from` exposes names this barrel never spells out, so a binding it does not map can
+    // only be followed as the whole module — the pre-102 semantics, kept for that form alone.
+    for (const wildcard of reExportsWholeModule) {
+      reached.push(...resolveExport(wildcard));
+    }
+  }
+  return unique(reached);
+}
+
 function resolveTargets(
   specifier: string,
+  bindings: string[] | null,
   importerPath: string,
   components: ReadonlySet<string>,
   barrels: ReadonlyMap<string, BarrelFile>,
@@ -148,7 +225,12 @@ function resolveTargets(
 
   const direct = [resolved, `${resolved}.svelte`];
   for (const candidate of direct) {
-    if (components.has(candidate)) return [candidate];
+    if (!components.has(candidate)) continue;
+    if (bindings === null) return [candidate];
+    // A component file default-exports itself: `import Button from './Button.svelte'` binds it by
+    // the `default` name, which the generator reports as the whole module. A named binding only
+    // matches when the importer spelled the component name.
+    if (bindings.includes(componentName(candidate))) return [candidate];
   }
 
   for (const candidate of [
@@ -160,11 +242,7 @@ function resolveTargets(
     if (barrel && !visitedBarrels.has(barrel.path)) {
       const nextVisited = new Set(visitedBarrels);
       nextVisited.add(barrel.path);
-      return unique(
-        barrel.imports.flatMap(inner =>
-          resolveTargets(inner, barrel.path, components, barrels, nextVisited)
-        )
-      );
+      return resolveBarrel(barrel, bindings, components, barrels, nextVisited);
     }
   }
 
@@ -206,14 +284,17 @@ export function buildInventory(input: InventoryInput): ComponentEntry[] {
     if (NON_CONSUMER_FILES.has(file.path)) continue;
 
     const targets = unique(
-      file.imports.flatMap(specifier =>
-        resolveImportTargets(
-          specifier,
-          file.path,
-          input.components,
-          input.barrels
+      file.imports
+        .filter(binding => !binding.typeOnly)
+        .flatMap(binding =>
+          resolveImportTargets(
+            binding.specifier,
+            binding.bindings,
+            file.path,
+            input.components,
+            input.barrels
+          )
         )
-      )
     );
     for (const target of targets) {
       if (target === file.path) continue;

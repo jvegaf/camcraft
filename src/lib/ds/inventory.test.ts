@@ -1,14 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type BarrelExport,
   type BarrelFile,
   buildInventory,
   type ComponentEntry,
   componentName,
+  type ImportBinding,
   type InventoryInput,
   layerForPath,
   type SourceFile,
   siblingTestPath
 } from './inventory';
+
+/** `import { ...names } from specifier`; aliases are reported under their exported name. */
+function named(specifier: string, ...bindings: string[]): ImportBinding {
+  return { specifier, bindings, typeOnly: false };
+}
+
+/** `import * as ns`, `import 'x'` or a default import: the whole module is reachable. */
+function wholeModule(specifier: string): ImportBinding {
+  return { specifier, bindings: null, typeOnly: false };
+}
+
+/** `import type { ... }` / `export type ... from`: it never credits a component. */
+function typeOnly(specifier: string, ...bindings: string[]): ImportBinding {
+  return { specifier, bindings, typeOnly: true };
+}
+
+function reExport(name: string | null, specifier: string): BarrelExport {
+  return {
+    name,
+    local: name === null ? null : 'default',
+    specifier,
+    typeOnly: false
+  };
+}
 
 // Contract for the derived Atomic Design inventory (097 T1, S2). The classification and the
 // cross-reference are pure: the generator reads the disk and hands plain path/import data in, so
@@ -31,23 +57,25 @@ const files: SourceFile[] = [
   { path: A, imports: [] },
   { path: B, imports: [] },
   // A molecule imports the atom by relative path, the way `PanelRow` imports `StatusDot`.
-  { path: M, imports: ['../atoms/A.svelte'] },
+  { path: M, imports: [wholeModule('../atoms/A.svelte')] },
   // A template imports the molecule through the `$lib` alias.
-  { path: T, imports: ['$lib/components/molecules/M.svelte'] },
+  { path: T, imports: [wholeModule('$lib/components/molecules/M.svelte')] },
   // A route imports the atom through the atom barrel, the way routes import `organisms`.
-  { path: ROUTE, imports: ['$lib/components/atoms'] },
+  { path: ROUTE, imports: [named('$lib/components/atoms', 'A')] },
   // The barrel itself re-exports the atom; it must not be reported as a consumer.
-  { path: ATOM_INDEX, imports: ['./A.svelte'] },
+  { path: ATOM_INDEX, imports: [wholeModule('./A.svelte')] },
   // A sibling test is not a consumer either: it exercises the component, it does not use it.
-  { path: A_TEST, imports: ['./A.svelte'] },
+  { path: A_TEST, imports: [wholeModule('./A.svelte')] },
   // The catalog imports every component to hold its reference; it is an inspector, not a user.
-  { path: CATALOG, imports: ['$lib/components/atoms/A.svelte', 'B.svelte'] },
+  { path: CATALOG, imports: [wholeModule('$lib/components/atoms/A.svelte')] },
   // The generated inventory carries derived data only; it is never usage either.
-  { path: GENERATED, imports: ['./inventory'] },
+  { path: GENERATED, imports: [wholeModule('./inventory')] },
   { path: 'src/lib/components/legacy/Z.svelte', imports: [] }
 ];
 
-const barrels: BarrelFile[] = [{ path: ATOM_INDEX, imports: ['./A.svelte'] }];
+const barrels: BarrelFile[] = [
+  { path: ATOM_INDEX, exports: [reExport('A', './A.svelte')] }
+];
 
 const existingFiles = [
   ...components,
@@ -156,5 +184,155 @@ describe('buildInventory', () => {
 
     expect(second).toEqual(first);
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+});
+
+// --- Exact consumers (102 T1 + T3, S2) ---------------------------------------------------------
+//
+// The name the importer binds decides the target. Only the whole-module forms keep the pre-102
+// semantics, where reachability is enough, because any member could be used through them.
+
+describe('binding resolution', () => {
+  const USER = 'src/routes/uses.svelte';
+  const MOLECULE_BARREL = 'src/lib/components/molecules/index.ts';
+
+  /** Inventory of A + B with a synthetic importer and the barrels declared by each test. */
+  function consumersWith(
+    imports: ImportBinding[],
+    barrels: BarrelFile[] = [
+      {
+        path: ATOM_INDEX,
+        exports: [
+          reExport('A', './A.svelte'),
+          reExport('B', './B.svelte'),
+          { name: 'Name', local: 'Name', specifier: './types', typeOnly: true },
+          reExport('Nested', '../molecules')
+        ]
+      }
+    ]
+  ): ComponentEntry[] {
+    return buildInventory({
+      components: [A, B, M],
+      files: [
+        { path: A, imports: [] },
+        { path: B, imports: [] },
+        { path: M, imports: [] },
+        { path: USER, imports }
+      ],
+      barrels,
+      existingFiles: [A, B, M, ATOM_INDEX, MOLECULE_BARREL, USER]
+    });
+  }
+
+  function consumersOf(entries: ComponentEntry[], path: string): string[] {
+    return entry(entries, path).consumers;
+  }
+
+  it('credits only the component the importer named', () => {
+    const entries = consumersWith([named('$lib/components/atoms', 'A')]);
+
+    expect(consumersOf(entries, A)).toEqual([USER]);
+    expect(consumersOf(entries, B)).toEqual([]);
+  });
+
+  it('credits the aliased component when the import renames it', () => {
+    // `import { B as Bee } from '../atoms'` binds `B`; the generator reports the exported name.
+    const entries = consumersWith([named('$lib/components/atoms', 'B')]);
+
+    expect(consumersOf(entries, A)).toEqual([]);
+    expect(consumersOf(entries, B)).toEqual([USER]);
+  });
+
+  it('does not credit the siblings of the member a barrel was imported for', () => {
+    const entries = consumersWith([named('$lib/components/atoms', 'A', 'B')]);
+
+    expect(consumersOf(entries, A)).toEqual([USER]);
+    expect(consumersOf(entries, B)).toEqual([USER]);
+    // `M` is not exported by the atom barrel at all, so naming A and B cannot reach it.
+    expect(consumersOf(entries, M)).toEqual([]);
+  });
+
+  it('credits the whole module through a namespace import', () => {
+    const entries = consumersWith([wholeModule('$lib/components/atoms')]);
+
+    expect(consumersOf(entries, A)).toEqual([USER]);
+    expect(consumersOf(entries, B)).toEqual([USER]);
+  });
+
+  it('credits the whole module through a side-effect import of a component', () => {
+    const entries = consumersWith([
+      wholeModule('$lib/components/atoms/A.svelte')
+    ]);
+
+    expect(consumersOf(entries, A)).toEqual([USER]);
+    expect(consumersOf(entries, B)).toEqual([]);
+  });
+
+  it('treats `export * from` as the whole module', () => {
+    const entries = consumersWith(
+      [named('$lib/components/atoms', 'Anything')],
+      [
+        {
+          path: ATOM_INDEX,
+          exports: [
+            {
+              name: null,
+              local: null,
+              specifier: './A.svelte',
+              typeOnly: false
+            }
+          ]
+        }
+      ]
+    );
+
+    expect(consumersOf(entries, A)).toEqual([USER]);
+    expect(consumersOf(entries, B)).toEqual([]);
+  });
+
+  it('credits a component imported as the default of a `.svelte` file', () => {
+    const entries = consumersWith([
+      wholeModule('$lib/components/atoms/B.svelte')
+    ]);
+
+    expect(consumersOf(entries, B)).toEqual([USER]);
+    expect(consumersOf(entries, A)).toEqual([]);
+  });
+
+  it('never credits through a type-only import or re-export', () => {
+    const entries = consumersWith([
+      typeOnly('$lib/components/atoms', 'A', 'Name'),
+      typeOnly('$lib/components/atoms/B.svelte')
+    ]);
+
+    expect(consumersOf(entries, A)).toEqual([]);
+    expect(consumersOf(entries, B)).toEqual([]);
+  });
+
+  it('resolves a member re-exported by a nested barrel', () => {
+    const entries = consumersWith(
+      [named('$lib/components/atoms', 'Nested')],
+      [
+        {
+          path: ATOM_INDEX,
+          exports: [
+            {
+              name: 'Nested',
+              local: 'M',
+              specifier: '../molecules',
+              typeOnly: false
+            }
+          ]
+        },
+        {
+          path: MOLECULE_BARREL,
+          exports: [reExport('M', './M.svelte')]
+        }
+      ]
+    );
+
+    expect(consumersOf(entries, M)).toEqual([USER]);
+    expect(consumersOf(entries, A)).toEqual([]);
+    expect(consumersOf(entries, B)).toEqual([]);
   });
 });
