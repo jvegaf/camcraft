@@ -2,7 +2,7 @@
 // Generates `src/lib/ds/inventory.generated.ts` from the repository sources (097 T1, S1 + S2 + S4).
 //
 // The script is a thin disk reader: it walks `src/`, collects component sources, sibling files,
-// barrels and import specifiers, and hands that plain data to the pure `buildInventory` in
+// barrels and import bindings, and hands that plain data to the pure `buildInventory` in
 // `src/lib/ds/inventory.ts`. Classification and cross-reference live there, where they are tested.
 //
 // `src/lib/components/atoms/icons.ts` is deliberately not listed as a component: it is the shape
@@ -30,16 +30,120 @@ function walk(directory) {
     });
 }
 
-/** Every module specifier the file imports or re-exports, including side-effect imports. */
-function specifiersOf(source) {
-  const found = new Set();
-  for (const match of source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)) {
-    found.add(match[1]);
+/**
+ * Every import of the module, with the names it binds (102 T2, S2).
+ *
+ * Regex-based on purpose: no parser dependency. Statements are read only when the `import` /
+ * `export` keyword starts a line (indentation allowed), which is how the formatter writes them and
+ * what keeps markup like `<Icon name="import" />` from being mistaken for an import. The honest
+ * limits of that choice:
+ *
+ * - Dynamic `import('./x')` and `require('./x')` are not read at all, so a module reached only that
+ *   way contributes no consumer. It under-credits; it never invents one.
+ * - A statement whose keyword does not start a line (e.g. `const a = 1; import b from 'x'`) is not
+ *   read either.
+ * - `export * as ns from './x'` (a namespace re-export) is not read: the `*` branch requires `from`
+ *   right after it. It under-credits today.
+ * - A default import is reported as the whole module (see `ImportBinding.bindings`), so a default
+ *   import of a `.ts` barrel credits every member it re-exports. No such form exists in this
+ *   repository; it is the one place where the pre-102 semantics survive beyond the forms the spec
+ *   names.
+ */
+function importsOf(source) {
+  const found = [];
+  for (const match of source.matchAll(
+    /^[ \t]*import\s+([^;'"]*?)\s*from\s*['"]([^'"]+)['"]/gm
+  )) {
+    found.push({ specifier: match[2], ...parseImportClause(match[1]) });
   }
-  for (const match of source.matchAll(/\bimport\s+['"]([^'"]+)['"]/g)) {
-    found.add(match[1]);
+  for (const match of source.matchAll(/^[ \t]*import\s*['"]([^'"]+)['"]/gm)) {
+    found.push({ specifier: match[1], bindings: null, typeOnly: false });
   }
-  return [...found].sort();
+  return found.sort(
+    (left, right) =>
+      left.specifier.localeCompare(right.specifier) ||
+      String(left.bindings).localeCompare(String(right.bindings))
+  );
+}
+
+/** `type { A }`, `{ A as B }`, `D, { A }`, `* as ns`, `D`; aliases resolve to the exported name. */
+function parseImportClause(rawClause) {
+  let clause = rawClause.trim();
+  let typeOnly = false;
+  if (/^type\s/.test(clause)) {
+    typeOnly = true;
+    clause = clause.replace(/^type\s+/, '');
+  }
+  if (/^\*\s*as\s+[\w$]+$/.test(clause)) {
+    return { bindings: null, typeOnly };
+  }
+  const open = clause.indexOf('{');
+  if (open === -1) {
+    // A default import binds `default`; the whole module stays reachable through it.
+    return { bindings: null, typeOnly };
+  }
+  const close = clause.lastIndexOf('}');
+  const inside = clause.slice(open + 1, close === -1 ? undefined : close);
+  const bindings = [];
+  let sawValue = false;
+  for (const item of parseSpecifierList(inside)) {
+    if (item.typeOnly) continue;
+    sawValue = true;
+    bindings.push(item.local);
+  }
+  // `import Default, { A } from 'x'` also binds the default, so the whole module is reachable.
+  if (clause.slice(0, open).trim() !== '') {
+    return { bindings: null, typeOnly };
+  }
+  // `import { type A } from 'x'` is a value import of no value at all.
+  return { bindings, typeOnly: typeOnly || !sawValue };
+}
+
+/**
+ * Parse a `{ ... }` specifier list. `local` is the name in the source module; `exported` is the
+ * name the statement exposes, identical to `local` for imports.
+ */
+function parseSpecifierList(inside) {
+  const items = [];
+  for (const entry of inside.split(',')) {
+    let text = entry.trim();
+    if (text === '') continue;
+    const typeOnly = /^type\s/.test(text);
+    if (typeOnly) text = text.replace(/^type\s+/, '');
+    const [local, exported = local] = text.split(/\s+as\s+/);
+    items.push({ local: local.trim(), exported: exported.trim(), typeOnly });
+  }
+  return items;
+}
+
+/** The re-exports of a barrel, as `{ name, local, specifier, typeOnly }` (102 T1, S2). */
+function exportsOf(source) {
+  const found = [];
+  for (const match of source.matchAll(
+    /^[ \t]*export\s+(?:(type)\s+)?(\*|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/gm
+  )) {
+    const specifier = match[3];
+    const keywordTypeOnly = match[1] === 'type';
+    if (match[2] === '*') {
+      // `export * from './x'` re-exports names this file never spells out: whole module.
+      found.push({
+        name: null,
+        local: null,
+        specifier,
+        typeOnly: keywordTypeOnly
+      });
+      continue;
+    }
+    for (const item of parseSpecifierList(match[2].slice(1, -1))) {
+      found.push({
+        name: item.exported,
+        local: item.local,
+        specifier,
+        typeOnly: keywordTypeOnly || item.typeOnly
+      });
+    }
+  }
+  return found;
 }
 
 const sourceFiles = walk(join(root, 'src')).filter(file =>
@@ -47,9 +151,21 @@ const sourceFiles = walk(join(root, 'src')).filter(file =>
 );
 const existingFiles = sourceFiles.map(toRepositoryPath);
 
-const files = sourceFiles.map(file => ({
-  path: toRepositoryPath(file),
-  imports: specifiersOf(readFileSync(file, 'utf8'))
+const parsed = new Map();
+function moduleOf(path) {
+  if (!parsed.has(path)) {
+    const source = readFileSync(join(root, path), 'utf8');
+    parsed.set(path, {
+      imports: importsOf(source),
+      exports: exportsOf(source)
+    });
+  }
+  return parsed.get(path);
+}
+
+const files = existingFiles.map(path => ({
+  path,
+  imports: moduleOf(path).imports
 }));
 
 const components = walk(componentsRoot)
@@ -60,10 +176,7 @@ const barrels = existingFiles
   .filter(
     path => path.startsWith('src/lib/components/') && path.endsWith('/index.ts')
   )
-  .map(path => {
-    const absolute = join(root, path);
-    return { path, imports: specifiersOf(readFileSync(absolute, 'utf8')) };
-  });
+  .map(path => ({ path, exports: moduleOf(path).exports }));
 
 const inventory = buildInventory({ components, files, barrels, existingFiles });
 
