@@ -3,25 +3,11 @@
   "brief": "Rediseño completo del shell de Camcraft con layouts y lenguaje visual de familia SolidCraft. Cubre start screen, workbench/editor y settings, replantea la arquitectura de información alrededor del flujo CAM de PCB (Board, Setup, Herramientas, Operaciones, Simulación, Salida) en vez de un modelo CAD paramétrico.",
   "artboards": [
     {
-      "file": "01-compact-workbench.html",
-      "title": "Compact Workbench",
-      "tradeoff": "Densa y rápida para trabajo diario: ribbon, browser, viewport e inspector visibles a la vez. Exige jerarquía visual fuerte para que el canvas siga protagonista.",
-      "width": 1440,
-      "height": 1640
-    },
-    {
       "file": "02-floating-studio.html",
       "title": "Floating Studio",
       "tradeoff": "Máxima presencia del canvas y la sensación más cercana a SolidCraft con paneles flotantes. Requiere disciplina de layout para no tapar el trabajo ni generar ruido.",
       "width": 1440,
       "height": 1580
-    },
-    {
-      "file": "03-pipeline-board.html",
-      "title": "Pipeline Board",
-      "tradeoff": "Flujo CAM explícito y carga cognitiva baja: Importar, Preparar, Programar, Verificar, Exportar. Más opinada y menos libre para expertos que saltan entre tareas.",
-      "width": 1440,
-      "height": 1620
     },
     {
       "file": "04-settings.html",
