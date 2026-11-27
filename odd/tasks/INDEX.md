@@ -104,3 +104,6 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 102 | [exact-consumers](102-exact-consumers.md)                                           | delivered                | 2026-11-27 | `6be1e4a`     |
 | 103 | [single-trunk-workflow](103-single-trunk-workflow.md)                               | delivered                | 2026-11-27 | `25f5a83`     |
 | 104 | [corpus-path-repair](104-corpus-path-repair.md)                                     | delivered                | 2026-11-27 | `ba56188`     |
+| 107 | [settings-tool-library-ui](107-settings-tool-library-ui.md)                         | open                     | 2026-11-27 | —             |
+| 108 | [cam-command-surface](108-cam-command-surface.md)                                   | open                     | 2026-11-27 | —             |
+| 109 | [english-only-ui](109-english-only-ui.md)                                           | delivered                | 2026-11-27 | `3a7483d`     |
