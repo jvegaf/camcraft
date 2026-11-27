@@ -58,7 +58,9 @@ describe('ds index route', () => {
     }
   });
 
-  it('lists the unclassified components instead of hiding them', () => {
+  // 101 T3 (S1 + S3): the list is still derived and still rendered, but the classification is now
+  // closed — every component lives in its atomic directory, so the board renders zero items here.
+  it('reports zero unclassified components because every one lives in its layer', () => {
     const { container } = render(Page);
     const listed = Array.from(
       container.querySelectorAll('[data-unclassified-item]')
@@ -68,7 +70,7 @@ describe('ds index route', () => {
       .map(component => component.path);
 
     expect(listed).toEqual(expected);
-    expect(expected.length).toBeGreaterThan(0);
+    expect(expected).toEqual([]);
   });
 
   it('links every catalogued component to its sheet', () => {

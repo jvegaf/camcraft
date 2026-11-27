@@ -5,10 +5,9 @@ import {
   panelRow as panelRowRecipe
 } from 'styled-system/recipes';
 import { loadThemePreference, saveThemePreference } from '$lib/ds/theme';
-import { Button, Icon, type IconName } from '../atoms';
+import { Button, Glyph, Icon, type IconName } from '../atoms';
 import { CommandSearch } from '../molecules';
 import { closeSettings, workbenchState } from '../workbench/workbench.svelte';
-import Glyph from './Glyph.svelte';
 
 // Preferences dialog of `design/camcraft-workbench-v2/04-settings.html`: titlebar with a real search,
 // a page list on the left, two-column setting rows on the right and a Restaurar / Cancelar / Aplicar

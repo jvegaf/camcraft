@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { onMount } from 'svelte';
 import '../app.css';
-import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
+import { SettingsDialog } from '$lib/components/organisms';
 import { applyTheme } from '$lib/ds/theme';
 
 let { children } = $props();

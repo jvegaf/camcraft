@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import SettingsDialog from '$lib/components/settings/SettingsDialog.svelte';
+import { SettingsDialog } from '$lib/components/organisms';
 import {
   closeSettings,
   workbenchState

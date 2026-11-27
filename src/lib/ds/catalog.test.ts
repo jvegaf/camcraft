@@ -46,8 +46,10 @@ describe('catalog manifest', () => {
     const notRenderable = CATALOG.filter(entry => !entry.renderable);
 
     expect(notRenderable.map(entry => entry.slug).sort()).toEqual([
+      'board-canvas',
       'cam-object-browser',
       'operation-inspector',
+      'settings-dialog',
       'status-bar',
       'top-bar',
       'viewport-hud'
@@ -62,6 +64,59 @@ describe('catalog manifest', () => {
     expect(findCatalogEntry('button')?.name).toBe('Button');
     expect(findCatalogEntry('nope')).toBeUndefined();
     expect(findCatalogEntry('')).toBeUndefined();
+  });
+
+  // --- Classification closure (101 T3, S3) ------------------------------------------------------
+
+  it('leaves zero unclassified components in the derived inventory', () => {
+    const board = buildBoard(inventory, CATALOG);
+
+    expect(board.unclassified.map(component => component.path)).toEqual([]);
+  });
+
+  it('gives the four components that remain components a sheet in their layer', () => {
+    const expected = [
+      {
+        slug: 'glyph',
+        path: 'src/lib/components/atoms/Glyph.svelte',
+        layer: 'atom',
+        renderable: true
+      },
+      {
+        slug: 'settings-dialog',
+        path: 'src/lib/components/organisms/SettingsDialog.svelte',
+        layer: 'organism',
+        renderable: false
+      },
+      {
+        slug: 'board-canvas',
+        path: 'src/lib/components/organisms/BoardCanvas.svelte',
+        layer: 'organism',
+        renderable: false
+      },
+      {
+        slug: 'start-screen',
+        path: 'src/lib/components/organisms/StartScreen.svelte',
+        layer: 'organism',
+        renderable: true
+      }
+    ];
+
+    for (const item of expected) {
+      const entry = findCatalogEntry(item.slug);
+      expect(entry?.path, item.slug).toBe(item.path);
+      expect(entry?.layer, item.slug).toBe(item.layer);
+      expect(entry?.renderable, item.slug).toBe(item.renderable);
+    }
+  });
+
+  it('stops counting the workbench page as a component', () => {
+    // The shell became the body of `src/routes/workbench/+page.svelte` (101 T2), so the derived
+    // inventory drops from 21 to 20 components and nothing carries the old name.
+    expect(inventory).toHaveLength(20);
+    expect(
+      inventory.some(component => component.name === 'WorkbenchShell')
+    ).toBe(false);
   });
 });
 
@@ -88,7 +143,7 @@ describe('buildBoard', () => {
     consumers: []
   };
   const unclassified: ComponentEntry = {
-    path: 'src/lib/components/settings/Z.svelte',
+    path: 'src/lib/components/legacy/Z.svelte',
     name: 'Z',
     layer: 'unclassified',
     test: null,
