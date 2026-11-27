@@ -27,7 +27,9 @@ available. That bypass is load-bearing: it is the only reason the direct path ex
 turns this workflow into pull-request-only. No status check is required today, and the only context
 that may ever be required is `gate`: `parity` and `bench` run only on `workflow_dispatch`, so a
 required check that never reports on a pull request would block every pull request forever. The job
-names in `.github/workflows/ci.yml` are the status contexts, and renaming one silently unrequires it.
+names in `.github/workflows/ci.yml` are the status contexts: with no required check configured today
+there is nothing to drop, but renaming a job would leave any future required context unresolved — the
+check would wait forever for a name no job reports.
 
 ## Day to day
 

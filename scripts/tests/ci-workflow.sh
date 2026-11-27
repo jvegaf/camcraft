@@ -172,7 +172,7 @@ echo "== ninguna rama muerta recibe trabajo =="
 expect_no_dead_branch push
 expect_no_dead_branch pull_request
 
-echo "== los nombres de job que la protección de rama nombra siguen ahí =="
+echo "== los nombres de job son status contexts: un rename rompería un requisito futuro =="
 for job in gate parity bench; do
   if grep -Fxq "job=$job" "$PARSED"; then
     pass "job $job exists"

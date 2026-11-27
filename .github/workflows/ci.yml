@@ -34,6 +34,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # La forma del workflow, antes de instalar nada: es rápido y es el fallo barato. El test vive
+      # en `scripts/tests/ci-workflow.sh` y también lo corre `just test-tooling` en local.
+      - name: Check workflow shape (one trunk, dispatch-only parity/bench, job names)
+        run: bash scripts/tests/ci-workflow.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
