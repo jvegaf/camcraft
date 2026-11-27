@@ -309,6 +309,57 @@ fn cam_operations_impl(runtime: &AppRuntime) -> Result<CamOperationsDto, Command
   })
 }
 
+/// The state of one CAM step the progress panel checks: simulation, and export/post.
+///
+/// The three answers are three values, not one falsy default: a build that cannot compute the step
+/// says so, a build that can but has not says that, and a run carries what it produced.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum CamStepStateDto {
+  /// Nothing in this build computes the step, so no result exists and none is pending.
+  NotAvailableInBuild,
+  /// The build computes the step, but nothing has run it for the open document.
+  NotRunYet,
+  /// The step ran; `summary` is what it reported.
+  Ran { summary: String },
+}
+
+/// Whether the open document has been simulated and exported/post-processed.
+///
+/// This command only publishes that state; it builds no simulator and no post-processor. Neither
+/// state exists to publish today: `AppState` (`cam-app/src/lib.rs:104-112`) holds the document, the
+/// camera, the selection and the undo history and nothing else, and `Document`
+/// (`cam-model/src/lib.rs:560-582`) stores no simulation result and no export record — its `postp`
+/// is only the post-processor *filename* the store resolves, which says which post is configured,
+/// not that one ran. The desktop build does not even link `cam-export` or `cam-post`
+/// (`src-tauri/Cargo.toml`), and the one `Heightfield` in it cuts a hardcoded `canonical_job()`, not
+/// the open document (`scene_snapshot_impl`, `src-tauri/src/lib.rs:579-590`). So both steps report
+/// `NotAvailableInBuild` rather than a sample outcome.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CamOutputDto {
+  pub schema: String,
+  /// The document's post-processor reference, if it names one: configuration, not a run.
+  pub post_processor: Option<String>,
+  pub simulation: CamStepStateDto,
+  pub export: CamStepStateDto,
+}
+
+fn cam_output_impl(runtime: &AppRuntime) -> Result<CamOutputDto, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  let doc = state.app.document();
+  Ok(CamOutputDto {
+    schema: "cam-output@1".into(),
+    post_processor: doc.postp.clone(),
+    // No producer exists: see `CamOutputDto`'s comment for where the state would have to live.
+    simulation: CamStepStateDto::NotAvailableInBuild,
+    export: CamStepStateDto::NotAvailableInBuild,
+  })
+}
+
 fn snapshot(state: &RuntimeState) -> DocumentStatusDto {
   let doc = state.app.document();
   DocumentStatusDto {
@@ -616,6 +667,11 @@ fn cam_operations(runtime: State<'_, AppRuntime>) -> Result<CamOperationsDto, Co
   cam_operations_impl(&runtime)
 }
 
+#[tauri::command]
+fn cam_output(runtime: State<'_, AppRuntime>) -> Result<CamOutputDto, CommandErrorDto> {
+  cam_output_impl(&runtime)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -659,7 +715,8 @@ pub fn run() {
       update_settings,
       scene_snapshot,
       cam_context,
-      cam_operations
+      cam_operations,
+      cam_output
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -882,6 +939,61 @@ mod tests {
     let dto = cam_operations_impl(&rt).expect("cam operations");
     assert_eq!(dto.schema, "cam-operations@1");
     assert!(dto.operations.is_empty());
+  }
+
+  #[test]
+  fn cam_output_reports_simulation_and_export_state_without_running_them() {
+    let rt = runtime();
+    let dto = cam_output_impl(&rt).expect("cam output");
+    // Nothing in this build computes or stores a simulation of the open document or an export/post
+    // run, so both steps report that absence instead of a falsy default.
+    assert_eq!(dto.schema, "cam-output@1");
+    assert_eq!(dto.post_processor, None);
+    assert_eq!(dto.simulation, CamStepStateDto::NotAvailableInBuild);
+    assert_eq!(dto.export, CamStepStateDto::NotAvailableInBuild);
+
+    // The three answers are three values a frontend can tell apart: this build cannot compute the
+    // step, this build can but has not run it, and a run has an outcome.
+    assert_eq!(
+      serde_json::to_value(CamStepStateDto::NotAvailableInBuild).expect("json"),
+      serde_json::json!({ "state": "notAvailableInBuild" })
+    );
+    assert_eq!(
+      serde_json::to_value(CamStepStateDto::NotRunYet).expect("json"),
+      serde_json::json!({ "state": "notRunYet" })
+    );
+    assert_eq!(
+      serde_json::to_value(CamStepStateDto::Ran {
+        summary: "gouged 0.0 mm3, uncut 0.0 mm3".to_string(),
+      })
+      .expect("json"),
+      serde_json::json!({ "state": "ran", "summary": "gouged 0.0 mm3, uncut 0.0 mm3" })
+    );
+
+    // Every field of the payload, as the frontend receives it.
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({
+        "schema": "cam-output@1",
+        "postProcessor": null,
+        "simulation": { "state": "notAvailableInBuild" },
+        "export": { "state": "notAvailableInBuild" }
+      })
+    );
+
+    // A post reference the document holds is published as the reference it is, not as a run.
+    let mut doc = Document::new(Board::default_board());
+    doc.postp = Some("grbl.h".to_string());
+    let rt = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(doc),
+      path: None,
+      data_dir: None,
+      recents: Vec::new(),
+      settings: SettingsDto::default(),
+    }));
+    let dto = cam_output_impl(&rt).expect("cam output");
+    assert_eq!(dto.post_processor.as_deref(), Some("grbl.h"));
+    assert_eq!(dto.export, CamStepStateDto::NotAvailableInBuild);
   }
 
   #[test]
