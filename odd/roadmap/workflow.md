@@ -1,32 +1,59 @@
 # Git workflow
 
-Two trunks. `dev` is where work integrates; `master` is what has been released. The split exists for
-one reason and it is a clock: the corpus measurement costs minutes, and running it on every save spends
-them without answering anything a release has not already asked.
+One trunk: `master`. Everything integrates there, and every release is tagged there; there is no
+second branch holding work. The split that used to exist was not a review stage but a clock: measuring
+the corpus costs minutes, and spending them on every integration answers a question no release has
+asked yet. That clock now lives in the CI triggers — `parity` and `bench` only run when someone
+dispatches them by hand — so keeping a branch alive to avoid the measurement no longer buys anything.
 
-## The two trunks
+## Why the second branch is gone
 
-| Trunk    | Receives                                                          | Runs in CI                                                                                                        |
-| -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `dev`    | every integrated change                                           | `gate` always; `parity` only when the push touches a parser, the kernel, the corpus or the harness; no benchmarks |
-| `master` | **only** pull requests from `dev`, merged and tagged as a release | `gate`, `parity` and `bench`, always                                                                              |
+`dev` existed for one reason: it was the cheap trunk, and the corpus measurement ran only on the way
+to `master`. The measurement is still minutes, and still not worth paying per integration, but the
+cost is now bounded by a trigger instead of by a branch: a push or a pull request to `master` runs the
+unit tests, and `parity`/`bench` run only on `workflow_dispatch`. A second branch would duplicate every
+merge, every hook and every claim check to buy minutes the dispatch already saves, and it would leave
+two places where "green" could mean different things.
 
-`master` is protected (`enforce_admins`, no force-push, no deletion, conversation resolution required)
-with `gate`, `parity` and `bench` as required status checks and `strict` on, so a release pull request
-must be up to date and green before it can merge. The three job names in `.github/workflows/ci.yml` are
-load-bearing: renaming a job silently unrequires it.
+## The trunk
+
+| Trunk    | Receives                | Runs in CI                                                                                                                                              |
+| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `master` | every integrated change | `gate` on push and pull request — the frontend unit tests (`pnpm test`) and the Rust workspace suites; `parity` and `bench` only by `workflow_dispatch` |
+
+`master` is protected — in the repository's settings, not in this file: no force-push, no deletion,
+conversation resolution required, a pull request required to merge, and the administrator bypass
+available. That bypass is load-bearing: it is the only reason the direct path exists, so turning it off
+turns this workflow into pull-request-only. No status check is required today, and the only context
+that may ever be required is `gate`: `parity` and `bench` run only on `workflow_dispatch`, so a
+required check that never reports on a pull request would block every pull request forever. The job
+names in `.github/workflows/ci.yml` are the status contexts, and renaming one silently unrequires it.
 
 ## Day to day
 
-Work happens in a claimed worktree on a branch off `dev` (`AGENTS.md`, `just claim N`). A task branch is
-merged into `dev` when its claim is delivered; `dev` is then pushed, and the push runs the cheap gates.
+Work happens in a claimed worktree on a short branch off `master` (`AGENTS.md`; `just worktree N`
+creates the worktree and its branch, `just claim N` claims its surfaces). Integration is hybrid by
+risk, because there is one developer:
+
+- **Risky changes enter through a pull request** from their short branch: migrations, public
+  contracts, CI, dependencies. These are the changes whose damage is expensive to undo, and a PR is
+  both the readable diff and the place CI runs before the trunk takes them.
+- **Small changes merge locally and push straight to `master`**, using the admin bypass. A typo, a
+  comment, a test that failed for a reason you just found — a PR whose only reviewer is its author
+  adds a round trip and no information.
+
+The dividing line is the risk list, not the size of the diff. When a change is small and still risky,
+it is risky.
 
 ```bash
-just hooks          # once per clone: installs .githooks/pre-commit and .githooks/pre-push
-just claim N        # in the task's worktree, before the first write
+just hooks               # once per clone: installs .githooks/pre-commit and .githooks/pre-push
+just worktree N          # creates .worktrees/N on feat/N-<slug>
+cd .worktrees/N && just claim N   # in the task's worktree, before the first write
 # … work, commit in reviewable slices …
-just deliver N <commit>   # records the delivery in odd/tasks/INDEX.md
-git push origin dev
+# small work:
+git switch master && git merge --no-ff feat/N-<slug> && git push origin master
+# risky work:
+gh pr create --base master --head feat/N-<slug> --fill
 ```
 
 ## A record, before anything is called done
@@ -34,25 +61,36 @@ git push origin dev
 `just deliver N <commit>` is the moment a task is called finished, so it is the moment the record is
 proved: `scripts/deliver-task.sh` runs `scripts/check-records.sh --task N --engram-required` first and
 writes nothing if the document is incomplete, the commit does not resolve, or Engram holds no memory
-naming the task's slug. `just check` runs the same verifier as `== records ==` — without the Engram
-requirement, because CI has no memory daemon — and reports documents written before the convention as
-advisories instead of failing history.
+naming the task's slug. `just check` runs the same verifier as `== records ==`, without the Engram
+requirement — the memory proof belongs to delivery, not to every local gate — and reports documents
+written before the convention as advisories instead of failing history.
 
 ## A release
 
-`master` moves only through a pull request from `dev`, and a release is that merge plus a tag.
+`master` is the release trunk, so a release is a tag on the commit that is already there, plus notes.
 
 ```bash
-gh pr create --base master --head dev --title "Release v0.X.0" --fill
-# the PR runs gate + parity + bench; merge it once they are green
 git switch master && git pull
 git tag -a v0.X.0 -m "v0.X.0"
 git push origin v0.X.0
 gh release create v0.X.0 --generate-notes
 ```
 
-A tag is what makes `master` mean something: without one, the release trunk is just a slower
-integration trunk, and the two branches cost twice without buying anything.
+There is no release pull request: there is no second branch to promote from, and a PR that only moved
+the trunk onto itself would be ceremony. A tag is what makes `master` mean something — without one it
+is just the branch everything lands on.
+
+## CI: what runs, and when
+
+| Event                    | Jobs                                                       |
+| ------------------------ | ---------------------------------------------------------- |
+| push to `master`         | `gate`: `pnpm test` (vitest) and the Rust workspace suites |
+| pull request to `master` | the same `gate`                                            |
+| `workflow_dispatch`      | `gate`, and `parity`/`bench` when dispatched by hand       |
+
+For now CI runs unit tests only: the claim, docs, records and tooling checks are not on the automatic
+path, and neither is the corpus measurement. `scripts/check.sh` is still the full local gate, and
+`just check` is how to run it.
 
 ## The hooks, and what they are not
 
@@ -61,21 +99,13 @@ something a local command would have caught:
 
 - **`pre-commit`** (about a second): `cargo fmt --check` when a Rust file is staged, `check-docs.sh` when
   a markdown file is staged, and the parity measurer's build when the harness or a parser moved — that
-  crate lives outside the workspace, so nothing else compiles it before CI does.
-- **`pre-push`** (minutes, on demand): `clippy -D warnings` and `cargo test` for the crates the pushed
-  range touches when the scope can be determined (falling back to `--workspace` when root
-  `Cargo.toml`/`Cargo.lock` changes, when Rust changes outside `crates/`, or with `PRE_PUSH_FULL=1`),
-  and `scripts/parity/run.sh` when it touches what the corpus measures. CI still runs the full `gate`
-  on every push to `dev`, so the hook catches crate-local breaks early without repeating the whole
-  workspace on every push.
+  crate lives outside the workspace, so nothing else compiles it until someone dispatches `parity`.
+- **`pre-push`** (minutes, on demand): `./scripts/check.sh`, the full local gate — claim, docs,
+  records, tooling, biome, svelte-check, `cargo check`, `cargo test` and `pnpm test`. CI now runs only
+  the unit tests, so this is where the documentary and records checks run before a push, not a second
+  copy of CI.
 
-They are **not** the gate. `scripts/check.sh` is the gate and CI runs it; a hook can be skipped with
-`git commit --no-verify`, and any hook that took as long as the gate would be. A skipped step in
-`pre-push` says so, with the reason, rather than passing quietly.
-
-## Why not a single trunk
-
-A single trunk with path-filtered jobs buys most of the same minutes. It was not chosen because a
-release needs a place where "green" means "measured", and because the trunk that is always green is the
-one a release can be cut from at any moment. If the tag practice ever stops, the honest move is to
-collapse back to one trunk rather than to keep a second branch for its own sake.
+They are **not** the gate. The gate is `scripts/check.sh`, and `pre-push` runs it on demand; a hook can
+be skipped with `git push --no-verify`, and any hook that took as long as CI would be. A skipped step in
+`pre-push` says so, with the reason, rather than passing quietly. What cannot be skipped is the unit
+suite CI runs on every push and pull request to `master`.

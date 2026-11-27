@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Gate antes de push. Corre el gate principal para mantener dev/feat consistente.
+# Gate completo antes de push: corre scripts/check.sh (claim, docs, records, tooling, biome,
+# svelte-check, cargo y vitest). Hay un solo tronco, `master`, y CI sólo corre los tests unitarios:
+# este hook es lo que impide que el resto llegue roto al remoto.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)

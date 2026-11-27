@@ -6,9 +6,12 @@
 
 - `.github/workflows/ci.yml`
 - `odd/roadmap/workflow.md`
+- `odd/roadmap/waves.md`
+- `odd/roadmap/index.md`
 - `.githooks/pre-push`
 - `odd/tasks/103-single-trunk-workflow.md`
 - `odd/tasks/INDEX.md`
+- `scripts/tests/ci-workflow.sh`
 
 ## Specs
 
@@ -22,12 +25,13 @@
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                                                                                                                                     | Specs          | Ruta   | Commit |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------ |
-| T1  | `.github/workflows/ci.yml`: triggers de un solo tronco (`push` y `pull_request` sobre `master`, más `workflow_dispatch`), `gate` con los tests unitarios de frontend y Rust, `parity` y `bench` sólo por `workflow_dispatch`, nombres de job intactos | S1, S3, S4, S5 | worker | —      |
-| T2  | `odd/roadmap/workflow.md` reescrito al flujo de un tronco: día a día, regla híbrida, release por tag, qué corre en CI y cuándo, y por qué no hay segunda rama                                                                                             | S1, S2, S6, S7 | worker | —      |
-| T3  | `.githooks/pre-push`: el comentario que habla de `dev/feat` dice lo que el hook hace hoy                                                                                                                                                                  | S1             | worker | —      |
-| T4  | Este documento y su fila en `odd/tasks/INDEX.md`                                                                                                                                                                                                          | S1, S7         | worker | —      |
+| ID  | Tarea                                                                                                                                                                                                                                                                              | Specs          | Ruta   | Commit |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------ |
+| T1  | `.github/workflows/ci.yml`: triggers de un solo tronco (`push` y `pull_request` sobre `master`, más `workflow_dispatch`), `gate` con los tests unitarios de frontend y Rust, `parity` y `bench` sólo por `workflow_dispatch`, nombres de job intactos                              | S1, S3, S4, S5 | worker | —      |
+| T2  | `odd/roadmap/workflow.md` reescrito al flujo de un tronco: día a día, regla híbrida, release por tag, qué corre en CI y cuándo, y por qué no hay segunda rama                                                                                                                      | S1, S2, S6, S7 | worker | —      |
+| T3  | `.githooks/pre-push`: el comentario que habla de `dev/feat` dice lo que el hook hace hoy                                                                                                                                                                                           | S1             | worker | —      |
+| T4  | Este documento y su fila en `odd/tasks/INDEX.md`                                                                                                                                                                                                                                   | S1, S7         | worker | —      |
+| T5  | `scripts/tests/ci-workflow.sh`: test de regresión que afirma triggers de un solo tronco (push y PR sobre `master`), que ningún trigger nombra `dev` ni `feat/*`, que los jobs `gate`/`parity`/`bench` siguen existiendo y que `parity`/`bench` sólo corren por `workflow_dispatch` | S1, S4, S5     | worker | —      |
 
 ## Log
 
@@ -46,3 +50,7 @@
 - **L5 (estado medido por el padre, no de memoria).** `git ls-remote --heads origin` devuelve sólo `refs/heads/master`: `dev` ya no existe en el remoto, y el ref local `remotes/origin/dev` es basura de un fetch viejo. La protección de `master` tiene `enforce_admins: true` y PR obligatorio antes de mergear, con `required_status_checks.contexts` vacío; para que la vía directa exista hay que apagar `enforce_admins`. `ci.yml` dispara `push` en `[dev, feat/tauri]` y `pull_request` en `[master, dev]`, así que hoy un push directo a `master` no corre nada de CI: el trigger de push está muerto y el de PR es la única vía viva.
 
 - **L6 (supersede a la 053).** `odd/tasks/053-ci-two-trunks.md` documentó los dos troncos y el PR de release; esta tarea los reemplaza por un solo tronco. El documento de la 053 no se toca: es historia entregada, y `odd-docs` pide que la historia no se reescriba.
+
+- **L7 (adición autorizada por el padre).** Dos decisiones que las specs no cubren y que el padre ratificó al reabrir la tarea: (a) `gate` corre `pnpm codegen` antes de `pnpm test` porque `styled-system/` está en `.gitignore` y la suite importa `styled-system/*` — es setup, no un gate, y sin él la suite no resuelve sus imports en un clon limpio; (b) la prueba de grep de S1 no podía quedar limpia con las superficies originales, así que el padre extendió el alcance a `odd/roadmap/waves.md` (regla 7) y `odd/roadmap/index.md` (celdas E0.4 y E0.8). La historia fechada queda intacta por S7: `dev` `1396e91` en el audit de `index.md`, `feat/E1.1`/`feat/E1.4` en las filas E1.1/E1.4, `feat/tauri` en `docs/MIGRATION_TAURI.md` y `docs/DOMAIN_INTEGRATION_TAURI.md`, y las ramas cortas `feat/N-<slug>` que S2 sí permite.
+
+- **L8 (corrección del padre).** El párrafo de protección de `odd/roadmap/workflow.md` y la celda E0.8 de `odd/roadmap/index.md` afirmaban que `master` tenía los checks requeridos: «`gate`/`parity`/`bench` as the required status checks» y «`master` is protected with `gate`, `parity` and `bench` as required checks». **Era falso, y hacerlo verdad sería peor**: `parity` y `bench` corren sólo por `workflow_dispatch`, y un check requerido que nunca reporta deja **cada pull request** esperando para siempre. Estado medido por el padre en la API de GitHub: `enforce_admins.enabled: true` —el bypass de admin no estaba disponible—; `required_status_checks` ausente (`contexts: null`, `checks: null`, `strict: null`); `required_pull_request_reviews` presente con 0 aprobaciones exigidas, así que el PR es obligatorio para mergear; `allow_force_pushes: false`; `allow_deletions: false`; `required_conversation_resolution: true`. El padre apaga `enforce_admins` para que exista la vía directa. Ambos documentos quedaron corregidos al contrato medido, con `gate` como único contexto que alguna vez podría requerirse.
