@@ -908,9 +908,13 @@ dependencias justificadas (§6.2).
 
 ## 18. Catálogo del design system (solo desarrollo)
 
-`pnpm dev` expone en `http://localhost:1420/ds` un catálogo del Atomic Design derivado del
-repositorio: una ficha por componente con sus estados reales y un tablero con el progreso. No es una
-feature de la app: fuera de `pnpm dev` la ruta resuelve 404 y no se prerenderiza nada.
+El catálogo se lanza con `just ds` (o `pnpm ds` si no se usa `just`): antes de arrancar Vite detiene
+un servidor de desarrollo Vite anterior que retenga el puerto 1420 —nunca toca un listener que no sea
+Vite—, corre el codegen de Panda y refresca el inventario, así el tablero nunca queda desactualizado.
+Expone en `http://127.0.0.1:1420/ds` un catálogo del Atomic Design derivado del repositorio: una ficha
+por componente con sus estados reales y un tablero con el progreso. `pnpm dev` sigue exponiendo la
+ruta, pero no libera el puerto ni refresca el inventario. No es una feature de la app: fuera de
+desarrollo la ruta resuelve 404 y no se prerenderiza nada.
 
 El inventario se regenera desde el filesystem con:
 
