@@ -103,4 +103,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 101 | [atomic-classification-close](101-atomic-classification-close.md)                   | delivered                | 2026-11-27 | `ce7f5c5`     |
 | 102 | [exact-consumers](102-exact-consumers.md)                                           | delivered                | 2026-11-27 | `6be1e4a`     |
 | 103 | [single-trunk-workflow](103-single-trunk-workflow.md)                               | delivered                | 2026-11-27 | `25f5a83`     |
-| 104 | [corpus-path-repair](104-corpus-path-repair.md)                                     | open                     | 2026-11-27 | —             |
+| 104 | [corpus-path-repair](104-corpus-path-repair.md)                                     | delivered                | 2026-11-27 | `ba56188`     |
