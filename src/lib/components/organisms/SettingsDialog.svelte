@@ -8,17 +8,23 @@ import { loadThemePreference, saveThemePreference } from '$lib/ds/theme';
 import { Button, Glyph, Icon, type IconName } from '../atoms';
 import { CommandSearch } from '../molecules';
 import { closeSettings, workbenchState } from '../workbench/workbench.svelte';
+import ToolLibraryPage from './ToolLibraryPage.svelte';
 
 // Preferences dialog of `design/camcraft-workbench-v2/04-settings.html`: titlebar with a real search,
 // a page list on the left, two-column setting rows on the right and a Restaurar / Cancelar / Aplicar
 // footer.
 //
-// **Real settings only (tasks 090 T2, 091).** `SettingsDto` (`src-tauri/src/lib.rs:93-104`) persists
-// exactly one field, `theme`, so the page list below has exactly one page under one group. The
-// artboard's other entries (Layout, Canvas, Manufactura, Librería de herramientas, Importar) are its
-// own placeholders and are not rendered: a nav entry or a toggle that stores nothing would be a
-// promise the backend cannot keep. When `SettingsDto` grows a field, it is added here as one row of
-// `SETTINGS_GROUPS` — the nav, the search, the empty state and the footer need no change.
+// **Real settings only (tasks 090 T2, 091, 107 T3).** A page is listed only when it has a real
+// contract behind it: `Appearance` owns the `theme` field of `SettingsDto`
+// (`src-tauri/src/lib.rs:93-104`) and `Tool library` owns the CAM library commands (107 T1/T2). The
+// artboard's remaining entries (General, Layout, Canvas, Manufacturing, Import) are placeholders and
+// are not rendered: a nav entry that stores nothing would be a promise the backend cannot keep.
+// When a surface grows a contract, it is added here as one entry of `SETTINGS_GROUPS` — the nav, the
+// search and the footer need no change.
+//
+// Each page also carries the dialog geometry its artboard draws (`size`): 04 draws 920×680 and 05
+// needs 1040×720 so the library's three columns fit (107 S6). Width/height are the only per-page
+// difference in the shell; the rows (`52px 1fr 56px`) and the columns (`220px 1fr`) are shared.
 //
 // The persistence contract is unchanged from the previous implementation and is owned by
 // `src/lib/ds/theme.ts` (the same module the TopBar theme action writes with): the stored theme is
@@ -37,12 +43,20 @@ type SettingRow = {
 
 type SettingsSection = { id: string; caption: string; rows: SettingRow[] };
 
+/** Which body a page renders: its setting rows, or the tool library organism (107 T3). */
+type PageBody = 'sections' | 'tool-library';
+
+/** Dialog geometry per artboard: 04 draws 920×680, 05 needs 1040×720 for its three columns (S6). */
+type DialogSize = 'standard' | 'wide';
+
 type SettingsPage = {
   id: string;
   label: string;
   icon: IconName;
   title: string;
   description: string;
+  body: PageBody;
+  size: DialogSize;
   sections: SettingsSection[];
 };
 
@@ -60,6 +74,8 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
         title: 'Appearance',
         description:
           'Camcraft visual configuration. Only the options the backend stores today are shown.',
+        body: 'sections',
+        size: 'standard',
         sections: [
           {
             id: 'theme',
@@ -74,6 +90,25 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
             ]
           }
         ]
+      }
+    ]
+  },
+  {
+    id: 'cam',
+    caption: 'CAM',
+    pages: [
+      {
+        id: 'tool-library',
+        label: 'Tool library',
+        icon: 'layers',
+        title: 'Tool library',
+        description:
+          'Tools available for CAM operations. Select a tool to edit its parameters, feeds/speeds and see its preview.',
+        body: 'tool-library',
+        size: 'wide',
+        // The library has no configurable row of its own: its tree and detail form belong to the
+        // page organism (107 T5/T6), so the search below keeps filtering `sections` only.
+        sections: []
       }
     ]
   }
@@ -227,9 +262,7 @@ const overlay = css({
   bg: 'rgba(8,10,14,.45)'
 });
 const dialog = css({
-  w: '920px',
   maxW: 'calc(100vw - 48px)',
-  h: '680px',
   maxH: 'calc(100vh - 48px)',
   bg: 'panel',
   border: '1px solid',
@@ -248,6 +281,12 @@ const dialog = css({
     '& *': { transition: 'none', animation: 'none' }
   }
 });
+// The width/height pairs of the two artboards (04: 920×680, 05: 1040×720). Kept as two static
+// objects, not a computed value, so Panda extracts both and the page picks one by class.
+const DIALOG_SIZES: Record<DialogSize, string> = {
+  standard: css({ w: '920px', h: '680px' }),
+  wide: css({ w: '1040px', h: '720px' })
+};
 const titlebar = css({
   display: 'flex',
   alignItems: 'center',
@@ -293,6 +332,21 @@ const pageIconTone = css({
   '&[aria-current="page"] svg': { color: 'sel' }
 });
 const main = css({ p: '24px 28px', overflow: 'auto', minH: '0' });
+// The library page fills its pane instead of scrolling as a column of rows, so its main becomes the
+// flex column the page organism expects (`flex: 1`); `Appearance` keeps the block `main` above.
+const mainPane = css({
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  '& > h3, & > p': { flex: 'none' }
+});
+const pageBody = css({
+  display: 'flex',
+  flexDirection: 'column',
+  flex: '1',
+  minH: '0',
+  minW: '0'
+});
 const pageTitle = css({ m: '0', textStyle: 'dialog', color: 'textHi' });
 const pageDescription = css({
   m: '6px 0 20px',
@@ -403,7 +457,11 @@ const noteText = css({
       if (event.target === event.currentTarget) closeSettings();
     }}
   >
-    <div class={dialog} role="dialog" aria-label="Preferences">
+    <div
+      class={cx(dialog, DIALOG_SIZES[activePage.size])}
+      role="dialog"
+      aria-label="Preferences"
+    >
       <div class={titlebar}>
         <h2 class={title}>Preferences</h2>
         <div class={searchArea} bind:this={searchSlot}>
@@ -447,11 +505,20 @@ const noteText = css({
           {/each}
         </nav>
 
-        <section class={main} aria-labelledby={`${uid}-page-title`}>
+        <section
+          class={cx(main, activePage.body === 'tool-library' && mainPane)}
+          aria-labelledby={`${uid}-page-title`}
+        >
           <h3 class={pageTitle} id={`${uid}-page-title`}>{activePage.title}</h3>
           <p class={pageDescription}>{activePage.description}</p>
 
-          {#if noResults}
+          {#if activePage.body === 'tool-library'}
+            <!-- The library page body; its tree, detail and preview arrive through the organism's
+                 snippet props in 107 T5/T6/T7, so they mount empty here. -->
+            <div class={pageBody}>
+              <ToolLibraryPage />
+            </div>
+          {:else if noResults}
             <div class={emptyState} role="status">
               <p class={emptyTitle}>
                 No results for “{query.trim()}”

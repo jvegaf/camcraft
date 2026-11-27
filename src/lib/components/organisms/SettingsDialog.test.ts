@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { css } from 'styled-system/css';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeSettings,
@@ -15,11 +16,12 @@ import SettingsDialog from './SettingsDialog.svelte';
 // `@tauri-apps/api/core` — the module both the dialog and `src/lib/ds/theme.ts` import.
 //
 // `design/camcraft-workbench-v2/04-settings.html` is the visual reference (page list, title search,
-// two-column rows, footer). Its option list is a placeholder and the binding constraint of tasks 090
-// / 091 is "solo settings reales (theme)": `SettingsDto` in `src-tauri/src/lib.rs` persists exactly
-// one field, so the page list has exactly one page and the tests pin that instead of inventing
-// pages. Everything is asserted through the public surface: rendered roles/text and the command +
-// payload the bridge received.
+// two-column rows, footer) and 05 adds the `Tool library` page inside it (107 T3, S5 + S6). The
+// binding constraint of tasks 090/091 is "solo settings reales": a page is rendered only when it has
+// something real behind it, so the list holds `Appearance` (the theme `SettingsDto` persists) and
+// `Tool library` (the CAM library) and nothing else — the artboard's Layout, Canvas, Manufacturing
+// and Import entries stay unrendered. Everything is asserted through the public surface: rendered
+// roles/text and the command + payload the bridge received.
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 
@@ -154,7 +156,7 @@ describe('SettingsDialog', () => {
 
   // --- Real settings only (tasks 090/091) -------------------------------------------------------
 
-  it('renders one page per persisted setting: theme only', async () => {
+  it('renders one page per real surface: the theme and the tool library', async () => {
     render(SettingsDialog);
     openSettings();
 
@@ -163,12 +165,26 @@ describe('SettingsDialog', () => {
     });
     const pages = within(nav).getAllByRole('button');
 
-    // `SettingsDto` persists `theme` and nothing else, so the artboard's placeholder pages
-    // (Layout, Canvas, Manufactura, Librería de herramientas, Importar) must not be rendered.
-    expect(pages).toHaveLength(1);
-    expect(pages[0].textContent?.trim()).toBe('Appearance');
+    // `SettingsDto` persists `theme` and the CAM library has its own commands, so those are the two
+    // pages. The artboard's remaining placeholder pages (Layout, Canvas, Manufacturing, Import and
+    // the `General` entry) must still not be rendered.
+    expect(pages.map(page => page.textContent?.trim())).toEqual([
+      'Appearance',
+      'Tool library'
+    ]);
     expect(pages[0].getAttribute('aria-current')).toBe('page');
+    expect(pages[1].getAttribute('aria-current')).toBeNull();
     expect(nav.textContent).toContain('General');
+    expect(nav.textContent).toContain('CAM');
+    for (const absent of [
+      'General',
+      'Layout',
+      'Canvas',
+      'Manufacturing',
+      'Import'
+    ]) {
+      expect(within(nav).queryByRole('button', { name: absent })).toBeNull();
+    }
     // No fake toggle from the artboard survived either.
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
@@ -193,7 +209,126 @@ describe('SettingsDialog', () => {
     );
   });
 
-  // --- Titlebar search --------------------------------------------------------------------------
+  // --- Tool library page (107 T3, S5 + S6) ------------------------------------------------------
+
+  /** The geometry classes Panda emits for the dialog size of each artboard. */
+  function expectDialogSize(dialog: HTMLElement, size: 'standard' | 'wide') {
+    const classes =
+      size === 'wide'
+        ? css({ w: '1040px', h: '720px' })
+        : css({ w: '920px', h: '680px' });
+    for (const cls of classes.split(' ')) {
+      expect(dialog.classList.contains(cls)).toBe(true);
+    }
+  }
+
+  it('mounts the tool library page when its entry is selected', async () => {
+    const user = userEvent.setup();
+    render(SettingsDialog);
+    openSettings();
+
+    const nav = await screen.findByRole('navigation', {
+      name: 'Preferences pages'
+    });
+    await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
+
+    // The body is the real organism (107 T4 shell): a page heading with the artboard's copy and
+    // three headed columns, with no invented rows.
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Tool library' })
+    ).toBeTruthy();
+    expect(screen.getByText(/Tools available for CAM operations/)).toBeTruthy();
+    for (const column of ['Tools', 'Detail', 'Preview']) {
+      expect(screen.getByRole('region', { name: column })).toBeTruthy();
+    }
+
+    // The nav marks the selected page with `aria-current`, and only it.
+    expect(
+      within(nav)
+        .getByRole('button', { name: 'Tool library' })
+        .getAttribute('aria-current')
+    ).toBe('page');
+    expect(
+      within(nav)
+        .getByRole('button', { name: 'Appearance' })
+        .getAttribute('aria-current')
+    ).toBeNull();
+    // Nothing from the theme page bleeds into the library page.
+    expect(
+      screen.queryByRole('group', { name: 'Interface appearance' })
+    ).toBeNull();
+  });
+
+  it('sizes the dialog as each artboard draws it', async () => {
+    const user = userEvent.setup();
+    render(SettingsDialog);
+    openSettings();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Preferences' });
+    const nav = screen.getByRole('navigation', { name: 'Preferences pages' });
+
+    // Artboard 04 keeps 920×680 for the settings pages…
+    expectDialogSize(dialog, 'standard');
+
+    // …and artboard 05 needs 1040×720 so the three library columns fit (S6).
+    await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
+    expectDialogSize(dialog, 'wide');
+
+    // The size follows the page, it is not a one-way switch.
+    await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
+    expectDialogSize(dialog, 'standard');
+  });
+
+  it('keeps Appearance working after visiting the tool library', async () => {
+    const user = userEvent.setup();
+    render(SettingsDialog);
+    openSettings();
+    await waitFor(() => expect(selectedTheme()).toBe('Light'));
+
+    const nav = screen.getByRole('navigation', { name: 'Preferences pages' });
+    await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
+    await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
+
+    expect(screen.getByText('Interface appearance')).toBeTruthy();
+    expect(selectedTheme()).toBe('Light');
+
+    await user.click(
+      within(themeGroup()).getByRole('button', { name: 'Dark' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('update_settings', {
+        settings: { theme: 'dark' }
+      })
+    );
+  });
+
+  it('keeps the library page while the search has no matching row', async () => {
+    const user = userEvent.setup();
+    render(SettingsDialog);
+    openSettings();
+
+    const nav = await screen.findByRole('navigation', {
+      name: 'Preferences pages'
+    });
+    await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
+
+    const search = screen.getByRole('searchbox', { name: 'Search settings' });
+    await user.type(search, 'drill');
+
+    // The search filters setting rows only; the library page has none, so it keeps rendering
+    // instead of being replaced by the empty state or by invented rows.
+    expect(screen.getByRole('region', { name: 'Tools' })).toBeTruthy();
+    expect(screen.queryByText(/No results for/)).toBeNull();
+
+    // The filter itself still works where the active page has rows.
+    await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
+    expect(screen.queryByText('Interface appearance')).toBeNull();
+    expect(screen.getByText(/No results for “drill”/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(screen.getByText('Interface appearance')).toBeTruthy();
+  });
 
   it('filters setting rows by label and hint, and shows a no-results state', async () => {
     const user = userEvent.setup();
