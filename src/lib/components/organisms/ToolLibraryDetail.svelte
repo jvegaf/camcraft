@@ -4,6 +4,7 @@ import {
   badge as badgeRecipe,
   input as inputRecipe
 } from 'styled-system/recipes';
+import type { ToolDetail } from './toolLibrary';
 
 // Organism (107 T6, S10 + S14) — the `Detail` column of
 // `design/camcraft-workbench-v2/05-settings-tool-library.html`: the tool's title with its `T` number
@@ -23,30 +24,9 @@ import {
 // Two values the backend publishes as absent (`stepoverPercent`, and the shape word S10's `Type` row
 // would show next to the kind) render as the app's em dash — never a zero, never an empty cell. A
 // tool the library holds without a number gets the same dash in its badge, never `Tnull`.
-type ToolDetail = {
-  schema: string;
-  /** The library's stable geometry id; the same one a tree row carries. */
-  id: string;
-  /** S10's `Name`, rendered from the record by the command. */
-  name: string;
-  kind: string;
-  /** The kind's own word (`Flat end mill`). */
-  kindLabel: string;
-  number: number | null;
-  diameterMm: number | null;
-  flutes: number | null;
-  cutLengthMm: number | null;
-  shankMm: number | null;
-  overallLengthMm: number | null;
-  includedAngleDeg: number | null;
-  flatDiameterMm: number | null;
-  spindleRpm: number | null;
-  cutFeedMmPerMin: number | null;
-  plungeFeedMmPerMin: number | null;
-  stepoverMm: number | null;
-  /** Absent by design: the model holds no percentage of the diameter. */
-  stepoverPercent: number | null;
-};
+//
+// The payload type itself is the page's shared contract (`./toolLibrary`): the panel, this form and
+// the preview read one declaration, so a payload change cannot reach only some of them.
 
 /**
  * What an edit reports: exactly the keys `ToolSaveRequest` accepts, so the panel cannot express a

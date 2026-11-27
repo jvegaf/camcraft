@@ -1,3 +1,17 @@
+<script module lang="ts">
+/**
+ * The dialog's per-page geometry variants (107 S6): artboard 04's pages are `standard` (920×680) and
+ * artboard 05's tool library is `wide` (1040×720). These two names are the whole vocabulary of the
+ * per-page size, they are what the page model below declares, and `standard`/`wide` is what the
+ * dialog publishes as `data-dialog-size` — so a contract test can read which variant the active page
+ * applies without restating the width/height pair or a generated class name, neither of which jsdom
+ * can check.
+ */
+export const DIALOG_SIZE_STANDARD = 'standard';
+export const DIALOG_SIZE_WIDE = 'wide';
+export type DialogSize = typeof DIALOG_SIZE_STANDARD | typeof DIALOG_SIZE_WIDE;
+</script>
+
 <script lang="ts">
 import { css, cx } from 'styled-system/css';
 import {
@@ -50,9 +64,6 @@ type SettingsSection = { id: string; caption: string; rows: SettingRow[] };
 /** Which body a page renders: its setting rows, or the tool library organism (107 T3). */
 type PageBody = 'sections' | 'tool-library';
 
-/** Dialog geometry per artboard: 04 draws 920×680, 05 needs 1040×720 for its three columns (S6). */
-type DialogSize = 'standard' | 'wide';
-
 /** The one action the library panel exposes: write its draft when the dialog confirms. */
 type ToolLibraryPanelApi = { save: () => Promise<boolean> };
 
@@ -82,7 +93,7 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
         description:
           'Camcraft visual configuration. Only the options the backend stores today are shown.',
         body: 'sections',
-        size: 'standard',
+        size: DIALOG_SIZE_STANDARD,
         sections: [
           {
             id: 'theme',
@@ -112,7 +123,7 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
         description:
           'Tools available for CAM operations. Select a tool to edit its parameters, feeds/speeds and see its preview.',
         body: 'tool-library',
-        size: 'wide',
+        size: DIALOG_SIZE_WIDE,
         // The library has no configurable row of its own: its tree and detail form belong to the
         // page organism (107 T5/T6), so the search below keeps filtering `sections` only.
         sections: []
@@ -303,7 +314,9 @@ const dialog = css({
   }
 });
 // The width/height pairs of the two artboards (04: 920×680, 05: 1040×720). Kept as two static
-// objects, not a computed value, so Panda extracts both and the page picks one by class.
+// objects, not a computed value, so Panda extracts both and the page picks one by class. Which one a
+// page applies is also published on the dialog as `data-dialog-size`, so a contract test can read the
+// applied variant instead of restating these numbers or a generated class name.
 const DIALOG_SIZES: Record<DialogSize, string> = {
   standard: css({ w: '920px', h: '680px' }),
   wide: css({ w: '1040px', h: '720px' })
@@ -482,6 +495,7 @@ const noteText = css({
       class={cx(dialog, DIALOG_SIZES[activePage.size])}
       role="dialog"
       aria-label="Preferences"
+      data-dialog-size={activePage.size}
     >
       <div class={titlebar}>
         <h2 class={title}>Preferences</h2>

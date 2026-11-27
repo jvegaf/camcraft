@@ -1,13 +1,15 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { css } from 'styled-system/css';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeSettings,
   openSettings,
   workbenchState
 } from '../workbench/workbench.svelte';
-import SettingsDialog from './SettingsDialog.svelte';
+import SettingsDialog, {
+  DIALOG_SIZE_STANDARD,
+  DIALOG_SIZE_WIDE
+} from './SettingsDialog.svelte';
 
 // Coverage for the shared settings surface (095 T5 follow-up, risk item 6). The dialog is shared by
 // the start screen and the workbench shell, and it is the surface that stores the theme preference,
@@ -225,15 +227,15 @@ describe('SettingsDialog', () => {
 
   // --- Tool library page (107 T3, S5 + S6) ------------------------------------------------------
 
-  /** The geometry classes Panda emits for the dialog size of each artboard. */
-  function expectDialogSize(dialog: HTMLElement, size: 'standard' | 'wide') {
-    const classes =
-      size === 'wide'
-        ? css({ w: '1040px', h: '720px' })
-        : css({ w: '920px', h: '680px' });
-    for (const cls of classes.split(' ')) {
-      expect(dialog.classList.contains(cls)).toBe(true);
-    }
+  /**
+   * The dialog's published size variant. jsdom computes no layout, so the width/height pair a variant
+   * stands for is not observable here; what is observable — and what this file owns — is which
+   * variant the active page applies. It is read from the dialog's own `data-dialog-size` and named by
+   * the constants the dialog exports, so this test never restates the geometry and never depends on a
+   * generated class name.
+   */
+  function dialogSize(dialog: HTMLElement): string | null {
+    return dialog.getAttribute('data-dialog-size');
   }
 
   it('mounts the tool library page when its entry is selected', async () => {
@@ -281,16 +283,16 @@ describe('SettingsDialog', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Preferences' });
     const nav = screen.getByRole('navigation', { name: 'Preferences pages' });
 
-    // Artboard 04 keeps 920×680 for the settings pages…
-    expectDialogSize(dialog, 'standard');
+    // Artboard 04 keeps its standard geometry for the settings pages…
+    expect(dialogSize(dialog)).toBe(DIALOG_SIZE_STANDARD);
 
-    // …and artboard 05 needs 1040×720 so the three library columns fit (S6).
+    // …and artboard 05's library page applies the wide variant so the three columns fit (S6).
     await user.click(within(nav).getByRole('button', { name: 'Tool library' }));
-    expectDialogSize(dialog, 'wide');
+    expect(dialogSize(dialog)).toBe(DIALOG_SIZE_WIDE);
 
     // The size follows the page, it is not a one-way switch.
     await user.click(within(nav).getByRole('button', { name: 'Appearance' }));
-    expectDialogSize(dialog, 'standard');
+    expect(dialogSize(dialog)).toBe(DIALOG_SIZE_STANDARD);
   });
 
   it('keeps Appearance working after visiting the tool library', async () => {

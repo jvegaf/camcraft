@@ -1,5 +1,6 @@
 <script lang="ts">
 import { css } from 'styled-system/css';
+import type { ToolDetail } from './toolLibrary';
 
 // Organism (107 T7, S11) — the `Preview` column of
 // `design/camcraft-workbench-v2/05-settings-tool-library.html`: a drawing of the selected tool's
@@ -24,31 +25,9 @@ import { css } from 'styled-system/css';
 // backend publishes no shape word for the type (T1's handoff), and the only settled `Typical use`
 // copy is S11's end-mill sentence; other kinds read the dash rather than borrow a claim about PCB
 // work the model never states.
-type ToolDetail = {
-  schema: string;
-  /** The library's stable geometry id; the same one a tree row carries. */
-  id: string;
-  /** S10's `Name`, rendered from the record by the command. */
-  name: string;
-  kind: string;
-  /** The kind's own word (`Flat end mill`). */
-  kindLabel: string;
-  number: number | null;
-  diameterMm: number | null;
-  flutes: number | null;
-  cutLengthMm: number | null;
-  shankMm: number | null;
-  overallLengthMm: number | null;
-  includedAngleDeg: number | null;
-  flatDiameterMm: number | null;
-  spindleRpm: number | null;
-  cutFeedMmPerMin: number | null;
-  plungeFeedMmPerMin: number | null;
-  stepoverMm: number | null;
-  /** Absent by design: the model holds no percentage of the diameter. */
-  stepoverPercent: number | null;
-};
-
+//
+// The payload type is the page's shared contract (`./toolLibrary`), the same declaration the panel
+// invokes the command with and the detail form reads.
 type Props = {
   /** The `tool_detail` command's payload for the selected tool. */
   detail: ToolDetail;
@@ -107,8 +86,10 @@ function trimmedNumber(value: number): string {
 }
 
 /**
- * A stored length with the one decimal S11 shows (`1.0 mm`, `3.175 mm`, `8.0 mm`), and the dash
- * when the library holds no value.
+ * A stored length as the library holds it: up to its three-decimal precision, with the trailing
+ * zeroes a reader does not need removed and padded to at least one decimal (`1.0 mm`, `3.175 mm`,
+ * `8.0 mm`). Nothing is rounded here — the value is only trimmed and padded for display — and the
+ * dash is returned when the library holds no value.
  */
 function lengthText(value: number | null): string {
   if (value === null) {

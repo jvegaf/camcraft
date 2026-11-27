@@ -6,6 +6,7 @@ import ToolLibraryDetail from './ToolLibraryDetail.svelte';
 import ToolLibraryPage from './ToolLibraryPage.svelte';
 import ToolLibraryPreview from './ToolLibraryPreview.svelte';
 import ToolLibraryTree from './ToolLibraryTree.svelte';
+import type { ToolDetail } from './toolLibrary';
 
 // Wiring organism (107 S9, S10, S11, S13 + 096 draft semantics): the only place the tool library
 // page talks to the backend. It loads the tree through `tool_library_tree` on mount, keeps the
@@ -38,27 +39,6 @@ type ToolGroup = {
 
 type ToolTree = { schema: string; groups: ToolGroup[] };
 
-type ToolDetail = {
-  schema: string;
-  id: string;
-  name: string;
-  kind: string;
-  kindLabel: string;
-  number: number | null;
-  diameterMm: number | null;
-  flutes: number | null;
-  cutLengthMm: number | null;
-  shankMm: number | null;
-  overallLengthMm: number | null;
-  includedAngleDeg: number | null;
-  flatDiameterMm: number | null;
-  spindleRpm: number | null;
-  cutFeedMmPerMin: number | null;
-  plungeFeedMmPerMin: number | null;
-  stepoverMm: number | null;
-  stepoverPercent: number | null;
-};
-
 /** Exactly the fields `ToolSaveRequest` accepts; no other key may reach the command. */
 type ToolSaveRequest = {
   id: string;
@@ -89,9 +69,26 @@ let draft = $state<ToolDetailEdit>({});
 // detail of the row the operator just picked.
 let selection = 0;
 
+/**
+ * The one name a brand-new tool starts with. `ToolCreateRequest` accepts a name and nothing else —
+ * the store decides the id, the number, the shape and the flutes — and no text prompt exists in this
+ * dialog, so the page sends a neutral placeholder and selects the new tool, which puts the operator
+ * in the `Name` field of the detail form rather than leaving the tool named by the machine.
+ */
+const NEW_TOOL_NAME = 'New tool';
+
 /** The detail as the form shows it: the stored record with the unconfirmed draft applied. */
 const shownDetail = $derived.by((): ToolDetail | null =>
   detail === null ? null : { ...detail, ...draft }
+);
+
+/**
+ * The `Valid` badge's truth: the library publishes no validity flag, so the only rule the page can
+ * own is the one the form can break — a selected tool whose drafted name is not blank. With no
+ * selection there is nothing to vouch for, and the badge is not rendered at all.
+ */
+const valid = $derived(
+  detail !== null && (draft.name ?? detail.name).trim() !== ''
 );
 
 function formatError(e: unknown): string {
@@ -132,6 +129,27 @@ async function loadDetail(id: string) {
 function selectTool(id: string) {
   selectedId = id;
   void loadDetail(id);
+}
+
+/**
+ * `+ New`: run the library's create command and make the new tool the selection. The result is the
+ * store's own record, so it is shown as-is; the tree is read again so the new row appears in its
+ * group with the number the store gave it.
+ */
+async function createTool() {
+  try {
+    const created = await invoke<ToolDetail>('tool_library_create', {
+      request: { name: NEW_TOOL_NAME }
+    });
+    // Invalidate any detail read still in flight: it belongs to the previous selection.
+    selection += 1;
+    selectedId = created.id;
+    detail = created;
+    draft = {};
+    await loadTree();
+  } catch (e) {
+    onerror?.(formatError(e));
+  }
 }
 
 /** Every edit stays in the draft; nothing here calls a command. */
@@ -195,7 +213,7 @@ const emptyState = css({
 });
 </script>
 
-<ToolLibraryPage>
+<ToolLibraryPage oncreate={createTool} {valid}>
   {#snippet tools()}
     {#if !treeLoaded}
       <p class={emptyState}>Loading tools…</p>

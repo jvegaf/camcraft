@@ -9,10 +9,13 @@ import { Button } from '../atoms';
 // artboard's three tracks, `260px minmax(0, 1fr) 220px`, and one headed column per pane — `Tools`
 // with its `+ New` action, `Detail` with the `Valid` badge and `Preview`.
 //
-// The shell is presentational only: it takes no data, reads no store and calls no command. The three
-// bodies are empty placeholders that the later tasks fill through the named snippet props
-// (`tools` = T5 tree, `detail` = T6 form, `preview` = T7 drawing), so filling them never reshapes the
-// layout. Mounting the page in the settings navigation belongs to T3.
+// The shell is presentational only: it takes no data, reads no store and calls no command. Its own
+// contract is the two header affordances, declared as props so the page never claims what it cannot
+// back: `oncreate` is the caller's create action (`+ New` calls it) and `valid` is the caller's
+// verdict on the selected tool, so the `Valid` badge is a statement about a real selection instead of
+// permanent decoration. The three bodies are empty placeholders that the later tasks fill through the
+// named snippet props (`tools` = T5 tree, `detail` = T6 form, `preview` = T7 drawing), so filling them
+// never reshapes the layout. Mounting the page in the settings navigation belongs to T3.
 //
 // Preview width: design comment `vjc4aj7t` reports the artboard's preview column being wider than
 // the space it has («el problema le tienes en la columna entera de preview que es mas ancha que el
@@ -29,9 +32,19 @@ type Props = {
   detail?: Snippet;
   /** Column 3 body — the cutting-zone preview of T7. */
   preview?: Snippet;
+  /**
+   * The create action `+ New` runs. Without it the button offers nothing, so a caller that has no
+   * create command passes none rather than leaving a button that does nothing.
+   */
+  oncreate?: () => void;
+  /**
+   * Whether the selected tool is valid right now. The badge says `Valid` only when this is true, so
+   * an empty selection (or a detail form holding invalid data) never advertises validity.
+   */
+  valid?: boolean;
 };
 
-let { tools, detail, preview }: Props = $props();
+let { tools, detail, preview, oncreate, valid = false }: Props = $props();
 
 const uid = $props.id();
 
@@ -110,7 +123,7 @@ const headingId = (pane: string) => `${uid}-${pane}`;
     <div class={columnHead}>
       <h4 class={columnTitle} id={headingId('tools')}>Tools</h4>
       <span class={spacer}></span>
-      <Button size="sm" variant="secondary">+ New</Button>
+      <Button size="sm" variant="secondary" onclick={oncreate}>+ New</Button>
     </div>
     <div class={cx(columnBody, listBody)} data-column-body="tools">
       {#if tools}{@render tools()}{/if}
@@ -121,7 +134,9 @@ const headingId = (pane: string) => `${uid}-${pane}`;
     <div class={columnHead}>
       <h4 class={columnTitle} id={headingId('detail')}>Detail</h4>
       <span class={spacer}></span>
-      <span class={cx(badgeRecipe(), validBadge)}>Valid</span>
+      {#if valid}
+        <span class={cx(badgeRecipe(), validBadge)}>Valid</span>
+      {/if}
     </div>
     <div class={cx(columnBody, detailBody)} data-column-body="detail">
       {#if detail}{@render detail()}{/if}

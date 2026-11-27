@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { createRawSnippet } from 'svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import ToolLibraryPage from './ToolLibraryPage.svelte';
 
 // Organism contract (107 T4, S8): the three-column page shell of
@@ -10,6 +11,11 @@ import ToolLibraryPage from './ToolLibraryPage.svelte';
 // structure by role and accessible name instead of the CSS text: the grid may not be read in jsdom,
 // and the meaningful fact is that every heading sits inside the column that also holds that
 // column's body.
+//
+// The two header affordances are props, not decorations: `+ New` runs the create callback the caller
+// composes, and the `Valid` badge is only claimed when the caller says the selected tool is valid.
+// Both are asserted here because a header that advertises an inert action or a validity nobody
+// checked is a promise this shell cannot keep.
 const COLUMNS = ['Tools', 'Detail', 'Preview'] as const;
 
 /** The column whose accessible name is `name` (each column is a labelled `<section>`). */
@@ -46,7 +52,7 @@ describe('ToolLibraryPage', () => {
   });
 
   it('renders the + New button in the Tools column and the Valid badge in the Detail column', () => {
-    render(ToolLibraryPage);
+    render(ToolLibraryPage, { valid: true });
 
     expect(
       within(columnOf('Tools')).getByRole('button', { name: '+ New' })
@@ -57,6 +63,35 @@ describe('ToolLibraryPage', () => {
     expect(within(columnOf('Detail')).queryByRole('button')).toBeNull();
     expect(within(columnOf('Preview')).queryByRole('button')).toBeNull();
     expect(within(columnOf('Tools')).queryByText('Valid')).toBeNull();
+  });
+
+  it('claims Valid only when the caller says the selected tool is valid', () => {
+    // Nothing is selected: the header must not assert a validity it was not told about.
+    render(ToolLibraryPage);
+
+    expect(within(columnOf('Detail')).queryByText('Valid')).toBeNull();
+    expect(screen.queryByText('Valid')).toBeNull();
+    // The column header itself is still there; only the claim is absent.
+    expect(
+      within(columnOf('Detail')).getByRole('heading', {
+        level: 4,
+        name: 'Detail'
+      })
+    ).toBeTruthy();
+  });
+
+  it('runs the create action the + New button is wired to', async () => {
+    const user = userEvent.setup();
+    const create = vi.fn();
+    render(ToolLibraryPage, { oncreate: create });
+
+    await user.click(
+      within(columnOf('Tools')).getByRole('button', { name: '+ New' })
+    );
+
+    expect(create).toHaveBeenCalledTimes(1);
+    // The action stays in the Tools header; no other column grew a button.
+    expect(within(columnOf('Detail')).queryByRole('button')).toBeNull();
   });
 
   it('injects one snippet per column body without reshaping the layout', () => {

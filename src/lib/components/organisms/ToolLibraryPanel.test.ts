@@ -201,6 +201,89 @@ describe('ToolLibraryPanel', () => {
     expect(screen.queryByText('Drill 0.8 mm')).toBeNull();
   });
 
+  it('creates a new tool from + New, selects it and refreshes the tree', async () => {
+    // The command's own contract (107 T2): the store decides the id, number, shape and flutes, so the
+    // only thing the page sends is a name.
+    const created = {
+      ...detail,
+      id: 'tool-1',
+      name: 'New tool',
+      number: 23,
+      flutes: 2
+    };
+    const grownTree = {
+      schema: 'tool-tree@1',
+      groups: [
+        {
+          kind: 'flat-end-mill',
+          label: 'Flat end mill',
+          count: 3,
+          tools: [
+            ...tree.groups[0].tools,
+            { id: 'tool-1', number: 23, name: 'New tool', meta: '2F' }
+          ]
+        },
+        ...tree.groups.slice(1)
+      ]
+    };
+    let treeReads = 0;
+    bridge(async (command, args) => {
+      if (command === 'tool_library_tree') {
+        treeReads += 1;
+        return treeReads === 1 ? tree : grownTree;
+      }
+      if (command === 'tool_detail') {
+        const { id } = args as { id: string };
+        return id === created.id ? { ...created } : null;
+      }
+      if (command === 'tool_library_create') return { ...created };
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    const user = userEvent.setup();
+    render(ToolLibraryPanel);
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+
+    await user.click(screen.getByRole('button', { name: '+ New' }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('tool_library_create', {
+        request: { name: 'New tool' }
+      })
+    );
+
+    // The new tool becomes the selection, so its detail form is where the operator names it…
+    expect(
+      await screen.findByRole('heading', { level: 4, name: 'New tool' })
+    ).toBeTruthy();
+    // …and the left column shows the row the store created, not a stale tree.
+    expect(rowOf(/T23\b/).getAttribute('aria-current')).toBe('true');
+  });
+
+  it('claims Valid only while a selected tool has a non-empty name', async () => {
+    const user = userEvent.setup();
+    render(ToolLibraryPanel);
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+
+    // Nothing is selected yet: the header must not advertise a validity nobody checked.
+    expect(screen.queryByText('Valid')).toBeNull();
+
+    await user.click(rowOf(/T22\b/));
+    await screen.findByRole('heading', {
+      level: 4,
+      name: 'End mill 1.0 mm'
+    });
+    expect(screen.getByText('Valid')).toBeTruthy();
+
+    // A blank drafted name is not a valid tool, so the badge stops claiming it.
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    expect(screen.queryByText('Valid')).toBeNull();
+
+    await user.type(name, 'End mill 1.0 mm');
+    expect(screen.getByText('Valid')).toBeTruthy();
+  });
+
   it('keeps an edit in the draft until the dialog confirms, then saves exactly the allowed keys', async () => {
     const user = await openToolLibrary();
     await selectFlat22(user);
