@@ -99,4 +99,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 097 | [design-system-gallery](097-design-system-gallery.md)                               | delivered                | 2026-11-27 | `9b7d202`     |
 | 098 | [deliver-index-formatting](098-deliver-index-formatting.md)                         | delivered                | 2026-11-27 | `7e4f567`     |
 | 099 | [tooling-harness-green](099-tooling-harness-green.md)                               | delivered                | 2026-11-27 | `43e78cc`     |
-| 100 | [check-tooling-step](100-check-tooling-step.md)                                     | in progress              | 2026-11-27 |               |
+| 100 | [check-tooling-step](100-check-tooling-step.md)                                     | delivered                | 2026-11-27 | `b49f209`     |
