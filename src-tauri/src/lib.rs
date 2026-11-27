@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use cam_app::{AppState, Viewport};
 use cam_model::{Board, Document, Job, OriginCorner};
@@ -693,6 +693,39 @@ fn cam_output(runtime: State<'_, AppRuntime>) -> Result<CamOutputDto, CommandErr
 /// library than the one the next document would edit.
 const TOOL_LIBRARY_FILE: &str = "tools.sqlite";
 
+/// The one lock every command that writes the tool library holds across its whole read-modify-write.
+///
+/// The store does not make this redundant: `cam_store`'s `save_tool` is a transaction over one tool's
+/// three rows (`cam-store/src/tool_edit.rs:241`), and its inserts are per-row upserts
+/// (`cam-store/src/tools.rs:665`, `:734`), but nothing compares a version, and this crate reads the
+/// library through a second, read-only connection (`read_tool_library`) that no write transaction of
+/// the store can span. So a save that read a snapshot before another write landed would put the old
+/// values of every field it did not edit back, and two creates could derive the same id and the same
+/// tool number from one snapshot. The lock closes that window between invocations of this process,
+/// which is the only writer of the file; a cross-process writer and a version column inside
+/// `cam-store` are a separate task.
+static TOOL_LIBRARY_WRITE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// Take a library write lock, or refuse the write with a structured error.
+///
+/// A poisoned lock is not swallowed and not cleared: a write that took it would be a write into a
+/// library whose last reader panicked halfway through, so the command answers with its own code and
+/// writes nothing. `lock` is a parameter rather than the static directly so a test can poison a lock
+/// of its own instead of the process-wide one every other test shares.
+fn lock_or_refuse(lock: &'static Mutex<()>) -> Result<MutexGuard<'static, ()>, CommandErrorDto> {
+  lock.lock().map_err(|_| {
+    CommandErrorDto::new(
+      "tool_library_write_poisoned",
+      "the tool library write lock is poisoned, so nothing was written",
+    )
+  })
+}
+
+/// The process-wide guard a command takes before it reads the library it means to write.
+fn lock_tool_library() -> Result<MutexGuard<'static, ()>, CommandErrorDto> {
+  lock_or_refuse(&TOOL_LIBRARY_WRITE)
+}
+
 fn tool_library_path(state: &RuntimeState) -> Result<PathBuf, CommandErrorDto> {
   state
     .data_dir
@@ -1047,15 +1080,37 @@ fn fresh_tool_id(tools: &[StoredTool]) -> String {
   }
 }
 
+/// The next tool number nothing in `tools` carries, checked against the very snapshot the create
+/// writes into.
+///
+/// `next_tool_number` already answers the lowest free number; this states the invariant where the
+/// create decides, so a create can never answer with success for a tool that took another tool's
+/// number. A number that turns out to be taken steps to the next free one instead of being reused.
+fn free_tool_number(tools: &[StoredTool]) -> u32 {
+  let mut candidate = next_tool_number(tools);
+  while tools
+    .iter()
+    .any(|tool| tool.cutting.tool_number == Some(candidate))
+  {
+    candidate += 1;
+  }
+  candidate
+}
+
 /// Save an existing tool's editable fields, answering with the record as it now stands.
 ///
-/// The tool is read through the read-only path first, so a save that names nothing the library holds
-/// never opens the file for writing — and a refused save changes no byte of it, because the write only
+/// The whole read-modify-write happens under the process-wide write lock, and the lock is taken
+/// **before** the library is read: a snapshot taken outside it is the lost update the lock exists to
+/// close, because the write would put back every field this command did not edit.
+///
+/// The tool is read through the read-only path, so a save that names nothing the library holds never
+/// opens the file for writing — and a refused save changes no byte of it, because the write only
 /// starts once the record it merges into exists.
 fn tool_library_save_impl(
   runtime: &AppRuntime,
   request: ToolSaveRequest,
 ) -> Result<ToolDetailDto, CommandErrorDto> {
+  let _guard = lock_tool_library()?;
   let tools = read_tool_library(runtime)?;
   let stored = stored_tool_for_id(&tools, &request.id).ok_or_else(|| {
     CommandErrorDto::new(
@@ -1082,19 +1137,26 @@ fn tool_library_save_impl(
 }
 
 /// Create a tool, answering with the created record so the page can select it.
+///
+/// The lock comes first and the snapshot after it, and the snapshot is read through the same
+/// connection this create writes with: the fresh id and the next tool number are derived from the
+/// library as it stands now, so two creates cannot choose the same identity from one stale snapshot.
 fn tool_library_create_impl(
   runtime: &AppRuntime,
   request: ToolCreateRequest,
 ) -> Result<ToolDetailDto, CommandErrorDto> {
-  // The read-only path answers what the library holds (an absent file is an empty library, not a
-  // reason to create one), and the write path below is what creates or migrates the file.
-  let tools = read_tool_library(runtime)?;
+  let _guard = lock_tool_library()?;
+  // The write path is the one place a command may create or migrate the file, and reading through it
+  // is what makes the identity below the library's current one rather than a second snapshot.
+  let library = open_tool_library_for_write(runtime)?;
+  let tools = library
+    .tools()
+    .map_err(|err| CommandErrorDto::new("tool_library_unwritable", err.to_string()))?;
   let tool = new_tool(
     &fresh_tool_id(&tools),
     &request.name,
-    next_tool_number(&tools),
+    free_tool_number(&tools),
   );
-  let library = open_tool_library_for_write(runtime)?;
   library.save_tool(&tool).map_err(tool_write_error)?;
   Ok(tool_detail_of(&tool))
 }
@@ -2294,5 +2356,217 @@ mod tests {
     assert_eq!(tree.groups[0].tools[0].id, "flat-1");
 
     let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// The window a lost update lived in: the read of the library and the write of the merged tool.
+  ///
+  /// The test is the competing writer. It holds the library write lock, starts a save, and only while
+  /// that save is still blocked changes a field the save does not edit (`Diameter`) through the
+  /// store's own writer. A save that reads after it takes the lock sees that diameter and keeps it; a
+  /// save that reads a snapshot outside the lock puts the old one back while answering with success.
+  #[test]
+  fn tool_library_save_reads_the_library_after_it_takes_the_write_lock() {
+    let dir = library_dir("tool-lock-save");
+    let mut flat = library_tool(
+      "flat-22",
+      "End mill 1.0 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      Some(22),
+    );
+    flat.geometry.diameter = Some(Length::from_mm(1.0));
+    seed_library(&dir, &[flat]);
+    let rt = runtime_with_data_dir(&dir);
+    let path = dir.join("tools.sqlite");
+
+    let guard = TOOL_LIBRARY_WRITE.lock().expect("the lock is fresh");
+    let owner = &rt;
+    let saved = std::thread::scope(|scope| {
+      let (began, started) = std::sync::mpsc::channel();
+      let (finished, done) = std::sync::mpsc::channel();
+      let save = scope.spawn(move || {
+        began.send(()).expect("signal the start");
+        let result = tool_library_save_impl(
+          owner,
+          ToolSaveRequest {
+            id: "flat-22".to_string(),
+            name: "End mill 1.0 mm - 3.175 mm".to_string(),
+            number: Some(7),
+            flutes: Some(3),
+          },
+        );
+        finished.send(result.is_ok()).expect("signal the end");
+        result
+      });
+      started.recv().expect("the save started");
+
+      // While another writer holds the lock the save cannot have completed: the read it merges into
+      // has to happen under the same lock as the write, or both together are the window this guard
+      // exists to close.
+      assert!(
+        matches!(
+          done.recv_timeout(std::time::Duration::from_millis(500)),
+          Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ),
+        "a save completed while another writer held the library write lock"
+      );
+
+      // The competing update lands between the save's snapshot and its write, in a field the save
+      // payload cannot even name: `Diameter` is read-only in S10 and has no assignment in the command.
+      let other = ToolLibrary::open(&path).expect("a second connection to the same library");
+      let mut concurrent = other
+        .tools()
+        .expect("the library reads")
+        .into_iter()
+        .find(|tool| tool.geometry.id == "flat-22")
+        .expect("the library holds flat-22");
+      concurrent.geometry.diameter = Some(Length::from_mm(2.0));
+      other
+        .save_tool(&concurrent)
+        .expect("the competing write lands");
+
+      drop(guard);
+      save
+        .join()
+        .expect("the save thread")
+        .expect("the save runs once the lock is free")
+    });
+
+    // The save wrote the three editable fields it owns …
+    assert_eq!(saved.name, "End mill 1.0 mm - 3.175 mm");
+    assert_eq!(saved.number, Some(7));
+    assert_eq!(saved.flutes, Some(3));
+    // … and the field it never edited is the one the competing writer left, not the old snapshot's.
+    assert_eq!(saved.diameter_mm, Some(2.0));
+    let read_back = tool_detail_impl(&rt, "flat-22")
+      .expect("the query runs")
+      .expect("the library still holds flat-22");
+    assert_eq!(
+      read_back.diameter_mm,
+      Some(2.0),
+      "a save must not revert a field it did not edit"
+    );
+    assert_eq!(read_back.name, "End mill 1.0 mm - 3.175 mm");
+    assert_eq!(read_back.number, Some(7));
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// Two creates in sequence keep distinct ids and distinct numbers, and neither overwrites the other.
+  #[test]
+  fn two_creates_in_sequence_cannot_share_an_id_or_a_number() {
+    let dir = library_dir("tool-create-sequence");
+    let rt = runtime_with_data_dir(&dir);
+
+    let first = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 1.0 mm".to_string(),
+      },
+    )
+    .expect("the store accepts the first tool");
+    let second = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 2.0 mm".to_string(),
+      },
+    )
+    .expect("the store accepts the second tool");
+
+    assert_ne!(first.id, second.id);
+    assert_ne!(first.number, second.number);
+    assert!(first.number.is_some() && second.number.is_some());
+    // Both records are still there: a create that reused an identity would have replaced one.
+    let tree = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(tree.groups.len(), 1);
+    assert_eq!(tree.groups[0].count, 2);
+    let ids: Vec<&str> = tree.groups[0]
+      .tools
+      .iter()
+      .map(|row| row.id.as_str())
+      .collect();
+    assert_eq!(ids, vec![first.id.as_str(), second.id.as_str()]);
+    let numbers: Vec<Option<u32>> = tree.groups[0].tools.iter().map(|row| row.number).collect();
+    assert_eq!(numbers, vec![first.number, second.number]);
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// A create derives its id and its number from the library as it stands, so a number already taken
+  /// by a tool of another id is stepped over instead of being handed to the new tool.
+  #[test]
+  fn tool_library_create_never_takes_a_number_the_library_already_uses() {
+    let dir = library_dir("tool-create-numbers");
+    seed_library(
+      &dir,
+      &[
+        library_tool(
+          "tool-1",
+          "Flat 1.0 mm",
+          cam_store::tools::ToolKind::FlatEndMill,
+          Some(1),
+        ),
+        library_tool(
+          "tool-2",
+          "Flat 2.0 mm",
+          cam_store::tools::ToolKind::FlatEndMill,
+          Some(3),
+        ),
+      ],
+    );
+    let rt = runtime_with_data_dir(&dir);
+
+    let created = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 3.0 mm".to_string(),
+      },
+    )
+    .expect("the store accepts the new tool");
+
+    // The ids `tool-1`/`tool-2` and the numbers 1 and 3 are taken, so the new tool gets the lowest
+    // free number, 2, and the next free id.
+    assert_eq!(created.id, "tool-3");
+    assert_eq!(created.number, Some(2));
+    // Nothing was overwritten: three tools are in the library, the two seeded ones untouched.
+    let tree = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(tree.groups[0].count, 3);
+    let numbers: Vec<Option<u32>> = tree.groups[0].tools.iter().map(|row| row.number).collect();
+    assert_eq!(numbers, vec![Some(1), Some(3), Some(2)]);
+    let created_row = tree.groups[0]
+      .tools
+      .iter()
+      .find(|row| row.id == "tool-3")
+      .expect("the created tool is listed");
+    assert_eq!(created_row.number, Some(2));
+    let seeded = tool_detail_impl(&rt, "tool-1")
+      .expect("the query runs")
+      .expect("tool-1 is still there");
+    assert_eq!(seeded.number, Some(1));
+    assert_eq!(seeded.name, "Flat 1.0 mm");
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// A poisoned write lock is a structured refusal, not a write attempted anyway and not a panic.
+  #[test]
+  fn tool_library_write_of_a_poisoned_lock_is_structured() {
+    // A lock of this test's own, so poisoning it leaves the process-wide one the other tests take
+    // healthy; what is under test is the mapping a write does when its guard cannot be taken.
+    static POISONED: Mutex<()> = Mutex::new(());
+    let poisoned = std::panic::catch_unwind(|| {
+      let _guard = POISONED.lock().expect("the scratch lock is fresh");
+      panic!("poison the tool library write lock");
+    });
+    assert!(poisoned.is_err(), "the scratch lock is poisoned");
+
+    let err = lock_or_refuse(&POISONED).expect_err("a poisoned lock refuses the write");
+    assert_eq!(err.code, "tool_library_write_poisoned");
+    assert_eq!(
+      serde_json::to_value(&err).expect("json"),
+      serde_json::json!({
+        "code": "tool_library_write_poisoned",
+        "message": "the tool library write lock is poisoned, so nothing was written"
+      })
+    );
   }
 }
