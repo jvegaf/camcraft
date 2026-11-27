@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use cam_app::{AppState, Viewport};
 use cam_model::{Board, Document, Job, OriginCorner};
 use cam_sim::Heightfield;
-use cam_store::tool_edit::rendered_name;
-use cam_store::tools::{StoredTool, ToolKind, ToolLibrary};
+use cam_store::tool_edit::{WriteToolError, new_tool, next_tool_number, rendered_name};
+use cam_store::tools::{StoredTool, ToolKind, ToolLibrary, stored_tool_for_id};
 use cam_units::Length;
 use cam_view::{Camera3d, build_stock_box, build_surface};
 use serde::{Deserialize, Serialize};
@@ -955,6 +955,166 @@ fn tool_detail(
   tool_detail_impl(&runtime, &id)
 }
 
+/// The file the application's tool library lives in, for a command that means to write it.
+///
+/// The same location [`tool_library_path`] answers for reading; this only lifts it out of the lock,
+/// because a write opens the library after the lock is released rather than while it is held.
+fn tool_library_write_path(runtime: &AppRuntime) -> Result<PathBuf, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  tool_library_path(&state)
+}
+
+/// The library opened for writing: the **one** place a command may create or migrate the file.
+///
+/// [`ToolLibrary::open`] creates a library that is not there and runs every pending migration, which is
+/// exactly what a save or a create may do and a read may not. Reading keeps
+/// [`ToolLibrary::open_read_only`] (`read_tool_library`), so the two paths differ by the store's own
+/// constructor and not by a check here: a read never creates a file, never migrates one, and never
+/// leaves a `-wal`/`-shm` companion beside it. A refusal to open for writing is a structured error
+/// naming the file and the store's reason.
+fn open_tool_library_for_write(runtime: &AppRuntime) -> Result<ToolLibrary, CommandErrorDto> {
+  let path = tool_library_write_path(runtime)?;
+  ToolLibrary::open(&path)
+    .map_err(|err| CommandErrorDto::new("tool_library_unwritable", err.to_string()))
+}
+
+/// A store refusal, as the page receives it.
+///
+/// The rules are the store's (`cam_store::tool_edit::validate_tool`, run by `save_tool`), so nothing is
+/// re-checked here: a refusal is mapped to one stable code and the store's own sentence, which is the
+/// only wording of that rule. A library that could not be written is a different failure and keeps its
+/// own code.
+fn tool_write_error(err: WriteToolError) -> CommandErrorDto {
+  match err {
+    WriteToolError::Invalid(problem) => CommandErrorDto::new("tool_invalid", problem.sentence()),
+    WriteToolError::Store(store) => {
+      CommandErrorDto::new("tool_library_unwritable", store.to_string())
+    }
+  }
+}
+
+/// The fields of a tool the page lets an operator edit, and nothing else.
+///
+/// S10 reads the editable set off the artboard: `Name`, `Number` and `Flutes` are `<input>`s, the rest
+/// of `Geometry` is `.ro`, and all of `Feeds & speeds` is read-only. The payload is built out of exactly
+/// those three, so a save **cannot** express a change to a read-only field — a diameter, a feed, or
+/// S10's `stepoverPercent`, which the model does not hold and T1 already publishes as an absence.
+/// `deny_unknown_fields` turns an attempt into a rejected payload instead of a silently ignored key.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolSaveRequest {
+  /// The library's stable geometry id, the same one a tree row carries.
+  pub id: String,
+  /// S10's `Name` box. The store's `name_format` column holds a plain name as readily as a template,
+  /// so the box writes the string it shows (see `cam_store::tool_edit::rendered_name`).
+  pub name: String,
+  /// S10's `Number` box. Absent when the box is cleared, which the store refuses with its own
+  /// `NoToolNumber` rather than a rule invented here.
+  pub number: Option<u32>,
+  /// S10's `Flutes` box. Absent when the box is cleared, which the store refuses with `NoFlutes`.
+  pub flutes: Option<u32>,
+}
+
+/// What a `+ New` tool starts as: a name, and nothing the store already decides.
+///
+/// The default shape, the flute count and the number come from the store's own starting point
+/// (`cam_store::tool_edit::new_tool`, `next_tool_number`), so a new tool carries no dimension, feed or
+/// number this command made up.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolCreateRequest {
+  /// The name the page shows for the new tool.
+  pub name: String,
+}
+
+/// A stable, unused geometry id for a tool the library does not hold yet.
+///
+/// The store derives its link ids from the geometry id and has no id generator of its own, so the
+/// command owns this one: `tool-1`, `tool-2`, … — the first suffix no record already carries. It is
+/// deterministic rather than random so a create is reproducible, and it is a fresh id rather than a
+/// reused one because the library lists tools by geometry id.
+fn fresh_tool_id(tools: &[StoredTool]) -> String {
+  let mut candidate = 1;
+  loop {
+    let id = format!("tool-{candidate}");
+    if !tools.iter().any(|tool| tool.geometry.id == id) {
+      return id;
+    }
+    candidate += 1;
+  }
+}
+
+/// Save an existing tool's editable fields, answering with the record as it now stands.
+///
+/// The tool is read through the read-only path first, so a save that names nothing the library holds
+/// never opens the file for writing — and a refused save changes no byte of it, because the write only
+/// starts once the record it merges into exists.
+fn tool_library_save_impl(
+  runtime: &AppRuntime,
+  request: ToolSaveRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
+  let tools = read_tool_library(runtime)?;
+  let stored = stored_tool_for_id(&tools, &request.id).ok_or_else(|| {
+    CommandErrorDto::new(
+      "tool_not_found",
+      format!(
+        "the tool library holds no tool with id {}, so nothing was saved",
+        request.id
+      ),
+    )
+  })?;
+
+  // Only the three editable fields are assigned. Everything else is the record the library already
+  // holds, which is how a read-only field stays read-only: there is no assignment to reach it.
+  let mut tool = stored.clone();
+  tool.geometry.name_format = request.name;
+  tool.cutting.tool_number = request.number;
+  tool.geometry.num_flutes = request.flutes;
+
+  // The store's own writer runs the store's own validation and refuses the whole tool atomically, so
+  // the fields merged above are written together or not at all.
+  let library = open_tool_library_for_write(runtime)?;
+  library.save_tool(&tool).map_err(tool_write_error)?;
+  Ok(tool_detail_of(&tool))
+}
+
+/// Create a tool, answering with the created record so the page can select it.
+fn tool_library_create_impl(
+  runtime: &AppRuntime,
+  request: ToolCreateRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
+  // The read-only path answers what the library holds (an absent file is an empty library, not a
+  // reason to create one), and the write path below is what creates or migrates the file.
+  let tools = read_tool_library(runtime)?;
+  let tool = new_tool(
+    &fresh_tool_id(&tools),
+    &request.name,
+    next_tool_number(&tools),
+  );
+  let library = open_tool_library_for_write(runtime)?;
+  library.save_tool(&tool).map_err(tool_write_error)?;
+  Ok(tool_detail_of(&tool))
+}
+
+#[tauri::command]
+fn tool_library_save(
+  runtime: State<'_, AppRuntime>,
+  request: ToolSaveRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
+  tool_library_save_impl(&runtime, request)
+}
+
+#[tauri::command]
+fn tool_library_create(
+  runtime: State<'_, AppRuntime>,
+  request: ToolCreateRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
+  tool_library_create_impl(&runtime, request)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -1001,7 +1161,9 @@ pub fn run() {
       cam_operations,
       cam_output,
       tool_library_tree,
-      tool_detail
+      tool_detail,
+      tool_library_save,
+      tool_library_create
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -1831,6 +1993,305 @@ mod tests {
       serde_json::to_value(&dto).expect("json"),
       serde_json::json!(null)
     );
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_library_save_writes_the_editable_fields_and_the_change_lands() {
+    let dir = library_dir("tool-save");
+
+    // S10's editor: `Name`, `Number` and `Flutes` are inputs; the geometry's other numbers and all
+    // of `Feeds & speeds` are read-only rows. The seed holds every one of them so the save can be
+    // proved to leave them alone.
+    let mut flat = library_tool(
+      "flat-22",
+      "End mill 1.0 mm",
+      cam_store::tools::ToolKind::FlatEndMill,
+      Some(22),
+    );
+    flat.geometry.diameter = Some(Length::from_mm(1.0));
+    flat.geometry.num_flutes = Some(1);
+    flat.geometry.flute_length = Some(Length::from_mm(8.0));
+    flat.geometry.shank_diameter = Some(Length::from_mm(3.175));
+    flat.geometry.overall_length = Some(Length::from_mm(38.0));
+    flat.cutting.spindle_speed = Some(18_000);
+    flat.cutting.feed_rate = Some(800.0);
+    flat.cutting.plunge_rate = Some(200.0);
+    flat.cutting.stepover = Some(Length::from_mm(0.4));
+    seed_library(&dir, &[flat]);
+    let rt = runtime_with_data_dir(&dir);
+
+    let saved = tool_library_save_impl(
+      &rt,
+      ToolSaveRequest {
+        id: "flat-22".to_string(),
+        name: "End mill 1.0 mm - 3.175 mm".to_string(),
+        number: Some(7),
+        flutes: Some(3),
+      },
+    )
+    .expect("the store accepts an edited tool");
+
+    // The payload as the frontend receives it: the record it now holds, reusing the detail contract
+    // the page already reads. The read-only fields are the ones the library held, untouched.
+    assert_eq!(
+      serde_json::to_value(&saved).expect("json"),
+      serde_json::json!({
+        "schema": "tool-detail@1",
+        "id": "flat-22",
+        "name": "End mill 1.0 mm - 3.175 mm",
+        "kind": "flat-end-mill",
+        "kindLabel": "Flat end mill",
+        "number": 7,
+        "diameterMm": 1.0,
+        "flutes": 3,
+        "cutLengthMm": 8.0,
+        "shankMm": 3.175,
+        "overallLengthMm": 38.0,
+        "includedAngleDeg": null,
+        "flatDiameterMm": null,
+        "spindleRpm": 18000,
+        "cutFeedMmPerMin": 800.0,
+        "plungeFeedMmPerMin": 200.0,
+        "stepoverMm": 0.4,
+        "stepoverPercent": null
+      })
+    );
+
+    // The persisted effect, read back through T1's own read command: the three editable fields
+    // changed and the read-only ones did not move.
+    let read_back = tool_detail_impl(&rt, "flat-22")
+      .expect("the query runs")
+      .expect("the library still holds flat-22");
+    assert_eq!(read_back.name, "End mill 1.0 mm - 3.175 mm");
+    assert_eq!(read_back.number, Some(7));
+    assert_eq!(read_back.flutes, Some(3));
+    assert_eq!(read_back.diameter_mm, Some(1.0));
+    assert_eq!(read_back.cut_length_mm, Some(8.0));
+    assert_eq!(read_back.shank_mm, Some(3.175));
+    assert_eq!(read_back.overall_length_mm, Some(38.0));
+    assert_eq!(read_back.spindle_rpm, Some(18_000));
+    assert_eq!(read_back.cut_feed_mm_per_min, Some(800.0));
+    assert_eq!(read_back.plunge_feed_mm_per_min, Some(200.0));
+    assert_eq!(read_back.stepover_mm, Some(0.4));
+
+    // The tree reads the saved name and number too, so the master list and the detail agree.
+    let tree = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(tree.groups.len(), 1);
+    assert_eq!(tree.groups[0].tools[0].name, "End mill 1.0 mm - 3.175 mm");
+    assert_eq!(tree.groups[0].tools[0].number, Some(7));
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_library_create_writes_a_new_tool_and_returns_it() {
+    let dir = library_dir("tool-create");
+    let rt = runtime_with_data_dir(&dir);
+    let path = dir.join("tools.sqlite");
+    assert!(
+      fs::metadata(&path).is_err(),
+      "nothing has written the library yet"
+    );
+
+    let created = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 1.0 mm".to_string(),
+      },
+    )
+    .expect("the store accepts a new tool");
+
+    // The created record, so the page can select it: the store's own `new_tool` starting point, with
+    // the number the store's `next_tool_number` picks and no invented feeds.
+    assert_eq!(
+      serde_json::to_value(&created).expect("json"),
+      serde_json::json!({
+        "schema": "tool-detail@1",
+        "id": "tool-1",
+        "name": "End mill 1.0 mm",
+        "kind": "flat-end-mill",
+        "kindLabel": "Flat end mill",
+        "number": 1,
+        "diameterMm": 6.0,
+        "flutes": 2,
+        "cutLengthMm": null,
+        "shankMm": null,
+        "overallLengthMm": null,
+        "includedAngleDeg": null,
+        "flatDiameterMm": null,
+        "spindleRpm": null,
+        "cutFeedMmPerMin": null,
+        "plungeFeedMmPerMin": null,
+        "stepoverMm": null,
+        "stepoverPercent": null
+      })
+    );
+
+    // The write path is the one place a command may create the library, and it did.
+    assert!(
+      fs::metadata(&path).is_ok(),
+      "the write command created the library"
+    );
+
+    // The persisted effect, read back through the read commands.
+    let read_back = tool_detail_impl(&rt, "tool-1")
+      .expect("the query runs")
+      .expect("the library holds the created tool");
+    assert_eq!(read_back.name, "End mill 1.0 mm");
+    assert_eq!(read_back.number, Some(1));
+    assert_eq!(read_back.flutes, Some(2));
+    assert_eq!(
+      serde_json::to_value(&tool_tree_impl(&rt).expect("tree")).expect("json"),
+      serde_json::json!({
+        "schema": "tool-tree@1",
+        "groups": [{
+          "kind": "flat-end-mill",
+          "label": "Flat end mill",
+          "count": 1,
+          "tools": [{ "id": "tool-1", "number": 1, "name": "End mill 1.0 mm", "meta": "2F" }]
+        }]
+      })
+    );
+
+    // A second `New` gets the next free identity and number rather than overwriting the first.
+    let second = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 2.0 mm".to_string(),
+      },
+    )
+    .expect("the store accepts a second tool");
+    assert_eq!(second.id, "tool-2");
+    assert_eq!(second.number, Some(2));
+    assert_eq!(tool_tree_impl(&rt).expect("tree").groups[0].count, 2);
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_library_save_refusal_is_structured_and_leaves_the_library_untouched() {
+    let dir = library_dir("tool-save-refused");
+    seed_library(
+      &dir,
+      &[library_tool(
+        "flat-22",
+        "End mill 1.0 mm",
+        cam_store::tools::ToolKind::FlatEndMill,
+        Some(22),
+      )],
+    );
+    let rt = runtime_with_data_dir(&dir);
+    let path = dir.join("tools.sqlite");
+    let before = fs::read(&path).expect("the seeded library reads");
+
+    // A tool number of zero is one of the store's own refusals. The command maps it to a stable code
+    // and carries the store's sentence, which is the only wording of the rule.
+    let err = tool_library_save_impl(
+      &rt,
+      ToolSaveRequest {
+        id: "flat-22".to_string(),
+        name: "End mill 1.0 mm".to_string(),
+        number: Some(0),
+        flutes: Some(1),
+      },
+    )
+    .expect_err("T0 is refused by the store");
+    assert_eq!(err.code, "tool_invalid");
+    assert_eq!(
+      serde_json::to_value(&err).expect("json"),
+      serde_json::json!({
+        "code": "tool_invalid",
+        "message": "A tool number has to be at least 1, because no program uses T0."
+      })
+    );
+
+    // A cleared `Flutes` box is the same gate, not a second copy of it.
+    let err = tool_library_save_impl(
+      &rt,
+      ToolSaveRequest {
+        id: "flat-22".to_string(),
+        name: "End mill 1.0 mm".to_string(),
+        number: Some(22),
+        flutes: Some(0),
+      },
+    )
+    .expect_err("a tool with no cuts is refused by the store");
+    assert_eq!(err.code, "tool_invalid");
+    assert_eq!(
+      err.message,
+      "A tool needs at least one cut, because a tool with none cannot cut."
+    );
+
+    // The rejected write left the library file byte-for-byte as it was, and the read command agrees.
+    assert_eq!(
+      fs::read(&path).expect("the library still reads"),
+      before,
+      "a refused save never writes the library"
+    );
+    let read_back = tool_detail_impl(&rt, "flat-22")
+      .expect("the query runs")
+      .expect("the library still holds flat-22");
+    assert_eq!(read_back.name, "End mill 1.0 mm");
+    assert_eq!(read_back.number, Some(22));
+    assert_eq!(read_back.flutes, Some(1));
+
+    // The payload carries only the editable fields by construction, so a caller cannot even express
+    // a change to a read-only one such as `Diameter` or to the absent `stepoverPercent`.
+    let forged = serde_json::json!({
+      "id": "flat-22",
+      "name": "End mill 1.0 mm",
+      "number": 22,
+      "flutes": 1,
+      "diameterMm": 9.9,
+      "stepoverPercent": 40.0
+    });
+    assert!(
+      serde_json::from_value::<ToolSaveRequest>(forged).is_err(),
+      "a save payload names the editable fields and nothing else"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn tool_library_save_of_a_tool_the_library_does_not_hold_is_an_absent_target() {
+    let dir = library_dir("tool-save-missing");
+    seed_library(
+      &dir,
+      &[library_tool(
+        "flat-1",
+        "Flat 1.0 mm",
+        cam_store::tools::ToolKind::FlatEndMill,
+        Some(1),
+      )],
+    );
+    let rt = runtime_with_data_dir(&dir);
+
+    let err = tool_library_save_impl(
+      &rt,
+      ToolSaveRequest {
+        id: "no-such-tool".to_string(),
+        name: "x".to_string(),
+        number: Some(1),
+        flutes: Some(1),
+      },
+    )
+    .expect_err("a save names a tool the library holds");
+    assert_eq!(
+      serde_json::to_value(&err).expect("json"),
+      serde_json::json!({
+        "code": "tool_not_found",
+        "message": "the tool library holds no tool with id no-such-tool, so nothing was saved"
+      })
+    );
+
+    // The library is unchanged: the tool the payload did not name is the only one it holds.
+    let tree = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(tree.groups.len(), 1);
+    assert_eq!(tree.groups[0].count, 1);
+    assert_eq!(tree.groups[0].tools[0].id, "flat-1");
 
     let _ = fs::remove_dir_all(&dir);
   }
