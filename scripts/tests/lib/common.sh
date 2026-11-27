@@ -78,7 +78,7 @@ build_repo() {
   mkdir -p "$MAIN/scripts" "$MAIN/odd/tasks" "$WORK/bin"
 
   local script
-  for script in claim-task release-task check-worktree check check-docs deliver-task; do
+  for script in claim-task release-task check-worktree check check-docs check-records deliver-task; do
     [ -f "$REPO_ROOT/scripts/$script.sh" ] && cp "$REPO_ROOT/scripts/$script.sh" "$MAIN/scripts/"
   done
   chmod +x "$MAIN"/scripts/*.sh
@@ -89,6 +89,27 @@ echo "cargo $*" >>"${CARGO_STUB_LOG:-/dev/null}"
 exit "${CARGO_STUB_EXIT:-0}"
 STUB
   chmod +x "$WORK/bin/cargo"
+
+  # `check-records.sh --engram-required` asks the real CLI only two questions: whether its daemon is
+  # running (`engram ps`) and whether a memory mentions the task (`engram search SLUG --all --limit 1`,
+  # whose first line must match `Found N memor…`). The fixture has no Engram store, so this answers
+  # both with a fixed reply instead of making delivery depend on the machine's memory.
+  cat >"$WORK/bin/engram" <<'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  ps)
+    echo "engram daemon: running"
+    ;;
+  search)
+    echo "Found 1 memory for '${2:-}'"
+    ;;
+  *)
+    echo "engram stub: unhandled command ${1:-}" >&2
+    ;;
+esac
+exit 0
+STUB
+  chmod +x "$WORK/bin/engram"
   export PATH="$WORK/bin:$PATH"
 
   cat >"$MAIN/odd/tasks/INDEX.md" <<'MD'
@@ -113,6 +134,18 @@ MD
 
 - `crates/cam-geom/src/boolean.rs`
 - `fixtures/corpus/`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/101-beta.md" <<'MD'
@@ -121,6 +154,18 @@ MD
 ## Surfaces
 
 - `crates/cam-geom/src/boolean.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/102-gamma.md" <<'MD'
@@ -129,19 +174,62 @@ MD
 ## Surfaces
 
 - `crates/cam-gerber/`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
+  # The empty `## Surfaces` heading is deliberate: `check-records.sh` requires the section, and the
+  # claim still falls back to the crate tokens because no paths are declared. Removing the heading
+  # (not the block) is what the legacy-claim cases assert against.
   cat >"$MAIN/odd/tasks/103-legacy.md" <<'MD'
 # 103 — legacy
 
-No surfaces block here; the claim has to fall back to the crate tokens in the text, which is
+## Surfaces
+
+No declared surfaces here; the claim has to fall back to the crate tokens in the text, which is
 `crates/cam-excellon` for this task.
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/104-legacy-clash.md" <<'MD'
 # 104 — legacy clash
 
+## Surfaces
+
 Also `crates/cam-excellon`, so it must collide with the previous task.
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/105-glob.md" <<'MD'
@@ -150,6 +238,18 @@ MD
 ## Surfaces
 
 - `crates/cam-geom/src/*.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/106-dotslash.md" <<'MD'
@@ -158,6 +258,18 @@ MD
 ## Surfaces
 
 - `./fixtures/corpus`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   cat >"$MAIN/odd/tasks/107-root-glob.md" <<'MD'
@@ -166,6 +278,18 @@ MD
 ## Surfaces
 
 - `*.rs`
+
+## Specs
+
+- S1: fixture task, complete enough for the records check.
+
+## Tasks
+
+- T1: fixture task.
+
+## Log
+
+- **L1:** fixture task.
 MD
 
   printf '# fixture justfile\n' >"$MAIN/justfile"
@@ -177,6 +301,10 @@ MD
   git -C "$MAIN" init -q
   git -C "$MAIN" add -A
   git -C "$MAIN" -c user.email=t@t -c user.name=t commit -qm init
+
+  # A delivery records the merge commit and refuses a hash it cannot resolve, so the fixture exposes
+  # the one commit it really made instead of leaving the tests to invent `abc1234`.
+  FIXTURE_COMMIT=$(git -C "$MAIN" rev-parse HEAD)
 
   local n
   for n in 100 101 102 103 104 105 106 107; do

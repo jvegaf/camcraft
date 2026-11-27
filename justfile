@@ -105,6 +105,9 @@ release N:
 deliver N commit="":
   @./scripts/deliver-task.sh {{N}} {{commit}}
 
+test-tooling:
+  ./scripts/test-worktree-tooling.sh
+
 # Visual review (webview/Tauri; adaptar harness)
 ui-review:
   @echo "TODO: wire webview/Tauri visual review harness"
