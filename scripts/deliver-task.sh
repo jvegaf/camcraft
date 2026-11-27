@@ -59,7 +59,7 @@ fi
 # Before the index says "delivered": the document must be complete and the task must exist in
 # memory. Delivering is the moment something is called finished, so it is the moment to prove the
 # record exists — not the day after, when nobody remembers what the task even was.
-if ! ./scripts/check-records.sh --task "$N" --engram-required; then
+if ! "$TOPLEVEL/scripts/check-records.sh" --task "$N" --engram-required; then
   echo "ERROR: task $N is not recorded yet (see above); nothing was written." >&2
   exit 1
 fi
