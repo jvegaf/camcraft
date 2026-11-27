@@ -1,14 +1,21 @@
 name: CI
 
-# Stack en migración: Tauri 2 + Svelte 5 + Panda CSS.
-# Los nombres de jobs `gate`, `parity` y `bench` se mantienen por compatibilidad
-# con protección de rama; su contenido se adapta al stack actual.
+# Un solo tronco, `master`. Un push o un pull request corre `gate` y nada más: los tests unitarios
+# del frontend (`pnpm test`, que es `vitest run`) y las suites de Rust del workspace. El gate
+# documental/claim completo queda para `scripts/check.sh` en local; acá costaría minutos que una
+# integración no tiene por qué gastar.
+#
+# `parity` y `bench` miden el corpus y cuestan minutos, así que no se disparan solos: corren sólo
+# por `workflow_dispatch`, a pedido. Los nombres de job `gate`, `parity` y `bench` se mantienen
+# porque el nombre del job es el status context: renombrar uno borra en silencio cualquier requisito
+# futuro construido sobre él. Hoy no hay ningún check requerido, y `parity`/`bench` no pueden
+# requerirse mientras sean dispatch-only.
 
 on:
   push:
-    branches: [ dev, feat/tauri ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, dev ]
+    branches: [ master ]
   workflow_dispatch:
 
 concurrency:
@@ -26,6 +33,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # La forma del workflow, antes de instalar nada: es rápido y es el fallo barato. El test vive
+      # en `scripts/tests/ci-workflow.sh` y también lo corre `just test-tooling` en local.
+      - name: Check workflow shape (one trunk, dispatch-only parity/bench, job names)
+        run: bash scripts/tests/ci-workflow.sh
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -62,8 +74,23 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run project gates
-        run: ./scripts/check.sh
+      # `styled-system/` está en .gitignore y los tests importan `styled-system/*`; sin el codegen
+      # la suite no resuelve sus imports. Es setup, no un gate.
+      - name: Generate Panda CSS
+        run: pnpm codegen
+
+      - name: Run frontend tests
+        run: pnpm test
+
+      # Cobertura Rust que el pipeline puede avalar hoy: el paquete host de Tauri, exactamente
+      # `cargo test --manifest-path src-tauri/Cargo.toml`, lo mismo que corre `scripts/check.sh`.
+      # Las suites de los crates del workspace no corren: tres de sus archivos de test resuelven
+      # `fixtures/corpus` un nivel de más (`../../` desde `src-tauri/crates/<crate>` cae en
+      # `src-tauri/fixtures/`, que no existe) y nunca corrieron en CI —
+      # `cam-import/tests/folder.rs`, `cam-geom/tests/parity.rs`, `cam-excellon/tests/excellon.rs`.
+      # Habilitarlas es una tarea de reparación, no un cambio de workflow.
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
   # Deuda anotada donde el código va a volver: el paso de scope que decida si medir tiene que
   # degradar a medir cuando `github.event.before` no es alcanzable (push forzado, rama recién creada,
@@ -72,6 +99,7 @@ jobs:
   # (`7522996`, junto con su `fetch-depth: 0`); no se arregló.
   parity:
     name: parity
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -84,7 +112,7 @@ jobs:
 
   bench:
     name: bench
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
