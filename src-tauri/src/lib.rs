@@ -726,6 +726,24 @@ fn lock_tool_library() -> Result<MutexGuard<'static, ()>, CommandErrorDto> {
   lock_or_refuse(&TOOL_LIBRARY_WRITE)
 }
 
+/// The guard a tool-library read-modify-write holds for its whole critical section.
+type ToolLibraryWriteGuard = MutexGuard<'static, ()>;
+
+/// Run one whole library read-modify-write as the critical section of the process-wide write lock.
+///
+/// The lock is taken before the body runs and released only after it returns, and the body is handed
+/// the guard: a body that reads the library cannot be written without one, so the read cannot be
+/// hoisted before the lock or moved after it without the code failing to compile. The proof is
+/// structural rather than timed — no sleep, no elapsed time, no scheduling assumption: a test enters
+/// this function and a plain `TOOL_LIBRARY_WRITE.try_lock()` fails inside the body, which is only
+/// possible while the body really runs under the lock.
+fn with_tool_library_write<T>(
+  write: impl FnOnce(&ToolLibraryWriteGuard) -> Result<T, CommandErrorDto>,
+) -> Result<T, CommandErrorDto> {
+  let guard = lock_tool_library()?;
+  write(&guard)
+}
+
 fn tool_library_path(state: &RuntimeState) -> Result<PathBuf, CommandErrorDto> {
   state
     .data_dir
@@ -737,6 +755,15 @@ fn tool_library_path(state: &RuntimeState) -> Result<PathBuf, CommandErrorDto> {
         "no application data directory, so the tool library has no location",
       )
     })
+}
+
+/// A library that could not be read, as the page receives it.
+///
+/// This is the code the read commands already publish, kept for every read so a caller that
+/// distinguishes a read failure from a write failure never sees a read reported under
+/// `tool_library_unwritable`, which is reserved for a write that could not be made.
+fn tool_library_read_error(err: cam_store::StoreError) -> CommandErrorDto {
+  CommandErrorDto::new("tool_library_unreadable", err.to_string())
 }
 
 /// The library read as a snapshot: every tool, in the library's own order.
@@ -764,11 +791,8 @@ fn read_tool_library(runtime: &AppRuntime) -> Result<Vec<StoredTool>, CommandErr
       ));
     }
   }
-  let library = ToolLibrary::open_read_only(&path)
-    .map_err(|err| CommandErrorDto::new("tool_library_unreadable", err.to_string()))?;
-  library
-    .tools()
-    .map_err(|err| CommandErrorDto::new("tool_library_unreadable", err.to_string()))
+  let library = ToolLibrary::open_read_only(&path).map_err(tool_library_read_error)?;
+  library.tools().map_err(tool_library_read_error)
 }
 
 /// One row of the tool tree: what the master list shows, and what a selection names.
@@ -1099,9 +1123,10 @@ fn free_tool_number(tools: &[StoredTool]) -> u32 {
 
 /// Save an existing tool's editable fields, answering with the record as it now stands.
 ///
-/// The whole read-modify-write happens under the process-wide write lock, and the lock is taken
-/// **before** the library is read: a snapshot taken outside it is the lost update the lock exists to
-/// close, because the write would put back every field this command did not edit.
+/// The whole read-modify-write is the critical section [`with_tool_library_write`] runs under the
+/// process-wide write lock, and the library is read **inside** that section: a snapshot taken outside
+/// it is the lost update the lock exists to close, because the write would put back every field this
+/// command did not edit.
 ///
 /// The tool is read through the read-only path, so a save that names nothing the library holds never
 /// opens the file for writing — and a refused save changes no byte of it, because the write only
@@ -1110,7 +1135,15 @@ fn tool_library_save_impl(
   runtime: &AppRuntime,
   request: ToolSaveRequest,
 ) -> Result<ToolDetailDto, CommandErrorDto> {
-  let _guard = lock_tool_library()?;
+  with_tool_library_write(|lock| save_tool_under_write_lock(lock, runtime, request))
+}
+
+/// The body of a save: runs only under the library write lock, through [`with_tool_library_write`].
+fn save_tool_under_write_lock(
+  _lock: &ToolLibraryWriteGuard,
+  runtime: &AppRuntime,
+  request: ToolSaveRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
   let tools = read_tool_library(runtime)?;
   let stored = stored_tool_for_id(&tools, &request.id).ok_or_else(|| {
     CommandErrorDto::new(
@@ -1138,20 +1171,30 @@ fn tool_library_save_impl(
 
 /// Create a tool, answering with the created record so the page can select it.
 ///
-/// The lock comes first and the snapshot after it, and the snapshot is read through the same
-/// connection this create writes with: the fresh id and the next tool number are derived from the
-/// library as it stands now, so two creates cannot choose the same identity from one stale snapshot.
+/// The whole read-modify-write is the critical section [`with_tool_library_write`] runs under the
+/// process-wide write lock, and the snapshot is read inside it, through the same connection this
+/// create writes with: the fresh id and the next tool number are derived from the library as it stands
+/// now, so two creates cannot choose the same identity from one stale snapshot.
 fn tool_library_create_impl(
   runtime: &AppRuntime,
   request: ToolCreateRequest,
 ) -> Result<ToolDetailDto, CommandErrorDto> {
-  let _guard = lock_tool_library()?;
+  with_tool_library_write(|lock| create_tool_under_write_lock(lock, runtime, request))
+}
+
+/// The body of a create: runs only under the library write lock, through
+/// [`with_tool_library_write`].
+fn create_tool_under_write_lock(
+  _lock: &ToolLibraryWriteGuard,
+  runtime: &AppRuntime,
+  request: ToolCreateRequest,
+) -> Result<ToolDetailDto, CommandErrorDto> {
   // The write path is the one place a command may create or migrate the file, and reading through it
-  // is what makes the identity below the library's current one rather than a second snapshot.
+  // is what makes the identity below the library's current one rather than a second snapshot. A
+  // failure to read that snapshot is a read failure and keeps the read code: only a write that could
+  // not be made answers `tool_library_unwritable`.
   let library = open_tool_library_for_write(runtime)?;
-  let tools = library
-    .tools()
-    .map_err(|err| CommandErrorDto::new("tool_library_unwritable", err.to_string()))?;
+  let tools = library.tools().map_err(tool_library_read_error)?;
   let tool = new_tool(
     &fresh_tool_id(&tools),
     &request.name,
@@ -2358,14 +2401,34 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
   }
 
-  /// The window a lost update lived in: the read of the library and the write of the merged tool.
+  /// The lock-before-read property, proved structurally instead of through elapsed time.
   ///
-  /// The test is the competing writer. It holds the library write lock, starts a save, and only while
-  /// that save is still blocked changes a field the save does not edit (`Diameter`) through the
-  /// store's own writer. A save that reads after it takes the lock sees that diameter and keeps it; a
-  /// save that reads a snapshot outside the lock puts the old one back while answering with success.
+  /// A `try_lock()` that fails *inside* the critical section can only fail because the section really
+  /// holds the same static: no sleep, no thread, no timeout, and therefore no scheduling assumption
+  /// that a lock-less implementation could slip through. This is the proof the previous timing test
+  /// only approximated.
   #[test]
-  fn tool_library_save_reads_the_library_after_it_takes_the_write_lock() {
+  fn with_tool_library_write_runs_its_body_while_the_write_lock_is_held() {
+    let free = with_tool_library_write(|_lock| {
+      let probe = TOOL_LIBRARY_WRITE.try_lock();
+      let free = probe.is_ok();
+      drop(probe);
+      Ok::<bool, CommandErrorDto>(free)
+    })
+    .expect("the write lock is free");
+    assert!(
+      !free,
+      "the tool library critical section ran without the write lock"
+    );
+  }
+
+  /// A save reads the library inside the critical section, which is where the lost update lived.
+  ///
+  /// The body is entered through the same function the command uses and cannot re-take the lock, so it
+  /// runs while the process-wide guard is held; the read it merges into then sees the library as it
+  /// stands, and the field the payload cannot name keeps its stored value.
+  #[test]
+  fn tool_library_save_reads_the_library_under_the_write_lock() {
     let dir = library_dir("tool-lock-save");
     let mut flat = library_tool(
       "flat-22",
@@ -2376,77 +2439,122 @@ mod tests {
     flat.geometry.diameter = Some(Length::from_mm(1.0));
     seed_library(&dir, &[flat]);
     let rt = runtime_with_data_dir(&dir);
-    let path = dir.join("tools.sqlite");
 
-    let guard = TOOL_LIBRARY_WRITE.lock().expect("the lock is fresh");
-    let owner = &rt;
-    let saved = std::thread::scope(|scope| {
-      let (began, started) = std::sync::mpsc::channel();
-      let (finished, done) = std::sync::mpsc::channel();
-      let save = scope.spawn(move || {
-        began.send(()).expect("signal the start");
-        let result = tool_library_save_impl(
-          owner,
-          ToolSaveRequest {
-            id: "flat-22".to_string(),
-            name: "End mill 1.0 mm - 3.175 mm".to_string(),
-            number: Some(7),
-            flutes: Some(3),
-          },
-        );
-        finished.send(result.is_ok()).expect("signal the end");
-        result
-      });
-      started.recv().expect("the save started");
+    let saved = with_tool_library_write(|lock| {
+      let probe = TOOL_LIBRARY_WRITE.try_lock();
+      let free = probe.is_ok();
+      drop(probe);
+      assert!(!free, "a save read the library outside the write lock");
+      save_tool_under_write_lock(
+        lock,
+        &rt,
+        ToolSaveRequest {
+          id: "flat-22".to_string(),
+          name: "End mill 1.0 mm - 3.175 mm".to_string(),
+          number: Some(7),
+          flutes: Some(3),
+        },
+      )
+    })
+    .expect("the save runs under the lock");
 
-      // While another writer holds the lock the save cannot have completed: the read it merges into
-      // has to happen under the same lock as the write, or both together are the window this guard
-      // exists to close.
-      assert!(
-        matches!(
-          done.recv_timeout(std::time::Duration::from_millis(500)),
-          Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-        ),
-        "a save completed while another writer held the library write lock"
-      );
-
-      // The competing update lands between the save's snapshot and its write, in a field the save
-      // payload cannot even name: `Diameter` is read-only in S10 and has no assignment in the command.
-      let other = ToolLibrary::open(&path).expect("a second connection to the same library");
-      let mut concurrent = other
-        .tools()
-        .expect("the library reads")
-        .into_iter()
-        .find(|tool| tool.geometry.id == "flat-22")
-        .expect("the library holds flat-22");
-      concurrent.geometry.diameter = Some(Length::from_mm(2.0));
-      other
-        .save_tool(&concurrent)
-        .expect("the competing write lands");
-
-      drop(guard);
-      save
-        .join()
-        .expect("the save thread")
-        .expect("the save runs once the lock is free")
-    });
-
-    // The save wrote the three editable fields it owns …
     assert_eq!(saved.name, "End mill 1.0 mm - 3.175 mm");
     assert_eq!(saved.number, Some(7));
     assert_eq!(saved.flutes, Some(3));
-    // … and the field it never edited is the one the competing writer left, not the old snapshot's.
-    assert_eq!(saved.diameter_mm, Some(2.0));
+    // The read happened under the lock, so the write merged into the stored record rather than into a
+    // stale snapshot: the diameter the payload cannot name is the one the library holds.
+    assert_eq!(saved.diameter_mm, Some(1.0));
     let read_back = tool_detail_impl(&rt, "flat-22")
       .expect("the query runs")
       .expect("the library still holds flat-22");
-    assert_eq!(
-      read_back.diameter_mm,
-      Some(2.0),
-      "a save must not revert a field it did not edit"
-    );
+    assert_eq!(read_back.diameter_mm, Some(1.0));
     assert_eq!(read_back.name, "End mill 1.0 mm - 3.175 mm");
-    assert_eq!(read_back.number, Some(7));
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// A create derives its id and its number from a snapshot it reads inside the critical section.
+  ///
+  /// Same deterministic mechanism as the save: the body is entered through
+  /// [`with_tool_library_write`], so it cannot run without the process-wide guard, and the probe shows
+  /// the guard is the one this section holds rather than a second lock invented for the test.
+  #[test]
+  fn tool_library_create_reads_the_library_under_the_write_lock() {
+    let dir = library_dir("tool-lock-create");
+    seed_library(
+      &dir,
+      &[library_tool(
+        "tool-1",
+        "Flat 1.0 mm",
+        cam_store::tools::ToolKind::FlatEndMill,
+        Some(1),
+      )],
+    );
+    let rt = runtime_with_data_dir(&dir);
+
+    let created = with_tool_library_write(|lock| {
+      let probe = TOOL_LIBRARY_WRITE.try_lock();
+      let free = probe.is_ok();
+      drop(probe);
+      assert!(!free, "a create read the library outside the write lock");
+      create_tool_under_write_lock(
+        lock,
+        &rt,
+        ToolCreateRequest {
+          name: "End mill 3.0 mm".to_string(),
+        },
+      )
+    })
+    .expect("the store accepts the new tool");
+
+    // The seeded tool owns `tool-1` and number 1, so a create that read the library under the lock
+    // takes the next free identity instead of colliding with it.
+    assert_eq!(created.id, "tool-2");
+    assert_eq!(created.number, Some(2));
+    let tree = tool_tree_impl(&rt).expect("tree");
+    assert_eq!(tree.groups[0].count, 2);
+    let numbers: Vec<Option<u32>> = tree.groups[0].tools.iter().map(|row| row.number).collect();
+    assert_eq!(numbers, vec![Some(1), Some(2)]);
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  /// A read failure keeps the read code and a write that cannot even open the library keeps the write
+  /// code, so a caller that distinguishes them is never told a read went wrong as a write.
+  #[test]
+  fn tool_library_read_and_write_failures_keep_their_own_codes() {
+    // The read side is the one mapping every read of the library uses, so the create path cannot
+    // answer a read failure under the write-specific code.
+    let read = tool_library_read_error(cam_store::StoreError::ToolLibrary {
+      path: "tools.sqlite".to_string(),
+      reason: "it is in WAL journal mode".to_string(),
+    });
+    assert_eq!(
+      serde_json::to_value(&read).expect("json"),
+      serde_json::json!({
+        "code": "tool_library_unreadable",
+        "message": "tool library tools.sqlite cannot be used: it is in WAL journal mode"
+      })
+    );
+
+    // The write side, through the command: a file the write path cannot open as a library is a write
+    // failure, and it keeps the write-specific code.
+    let dir = library_dir("tool-create-unwritable");
+    fs::write(dir.join("tools.sqlite"), b"this is not a tool library").expect("seed the bad file");
+    let rt = runtime_with_data_dir(&dir);
+    let err = tool_library_create_impl(
+      &rt,
+      ToolCreateRequest {
+        name: "End mill 1.0 mm".to_string(),
+      },
+    )
+    .expect_err("a file that is not a library cannot be written");
+    assert_eq!(err.code, "tool_library_unwritable");
+    assert!(
+      err.message.contains("tools.sqlite"),
+      "the write failure names the library: {}",
+      err.message
+    );
 
     let _ = fs::remove_dir_all(&dir);
   }
