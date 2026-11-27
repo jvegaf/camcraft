@@ -217,8 +217,9 @@ pub struct CamOperationDto {
   /// The operation's own serde tag: `isolation`, `non_copper_clear`, `cutout`, `paint`, `drilling`
   /// or `panelize`.
   pub operation_type: String,
-  /// The tool's stable library id, or its number when the record carries only that.
-  pub tool: Option<String>,
+  /// The tool's stable library id, or its number in `T` notation when the record carries only
+  /// that. A `Toolpath` is bound to exactly one tool, so this is one value, not a list.
+  pub tool: String,
   /// The operation's cut depth; a `panelize` operation carries none.
   pub z_cut_mm: Option<f64>,
   /// Absent: the document carries no feed; feeds live in the tool library, a different store.
@@ -227,8 +228,6 @@ pub struct CamOperationDto {
   pub spindle_rpm: Option<u32>,
   /// Absent: the document carries no hit count (hits are an Excellon import plan figure).
   pub hits: Option<u32>,
-  /// Every tool the operation uses; the model binds a toolpath to exactly one.
-  pub tools: Vec<String>,
   /// Absent: nothing in the document stores or derives a machine time.
   pub duration_s: Option<f64>,
 }
@@ -242,7 +241,10 @@ pub struct CamOperationsDto {
 
 /// The operation's serde tag, read from the model's own representation so this is not a second list
 /// of variants that could drift from `Operation`'s `#[serde(tag = "kind")]`.
-fn operation_type(operation: &cam_model::Operation) -> String {
+///
+/// A model operation always serializes a `kind`, so a miss here is a broken invariant rather than a
+/// legitimate absence: it fails as a structured command error instead of publishing an empty type.
+fn operation_type(operation: &cam_model::Operation) -> Result<String, CommandErrorDto> {
   serde_json::to_value(operation)
     .ok()
     .and_then(|value| {
@@ -251,7 +253,12 @@ fn operation_type(operation: &cam_model::Operation) -> String {
         .and_then(|kind| kind.as_str())
         .map(str::to_string)
     })
-    .unwrap_or_default()
+    .ok_or_else(|| {
+      CommandErrorDto::new(
+        "operation_type_missing",
+        "model operation serialized without a kind tag",
+      )
+    })
 }
 
 /// The operation's cut depth. Each variant that cuts carries its own `cut_depth`; `panelize` has
@@ -269,11 +276,11 @@ fn operation_cut_depth_mm(operation: &cam_model::Operation) -> Option<f64> {
 
 /// The tool a toolpath is bound to: its library id when the document records one, otherwise the tool
 /// number the model always carries, in the machine's `T` notation.
-fn tool_identity(toolpath: &cam_model::Toolpath) -> Option<String> {
+fn tool_identity(toolpath: &cam_model::Toolpath) -> String {
   toolpath
     .tool_id
     .clone()
-    .or_else(|| Some(format!("T{}", toolpath.tool_number)))
+    .unwrap_or_else(|| format!("T{}", toolpath.tool_number))
 }
 
 fn cam_operations_impl(runtime: &AppRuntime) -> Result<CamOperationsDto, CommandErrorDto> {
@@ -287,22 +294,20 @@ fn cam_operations_impl(runtime: &AppRuntime) -> Result<CamOperationsDto, Command
     .iter()
     .enumerate()
     .map(|(position, toolpath)| {
-      let tool = tool_identity(toolpath);
-      CamOperationDto {
+      Ok(CamOperationDto {
         id: toolpath.id.clone(),
         index: position + 1,
         name: toolpath.name.clone(),
-        operation_type: operation_type(&toolpath.operation),
-        tool: tool.clone(),
+        operation_type: operation_type(&toolpath.operation)?,
+        tool: tool_identity(toolpath),
         z_cut_mm: operation_cut_depth_mm(&toolpath.operation),
         plunge_feed_mm_per_min: None,
         spindle_rpm: None,
         hits: None,
-        tools: tool.into_iter().collect(),
         duration_s: None,
-      }
+      })
     })
-    .collect();
+    .collect::<Result<Vec<_>, CommandErrorDto>>()?;
   Ok(CamOperationsDto {
     schema: "cam-operations@1".into(),
     operations,
@@ -809,6 +814,22 @@ mod tests {
     assert_eq!(dto.stock_thickness_mm, 4.0);
     assert_eq!(dto.setup_origin, OriginCorner::BottomLeft);
     assert_eq!(dto.setup_side_up, cam_model::BoardSideUp::Top);
+
+    // The payload as the frontend receives it: every key it reads, in serde's casing, and the enum
+    // encodings too, so a rename cannot silently break the consumer.
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({
+        "schema": "cam-context@1",
+        "layerNames": ["top-copper", "drill"],
+        "material": null,
+        "stockWidthMm": 300.0,
+        "stockHeightMm": 200.0,
+        "stockThicknessMm": 4.0,
+        "setupOrigin": "bottom_left",
+        "setupSideUp": "top"
+      })
+    );
   }
 
   #[test]
@@ -906,14 +927,13 @@ mod tests {
     assert_eq!(first.index, 1);
     assert_eq!(first.name, "Isolation top");
     assert_eq!(first.operation_type, "isolation");
-    assert_eq!(first.tool.as_deref(), Some("flat-0.8"));
+    assert_eq!(first.tool, "flat-0.8");
     assert_eq!(first.z_cut_mm, Some(1.8));
     // The document model carries no feed, spindle, hit count or time estimate on a toolpath, so
     // those are published as absent instead of being invented from sample values.
     assert_eq!(first.plunge_feed_mm_per_min, None);
     assert_eq!(first.spindle_rpm, None);
     assert_eq!(first.hits, None);
-    assert_eq!(first.tools, vec!["flat-0.8".to_string()]);
     assert_eq!(first.duration_s, None);
 
     let second = &dto.operations[1];
@@ -922,15 +942,62 @@ mod tests {
     assert_eq!(second.name, "Drill 0.8 / 1.0");
     assert_eq!(second.operation_type, "drilling");
     // Without a `tool_id`, the tool is the number the model also carries.
-    assert_eq!(second.tool.as_deref(), Some("T2"));
+    assert_eq!(second.tool, "T2");
     assert_eq!(second.z_cut_mm, Some(1.6));
-    assert_eq!(second.tools, vec!["T2".to_string()]);
 
     let third = &dto.operations[2];
     assert_eq!(third.index, 3);
     assert_eq!(third.operation_type, "panelize");
     // A panelize operation carries no cut depth in the model: absent, not zero.
     assert_eq!(third.z_cut_mm, None);
+
+    // The payload as the frontend receives it: every key it reads, in serde's casing. One toolpath
+    // carries exactly one tool, so there is one `tool` key and no plural duplicate of it; the
+    // operation type is the model's own tag and the enums it carries are pinned by their encoding.
+    assert_eq!(
+      serde_json::to_value(&dto).expect("json"),
+      serde_json::json!({
+        "schema": "cam-operations@1",
+        "operations": [
+          {
+            "id": "tp-isolation",
+            "index": 1,
+            "name": "Isolation top",
+            "operationType": "isolation",
+            "tool": "flat-0.8",
+            "zCutMm": 1.8,
+            "plungeFeedMmPerMin": null,
+            "spindleRpm": null,
+            "hits": null,
+            "durationS": null
+          },
+          {
+            "id": "tp-drill",
+            "index": 2,
+            "name": "Drill 0.8 / 1.0",
+            "operationType": "drilling",
+            "tool": "T2",
+            "zCutMm": 1.6,
+            "plungeFeedMmPerMin": null,
+            "spindleRpm": null,
+            "hits": null,
+            "durationS": null
+          },
+          {
+            "id": "tp-panel",
+            "index": 3,
+            "name": "Panel 2x2",
+            "operationType": "panelize",
+            "tool": "T3",
+            "zCutMm": null,
+            "plungeFeedMmPerMin": null,
+            "spindleRpm": null,
+            "hits": null,
+            "durationS": null
+          }
+        ]
+      })
+    );
   }
 
   #[test]
