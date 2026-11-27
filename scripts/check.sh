@@ -12,6 +12,15 @@ echo "== docs =="
 echo "== records =="
 ./scripts/check-records.sh
 
+echo "== tooling =="
+if [ ! -f ./scripts/test-worktree-tooling.sh ]; then
+  echo "skip: scripts/test-worktree-tooling.sh no encontrado"
+elif [ "${GENTLE_TOOLING_TESTS:-}" = "0" ]; then
+  echo "skip: GENTLE_TOOLING_TESTS=0, el arnés no se corre dentro de un fixture"
+else
+  ./scripts/test-worktree-tooling.sh
+fi
+
 echo "== biome =="
 if command -v pnpm >/dev/null 2>&1 && [ -f package.json ]; then
   pnpm lint
