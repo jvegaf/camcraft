@@ -201,6 +201,32 @@ describe('ToolLibraryPanel', () => {
     expect(screen.queryByText('Drill 0.8 mm')).toBeNull();
   });
 
+  it('never claims the library is empty when the tree read failed', async () => {
+    const onerror = vi.fn();
+    bridge(async command => {
+      if (command === 'tool_library_tree') {
+        throw {
+          code: 'tool_library_unreadable',
+          message: 'the library file is locked'
+        };
+      }
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    render(ToolLibraryPanel, { onerror });
+
+    // A failed read is its own state: an unknown library is not an empty one.
+    expect(
+      await screen.findByText('The tool library could not be read.')
+    ).toBeTruthy();
+    expect(screen.queryByText('No tools in the library yet.')).toBeNull();
+    expect(screen.queryByText('Loading tools…')).toBeNull();
+    // The failure itself is not swallowed: it reaches the dialog's error line.
+    expect(onerror).toHaveBeenCalledWith(
+      'tool_library_unreadable: the library file is locked'
+    );
+  });
+
   it('creates a new tool from + New, selects it and refreshes the tree', async () => {
     // The command's own contract (107 T2): the store decides the id, number, shape and flutes, so the
     // only thing the page sends is a name.
@@ -441,6 +467,125 @@ describe('ToolLibraryPanel', () => {
     expect(
       (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value
     ).toBe('Draft on the drill');
+  });
+
+  it('keeps the post-save re-read when the same tool is reselected while it is in flight', async () => {
+    let flatDetailCalls = 0;
+    let resolveReread!: (value: unknown) => void;
+    const reread = new Promise(resolve => {
+      resolveReread = resolve;
+    });
+    const stored = { ...detail, name: 'End mill 1.0 mm (stored)' };
+
+    bridge(async (command, args) => {
+      if (command === 'tool_library_tree') return tree;
+      if (command === 'tool_detail') {
+        const { id } = args as { id: string };
+        if (id !== 'flat-22') return null;
+        flatDetailCalls += 1;
+        // The first read is the selection, and the second is the save's authoritative re-read, held
+        // open so the operator can reselect the very same row while it is in flight. A reselect is a
+        // new read of the same tool, not a new selection: it answers with the pre-write snapshot.
+        if (flatDetailCalls === 1) return { ...detail };
+        if (flatDetailCalls === 2) return reread;
+        return { ...detail, name: 'End mill 1.0 mm (pre-write snapshot)' };
+      }
+      if (command === 'tool_library_save') return stored;
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    const user = userEvent.setup();
+    const result = render(ToolLibraryPanel);
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+    await user.click(rowOf(/T22\b/));
+    await screen.findByRole('heading', {
+      level: 4,
+      name: 'End mill 1.0 mm'
+    });
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Draft on the end mill');
+
+    const saving = result.component.save();
+    await waitFor(() => expect(flatDetailCalls).toBe(2));
+
+    // The operator clicks the already-selected row: `selectedId` never changes.
+    await user.click(rowOf(/T22\b/));
+    await waitFor(() => expect(flatDetailCalls).toBe(3));
+
+    resolveReread(stored);
+    await act(async () => {
+      await saving;
+    });
+
+    // The same tool is still selected, so the authoritative post-save read paints over both the
+    // reselect's pre-write snapshot and the draft.
+    expect(
+      screen.getByRole('heading', { level: 4, name: stored.name })
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value
+    ).toBe(stored.name);
+  });
+
+  it('shows the record the write answered with when the post-save re-read fails', async () => {
+    const onerror = vi.fn();
+    let writes = 0;
+    let detailReads = 0;
+    const written = { ...detail, name: 'End mill 2.0 mm (written)' };
+
+    bridge(async (command, args) => {
+      if (command === 'tool_library_tree') return tree;
+      if (command === 'tool_detail') {
+        const { id } = args as { id: string };
+        detailReads += 1;
+        if (id === 'flat-22' && detailReads > 1) {
+          throw {
+            code: 'tool_library_unreadable',
+            message: 'the library could not be re-read'
+          };
+        }
+        return id === 'flat-22' ? { ...detail } : null;
+      }
+      if (command === 'tool_library_save') {
+        writes += 1;
+        return written;
+      }
+      throw new Error(`no bridge for ${command}`);
+    });
+
+    const user = userEvent.setup();
+    const result = render(ToolLibraryPanel, { onerror });
+    await screen.findByRole('heading', { level: 5, name: /^End mills\b/ });
+    await user.click(rowOf(/T22\b/));
+    await screen.findByRole('heading', {
+      level: 4,
+      name: 'End mill 1.0 mm'
+    });
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'End mill 2.0 mm');
+
+    let saved = false;
+    await act(async () => {
+      saved = await result.component.save();
+    });
+
+    // The write committed, so the save succeeded: the dialog closes instead of keeping a draft that
+    // a retry would write a second time.
+    expect(saved).toBe(true);
+    expect(writes).toBe(1);
+    // The form states what the store now holds — the record the write answered with — rather than
+    // the pre-write snapshot…
+    expect(
+      screen.getByRole('heading', { level: 4, name: written.name })
+    ).toBeTruthy();
+    // …and the failed read is still reported.
+    expect(onerror).toHaveBeenCalledWith(
+      'tool_library_unreadable: the library could not be re-read'
+    );
   });
 
   it('surfaces a structured save error and leaves the dialog open without a false success', async () => {

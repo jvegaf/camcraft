@@ -23,6 +23,11 @@ import type { ToolDetail } from './toolLibrary';
 // Command failures travel through `onerror` to the dialog's existing error line (assertive, in the
 // footer, exactly like a failed theme save). A failed save returns `false`, which tells the dialog
 // not to close or report success.
+//
+// Two reads feed the page and neither of them may pretend: the tree read distinguishes "loaded and
+// empty" from "failed to load", so a library nobody could read is never announced as an empty one;
+// and `save()` separates the write from the reads that follow it, because a committed write is a
+// successful save even when its confirmation read fails.
 type ToolRow = {
   id: string;
   number: number | null;
@@ -61,13 +66,18 @@ type Props = {
 let { onerror }: Props = $props();
 
 let groups = $state<ToolGroup[]>([]);
+// `treeLoaded` is true only after a read that answered. A failed read leaves it false and raises
+// `treeFailed`, so the Tools column shows a failure instead of the empty state: an unknown library is
+// not an empty one. A failed refresh of a library already loaded keeps the rows it already has.
 let treeLoaded = $state(false);
+let treeFailed = $state(false);
 let selectedId = $state<string | null>(null);
 let detail = $state<ToolDetail | null>(null);
 let draft = $state<ToolDetailEdit>({});
-// Only the latest selection may paint, so a slow response for the previous row cannot replace the
-// detail of the row the operator just picked.
-let selection = 0;
+// Orders detail reads of the tool that is currently selected. The invariant is which tool is
+// selected — decided by `selectedId` — not how many loads happened: reselecting the same row is a
+// new read of the same tool, so it must not invalidate an authoritative read of that same tool.
+let readToken = 0;
 
 /**
  * The one name a brand-new tool starts with. `ToolCreateRequest` accepts a name and nothing else —
@@ -104,22 +114,26 @@ async function loadTree() {
   try {
     const tree = await invoke<ToolTree>('tool_library_tree');
     groups = tree.groups;
-  } catch (e) {
-    onerror?.(formatError(e));
-  } finally {
     treeLoaded = true;
+    treeFailed = false;
+  } catch (e) {
+    // Never swallowed: the failure reaches the dialog's error line and, when nothing has ever been
+    // read, the column state below. A refresh that fails after a successful read keeps the rows it
+    // already has, because those rows are real data rather than a claim about an empty library.
+    treeFailed = true;
+    onerror?.(formatError(e));
   }
 }
 
 async function loadDetail(id: string) {
-  const token = ++selection;
+  const token = ++readToken;
   try {
     const loaded = await invoke<ToolDetail | null>('tool_detail', { id });
-    if (token !== selection) return;
+    if (token !== readToken || selectedId !== id) return;
     detail = loaded;
     draft = {};
   } catch (e) {
-    if (token !== selection) return;
+    if (token !== readToken || selectedId !== id) return;
     detail = null;
     draft = {};
     onerror?.(formatError(e));
@@ -142,7 +156,7 @@ async function createTool() {
       request: { name: NEW_TOOL_NAME }
     });
     // Invalidate any detail read still in flight: it belongs to the previous selection.
-    selection += 1;
+    readToken += 1;
     selectedId = created.id;
     detail = created;
     draft = {};
@@ -171,33 +185,60 @@ const request = (): ToolSaveRequest | null => {
  * Write the draft, called by the settings dialog when the operator confirms. Returns whether the
  * write succeeded, so the dialog only closes on a real save; the error itself already reached the
  * dialog's error line.
+ *
+ * The write and the reads that follow it are separate outcomes. Once `tool_library_save` has
+ * answered, the library has changed and the save has succeeded: a failing confirmation read must not
+ * turn it into a failure that leaves the draft in place for a retry, because that retry would write
+ * again what already landed.
  */
 export async function save(): Promise<boolean> {
   const body = request();
   if (body === null) return true;
-  const token = selection;
+
+  let written: ToolDetail;
   try {
-    await invoke<ToolDetail>('tool_library_save', { request: body });
-    // The store is the authority: read the record back instead of trusting the typed draft.
-    const stored = await invoke<ToolDetail | null>('tool_detail', {
-      id: body.id
-    });
-    // The same guard `loadDetail` uses: if another tool was selected while the re-read was in
-    // flight, this response belongs to the previous row. Discard it instead of painting over the
-    // newer selection and clearing its draft.
-    if (token === selection && selectedId === body.id) {
-      detail = stored;
-      draft = {};
-    }
-    // The tree is a separate read: refresh it so an edited name or number reaches the left column
-    // now instead of on the next remount. It is not rebuilt from the detail payload, so the tree
-    // stays the store's projection and keeps its own grouping and meta.
-    await loadTree();
-    return true;
+    written = await invoke<ToolDetail>('tool_library_save', { request: body });
   } catch (e) {
     onerror?.(formatError(e));
     return false;
   }
+
+  // The draft was written, so the form must not keep offering it. Guarded by the selection: if the
+  // operator picked another tool while the write was in flight, that tool's draft is not this one.
+  if (selectedId === body.id) draft = {};
+
+  // The store is the authority: read the record back instead of trusting the typed draft.
+  const token = ++readToken;
+  try {
+    const stored = await invoke<ToolDetail | null>('tool_detail', {
+      id: body.id
+    });
+    // The guard is the selection, not the read count: a reselect of the same tool during the write
+    // or its re-read does not make this authoritative read stale, while a response for a tool that is
+    // no longer selected is discarded. The bump cancels any same-tool read issued before this one,
+    // so a pre-write snapshot cannot paint over the record the store now holds.
+    if (selectedId === body.id) {
+      readToken += 1;
+      detail = stored;
+      draft = {};
+    }
+  } catch (e) {
+    // The write landed but the re-read did not. The form shows the record the write answered with,
+    // which is what the store now holds, rather than the pre-write snapshot; the failed read is
+    // reported on the dialog's error line and the save still reports success.
+    if (selectedId === body.id) {
+      readToken += 1;
+      detail = written;
+    }
+    onerror?.(formatError(e));
+  }
+
+  // The tree is a separate read: refresh it so an edited name or number reaches the left column now
+  // instead of on the next remount. It is not rebuilt from the detail payload, so the tree stays the
+  // store's projection and keeps its own grouping and meta. A failure here is reported by
+  // `loadTree` itself and does not undo the write.
+  await loadTree();
+  return true;
 }
 
 onMount(() => {
@@ -215,7 +256,9 @@ const emptyState = css({
 
 <ToolLibraryPage oncreate={createTool} {valid}>
   {#snippet tools()}
-    {#if !treeLoaded}
+    {#if !treeLoaded && treeFailed}
+      <p class={emptyState}>The tool library could not be read.</p>
+    {:else if !treeLoaded}
       <p class={emptyState}>Loading tools…</p>
     {:else if groups.length === 0}
       <p class={emptyState}>No tools in the library yet.</p>
