@@ -6,7 +6,7 @@ use cam_app::{AppState, Viewport};
 use cam_model::{Board, Document, Job, OriginCorner};
 use cam_sim::Heightfield;
 use cam_units::Length;
-use cam_view::{build_stock_box, build_surface, Camera3d};
+use cam_view::{Camera3d, build_stock_box, build_surface};
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
@@ -124,7 +124,8 @@ fn write_settings(data_dir: &Path, settings: &SettingsDto) -> Result<(), Command
   let tmp = path.with_file_name("settings.json.tmp");
   let text = serde_json::to_string_pretty(settings)
     .map_err(|e| CommandErrorDto::new("settings_serialize_failed", e.to_string()))?;
-  fs::write(&tmp, text).map_err(|e| CommandErrorDto::new("settings_write_failed", e.to_string()))?;
+  fs::write(&tmp, text)
+    .map_err(|e| CommandErrorDto::new("settings_write_failed", e.to_string()))?;
   fs::rename(&tmp, &path).map_err(|e| {
     let _ = fs::remove_file(&tmp);
     CommandErrorDto::new("settings_rename_failed", e.to_string())
@@ -161,6 +162,151 @@ pub struct NewDocumentRequest {
   pub width_mm: f64,
   pub height_mm: f64,
   pub thickness_mm: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CamContextDto {
+  pub schema: String,
+  pub layer_names: Vec<String>,
+  pub material: Option<String>,
+  pub stock_width_mm: f64,
+  pub stock_height_mm: f64,
+  pub stock_thickness_mm: f64,
+  pub setup_origin: OriginCorner,
+  pub setup_side_up: cam_model::BoardSideUp,
+}
+
+fn cam_context_impl(runtime: &AppRuntime) -> Result<CamContextDto, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  let doc = state.app.document();
+  // The stock is the document's board (the model's `Job`), so its dimensions and its setup come from
+  // there; nothing here re-derives them. `canonical_job()` keeps its hardcoded `BottomLeft`/`Top`
+  // untouched and is not a second source.
+  let board = &doc.board;
+  Ok(CamContextDto {
+    schema: "cam-context@1".into(),
+    // The layer model has no name field: its stable identifier is the name the app shows.
+    layer_names: doc.layers.iter().map(|layer| layer.id.clone()).collect(),
+    // The document model stores no material, so none is reported rather than invented.
+    material: None,
+    stock_width_mm: board.width.mm(),
+    stock_height_mm: board.height.mm(),
+    stock_thickness_mm: board.thickness.mm(),
+    setup_origin: board.origin,
+    setup_side_up: board.side_up,
+  })
+}
+
+/// One toolpath of the open document, as the CAM browser lists it and the operation inspector shows
+/// it.
+///
+/// Only what the document model carries is filled in. A `Toolpath` carries no feed, spindle speed,
+/// hit count or machine time, so those fields are `None` here rather than sample numbers — the same
+/// precedent T1 set for a document's missing material.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CamOperationDto {
+  pub id: String,
+  /// 1-based position in the document, the artboard's `1 · …` row prefix.
+  pub index: usize,
+  pub name: String,
+  /// The operation's own serde tag: `isolation`, `non_copper_clear`, `cutout`, `paint`, `drilling`
+  /// or `panelize`.
+  pub operation_type: String,
+  /// The tool's stable library id, or its number when the record carries only that.
+  pub tool: Option<String>,
+  /// The operation's cut depth; a `panelize` operation carries none.
+  pub z_cut_mm: Option<f64>,
+  /// Absent: the document carries no feed; feeds live in the tool library, a different store.
+  pub plunge_feed_mm_per_min: Option<f64>,
+  /// Absent: the document carries no spindle speed; it lives in the tool library.
+  pub spindle_rpm: Option<u32>,
+  /// Absent: the document carries no hit count (hits are an Excellon import plan figure).
+  pub hits: Option<u32>,
+  /// Every tool the operation uses; the model binds a toolpath to exactly one.
+  pub tools: Vec<String>,
+  /// Absent: nothing in the document stores or derives a machine time.
+  pub duration_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CamOperationsDto {
+  pub schema: String,
+  pub operations: Vec<CamOperationDto>,
+}
+
+/// The operation's serde tag, read from the model's own representation so this is not a second list
+/// of variants that could drift from `Operation`'s `#[serde(tag = "kind")]`.
+fn operation_type(operation: &cam_model::Operation) -> String {
+  serde_json::to_value(operation)
+    .ok()
+    .and_then(|value| {
+      value
+        .get("kind")
+        .and_then(|kind| kind.as_str())
+        .map(str::to_string)
+    })
+    .unwrap_or_default()
+}
+
+/// The operation's cut depth. Each variant that cuts carries its own `cut_depth`; `panelize` has
+/// none, so its cut Z is absent rather than a made-up zero.
+fn operation_cut_depth_mm(operation: &cam_model::Operation) -> Option<f64> {
+  match operation {
+    cam_model::Operation::Isolation(params) => Some(params.cut_depth.mm()),
+    cam_model::Operation::NonCopperClear(params) => Some(params.cut_depth.mm()),
+    cam_model::Operation::Cutout(params) => Some(params.cut_depth.mm()),
+    cam_model::Operation::Paint(params) => Some(params.cut_depth.mm()),
+    cam_model::Operation::Drilling(params) => Some(params.cut_depth.mm()),
+    cam_model::Operation::Panelize(_) => None,
+  }
+}
+
+/// The tool a toolpath is bound to: its library id when the document records one, otherwise the tool
+/// number the model always carries, in the machine's `T` notation.
+fn tool_identity(toolpath: &cam_model::Toolpath) -> Option<String> {
+  toolpath
+    .tool_id
+    .clone()
+    .or_else(|| Some(format!("T{}", toolpath.tool_number)))
+}
+
+fn cam_operations_impl(runtime: &AppRuntime) -> Result<CamOperationsDto, CommandErrorDto> {
+  let state = runtime
+    .0
+    .lock()
+    .map_err(|_| CommandErrorDto::state_poisoned())?;
+  let doc = state.app.document();
+  let operations = doc
+    .toolpaths
+    .iter()
+    .enumerate()
+    .map(|(position, toolpath)| {
+      let tool = tool_identity(toolpath);
+      CamOperationDto {
+        id: toolpath.id.clone(),
+        index: position + 1,
+        name: toolpath.name.clone(),
+        operation_type: operation_type(&toolpath.operation),
+        tool: tool.clone(),
+        z_cut_mm: operation_cut_depth_mm(&toolpath.operation),
+        plunge_feed_mm_per_min: None,
+        spindle_rpm: None,
+        hits: None,
+        tools: tool.into_iter().collect(),
+        duration_s: None,
+      }
+    })
+    .collect();
+  Ok(CamOperationsDto {
+    schema: "cam-operations@1".into(),
+    operations,
+  })
 }
 
 fn snapshot(state: &RuntimeState) -> DocumentStatusDto {
@@ -460,6 +606,16 @@ fn scene_snapshot() -> Result<SceneSnapshotDto, CommandErrorDto> {
   scene_snapshot_impl()
 }
 
+#[tauri::command]
+fn cam_context(runtime: State<'_, AppRuntime>) -> Result<CamContextDto, CommandErrorDto> {
+  cam_context_impl(&runtime)
+}
+
+#[tauri::command]
+fn cam_operations(runtime: State<'_, AppRuntime>) -> Result<CamOperationsDto, CommandErrorDto> {
+  cam_operations_impl(&runtime)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let initial = RuntimeState {
@@ -501,7 +657,9 @@ pub fn run() {
       list_recents,
       get_settings,
       update_settings,
-      scene_snapshot
+      scene_snapshot,
+      cam_context,
+      cam_operations
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -546,6 +704,184 @@ mod tests {
     assert_eq!(dto.layer_count, 0);
     assert_eq!(dto.toolpath_count, 0);
     assert!(dto.board_width_mm > 0.0);
+  }
+
+  fn layer(id: &str, role: cam_model::LayerRole) -> cam_model::Layer {
+    cam_model::Layer {
+      id: id.to_string(),
+      role,
+      side: cam_model::Side::Top,
+      color: "#dc5a5a".to_string(),
+      visible: true,
+      entities: Vec::new(),
+      source: cam_model::Provenance::default(),
+    }
+  }
+
+  #[test]
+  fn cam_context_reports_document_layers_material_and_setup() {
+    let mut board = Board::default_board();
+    board.width = cam_units::Length::from_mm(300.0);
+    board.height = cam_units::Length::from_mm(200.0);
+    board.thickness = cam_units::Length::from_mm(4.0);
+    let mut doc = Document::new(board);
+    doc.layers = vec![
+      layer("top-copper", cam_model::LayerRole::CopperTop),
+      layer("drill", cam_model::LayerRole::Drill),
+    ];
+
+    let rt = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(doc),
+      path: None,
+      data_dir: None,
+      recents: Vec::new(),
+      settings: SettingsDto::default(),
+    }));
+
+    let dto = cam_context_impl(&rt).expect("cam context");
+    assert_eq!(dto.schema, "cam-context@1");
+    assert_eq!(
+      dto.layer_names,
+      vec!["top-copper".to_string(), "drill".to_string()]
+    );
+    // The document model stores no material, so the command reports that it has none instead of
+    // inventing one.
+    assert_eq!(dto.material, None);
+    assert_eq!(dto.stock_width_mm, 300.0);
+    assert_eq!(dto.stock_height_mm, 200.0);
+    assert_eq!(dto.stock_thickness_mm, 4.0);
+    assert_eq!(dto.setup_origin, OriginCorner::BottomLeft);
+    assert_eq!(dto.setup_side_up, cam_model::BoardSideUp::Top);
+  }
+
+  #[test]
+  fn cam_context_setup_matches_the_canonical_job_defaults() {
+    let rt = runtime();
+    let dto = cam_context_impl(&rt).expect("cam context");
+    let job = canonical_job();
+    // A default document's setup is exactly what `canonical_job()` hardcodes: publishing it does
+    // not fix a second source of truth nor change the job.
+    assert!(dto.layer_names.is_empty());
+    assert_eq!(dto.setup_origin, job.origin);
+    assert_eq!(dto.setup_side_up, job.side_up);
+    // The stock is the open document's board, so the dimensions are the default board's, not the
+    // scene demo's 100x100x20.
+    assert_eq!(dto.stock_width_mm, 1219.0);
+    assert_eq!(dto.stock_height_mm, 2438.0);
+    assert_eq!(dto.stock_thickness_mm, 18.0);
+  }
+
+  fn toolpath(
+    id: &str,
+    name: &str,
+    tool_id: Option<&str>,
+    tool_number: u32,
+    operation: cam_model::Operation,
+  ) -> cam_model::Toolpath {
+    cam_model::Toolpath {
+      id: id.to_string(),
+      name: name.to_string(),
+      entity_ids: Vec::new(),
+      tool_id: tool_id.map(str::to_string),
+      tool_number,
+      operation,
+    }
+  }
+
+  fn isolation(cut_depth_mm: f64) -> cam_model::Operation {
+    cam_model::Operation::Isolation(cam_model::IsolationParams {
+      passes: 1,
+      overlap: 0.5,
+      direction: cam_model::MillingDirection::Climb,
+      kind: cam_model::IsolationKind::Full,
+      cut_depth: cam_units::Length::from_mm(cut_depth_mm),
+      keep_pours: false,
+    })
+  }
+
+  fn drilling(cut_depth_mm: f64) -> cam_model::Operation {
+    cam_model::Operation::Drilling(cam_model::DrillingParams {
+      cut_depth: cam_units::Length::from_mm(cut_depth_mm),
+      peck_depth: cam_units::Length::from_mm(0.0),
+      dwell: 0.0,
+    })
+  }
+
+  fn panelize() -> cam_model::Operation {
+    cam_model::Operation::Panelize(cam_model::PanelizeParams {
+      rows: 2,
+      columns: 2,
+      spacing_x: cam_units::Length::from_mm(5.0),
+      spacing_y: cam_units::Length::from_mm(5.0),
+      constrain_x: None,
+      constrain_y: None,
+    })
+  }
+
+  #[test]
+  fn cam_operations_reports_document_toolpaths_with_their_detail() {
+    let mut doc = Document::new(Board::default_board());
+    doc.toolpaths = vec![
+      toolpath(
+        "tp-isolation",
+        "Isolation top",
+        Some("flat-0.8"),
+        1,
+        isolation(1.8),
+      ),
+      toolpath("tp-drill", "Drill 0.8 / 1.0", None, 2, drilling(1.6)),
+      toolpath("tp-panel", "Panel 2x2", None, 3, panelize()),
+    ];
+    let rt = AppRuntime(Mutex::new(RuntimeState {
+      app: AppState::new(doc),
+      path: None,
+      data_dir: None,
+      recents: Vec::new(),
+      settings: SettingsDto::default(),
+    }));
+
+    let dto = cam_operations_impl(&rt).expect("cam operations");
+    assert_eq!(dto.schema, "cam-operations@1");
+    assert_eq!(dto.operations.len(), 3);
+
+    let first = &dto.operations[0];
+    assert_eq!(first.id, "tp-isolation");
+    assert_eq!(first.index, 1);
+    assert_eq!(first.name, "Isolation top");
+    assert_eq!(first.operation_type, "isolation");
+    assert_eq!(first.tool.as_deref(), Some("flat-0.8"));
+    assert_eq!(first.z_cut_mm, Some(1.8));
+    // The document model carries no feed, spindle, hit count or time estimate on a toolpath, so
+    // those are published as absent instead of being invented from sample values.
+    assert_eq!(first.plunge_feed_mm_per_min, None);
+    assert_eq!(first.spindle_rpm, None);
+    assert_eq!(first.hits, None);
+    assert_eq!(first.tools, vec!["flat-0.8".to_string()]);
+    assert_eq!(first.duration_s, None);
+
+    let second = &dto.operations[1];
+    assert_eq!(second.id, "tp-drill");
+    assert_eq!(second.index, 2);
+    assert_eq!(second.name, "Drill 0.8 / 1.0");
+    assert_eq!(second.operation_type, "drilling");
+    // Without a `tool_id`, the tool is the number the model also carries.
+    assert_eq!(second.tool.as_deref(), Some("T2"));
+    assert_eq!(second.z_cut_mm, Some(1.6));
+    assert_eq!(second.tools, vec!["T2".to_string()]);
+
+    let third = &dto.operations[2];
+    assert_eq!(third.index, 3);
+    assert_eq!(third.operation_type, "panelize");
+    // A panelize operation carries no cut depth in the model: absent, not zero.
+    assert_eq!(third.z_cut_mm, None);
+  }
+
+  #[test]
+  fn cam_operations_of_an_empty_document_is_an_empty_list() {
+    let rt = runtime();
+    let dto = cam_operations_impl(&rt).expect("cam operations");
+    assert_eq!(dto.schema, "cam-operations@1");
+    assert!(dto.operations.is_empty());
   }
 
   #[test]
