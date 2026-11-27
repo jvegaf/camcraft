@@ -26,6 +26,8 @@ Los cinco componentes que el tablero cuenta como «sin clasificar» pasan a su c
 - `src/routes/+layout.svelte`
 - `src/routes/+page.svelte`
 - `src/routes/page.test.ts`
+- `src/routes/workspace/+page.svelte`
+- `src/routes/ds/index.test.ts`
 - `src/lib/ds/inventory.generated.ts`
 - `src/lib/ds/catalog.ts`
 - `src/lib/ds/catalog.test.ts`
@@ -68,3 +70,5 @@ Los cinco componentes que el tablero cuenta como «sin clasificar» pasan a su c
 - **L2 (clasificación medida por el padre, con el gate del skill `atomic-design`).** `Glyph` (40 líneas) es una primitiva visual única → átomo; existe aparte sólo porque su tarea no podía editar `atoms/icons.ts`. `SettingsDialog` (523) es un bloque de feature con estado que lee y escribe settings y tema → organismo. `BoardCanvas` (382) lee y escribe el store `workbench.svelte` y monta three.js → organismo. `StartScreen` (302) recibe props y tiene `$state` local de dimensiones; la ruta `+page.svelte` es la que hace `invoke`, recents y settings, así que no llena slots: organismo, no template. `WorkbenchShell` (162) monta `WorkbenchTemplate` con snippets reales y navega con `goto('/')`: cuerpo de página, y el skill dice que las Pages viven en `src/routes/`.
 
 - **L3 (decisión del owner).** Ante las tres alternativas —llevar la página al route, agregar una quinta capa `components/pages/`, o un mapa declarado de capas sin mover archivos— el owner eligió la primera: «La página va al route (más fiel al skill)». Consecuencia aceptada: `src/routes/workbench/+page.svelte` deja de ser un shim de dos líneas y pasa a contener la composición de la shell.
+
+- **L4 (dos superficies que el padre omitió, y la decisión de `/workspace`).** Al auditar importadores antes de escribir, el worker encontró dos archivos que las tareas rompen necesariamente y que no estaban en las superficies: `src/routes/workspace/+page.svelte`, que importa el export `WorkbenchShell` que T2 retira, y `src/routes/ds/index.test.ts:71`, que hoy afirma `expected.length > 0` sobre los sin clasificar — justo el número que T3 exige llevar a cero. Ambas quedan autorizadas. Decisión del padre sobre `/workspace`, que hoy renderiza lo mismo que `/workbench` (el prop es el propio default de la shell) y es destino real de tres `goto('/workspace')` desde el inicio: sigue renderizando el mismo cuerpo importando `../workbench/+page.svelte`, sin duplicar handlers y sin borrar una ruta que el owner no pidió borrar. Duplicar la composición escondería dos copias que se van a desincronizar; borrar la ruta cambia comportamiento y eso esta tarea lo tiene prohibido.
