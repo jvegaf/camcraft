@@ -101,4 +101,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 099 | [tooling-harness-green](099-tooling-harness-green.md)                               | delivered                | 2026-11-27 | `43e78cc`     |
 | 100 | [check-tooling-step](100-check-tooling-step.md)                                     | delivered                | 2026-11-27 | `b49f209`     |
 | 101 | [atomic-classification-close](101-atomic-classification-close.md)                   | delivered                | 2026-11-27 | `ce7f5c5`     |
-| 102 | [exact-consumers](102-exact-consumers.md)                                           | in progress              | 2026-11-27 |               |
+| 102 | [exact-consumers](102-exact-consumers.md)                                           | delivered                | 2026-11-27 | `6be1e4a`     |
