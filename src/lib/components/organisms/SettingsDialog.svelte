@@ -11,8 +11,8 @@ import { closeSettings, workbenchState } from '../workbench/workbench.svelte';
 import ToolLibraryPanel from './ToolLibraryPanel.svelte';
 
 // Preferences dialog of `design/camcraft-workbench-v2/04-settings.html`: titlebar with a real search,
-// a page list on the left, two-column setting rows on the right and a Restaurar / Cancelar / Aplicar
-// footer.
+// a page list on the left, two-column setting rows on the right and the five-action footer of
+// artboard 05 (107 S12): Restore defaults / Import… / Export… / Close / Save changes.
 //
 // **Real settings only (tasks 090 T2, 091, 107 T3).** A page is listed only when it has a real
 // contract behind it: `Appearance` owns the `theme` field of `SettingsDto`
@@ -29,9 +29,13 @@ import ToolLibraryPanel from './ToolLibraryPanel.svelte';
 // The persistence contract is unchanged from the previous implementation and is owned by
 // `src/lib/ds/theme.ts` (the same module the TopBar theme action writes with): the stored theme is
 // read through `loadThemePreference()` when the dialog opens, written through
-// `saveThemePreference()` **only** on Aplicar, and Cancelar/Escape/backdrop close without writing.
-// Picking a segment or pressing Restaurar valores edits the draft only — the footer says so
-// («Cambios sin aplicar») instead of silently storing an unconfirmed preference.
+// `saveThemePreference()` **only** on `Save changes`, and `Close`/Escape/backdrop close without
+// writing. Picking a segment or pressing `Restore defaults` edits the draft only — the footer says
+// so ("Unsaved changes") instead of silently storing an unconfirmed preference.
+//
+// `Import…` and `Export…` are drawn by artboard 05 (S12) but have no command behind them: the CAM
+// library has no import/export in `invoke_handler` (107 S13). They render disabled — no invented
+// dialog, no invented behaviour — and become enabled only when a real command exists.
 type SettingControl = 'theme';
 
 type SettingRow = {
@@ -127,9 +131,9 @@ const THEME_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
 const SETTINGS_PAGES = SETTINGS_GROUPS.flatMap(group => group.pages);
 const FIRST_PAGE = SETTINGS_PAGES[0];
 
-// `stored` is what the backend last confirmed; `settings` is the draft the footer applies. Keeping
-// them apart is what makes «Cambios sin aplicar» honest and what lets Cancelar leave the stored
-// preference untouched without a rollback to undo.
+// `stored` is what the backend last confirmed; `settings` is the draft `Save changes` writes.
+// Keeping them apart is what makes the "Unsaved changes" note honest and what lets `Close` leave the
+// stored preference untouched without a rollback to undo.
 type Settings = { theme: string };
 const DEFAULTS: Settings = { theme: 'dark' };
 
@@ -198,8 +202,9 @@ async function loadSettings() {
 async function saveSettings() {
   error = '';
   try {
-    // The library's draft is confirmed by the same Apply that confirms the theme. Its save reports
-    // a failure through the shared error line and returns false, so nothing closes on a false success.
+    // The library's draft is confirmed by the same `Save changes` that confirms the theme. Its
+    // save reports a failure through the shared error line and returns false, so nothing closes on
+    // a false success.
     if (activePage.body === 'tool-library') {
       const saved = await toolLibraryPanel?.save();
       if (saved === false) return;
@@ -213,7 +218,7 @@ async function saveSettings() {
   }
 }
 
-/** Draft-only reset: the stored preference changes only when Aplicar writes it. */
+/** Draft-only reset: the stored preference changes only when `Save changes` writes it. */
 function restoreDefaults() {
   settings = { ...DEFAULTS };
   error = '';
@@ -586,17 +591,25 @@ const noteText = css({
         <Button variant="ghost" onclick={restoreDefaults}>
           Restore defaults
         </Button>
+        <!-- 107 S12 draws Import…/Export… but the library has no such commands (S13), so they are
+             rendered disabled instead of pretending to act. -->
+        <Button variant="ghost" disabled>
+          Import…
+        </Button>
+        <Button variant="ghost" disabled>
+          Export…
+        </Button>
         <div class={footerStatus}>
           {#if error}
             <p class={errorText} aria-live="assertive">{error}</p>
           {:else if dirty}
             <p class={noteText} aria-live="polite">
-              Unsaved changes: use Apply to store them.
+              Unsaved changes: use Save changes to store them.
             </p>
           {/if}
         </div>
-        <Button onclick={closeSettings}>Cancel</Button>
-        <Button variant="primary" onclick={saveSettings}>Apply</Button>
+        <Button onclick={closeSettings}>Close</Button>
+        <Button variant="primary" onclick={saveSettings}>Save changes</Button>
       </div>
     </div>
   </div>

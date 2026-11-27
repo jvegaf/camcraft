@@ -45,6 +45,17 @@ const echoStored: BridgeHandler = async (command, args) => {
   throw new Error(`no bridge for ${command}`);
 };
 
+/** The dialog footer of artboard 05 (107 S12): the five actions, in DOM order. */
+function footerOf(dialog: HTMLElement): HTMLElement {
+  return within(dialog).getByRole('button', { name: 'Restore defaults' })
+    .parentElement as HTMLElement;
+}
+
+/** A footer action by its exact label. Scoped to the footer: the titlebar icon is also `Close`. */
+function footerButton(dialog: HTMLElement, name: string): HTMLElement {
+  return within(footerOf(dialog)).getByRole('button', { name });
+}
+
 const THEME_LABEL: Record<string, string> = {
   dark: 'Dark',
   light: 'Light',
@@ -110,7 +121,8 @@ describe('SettingsDialog', () => {
     await user.click(
       within(themeGroup()).getByRole('button', { name: 'Dark' })
     );
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const dialog = screen.getByRole('dialog', { name: 'Preferences' });
+    await user.click(footerButton(dialog, 'Save changes'));
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('update_settings', {
@@ -122,14 +134,16 @@ describe('SettingsDialog', () => {
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
-  it('closes on Cancel without storing anything', async () => {
+  it('closes on Close without storing anything', async () => {
     const user = userEvent.setup();
     render(SettingsDialog);
     openSettings();
-    await screen.findByRole('dialog', { name: 'Preferences' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Preferences'
+    });
     await waitFor(() => expect(selectedTheme()).toBe('Light'));
 
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(footerButton(dialog, 'Close'));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(invokeMock).not.toHaveBeenCalledWith(
@@ -295,7 +309,12 @@ describe('SettingsDialog', () => {
     await user.click(
       within(themeGroup()).getByRole('button', { name: 'Dark' })
     );
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await user.click(
+      footerButton(
+        screen.getByRole('dialog', { name: 'Preferences' }),
+        'Save changes'
+      )
+    );
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('update_settings', {
@@ -413,33 +432,81 @@ describe('SettingsDialog', () => {
 
   // --- Footer -----------------------------------------------------------------------------------
 
-  it('renders Restore defaults / Cancel / Apply as design-system buttons', async () => {
+  it('renders the artboard 05 footer: Restore defaults / Import… / Export… / Close / Save changes', async () => {
     render(SettingsDialog);
     openSettings();
-    await screen.findByRole('dialog', { name: 'Preferences' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Preferences'
+    });
 
+    // Exact labels and order, as artboard 05 draws them (107 S12).
     expect(
-      screen
-        .getByRole('button', { name: 'Restore defaults' })
-        .getAttribute('data-variant')
-    ).toBe('ghost');
-    expect(
-      screen
-        .getByRole('button', { name: 'Cancel' })
-        .getAttribute('data-variant')
-    ).toBe('secondary');
-    expect(
-      screen.getByRole('button', { name: 'Apply' }).getAttribute('data-variant')
-    ).toBe('primary');
+      within(footerOf(dialog))
+        .getAllByRole('button')
+        .map(button => button.textContent?.trim())
+    ).toEqual([
+      'Restore defaults',
+      'Import…',
+      'Export…',
+      'Close',
+      'Save changes'
+    ]);
+
+    // Same design-system hierarchy as the artboard: ghost secondaries, plain Close, primary save.
+    const variants = [
+      'Restore defaults',
+      'Import…',
+      'Export…',
+      'Close',
+      'Save changes'
+    ].map(label => footerButton(dialog, label).getAttribute('data-variant'));
+    expect(variants).toEqual([
+      'ghost',
+      'ghost',
+      'ghost',
+      'secondary',
+      'primary'
+    ]);
   });
 
-  it('Restore defaults only resets the draft and still requires Apply', async () => {
+  it('renders Import… and Export… disabled because the library has no such commands', async () => {
+    const user = userEvent.setup();
+    render(SettingsDialog);
+    openSettings();
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Preferences'
+    });
+
+    for (const label of ['Import…', 'Export…']) {
+      const action = footerButton(dialog, label) as HTMLButtonElement;
+      expect(action.disabled).toBe(true);
+      // A disabled action cannot be triggered, so it cannot claim to have done anything.
+      await user.click(action);
+    }
+
+    // Only the load ran, and no status line reports an import or an export.
+    expect(
+      invokeMock.mock.calls.every(([command]) => command === 'get_settings')
+    ).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'update_settings',
+      expect.anything()
+    );
+    expect(screen.queryByText(/imported|exported/i)).toBeNull();
+  });
+
+  it('Restore defaults only resets the draft and still requires Save changes', async () => {
     const user = userEvent.setup();
     render(SettingsDialog);
     openSettings();
     await waitFor(() => expect(selectedTheme()).toBe('Light'));
 
-    await user.click(screen.getByRole('button', { name: 'Restore defaults' }));
+    await user.click(
+      footerButton(
+        screen.getByRole('dialog', { name: 'Preferences' }),
+        'Restore defaults'
+      )
+    );
 
     expect(selectedTheme()).toBe('Dark');
     // Nothing reached the backend, and the window theme is untouched: restore is a draft edit.
@@ -451,7 +518,12 @@ describe('SettingsDialog', () => {
     // The operator is told the restore is not stored yet.
     expect(screen.getByText(/Unsaved changes/)).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await user.click(
+      footerButton(
+        screen.getByRole('dialog', { name: 'Preferences' }),
+        'Save changes'
+      )
+    );
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('update_settings', {
@@ -461,7 +533,7 @@ describe('SettingsDialog', () => {
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
-  it('does not preview or store a theme until Apply is pressed', async () => {
+  it('does not preview or store a theme until Save changes is pressed', async () => {
     const user = userEvent.setup();
     render(SettingsDialog);
     openSettings();

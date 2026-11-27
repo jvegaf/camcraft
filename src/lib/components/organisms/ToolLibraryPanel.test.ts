@@ -201,7 +201,7 @@ describe('ToolLibraryPanel', () => {
       expect.anything()
     );
 
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('tool_library_save', {
@@ -266,7 +266,7 @@ describe('ToolLibraryPanel', () => {
     const name = screen.getByRole('textbox', { name: 'Name' });
     await user.clear(name);
     await user.type(name, 'End mill 2.0 mm');
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     const error = await screen.findByText(
       'tool_library_unwritable: the library file is read-only'
