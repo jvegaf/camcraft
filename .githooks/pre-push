@@ -7,5 +7,9 @@ set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 
+# Git exporta su propio entorno a los hooks, y el gate corre un arnés que construye repositorios
+# desechables: con GIT_DIR heredado esos `git` operarían sobre este repo en vez del fixture.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX
+
 echo "pre-push: ./scripts/check.sh"
 ./scripts/check.sh
