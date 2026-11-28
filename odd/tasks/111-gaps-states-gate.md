@@ -6,7 +6,6 @@ o su cita resoluble, con sus tests y cableado en el gate del repositorio.
 Estado: `open` — nada implementado: no existe el checker, no hay tests, no está cableado y ningún
 `S#` está satisfecho.
 
-
 - `scripts/check-gaps-states.sh` (nuevo: el checker, con su `python3` embebido)
 - `scripts/check-gaps-states.py` (el esbozo del verificador, adaptado)
 - `scripts/tests/gaps-states.sh` (nuevo: los tests, sobre `scripts/tests/lib/common.sh`)
@@ -14,7 +13,6 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 - `odd/tasks/111-gaps-states-gate.md`
 
 ## Surfaces
-
 
 - `scripts/check-gaps-states.sh` (nuevo: el checker, con su `python3` embebido)
 - `scripts/check-gaps-states.py` (el esbozo del verificador, adaptado)
@@ -47,7 +45,6 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
   derivados del documento: `G0.1`–`G0.3`, `G1.1`–`G1.4`, `G2.1`–`G2.5`, `G3.1`–`G3.7`, `G4.1`–`G4.4`,
   `G5.1`–`G5.3`, `G6.1`–`G6.4`. Derivarlo del documento haría que borrar un hallazgo entero pasara el
   gate, que es exactamente la pérdida que hay que detectar. Falla, como defecto distinto cada uno:
-
   1. un id del conjunto esperado que no aparece en ningún hallazgo (**missing**);
   2. un id que empieza más de un hallazgo (**duplicate**);
   3. un hallazgo cuyo id no está en el conjunto esperado (**unknown**), incluido un id nuevo que el
@@ -56,7 +53,6 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 - **S3 (tres estados, exactamente uno).** Cada hallazgo declara su estado con el marcador
   `Estado: «…»` dentro de su cabecera en negrita (desde el bullet hasta el `**` que la cierra), y el
   texto entre comillas es **exactamente** uno de los tres de la tarea 110, S3:
-
   1. `sigue siendo cierto`
   2. `ya no aplica`
   3. `cambió de forma`
@@ -102,7 +98,6 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 
 - **S6 (salida y exit codes compatibles con el gate existente).** El gate imita a
   [scripts/check-docs.sh](../../scripts/check-docs.sh): un defecto por línea y un resumen final.
-
   - Con defectos: escribe una línea por defecto en **stderr** con la forma `<regla>  <id>  <detalle>`
     (`missing`, `duplicate`, `unknown`, `state-count`, `state-value`, `citation`, `line`), ordenadas
     por id y luego por regla, más el resumen `N defect(s) in docs/GAPS_CAMCRAFT.md §3` en stderr, y
@@ -152,12 +147,12 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Specs          | Ruta   | Commit |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------ |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs                  | Ruta   | Commit |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------ | ------ |
 | T1  | Implementar el checker en `scripts/check-gaps-states.sh` con el mismo shape que `check-docs.sh` (bash + `python3` embebido, sin dependencias): extraer el §3, reconocer los hallazgos por bullet, comparar contra el conjunto esperado de 30 ids, parsear `Estado: «…»` contra los tres estados, recolectar las citas de ruta y las citas con línea, resolverlas desde la raíz y emitir defectos y resumen según S6. El esbozo `scripts/check-gaps-states.py` del verificador se adapta; no se copia una regla que el documento no pueda cumplir. | S2, S3, S4, S5, S6, S9 | worker |        |
-| T2  | Escribir `scripts/tests/gaps-states.sh` con el fixture de descarte y un caso por cada condición negativa de S2–S4, más el caso de prosa cambiada que debe pasar (S5); afirmar exit code, línea de defecto y resumen en cada caso, y comprobar que el test lo levanta `scripts/test-worktree-tooling.sh` sin tocar el árbol real. | S2, S3, S4, S5, S6, S7 | worker |        |
-| T3  | Cablear: receta `check-gaps-states` en el `justfile` junto a `check-docs`, paso `== gaps ==` en `scripts/check.sh`, y paso del job `gate` en `.github/workflows/ci.yml` después del checkout; verificar `just check-gaps-states`, la inclusión en `./scripts/check.sh` y que `bash scripts/tests/ci-workflow.sh` sigue en `0`. | S8 | worker |        |
-| T4  | Cierre y prueba roja-verde: sobre una copia del documento en `mktemp -d` (nunca el árbol), partir del documento corregido sólo en la copia, obtener el verde del gate, romper a propósito cada condición —id, estado, cita, EOF— de a una y registrar el rojo observado con el comando exacto; correr `just test-tooling` y `./scripts/check-docs.sh`, y anotar en el `## Log` el defecto real de `tests/boolean_properties.rs:108` que la corrida sobre `a2591c3` descubre, sin repararlo (S9). | S2–S9 | worker |        |
+| T2  | Escribir `scripts/tests/gaps-states.sh` con el fixture de descarte y un caso por cada condición negativa de S2–S4, más el caso de prosa cambiada que debe pasar (S5); afirmar exit code, línea de defecto y resumen en cada caso, y comprobar que el test lo levanta `scripts/test-worktree-tooling.sh` sin tocar el árbol real.                                                                                                                                                                                                                  | S2, S3, S4, S5, S6, S7 | worker |        |
+| T3  | Cablear: receta `check-gaps-states` en el `justfile` junto a `check-docs`, paso `== gaps ==` en `scripts/check.sh`, y paso del job `gate` en `.github/workflows/ci.yml` después del checkout; verificar `just check-gaps-states`, la inclusión en `./scripts/check.sh` y que `bash scripts/tests/ci-workflow.sh` sigue en `0`.                                                                                                                                                                                                                    | S8                     | worker |        |
+| T4  | Cierre y prueba roja-verde: sobre una copia del documento en `mktemp -d` (nunca el árbol), partir del documento corregido sólo en la copia, obtener el verde del gate, romper a propósito cada condición —id, estado, cita, EOF— de a una y registrar el rojo observado con el comando exacto; correr `just test-tooling` y `./scripts/check-docs.sh`, y anotar en el `## Log` el defecto real de `tests/boolean_properties.rs:108` que la corrida sobre `a2591c3` descubre, sin repararlo (S9).                                                  | S2–S9                  | worker |        |
 
 ## Log
 
@@ -177,7 +172,6 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 
 - **L2 (evidencia de 110, 2026-11-28).** El documento que el gate debe vigilar quedó en su forma actual
   con dos commits de la tarea 110:
-
   - `e50aa7c` re-midió el §Método y el §1: 17 crates, 57.786 líneas en `src/`, 1.395 atributos
     `#[test]`, cinco ausencias refutadas con el commit que las refutó y las cifras de 2026-05-09
     conservadas como historia fechada.
