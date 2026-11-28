@@ -36,6 +36,6 @@ done
 
 El script resuelve la raíz del repositorio a partir de su propia ruta, así que funciona desde cualquier directorio de trabajo. Antes de correr comprueba que cada `bench_function` de `toolpaths.rs` tenga su baseline `committed` y falla si falta alguno.
 
-Criterion sale con código `0` aunque imprima «Performance has regressed», así que el script lee esa salida y termina distinto de `0` cuando un bench supera el umbral. El umbral es **10 % de desaceleración relativa** (`--noise-threshold 0.10`): por encima del ruido normal entre corridas y muy por debajo de la regresión de 3,4× que este gate tiene que atrapar. La salida dice contra qué baseline comparó, qué benches cubre y con qué umbral.
+Criterion sale con código `0` aunque imprima «Performance has regressed», así que el script lee la línea `change: [low mid high]` que Criterion imprime para cada bench y termina distinto de `0` cuando el cambio medido (el valor `mid`) supera el umbral. El umbral es **10 % de desaceleración relativa**: un umbral relativo al baseline, sin ningún piso de ruido absoluto, por encima del ruido normal entre corridas y muy por debajo de la regresión de 3,4× que este gate tiene que atrapar. La salida dice contra qué baseline comparó, qué benches cubre y con qué umbral; el mensaje de fallo nombra el bench, el baseline, el umbral y el cambio medido.
 
 Cualquier argumento extra se pasa a Criterion, por ejemplo `--noplot`.

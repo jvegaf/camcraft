@@ -15,8 +15,9 @@ BASE_SRC="$SCRIPT_DIR/baselines/criterion"
 BASE_DST="$WORKSPACE_ROOT/target/criterion"
 BENCH_SRC="$SCRIPT_DIR/$BENCH.rs"
 # 10 % relative slowdown is a regression. Well above ordinary run-to-run noise on this host and
-# far below the 3.4x NCC regression this gate has to catch.
-NOISE_THRESHOLD="0.10"
+# far below the 3.4x NCC regression this gate has to catch. The decision is relative: it reads
+# Criterion's own "change: [low mid high]" line and rejects a measured (mid) slowdown above this.
+THRESHOLD_PCT=10
 
 if [ ! -d "$BASE_SRC" ]; then
   echo "Missing committed baseline at $BASE_SRC" >&2
@@ -51,7 +52,7 @@ echo "Comparing cam-ops/$BENCH against committed baseline:"
 echo "  baseline: $BASE_SRC"
 echo "  target:   $BASE_DST"
 echo "  benches:  ${BENCHES[*]}"
-echo "  threshold: ${NOISE_THRESHOLD} relative slowdown (Criterion --noise-threshold)"
+echo "  threshold: +${THRESHOLD_PCT}% relative slowdown (parsed from the Criterion change interval)"
 
 LOG="$(mktemp "${TMPDIR:-/tmp}/cam-ops-bench-regression.XXXXXX.log")"
 trap 'rm -f "$LOG"' EXIT
@@ -60,7 +61,6 @@ cd "$WORKSPACE_ROOT"
 set +e
 cargo bench -p "$CRATE" --bench "$BENCH" -- \
   --baseline committed \
-  --noise-threshold "$NOISE_THRESHOLD" \
   --noplot \
   "$@" 2>&1 | tee "$LOG"
 status=${PIPESTATUS[0]}
@@ -71,10 +71,21 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-if grep -q "Performance has regressed" "$LOG"; then
+parse_status=0
+CHANGES="$(awk -v thr="$THRESHOLD_PCT" '
+  /^[A-Za-z0-9_]+\/[A-Za-z0-9_]+( |$)/ { id = $1 }
+  /change: \[/ {
+    s = $0; sub(/.*change: \[/, "", s); sub(/\].*/, "", s)
+    n = split(s, b, " "); mid = b[2]; sub(/%$/, "", mid)
+    if (mid + 0 > thr) { bad = 1; printf "  %s change: [%s]\n", id, s }
+  }
+  END { if (!n) { print "  no Criterion change line found in " FILENAME; exit 1 }; exit (bad ? 1 : 0) }
+' "$LOG")" || parse_status=$?
+
+if [ "${parse_status:-0}" -ne 0 ]; then
   echo "" >&2
-  echo "REGRESSION: a bench exceeded the ${NOISE_THRESHOLD} relative threshold against $BASE_SRC" >&2
-  grep -B6 "Performance has regressed" "$LOG" >&2 || true
+  echo "REGRESSION (or unparseable bench output) vs $BASE_SRC, threshold +${THRESHOLD_PCT}%:" >&2
+  printf '%s\n' "$CHANGES" >&2
   exit 1
 fi
 
