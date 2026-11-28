@@ -39,6 +39,12 @@ jobs:
       - name: Check workflow shape (one trunk, dispatch-only parity/bench, job names)
         run: bash scripts/tests/ci-workflow.sh
 
+      # El gate de estados de `docs/GAPS_CAMCRAFT.md` §3: un hallazgo que pierde su id, su estado o su
+      # cita resoluble falla. Es barato (bash + `python3` de la biblioteca estándar, como
+      # `check-docs.sh`), así que corre antes de instalar pnpm o Rust y no depende del toolchain.
+      - name: Check GAPS findings keep id, state and citation
+        run: bash scripts/check-gaps-states.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:

@@ -9,6 +9,9 @@ echo "== claim =="
 echo "== docs =="
 ./scripts/check-docs.sh
 
+echo "== gaps =="
+./scripts/check-gaps-states.sh
+
 echo "== records =="
 ./scripts/check-records.sh
 

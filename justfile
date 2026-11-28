@@ -14,6 +14,9 @@ check:
 check-docs:
   ./scripts/check-docs.sh
 
+check-gaps-states:
+  ./scripts/check-gaps-states.sh
+
 records:
   ./scripts/check-records.sh
 

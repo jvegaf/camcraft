@@ -248,6 +248,47 @@ else
     "cam-ops/benches/check_regression.sh"
   expect_missing "bench is no longer the migration placeholder" "$WORK/bench-job.txt" \
     "deshabilitados durante"
+  expect_missing "bench does not run the GAPS states gate" "$WORK/bench-job.txt" \
+    "check-gaps-states.sh"
+fi
+
+# El job `gate` corre los chequeos baratos del repositorio, entre ellos el gate de estados de los
+# hallazgos de `docs/GAPS_CAMCRAFT.md` §3: tiene que estar y tiene que bloquear. Igual que `bench`, se
+# lee el bloque por indentación: desde `  gate:` hasta el próximo job.
+echo "== el job gate corre el gate de estados de los hallazgos y no lo silencia =="
+awk '
+  /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
+    if ($0 == "  gate:") { inside = 1; next }
+    if (inside) { exit }
+  }
+  inside { print }
+' "$CI" >"$WORK/gate-job.txt"
+
+if [ ! -s "$WORK/gate-job.txt" ]; then
+  fail "the gate job could not be read from the workflow"
+else
+  expect_contains "gate runs the GAPS states harness" "$WORK/gate-job.txt" \
+    "bash scripts/check-gaps-states.sh"
+  expect_missing "gate does not swallow the GAPS states gate with continue-on-error" \
+    "$WORK/gate-job.txt" "continue-on-error"
+  expect_no_swallow_on "the GAPS states harness line does not swallow its failure" \
+    "$WORK/gate-job.txt" "check-gaps-states.sh"
+fi
+
+# `parity` y `bench` son dispatch-only y no son el lugar de un chequeo barato: el paso no se cuela ahí.
+awk '
+  /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
+    if ($0 == "  parity:") { inside = 1; next }
+    if (inside) { exit }
+  }
+  inside { print }
+' "$CI" >"$WORK/parity-job.txt"
+
+if [ ! -s "$WORK/parity-job.txt" ]; then
+  fail "the parity job could not be read from the workflow"
+else
+  expect_missing "parity does not run the GAPS states gate" "$WORK/parity-job.txt" \
+    "check-gaps-states.sh"
 fi
 
 summary
