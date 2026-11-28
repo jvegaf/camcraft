@@ -107,3 +107,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 107 | [settings-tool-library-ui](107-settings-tool-library-ui.md)                         | delivered                | 2026-11-27 | `8148b99`     |
 | 108 | [cam-command-surface](108-cam-command-surface.md)                                   | delivered                | 2026-11-27 | `b14594b`     |
 | 109 | [english-only-ui](109-english-only-ui.md)                                           | delivered                | 2026-11-27 | `3a7483d`     |
+| 110 | [gaps-resurvey](110-gaps-resurvey.md)                                               | open                     | 2026-11-28 | —             |
