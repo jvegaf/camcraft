@@ -2,8 +2,13 @@
 
 Investigar y arreglar la regresión de rendimiento de NCC: hoy la placa grande del corpus mide
 ~3,4× por encima de su propia cifra del 2026-11-16, y el gate que debía haberla visto no corre.
-Estado: `open` — no se reprodujo ni se localizó la causa, el `check_regression.sh` sigue roto y el
-job `bench` de CI sigue siendo un placeholder; ningún `S#` está satisfecho.
+Estado: `delivered` — T1–T5 entregados y registrados en `## Tasks`: la regresión se reprodujo y se
+localizó en `7714fc1`, `947638e` la cierra con salida byte a byte idéntica (2059,87 ms frente a
+7314–7502 ms), `9b895d4` arregla el arnés de regresión y `b428ea3` hace que el job `bench` de CI corra
+el gate en vez de saludar. Los ocho `S#` quedan satisfechos y `./scripts/check-docs.sh` termina en `0`;
+lo único que el registro todavía no tiene es la memoria de Engram de `ncc-performance-regression` que
+`./scripts/check-records.sh` exige para una tarea entregada ≥53, y que se escribe en la entrega, no
+desde este documento.
 
 - `src-tauri/crates/cam-geom/benches/` y `src-tauri/crates/cam-ops/benches/` (`check_regression.sh`, los `README.md` y los baselines commiteados)
 - `src-tauri/crates/cam-ops/tests/ncc.rs` (`measure_ncc_large_plate_kicad_large_pours`)
@@ -148,13 +153,13 @@ job `bench` de CI sigue siendo un placeholder; ningún `S#` está satisfecho.
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs      | Ruta   | Commit |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------ |
-| T1  | Reproducir y localizar. Repetir al menos tres veces la medición de S2 con el comando exacto del reporte, registrando `commit` medido, `nproc`, hilos, perfil release y el split `unite_ms`/`fill_ms`/`clip_ms`/`total_ms` de cada corrida; después localizar el tramo dominante con un profile o instrumentación temporal (no commiteada), y dejar escritas las cuatro comprobaciones de falsificación de S3 —placa y parámetros sin cambios desde 2026-11-16, perfil idéntico, `Cargo.lock` y `Cargo.toml` de `cam-ops`/`cam-geom` sin deriva relevante—. Sin arreglo en esta unidad: sólo evidencia y la conclusión de si la lectura de «regresión» se sostiene. Área: `## Log` de este documento.              | S2, S3     | worker |        |
-| T2  | Arreglar el arnés de regresión: que el baseline commiteado cubra **todos** los benches declarados en cada `criterion_group!` —incluidos `ops/ncc_fill_rings` y los dos del índice, que hoy no lo tienen—, que `check_regression.sh` restaure donde cargo lee (raíz de workspace, `target/criterion`) en vez de `src-tauri/target/criterion`, que la ruta documentada por los dos `README.md` de `benches/` sea la que existe, y que una regresión salga distinta de `0` con un umbral declarado. Prueba: baseline alterado a propósito en una copia en `mktemp -d` → rojo observado; corrida normal → verde. Área: `src-tauri/crates/cam-geom/benches/`, `src-tauri/crates/cam-ops/benches/`.                     | S4         | worker |        |
-| T3  | Hacer honesto el job `bench` de CI: o corre el gate de T2 más la medición reproducible de T1 con una política de umbral explícita para runner compartido, o se borra del workflow y ningún documento lo sigue anunciando como gate. Verificar `bash scripts/tests/ci-workflow.sh` en `0` y que el YAML no deja un paso que pasa sin medir. Área: `.github/workflows/ci.yml`, `justfile`/`scripts/check.sh` si el gate se cablea ahí.                                                                                                                                                                                                                                                                              | S5         | worker |        |
-| T4  | Cerrar la regresión: si T1 la sostiene, encontrar la causa concreta y arreglarla dentro de la frontera de S7, con la guardia de S6 —el bench o test que falla sin el arreglo y pasa con él— y sin ninguna diferencia de G-code (comprobación de salida igual antes/después). Si T1 la falsifica, escribir la explicación con la evidencia de las cuatro comprobaciones. En ambos casos, actualizar `odd/reports/f4-ncc-benchmark.md` conservando la fila de 2026-11-16 y el 49,87 s de FlatCAM como historia fechada y dejando constancia de que el lado FlatCAM no se re-midió. Área: `src-tauri/crates/cam-ops/src/ncc.rs`, `src-tauri/crates/cam-geom/src/`, benches/tests, `odd/reports/f4-ncc-benchmark.md`. | S3, S6, S7 | worker |        |
-| T5  | Cierre: correr `./scripts/check-docs.sh` (debe salir en `0`), comprobar que todos los enlaces de este documento resuelven, y registrar en el `## Log` las mediciones finales con sus comandos, el veredicto sobre la regresión y el defecto de gate que quedó arreglado. No se toca nada más allá de lo que T1–T4 dejaron. Área: `## Log` de este documento.                                                                                                                                                                                                                                                                                                                                                      | S8         | worker |        |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs      | Ruta   | Commit                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------- |
+| T1  | Reproducir y localizar. Repetir al menos tres veces la medición de S2 con el comando exacto del reporte, registrando `commit` medido, `nproc`, hilos, perfil release y el split `unite_ms`/`fill_ms`/`clip_ms`/`total_ms` de cada corrida; después localizar el tramo dominante con un profile o instrumentación temporal (no commiteada), y dejar escritas las cuatro comprobaciones de falsificación de S3 —placa y parámetros sin cambios desde 2026-11-16, perfil idéntico, `Cargo.lock` y `Cargo.toml` de `cam-ops`/`cam-geom` sin deriva relevante—. Sin arreglo en esta unidad: sólo evidencia y la conclusión de si la lectura de «regresión» se sostiene. Área: `## Log` de este documento.              | S2, S3     | worker | `23b2c7e`                                                     |
+| T2  | Arreglar el arnés de regresión: que el baseline commiteado cubra **todos** los benches declarados en cada `criterion_group!` —incluidos `ops/ncc_fill_rings` y los dos del índice, que hoy no lo tienen—, que `check_regression.sh` restaure donde cargo lee (raíz de workspace, `target/criterion`) en vez de `src-tauri/target/criterion`, que la ruta documentada por los dos `README.md` de `benches/` sea la que existe, y que una regresión salga distinta de `0` con un umbral declarado. Prueba: baseline alterado a propósito en una copia en `mktemp -d` → rojo observado; corrida normal → verde. Área: `src-tauri/crates/cam-geom/benches/`, `src-tauri/crates/cam-ops/benches/`.                     | S4         | worker | `9b895d4`                                                     |
+| T3  | Hacer honesto el job `bench` de CI: o corre el gate de T2 más la medición reproducible de T1 con una política de umbral explícita para runner compartido, o se borra del workflow y ningún documento lo sigue anunciando como gate. Verificar `bash scripts/tests/ci-workflow.sh` en `0` y que el YAML no deja un paso que pasa sin medir. Área: `.github/workflows/ci.yml`, `justfile`/`scripts/check.sh` si el gate se cablea ahí.                                                                                                                                                                                                                                                                              | S5         | worker | `b428ea3`                                                     |
+| T4  | Cerrar la regresión: si T1 la sostiene, encontrar la causa concreta y arreglarla dentro de la frontera de S7, con la guardia de S6 —el bench o test que falla sin el arreglo y pasa con él— y sin ninguna diferencia de G-code (comprobación de salida igual antes/después). Si T1 la falsifica, escribir la explicación con la evidencia de las cuatro comprobaciones. En ambos casos, actualizar `odd/reports/f4-ncc-benchmark.md` conservando la fila de 2026-11-16 y el 49,87 s de FlatCAM como historia fechada y dejando constancia de que el lado FlatCAM no se re-midió. Área: `src-tauri/crates/cam-ops/src/ncc.rs`, `src-tauri/crates/cam-geom/src/`, benches/tests, `odd/reports/f4-ncc-benchmark.md`. | S3, S6, S7 | worker | `947638e`                                                     |
+| T5  | Cierre: correr `./scripts/check-docs.sh` (debe salir en `0`), comprobar que todos los enlaces de este documento resuelven, y registrar en el `## Log` las mediciones finales con sus comandos, el veredicto sobre la regresión y el defecto de gate que quedó arreglado. No se toca nada más allá de lo que T1–T4 dejaron. Área: `## Log` de este documento.                                                                                                                                                                                                                                                                                                                                                      | S8         | worker | —, este documento; la evidencia viaja en el commit de entrega |
 
 ## Log
 
@@ -220,3 +225,123 @@ job `bench` de CI sigue siendo un placeholder; ningún `S#` está satisfecho.
   `target/criterion`), que el baseline commiteado de `cam-ops` no incluye
   `ops/ncc_fill_rings` ni los dos del índice, los dos usos de `rayon` en
   `src-tauri/crates/cam-ops/src/ncc.rs`, y que `nproc` en esta máquina da **16**.
+
+- **L3 (T1 entregado, 2026-11-28, `23b2c7e`).** La medición de L2 se reprodujo antes de creerla, y la
+  lectura de «regresión» se sostuvo. El registro de 2088,64 ms se reproduce **en esta misma máquina**
+  sobre el commit que introdujo el test y el reporte (`7ddc23d` → **2284,53 ms**) y sobre su padre
+  (`5f53de3` → **2031,49 ms**), mientras HEAD `86b37d5` da **7314,47–7502,20 ms** en tres corridas
+  (spread del 2,6 %, no del 3,4×). Las cuatro falsificaciones de S3 se probaron y se descartaron una
+  por una: **misma máquina** (`nproc` 16 y el mismo rustc para las dos puntas, porque los commits
+  viejos se compilaron hoy desde `git archive` en `/tmp`, fuera del repo), **misma placa**
+  (`git diff --stat 7ddc23d..HEAD -- fixtures/corpus/kicad-large-pours` vacío y conteos idénticos
+  `98` / `826` / `15825,68` mm² en todas las corridas), **mismo perfil** `--release` (el de HEAD es
+  _más_ optimizado, con LTO y `codegen-units=1`, así que empuja en contra de la regresión) y **sin
+  deriva de dependencias** (`rayon` ya estaba desde `8d0ad9d` y no interviene en `unite`/`clip`;
+  ninguna dependencia de geometría o de índice espacial entró entre las dos puntas).
+
+  La localización se hizo con instrumentación temporal fuera del árbol (`/tmp/ncc-7714fc1-jo16rO`, no
+  commiteada): el culpable es **7714fc1**, que reescribió `unite_copper` de unión por winding a unión
+  por profundidad de anidamiento. `nesting_depths` corre **dos veces** —una en `unite_copper` y otra
+  en `canonical_orientation`— y cuesta **2650,90 + 2684,47 ms** dentro de un `unite` de **6329,88 ms**
+  (84 %), mientras la unión booleana real sigue en **986,77 ms**, el mismo orden que el `unite` entero
+  del commit anterior a 7714fc1. `fill` (~1,4 ms) y `clip` (~1,0–1,2 s) no cambian en ningún commit:
+  el delta está entero en `unite`. La evidencia completa, con las tres corridas, el split de fases y
+  el bracketing `5f53de3` → `7714fc1`, queda en
+  [odd/reports/ncc-regression.md](../reports/ncc-regression.md). El reporte de F4 fecha su medición el
+  2026-11-16, pero el código y el test que la producen entraron en `7ddc23d` el 2026-11-21: queda
+  anotado para T4, no corregido en T1.
+
+- **L4 (T4 entregado, 2026-11-28, `947638e`).** El arreglo es de `nesting_depths`
+  (`src-tauri/crates/cam-ops/src/isolation.rs`) y no cambia la pregunta: sigue siendo la mayoría de los
+  vértices encerrados. Agrega dos filtros exactos —`Bounds::contains` (que ya crece con la tolerancia)
+  descarta el vértice antes de la consulta geométrica, y la cuenta se corta en cuanto la mayoría ya no
+  puede cambiar en ningún sentido, porque los dos extremos son monótonos en los vértices que faltan—
+  y ninguno lee algo que la cuenta sin filtrar no leyera, así que la clasificación es idéntica.
+  Medición final con el comando de L2 —`cargo test -p cam-ops --release --test ncc
+  measure_ncc_large_plate_kicad_large_pours -- --ignored --nocapture`— y el binario release ya
+  construido:
+  `unite_ms=961.67 fill_ms=1.30 clip_ms=1096.90 total_ms=2059.87` (**2059,87 ms**), dentro de la
+  dispersión del baseline pre-regresión (2031,49 ms) y de las tres corridas del reporte actualizado
+  (1988,35 / 2054,43 / 2058,73 ms). La regresión de 7314–7502 ms desaparece.
+
+  Frontera de S7 verificada, no prometida: el volcado de `unite_copper` para
+  `fixtures/corpus/kicad-large-pours/top.gbr` es de **333205 bytes** con el **mismo sha256 antes y
+  después** (707263 bytes para las dos placas que `image()` acepta); las otras cuatro del corpus ya
+  fallaban en `image()` antes y después por igual, así que quedan fuera de la comparación. La guardia
+  de S6 es el bench `ops/ncc_unite_corpus_large_plate`, que sin el arreglo sale distinto de `0` y con
+  él queda dentro del umbral (L5).
+
+  Lo que el arreglo **no** hace, y es una decisión registrada, no un descuido: la llamada duplicada a
+  `nesting_depths` se queda. Ya es barata, y quitarla obligaría a cambiar firmas en `unite_copper` y
+  `canonical_orientation` sin ganancia medible. [f4-ncc-benchmark.md](../reports/f4-ncc-benchmark.md)
+  se actualizó **en el mismo commit** que el arreglo, no en uno posterior: la fila de 2026-11-16 y los
+  49,87 s de FlatCAM quedan como historia fechada con su comando, al lado consta la medición de hoy
+  con la suya, y el reporte dice que el lado FlatCAM **no** se re-midió —el venv de FlatCAM-Plus 1.3.6
+  no está en el árbol—, así que el «~23,9× más rápido» es la relación del 2026-11-16 aplicada a una
+  cifra de camcraft nueva, no una comparación re-medida en las dos puntas. La nota de fecha también
+  quedó escrita allí: la cifra dice 2026-11-16 y el código que la produce entró en `7ddc23d`
+  (2026-11-21).
+
+- **L5 (T2 y T3 entregados, 2026-11-28, `9b895d4` / `b428ea3`).** El arnés tenía los cuatro defectos
+  de L2 y, al arreglar el cuarto, apareció uno peor: **ningún bench medía `unite_copper`**. Los tres
+  benches de NCC cubrían `fill_rings` y el índice, así que el gate era ciego justo al camino que
+  regresó; por eso la regresión pasó inadvertida desde 7714fc1. `9b895d4` cierra las cuatro
+  condiciones de S4: el baseline commiteado cubre los siete benches declarados (incluidos
+  `ops/ncc_fill_rings`, los dos del índice y el nuevo `ops/ncc_unite_corpus_large_plate`), los scripts
+  restauran en `target/criterion` de la raíz del workspace —que es donde cargo lo lee—, los dos
+  `README.md` documentan `./src-tauri/crates/cam-*/benches/check_regression.sh`, que es la ruta que
+  existe, y el script falla fuerte con un umbral declarado del **10 %** de desaceleración relativa
+  (`--noise-threshold 0.10`).
+
+  El baseline es el de **5f53de3**, la medición pre-regresión, no el de hoy: por eso el gate se
+  demuestra rojo **antes** del arreglo —`ops/ncc_unite_corpus_large_plate` con **+422 %…+457 %**, exit
+  **1**— y verde **después** —**-15,2 %**, `OK: 7 cam-ops benches compared against ... committed,
+  none regressed.`, exit **0**—. Ese es el rojo/verde que S6 pide, y el baseline **no se regenera para
+  que una corrida pase**: el README lo dice explícitamente («sólo cuando el costo esperado cambie de
+  verdad, no para hacer pasar una corrida»).
+
+  `b428ea3` hace honesto el job `bench`: dejó de imprimir «Benchmarks deshabilitados durante migración
+  Tauri.» y salir en `0` sin medir. Ahora registra la identidad del host (`nproc`, `lscpu`,
+  `rustc`/`cargo`), publica la medición reproducible de S2 —el test de la placa grande con su split
+  `unite`/`fill`/`clip`— y corre los dos arneses de S4 como pasos **bloqueantes**, sin
+  `continue-on-error` y sin código de salida tragado. La política de hardware está escrita en el YAML:
+  el baseline no es portable entre clases de CPU, un corrimiento uniforme de todos los benches es señal
+  de «baseline no comparable» para triage —nunca un umbral que se ensancha— y un rojo concentrado en un
+  bench es real en cualquier host. `scripts/tests/ci-workflow.sh` verifica ese contrato: se escribió
+  para fallar contra el placeholder viejo (16 pasan, 4 fallan) y para pasar contra este (20 pasan).
+
+- **L6 (T5, cierre verificado, 2026-11-28).** Veredicto con las mediciones finales de arriba: la
+  regresión fue **real, local y de código**; el arreglo la cierra **sin tocar la salida**; y el gate
+  que no la vio hoy la habría visto. Los ocho `S#` quedan satisfechos por lo commiteado —S1 por L1 y el
+  entregable, S2/S3 por L3, S4 por L5, S5 por L5, S6 por L4 y L5, S7 por la comprobación byte a byte de
+  L4, S8 por `./scripts/check-docs.sh` en `0` y por los enlaces de este documento, que resuelven—. Las
+  comprobaciones de cierre, con su comando y su salida:
+  `./scripts/check-docs.sh` → `markdown links ok: 174 files`, exit `0`; `pnpm exec biome format
+  --write odd/tasks/112-ncc-performance-regression.md odd/tasks/INDEX.md` → `Formatted 2 files …
+  No fixes applied.`, exit `0`, y `pnpm lint` → `Checked 286 files … No fixes applied.`, exit
+  `0`; `./scripts/check-records.sh` → `records: 1 problem(s) in 105 task(s)`, exit `1`, y el problema
+  es exactamente el ítem 6 de abajo —la memoria de Engram—, no un defecto del registro de la tarea;
+  `git status --short` → sólo este documento y `odd/tasks/INDEX.md`.
+
+  Queda abierto, y se registra en vez de taparse:
+  1. **La llamada duplicada a `nesting_depths`** (L4): barata y deliberada; quitarla es churn de firmas
+     sin ganancia medible, no un pendiente de performance.
+  2. **El job `bench` de CI sigue bajo `if: github.event_name == 'workflow_dispatch'`**: el gate es
+     real cuando corre, pero no corre en cada push o PR, así que una regresión futura se atrapa cuando
+     alguien despacha el job, no el día que entra. La condición está así desde antes de esta tarea y
+     S5 no pedía ampliarla; ampliarla es otra tarea.
+  3. **El baseline no es portable entre hosts**: el job documenta la identidad del host y la política
+     de corrimiento uniforme, y el gate está calibrado contra esta clase de CPU. En un runner
+     compartido más lento la lectura correcta es «baseline no comparable», no ensanchar el umbral.
+  4. **`docs/GAPS_CAMCRAFT.md` §4 sigue registrando el 3,4× y el gate roto**: corregirlo es de la tarea
+     111 o de otra; el S8 de esta tarea se lo prohíbe explícitamente.
+  5. **El lado FlatCAM no se re-midió** (L4), así que el ~23,9× queda como historia fechada, no como
+     comparación vigente en las dos puntas.
+  6. **La memoria de Engram de esta tarea**: `./scripts/check-records.sh` la exige para una tarea
+     entregada ≥53 y todavía no existe (`engram search ncc-performance-regression` → «No memories
+     found»). Se escribe en la entrega, no desde este documento.
+
+  **Nota operativa.** El primer intento de T1 se colgó **30 minutos** en un comando de bench sin cota;
+  el padre re-acotó la unidad al comando exacto de S2 y un segundo worker verificó la medición. Es
+  parte de lo que pasó y por eso queda escrito: el comando reproducible de este documento es el
+  `cargo test` de un solo test `--ignored`, no un `cargo bench` completo.
