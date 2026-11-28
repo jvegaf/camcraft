@@ -353,8 +353,8 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   (`src-tauri/crates/cam-ops/src/exc_travel.rs:47`, `:58`), que desvía el travel y falla el que no
   puede rutear. Entró con `3d4c012` y `39c6fb3` (2026-11-21) y se endureció en `8347fd6` y `d4d4668`.
 - **G4.3 — Escritores Gerber/Excellon. Estado: «ya no aplica».** `cam-export` emite los cuatro
-  formatos: DXF, SVG, Gerber (`src-tauri/crates/cam-export/src/gerber.rs`) y Excellon
-  (`src-tauri/crates/cam-export/src/excellon.rs`), con pruebas de round-trip, desde `a949ebe`
+  formatos: DXF, SVG, Gerber (`src-tauri/crates/cam-export/src/gerber.rs:36`) y Excellon
+  (`src-tauri/crates/cam-export/src/excellon.rs:37`), con pruebas de round-trip, desde `a949ebe`
   (2026-11-21).
 - **G4.4 — Catálogo de dialectos. Estado: «ya no aplica».** Hay tres `.pp` versionados y fijados con
   golden byte a byte: `src-tauri/crates/cam-post/posts/grbl.pp` (`2be97e3`, 2026-11-15, W4b E2.5),
@@ -396,16 +396,16 @@ picking en `cam-view`.
 
 - **G6.1 — CI. Estado: «ya no aplica».** `.github/workflows/ci.yml` existe desde `65d1499`
   (2026-11-13) y hoy es un solo tronco con gate de unitarios y `parity`/`bench` a pedido (`a06484b`,
-  `25f5a83`). `grep -n 'parity\|bench' .github/workflows/ci.yml` → jobs `parity` (`:97`) y `bench`
-  (`:110`), dispatch-only por costo.
+  `25f5a83`). `grep -n 'parity\|bench' .github/workflows/ci.yml` → jobs `parity`
+  (`.github/workflows/ci.yml:103`) y `bench` (`:132`), dispatch-only por costo.
 - **G6.2 — Benchmarks. Estado: «ya no aplica».** **Sí hay** `benches/` con baselines criterion
-  commiteados: `src-tauri/crates/cam-geom/benches/kernel.rs` y
-  `src-tauri/crates/cam-ops/benches/toolpaths.rs`, con
+  commiteados: `src-tauri/crates/cam-geom/benches/kernel.rs:9` y
+  `src-tauri/crates/cam-ops/benches/toolpaths.rs:37`, con
   `check_regression.sh` y `baselines/criterion` en cada crate. Entraron con `cfb7feb` (2026-11-13, W1c
   E0.7) y `8d0ad9d` (2026-11-21, los de NCC).
 - **G6.3 — Arnés de paridad geométrica. Estado: «ya no aplica».** `scripts/parity/run.sh` mide el
   corpus y falla por divergencia con el contrato que el documento de port pide: polígonos y puntos
-  exactos, área a epsilon **relativo 1e-9**, `status` exacto (`scripts/parity/README.md`), y
+  exactos, área a epsilon **relativo 1e-9**, `status` exacto (`scripts/parity/README.md:34`), y
   `compare-flatcam.py` compara además contra el oráculo externo. Entró con `1e7cb07` y `0061226`
   (2026-11-13) y se corrigió en `9c1334d`, `e4ea77b`, `32f2fa1` y `3f1abe1`.
 - **G6.4 — Empaquetado y corpus. Estado: «cambió de forma».** El corpus de placas reales existe

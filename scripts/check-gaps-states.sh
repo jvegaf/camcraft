@@ -113,14 +113,20 @@ def escaped(rel):
 
 
 def check_citations(gid, body, defects):
-    """At least one path citation that resolves, and every `path:N[-M]` citation within the file.
+    """At least one `path:N[-M]` citation that resolves, and every one of them within the file.
 
     A citation resolves only as a regular file inside the checkout: a directory is not evidence that a
-    finding still holds. A path without a line that does not resolve is not a defect: the document
-    cites module and historical paths (`tool_geometry/tool_cutting_data/…`, `crates/cam-toolpath`)
-    that are not files of this tree, and they are not a `path:line` claim.
+    finding still holds. A bare path is never evidence on its own — it carries no line number, so it
+    cannot be the whole citation — but it stays acceptable next to one, because §1's table cites
+    crate-relative paths that way on purpose. A path without a line that does not resolve is not a
+    defect: the document cites module and historical paths (`tool_geometry/tool_cutting_data/…`,
+    `crates/cam-toolpath`) that are not files of this tree.
+
+    A numbered citation that fails keeps its own `citation`/`line` defect and stands in for the bare
+    path's: the rule adds no second defect on top of the one that already says why.
     """
     resolved = False
+    bare = None
     reported = False
     for raw in SPAN.findall(body):
         span = raw.strip()
@@ -172,9 +178,11 @@ def check_citations(gid, body, defects):
             continue
         if ("/" in span and not any(ch.isspace() for ch in span)
                 and escaped(span) is None and (ROOT / span).is_file()):
-            resolved = True
+            bare = span
     if not resolved and not reported:
         defects.append((gid, "citation",
+                        f"`{bare}` is a bare path, not a `path:line` citation"
+                        if bare is not None else
                         "no inline code span with a path that resolves from the repository root"))
 
 

@@ -209,6 +209,25 @@ expect_contains "an unresolvable path is reported as citation" "$WORK/err" \
   "citation  G0.1  \`src/missing.rs:1\` does not resolve from the repository root"
 expect_err_lines "an unresolvable path is the only defect" 2
 
+# A bare path is not evidence on its own: it is a legitimate companion to a line-numbered citation
+# (§1's table cites crate-relative paths that way), but a finding that only has one has lost the
+# line-numbered half of its citation.
+build_fixture
+sed -i '/^- \*\*G0\.1 — /s| Cita `src/lib.rs:1`.| Cita `src/lib.rs`.|' "$DOC"
+expect_exit "a finding whose only citation is a bare path fails" 1 gate
+expect_contains "a bare path alone is reported as citation" "$WORK/err" \
+  "citation  G0.1  \`src/lib.rs\` is a bare path, not a \`path:line\` citation"
+expect_err_lines "a bare path alone is the only defect" 2
+
+# It does not mask a line defect either: with several citations where only the bare one resolves, the
+# numbered one keeps firing its own `line`/`citation` defect and no second defect is added.
+build_fixture
+sed -i '/^- \*\*G0\.1 — /s|`src/lib.rs:1`|`src/lib.rs` y `src/lib.rs:99`|' "$DOC"
+expect_exit "a bare path does not mask an out-of-range line" 1 gate
+expect_contains "the out-of-range line still fires" "$WORK/err" \
+  "line  G0.1  \`src/lib.rs:99\` line 99 is past EOF (the file has 3 lines)"
+expect_err_lines "the out-of-range line is the only defect" 2
+
 build_fixture
 sed -i '/^- \*\*G0\.1 — /s|`src/lib.rs:1`|`src/lib.rs:0`|' "$DOC"
 expect_exit "line 0 fails" 1 gate
