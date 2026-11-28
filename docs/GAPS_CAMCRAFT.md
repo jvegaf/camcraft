@@ -232,10 +232,11 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   `NonCopperClear(NonCopperClearParams)` | `Cutout(CutoutParams)` | `Paint(PaintParams)` |
   `Drilling(DrillingParams)` | `Panelize(PanelizeParams)`
   (`src-tauri/crates/cam-model/src/lib.rs:523`), con los structs de parámetros en `:421`, `:439`,
-  `:460`, `:477`, `:494` y `:505`. Las variantes de mecanizado general se fueron con el dominio de
-  madera en la [tarea 039](../odd/tasks/039-wood-out-sweep.md), que también retiró el crate
-  `cam-toolpath` (`fdb87cf`), y la generación de G-code con selección de preprocesador existe en
-  `cam-post` (`cam-cli postp`). Lo que resta del hallazgo no es el modelo sino el ejecutor: isolation y
+  `:460`, `:477`, `:494` y `:505`. Las variantes de mecanizado general se fueron en dos pasos: la
+  [tarea 039](../odd/tasks/039-wood-out-sweep.md) retiró el crate `cam-toolpath` con `fdb87cf` y
+  `68b9841` reemplazó el enum el mismo día («five PCB operations replace the eleven machining ones»);
+  la generación de G-code con selección de preprocesador existe en `cam-post` (`cam-cli postp`).
+  Lo que resta del hallazgo no es el modelo sino el ejecutor: isolation y
   NCC lo tienen; `Paint` y `Panelize` siguen siendo parámetros sin ejecutor, y el tramo parcial de NCC
   es E4.1–E4.6 (F4). Esa ausencia está registrada como E7.1–E7.4 en
   [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
@@ -731,8 +732,8 @@ cercanía, `3f1a524` y `b324e3c`), G3.6 (tabs y mouse-bites, `487a020` y `dc3196
 [tarea 075](../odd/tasks/075-e6-5-shortcuts-save.md)), G6.1 (CI, `65d1499`) y G6.2 (benches con
 baseline, `cfb7feb` y `8d0ad9d`). Las otras tres las cerró una decisión o un barrido, no una cifra:
 G2.1 (`EntityKind` llegó a `Contour`/`Drill`/`Slot` con `2c29e36`, el tope de D3 —alcanzado, no
-excedido—), G2.2 (`Operation` es de operaciones PCB desde la [tarea 039](../odd/tasks/039-wood-out-sweep.md),
-`fdb87cf`) y G2.4 (schema `camcraft/document@1` y rechazo de `c2d`, `7aeba69`, D3). Los cuatro que
+excedido—), G2.2 (`Operation` pasó a operaciones PCB con `68b9841`) y G2.4 (schema
+`camcraft/document@1` y rechazo de `c2d`, `7aeba69`, D3). Los cuatro que
 nunca tuvieron fila son G1.4, G3.5, G4.4 y G2.4: no salieron de ningún lado, porque no estaban. El
 costo de una
 cuarta variante de `EntityKind` —**140** sitios en **41** archivos
