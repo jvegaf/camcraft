@@ -108,3 +108,5 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 108 | [cam-command-surface](108-cam-command-surface.md)                                   | delivered                | 2026-11-27 | `b14594b`     |
 | 109 | [english-only-ui](109-english-only-ui.md)                                           | delivered                | 2026-11-27 | `3a7483d`     |
 | 110 | [gaps-resurvey](110-gaps-resurvey.md)                                               | open                     | 2026-11-28 | —             |
+| 111 | [gaps-states-gate](111-gaps-states-gate.md)                                         | open                     | 2026-11-28 | —             |
+| 112 | [ncc-performance-regression](112-ncc-performance-regression.md)                     | open                     | 2026-11-28 | —             |
