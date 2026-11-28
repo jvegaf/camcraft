@@ -1469,9 +1469,8 @@ fn check_layers(document: &Document) -> Result<(), ModelError> {
       }
     }
     // Drill layers normally hold drill/slot entities. Legacy documents may still contain
-    // contour geometry in drill layers (e.g. imported holes represented as circles), so
-    // validation accepts them for backward compatibility.
-    let _ = (layer, matches!(layer.role, LayerRole::Drill));
+    // contour geometry in drill layers (e.g. imported holes represented as circles), so no
+    // drill-layer shape rule is enforced and they stay accepted for backward compatibility.
   }
   Ok(())
 }
