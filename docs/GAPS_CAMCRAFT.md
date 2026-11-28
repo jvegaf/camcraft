@@ -10,48 +10,81 @@ exige el [Plan de camcraft](old/Plan%20de%20camcraft.md), usando la lógica extr
 **diagnóstico**: las decisiones de arquitectura que se derivan están asentadas en §6 y el plan
 ejecutable con roadmap vive en [ROADMAP_CAMCRAFT.md](ROADMAP_CAMCRAFT.md).
 
-**Método.** Relevamiento read-only sobre el workspace (16 crates, ≈58k líneas en `src/`, ≈124k con
-tests), lectura dirigida de `Cargo.toml` y de los módulos núcleo, y verificación cruzada por `grep`
-de las ausencias que este documento afirma. Toda afirmación lleva `path:line`. Lo que no se pudo
-verificar en fuente está marcado **INFERIDO** o **A VERIFICAR**.
+**Método.** Relevamiento read-only sobre el workspace: lectura dirigida de `Cargo.toml` y de los
+módulos núcleo, y verificación cruzada por `grep` de las ausencias que este documento afirma. Toda
+afirmación lleva `path:line`. Lo que no se pudo verificar en fuente está marcado **INFERIDO** o
+**A VERIFICAR**.
 
-**Fecha del relevamiento.** 2026-05-09, estado del worktree tal cual (sin commit de este documento).
+**Dos mediciones, no una.** El relevamiento original es **historia de 2026-05-09**: midió «16 crates,
+≈58k líneas en `src/`, ≈124k con tests» y esas cifras describen aquel árbol, no este. La medición
+vigente es de **2026-11-28**, y cada número lleva su comando para que otro lo repita:
+
+- `find src-tauri/crates -maxdepth 1 -mindepth 1 -type d | wc -l` → **17** crates hoy (más el paquete
+  Tauri `src-tauri/`), frente a los 16 del relevamiento viejo: salieron `cam-toolpath` y `cam-program`
+  (`fdb87cf`, [tarea 039](../odd/tasks/039-wood-out-sweep.md)) y entraron `cam-ops`, `cam-gerber` y
+  `cam-excellon`.
+- `find src-tauri/crates/*/src -name '*.rs' -type f -exec cat {} + | wc -l` → **57.786** líneas en `src/`.
+- `find src-tauri/crates -name '*.rs' -type f -exec cat {} + | wc -l` → **107.014** líneas contando
+  tests, benches incluidos (el «≈124k» de 2026-05-09 no es comparable: es de aquel árbol).
+
+**Fecha del relevamiento.** La tabla del §1 y los conteos de `#[test]` de abajo son la medición de
+**2026-11-28**. La de 2026-05-09 queda arriba, fechada, como historia: no se refresca en silencio.
 
 ---
 
 ## 1. Inventario del estado actual
 
-Nota: la tabla mide el workspace **antes del giro a PCB**, no el árbol actual: `cam-toolpath` y
-`cam-program` los retiró la [tarea 039](../odd/tasks/039-wood-out-sweep.md); hoy `.cmc` y `camcraft/document@1`.
+Medición de **2026-11-28** sobre `src-tauri/crates/`: **17 crates**, **57.786** líneas en `src/`. El LOC
+de cada fila es el de `find src-tauri/crates/<crate>/src -name '*.rs' -type f -exec cat {} + | wc -l`,
+y el rol se verificó leyendo el `lib.rs` del crate que lo declara. La cifra «16 crates» del §Método de
+2026-05-09 no describe este árbol: las dos filas que ya no aplican están al pie de la tabla.
 
-| Crate          | LOC `src/` | Rol verificado                                                                                                     |
-| -------------- | ---------: | ------------------------------------------------------------------------------------------------------------------ |
-| `cam-geom`     |      9.227 | Kernel geométrico propio: `Contour`, `Region`, `Arc`, offset, normalización, medial axis                            |
-| `cam-import`   |      7.363 | DXF / SVG / PDF / EPS / PNG → `Contour` en mm + `ImportReport` de fidelidad                                        |
-| `cam-toolpath` |      3.459 | Estrategias: profile, pocket, drill, chamfer, engrave, fluting, inlay, thread, vcarve, moulding                    |
-| `cam-ui`       |     19.061 | Shell egui: capas, ribbon, canvas 2D/3D, editor de estrategia, librería de herramientas, script, ayuda             |
-| `cam-cli`      |      5.293 | 15 subcomandos headless con contrato de exit codes                                                                 |
-| `cam-store`    |      2.516 | `.c2d` (ZIP + `document.json`) y librería de herramientas SQLite con escalera de migraciones                       |
-| `cam-sim`      |      2.506 | Simulación por heightfield, remoción de material, `target_for`/`deviations` (gouge/uncut)                          |
-| `cam-model`    |      2.424 | Documento `c2d/document@2` obsoleto; hoy `camcraft/document@1`: job, capas, entidades, toolpaths, operaciones       |
-| `cam-post`     |      1.176 | Parser de `.pp` data-driven + emisor de G-code, golden tests byte a byte                                           |
-| `cam-view`     |        993 | Escena 2D/3D, cámara, mallas, picking (backend-agnóstico)                                                          |
-| `cam-program`  |        652 | Une documento + herramienta + estrategia → `MoveStream`                                                            |
-| `cam-export`   |        650 | DXF (AC1015) y SVG, deterministas                                                                                  |
-| `cam-desktop`  |        377 | Host eframe + diálogos nativos                                                                                     |
-| `cam-move`     |        311 | `Move::{Rapid,Feed,Arc,Helix,Retract}`, `Segment`, `MoveStream`                                                    |
-| `cam-units`    |        228 | mm interno, conversión solo en frontera                                                                            |
-| `cam-app`      |      1.880 | `AppState`, `Command`, undo por snapshot, selección, cámara                                                        |
+| Crate          | LOC `src/` | Rol verificado (fuente)                                                                                                            | Estado                 |
+| -------------- | ---------: | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `cam-ui`       |     20.958 | Shell egui: paneles, canvas 2D/3D, input wiring; `handle_action` es el único punto que toca `AppState` (`src/lib.rs:1-9`)          | sigue siendo cierto    |
+| `cam-geom`     |      7.780 | Kernel 2D: `Contour`, `Region`, `Arc`, chaining, offset y booleanas; mm `f64` y tolerancia explícita (`src/lib.rs:1-11`)           | sigue siendo cierto    |
+| `cam-ops`      |      4.833 | Operaciones de mecanizado rescatadas de `cam-toolpath`: `follow`/profile, `peck`/drill, `rings`/pocket, más `isolation` y `ncc` (`src/lib.rs:1-4`) | cambió de forma |
+| `cam-import`   |      4.484 | DXF/SVG → `Contour` mm + `ImportReport`; `folder` arma documento desde Gerber/Excellon; CSV de partes (`src/lib.rs:16-26`)          | cambió de forma        |
+| `cam-cli`      |      4.246 | 16 subcomandos headless con contrato de exit codes (`src/lib.rs:230-245`)                                                          | cambió de forma        |
+| `cam-store`    |      2.554 | `.cmc` (ZIP + `document.json`) y librería de herramientas SQLite con escalera de migraciones (`src/lib.rs:3-7`)                     | cambió de forma        |
+| `cam-gerber`   |      2.256 | Lector Gerber RS-274X del dialecto que escribe KiCad: header, formato, aperturas, macros (`src/lib.rs:1-4`)                         | cambió de forma        |
+| `cam-model`    |      2.071 | Documento `camcraft/document@1`: job, capas, entidades, toolpaths, operaciones (`src/lib.rs:27`)                                    | sigue siendo cierto    |
+| `cam-app`      |      1.978 | `AppState`, `Command`, undo por snapshot acotado, selección (`src/lib.rs:1-12`)                                                     | sigue siendo cierto    |
+| `cam-export`   |      1.371 | DXF (AC1015), SVG, y además Gerber/Excellon, deterministas (`src/lib.rs:1-12`, `src/gerber.rs`, `src/excellon.rs`)                  | cambió de forma        |
+| `cam-post`     |      1.347 | Parser de `.pp` data-driven + emisor de G-code, con emisión fijada contra `tests/fixtures` (`src/lib.rs:1-11`)                     | sigue siendo cierto    |
+| `cam-sim`      |      1.150 | Simulación por heightfield, remoción de material, `target_for`/`deviations` (gouge/uncut) (`src/target.rs:151`, `:165`)            | sigue siendo cierto    |
+| `cam-view`     |      1.097 | Escena 2D/3D, cámara, mallas, picking (backend-agnóstico) (`src/lib.rs:1-12`)                                                       | sigue siendo cierto    |
+| `cam-desktop`  |        619 | Host eframe + diálogos nativos `rfd` (`Cargo.toml:16-17`); se verifica compilando porque necesita display (`src/main.rs:1-8`)     | sigue siendo cierto    |
+| `cam-excellon` |        503 | Parser Excellon: tabla de herramientas, coordenadas y ranuras, en mm (`src/lib.rs:1-10`)                                           | cambió de forma        |
+| `cam-move`     |        311 | `Move::{Rapid,Feed,Arc,Helix,Retract}`, `Segment`, `MoveStream` (`src/lib.rs:1-6`)                                                 | sigue siendo cierto    |
+| `cam-units`    |        228 | mm interno, conversión solo en frontera (`src/lib.rs:1-12`)                                                                        | sigue siendo cierto    |
 
-**Dependencias externas del workspace** (`Cargo.toml:27-57`): `serde`, `serde_json`, `thiserror`,
-`zip`, `rusqlite`, `flate2`, `proptest`, `egui`/`eframe` 0.37, `rfd`. **No hay** ningún crate de
-geometría (`geo`, `i_overlay`, `clipper2`, `kurbo`, `lyon`, `cavalier_contours`, `parry`), **ni**
-`rayon`, **ni** índice espacial (`rstar`, `kdtree`). Verificado por `grep` sobre todos los
-`Cargo.toml` y sobre `crates/`: cero coincidencias.
+**Filas de 2026-05-09 que ya no aplican.** `cam-toolpath` (3.459 líneas entonces) y `cam-program`
+(652) no existen hoy en `src-tauri/crates/`: los retiró `fdb87cf`, el cuarto corte del borrado de la
+[tarea 039](../odd/tasks/039-wood-out-sweep.md) (L21), que dejó su parte útil a `cam-ops`. Por eso el
+conteo pasó de 16 a 17: −2 crates retirados, +3 creados (`cam-ops`, `cam-gerber`, `cam-excellon`).
 
-**Testing:** ≈1.687 atributos `#[test]` en `crates/`. **No hay** `benches/`, **no hay**
-`.github/workflows/`, **no hay** corpus de paridad. El gate es `scripts/check.sh` (fmt + clippy +
-test) invocado desde `justfile:10-37`.
+**Dependencias externas del workspace** (`Cargo.toml:31-58`): `serde`, `serde_json`, `thiserror` 2,
+`zip` 2, `rusqlite` 0.32, `proptest` 1, `egui`/`eframe` 0.37, `rfd` 0.15, `criterion` 0.5, `rayon` 1.
+**No hay** ningún crate de geometría (`geo`, `i_overlay`, `clipper2`, `kurbo`, `lyon`,
+`cavalier_contours`, `parry`), **ni** índice espacial (`rstar`, `kdtree`): verificado con
+`grep -rnE '^(geo|i_overlay|clipper2|kurbo|lyon|cavalier_contours|parry|rstar|kdtree)[[:space:]]*=' --include=Cargo.toml .`
+sobre todo el repositorio, cero coincidencias. Dos afirmaciones de 2026-05-09 ya no aplican: **sí hay**
+`rayon` (`Cargo.toml:58`, usado en `src-tauri/crates/cam-ops/Cargo.toml:16`) y `flate2` salió del
+workspace en `579194b` (2026-11-24), que también sumó `criterion` para los benches.
+
+**Testing:** `grep -rn '#\[test\]' src-tauri/crates --include='*.rs' | wc -l` → **1.395** atributos
+`#[test]` (el «≈1.687» de 2026-05-09 ya no mide este árbol). Las tres ausencias que el relevamiento
+viejo afirmaba hoy son **«ya no aplica»**, cada una con su commit: **sí hay** `benches/`
+(`src-tauri/crates/cam-geom/benches/kernel.rs`, `src-tauri/crates/cam-ops/benches/`, con baselines
+criterion commiteados; `cfb7feb`, 2026-11-13), **sí hay** CI (`.github/workflows/ci.yml`; `65d1499`,
+2026-11-13) y **sí hay** corpus de paridad (`fixtures/corpus/` con seis tableros, `parity.json` y
+provenance; `1e7cb07`, 2026-11-13, más el arnés `scripts/parity/run.sh`). Hallazgo del barrido, no
+corregido acá: ese arnés quedó apuntando a la ruta previa a la migración —
+`scripts/parity/measure/Cargo.toml:10-12` declara `path = "../../../crates/cam-*"` y no existe
+`crates/` en la raíz (los crates viven en `src-tauri/crates/`). El gate local sigue siendo
+`scripts/check.sh` (fmt + clippy + test), invocado desde `justfile:11-12`, y hoy se le suma el gate
+documental `scripts/check-docs.sh` (`justfile:14-15`).
 
 ---
 
