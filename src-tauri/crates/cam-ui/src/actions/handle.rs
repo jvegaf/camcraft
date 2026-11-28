@@ -27,15 +27,15 @@ const EMPTY_SAVE_PATH: &str =
   "a save needs a file to write, and this path is empty — use Save As to name one, and no save writes \
    into the directory the window was started from";
 
-/// What a program generation to an empty path answers.
-///
-/// An empty path is not a file name, so the refusal comes before any filesystem call: the writer would
-/// otherwise compose its temporary sibling in the directory the window was started from.
-/// What a post-processor choice with an empty path answers.
-/// What a program or a post-processor answers from an entry point that holds no shell.
+/// What a post-processor choice answers from an entry point that holds no shell.
 ///
 /// The post-processor travels with the window, like the archive entries a save refuses to write without
-/// ([`NO_SHELL_FOR_SAVE`]): a program written from a bare handler would be written in a dialect nobody chose.
+/// ([`NO_SHELL_FOR_SAVE`]): a program written from a bare handler would be written in a dialect nobody chose,
+/// and a choice made there would land in a window that does not exist.
+const NO_SHELL_FOR_POST: &str =
+  "a post-processor is chosen for the window that holds it, and this entry point has no shell — choose it \
+   through Shell::apply_action";
+
 /// What an export or an import of the tool library answers from an entry point that holds no shell.
 ///
 /// The library travels with the window for the same reason the post-processor does: a bare handler holds no
@@ -267,6 +267,15 @@ pub(crate) fn handle_action_with_file(
     UiAction::ExportTools { .. } | UiAction::ImportTools { .. } => {
       Err(NO_SHELL_FOR_TOOLS.to_owned())
     }
+    // The post-processor's intent is that same question in the dialect's own file: ask the host for one and
+    // change nothing while asking (113 T2).
+    UiAction::RequestPost => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    // And its answer belongs to the window: the post is shell state, so a bare handler has nowhere to put the
+    // choice and says so instead of dropping it (S8).
+    UiAction::SetPost { .. } => Err(NO_SHELL_FOR_POST.to_owned()),
     UiAction::SetJob {
       width,
       height,

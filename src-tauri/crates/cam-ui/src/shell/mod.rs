@@ -162,9 +162,15 @@ pub struct Shell {
   /// A program is only defined together with the dialect it is written in, and the dialect is a choice:
   /// `cam-cli emit` takes it as `--post`. No document can carry that choice in a way a screen could reach —
   /// `Document.postp` names a post-processor but nothing in the workspace writes it (M13 L4) — so the choice
-  /// is session state, exactly like [`Self::document_path`]: chosen once with the app bar's `Post…`, applied
+  /// is window state, exactly like [`Self::document_path`]: chosen with the app bar's `Post…`, applied
   /// to every program this window writes. `None` is not "a default post": with no post the program is
   /// refused by name, because guessing a dialect would be writing somebody else's G-code.
+  ///
+  /// It is **per document**: [`UiAction::OpenFile`](crate::UiAction::OpenFile) and
+  /// [`UiAction::NewProject`](crate::UiAction::NewProject) clear it beside the preview and the material
+  /// drafts, because a dialect chosen for one drawing is a choice about that drawing and not a default for
+  /// the next one. [`Self::set_post`] and [`Self::clear_post`] are the only writers; the first one's caller is
+  /// the app bar's picker ([`UiAction::SetPost`](crate::UiAction::SetPost), 113 T2).
   post: Option<(String, String)>,
   /// When the file behind the drawing was last written, as the filesystem reports it.
   ///
@@ -646,6 +652,15 @@ impl Shell {
       .and_then(|path| path.file_name())
       .map(|name| name.to_string_lossy().into_owned())
       .unwrap_or_else(|| "untitled.cmc".to_owned())
+  }
+
+  /// The file label of the post-processor this window writes programs in, once one was chosen.
+  ///
+  /// `None` is the app bar's `Post…`: no post has been picked, so a program is refused by name rather than
+  /// written in a guessed dialect. The label is the file's own name and not its path, because it is what the
+  /// bar paints and what a refusal names — the path is the host's and the shell keeps no handle to it.
+  pub fn post_name(&self) -> Option<&str> {
+    self.post.as_ref().map(|(name, _)| name.as_str())
   }
 
   /// Hand the 3D panel a program to preview: the stock it cuts, the program itself, and the stock box.

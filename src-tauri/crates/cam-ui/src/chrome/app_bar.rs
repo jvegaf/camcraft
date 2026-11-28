@@ -4,7 +4,7 @@ use egui::{Align, Layout, RichText};
 use crate::help::Command;
 use crate::icons::Icon;
 use crate::theme::{self, Metrics, Role, Theme};
-use crate::{Shell, ShellOutput};
+use crate::{Shell, ShellOutput, UiAction};
 
 use super::paint::{
   command_icon, icon_button, paint_mark, rect_report, segmented_cells, Segmented,
@@ -156,16 +156,23 @@ impl Shell {
               "Generate G-code".to_owned(),
               (generate.rect.center().x, generate.rect.center().y),
             ));
-            let post: Option<String> = None;
-            let post_label = match &post {
+            // The post-processor's picker: the label is the choice in hand and the press is an intent, because a
+            // dialog is the host's (S5). The file comes back as `UiAction::SetPost` with the path a person chose
+            // (113 T2), so nothing here invents or derives a path.
+            let post_label = match self.post_name() {
               Some(name) => format!("Post: {name}"),
               None => "Post…".to_owned(),
             };
-            let choose = ui.button(RichText::new(post_label).size(theme::SMALL));
+            let choose = ui
+              .button(RichText::new(post_label).size(theme::SMALL))
+              .on_hover_text("Choose the post-processor file programs are written in");
             output.drawn.app_bar_hits.push((
               "Post".to_owned(),
               (choose.rect.center().x, choose.rect.center().y),
             ));
+            if choose.clicked() {
+              output.actions.push(UiAction::RequestPost);
+            }
             if icon_button(
               ui,
               &palette,

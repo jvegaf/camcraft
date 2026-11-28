@@ -286,6 +286,27 @@ pub enum UiAction {
   ///
   /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one.
   RequestImportTools,
+  /// Ask the host for the post-processor file this window writes programs in (113 T2).
+  ///
+  /// An intent and nothing more, for the reason [`UiAction::RequestOpenFile`] is one: a dialog is the host's,
+  /// and the shell must stay testable without a display. This is the app bar's `Post…`, which had no command
+  /// behind it and named nothing.
+  RequestPost,
+  /// Read `path` as a post-processor and make it this window's, or refuse and change nothing (113 T2).
+  ///
+  /// This is the answer to [`UiAction::RequestPost`], exactly as [`UiAction::OpenFile`] answers
+  /// [`UiAction::RequestOpenFile`]: the host asks the platform's open dialog and applies this with the path it
+  /// returned, so the path is chosen by a person and never fabricated or derived by the UI (S5).
+  ///
+  /// The file is read and [`cam_post::parse_post`] decides whether it is a post-processor at all **before**
+  /// anything is stored, so a text this build cannot use is refused in a sentence naming the file and the post
+  /// the window already held stays exactly as it was (S8). Only the file's own label and its source text are
+  /// kept (see [`Shell::set_post`](crate::Shell::set_post)): re-parsing at use is what keeps a program in the
+  /// text that is in hand rather than in a file that may have changed since.
+  SetPost {
+    /// The post-processor file the host's dialog returned.
+    path: PathBuf,
+  },
 }
 
 impl UiAction {
@@ -329,6 +350,7 @@ impl UiAction {
       Self::DeleteToolpath { .. } => "delete toolpath",
       Self::ExportTools { .. } | Self::RequestExportTools => "export tools",
       Self::ImportTools { .. } | Self::RequestImportTools => "import tools",
+      Self::RequestPost | Self::SetPost { .. } => "choose post-processor",
     }
   }
 }

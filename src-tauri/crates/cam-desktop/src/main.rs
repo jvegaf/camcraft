@@ -309,6 +309,18 @@ impl eframe::App for Editor {
         // host's business: the posting, the write and the sentence all happen in `apply_action`, where a
         // refusal is a message rather than a silent no-op.
 
+        // The post-processor's picker is the same question one step earlier: the shell names the choice it is
+        // holding and asks for a file, the platform's dialog is the only source of a path (S5), and the answer
+        // re-enters the shell as `SetPost` so the read, the parse and the refusal stay in one place (113 T2).
+        UiAction::RequestPost => match rfd::FileDialog::new()
+          .add_filter("post-processor", &["pp"])
+          .pick_file()
+        {
+          Some(path) => UiAction::SetPost { path },
+          // Cancelled: no action, no message, the post in hand untouched.
+          None => continue,
+        },
+
         // The tool library's export is a save dialog in the format the store writes, and it starts from
         // `tools.json` because that is the name a library file keeps wherever it is put down. Everything after
         // the path — the JSON, the refusal, the report — stays in `apply_action` (tool-library-editor S11).

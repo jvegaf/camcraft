@@ -20,6 +20,8 @@ mod material;
 mod palette;
 #[path = "shell/panels.rs"]
 mod panels;
+#[path = "shell/post.rs"]
+mod post;
 #[path = "shell/rulers.rs"]
 mod rulers;
 #[path = "shell/save.rs"]

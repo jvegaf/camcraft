@@ -5,7 +5,7 @@ use cam_geom::{Contour, Point2, Vec2};
 use cam_model::Job;
 use cam_units::Length;
 
-use crate::actions::{handle_action_with_file, DocumentFileState};
+use crate::actions::{file_label, handle_action_with_file, DocumentFileState};
 use crate::{ActionReport, Shell, UiAction};
 
 use super::default_material_size;
@@ -49,6 +49,8 @@ impl Shell {
         self.material_size = default_material_size();
         self.clear_preview();
         self.auto_frame = true;
+        // A new project is a new drawing, so the dialect chosen for the last one goes with it (113 T2).
+        self.clear_post();
         Ok(ActionReport {
           label: action.label(),
           ..ActionReport::default()
@@ -63,6 +65,10 @@ impl Shell {
       // the shared handler has none to write out and no snapshot to replace (S11).
       UiAction::ExportTools { path } => self.export_tools(action.label(), path),
       UiAction::ImportTools { path } => self.import_tools(action.label(), path),
+      // The post-processor's answer is the window's for the same reason: the post is shell state, so the shared
+      // handler has nowhere to put the choice and refuses it by name (113 T2). The file it names is read and
+      // validated here, before anything is stored (S8).
+      UiAction::SetPost { path } => self.choose_post(path),
       _ => handle_action_with_file(
         app,
         action,
@@ -102,6 +108,9 @@ impl Shell {
       self.clear_preview();
       self.material_size = default_material_size();
       self.auto_frame = true;
+      // The post-processor is a choice about the drawing it was chosen for, not a setting of the window: a
+      // dialect picked for document A must not silently write document B's program (113 T2, S8).
+      self.clear_post();
     }
     // A project exists from the moment a document was created or read (start-screen S2): the modal closes and the
     // canvas starts drawing the stock the drawing is cut from. `ImportFile` does not open one — an import lands in a
@@ -269,8 +278,42 @@ impl Shell {
   pub fn clear_post(&mut self) {
     self.post = None;
   }
+
+  /// Read `path` as a post-processor and make it this window's, or refuse and change nothing (113 T2, S8).
+  ///
+  /// The answer to [`UiAction::RequestPost`](crate::UiAction::RequestPost), and the host's dialog is the only
+  /// thing that produces the path (S5). The read and the parse both happen **before** anything is stored, so a
+  /// file this build cannot use leaves the post exactly as it was — `None` if the window had none — instead of
+  /// half-applying a dialect. [`cam_post::parse_post`] is the same rule the CLI applies, and the refusal names
+  /// the file by its label so the sentence is about the file the operator picked.
+  ///
+  /// [`Self::set_post`] keeps the source text and not the path: a session can outlive the file it came from,
+  /// and the text in hand is what a program is written in.
+  fn choose_post(&mut self, path: &Path) -> Result<ActionReport, String> {
+    if path.as_os_str().is_empty() {
+      return Err(EMPTY_POST_PATH.to_owned());
+    }
+    let name = file_label(path);
+    let source = std::fs::read_to_string(path)
+      .map_err(|error| format!("{name} could not be read as a post-processor: {error}"))?;
+    cam_post::parse_post(&source)
+      .map_err(|error| format!("{name} is not a post-processor: {error}"))?;
+    self.set_post(name.clone(), source);
+    Ok(ActionReport {
+      label: "choose post-processor",
+      note: Some(name),
+      ..ActionReport::default()
+    })
+  }
 }
 const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import first";
+
+/// What a post-processor choice with an empty path answers.
+///
+/// An empty path names no file, so the refusal comes before the read: nothing is opened and the post the
+/// window holds stays exactly as it was.
+const EMPTY_POST_PATH: &str =
+  "a post-processor needs a file to read, and this path is empty — choose one with Post…";
 
 /// Write one parse into `app` as an undoable replacement, and report what arrived.
 ///
