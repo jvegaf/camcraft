@@ -541,7 +541,17 @@ impl ToolResolver for TableResolver {
 ///
 /// The file write is whole or not at all, the way `export` writes: a truncated `.nc` beside a live
 /// job reads as a program that runs, and it would run short.
-fn emit_program(
+///
+/// Reading the post is `cam_post::parse_post` and emitting is `cam_post::emit`, so nothing about a
+/// dialect lives here. `cutout` and `program` call it, and the library exports it as
+/// [`crate::emit_program`] so a window can emit the same program without an emitter of its own; its
+/// refusals keep the crate's [`Failure`] codes, so a caller needs no error mapping.
+///
+/// It is not yet the crate's only emitter: `isolate` and `ncc` each still carry a private
+/// `emit_program` copy, and `drill` reads its post and calls `cam_post::emit` inline. Those copies
+/// also name their temporary file differently from this one, so folding them in is deferred work of
+/// its own, not something this function has already done.
+pub fn emit_program(
   stream: &MoveStream,
   post_path: &Path,
   out: Option<&Path>,

@@ -25,6 +25,19 @@ pub mod script;
 // binary. Command implementations moved to `commands/*`; shared helpers remain here.
 pub use commands::validate::report as validate_report;
 
+/// Emit a `cam_move::MoveStream` as G-code through the post-processor at `post_path`, to `out` or to
+/// stdout.
+///
+/// Reading the post is `cam_post::parse_post` and emitting is `cam_post::emit`; the refusals keep
+/// this crate's [`Failure`] codes, so a caller needs no new error mapping. It is exported here so a
+/// window (`cam-ui`) can emit through the same function `cam-cli cutout` and `cam-cli program` call,
+/// without a second emitter and without reaching into [`commands`].
+///
+/// Three commands still hold emission code of their own: `commands::isolate` and `commands::ncc`
+/// each keep a private `emit_program` copy, and `commands::drill` reads its post and calls
+/// `cam_post::emit` inline. They are not unified with this function yet; that is deferred work.
+pub use commands::cutout::emit_program;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
