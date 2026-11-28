@@ -90,232 +90,329 @@ documental `scripts/check-docs.sh` (`justfile:14-15`).
 
 ## 2. Veredicto corto
 
-Lo que hay es **un CAM 2.5D de mecanizado general con un kernel geométrico serio y propio**, no un
-esqueleto de PCB CAM. La consecuencia más importante: **el proyecto no parte de cero en toolpaths ni
-en modelo de documento, pero sí parte casi de cero en todo lo que hace PCB a PCB** — importación
-Gerber/Excellon, semántica de cobre/aperturas, y el motor de operaciones booleanas sobre el que se
-apoyan isolation y NCC.
+Re-medido el 2026-11-28: lo que hay es **un CAM 2.5D con el núcleo de PCB ya montado sobre un kernel
+geométrico serio y propio**, no un esqueleto de PCB CAM. El proyecto **no parte de cero en nada de lo
+que hace PCB a PCB** —el lector Gerber evalúa la imagen de una capa sobre el motor de conjuntos (G1.1),
+el Excellon se lee y el drill sale de su tabla de herramientas (G1.2, G3.4), isolation y NCC tienen
+ejecutor y comando (G3.1, G3.3), el cutout tiene tabs y mouse-bites (G3.6), el travel se desvía de las
+`exc_areas` (G4.2), los escritores Gerber y Excellon existen (G4.3), y el corpus, el arnés de paridad,
+los benches y el CI ya son gate (G1.4, G6.1-G6.3)—. Lo que queda no es el motor sino su **modelo y su
+superficie**: la semántica Gerber no tiene IR de importación (G1.3), la placa no tiene stackup ni
+espejado de bottom (G2.3), `Paint` y `Panelize` siguen siendo parámetros sin ejecutor (G3.7), no hay
+autolevelling (G4.1) y la UI no genera G-code (G5.2); más dos bordes del kernel —el rechazo de
+`Region::offset` (G3.2) y las primitivas de conjunto que faltan (G0.2)— y el supuesto de una sola placa
+por documento.
 
-| Veredicto               | Elementos                                                                                                                                                                                                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Reutilizar tal cual** | `cam-units`, `cam-move` (contrato de stream), `cam-post` (parser/emisor `.pp` + golden tests), `cam-app` (undo/commands), `cam-sim` (oráculo de aceptación), `cam-cli` (contrato headless y exit codes), y las primitivas de `cam-geom` como base                                                                        |
-| **Adaptar**             | `cam-import` → sumar Gerber/Excellon sobre el mismo contrato `ImportReport`; `cam-model` → nueva versión de schema con entidades/capas PCB; `cam-toolpath` → el `pocket` por anillos de offset es la semilla de isolation; `cam-export` → sumar escritores Gerber/Excellon; `cam-ui` → capas + formularios por operación |
-| **Construir**           | Motor booleano de regiones (∪/∩/∖); operaciones isolation, NCC, paint, panelize; drill desde tablas Excellon; autolevelling; corpus y arnés de paridad; benchmarks                                                                                                                                                       |
-| **Riesgo de rediseño**  | Kernel de booleanas/offset; modelo de entidades (solo `Contour`); supuestos de un solo `Job`/`Frame`; performance (nada de paralelismo ni índices)                                                                                                                                                                       |
+| Veredicto               | Elementos                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Reutilizar tal cual** | `cam-units`, `cam-move` (contrato de stream), `cam-post` (parser/emisor `.pp` con tres dialectos y golden byte a byte, G4.4), `cam-app` (undo/commands), `cam-sim` y el predicado de `src-tauri/crates/cam-ops/src/penetration.rs` como oráculos, `cam-cli` (contrato headless: `isolate`, `ncc`, `drill`, `cutout`, `program`), `cam-store` (escalera de migraciones; ángulo y punta de V-bit medidos y usados, G2.5), `cam-geom` (booleanas G0.1 y `offset_contour`, que conserva arcos; el rechazo de `Region::offset` es el riesgo de abajo, G3.2), `cam-gerber` y `cam-excellon`, y los cuatro escritores de `cam-export` |
+| **Adaptar**             | `cam-import` → dar a la semántica Gerber un IR propio en vez de aplanarla a contornos (G1.3); `cam-model` → stackup de placa y espejado de bottom sobre `Board`/`Layer`, que ya existen (G2.3); `cam-ui` → formularios de paint/panelize y el «Generate G-code» que hoy es sólo un hit-target (G5.2)                                                                                                                                                                                       |
+| **Construir**           | Ejecutores de paint y panelize (G3.7); autolevelling (G4.1); índice espacial fuera de NCC y las primitivas de conjunto que faltan (G0.2, G0.3). Ya no se construyen: motor booleano (G0.1), isolation (G3.1), NCC (G3.3), drill Excellon (G3.4), ordenamiento por cercanía (G3.5), tabs (G3.6), ruteo de exclusiones (G4.2), escritores (G4.3), corpus y arnés (G1.4, G6.3), benches (G6.2) ni CI (G6.1)                                                                                 |
+| **Riesgo de rediseño**  | El rechazo de `Region::offset` en cobre denso (G3.2); el supuesto de un solo `Board`/`Frame` por documento (G2.3); el `EntityKind` de tres variantes con 140 sitios en 41 archivos (G2.1, el tope de D3); autolevelling como retrofit del stream (G4.1)                                                                                                                                                                                                                                   |
 
 ---
 
 ## 3. Gaps por fase del plan
 
-### Fase 0 — motor de booleanas (implícita en el plan, hoy vacía)
+### Fase 0 — motor de booleanas (implícita en el plan, hoy con motor)
 
-El plan menciona "la librería de booleanas elegida en la fase 0" pero no existe tal fase ni tal
-decisión. Es el gap **más caro de todos** y conviene tratarlo como fase propia, porque condiciona
-las fases 1 y 3.
+El plan menciona "la librería de booleanas elegida en la fase 0". Hoy el motor propio existe y está
+cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
 
-- **G0.1 — Motor booleano de regiones. CERRADO, CON UNA REAPERTURA QUE CONVIENE RECORDAR.**
-  `combine(a, b, BooleanOp, tolerance) -> Result<Combined, GeomError>` con `Union`, `Intersection` y
-  `Difference` (`crates/cam-geom/src/boolean.rs`), `Combined::Empty` como respuesta y no como error, y
-  cinco propiedades sobre pares aleatorios de regiones.
-  **Se reabrio el 2026-11-11 y no por un caso de laboratorio sino por un pad.** Construyendo el flash de
-  una apertura circular de Gerber, `combine` rechazo con "the arrangement revisits a piece" **todo**
-  circulo hecho de dos semicircunferencias que nada cortara: `dedup_pieces` agrupaba las piezas por par de
-  extremos, y las dos semicircunferencias de un mismo circulo comparten exactamente los dos puntos de
-  costura, asi que borraba una. El defecto era del motor y no del primitivo —`primitive::circle` emite
-  arcos correctos, de area pi exacta, que `normalize` deja intactos— y lo arreglo `c3c1fb0`: dos piezas
-  son la misma arista solo si son la misma curva recorrida en el mismo sentido.
-  **Lo que ningun test veia, y es la leccion:** las cinco propiedades corrian sobre estrellas de radio
-  aleatorio y tiras de 20 mm por 0,02 mm, y **ningun par era un contorno cerrado hecho solo de arcos**. Los
-  discos que ya existian se intersecaban siempre, y la interseccion corta las piezas en los puntos de
-  cruce, lo que destruye la identidad de la costura. El caso que falla es el que no corta nada: un disco
-  contenido, o una union contra la region vacia. Los generadores ahora incluyen un disco de dos arcos.
-  **Limite conocido:** un disco que **toca** desde adentro el borde de una region sin cruzarlo sigue
-  rechazandose a tolerancia 1e-9. Anotado, no disimulado.
-  **Impacto (historico):** isolation multipasada, union de cobre, resolucion de polaridad dark/clear, NCC
-  con rest-machining y merge de capas son todos operaciones de conjunto, y hoy todas tienen motor.
-- **G0.2 — Faltan primitivas de conjunto que sí existen en cualquier kernel de referencia:**
-  self-intersection repair de contornos de entrada (`crates/cam-geom/src/region.rs:162-165` lo
-  rechaza explícitamente), clipeo contra ventana, y manejo determinista de coincidencias/overlaps
-  parciales más allá del caso especial actual (`boolean.rs:129-141`).
-- **G0.3 — Nada de indexación espacial.** Verificado por `grep`: cero `rstar`/`kdtree`/grilla en
-  `cam-geom` y `cam-model`. FlatCAM usa STRtree (`AppRTree`, `camlib.py:8504`) para hit-testing,
-  `find_polygon` y `nearest` en paint. Con placas grandes el costo pairwise no escala.
+- **G0.1 — Motor booleano de regiones. Estado: «sigue siendo cierto» (cerrado; la reapertura del
+  2026-11-11 la cerró `c3c1fb0`).**
+  `combine(a, b, BooleanOp, TolerancePolicy) -> Result<Combined, GeomError>` sigue en
+  `src-tauri/crates/cam-geom/src/boolean.rs:2265`, con `BooleanOp::{Union, Intersection, Difference}`
+  (`:1298`) y `Combined::Empty` como respuesta y no como error (`:1320`). Las propiedades sobre pares
+  aleatorios de regiones son hoy **siete** y no cinco
+  (`src-tauri/crates/cam-geom/tests/boolean_properties.rs:147`: identidad de áreas, partición,
+  conmutatividad, idempotencia, determinismo y las dos de De Morgan, con 128 casos).
+  **La reapertura del 2026-11-11 y su lección siguen en pie.** Construyendo el flash de una apertura
+  circular de Gerber, `combine` rechazaba con "the arrangement revisits a piece" **todo** círculo hecho
+  de dos semicircunferencias que nada cortara: `dedup_pieces` (`boolean.rs:2613`) agrupaba las piezas
+  por par de extremos, y las dos semicircunferencias de un mismo círculo comparten exactamente los dos
+  puntos de costura, así que borraba una. El defecto era del motor y no del primitivo, y lo arregló
+  `c3c1fb0`: dos piezas son la misma arista sólo si son la misma curva recorrida en el mismo sentido.
+  Los generadores incluyen hoy un disco de dos arcos (`tests/boolean_properties.rs:108`, `any_disc`).
+  **Límite conocido:** un disco que **toca** desde adentro el borde de una región sin cruzarlo sigue
+  rechazándose a tolerancia 1e-9. Anotado, no disimulado.
+  **Impacto (histórico):** isolation multipasada, unión de cobre, resolución de polaridad dark/clear,
+  NCC con rest-machining y merge de capas son operaciones de conjunto, y hoy todas tienen motor.
+- **G0.2 — Primitivas de conjunto que faltan. Estado: «cambió de forma».**
+  El primer tercio del hallazgo dejó de aplicar: la reparación de un contorno que se cruza a sí mismo
+  **ya no se rechaza**, se cura en el arrangement (`19fce08`, 2026-11-11): `Region::new`
+  (`src-tauri/crates/cam-geom/src/region.rs:74`) normaliza y un contorno que se cruza se corta en sus
+  propios cruces. Lo demás se re-midió: **sí hay** clipeo de una línea de raster contra la región
+  (`Region::raster_spans`, `src-tauri/crates/cam-geom/src/region_offset.rs:205`, A7), pero **no hay**
+  una operación general de clipeo contra ventana, y el manejo determinista de coincidencias y overlaps
+  parciales sigue siendo el caso especial del arrangement (`dedup_pieces`,
+  `src-tauri/crates/cam-geom/src/boolean.rs:2613`). El hallazgo es hoy un borde del kernel, no una
+  ausencia de motor.
+- **G0.3 — Indexación espacial. Estado: «cambió de forma».**
+  Dejó de ser «nada»: `cam-ops` tiene una grilla propia —`Aabb` y `SpatialGrid` con `query_aabb`,
+  `src-tauri/crates/cam-ops/src/ncc_index.rs:62`— construida para NCC por `8d0ad9d` (2026-11-21). Lo
+  que sigue siendo cierto es su **alcance**: `cam-geom` y `cam-model` no tienen índice, sigue sin
+  haber `rstar` ni `kdtree` en ningún `Cargo.toml` del workspace
+  (`grep -rn 'rstar\|kdtree' src-tauri/crates --include='*.rs' --include='Cargo.toml'` → cero), y el
+  hit-testing y el `nearest` de paint —el uso que FlatCAM le da a su STRtree, `camlib.py:8504`— no
+  pasan por la grilla. Con placas grandes el costo pairwise **fuera de NCC** no escala. (El uso del
+  STRtree de FlatCAM se cita desde `camlib.py:8504`, **fuente upstream de FlatCAM Plus que no está en
+  este árbol**; el resumen en árbol es [RUST_PORT_LOGIC.md](old/RUST_PORT_LOGIC.md).)
 
 ### Fase 1 — Importadores
 
-- **G1.1 — Parser Gerber. LECTOR CERRADO, EVALUACION PARCIAL.** `crates/cam-gerber` lee el dialecto
-  medido del proyecto real (`cc78d52`): formato y unidades, aperturas `C`/`O`/`RoundRect` —la ultima
-  redefinida como macro—, `G01`/`G02`/`G03`, `G75`, regiones `G36`/`G37`, flashes y polaridad, que desde
-  `2026335` es `Command::Polarity` en el flujo de comandos y ya no texto en `attributes`. La geometria se
-  evalua: `Gerber::image(tolerance)` construye la imagen de una capa, con material dark sumando y clear
-  restando sobre el motor de conjuntos (`c45a0f9`, `fb206c8`). Un flash de apertura circular es un
-  circulo exacto, no un poligono.
-  **Lo que falta todavia:** el trazo de un `D01` con apertura fuera de una region (el barrido de la
-  apertura a lo largo del segmento), las aperturas `O`, `RoundRect` y las que nombran una macro —eso es
-  E3b—, y un `D02` dentro de `G36`/`G37`, que en Gerber **empieza otro contorno de la misma region**. Las
-  tres se rechazan por nombre y con el indice del comando; ninguna se aproxima a otra forma.
-  Detalle de `odd/tasks/036-gerber-geometry.md`.
-- **G1.2 — No hay parser Excellon.** Mismo grep. No existe tabla de herramientas, ni slots, ni
-  manejo de ceros omitidos, ni unidades de archivo.
-- **G1.3 — El modelo de importación no soporta la semántica Gerber.** `Imported`/`ImportedLayer`
-  transportan contornos en mm y contadores de fidelidad (`cam-import/src/report.rs:4-35`), pero no
-  hay lugar para aperturas, macro de apertura, polaridad dark/clear, step & repeat ni D-code
-  semantics. Un importador Gerber necesita un IR semántico nuevo, no un parser de contornos más.
-- **G1.4 — No hay corpus ni oráculo de paridad.** Nada de comparar contra geometrías exportadas de
-  FlatCAM, que es el único criterio de aceptación real de la fase 1 en el plan.
+- **G1.1 — Parser Gerber. Estado: «cambió de forma» (lector cerrado, evaluación avanzada).**
+  `cam-gerber` lee el dialecto medido del proyecto real (`cc78d52`) y evalúa geometría:
+  `Gerber::image` (`src-tauri/crates/cam-gerber/src/lib.rs:206`) construye la imagen de una capa, con
+  material dark sumando y clear restando sobre el motor de conjuntos (`c45a0f9`, `fb206c8`), y la
+  polaridad es `Command::Polarity` en el flujo de comandos (`:165`, `Polarity` en `:97`) y no texto en
+  `attributes` (`2026335`). Se midió qué de lo que el hallazgo listaba como faltante ya está:
+  **las aperturas `O`** se construyen como flash y como trazo (`obround_region`/`obround_stroke`,
+  `:534`, `:1167`), **las que nombran una macro** se expanden en el punto del flash o a lo largo del
+  trazo (`macro_region`, `:926`, `:1156`), y **un `D02` dentro de `G36`/`G37`** cierra el contorno
+  dibujado y empieza otro de la misma región (`:264-270`). Lo que sigue faltando está medido: el trazo
+  de un `D01` **a lo largo de un arco** se rechaza (`:417`), un trazo con una plantilla que no sea `C`,
+  `O` ni una macro definida se rechaza por nombre (`:1150-1153`), y `RoundRect` no tiene constructor
+  (`grep -in 'roundrect' src-tauri/crates/cam-gerber/src/lib.rs` → cero coincidencias; cae en el
+  rechazo por nombre). Ninguna se aproxima a otra forma. Detalle de
+  [odd/tasks/036-gerber-geometry.md](../odd/tasks/036-gerber-geometry.md).
+- **G1.2 — Parser Excellon. Estado: «ya no aplica».** El crate `cam-excellon` existe y lee el archivo
+  que KiCad escribe (`a6e4d21`, 2026-11-11): tabla de herramientas (`Tool`,
+  `src-tauri/crates/cam-excellon/src/lib.rs:36`), coordenadas —incluidas las relativas, `d26427b`—,
+  ceros omitidos (`533dddc`) y ranuras `G85` con su prueba de corpus (`861d6cb`, 2026-11-14). El
+  entry point es `parse` (`:146`). El trabajo no es construir el parser sino consumirlo (G3.4).
+- **G1.3 — El modelo de importación no soporta la semántica Gerber. Estado: «sigue siendo cierto».**
+  Se re-midió y el hallazgo se sostiene: `ImportedLayer` transporta `name` y `contours` y nada más
+  (`src-tauri/crates/cam-import/src/lib.rs:93`, `:97`), e `Imported` lleva formato, capas y reporte
+  (`:102`). El importador de carpeta ya consume `cam-gerber` —`parse_gerber` llama a `cam_gerber::parse`
+  y a `image_reporting`— pero **aplana** el resultado a `Vec<EntityKind>` de contornos
+  (`src-tauri/crates/cam-import/src/folder.rs:576`, `:583`): no hay lugar para aperturas, macro de
+  apertura, polaridad dark/clear, step & repeat ni D-code semantics. Un importador Gerber con esa
+  semántica necesita un IR nuevo, no un parser de contornos más.
+- **G1.4 — Corpus y oráculo de paridad. Estado: «ya no aplica».** **Sí hay** corpus: seis tableros
+  reales con sus capas, `parity.json` y provenance (`fixtures/corpus/`, `1e7cb07`, 2026-11-13) y el
+  arnés que los mide y falla al divergir (`0061226`, `scripts/parity/run.sh`). **Sí hay** además el
+  oráculo externo que el hallazgo pedía: `scripts/parity/compare-flatcam.py` compara los goldens
+  contra lo que FlatCAM midió (`fixtures/baseline/`, tarea 059) con el `status` exacto y el área a
+  tolerancia relativa, y `scripts/parity/README.md` documenta el contrato. La advertencia de T1 sigue
+  en pie y es de infraestructura, no del hallazgo: `scripts/parity/measure/Cargo.toml:10-12` declara
+  `path = "../../../crates/cam-*"` y esa raíz ya no existe.
 - **Activo reutilizable:** el patrón `ImportReport`/`Skipped { construct, reason, location }`
-  (`cam-import/src/report.rs:24-115`) es exactamente el "informe de importación" que pide el plan
-  para Gerber/Excellon. Se hereda el diseño, no el trabajo.
+  (`src-tauri/crates/cam-import/src/report.rs:7`, `:22`) es exactamente el "informe de importación" que
+  pide el plan para Gerber y Excellon, y hoy lo llenan los dos parsers. Se hereda el diseño, no el
+  trabajo.
 
 ### Fase 2 — Modelo de datos PCB
 
-- **G2.1 — `EntityKind` con una sola variante: ya no aplica.** El relevamiento leyó el enum con
-  `Contour` como única variante (`crates/cam-model/src/lib.rs:230-236`, rango desplazado hoy). Hoy
-  es `Contour` | `Drill` | `Slot` (`src-tauri/crates/cam-model/src/lib.rs:303`), que es
-  **exactamente** el tope que fijó D3 (§6): «`EntityKind` crece como mucho con `Drill` y `Slot`»
-  —alcanzado, no excedido— y la semántica PCB vive en **metadata**, no en variantes:
-  `Layer.role: LayerRole` (`:274`, los seis roles de fabricación más keepout) y
-  `Entity.source: Provenance` (`:297`, con `#[serde(default, skip_serializing_if)]`). El tope se
-  sostiene por costo medido, no por falta de diseño: hay 142 sitios de `match` o construcción de
-  `EntityKind` —83 `Contour`, 31 `Drill`, 28 `Slot`— repartidos en 41 archivos
-  (`cam-app/src/command.rs`, `cam-import/src/folder.rs`,
-  `cam-export/src/{svg,dxf,gerber,excellon}.rs`, `cam-ui/src/view3d/program.rs`,
-  `cam-ui/src/shell/action.rs`, `cam-view/src/lib.rs` y los tests de `cam-store`, `cam-export` y
-  `cam-ui`), así que una cuarta variante es una edición de todo eso a la vez. Lo que la
-  preocupación de fondo todavía cubre no es G2.1 sino la geometría de área con agujeros para
-  isolation, NCC y paint: `Region` ya existe en el modelo y los parámetros de operación la usan
-  (`Document.exc_areas: Vec<Region>`, `:581`), y `Operation` (`:523-537`) lleva el parámetro de
-  cada operación (`IsolationParams` en `:421`, `PanelizeParams` en `:505`): isolation y NCC ya
-  tienen ejecutor (`cam_ops::isolation::isolation_moves`, `cam-ops/src/isolation.rs:638`;
-  `cam_ops::ncc::ncc_moves`, `cam-ops/src/ncc.rs:561`; alcanzables como `cam-cli isolate` y
-  `cam-cli ncc`), mientras `Paint` y `Panelize` siguen siendo structs de parámetros sin ejecutor.
-  Esa ausencia está registrada como E7.1–E7.4 y F4 en
-  [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
-- **G2.2 — `Operation` es exclusivamente de mecanizado general: ya no aplica.** El relevamiento leyó
+- **G2.1 — `EntityKind` con una sola variante: Estado: «ya no aplica».** El relevamiento leyó el enum con
+  `Contour` como única variante; hoy es `Contour` | `Drill` | `Slot`
+  (`src-tauri/crates/cam-model/src/lib.rs:303`), y las dos variantes nuevas entraron con `2c29e36`
+  (2026-11-17, «complete E1.1 board model with drill/slot entities»; E1.1 es un criterio del ROADMAP y
+  no tiene documento de tarea propio). Es **exactamente** el tope que fijó D3 (§6):
+  «`EntityKind` crece como mucho con `Drill` y `Slot`» —alcanzado, no excedido— y la semántica PCB vive
+  en **metadata**, no en variantes: `Layer.role: LayerRole` (`:274`, los seis roles de fabricación más
+  keepout) y `Entity.source: Provenance` (`:297`, con `#[serde(default, skip_serializing_if)]`). El
+  tope se sostiene por costo re-medido, no por falta de diseño:
+  `grep -rn 'EntityKind::' src-tauri/crates --include='*.rs' | wc -l` → **140** sitios
+  (82 `Contour`, 30 `Drill`, 27 `Slot`) repartidos en **41** archivos
+  (`grep -rc 'EntityKind::' src-tauri/crates --include='*.rs' | grep -v ':0' | wc -l`), así que una
+  cuarta variante es una edición de todo eso a la vez. Lo que la preocupación de fondo todavía cubre no
+  es G2.1 sino la geometría de área con agujeros para isolation, NCC y paint: `Region` ya existe en el
+  modelo y los parámetros de operación la usan (`Document.exc_areas: Vec<Region>`, `:581`), y
+  `Operation` (`:523`) lleva el parámetro de cada operación (`IsolationParams` en `:421`,
+  `PanelizeParams` en `:505`): isolation y NCC ya tienen ejecutor
+  (`cam_ops::isolation::isolation_moves`, `src-tauri/crates/cam-ops/src/isolation.rs:638`;
+  `cam_ops::ncc::ncc_moves`, `src-tauri/crates/cam-ops/src/ncc.rs:561`; alcanzables como `cam-cli
+  isolate` y `cam-cli ncc`, `src-tauri/crates/cam-cli/src/lib.rs:239`, `:240`), mientras `Paint` y
+  `Panelize` siguen siendo structs de parámetros sin ejecutor. Esa ausencia está registrada como
+  E7.1–E7.4 y F4 en [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
+- **G2.2 — `Operation` es exclusivamente de mecanizado general: Estado: «ya no aplica».** El relevamiento leyó
   el enum con `Profile, Pocket, Drilling, Chamfer, VCarve, Engrave, Fluting, Texture, Inlay, Thread,
-  Moulding` y sin ninguna operación PCB (`cam-model/src/lib.rs:845-870`, rango desplazado hoy). Hoy
-  `Operation` es `Isolation(IsolationParams)` | `NonCopperClear(NonCopperClearParams)` |
-  `Cutout(CutoutParams)` | `Paint(PaintParams)` | `Drilling(DrillingParams)` |
-  `Panelize(PanelizeParams)` (`src-tauri/crates/cam-model/src/lib.rs:523`), con los structs de
-  parámetros en `:421`, `:439`, `:460`, `:477`, `:494` y `:505`. Las variantes de mecanizado general
-  se fueron con el dominio de madera en la [tarea 039](../odd/tasks/039-wood-out-sweep.md), que
-  también retiró el crate `cam-toolpath`, y la generación de G-code con selección de preprocesador
-  existe en `cam-post` (`cam-cli postp`). Lo que resta del hallazgo no es el modelo sino el ejecutor:
-  isolation y NCC lo tienen (`cam_ops::isolation::isolation_moves`, `cam-ops/src/isolation.rs:638`;
-  `cam_ops::ncc::ncc_moves`, `cam-ops/src/ncc.rs:561`; `cam-cli isolate` y `cam-cli ncc`), mientras
-  `Paint` y `Panelize` siguen siendo parámetros sin ejecutor; el tramo parcial de NCC es E4.1–E4.6
-  (F4). Esa ausencia está registrada como E7.1–E7.4 en
+  Moulding` y sin ninguna operación PCB. Hoy `Operation` es `Isolation(IsolationParams)` |
+  `NonCopperClear(NonCopperClearParams)` | `Cutout(CutoutParams)` | `Paint(PaintParams)` |
+  `Drilling(DrillingParams)` | `Panelize(PanelizeParams)`
+  (`src-tauri/crates/cam-model/src/lib.rs:523`), con los structs de parámetros en `:421`, `:439`,
+  `:460`, `:477`, `:494` y `:505`. Las variantes de mecanizado general se fueron con el dominio de
+  madera en la [tarea 039](../odd/tasks/039-wood-out-sweep.md), que también retiró el crate
+  `cam-toolpath` (`fdb87cf`), y la generación de G-code con selección de preprocesador existe en
+  `cam-post` (`cam-cli postp`). Lo que resta del hallazgo no es el modelo sino el ejecutor: isolation y
+  NCC lo tienen; `Paint` y `Panelize` siguen siendo parámetros sin ejecutor, y el tramo parcial de NCC
+  es E4.1–E4.6 (F4). Esa ausencia está registrada como E7.1–E7.4 en
   [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
-- **G2.3 — Falta la capa de placa.** El modelo guarda un `Job` con ancho/alto/espesor y un `Frame`
-  documento↔máquina (`cam-model/src/lib.rs:64-206`), pero no hay stackup, cara superior/inferior,
-  espejado de bottom, origen de placa ni orientación. El plan pide exactamente eso.
-- **G2.4 — Subida de schema: ya no aplica.** El relevamiento leyó
-  `DOCUMENT_SCHEMA = "c2d/document@2"` con lectura legacy de `@1` y `migrate()`
-  (`cam-model/src/lib.rs:26-41,1594-1611`). Decisión: **c2d está obsoleto**; el schema en vigor es
-  `camcraft/document@1` en `.cmc` y los documentos legacy `c2d/*` se rechazan al leer, así que la
-  subida aditiva no se diseña porque no hace falta: no queda lector legacy que construir.
-- **G2.5 — Librería de herramientas: base sólida, cobertura PCB a verificar.** SQLite con escalera
-  append-only de migraciones sobre `tool_geometry/tool_cutting_data/material/machine/tool_entity`
-  (`cam-store/src/tools.rs:29-120`). Hay geometría de herramienta y datos de corte, lo que alcanza
-  para fresas y V-bits. **A VERIFICAR:** ángulo y punta de V-bit, y perfil de broca con su relación
-  diámetro/profundidad efectiva, antes de asumir que la Tools DB de FlatCAM se mapea sin migración.
+- **G2.3 — Capa de placa. Estado: «cambió de forma».** El modelo ya no es un `Job` de ancho/alto/espesor
+  y nada más: `Board` (`src-tauri/crates/cam-model/src/lib.rs:117`) lleva espesor (`:123`), el origen
+  de la placa con tres esquinas (`OriginCorner`, `:32`; `pub origin`, `:125`) y qué cara mira arriba
+  (`BoardSideUp`, `:45`; `pub side_up`, `:127`), con `Frame` (`:63`) como único mapa documento↔máquina
+  —incluida la reflexión en Y cuando el origen es `top_left` (`is_reflection`, `:109`)—, y `Layer`
+  (`:270`) declara `role: LayerRole` (`:274`), `side: Side` (`:276`, `Top`/`Bottom`/`Both`) y
+  `color: String` (`:278`). Eso entró con `7add080` (2026-11-11), `2c29e36` (2026-11-17, E1.1) y
+  `5a95d49` (2026-11-22, E6.1). Lo que **sigue faltando** es lo que el hallazgo nombraba y la medición
+  no encuentra: no hay stackup de placa (ningún conteo de cobre ni orden de capas), `BoardSideUp` sólo
+  admite `Top`, y no hay espejado de bottom —la reflexión de `Frame` es del sistema de coordenadas, no
+  de la geometría de una cara—. El hallazgo es más chico y más preciso, no está cerrado.
+- **G2.4 — Subida de schema: Estado: «ya no aplica».** `DOCUMENT_SCHEMA = "camcraft/document@1"`
+  (`src-tauri/crates/cam-model/src/lib.rs:27`) y los documentos legacy `c2d/*` se rechazan al leer: no
+  queda lector legacy que construir ni subida aditiva que diseñar. Registrado en `7aeba69` (2026-11-28) y
+  en D3 (§6).
+- **G2.5 — Librería de herramientas. Estado: «cambió de forma» (lo que estaba A VERIFICAR quedó
+  medido).** SQLite con escalera append-only de migraciones sobre
+  `tool_geometry/tool_cutting_data/material/machine/tool_entity/tool_tree_entry`
+  (`src-tauri/crates/cam-store/src/tools.rs:39`, con `tool_name_format` en la migración 2, `:108`).
+  **Ángulo y punta de V-bit: verificados y en uso** —`tool_geometry` guarda `included_angle`,
+  `flat_diameter` y `tip_radius` (`:44-63`, más `shank_diameter`/`overall_length` en la migración 3),
+  `ToolKind::{VBit, Drill, IsolationMill}` los clasifica (`:160-192`) y `ToolShape::VBit`
+  (`src-tauri/crates/cam-move/src/lib.rs:124`) deriva el radio a cada profundidad con `radius_at`
+  (`:165`) y `rise_at_radius` (`:185`), que es lo que barre la simulación—. **Perfil de broca: no
+  verificado como relación** —el ángulo de punta de una broca se guarda igual que el de un V
+  (`src-tauri/crates/cam-store/src/tool_edit.rs:171`), pero `DrillingParams`
+  (`src-tauri/crates/cam-model/src/lib.rs:494`) sólo lleva `cut_depth`, `peck_depth` y `dwell`: no hay
+  relación diámetro/profundidad efectiva derivada. Mapear la Tools DB de FlatCAM necesita esa decisión
+  de modelo, no una migración de datos.
 
 ### Fase 3 — Operaciones PCB (el núcleo, y donde está el riesgo)
 
-- **G3.1 — No existe isolation.** No hay operación, ni comando CLI, ni tipo. Lo que sí existe es la
-  maquinaria parcial: `pocket` calcula el inset y genera anillos de offset una vez y después corta a
-  cada profundidad (`crates/cam-toolpath/src/pocket.rs:124-158,332-337`), con islas tratadas como
-  fronteras de región y paridad (`pocket.rs:4-10,81-89`). Es la semilla correcta, pero le falta lo
-  específico de PCB: unión previa del cobre, multipasada con offset acumulado, profundidad derivada
-  del V-bit, y la guarda anti-gouge.
-- **G3.2 — El offset no soportaba isolation confiable. EL APLANADO ESTA CERRADO; QUEDA EL RECHAZO.**
-  `offset_contour` (`cam-geom/src/offset.rs:69`) hace offset por curva y resuelve vértices
-  intersectando curvas soporte, con fallback a puente recto + `OffsetWarning::MiterLimited`.
-  **El cleanup de self-intersection ya no aplana arcos:** cuando el candidato lleva arcos se corta
-  contra sí mismo en el arrangement (`normalize`) y se queda con la frontera de mayor área, que es la
-  misma elección que hacía el camino muestreado; el muestreo queda como fallback y sólo se usa cuando
-  el arrangement no puede expresar la respuesta. Un candidato sin arcos no pierde nada al muestrearse.
-  **Lo que sigue abierto del bloqueante:** `Region::offset` puede rechazar el resultado si el offset
-  atraviesa la forma (`region_offset.rs`), que es el otro extremo del mismo camino.
-  **Impacto histórico:** en cobre denso y cóncavo, aclaraciones finas de PCB, el camino perdía
-  exactitud (aplanaba arcos) o rechazaba. Era el segundo bloqueante duro después de G0.1.
-- **G3.3 — No existe NCC.** Es la operación que define el rendimiento del producto y no hay nada.
-  Peor: **no hay ninguna palanca de performance instalada** — `cam-toolpath/Cargo.toml` no trae
-  `rayon` ni índice espacial, y `grep` sobre el crate no encuentra uso de ninguno. El plan pide
-  paralelismo por isla, índice espacial, offsets incrementales y rest machining: los cuatro hay que
-  construirlos.
-- **G3.4 — Drilling: hay mecánica, falta semántica PCB.**
-  `cam-toolpath/src/drill.rs:33-59,85-132` implementa peck/retract y un drill bank con compensación
-  de cabeza, pero la entrada son agujeros geométricos (`DrillHole`), no una tabla de herramientas
-  Excellon con agrupado por diámetro, ni slots, ni ordenamiento por cercanía.
-- **G3.5 — Sin ordenamiento TSP por herramienta.** FlatCAM ordena los puntos de perforación con
-  OR-Tools (`camlib.py:3040,3104`) con presupuesto de tiempo acotado. No hay equivalente;
-  **A VERIFICAR** si algún toolpath actual ordena por cercanía para otro fin.
-- **G3.6 — Cutout: el perfil existe, los tabs no están verificados.**
-  `profile` está en `crates/cam-toolpath/src/lib.rs:483`. El plan asume "el perfil con tabs que ya
-  existe"; la existencia de tabs/puentes como feature de primera clase **no está verificada** y es
-  requisito duro de cutout PCB, junto con mouse-bites y las variantes de gaps de FlatCAM
-  (`ToolCutOut.py`, §12.2 del documento de port).
-- **G3.7 — Sin paint y sin panelize.** En este árbol el nesting de piezas ya no existe: el barrido
-  de `odd/tasks/039-wood-out-sweep.md` lo retiró junto con `moulding` y el texto, así que no hay
-  `nest`/`nest_profile` que reutilizar. Y panelizar placas (matriz rows×cols con spacing, según
-  `ToolPanelize.py:309`) es **otro problema** que el nesting de piezas. No confundirlos al planificar.
+- **G3.1 — Isolation. Estado: «ya no aplica».** Hay operación, comando CLI, tipo y ejecutor:
+  `cam_ops::isolation::isolation_moves` (`src-tauri/crates/cam-ops/src/isolation.rs:638`),
+  `IsolationParams` en el modelo (`src-tauri/crates/cam-model/src/lib.rs:421`) y `cam-cli isolate`
+  (`src-tauri/crates/cam-cli/src/lib.rs:239`), con la ejecución y su aceptación por simulación entrando
+  en `e987296` (2026-11-20) y la polaridad de cobre derivada del anidamiento en `7714fc1` (2026-11-25).
+  Lo que el hallazgo pedía además —unión previa del cobre, multipasada con offset acumulado y la guarda
+  anti-gouge— también está medido: la unión de cobre se balancea en `2c2a453` y el juez de penetración de
+  D5 vive en `src-tauri/crates/cam-ops/src/penetration.rs:54` (`cut_model_overlaps_copper`, `:71`).
+- **G3.2 — El offset y isolation. Estado: «sigue siendo cierto» (el aplanado está cerrado; queda el
+  rechazo).** `offset_contour` sigue en `src-tauri/crates/cam-geom/src/offset.rs:78`, con fallback a
+  puente recto y `OffsetWarning::MiterLimited` (`:120`). El cleanup de self-intersection no aplana
+  arcos: `Region::offset` (`src-tauri/crates/cam-geom/src/region_offset.rs:123`) conserva arcos
+  («Offsetting preserves arcs wherever `offset_contour` does», `:47-49`) y conserva `flattened` como
+  bandera con su warning (`:79`, `:169-170`). **Lo que sigue abierto del bloqueante** es exactamente lo
+  que el hallazgo dice: un offset que atraviesa la forma se rechaza
+  (`GeomError::EditRefused`, `region_offset.rs:181`) en vez de devolver un resultado; también se
+  rechaza un cruce entre dos fronteras antes de calcular ningún offset (`:268`). Ese es el borde que
+  isolation en cobre denso todavía paga.
+- **G3.3 — NCC. Estado: «ya no aplica».** Hay operación, ejecutor y comando:
+  `cam_ops::ncc::ncc_moves` (`src-tauri/crates/cam-ops/src/ncc.rs:561`), `NonCopperClearParams`
+  (`src-tauri/crates/cam-model/src/lib.rs:439`) y `cam-cli ncc`
+  (`src-tauri/crates/cam-cli/src/lib.rs:240`). Entró con `8d0ad9d` (2026-11-21), que también trajo el
+  índice (G0.3) y el rest machining. **Las palancas de performance que el hallazgo daba por ausentes también existen:** `rayon`
+  es dependencia de `cam-ops` (`src-tauri/crates/cam-ops/Cargo.toml:16`) y se usa en el fill
+  (`ncc.rs:141`, `par_iter`) con determinismo probado entre números de hilos
+  (`src-tauri/crates/cam-ops/tests/ncc.rs:503`), el índice espacial de NCC vive en
+  `ncc_index.rs:62` y el rest machining entró con `8d0ad9d`. Lo que no se midió en este barrido son los
+  offsets incrementales entre pasadas — §4 es de T3 — y su borde conocido es el rechazo de G3.2.
+- **G3.4 — Drilling. Estado: «ya no aplica».** El drill sale de la tabla Excellon:
+  `plan_excellon_drill` agrupa por herramienta, ordena cada grupo y produce los moves
+  (`src-tauri/crates/cam-ops/src/excellon_drill.rs:87`, `:84-85`), y `peck::drill` conserva el
+  peck/retract y el drill bank con compensación de cabeza
+  (`src-tauri/crates/cam-ops/src/peck.rs:75`). Entró con `b324e3c` (2026-11-15, W4a E2.1–E2.4) y se
+  endureció en `e045c43` y `59b55dc`. La entrada ya no son sólo agujeros geométricos: hay tabla de
+  herramientas, agrupado por diámetro, ranuras y ordenamiento (G3.5).
+- **G3.5 — Ordenamiento por cercanía. Estado: «ya no aplica».** Hay tour heurístico, y no es
+  OR-Tools: `peck.rs` documenta y ejecuta nearest-neighbour con 2-opt de presupuesto determinista
+  (`src-tauri/crates/cam-ops/src/peck.rs:225`, `:230`, `:67-72`), y `excellon_drill.rs:85` lo aplica
+  por grupo de herramienta. El nearest-neighbour entró con `3f1a524` (2026-11-11, el rescate del drill
+  bank) y el pase de 2-opt con `b324e3c` (2026-11-15, W4a). Ya no hace falta el **A VERIFICAR** del
+  hallazgo: sí hay ordenamiento por cercanía, con presupuesto fijo en vez de por tiempo.
+- **G3.6 — Cutout. Estado: «ya no aplica».** Los tabs son feature de primera clase y los mouse-bites
+  también: `CutoutParams` lleva `tabs: Vec<Tab>` y `tab_kind: TabKind`
+  (`src-tauri/crates/cam-model/src/lib.rs:460`, `:464`, `:466`), `TabKind` en `:398` y `Tab` en `:410`;
+  `cutout` y `profile` cortan con tabs y levantan sobre ellos
+  (`src-tauri/crates/cam-ops/src/follow.rs:50`, `:231`), y `mouse_bite_drills` perfora las
+  perforaciones de retención (`:100`, `:47-49`). Entró con `487a020` (2026-11-15) y `dc3196e`
+  (2026-11-20, E2.3 con prueba de simulación). El perfil de `crates/cam-toolpath` que el hallazgo
+  citaba ya no existe.
+- **G3.7 — Sin paint y sin panelize. Estado: «sigue siendo cierto».** Se re-midió: `PaintParams`
+  (`src-tauri/crates/cam-model/src/lib.rs:477`) y `PanelizeParams` (`:505`) existen como structs de
+  parámetros y `Operation` las lleva (`:523`), pero **no hay ejecutor** en `cam-ops`
+  (`grep -rn 'fn paint\|paint_moves\|panelize_moves' src-tauri/crates --include='*.rs'` no devuelve
+  ninguno de operación; sólo utilidades de pintado de la UI) ni comando propio en `cam-cli`: lo único
+  que las nombra es el mapa de nombres (`src-tauri/crates/cam-cli/src/lib.rs:201`, `:203`) y el
+  printsheet (`src-tauri/crates/cam-cli/src/printsheet.rs:296`, `:309`). Y el nesting de piezas no
+  vuelve: el barrido de [odd/tasks/039-wood-out-sweep.md](../odd/tasks/039-wood-out-sweep.md) se lo
+  llevó con `moulding` y el texto, así que no hay `nest`/`nest_profile` que reutilizar. Panelizar
+  placas (matriz rows×cols con spacing, `ToolPanelize.py:309` — **fuente upstream de FlatCAM Plus
+  que no está en este árbol**, citada desde [RUST_PORT_LOGIC.md](old/RUST_PORT_LOGIC.md)) es **otro
+  problema** que el nesting de piezas.
 
 ### Fase 4 — Post-procesadores y G-code
 
-- **Activo más valioso del proyecto (`cam-post`).** Parser `.pp` data-driven + emisor con 20 clases
-  de bloque (incluido helix), modos de arco `A`/`C`, decimales y escala, rechazo explícito de lo no
-  soportado (`cam-post/src/lib.rs:27-83,137-209,268-353`), y **golden tests byte a byte**
-  (`cam-post/tests/emit.rs`). El plan pide "portar los preprocesadores de FlatCAM al dialecto `.pp`
-  como datos": la infraestructura ya está, el trabajo es de datos.
-- **G4.1 — No hay autolevelling ni gancho de compensación Z.** `Move` lleva Z fijo y `Arc` es de Z
-  constante (`cam-move/src/lib.rs:55-119`); `Segment`/`MoveStream` no tienen mapa de alturas
-  (`cam-move/src/lib.rs:249-324`); `cam-sim` interpreta la Z del move directamente
-  (`cam-sim/src/sweep.rs:224-255`). El plan lo imagina como "transformación del move stream": el
-  contrato da forma para eso, pero la segmentación de arcos y movimientos largos hay que escribirla.
-- **G4.2 — No hay ruteo alrededor de áreas de exclusión.** FlatCAM desvía el travel si el segmento
-  cruza un área prohibida (`Common.py:707`, usado en `camlib.py:6912-6946`), y es requisito de
-  seguridad física. No hay concepto de `exc_areas` en el modelo ni en el emisor.
-- **G4.3 — No hay escritores Gerber/Excellon.** `cam-export` solo emite DXF y SVG
-  (`cam-export/src/lib.rs:27-114`). FlatCAM los necesita como salida (panelize, film, punching,
-  exportación de taladros).
-- **G4.4 — Falta el catálogo de dialectos.** No hay `.pp` para GRBL/Marlin/etc. Cero trabajo hecho,
-  pero de riesgo bajo: es la parte más mecánica del port.
+- **Activo más valioso del proyecto (`cam-post`).** Parser `.pp` data-driven + emisor con 20 clases de
+  bloque (incluido helix), modos de arco `A`/`C`, decimales y escala, rechazo explícito de lo no
+  soportado (`src-tauri/crates/cam-post/src/lib.rs`), y **golden tests byte a byte**
+  (`src-tauri/crates/cam-post/tests/emit.rs`). El plan pide "portar los preprocesadores de FlatCAM al
+  dialecto `.pp` como datos": la infraestructura ya está y los datos empezaron (G4.4).
+- **G4.1 — Autolevelling. Estado: «sigue siendo cierto».** `Move` lleva Z por move y `Arc` es de Z
+  constante (`src-tauri/crates/cam-move/src/lib.rs:53`); ni `Segment` (`:204`) ni `MoveStream` (`:227`)
+  tienen mapa de alturas —sus campos son nombre, herramienta, tasas y `safe_z`/`home`—, y
+  `grep -rn 'autolevel' src-tauri/crates src-tauri/src` → **cero coincidencias**. El contrato da forma
+  para la transformación, pero la segmentación de arcos y movimientos largos hay que escribirla.
+- **G4.2 — Ruteo alrededor de áreas de exclusión. Estado: «ya no aplica».** El concepto existe en el
+  modelo (`Document.exc_areas: Vec<Region>`, `src-tauri/crates/cam-model/src/lib.rs:581`, con su
+  validación en `:1428`) y el ruteo existe en `cam-ops`: `route_travel_around_exc_areas` y su variante
+  con herramienta para el clearance del V-bit
+  (`src-tauri/crates/cam-ops/src/exc_travel.rs:47`, `:58`), que desvía el travel y falla el que no
+  puede rutear. Entró con `3d4c012` y `39c6fb3` (2026-11-21) y se endureció en `8347fd6` y `d4d4668`.
+- **G4.3 — Escritores Gerber/Excellon. Estado: «ya no aplica».** `cam-export` emite los cuatro
+  formatos: DXF, SVG, Gerber (`src-tauri/crates/cam-export/src/gerber.rs`) y Excellon
+  (`src-tauri/crates/cam-export/src/excellon.rs`), con pruebas de round-trip, desde `a949ebe`
+  (2026-11-21).
+- **G4.4 — Catálogo de dialectos. Estado: «ya no aplica».** Hay tres `.pp` versionados y fijados con
+  golden byte a byte: `src-tauri/crates/cam-post/posts/grbl.pp` (`2be97e3`, 2026-11-15, W4b E2.5),
+  `marlin.pp` y `repetier.pp` (`bb7a342`, 2026-11-21), más el estilo de toolchange M6 (`18af779`).
 
 ### Fase 5 — Interfaz
 
-La UI es el crate más grande del workspace (19k líneas) y ya tiene infraestructura real: shell con
-capas y ribbon (`cam-ui/src/shell/mod.rs:45-118`, `chrome/layers.rs:4-17`), editor de estrategia,
-modal de librería de herramientas, panel de script, preview 3D integrado
-(`cam-ui/src/view3d/mod.rs:98-189`), cámara 2D y picking en `cam-view`.
+La UI es el crate más grande del workspace (20.958 líneas en `src/`, §1) y ya tiene infraestructura
+real: el estado del shell y el ribbon (`Shell`, `src-tauri/crates/cam-ui/src/shell/mod.rs:57`, con
+categoría de ribbon en `:219` y bloque de capas en `:229`), el bloque de capas
+(`src-tauri/crates/cam-ui/src/chrome/layers.rs:5`), editor de estrategia, modal de librería de herramientas, panel de script,
+preview 3D integrado (las cuatro capas del preview, `src-tauri/crates/cam-ui/src/view3d/mod.rs:102`), cámara 2D y
+picking en `cam-view`.
 
-- **G5.1 — Faltan las capas con identidad de placa.** Hay capas genéricas (id/nombre/visible/
-  entidades, `cam-model/src/lib.rs:208-218`), no capas tipadas con color por capa y modo cobre.
-- **G5.2 — Formularios por operación PCB: hechos; el hueco es «generar G-code».** El relevamiento
-  leyó un editor de estrategia sólo para las operaciones de entonces, con
-  isolation/NCC/drill/cutout/paint y «generar G-code» sin formulario porque no tenían operación
-  (dependía de G2.2, hoy cerrado). Hoy `cam-ui/src/shell/panels.rs` edita las seis variantes de
-  `Operation` —`OperationKind::ALL` (`:522`), con su bloque por variante desde `:535`—, según
-  E6.3 y la [tarea 073](../odd/tasks/073-e6-3-operation-forms.md). Lo que sigue sin formulario es
-  «generar G-code»: `cam-ui/src/chrome/app_bar.rs:152-166` dibuja «Generate G-code» y «Post…» pero
-  sólo como hit-targets de test, sin comando detrás, y la emisión con selección de preprocesador
-  vive en la CLI (`cam-cli program --post`, `cam-cli postp`).
-- **G5.3 — A VERIFICAR:** guardado con Ctrl+S y mapa de atajos completo, que el plan marca como
-  faltantes hoy. **INFERIDO:** el desktop ya enlaza open/import/save-as vía diálogos nativos
-  (`cam-desktop/src/main.rs:85-119`), así que la brecha probablemente sea de atajos, no de
-  plumbing.
+- **G5.1 — Capas con identidad de placa. Estado: «ya no aplica».** La capa ya es una capa de placa:
+  `Layer` declara `role: LayerRole` (`src-tauri/crates/cam-model/src/lib.rs:274`) con los seis roles
+  de fabricación y keepout aparte (`:177`, y el comentario de `:198` que los cuenta), cada uno con su
+  color canónico (`LayerRole::color_rgb`, `:200`) y su
+  etiqueta (`:213`), `side: Side` (`:276`) y `color: String` (`:278`). El rango `:208-218` que el
+  hallazgo citaba ya no es donde vive `Layer`. Entró con `7add080` (2026-11-11) y se completó como
+  identidad de placa en `5a95d49` (2026-11-22, E6.1). Lo que la UI haga con ese rol es de E6, no un
+  hallazgo de modelo.
+- **G5.2 — Formularios por operación PCB. Estado: «sigue siendo cierto» (hechos; el hueco es «generar
+  G-code»).** `src-tauri/crates/cam-ui/src/shell/panels.rs` edita las seis variantes de `Operation` —
+  `OperationKind::ALL` (`:522`), con su bloque por variante desde `:534`—, según E6.3 y la
+  [tarea 073](../odd/tasks/073-e6-3-operation-forms.md). Lo que sigue sin formulario es «generar
+  G-code»: `src-tauri/crates/cam-ui/src/chrome/app_bar.rs:153` dibuja «Generate G-code» y sólo lo
+  registra como hit-target de test (`:156`), sin comando detrás; y el botón «Post…» sigue al lado sin
+  comando tampoco: se dibuja con `post: Option<String> = None` y sólo se registra como hit
+  (`:161-167`). La emisión con selección de preprocesador vive en la CLI (`cam-cli program --post`,
+  `cam-cli postp`), así que lo que falta es el camino de la UI hacia ella.
+- **G5.3 — Atajos y Ctrl+S. Estado: «ya no aplica».** El mapa de atajos existe y es explícito:
+  `src-tauri/crates/cam-ui/src/shell/input.rs:308-321` lee undo/redo, `Ctrl+S`, `Ctrl+Shift+S`, delete
+  y fit, con el comentario que separa Save de Save As. Entró con la
+  [tarea 075](../odd/tasks/075-e6-5-shortcuts-save.md) (E6.5); el plumbing de diálogos nativos que el
+  hallazgo marcaba **INFERIDO** también está (`src-tauri/crates/cam-desktop/src/main.rs:296-320`).
 
 ### Fase 6 — Endurecimiento y publicación
 
-- **G6.1 — No hay CI.** No existe `.github/workflows/`. Solo `scripts/check.sh` + `justfile`.
-- **G6.2 — No hay benchmarks.** No hay directorio `benches/` en ningún crate. Sin benchmarks no hay
-  forma de sostener la promesa central del producto ("mejor rendimiento que FlatCAM") ni de
-  detectar regresiones de performance.
-- **G6.3 — No hay arnés de paridad geométrica.** El documento de port propone comparar número de
-  polígonos, área total (ε relativo 1e-9), cantidad de puntos tras `flatten()` y texto exacto de
-  G-code, sobre un corpus fijo. No existe nada de eso. Es el instrumento que convierte "parece
-  bien" en un test.
-- **G6.4 — No hay empaquetado ni corpus de placas reales.**
+- **G6.1 — CI. Estado: «ya no aplica».** `.github/workflows/ci.yml` existe desde `65d1499`
+  (2026-11-13) y hoy es un solo tronco con gate de unitarios y `parity`/`bench` a pedido (`a06484b`,
+  `25f5a83`). `grep -n 'parity\|bench' .github/workflows/ci.yml` → jobs `parity` (`:97`) y `bench`
+  (`:110`), dispatch-only por costo.
+- **G6.2 — Benchmarks. Estado: «ya no aplica».** **Sí hay** `benches/` con baselines criterion
+  commiteados: `src-tauri/crates/cam-geom/benches/kernel.rs` y
+  `src-tauri/crates/cam-ops/benches/toolpaths.rs`, con
+  `check_regression.sh` y `baselines/criterion` en cada crate. Entraron con `cfb7feb` (2026-11-13, W1c
+  E0.7) y `8d0ad9d` (2026-11-21, los de NCC).
+- **G6.3 — Arnés de paridad geométrica. Estado: «ya no aplica».** `scripts/parity/run.sh` mide el
+  corpus y falla por divergencia con el contrato que el documento de port pide: polígonos y puntos
+  exactos, área a epsilon **relativo 1e-9**, `status` exacto (`scripts/parity/README.md`), y
+  `compare-flatcam.py` compara además contra el oráculo externo. Entró con `1e7cb07` y `0061226`
+  (2026-11-13) y se corrigió en `9c1334d`, `e4ea77b`, `32f2fa1` y `3f1abe1`.
+- **G6.4 — Empaquetado y corpus. Estado: «cambió de forma».** El corpus de placas reales existe
+  (`fixtures/corpus/`, `1e7cb07`), así que la segunda mitad del hallazgo ya no aplica. El empaquetado
+  ya no es «nada», pero tampoco está entregado: `src-tauri/tauri.conf.json:24-26` declara
+  `bundle.active = true` con `targets: "all"` y `justfile` expone `tauri-build`, y **no hay release ni
+  artefacto publicado** (`git tag` vacío y ningún job de release en `ci.yml`). Queda el acto de
+  empaquetar y publicar, no el andamiaje.
 
 ---
 

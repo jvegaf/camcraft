@@ -1,7 +1,8 @@
 # 110 — GAPS re-survey: measure the tree, not the plan
 
 Re-medir el árbol actual y reescribir con evidencia de hoy los hallazgos de [docs/GAPS_CAMCRAFT.md](../../docs/GAPS_CAMCRAFT.md), que sigue siendo el diagnóstico del workspace **anterior al giro a PCB** y afirma cosas que ya no son ciertas; el resultado esperado es un diagnóstico otra vez válido, no un plan nuevo ni un arreglo de lo que el barrido encuentre.
-Estado: `open` — ningún hallazgo está re-medido todavía, ningún `S#` está satisfecho y la columna de commit de `## Tasks` queda vacía hasta que exista el árbol corregido.
+Estado: `in progress` — T1 entregado y commiteado (`e50aa7c`); T2 ejecutado sobre las mismas
+superficies pero **sin commit y pendiente de verificación independiente**; T3–T7 siguen abiertos.
 
 ## Surfaces
 
@@ -106,7 +107,7 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
 
 | ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs          | Ruta   | Commit |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------ |
-| T1  | Re-medir y reescribir el §1 inventario y el encuadre del documento: tabla de crates y LOC de `src/` (medida hoy, con el comando que la produce), lista de dependencias externas del workspace, conteo de `#[test]`, las ausencias que el inventario afirma (`benches/`, `.github/workflows/`, corpus de paridad) y la nota que ya advierte que la tabla mide antes del giro. El §Método y la «Fecha del relevamiento» dejan de prometer un estado que ya no es el de hoy: o se re-miden o quedan marcados como historia de 2026-05-09. Área: `docs/GAPS_CAMCRAFT.md`, §Método y §1. | S1, S2, S3, S5 | worker |        |
+| T1  | Re-medir y reescribir el §1 inventario y el encuadre del documento: tabla de crates y LOC de `src/` (medida hoy, con el comando que la produce), lista de dependencias externas del workspace, conteo de `#[test]`, las ausencias que el inventario afirma (`benches/`, `.github/workflows/`, corpus de paridad) y la nota que ya advierte que la tabla mide antes del giro. El §Método y la «Fecha del relevamiento» dejan de prometer un estado que ya no es el de hoy: o se re-miden o quedan marcados como historia de 2026-05-09. Área: `docs/GAPS_CAMCRAFT.md`, §Método y §1. | S1, S2, S3, S5 | worker | `e50aa7c` |
 | T2  | Re-medir el §2 veredicto corto y el §3 completo, hallazgo por hallazgo: G0.1–G0.3, G1.1–G1.4, G2.1–G2.5, G3.1–G3.7, G4.1–G4.4, G5.1–G5.3, G6.1–G6.4. Cada uno termina en «sigue siendo cierto», «ya no aplica» (con el commit o la tarea que lo cambió) o «cambió de forma» (con la redacción actual y su evidencia), y toda cita pasa a resolver desde la raíz del repositorio. Área: `docs/GAPS_CAMCRAFT.md`, §2 y §3. | S2, S3, S4     | worker |        |
 | T3  | Re-medir la tabla de rendimiento del §4 —paralelismo, índice espacial, algoritmos preparados para rest/offsets incrementales, medición— y el párrafo que la interpreta, con la evidencia de cada palanca sobre el árbol de hoy. Área: `docs/GAPS_CAMCRAFT.md`, §4.                                                                                                                                                                                                                                                                    | S2, S3, S4, S5 | worker |        |
 | T4  | Re-medir los seis riesgos arquitectónicos del §5 y sus citas (`cam-model`, `cam-move`, `cam-app`, `cam-geom`), asignando a cada uno uno de los tres estados. Área: `docs/GAPS_CAMCRAFT.md`, §5.                                                                                                                                                                                                                                                                                                                                      | S2, S3, S4     | worker |        |
@@ -153,3 +154,27 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
   módulos de `cam-ops` y las cuatro líneas de `cam-cli`— y contó **17** directorios en
   `src-tauri/crates/` frente a los «16 crates» que el §Método declara (`:13`): el barrido empieza
   desmintiendo ya el encuadre del documento.
+- **L3 (T1 entregado, 2026-11-28, `e50aa7c`).** El §Método y el §1 quedaron re-medidos con dos fechas
+  explícitas: la de 2026-05-09 como historia y la de hoy como medición vigente, cada número con su
+  comando. Lo medido, tal como quedó en `docs/GAPS_CAMCRAFT.md`:
+  - `find src-tauri/crates -maxdepth 1 -mindepth 1 -type d | wc -l` → **17** crates (más el paquete
+    Tauri), frente a los 16 del relevamiento viejo: salieron `cam-toolpath` y `cam-program` (`fdb87cf`,
+    [tarea 039](039-wood-out-sweep.md) L21) y entraron `cam-ops`, `cam-gerber` y `cam-excellon`.
+  - `find src-tauri/crates/*/src -name '*.rs' -type f -exec cat {} + | wc -l` → **57.786** líneas en
+    `src/`; `find src-tauri/crates -name '*.rs' -type f -exec cat {} + | wc -l` → **107.014** contando
+    tests y benches.
+  - `grep -rn '#\[test\]' src-tauri/crates --include='*.rs' | wc -l` → **1.395** atributos `#[test]`
+    (el «≈1.687» de 2026-05-09 no mide este árbol).
+  - Cinco ausencias del §1 quedaron refutadas, cada una con el commit que la refutó: **sí hay**
+    `benches/` (`cfb7feb`, 2026-11-13), **sí hay** CI (`.github/workflows/ci.yml`, `65d1499`,
+    2026-11-13), **sí hay** corpus de paridad (`fixtures/corpus/`, `1e7cb07`, 2026-11-13, más el arnés
+    `scripts/parity/run.sh`), **sí hay** `rayon` (`Cargo.toml:58`, usado en
+    `src-tauri/crates/cam-ops/Cargo.toml:16`) y `flate2` salió del workspace en `579194b` (2026-11-23);
+    `criterion` para los benches entró con `cfb7feb`.
+  - Tres filas de la tabla cambiaron de forma, no de estado: el conteo de subcomandos de `cam-cli`, el
+    contenedor `.cmc` de `cam-store` y los formatos de `cam-import` después de que PDF/EPS/PNG se
+    fueran con el barrido de madera.
+
+  Hallazgo del barrido, registrado y no corregido (S7):
+  `scripts/parity/measure/Cargo.toml:10-12` declara `path = "../../../crates/cam-*"` y esa raíz no
+  existe desde la migración a `src-tauri/`.
