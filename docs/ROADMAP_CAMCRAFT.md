@@ -11,9 +11,10 @@ D1–D6 asentadas allí (§6) en un plan ejecutable: fases con dependencias expl
 referencia de alcance funcional.
 
 **Base de decisiones.** Motor de conjuntos sobre el kernel propio (D1). Aceptación híbrida por capa
-(D2). Schema `c2d/document@3` aditivo con la semántica PCB en metadata (D3). Dominio de madera
-congelado y fuera de la UI principal (D4). Oráculo de dos niveles (D5). Formato `.FlatPrj` fuera de
-alcance (D6).
+(D2). El schema en vigor es `camcraft/document@1` en contenedor `.cmc`: **c2d está obsoleto** y no
+hay migración `@2→@3`; la semántica PCB vive en **metadata** y `EntityKind` crece como mucho con
+`Drill` y `Slot` (D3). Dominio de madera congelado y fuera de la UI principal (D4). Oráculo de dos
+niveles (D5). Formato `.FlatPrj` fuera de alcance (D6).
 
 ---
 
@@ -42,7 +43,7 @@ Estos principios no son ceremonia: cada uno responde a un modo de falla concreto
 ## 2. Mapa de fases y dependencias
 
 ```
-F0 Fundamentos ──┬──► F1 Modelo @3 + importadores ──┬──► F2 Drilling + Cutout ──┐
+F0 Fundamentos ──┬──► F1 Modelo @1 + importadores ──┬──► F2 Drilling + Cutout ──┐
    (bloqueante)  │                                   │                          │
                  └───────────────────────────────────┘                          ├──► F5 G-code PCB
                                                      └──► F3 Isolation ──► F4 NCC ┘
@@ -82,7 +83,7 @@ toma con evidencia, no con intuición.
 
 ---
 
-## 4. Fase 1 — Modelo de placa `@3` e importadores
+## 4. Fase 1 — Modelo de placa `camcraft/document@1` e importadores
 
 **Objetivo.** Abrir un proyecto de fabricación y ver el cobre.
 
@@ -91,7 +92,7 @@ nuevas; el modelo gana roles, origen y operaciones.
 
 | ID   | Tarea                                                                                                                                                                                    | Tamaño | Criterio de salida                                                                                                                                                                                                                                        |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1.1 | `c2d/document@3`: `LayerRole` (copper_top, copper_bottom, mask, silk, outline, drill), metadata de origen por entidad, migración `@2→@3` con defaults                                    | **M**  | Un documento `@2` carga, migra y se guarda como `@3` sin pérdida; test de round-trip                                                                                                                                                                      |
+| E1.1 | `camcraft/document@1` en `.cmc`: `LayerRole` (copper_top, copper_bottom, mask, silk, outline, drill) y `source: Provenance` por entidad; legacy `c2d/*` rechazado al leer                | **M**  | El schema persiste con `LayerRole` y `Provenance` por entidad y el round-trip no pierde nada; un documento legacy `c2d/*` se rechaza al leer, no se migra                                                                                                 |
 | E1.2 | `Operation::{Isolation, NonCopperClear, Cutout, Paint, Panelize}` en el modelo, sin lógica todavía                                                                                       | **S**  | El schema las persiste y `inspect` las reporta                                                                                                                                                                                                            |
 | E1.3 | Importador de **carpeta de fabricación** (detecta y agrupa top/bottom/mask/silk/outline/drill por nombre y contenido)                                                                    | **S**  | Una carpeta de KiCad se abre como placa completa con roles correctos                                                                                                                                                                                      |
 | E1.4 | Parser Gerber RS-274X: aperturas estándar (C, R, O, P), macros, `G36/G37`, interpolación circular `G74/G75`, unidades y formato de coordenadas, `M02`                                    | **L**  | Las 6 placas del corpus producen geometría que pasa E0.4 contra FlatCAM                                                                                                                                                                                   |
@@ -216,8 +217,9 @@ Sólo después de que isolation y NCC estén estables y medidos.
 | E7.3 | Film y punch                                                             | Artefactos de fabricación generados |
 | E7.4 | Copper thieving (opcional, según demanda)                                | Área de cobre por cm² configurable  |
 
-`nest`/`nest_profile` de `cam-geom` **no** son panelize: resuelven aprovechamiento de material, otro
-problema. No se reciclan para E7.2.
+El nesting de piezas ya no existe en este árbol: el barrido de `odd/tasks/039-wood-out-sweep.md`
+retiró `nest`/`nest_profile`, así que no hay nada que reciclar para E7.2. Y panelizar una placa
+(matriz rows×cols con spacing) no es nesting de piezas, es otro problema.
 
 ---
 

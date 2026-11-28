@@ -21,16 +21,19 @@ verificar en fuente está marcado **INFERIDO** o **A VERIFICAR**.
 
 ## 1. Inventario del estado actual
 
+Nota: la tabla mide el workspace **antes del giro a PCB**, no el árbol actual: `cam-toolpath` y
+`cam-program` los retiró la [tarea 039](../odd/tasks/039-wood-out-sweep.md); hoy `.cmc` y `camcraft/document@1`.
+
 | Crate          | LOC `src/` | Rol verificado                                                                                                     |
 | -------------- | ---------: | ------------------------------------------------------------------------------------------------------------------ |
-| `cam-geom`     |      9.227 | Kernel geométrico propio: `Contour`, `Region`, `Arc`, offset, normalización, medial axis, nesting, moulding, texto |
+| `cam-geom`     |      9.227 | Kernel geométrico propio: `Contour`, `Region`, `Arc`, offset, normalización, medial axis                            |
 | `cam-import`   |      7.363 | DXF / SVG / PDF / EPS / PNG → `Contour` en mm + `ImportReport` de fidelidad                                        |
 | `cam-toolpath` |      3.459 | Estrategias: profile, pocket, drill, chamfer, engrave, fluting, inlay, thread, vcarve, moulding                    |
 | `cam-ui`       |     19.061 | Shell egui: capas, ribbon, canvas 2D/3D, editor de estrategia, librería de herramientas, script, ayuda             |
 | `cam-cli`      |      5.293 | 15 subcomandos headless con contrato de exit codes                                                                 |
 | `cam-store`    |      2.516 | `.c2d` (ZIP + `document.json`) y librería de herramientas SQLite con escalera de migraciones                       |
 | `cam-sim`      |      2.506 | Simulación por heightfield, remoción de material, `target_for`/`deviations` (gouge/uncut)                          |
-| `cam-model`    |      2.424 | Documento `c2d/document@2`: job, capas, entidades, toolpaths, operaciones                                          |
+| `cam-model`    |      2.424 | Documento `c2d/document@2` obsoleto; hoy `camcraft/document@1`: job, capas, entidades, toolpaths, operaciones       |
 | `cam-post`     |      1.176 | Parser de `.pp` data-driven + emisor de G-code, golden tests byte a byte                                           |
 | `cam-view`     |        993 | Escena 2D/3D, cámara, mallas, picking (backend-agnóstico)                                                          |
 | `cam-program`  |        652 | Une documento + herramienta + estrategia → `MoveStream`                                                            |
@@ -133,20 +136,51 @@ las fases 1 y 3.
 
 ### Fase 2 — Modelo de datos PCB
 
-- **G2.1 — `EntityKind` tiene una sola variante: `Contour`.**
-  `crates/cam-model/src/lib.rs:230-236`. No hay entidad de taladro, pad, apertura, vía, texto de
-  serigrafía ni pour. Todo lo que no sea una cadena de segmentos no se puede guardar.
-- **G2.2 — `Operation` es exclusivamente de mecanizado general** (`cam-model/src/lib.rs:845-870`):
-  `Profile, Pocket, Drilling, Chamfer, VCarve, Engrave, Fluting, Texture, Inlay, Thread, Moulding`.
-  No hay `Isolation`, `NonCopperClear`, `Cutout`, `Paint`, `Panelize` ni operación de generación de
-  G-code con selección de preprocesador.
+- **G2.1 — `EntityKind` con una sola variante: ya no aplica.** El relevamiento leyó el enum con
+  `Contour` como única variante (`crates/cam-model/src/lib.rs:230-236`, rango desplazado hoy). Hoy
+  es `Contour` | `Drill` | `Slot` (`src-tauri/crates/cam-model/src/lib.rs:303`), que es
+  **exactamente** el tope que fijó D3 (§6): «`EntityKind` crece como mucho con `Drill` y `Slot`»
+  —alcanzado, no excedido— y la semántica PCB vive en **metadata**, no en variantes:
+  `Layer.role: LayerRole` (`:274`, los seis roles de fabricación más keepout) y
+  `Entity.source: Provenance` (`:297`, con `#[serde(default, skip_serializing_if)]`). El tope se
+  sostiene por costo medido, no por falta de diseño: hay 142 sitios de `match` o construcción de
+  `EntityKind` —83 `Contour`, 31 `Drill`, 28 `Slot`— repartidos en 41 archivos
+  (`cam-app/src/command.rs`, `cam-import/src/folder.rs`,
+  `cam-export/src/{svg,dxf,gerber,excellon}.rs`, `cam-ui/src/view3d/program.rs`,
+  `cam-ui/src/shell/action.rs`, `cam-view/src/lib.rs` y los tests de `cam-store`, `cam-export` y
+  `cam-ui`), así que una cuarta variante es una edición de todo eso a la vez. Lo que la
+  preocupación de fondo todavía cubre no es G2.1 sino la geometría de área con agujeros para
+  isolation, NCC y paint: `Region` ya existe en el modelo y los parámetros de operación la usan
+  (`Document.exc_areas: Vec<Region>`, `:581`), y `Operation` (`:523-537`) lleva el parámetro de
+  cada operación (`IsolationParams` en `:421`, `PanelizeParams` en `:505`): isolation y NCC ya
+  tienen ejecutor (`cam_ops::isolation::isolation_moves`, `cam-ops/src/isolation.rs:638`;
+  `cam_ops::ncc::ncc_moves`, `cam-ops/src/ncc.rs:561`; alcanzables como `cam-cli isolate` y
+  `cam-cli ncc`), mientras `Paint` y `Panelize` siguen siendo structs de parámetros sin ejecutor.
+  Esa ausencia está registrada como E7.1–E7.4 y F4 en
+  [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
+- **G2.2 — `Operation` es exclusivamente de mecanizado general: ya no aplica.** El relevamiento leyó
+  el enum con `Profile, Pocket, Drilling, Chamfer, VCarve, Engrave, Fluting, Texture, Inlay, Thread,
+  Moulding` y sin ninguna operación PCB (`cam-model/src/lib.rs:845-870`, rango desplazado hoy). Hoy
+  `Operation` es `Isolation(IsolationParams)` | `NonCopperClear(NonCopperClearParams)` |
+  `Cutout(CutoutParams)` | `Paint(PaintParams)` | `Drilling(DrillingParams)` |
+  `Panelize(PanelizeParams)` (`src-tauri/crates/cam-model/src/lib.rs:523`), con los structs de
+  parámetros en `:421`, `:439`, `:460`, `:477`, `:494` y `:505`. Las variantes de mecanizado general
+  se fueron con el dominio de madera en la [tarea 039](../odd/tasks/039-wood-out-sweep.md), que
+  también retiró el crate `cam-toolpath`, y la generación de G-code con selección de preprocesador
+  existe en `cam-post` (`cam-cli postp`). Lo que resta del hallazgo no es el modelo sino el ejecutor:
+  isolation y NCC lo tienen (`cam_ops::isolation::isolation_moves`, `cam-ops/src/isolation.rs:638`;
+  `cam_ops::ncc::ncc_moves`, `cam-ops/src/ncc.rs:561`; `cam-cli isolate` y `cam-cli ncc`), mientras
+  `Paint` y `Panelize` siguen siendo parámetros sin ejecutor; el tramo parcial de NCC es E4.1–E4.6
+  (F4). Esa ausencia está registrada como E7.1–E7.4 en
+  [odd/roadmap/index.md](../odd/roadmap/index.md), no acá.
 - **G2.3 — Falta la capa de placa.** El modelo guarda un `Job` con ancho/alto/espesor y un `Frame`
   documento↔máquina (`cam-model/src/lib.rs:64-206`), pero no hay stackup, cara superior/inferior,
   espejado de bottom, origen de placa ni orientación. El plan pide exactamente eso.
-- **G2.4 — Subida de schema sin diseñar.** `DOCUMENT_SCHEMA = "c2d/document@2"` con lectura legacy
-  de `@1` y `migrate()` (`cam-model/src/lib.rs:26-41,1594-1611`). La `@3` que pide el plan no está
-  diseñada; el precedente indica que una subida de versión es obligatoria cuando cambia la
-  semántica, así que el diseño de la `@3` es trabajo real, no un bump.
+- **G2.4 — Subida de schema: ya no aplica.** El relevamiento leyó
+  `DOCUMENT_SCHEMA = "c2d/document@2"` con lectura legacy de `@1` y `migrate()`
+  (`cam-model/src/lib.rs:26-41,1594-1611`). Decisión: **c2d está obsoleto**; el schema en vigor es
+  `camcraft/document@1` en `.cmc` y los documentos legacy `c2d/*` se rechazan al leer, así que la
+  subida aditiva no se diseña porque no hace falta: no queda lector legacy que construir.
 - **G2.5 — Librería de herramientas: base sólida, cobertura PCB a verificar.** SQLite con escalera
   append-only de migraciones sobre `tool_geometry/tool_cutting_data/material/machine/tool_entity`
   (`cam-store/src/tools.rs:29-120`). Hay geometría de herramienta y datos de corte, lo que alcanza
@@ -189,10 +223,10 @@ las fases 1 y 3.
   existe"; la existencia de tabs/puentes como feature de primera clase **no está verificada** y es
   requisito duro de cutout PCB, junto con mouse-bites y las variantes de gaps de FlatCAM
   (`ToolCutOut.py`, §12.2 del documento de port).
-- **G3.7 — Sin paint y sin panelize.** `cam-geom` tiene `nest`/`nest_profile`
-  (`crates/cam-geom/src/nest.rs`, `nest_profile.rs`), que es nesting de piezas para
-  aprovechamiento de material — **otro problema** que panelizar placas (matriz rows×cols con
-  spacing, según `ToolPanelize.py:309`). No confundirlos al planificar.
+- **G3.7 — Sin paint y sin panelize.** En este árbol el nesting de piezas ya no existe: el barrido
+  de `odd/tasks/039-wood-out-sweep.md` lo retiró junto con `moulding` y el texto, así que no hay
+  `nest`/`nest_profile` que reutilizar. Y panelizar placas (matriz rows×cols con spacing, según
+  `ToolPanelize.py:309`) es **otro problema** que el nesting de piezas. No confundirlos al planificar.
 
 ### Fase 4 — Post-procesadores y G-code
 
@@ -224,9 +258,15 @@ modal de librería de herramientas, panel de script, preview 3D integrado
 
 - **G5.1 — Faltan las capas con identidad de placa.** Hay capas genéricas (id/nombre/visible/
   entidades, `cam-model/src/lib.rs:208-218`), no capas tipadas con color por capa y modo cobre.
-- **G5.2 — Faltan los formularios por operación PCB.** El editor de estrategia existe para las
-  operaciones actuales; isolation/NCC/drill/cutout/paint y "generar G-code" no tienen formulario
-  porque no tienen operación (depende de G2.2).
+- **G5.2 — Formularios por operación PCB: hechos; el hueco es «generar G-code».** El relevamiento
+  leyó un editor de estrategia sólo para las operaciones de entonces, con
+  isolation/NCC/drill/cutout/paint y «generar G-code» sin formulario porque no tenían operación
+  (dependía de G2.2, hoy cerrado). Hoy `cam-ui/src/shell/panels.rs` edita las seis variantes de
+  `Operation` —`OperationKind::ALL` (`:522`), con su bloque por variante desde `:535`—, según
+  E6.3 y la [tarea 073](../odd/tasks/073-e6-3-operation-forms.md). Lo que sigue sin formulario es
+  «generar G-code»: `cam-ui/src/chrome/app_bar.rs:152-166` dibuja «Generate G-code» y «Post…» pero
+  sólo como hit-targets de test, sin comando detrás, y la emisión con selección de preprocesador
+  vive en la CLI (`cam-cli program --post`, `cam-cli postp`).
 - **G5.3 — A VERIFICAR:** guardado con Ctrl+S y mapa de atajos completo, que el plan marca como
   faltantes hoy. **INFERIDO:** el desktop ya enlaza open/import/save-as vía diálogos nativos
   (`cam-desktop/src/main.rs:85-119`), así que la brecha probablemente sea de atajos, no de
@@ -272,9 +312,14 @@ celdas) no admita paralelizar después sin rehacerlo.
    justo donde el PCB la necesita. La decisión "kernel propio vs. `i_overlay`/`clipper2`" tiene que
    tomarse **antes** de la fase 1, porque el importador Gerber debe emitir en el formato que el
    kernel consume.
-2. **`EntityKind` con una sola variante.** Todo el modelo, la UI y el store asumen contornos. Sumar
-   taladros, aperturas y pours toca `cam-model`, `cam-store` (schema `@3`), `cam-export` y `cam-ui`
-   a la vez.
+2. **`EntityKind` — sumar una cuarta variante es una edición transversal.** Las variantes de hoy
+   son `Contour`, `Drill` y `Slot` (`cam-model/src/lib.rs:303`) y ahí está el tope de D3 (§6): la
+   semántica PCB —rol de capa, apertura, herramienta, archivo de origen— vive en metadata
+   (`Layer.role: LayerRole`, `:274`; `Entity.source: Provenance`, `:297`), no en variantes. Agregar
+   una cuarta toca `cam-model`, `cam-app`, `cam-import`, `cam-export` (DXF, SVG, Gerber y Excellon),
+   `cam-ui` y `cam-view` a la vez: 142 sitios de `match`/construcción en 41 archivos. Esa es la
+   razón por la que las pseudo-variantes —pads, aperturas, pours— **no** se modelan como
+   `EntityKind`.
 3. **`Arc` de Z constante y moves de Z fijo.** Autolevelling obliga a segmentar el stream; si se
    posterga mucho, aparece como retrofit en todas las estrategias.
 4. **Un solo `Job`/`Frame` centrado en el documento.** Panelizado y registro de placa (múltiples
@@ -318,7 +363,7 @@ hay que revisar si alguna vez se quiere reabrir.
   aplanar). Operaciones → corrección geométrica (cubre el mismo cobre, sin gouge). Emisión → golden
   propio byte a byte, como ya hace `cam-post/tests/emit.rs`.
 
-- **D3. Modelo de placa — `c2d/document@3` aditivo, sin contenedor nuevo.**
+- **D3. Modelo de placa — schema `camcraft/document@1`, sin contenedor nuevo.**
   Hecho decisivo: el kernel conoce una primitiva de área (`Region`) y una de camino (`Contour`), y
   `Job` + `Frame` ya modelan dimensiones, espesor, origen y mapeo documento↔máquina
   (`cam-model/src/lib.rs:57-88`). Un contenedor paralelo duplicaría carga/guardado/undo.
@@ -326,7 +371,9 @@ hay que revisar si alguna vez se quiere reabrir.
   en **metadata**, no en variantes de `EntityKind` — el mismo principio con el que FlatCAM aplana a
   shapely y guarda aperturas y herramientas aparte. `Operation` sí crece con `Isolation`,
   `NonCopperClear`, `Cutout`, `Paint` y `Panelize`. `EntityKind` crece como mucho con `Drill` y
-  `Slot`. Migración `@2→@3` = campos nuevos con default.
+  `Slot`. Decisión: **c2d está obsoleto**; el schema en vigor es `camcraft/document@1` en
+  contenedor `.cmc` (`cam-model/src/lib.rs:27`), los documentos legacy `c2d/*` se rechazan al leer
+  y no hay migración: nada que migrar.
 
 - **D4. Dominio general — conservar, congelar, sacarlo de la UI principal.**
   Hecho decisivo: el core de las 11 operaciones es barato (~1.900 líneas fuera de `lib.rs`), pero
@@ -380,9 +427,9 @@ Para que el plan no rehaga lo que ya está:
 | G3.2 | Offset que aplana/rechaza                       | **BLOQUEANTE** | Isolation, NCC             |
 | G1.1 | Sin parser Gerber                               | **BLOQUEANTE** | Todo el flujo PCB          |
 | G1.2 | Sin parser Excellon                             | **BLOQUEANTE** | Drilling, cutout           |
-| G2.1 | `EntityKind` solo `Contour`                     | **BLOQUEANTE** | Modelo PCB, UI, store      |
+| G2.1 | `EntityKind` cubre `Contour`, `Drill`, `Slot`   | —              | Nada: lo cerró D3          |
 | G3.3 | Sin NCC y sin palancas de performance           | **BLOQUEANTE** | La promesa del producto    |
-| G2.2 | Sin operaciones PCB en el modelo                | ALTO           | UI, CLI, G-code            |
+| G2.2 | `Operation` cubre las operaciones PCB           | —              | Nada: E7.1–E7.4 lo cubre   |
 | G3.1 | Sin isolation                                   | ALTO           | Hito 2 del plan            |
 | G4.1 | Sin autolevelling                               | ALTO           | Fase 4                     |
 | G4.2 | Sin ruteo de exclusiones                        | ALTO           | Seguridad física           |
