@@ -1,8 +1,8 @@
 # 110 — GAPS re-survey: measure the tree, not the plan
 
 Re-medir el árbol actual y reescribir con evidencia de hoy los hallazgos de [docs/GAPS_CAMCRAFT.md](../../docs/GAPS_CAMCRAFT.md), que sigue siendo el diagnóstico del workspace **anterior al giro a PCB** y afirma cosas que ya no son ciertas; el resultado esperado es un diagnóstico otra vez válido, no un plan nuevo ni un arreglo de lo que el barrido encuentre.
-Estado: `in progress` — T1 y T2 entregados y commiteados (`e50aa7c`, `a2591c3`); T3 en curso y
-T4–T7 abiertos.
+Estado: `delivered` — T1–T7 entregados y registrados en `## Tasks`; el barrido re-midió §1-§9 contra
+el árbol del 2026-11-28 y los gates de S8 y de records quedan en verde.
 
 ## Surfaces
 
@@ -104,15 +104,15 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Specs          | Ruta   | Commit    |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | --------- |
-| T1  | Re-medir y reescribir el §1 inventario y el encuadre del documento: tabla de crates y LOC de `src/` (medida hoy, con el comando que la produce), lista de dependencias externas del workspace, conteo de `#[test]`, las ausencias que el inventario afirma (`benches/`, `.github/workflows/`, corpus de paridad) y la nota que ya advierte que la tabla mide antes del giro. El §Método y la «Fecha del relevamiento» dejan de prometer un estado que ya no es el de hoy: o se re-miden o quedan marcados como historia de 2026-05-09. Área: `docs/GAPS_CAMCRAFT.md`, §Método y §1. | S1, S2, S3, S5 | worker | `e50aa7c` |
-| T2  | Re-medir el §2 veredicto corto y el §3 completo, hallazgo por hallazgo: G0.1–G0.3, G1.1–G1.4, G2.1–G2.5, G3.1–G3.7, G4.1–G4.4, G5.1–G5.3, G6.1–G6.4. Cada uno termina en «sigue siendo cierto», «ya no aplica» (con el commit o la tarea que lo cambió) o «cambió de forma» (con la redacción actual y su evidencia), y toda cita pasa a resolver desde la raíz del repositorio. Área: `docs/GAPS_CAMCRAFT.md`, §2 y §3.                                                                                                                                                            | S2, S3, S4     | worker | `a2591c3` |
-| T3  | Re-medir la tabla de rendimiento del §4 —paralelismo, índice espacial, algoritmos preparados para rest/offsets incrementales, medición— y el párrafo que la interpreta, con la evidencia de cada palanca sobre el árbol de hoy. Área: `docs/GAPS_CAMCRAFT.md`, §4.                                                                                                                                                                                                                                                                                                                  | S2, S3, S4, S5 | worker |           |
-| T4  | Re-medir los seis riesgos arquitectónicos del §5 y sus citas (`cam-model`, `cam-move`, `cam-app`, `cam-geom`), asignando a cada uno uno de los tres estados. Área: `docs/GAPS_CAMCRAFT.md`, §5.                                                                                                                                                                                                                                                                                                                                                                                     | S2, S3, S4     | worker |           |
-| T5  | Re-medir el §6 decisiones (D1–D6, con el hecho decisivo de cada una) y el §7 activos reutilizables (los seis), sin agregar decisiones nuevas y sin retirar un activo porque hoy no se use: sólo se corrige lo que la medición contradice, y una contradicción entra como hallazgo. Área: `docs/GAPS_CAMCRAFT.md`, §6 y §7.                                                                                                                                                                                                                                                          | S2, S3, S4, S7 | worker |           |
-| T6  | Re-derivar el §8 resumen de severidad desde los hallazgos corregidos por T2–T5, no parchearlo fila por fila: cada fila se explica por su estado, los hallazgos que dejaron de aplicar salen y los que cambiaron de forma cambian de severidad o de «Bloquea» con el motivo escrito. Cierra además el §9: su «El diagnóstico está cerrado y las decisiones D1–D6 están tomadas» es la conclusión que el §8 y el §6 sostienen, así que sólo puede re-medirse después de T5 y T6, y no es un cierre de comprobaciones y registro como T7. Área: `docs/GAPS_CAMCRAFT.md`, §8 y §9.      | S2, S6         | worker |           |
-| T7  | Cierre: correr `./scripts/check-docs.sh` (debe salir en `0`), comprobar que todos los enlaces internos del documento reescrito resuelven, y registrar en el `## Log` del documento la fecha del barrido, el comando de cada medición y las citas normalizadas. No se toca nada más allá de lo que T1–T6 dejaron. Área: `docs/GAPS_CAMCRAFT.md`, `## Log`.                                                                                                                                                                                                                           | S8, S9         | worker |           |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Specs          | Ruta   | Commit                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------------------------------------------------------------- |
+| T1  | Re-medir y reescribir el §1 inventario y el encuadre del documento: tabla de crates y LOC de `src/` (medida hoy, con el comando que la produce), lista de dependencias externas del workspace, conteo de `#[test]`, las ausencias que el inventario afirma (`benches/`, `.github/workflows/`, corpus de paridad) y la nota que ya advierte que la tabla mide antes del giro. El §Método y la «Fecha del relevamiento» dejan de prometer un estado que ya no es el de hoy: o se re-miden o quedan marcados como historia de 2026-05-09. Área: `docs/GAPS_CAMCRAFT.md`, §Método y §1. | S1, S2, S3, S5 | worker | `e50aa7c`                                                     |
+| T2  | Re-medir el §2 veredicto corto y el §3 completo, hallazgo por hallazgo: G0.1–G0.3, G1.1–G1.4, G2.1–G2.5, G3.1–G3.7, G4.1–G4.4, G5.1–G5.3, G6.1–G6.4. Cada uno termina en «sigue siendo cierto», «ya no aplica» (con el commit o la tarea que lo cambió) o «cambió de forma» (con la redacción actual y su evidencia), y toda cita pasa a resolver desde la raíz del repositorio. Área: `docs/GAPS_CAMCRAFT.md`, §2 y §3.                                                                                                                                                            | S2, S3, S4     | worker | `a2591c3`                                                     |
+| T3  | Re-medir la tabla de rendimiento del §4 —paralelismo, índice espacial, algoritmos preparados para rest/offsets incrementales, medición— y el párrafo que la interpreta, con la evidencia de cada palanca sobre el árbol de hoy. Área: `docs/GAPS_CAMCRAFT.md`, §4.                                                                                                                                                                                                                                                                                                                  | S2, S3, S4, S5 | worker | `d3e9ed2`                                                     |
+| T4  | Re-medir los seis riesgos arquitectónicos del §5 y sus citas (`cam-model`, `cam-move`, `cam-app`, `cam-geom`), asignando a cada uno uno de los tres estados. Área: `docs/GAPS_CAMCRAFT.md`, §5.                                                                                                                                                                                                                                                                                                                                                                                     | S2, S3, S4     | worker | `72f87be`                                                     |
+| T5  | Re-medir el §6 decisiones (D1–D6, con el hecho decisivo de cada una) y el §7 activos reutilizables (los seis), sin agregar decisiones nuevas y sin retirar un activo porque hoy no se use: sólo se corrige lo que la medición contradice, y una contradicción entra como hallazgo. Área: `docs/GAPS_CAMCRAFT.md`, §6 y §7.                                                                                                                                                                                                                                                          | S2, S3, S4, S7 | worker | `72f87be`                                                     |
+| T6  | Re-derivar el §8 resumen de severidad desde los hallazgos corregidos por T2–T5, no parchearlo fila por fila: cada fila se explica por su estado, los hallazgos que dejaron de aplicar salen y los que cambiaron de forma cambian de severidad o de «Bloquea» con el motivo escrito. Cierra además el §9: su «El diagnóstico está cerrado y las decisiones D1–D6 están tomadas» es la conclusión que el §8 y el §6 sostienen, así que sólo puede re-medirse después de T5 y T6, y no es un cierre de comprobaciones y registro como T7. Área: `docs/GAPS_CAMCRAFT.md`, §8 y §9.      | S2, S6         | worker | `72f87be`                                                     |
+| T7  | Cierre: correr `./scripts/check-docs.sh` (debe salir en `0`), comprobar que todos los enlaces internos del documento reescrito resuelven, y registrar en el `## Log` del documento la fecha del barrido, el comando de cada medición y las citas normalizadas. No se toca nada más allá de lo que T1–T6 dejaron. Área: `docs/GAPS_CAMCRAFT.md`, `## Log`.                                                                                                                                                                                                                           | S8, S9         | worker | —, este documento; la evidencia viaja en el commit de entrega |
 
 ## Log
 
@@ -220,3 +220,61 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
   Hallazgo del barrido, registrado y no corregido (S7): el §2 y el §5 no coinciden en el costo de
   `EntityKind` —«140 sitios» en el §2 y el §3 medido, «142 sitios» en el §5, que es de T4—; y el §8
   sigue listando hallazgos que el §3 ya dio por «ya no aplica» (G5.1, G2.5, G5.3), que es de T6.
+- **L5 (T4 y T5 entregados, 2026-11-28, `72f87be`).** El §5 —los seis riesgos arquitectónicos—, el §6
+  —D1–D6 con el hecho decisivo de cada una— y el §7 —los seis activos reutilizables— se re-midieron
+  contra el árbol de hoy, y cada riesgo cerró en uno de los tres estados de S3 con una cita que
+  resuelve desde la raíz del repositorio. Los seis activos del §7 siguen citando lo que el árbol tiene
+  y ninguno se retiró por no usarse: los tres dialectos `.pp` con golden byte a byte,
+  `Move::{Rapid,Feed,Arc,Helix,Retract}` y `MoveStream`, `ImportReport`, los invariantes de
+  determinismo, los **16** subcomandos de `cam-cli` y `cam-sim`. Lo que la medición refutó, con el
+  commit que lo refutó:
+  - El **dominio de madera** no estaba congelado: `fdb87cf` (2026-11-11) se llevó `cam-toolpath` (11
+    estrategias) y `cam-program` enteros, y `3dc3cf8` (2026-11-11) borró el `medial` de 1.038 líneas
+    que D4 decía no tocar; de los tres algoritmos rescatados quedan `rings`, `peck` y `follow` dentro
+    de `cam-ops`.
+  - La **política de tolerancia** dejó de estar fragmentada: `TolerancePolicy` entró con `1d170da`
+    (2026-11-14, tarea 052) y hoy son **456** menciones en **94** archivos
+    (`grep -rn 'TolerancePolicy' src-tauri/crates --include='*.rs' | wc -l` → 456); lo que sobrevive de
+    la fragmentación son las constantes canónicas paralelas y **9** literales internos del kernel.
+  - Los **moves de Z fijo** ya no describen el contrato: cada move lleva su `Point3.z` y el arco que
+    baja es otra variante, `Move::Helix` (`src-tauri/crates/cam-move/src/lib.rs:88`, `7063fb3`); lo que
+    sigue siendo cierto es que autolevelling no tiene dónde guardar su mapa de alturas.
+  - El **umbral de abandono de D1** —«200 operaciones booleanas contra áreas conocidas»— no existe: lo
+    que hay son **8** pares degenerados (`src-tauri/crates/cam-geom/tests/boolean_corpus.rs:71`) con
+    las tres operaciones sobre cada par (`:141`), 24 combinaciones.
+
+  Tres contradicciones entre el árbol y el documento quedan registradas y sin corregir (S7):
+  `MedialAxis` sigue declarado sin productor (`src-tauri/crates/cam-ops/src/shared.rs:254`), el exit
+  code `7` que el encabezado de `cam-cli` documenta para un nesting incompleto no lo produce ningún
+  camino de código (`src-tauri/crates/cam-cli/src/lib.rs:9`), y la sección `Nesting` del documento
+  (`src-tauri/crates/cam-model/src/lib.rs:597`) no tiene nester que la llene: `parts`, `cutlist` y
+  `report` la leen y la escriben sin colocar ninguna pieza.
+- **L6 (T6 entregado, 2026-11-28, `72f87be`).** El §8 se re-derivó desde los **30** estados que el §3
+  le dio a cada hallazgo, no fila por fila sobre la tabla vigente: las **22** filas quedaron en **12**
+  —**8** se sostienen y **14** salieron, cada una con el commit o la tarea que cerró su hallazgo— y
+  **4** hallazgos que nunca tuvieron fila (G1.4, G3.5, G4.4 y G2.4) se nombran por primera vez, así que
+  22 − 14 = 8 más las 4 agregadas dan las 12. Las 12 son seis «sigue siendo cierto» y seis «cambió de
+  forma», con una sola BLOQUEANTE —G3.2, el offset que se rechaza— y G0.1 sin bloquear nada. El §9 dejó
+  de afirmar que «El diagnóstico está cerrado y las decisiones D1–D6 están tomadas»: ahora separa lo
+  que el barrido cerró, las **12** filas que siguen abiertas y lo que este arnés no pudo medir —el
+  umbral de D1, el gate de performance que no compara y las placas reales—, sin reclamar cierre.
+- **L7 (T7, cierre verificado, 2026-11-28).** La verificación independiente del barrido encontró tres
+  defectos, y esta corrección los cierra en `docs/GAPS_CAMCRAFT.md` dentro del mismo `72f87be`:
+  1. El §5 riesgo 5 decía que cada comando paga **dos** clones del documento. Paga **uno**, el del
+     candidato (`execute_with_outcome`, `src-tauri/crates/cam-app/src/lib.rs:199`): el documento
+     reemplazado no se copia, `std::mem::replace` (`:202`) lo mueve a la historia y `record` (`:203`)
+     lo empuja sin clonar; los clones de undo y redo son aparte, al deshacer y al rehacer.
+  2. Los «142 sitios» del §5 no venían de otro árbol: fueron un error de conteo de ocurrencias de este
+     mismo barrido, y re-medidos son **140** líneas
+     (`grep -rn 'EntityKind::' src-tauri/crates --include='*.rs' | wc -l` → 140), el mismo número que
+     el §2, el §3 y el §8.
+  3. El §8 sumaba mal: los **18** «ya no aplica» del §3 no eran 18 filas de la tabla vieja —sólo 14
+     tenían fila y las otras cuatro nunca la tuvieron—, así que la aritmética correcta es 22 − 14 = 8
+     que se sostienen, más 4 hallazgos agregados, 12 filas.
+
+  La misma verificación confirmó lo que sí estaba bien: el §1-§4 no cambió con este commit —su diff
+  abre un solo hunk, en la línea 477, ya dentro del §5—, el §3 sigue declarando **30** estados
+  (`grep -c 'Estado: «' docs/GAPS_CAMCRAFT.md` → 30), toda cita muestreada cae sobre el símbolo que el
+  texto nombra, y cuatro de las cinco refutaciones citadas son exactas; la quinta —las variantes de
+  `Operation`— se atribuye a `68b9841` (2026-11-11, «five PCB operations replace the eleven machining
+  ones»), no a `fdb87cf`, que es el commit que borró los dos crates.
