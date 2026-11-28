@@ -150,6 +150,35 @@ expect_equal() {
   fi
 }
 
+expect_contains() {
+  local label=$1 file=$2 needle=$3
+  if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+    pass "$label"
+  else
+    fail "$label (no «$needle» in $file)"
+  fi
+}
+
+expect_missing() {
+  local label=$1 file=$2 needle=$3
+  if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+    fail "$label (found «$needle» in $file)"
+  else
+    pass "$label"
+  fi
+}
+
+# A gate line may not swallow its own failure. `|| true` elsewhere (e.g. a best-effort `lscpu` in the
+# host-identity step) is not the gate, so only the lines that invoke a harness are checked.
+expect_no_swallow_on() {
+  local label=$1 file=$2 needle=$3
+  if grep -F -- "$needle" "$file" | grep -Fq -- "||"; then
+    fail "$label (the $needle line contains a `||` swallow)"
+  else
+    pass "$label"
+  fi
+}
+
 expect_no_dead_branch() {
   local trigger=$1 branch dead=""
   for branch in $(value "${trigger}_branches"); do
@@ -189,5 +218,36 @@ for job in parity bench; do
   expect_equal "job $job runs only on workflow_dispatch" "github.event_name == 'workflow_dispatch'" \
     "$(value "${job}_if")"
 done
+
+# El job `bench` ya no es un placeholder que imprime y sale 0: corre los dos arneses de regresión de
+# T2 y la medición de T1, y falla con la regresión (sin `continue-on-error`, sin `|| true`). Se lee
+# el bloque del job por indentación, igual que el resto: desde `  bench:` hasta el próximo job.
+echo "== el job bench mide de verdad y falla con la regresión =="
+awk '
+  /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
+    if ($0 == "  bench:") { inside = 1; next }
+    if (inside) { exit }
+  }
+  inside { print }
+' "$CI" >"$WORK/bench-job.txt"
+
+if [ ! -s "$WORK/bench-job.txt" ]; then
+  fail "the bench job could not be read from the workflow"
+else
+  expect_contains "bench runs the cam-geom regression harness" "$WORK/bench-job.txt" \
+    "bash src-tauri/crates/cam-geom/benches/check_regression.sh"
+  expect_contains "bench runs the cam-ops regression harness" "$WORK/bench-job.txt" \
+    "bash src-tauri/crates/cam-ops/benches/check_regression.sh"
+  expect_contains "bench publishes the reproducible NCC large-plate measurement" "$WORK/bench-job.txt" \
+    "measure_ncc_large_plate_kicad_large_pours"
+  expect_missing "bench does not swallow a regression with continue-on-error" "$WORK/bench-job.txt" \
+    "continue-on-error"
+  expect_no_swallow_on "the cam-geom harness line does not swallow its failure" "$WORK/bench-job.txt" \
+    "cam-geom/benches/check_regression.sh"
+  expect_no_swallow_on "the cam-ops harness line does not swallow its failure" "$WORK/bench-job.txt" \
+    "cam-ops/benches/check_regression.sh"
+  expect_missing "bench is no longer the migration placeholder" "$WORK/bench-job.txt" \
+    "deshabilitados durante"
+fi
 
 summary

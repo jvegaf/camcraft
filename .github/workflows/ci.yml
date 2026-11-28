@@ -107,15 +107,57 @@ jobs:
           echo "Parity corpus gate deshabilitado durante migración Tauri."
           echo "Se reactivará cuando el pipeline CAM/prev se reintegre."
 
+  # Corre de verdad los dos arneses de regresión de `src-tauri/crates/*/benches/check_regression.sh`
+  # (S4/T2) más la medición reproducible de la placa grande de NCC (S2/T1).
+  #
+  # Política de hardware: los baselines commiteados son tiempos ABSOLUTOS medidos en un i7-10875H de
+  # 16 CPUs (`odd/reports/ncc-regression.md`). Criterion compara absolutos, así que un runner de otra
+  # clase puede desplazarlos en bloque y producir rojos que no son regresiones de código. No hay
+  # evidencia de que `ubuntu-latest` sea ese host, así que este job no afirma equivalencia:
+  #   - sigue siendo dispatch-only: un humano decide cuándo pagar los minutos y desde qué host;
+  #   - imprime `nproc`/CPU/`rustc` antes de medir, para que el log haga auditable la comparación;
+  #   - corre los arneses con su umbral del 10 % y falla con la regresión: sin `continue-on-error`,
+  #     sin filtrar benches y sin `|| true`;
+  #   - un desplazamiento uniforme de TODOS los benches contra un host de otra clase es un rojo
+  #     honesto de «baseline no comparable acá»: se resuelve despachando en el host de referencia o
+  #     re-baselinando en ese runner, nunca ensanchando el umbral. Un rojo concentrado en un bench
+  #     —hoy `ops/ncc_unite_corpus_large_plate`, +422 %…+457 % por la regresión de T1— es real en
+  #     cualquier host y bloquea. T4 lo arregla; este job no lo esconde.
   bench:
     name: bench
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Bench gate (migration placeholder)
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      # El host es parte de la medición: el baseline no es portable entre clases de CPU.
+      - name: Record host identity
         run: |
-          echo "Benchmarks deshabilitados durante migración Tauri."
-          echo "Se reactivarán cuando el pipeline CAM/prev se reintegre."
+          echo "nproc: $(nproc)"
+          lscpu | grep -E 'Model name|^CPU\(s\)|Thread|Core|Socket' || true
+          rustc --version
+          cargo --version
+
+      # Medición reproducible de S2/T1 publicada antes de los gates: si un gate falla, el log ya
+      # tiene el split unite/fill/clip de la placa grande. No es el gate; el gate es Criterion.
+      - name: Publish NCC large-plate measurement (T1)
+        run: cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_pours -- --ignored --nocapture
+
+      # Los dos arneses de S4/T2, tal como se corren en local. Fallan si el baseline commiteado no
+      # cubre un bench o si Criterion imprime «Performance has regressed».
+      - name: Regression gate cam-geom
+        run: bash src-tauri/crates/cam-geom/benches/check_regression.sh
+
+      - name: Regression gate cam-ops (incluye ops/ncc_unite_corpus_large_plate)
+        run: bash src-tauri/crates/cam-ops/benches/check_regression.sh
