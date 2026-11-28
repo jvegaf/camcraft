@@ -3,8 +3,12 @@
 Construir el gate que hoy sólo sostiene la atención humana: un checker barato que falla cuando un
 hallazgo de [docs/GAPS_CAMCRAFT.md](../../docs/GAPS_CAMCRAFT.md) §3 pierde su identificador, su estado
 o su cita resoluble, con sus tests y cableado en el gate del repositorio.
-Estado: `open` — nada implementado: no existe el checker, no hay tests, no está cableado y ningún
-`S#` está satisfecho.
+Estado: `delivered` — T1–T4 entregados y registrados en `## Tasks`; el gate corre ocho reglas con
+sus casos negativos (89 assertions), `./scripts/check.sh` termina en `all gates green` con `== gaps ==`
+adentro y `./scripts/check-gaps-states.sh` imprime `gaps states ok: 30 findings`. Los nueve `S#`
+quedan satisfechos. Queda fuera de esta entrega el veredicto del validador dirigido: el linaje
+`review-a76ad06d1ff131ee` sigue en `correction_required` con la corrección aplicada; la entrega ocurrió
+bajo la política ordinaria del repositorio y eso no es una aprobación.
 
 - `scripts/check-gaps-states.sh` (nuevo: el checker, con su `python3` embebido)
 - `scripts/check-gaps-states.py` (el esbozo del verificador, adaptado)
@@ -147,12 +151,12 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 
 ## Tasks
 
-| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs                  | Ruta   | Commit |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------ | ------ |
-| T1  | Implementar el checker en `scripts/check-gaps-states.sh` con el mismo shape que `check-docs.sh` (bash + `python3` embebido, sin dependencias): extraer el §3, reconocer los hallazgos por bullet, comparar contra el conjunto esperado de 30 ids, parsear `Estado: «…»` contra los tres estados, recolectar las citas de ruta y las citas con línea, resolverlas desde la raíz y emitir defectos y resumen según S6. El esbozo `scripts/check-gaps-states.py` del verificador se adapta; no se copia una regla que el documento no pueda cumplir. | S2, S3, S4, S5, S6, S9 | worker |        |
-| T2  | Escribir `scripts/tests/gaps-states.sh` con el fixture de descarte y un caso por cada condición negativa de S2–S4, más el caso de prosa cambiada que debe pasar (S5); afirmar exit code, línea de defecto y resumen en cada caso, y comprobar que el test lo levanta `scripts/test-worktree-tooling.sh` sin tocar el árbol real.                                                                                                                                                                                                                  | S2, S3, S4, S5, S6, S7 | worker |        |
-| T3  | Cablear: receta `check-gaps-states` en el `justfile` junto a `check-docs`, paso `== gaps ==` en `scripts/check.sh`, y paso del job `gate` en `.github/workflows/ci.yml` después del checkout; verificar `just check-gaps-states`, la inclusión en `./scripts/check.sh` y que `bash scripts/tests/ci-workflow.sh` sigue en `0`.                                                                                                                                                                                                                    | S8                     | worker |        |
-| T4  | Cierre y prueba roja-verde: sobre una copia del documento en `mktemp -d` (nunca el árbol), partir del documento corregido sólo en la copia, obtener el verde del gate, romper a propósito cada condición —id, estado, cita, EOF— de a una y registrar el rojo observado con el comando exacto; correr `just test-tooling` y `./scripts/check-docs.sh`, y anotar en el `## Log` el defecto real de `tests/boolean_properties.rs:108` que la corrida sobre `a2591c3` descubre, sin repararlo (S9).                                                  | S2–S9                  | worker |        |
+| ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs                  | Ruta   | Commit                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------ | ------------------------------------------------------------- |
+| T1  | Implementar el checker en `scripts/check-gaps-states.sh` con el mismo shape que `check-docs.sh` (bash + `python3` embebido, sin dependencias): extraer el §3, reconocer los hallazgos por bullet, comparar contra el conjunto esperado de 30 ids, parsear `Estado: «…»` contra los tres estados, recolectar las citas de ruta y las citas con línea, resolverlas desde la raíz y emitir defectos y resumen según S6. El esbozo `scripts/check-gaps-states.py` del verificador se adapta; no se copia una regla que el documento no pueda cumplir. | S2, S3, S4, S5, S6, S9 | worker | `e35a4f8`, `92e631f`, `5d9c719`                               |
+| T2  | Escribir `scripts/tests/gaps-states.sh` con el fixture de descarte y un caso por cada condición negativa de S2–S4, más el caso de prosa cambiada que debe pasar (S5); afirmar exit code, línea de defecto y resumen en cada caso, y comprobar que el test lo levanta `scripts/test-worktree-tooling.sh` sin tocar el árbol real.                                                                                                                                                                                                                  | S2, S3, S4, S5, S6, S7 | worker | `e35a4f8`, `92e631f`, `5d9c719`                               |
+| T3  | Cablear: receta `check-gaps-states` en el `justfile` junto a `check-docs`, paso `== gaps ==` en `scripts/check.sh`, y paso del job `gate` en `.github/workflows/ci.yml` después del checkout; verificar `just check-gaps-states`, la inclusión en `./scripts/check.sh` y que `bash scripts/tests/ci-workflow.sh` sigue en `0`.                                                                                                                                                                                                                    | S8                     | worker | `e35a4f8`, `92e631f`, `08ddbf3`, `112305a`                    |
+| T4  | Cierre y prueba roja-verde: sobre una copia del documento en `mktemp -d` (nunca el árbol), partir del documento corregido sólo en la copia, obtener el verde del gate, romper a propósito cada condición —id, estado, cita, EOF— de a una y registrar el rojo observado con el comando exacto; correr `just test-tooling` y `./scripts/check-docs.sh`, y anotar en el `## Log` el defecto real de `tests/boolean_properties.rs:108` que la corrida sobre `a2591c3` descubre, sin repararlo (S9).                                                  | S2–S9                  | worker | —, este documento; la evidencia viaja en el commit de entrega |
 
 ## Log
 
@@ -183,3 +187,61 @@ Estado: `open` — nada implementado: no existe el checker, no hay tests, no est
 
   Esos commits son la fuente de S2–S4: el conjunto de 30 ids, los tres estados y la regla de citas
   resolubles son la forma que el gate tiene que exigir, no una interpretación nueva de esta tarea.
+
+- **L3 (T1–T3 entregados, 2026-11-28).** El gate vive en `scripts/check-gaps-states.sh` con su suite en
+  `scripts/tests/gaps-states.sh` y el cableado de S8 (`justfile`, `== gaps ==` en `scripts/check.sh` y
+  el job `gate` de `.github/workflows/ci.yml`). Ocho reglas, cada una con su caso negativo: `missing`,
+  `duplicate`, `unknown`, `state-count` (cero y dos), `state-value` (sin comillas, etiqueta fuera de
+  las tres, comilla sin cerrar), `citation` (ruta que no resuelve, ruta absoluta, ruta que sale con
+  `..`, directorio, y ruta desnuda sin línea) y `line` (`0`, pasada de EOF, rango invertido). El
+  conjunto esperado de 30 ids está escrito a mano en **tres** lugares —`EXPECTED` del gate, `IDS` del
+  test y el fixture que escribe `scripts/tests/lib/common.sh`— a propósito: derivarlo del documento
+  dejaría pasar un hallazgo borrado entero, que es la pérdida que el gate existe para detectar;
+  cambiar uno obliga a cambiar los tres. La suite queda en **89** assertions
+  (`bash scripts/tests/gaps-states.sh` → `89 passed, 0 failed`); con la última regla puesta y antes de
+  corregir las citas se observó `89 passed, 3 failed`, y después de corregirlas `89 passed, 0 failed`.
+  Los commits: `e35a4f8` (checker, tests y cableado), `92e631f` (endurecimiento y fixture) y `5d9c719`
+  (la regla de la línea); las reparaciones del documento real que esa corrida produjo viajaron en
+  `08ddbf3` y `112305a`.
+
+- **L4 (lo que el gate encontró, 2026-11-28).** La primera corrida sobre el documento commiteado fue
+  roja por una cita que no resolvía desde la raíz: `tests/boolean_properties.rs:108` nombraba el
+  archivo y la línea correctos, pero no desde la raíz del repositorio. Un barrido del documento
+  encontró ocho más de la misma clase y las enraizó en `08ddbf3`. Al exigir que la cita resuelva
+  **con línea**, el gate encontró cuatro hallazgos (§3 `G4.3`, `G6.1`, `G6.2`, `G6.3`) cuya única cita
+  era una ruta desnuda, sin número de línea; tres pasadas anteriores no los vieron porque una ruta que
+  existe parece evidencia hasta que se intenta seguir. `G6.1` además tenía `:97`/`:110` obsoletos y
+  desprendidos: `parity` está en `.github/workflows/ci.yml:103` y `bench` en `:132`, y `:110` es un
+  paso de checkout. `5d9c719` les dio a los cuatro la línea que su frase nombra. Ninguna de esas
+  reparaciones se hizo desde esta tarea (S9): el gate reporta, el padre decide quién repara, y aquí
+  quedan registradas.
+
+- **L5 (el cableado rompió el arnés, y se arregló).** Meter el paso en `scripts/check.sh` rompió
+  `scripts/test-worktree-tooling.sh`: sus repositorios de descarte copiaban `check.sh` pero no el
+  script que el paso nuevo ejecuta, así que el fixture moría con `127` en nueve assertions —`18
+  passed, 9 failed`—. Copiar el script no alcanzaba: faltaba también el documento que el paso lee, y
+  eso sólo apareció después de que el script estuviera. `92e631f` hace que el fixture lleve el gate y
+  un documento legible, escrito antes del `git init` para que los worktrees lo hereden, y declara en su
+  primera línea que es un fixture y no el diagnóstico; el acoplamiento de los tres lugares del conjunto
+  de ids queda escrito donde se define. El arnés vuelve a `27 passed, 0 failed` y `./scripts/check.sh`
+  termina en `all gates green` con `== gaps ==` adentro.
+
+- **L6 (historia de revisión: el linaje quedó sin veredicto, y eso no es una aprobación).** La ruta de
+  recolección del validador dirigido rechazó su propia atadura vigente —`collectBinding is missing or
+  stale for current STATUS`— mientras `STATUS` devolvía exactamente esa atadura, así que el linaje
+  `review-a76ad06d1ff131ee` quedó en `correction_required` con la corrección aplicada y **sin**
+  veredicto del validador. La entrega ocurrió bajo la política ordinaria del repositorio, con
+  receipt-driven development deshabilitado para el clon por el owner. No se registra como aprobación ni
+  se presenta como revisión cerrada: el linaje sigue abierto.
+
+- **L7 (T4, cierre verificado, 2026-11-28).** La prueba roja-verde vive en
+  `scripts/tests/gaps-states.sh`: cada caso construye su repositorio de descarte con `mktemp -d` y
+  rompe una condición —id, estado, cita desnuda, línea `0`, pasada de EOF, rango invertido—, y el rojo
+  esperado se observó antes de la última corrección; la suite corre hoy `89 passed, 0 failed`. Los
+  checks de cierre: `./scripts/check-docs.sh` → `markdown
+  links ok: 174 files`, exit 0; `pnpm exec biome format --write odd/tasks/111-gaps-states-gate.md
+  odd/tasks/INDEX.md` seguido de `pnpm lint` en verde; `./scripts/check-records.sh` → `records: 105
+  task(s) checked, 0 commit(s) unverified in a shallow clone`, exit 0, con sus advisories de memorias
+  históricas que no son de esta tarea; `./scripts/check-gaps-states.sh` → `gaps states ok: 30
+  findings`. Queda abierto el veredicto del linaje de L6 y, por diseño, la comprobación de que la línea
+  citada contenga el símbolo que el texto nombra: eso es S4 de 110 y lo sigue juzgando una persona.
