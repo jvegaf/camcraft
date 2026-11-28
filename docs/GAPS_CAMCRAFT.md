@@ -418,20 +418,60 @@ picking en `cam-view`.
 
 ## 4. El gap transversal: rendimiento
 
-La premisa del pivote es "mejor rendimiento que FlatCAM". Verificado en fuente, hoy el proyecto no
-tiene **ninguna** de las cuatro palancas que esa promesa requiere:
+La premisa del pivote es "mejor rendimiento que FlatCAM". Re-medido el 2026-11-28: el proyecto ya no
+tiene **cero** de las cuatro palancas, pero ninguna de las que entraron es del kernel. La columna de
+2026-05-09 conserva la afirmación vieja; el estado de cada fila es uno de los tres del §3, y cada
+cifra lleva el comando que la produjo.
 
-| Palanca                                               | Estado  | Evidencia                                                                                     |
-| ----------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
-| Paralelismo                                           | Ausente | Sin `rayon` en ningún `Cargo.toml`; cero usos en `cam-geom`, `cam-toolpath`, `cam-sim`        |
-| Índice espacial                                       | Ausente | Sin `rstar`/`kdtree`; sin grilla propia                                                       |
-| Algoritmos preparados para rest/offsets incrementales | Parcial | Anillos de offset existen en `pocket`, sin acumulación multipasada ni rest entre herramientas |
-| Medición                                              | Ausente | Sin `benches/`, sin CI, sin baseline                                                          |
+| Palanca                                               | 2026-05-09 (historia)                                                                           | Evidencia y medición de 2026-11-28                                                                                                                                                                                                                                                                                                                                                                                              | Estado           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Paralelismo                                           | Ausente: «Sin `rayon` en ningún `Cargo.toml`; cero usos en `cam-geom`, `cam-toolpath`, `cam-sim`» | `rayon` está en el workspace (`Cargo.toml:58`) y en `cam-ops` (`src-tauri/crates/cam-ops/Cargo.toml:16`), con **un solo** punto de uso: `src-tauri/crates/cam-ops/src/ncc.rs:18`, `:141` (`par_iter` sobre las islas del relleno NCC, `8d0ad9d`). `cam-geom` y `cam-sim` siguen sin ningún uso (`grep -rn 'rayon' src-tauri/crates --include='*.rs'` → 4 líneas, todas en `cam-ops`). Medido: el bench de tres islas **no gana con hilos** (3,72 ms a 1 hilo vs 3,83 ms a 16). `cam-toolpath` no existe (§1).                                            | cambió de forma  |
+| Índice espacial                                       | Ausente: «Sin `rstar`/`kdtree`; sin grilla propia»                                                | `rstar`/`kdtree` siguen sin entrar (`grep -rn 'rstar' --include=Cargo.toml .` y `grep -rn 'kdtree' --include=Cargo.toml .` → sin coincidencias, código 1), pero **sí hay grilla propia**, y una por operación: `SpatialGrid` en `src-tauri/crates/cam-ops/src/ncc_index.rs:62` (E4.3, `8d0ad9d`) y `SegmentGrid` en `src-tauri/crates/cam-geom/src/boolean.rs:1368` («local to a single boolean operation», `b6f6643`), más la grilla de vértices de `boolean.rs:925` (`139f299`). No hay índice compartido ni uso del mismo en `cam-model`. Medido en el bench del propio índice: 200 consultas AABB sobre el relleno NCC, **83,9 µs** recorriendo todos los segmentos vs **16,5 µs** con la grilla. | cambió de forma  |
+| Algoritmos preparados para rest/offsets incrementales | Parcial: «Anillos de offset existen en `pocket`, sin acumulación multipasada ni rest entre herramientas» | Los anillos siguen en `pocket` (`src-tauri/crates/cam-ops/src/rings.rs:1-2`, `:90`) y ahora hay además ley de offset multipasada acumulada en isolation (`src-tauri/crates/cam-ops/src/isolation.rs:5-8`; `isolation_passes`, `:236`; `e91882b`) y rest machining de NCC (`src-tauri/crates/cam-ops/src/ncc.rs:345`; `ncc_rest_region`, `:349`; `8d0ad9d`), con su prueba en `src-tauri/crates/cam-ops/tests/ncc.rs:575`. Sigue siendo **por operación**: no hay un contrato de rest fuera de NCC ni de offset multipasada fuera de isolation. | cambió de forma  |
+| Medición                                              | Ausente: «Sin `benches/`, sin CI, sin baseline»                                                  | `benches/` con baselines criterion comprometidos entró con `cfb7feb` (2026-11-13): `src-tauri/crates/cam-geom/benches/kernel.rs` (2 benches) y `src-tauri/crates/cam-ops/benches/toolpaths.rs` (5, los dos de NCC desde `8d0ad9d`, 2026-11-21); el CI entró con `65d1499` (2026-11-13). Límites medidos: el job `bench` es un placeholder que **no corre ningún bench** (`.github/workflows/ci.yml:110-121`), el baseline comprometido cubre 5 de los 7 benches —los dos de NCC no lo tienen— y `src-tauri/crates/cam-ops/benches/check_regression.sh:6` copia el baseline a `src-tauri/target/criterion` mientras cargo lee `target/criterion`, así que el script **aborta** sin comparar. | ya no aplica     |
 
-Es importante decirlo con precisión: **el código actual no es lento porque esté mal escrito; es
-lento porque todavía no hay una sola operación PCB donde la performance importe.** El riesgo real no
-es la performance de hoy, es que el diseño (kernel de booleanas, modelo de entidades, simulación por
-celdas) no admita paralelizar después sin rehacerlo.
+**Qué mide el arnés y qué no.** `kernel.rs` mide dos operaciones del kernel sobre dos rectángulos de
+20×10 mm y un círculo de 10 mm; `toolpaths.rs` mide profile, pocket y drill sobre geometría fija y el
+relleno NCC sobre una placa de 100×100 mm con tres islas de cobre, más la consulta AABB ingenua
+contra la que usa la grilla. **No** mide un Gerber real de una placa, ni isolation sobre cobre
+denso, ni la simulación por heightfield, ni el undo por snapshot del §5. Y el único número de este
+documento contra FlatCAM no sale de estos benches sino de
+[odd/reports/f4-ncc-benchmark.md](../odd/reports/f4-ncc-benchmark.md), que sí tiene un comando
+repetible: `cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_pours --
+--ignored --nocapture`.
+
+**Medición de 2026-11-28** (`nproc` → **16**; las cifras son el intervalo de confianza de criterion,
+con la mediana en el medio):
+
+- `cargo bench -p cam-geom --bench kernel` → `geom/combine_union_rect_overlap` 66,5–69,6 µs
+  (mediana 67,9 µs); `geom/offset_circle` 292,6–303,4 µs (mediana 297,5 µs).
+- `cargo bench -p cam-ops --bench toolpaths` → `ops/profile_rectangle` 814 ns;
+  `ops/pocket_offset_rectangle` 31,6 µs; `ops/drill_6_holes` 1,14 µs; `ops/ncc_fill_rings` 4,66 ms;
+  `ops/ncc_index_naive_aabb` 83,9 µs; `ops/ncc_index_grid_aabb` 16,5 µs.
+- `RAYON_NUM_THREADS=1 cargo bench -p cam-ops --bench toolpaths -- ncc_fill_rings` → 3,72 ms;
+  `RAYON_NUM_THREADS=16 …` → 3,83 ms (criterion contra la corrida de un hilo: sin cambio, p = 0,06).
+  Ninguna de las dos lecturas multihilo bajó de la secuencial: el paralelismo está instalado y, en
+  este bench, todavía no compra tiempo.
+- `cargo test -p cam-ops --release --test ncc measure_ncc_large_plate_kicad_large_pours -- --ignored
+  --nocapture`, tres corridas → `total_ms` **7260,08**, **7120,70** y **7101,21** (`unite_ms` ≈ 6100,
+  `clip_ms` ≈ 1000). El reporte de F4 registró **2088,64 ms** para la misma placa y el mismo comando
+  el 2026-11-16, así que hoy la operación está ~3,4× por encima de su propia cifra y el «~23,9× más
+  rápido que FlatCAM» del reporte no se sostiene como está escrito: contra los 49,87 s de FlatCAM
+  medidos entonces serían ~7×, y ese 49,87 s es **historia** (FlatCAM-Plus no está en este árbol, no
+  se re-midió). Registrado, no corregido (S7).
+- `./src-tauri/crates/cam-geom/benches/check_regression.sh` → `panicked … Baseline 'committed' must
+  exist before comparison is allowed`; `./crates/cam-ops/benches/check_regression.sh` (la ruta que
+  documentan los `README.md` de `benches/`) → `No such file or directory`, código 127, porque esa
+  ruta es la anterior a la migración a `src-tauri/`.
+
+Es importante decirlo con precisión: **el código medido no es lento porque esté mal escrito; lo que
+falta es alcance.** Un combine de dos rectángulos cuesta decenas de microsegundos y un pocket de
+60×40 mm, 31 µs; el único relleno que recorre una placa entera (100×100 mm con tres islas) cuesta
+milisegundos, y la placa grande del corpus, segundos. El riesgo real no es la performance de hoy, es
+que las palancas que existen viven **dentro de una operación**: un `par_iter` sobre islas de NCC, una
+grilla que se reconstruye en cada llamada al kernel y un rest que sólo NCC conoce. Eso es lo que el
+diseño (kernel de booleanas, modelo de entidades, simulación por celdas) tiene que sostener antes de
+que una placa real con miles de polígonos de Gerber pase por acá.
 
 ---
 

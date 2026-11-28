@@ -1,8 +1,8 @@
 # 110 — GAPS re-survey: measure the tree, not the plan
 
 Re-medir el árbol actual y reescribir con evidencia de hoy los hallazgos de [docs/GAPS_CAMCRAFT.md](../../docs/GAPS_CAMCRAFT.md), que sigue siendo el diagnóstico del workspace **anterior al giro a PCB** y afirma cosas que ya no son ciertas; el resultado esperado es un diagnóstico otra vez válido, no un plan nuevo ni un arreglo de lo que el barrido encuentre.
-Estado: `in progress` — T1 entregado y commiteado (`e50aa7c`); T2 ejecutado sobre las mismas
-superficies pero **sin commit y pendiente de verificación independiente**; T3–T7 siguen abiertos.
+Estado: `in progress` — T1 y T2 entregados y commiteados (`e50aa7c`, `a2591c3`); T3 en curso y
+T4–T7 abiertos.
 
 ## Surfaces
 
@@ -108,7 +108,7 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
 | ID  | Tarea                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Specs          | Ruta   | Commit |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ | ------ |
 | T1  | Re-medir y reescribir el §1 inventario y el encuadre del documento: tabla de crates y LOC de `src/` (medida hoy, con el comando que la produce), lista de dependencias externas del workspace, conteo de `#[test]`, las ausencias que el inventario afirma (`benches/`, `.github/workflows/`, corpus de paridad) y la nota que ya advierte que la tabla mide antes del giro. El §Método y la «Fecha del relevamiento» dejan de prometer un estado que ya no es el de hoy: o se re-miden o quedan marcados como historia de 2026-05-09. Área: `docs/GAPS_CAMCRAFT.md`, §Método y §1. | S1, S2, S3, S5 | worker | `e50aa7c` |
-| T2  | Re-medir el §2 veredicto corto y el §3 completo, hallazgo por hallazgo: G0.1–G0.3, G1.1–G1.4, G2.1–G2.5, G3.1–G3.7, G4.1–G4.4, G5.1–G5.3, G6.1–G6.4. Cada uno termina en «sigue siendo cierto», «ya no aplica» (con el commit o la tarea que lo cambió) o «cambió de forma» (con la redacción actual y su evidencia), y toda cita pasa a resolver desde la raíz del repositorio. Área: `docs/GAPS_CAMCRAFT.md`, §2 y §3. | S2, S3, S4     | worker |        |
+| T2  | Re-medir el §2 veredicto corto y el §3 completo, hallazgo por hallazgo: G0.1–G0.3, G1.1–G1.4, G2.1–G2.5, G3.1–G3.7, G4.1–G4.4, G5.1–G5.3, G6.1–G6.4. Cada uno termina en «sigue siendo cierto», «ya no aplica» (con el commit o la tarea que lo cambió) o «cambió de forma» (con la redacción actual y su evidencia), y toda cita pasa a resolver desde la raíz del repositorio. Área: `docs/GAPS_CAMCRAFT.md`, §2 y §3. | S2, S3, S4     | worker | `a2591c3` |
 | T3  | Re-medir la tabla de rendimiento del §4 —paralelismo, índice espacial, algoritmos preparados para rest/offsets incrementales, medición— y el párrafo que la interpreta, con la evidencia de cada palanca sobre el árbol de hoy. Área: `docs/GAPS_CAMCRAFT.md`, §4.                                                                                                                                                                                                                                                                    | S2, S3, S4, S5 | worker |        |
 | T4  | Re-medir los seis riesgos arquitectónicos del §5 y sus citas (`cam-model`, `cam-move`, `cam-app`, `cam-geom`), asignando a cada uno uno de los tres estados. Área: `docs/GAPS_CAMCRAFT.md`, §5.                                                                                                                                                                                                                                                                                                                                      | S2, S3, S4     | worker |        |
 | T5  | Re-medir el §6 decisiones (D1–D6, con el hecho decisivo de cada una) y el §7 activos reutilizables (los seis), sin agregar decisiones nuevas y sin retirar un activo porque hoy no se use: sólo se corrige lo que la medición contradice, y una contradicción entra como hallazgo. Área: `docs/GAPS_CAMCRAFT.md`, §6 y §7.                                                                                                                                                                                                               | S2, S3, S4, S7 | worker |        |
@@ -178,3 +178,47 @@ La fila de `odd/tasks/INDEX.md` la agrega otro writer en el mismo cambio y no se
   Hallazgo del barrido, registrado y no corregido (S7):
   `scripts/parity/measure/Cargo.toml:10-12` declara `path = "../../../crates/cam-*"` y esa raíz no
   existe desde la migración a `src-tauri/`.
+- **L4 (T2 entregado, 2026-11-28, `a2591c3`).** Se re-midieron el §2 y los **30** hallazgos del §3,
+  uno por uno, contra el árbol de hoy; cada uno cerró en uno de los tres estados de S3 con su
+  evidencia, y ninguna cita quedó fuera de la raíz del repositorio. La distribución, tal como quedó en
+  `docs/GAPS_CAMCRAFT.md`:
+  - **6 «sigue siendo cierto»**, **6 «cambió de forma»** y **18 «ya no aplica»** —este último con el
+    commit que lo refutó, no con «cambió el árbol».
+  - Los dos hallazgos que más cambian el diagnóstico: **los parsers existen**. `cam-gerber` lee el
+    dialecto de KiCad y evalúa la imagen de una capa sobre el motor de conjuntos (`Gerber::image`,
+    `src-tauri/crates/cam-gerber/src/lib.rs:206`), y `cam-excellon` parsea tabla de herramientas,
+    coordenadas y ranuras `G85` (`parse`, `src-tauri/crates/cam-excellon/src/lib.rs:146`).
+  - Lo que la fecha de 2026-05-09 volvía falso por venir después: CI (`65d1499`), benches con baseline
+    (`cfb7feb`, `8d0ad9d`), corpus y arnés de paridad (`1e7cb07`, `0061226`) y `rayon` en `cam-ops`
+    (`8d0ad9d`), más isolation (`e91882b`), NCC (`8d0ad9d`), tabs (`487a020`) y el drill con
+    ordenamiento por cercanía (`3f1a524`, `b324e3c`).
+  - El §2 dejó de ser un veredicto de 2026-05-09 y dice sólo lo que los hallazgos corregidos sostienen;
+    G5.1 cuenta **seis** roles de fabricación con keepout aparte
+    (`src-tauri/crates/cam-model/src/lib.rs:177`, `:198`), como los cuenta el código.
+  Las **ocho** observaciones que la verificación independiente levantó y este commit cierra, todas
+  visibles en el diff de `a2591c3`:
+  1. El §2 nombraba `cam-toolpath`, un crate que `fdb87cf` retiró, y su veredicto —«parte casi de cero
+     en todo lo que hace PCB a PCB»— contradecía los hallazgos ya corregidos del §3.
+  2. Las dos citas de código de FlatCAM que quedaban en §2-§3 se leían como si estuvieran en el árbol:
+     hoy `camlib.py:8504` (G0.3) y `ToolPanelize.py:309` (G3.7) dicen **fuente upstream de FlatCAM
+     Plus que no está en este árbol**, y la tercera (`camlib.py:3040,3104`, G3.5) salió al re-medir.
+  3. Las citas de §2-§3 no resolvían desde la raíz (`crates/cam-…`, `cam-ops/src/…`): pasaron a
+     `src-tauri/crates/…`.
+  4. G2.1 citaba «142 sitios» sin comando y con rangos «desplazados»: `grep -rn 'EntityKind::'
+     src-tauri/crates --include='*.rs' | wc -l` → **140** sitios en **41** archivos (82 `Contour`, 30
+     `Drill`, 27 `Slot`).
+  5. G2.3 daba `cam-model/src/lib.rs:57-88` como el contrato documento↔máquina, donde ya no viven
+     `Board` (`src-tauri/crates/cam-model/src/lib.rs:117`) ni `Frame` (`:63`).
+  6. G5.1 contaba el keepout entre los roles de fabricación; medido, son seis roles con keepout aparte
+     (`src-tauri/crates/cam-model/src/lib.rs:177`, `:198`).
+  7. G1.1 listaba como faltantes cosas que el lector ya hace —aperturas `O`, aperturas que nombran una
+     macro y `D02` dentro de `G36`/`G37`— y nombraba `RoundRect` como si existiera: hoy separa lo
+     medido de lo que se rechaza por nombre.
+  8. Dos **A VERIFICAR** sobrevivían sin medición: ángulo y punta de V-bit quedaron verificados y en uso
+     (`included_angle`, `flat_diameter` y `tip_radius` en
+     `src-tauri/crates/cam-store/src/tools.rs:44-63`, derivados por `ToolShape::VBit`), y los tres
+     dialectos `.pp` con golden byte a byte (G4.4) pasaron a medidos.
+
+  Hallazgo del barrido, registrado y no corregido (S7): el §2 y el §5 no coinciden en el costo de
+  `EntityKind` —«140 sitios» en el §2 y el §3 medido, «142 sitios» en el §5, que es de T4—; y el §8
+  sigue listando hallazgos que el §3 ya dio por «ya no aplica» (G5.1, G2.5, G5.3), que es de T6.
