@@ -307,6 +307,29 @@ pub enum UiAction {
     /// The post-processor file the host's dialog returned.
     path: PathBuf,
   },
+  /// Ask the host for the file this window writes its program to (113 T3).
+  ///
+  /// The app bar's `Generate G-code`, which had no command behind it. An intent and nothing more, for the
+  /// reason [`UiAction::RequestOpenFile`] is one: the save dialog is the host's, and the shell must stay
+  /// testable without a display. No path is derived here — the host's dialog is the only source (S5) — and
+  /// pressing it writes nothing by itself.
+  RequestGenerateProgram,
+  /// Write the program the drawing describes to `path` (113 T3).
+  ///
+  /// This is the answer to [`UiAction::RequestGenerateProgram`], exactly as [`UiAction::SaveFile`] answers
+  /// [`UiAction::RequestSaveAs`]: the host asks the platform's save dialog and applies this with the path it
+  /// returned, so the OS dialog is what confirms an overwrite and a cancelled dialog writes nothing at all.
+  ///
+  /// The program is built with [`build_preview_stream`](crate::view3d::program::build_preview_stream) — the
+  /// same stream the 3D panel simulates — and emitted through `cam_cli`'s one emission path, in the post the
+  /// window holds as source text. It is a shell action rather than a [`cam_app::Command`]: a program is a
+  /// record written beside the drawing, not an edit of it, so nothing here is undoable and the document is
+  /// never marked dirty (S6). With no project, no post, no stream to emit or an empty path the answer is a
+  /// refusal that names the reason and writes no file (S8).
+  GenerateProgram {
+    /// Where to write the program.
+    path: PathBuf,
+  },
 }
 
 impl UiAction {
@@ -351,6 +374,7 @@ impl UiAction {
       Self::ExportTools { .. } | Self::RequestExportTools => "export tools",
       Self::ImportTools { .. } | Self::RequestImportTools => "import tools",
       Self::RequestPost | Self::SetPost { .. } => "choose post-processor",
+      Self::RequestGenerateProgram | Self::GenerateProgram { .. } => "generate program",
     }
   }
 }

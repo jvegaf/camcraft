@@ -542,8 +542,9 @@ impl ToolResolver for TableResolver {
 /// The file write is whole or not at all, the way `export` writes: a truncated `.nc` beside a live
 /// job reads as a program that runs, and it would run short.
 ///
-/// Reading the post is `cam_post::parse_post` and emitting is `cam_post::emit`, so nothing about a
-/// dialect lives here. `cutout` and `program` call it, and the library exports it as
+/// Reading the post is [`emit_program_from_source`] after one file read, so a window that holds the
+/// post's **text** rather than its path emits through the same function and nothing about a dialect
+/// lives here. `cutout` and `program` call it, and the library exports it as
 /// [`crate::emit_program`] so a window can emit the same program without an emitter of its own; its
 /// refusals keep the crate's [`Failure`] codes, so a caller needs no error mapping.
 ///
@@ -559,8 +560,36 @@ pub fn emit_program(
 ) -> Result<(), Failure> {
   let post_text = std::fs::read_to_string(post_path)
     .map_err(|error| Failure::input(format!("{}: {error}", post_path.display())))?;
-  let post = parse_post(&post_text)
-    .map_err(|error| Failure::post(format!("{}: {error}", post_path.display())))?;
+  emit_program_from_source(
+    stream,
+    &post_path.display().to_string(),
+    &post_text,
+    out,
+    document_path,
+  )
+}
+
+/// Emit `stream` through a post-processor held as **source text**, to `out` or to stdout.
+///
+/// This is the emission path itself: [`emit_program`] reads a post file and hands the text here, and a
+/// window (`cam-ui/src/shell/action.rs`) hands the text it holds, so a program has one writer and not
+/// two. The post is held as text by a caller whose session can outlive the file it came from, which is
+/// why this takes no path: `post_name` is the label a refusal names — the file's own name, or its path
+/// when the caller read one — and reading the post is never part of this function.
+///
+/// The file write is whole or not at all, exactly as [`emit_program`] documents: the text is written
+/// to a `.tmp` sibling and renamed, so a failed write leaves no truncated program behind. A refusal
+/// keeps the crate's [`Failure`] codes (2 for an unwritable destination, 4 for a post that does not
+/// parse or cannot emit), so the CLI and a window report the same kinds of failure in the same words.
+pub fn emit_program_from_source(
+  stream: &MoveStream,
+  post_name: &str,
+  post_text: &str,
+  out: Option<&Path>,
+  document_path: &Path,
+) -> Result<(), Failure> {
+  let post =
+    parse_post(post_text).map_err(|error| Failure::post(format!("{post_name}: {error}")))?;
   let meta = ProgramMeta {
     file_name: document_path
       .file_name()
@@ -568,8 +597,8 @@ pub fn emit_program(
       .unwrap_or_else(|| document_path.display().to_string()),
     file_path: document_path.display().to_string(),
   };
-  let emitted = emit(&post, stream, &meta)
-    .map_err(|error| Failure::post(format!("{}: {error}", post_path.display())))?;
+  let emitted =
+    emit(&post, stream, &meta).map_err(|error| Failure::post(format!("{post_name}: {error}")))?;
 
   match out {
     Some(destination) => {

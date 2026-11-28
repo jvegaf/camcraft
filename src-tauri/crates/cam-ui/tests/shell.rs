@@ -10,6 +10,8 @@ mod authoring;
 mod document;
 #[path = "shell/files.rs"]
 mod files;
+#[path = "shell/generate.rs"]
+mod generate;
 #[path = "shell/help.rs"]
 mod help;
 #[path = "shell/layout.rs"]

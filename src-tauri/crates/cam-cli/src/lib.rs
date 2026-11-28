@@ -38,6 +38,16 @@ pub use commands::validate::report as validate_report;
 /// `cam_post::emit` inline. They are not unified with this function yet; that is deferred work.
 pub use commands::cutout::emit_program;
 
+/// Emit a `cam_move::MoveStream` as G-code through a post-processor held as **source text**, to `out` or to
+/// stdout.
+///
+/// This is the same emission path [`emit_program`] delegates to after it reads a post file, exported so a
+/// window can emit the program it holds the dialect for — the shell keeps the post's text, not its path,
+/// because a session can outlive the file it came from. Reading the post is `cam_post::parse_post` and
+/// emitting is `cam_post::emit`; the refusals keep this crate's [`Failure`] codes, so a caller needs no new
+/// error mapping and no second emitter.
+pub use commands::cutout::emit_program_from_source;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 

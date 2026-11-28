@@ -69,6 +69,11 @@ impl Shell {
       // handler has nowhere to put the choice and refuses it by name (113 T2). The file it names is read and
       // validated here, before anything is stored (S8).
       UiAction::SetPost { path } => self.choose_post(path),
+      // Generating the program is the window's own for the same reason, one step later: the post is held here as
+      // source text and the tools and the drawing are the ones on screen, so the shared handler has no dialect
+      // to write in (113 T3). It is not a `cam_app::Command`: a program is a record written beside the drawing,
+      // not an edit of it, so nothing here is undoable and the document is never marked dirty (S6).
+      UiAction::GenerateProgram { path } => self.generate_program(app, path),
       _ => handle_action_with_file(
         app,
         action,
@@ -305,6 +310,59 @@ impl Shell {
       ..ActionReport::default()
     })
   }
+
+  /// Write the program the drawing describes to the path the host's dialog returned (113 T3, S5, S6, S8).
+  ///
+  /// The answer to [`UiAction::RequestGenerateProgram`](crate::UiAction::RequestGenerateProgram), and it is the
+  /// shell's rather than the shared handler's because everything a program needs is window state: the post held as
+  /// **source text** (`Self::set_post`), the tool snapshot and the drawing on screen. The stream is
+  /// [`build_preview_stream`](crate::view3d::program::build_preview_stream) — the same one the 3D panel plays — and
+  /// the emission is `cam_cli`'s [`emit_program_from_source`](cam_cli::emit_program_from_source), which is the same
+  /// writer `cam-cli program` reaches through `emit_program` after one file read. There is no second emitter here and
+  /// no path imagined here: the output path is the one a person chose in the platform's save dialog (S5).
+  ///
+  /// A program is a record written beside the drawing, not an edit of it, so this is not a `cam_app::Command`: the
+  /// document is never marked dirty and nothing about the write is undoable (S6). Each refusal comes **before** the
+  /// writer is reached, writes no file and leaves the document untouched (S8): an empty path names nothing to write,
+  /// no post is no dialect to write in, and no stream is the builder's own answer — its warnings are passed through
+  /// word for word rather than replaced by an invented one.
+  fn generate_program(&self, app: &AppState, path: &Path) -> Result<ActionReport, String> {
+    if path.as_os_str().is_empty() {
+      return Err(EMPTY_PROGRAM_PATH.to_owned());
+    }
+    let Some((post_name, post_source)) = self.post.clone() else {
+      return Err(NO_POST_FOR_PROGRAM.to_owned());
+    };
+    let (stream, warnings) =
+      crate::view3d::program::build_preview_stream(app.document(), &self.tools);
+    let Some(stream) = stream else {
+      return Err(if warnings.is_empty() {
+        NOTHING_TO_EMIT.to_owned()
+      } else {
+        warnings.join("; ")
+      });
+    };
+    // The program's header names the document it came from. A drawing that has no file yet is still called what
+    // the app bar calls it, so the header and the bar never disagree; the output path is never derived from this
+    // one, because a path is the host dialog's to produce (S5).
+    let document_path = self
+      .document_path
+      .clone()
+      .unwrap_or_else(|| PathBuf::from(self.document_name()));
+    cam_cli::emit_program_from_source(
+      &stream,
+      &post_name,
+      &post_source,
+      Some(path),
+      &document_path,
+    )
+    .map_err(|failure| failure.message)?;
+    Ok(ActionReport {
+      label: "generate program",
+      note: Some(format!("wrote {}", file_label(path))),
+      ..ActionReport::default()
+    })
+  }
 }
 const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import first";
 
@@ -314,6 +372,28 @@ const NO_IMPORT_PENDING: &str = "no import is pending: choose a file to import f
 /// window holds stays exactly as it was.
 const EMPTY_POST_PATH: &str =
   "a post-processor needs a file to read, and this path is empty — choose one with Post…";
+
+/// What a program generation with an empty output path answers.
+///
+/// An empty path is not a file name: the writer would compose its temporary sibling in the process's own working
+/// directory, so the refusal comes before any filesystem call and the generation reaches nothing.
+const EMPTY_PROGRAM_PATH: &str =
+  "a program needs a file to write, and this path is empty — press Generate G-code to name one";
+
+/// What a program generation with no post-processor chosen answers.
+///
+/// `None` is not a default dialect (see [`Shell::post_name`](crate::Shell::post_name)), and writing somebody
+/// else's G-code would be worse than writing none, so the refusal names the missing choice and the control that
+/// makes it.
+const NO_POST_FOR_PROGRAM: &str =
+  "a program needs a post-processor, and none is chosen yet — press Post… in the app bar and choose one";
+
+/// What a program generation answers when the builder produced no stream and said nothing about why.
+///
+/// The builder's own warnings reach the status bar whenever it made any; this sentence is only for the silent case
+/// — a drawing whose toolpaths produced no move — so the refusal is never an empty string.
+const NOTHING_TO_EMIT: &str =
+  "the program builder found no move to emit for this drawing, so there is nothing to write";
 
 /// Write one parse into `app` as an undoable replacement, and report what arrived.
 ///

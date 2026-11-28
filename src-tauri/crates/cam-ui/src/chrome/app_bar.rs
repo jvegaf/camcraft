@@ -156,6 +156,12 @@ impl Shell {
               "Generate G-code".to_owned(),
               (generate.rect.center().x, generate.rect.center().y),
             ));
+            // The press is an intent, because the save dialog is the host's and the output path is a person's
+            // choice: the answer comes back as `UiAction::GenerateProgram` with the path the dialog returned
+            // (113 T3, S5), so nothing here invents or derives one.
+            if generate.clicked() {
+              output.actions.push(UiAction::RequestGenerateProgram);
+            }
             // The post-processor's picker: the label is the choice in hand and the press is an intent, because a
             // dialog is the host's (S5). The file comes back as `UiAction::SetPost` with the path a person chose
             // (113 T2), so nothing here invents or derives a path.

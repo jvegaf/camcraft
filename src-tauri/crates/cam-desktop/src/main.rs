@@ -308,6 +308,15 @@ impl eframe::App for Editor {
         // the document's own name so a folder of jobs is recognisable (M13 S1). Nothing after the path is the
         // host's business: the posting, the write and the sentence all happen in `apply_action`, where a
         // refusal is a message rather than a silent no-op.
+        UiAction::RequestGenerateProgram => match rfd::FileDialog::new()
+          .add_filter("nc program", &["nc"])
+          .set_file_name(program_file_name(&self.shell))
+          .save_file()
+        {
+          Some(path) => UiAction::GenerateProgram { path },
+          // Cancelled: no action, no message, no file — and the OS dialog is what confirms an overwrite.
+          None => continue,
+        },
 
         // The post-processor's picker is the same question one step earlier: the shell names the choice it is
         // holding and asks for a file, the platform's dialog is the only source of a path (S5), and the answer
@@ -378,6 +387,18 @@ impl eframe::App for Editor {
 fn library_file_name(shell: &Shell) -> String {
   std::path::Path::new(&shell.document_name())
     .with_extension("json")
+    .to_string_lossy()
+    .into_owned()
+}
+
+/// The name the program's save dialog starts from: the document's own name, in the machine's extension.
+///
+/// The suggestion only: the dialog is where a person names the file, and the extension the machine reads is
+/// proposed rather than imposed — what the shell writes is the path that dialog returns (113 T3, S5). A drawing
+/// with no file yet is called what the app bar calls it (`untitled.cmc`), so its program opens on `untitled.nc`.
+fn program_file_name(shell: &Shell) -> String {
+  std::path::Path::new(&shell.document_name())
+    .with_extension("nc")
     .to_string_lossy()
     .into_owned()
 }

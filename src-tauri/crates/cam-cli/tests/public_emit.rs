@@ -105,6 +105,79 @@ fn a_post_that_cannot_be_read_is_refused_with_invalid_input() {
 }
 
 #[test]
+fn the_source_taking_function_writes_the_same_bytes_as_the_path_taking_one() {
+  let directory = scratch("source-parity");
+  let post = write_post(&directory, "post.pp", POST);
+  let document = document_path(&directory);
+  let stream = stream();
+  let from_path = directory.join("from-path.nc");
+  let from_source = directory.join("from-source.nc");
+
+  cam_cli::emit_program(&stream, &post, Some(&from_path), &document).expect("path run emits");
+  cam_cli::emit_program_from_source(&stream, "post.pp", POST, Some(&from_source), &document)
+    .expect("source run emits");
+
+  let path_text = std::fs::read_to_string(&from_path).expect("path program file");
+  let source_text = std::fs::read_to_string(&from_source).expect("source program file");
+  assert_eq!(
+    path_text, source_text,
+    "the source-taking entry point must emit exactly what the path-taking one emits"
+  );
+}
+
+#[test]
+fn the_source_taking_function_emits_the_same_document_identically_twice() {
+  let directory = scratch("source-determinism");
+  let document = document_path(&directory);
+  let stream = stream();
+  let first = directory.join("first.nc");
+  let second = directory.join("second.nc");
+
+  cam_cli::emit_program_from_source(&stream, "post.pp", POST, Some(&first), &document)
+    .expect("first run emits");
+  cam_cli::emit_program_from_source(&stream, "post.pp", POST, Some(&second), &document)
+    .expect("second run emits");
+
+  let first_text = std::fs::read_to_string(&first).expect("first program file");
+  let second_text = std::fs::read_to_string(&second).expect("second program file");
+  assert!(
+    first_text.contains("G1"),
+    "the program carries the cutting move:\n{first_text}"
+  );
+  assert_eq!(
+    first_text, second_text,
+    "the same stream and post source must emit byte for byte the same program"
+  );
+  assert!(
+    !directory.join("first.nc.tmp").exists(),
+    "the temporary file is renamed away, not left behind"
+  );
+}
+
+#[test]
+fn a_source_that_does_not_parse_is_a_post_error_naming_its_label() {
+  let directory = scratch("source-bad-post");
+  let out = directory.join("board.nc");
+
+  let failure = cam_cli::emit_program_from_source(
+    &stream(),
+    "bogus.pp",
+    "begin not_a_block\n",
+    Some(&out),
+    &document_path(&directory),
+  )
+  .expect_err("an unparsable post source is refused");
+
+  assert_eq!(failure.code(), 4, "{}", failure.message);
+  assert!(
+    failure.message.contains("bogus.pp"),
+    "the refusal names the post the window holds: {}",
+    failure.message
+  );
+  assert!(!out.exists(), "a refused emission writes no file");
+}
+
+#[test]
 fn a_post_that_does_not_parse_is_a_post_error() {
   let directory = scratch("bad-post");
   let post = write_post(&directory, "broken.pp", "begin not_a_block\n");

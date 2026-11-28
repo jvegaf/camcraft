@@ -45,6 +45,15 @@ const NO_SHELL_FOR_TOOLS: &str =
   "a tool library export or import needs the tools the window is holding, and this entry point has no \
    shell — open the library and apply the action through Shell::apply_action";
 
+/// What a program generation answers from an entry point that holds no shell.
+///
+/// The program is built from the window's post-processor, which travels with the window like the archive
+/// entries and the tool snapshot: a bare handler holds no dialect and no tools, so it names what is missing
+/// instead of writing a program in a dialect nobody chose (113 T3, S8).
+pub(crate) const NO_SHELL_FOR_PROGRAM: &str =
+  "a program is written in the post-processor the window is holding, and this entry point has no shell — \
+   choose it through Shell::apply_action";
+
 /// The file the drawing came from, as the shell holds it: the recorded path and the archive's other
 /// entries.
 ///
@@ -276,6 +285,15 @@ pub(crate) fn handle_action_with_file(
     // And its answer belongs to the window: the post is shell state, so a bare handler has nowhere to put the
     // choice and says so instead of dropping it (S8).
     UiAction::SetPost { .. } => Err(NO_SHELL_FOR_POST.to_owned()),
+    // The generate intent is the same question in the output's own file: ask the host for a path and change
+    // nothing while asking (113 T3).
+    UiAction::RequestGenerateProgram => Ok(ActionReport {
+      label: action.label(),
+      ..ActionReport::default()
+    }),
+    // And its answer belongs to the window: the program is written in the post the shell holds, so a bare
+    // handler has no dialect and says so instead of writing one nobody chose (S8).
+    UiAction::GenerateProgram { .. } => Err(NO_SHELL_FOR_PROGRAM.to_owned()),
     UiAction::SetJob {
       width,
       height,
