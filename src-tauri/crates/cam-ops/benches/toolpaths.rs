@@ -9,7 +9,7 @@ use cam_ops::params::{
 use cam_ops::peck::DrillHole;
 use cam_ops::shared::ToolSpec;
 use cam_ops::{drill, pocket, profile, DrillRequest, PocketRequest, ProfileRequest};
-use cam_ops::{ncc_fill_rings, non_copper_envelope};
+use cam_ops::{ncc_fill_rings, non_copper_envelope, unite_copper};
 use cam_units::Length;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -227,6 +227,31 @@ fn bench_ncc_index_naive_vs_grid(c: &mut Criterion) {
   });
 }
 
+/// `unite_copper` on the corpus large plate, the path the NCC regression burned its time in.
+///
+/// The other NCC benches only measure fill and index work; this is the one that sees copper
+/// classification. It reads the same Gerber the reproducibility test uses, so the baseline is the
+/// pre-regression cost of the real input, not a synthetic stand-in.
+fn bench_ncc_unite_corpus(c: &mut Criterion) {
+  use std::path::PathBuf;
+
+  let tol = TolerancePolicy::uniform(1.0e-6);
+  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+  let top =
+    std::fs::read_to_string(root.join("fixtures/corpus/kicad-large-pours/top.gbr")).expect("top");
+  let copper = cam_gerber::parse(&top)
+    .expect("parse top")
+    .image(tol)
+    .expect("image top");
+
+  c.bench_function("ops/ncc_unite_corpus_large_plate", |bench| {
+    bench.iter(|| {
+      let united = unite_copper(black_box(&copper.boundaries), tol).expect("unite");
+      black_box(united.boundaries.len())
+    })
+  });
+}
+
 criterion_group!(
   toolpaths,
   bench_profile_rectangle,
@@ -235,4 +260,13 @@ criterion_group!(
   bench_ncc_fill_rings,
   bench_ncc_index_naive_vs_grid
 );
-criterion_main!(toolpaths);
+
+// The corpus unite bench is deliberately slow (seconds per iteration), so it gets a small sample
+// count instead of Criterion's default 100.
+criterion_group! {
+  name = ncc_corpus;
+  config = Criterion::default().sample_size(10);
+  targets = bench_ncc_unite_corpus
+}
+
+criterion_main!(toolpaths, ncc_corpus);
