@@ -238,6 +238,73 @@ expect_ok "a historical module path is not a defect" gate
 expect_contains "the historical path keeps the count" "$WORK/out" "gaps states ok: 30 findings"
 expect_empty "the historical path prints no defect" "$WORK/err"
 
+# A citation is a claim about *this* tree. `ROOT / "/tmp/x"` is `/tmp/x` (an absolute path discards
+# the root on join) and `ROOT / "../x"` walks out of the checkout, so both would cite a file the
+# checkout does not contain.
+build_fixture
+printf 'one\ntwo\n' >"$WORK/outside.rs"
+sed -i "/^- \*\*G0\.1 — /s|\`src/lib\.rs:1\`|\`$WORK/outside.rs:1\`|" "$DOC"
+expect_exit "an absolute citation fails" 1 gate
+expect_contains "an absolute citation is rejected, not joined" "$WORK/err" \
+  "citation  G0.1  \`$WORK/outside.rs:1\` is an absolute path, not one from the repository root"
+expect_err_lines "an absolute citation is the only defect" 2
+
+build_fixture
+mkdir -p "$WORK/escape"
+printf 'one\ntwo\n' >"$WORK/escape/outside.rs"
+sed -i '/^- \*\*G0\.1 — /s|`src/lib\.rs:1`|`../escape/outside.rs:1`|' "$DOC"
+expect_exit "a parent-directory citation fails" 1 gate
+expect_contains "a parent-directory citation is rejected, not joined" "$WORK/err" \
+  "citation  G0.1  \`../escape/outside.rs:1\` leaves the repository root with a «..» component"
+expect_err_lines "a parent-directory citation is the only defect" 2
+
+# Only a regular file is a citation: a directory is not evidence a finding still holds, in either
+# branch. The bare path is the one the review found still green.
+build_fixture
+mkdir -p "$MAIN/src/dir"
+sed -i '/^- \*\*G0\.1 — /s| Cita `src/lib\.rs:1`\.| Cita `src/dir`.|' "$DOC"
+expect_exit "a directory cited without a line fails" 1 gate
+expect_contains "a directory does not resolve as a citation" "$WORK/err" \
+  "citation  G0.1  no inline code span with a path that resolves from the repository root"
+expect_err_lines "a directory without a line is the only defect" 2
+
+build_fixture
+mkdir -p "$MAIN/src/dir"
+sed -i '/^- \*\*G0\.1 — /s|`src/lib\.rs:1`|`src/dir:1`|' "$DOC"
+expect_exit "a directory cited with a line fails" 1 gate
+expect_contains "a directory with a line is reported as a directory" "$WORK/err" \
+  "citation  G0.1  \`src/dir:1\` resolves to a directory, not a file"
+expect_err_lines "a directory with a line is the only defect" 2
+
+# ---------------------------------------------------------------- the document itself
+# The header promises there is no third verdict: a missing document, an unreadable one and a document
+# without §3 are all defects with the same exit code and the same one-defect summary.
+build_fixture
+rm -f "$DOC"
+expect_exit "a missing document fails" 1 gate
+expect_contains "a missing document is reported as missing" "$WORK/err" \
+  "missing  §3  docs/GAPS_CAMCRAFT.md does not exist"
+expect_contains "a missing document counts one defect" "$WORK/err" \
+  "1 defect(s) in docs/GAPS_CAMCRAFT.md §3"
+expect_err_lines "a missing document is the only defect" 2
+
+# A file mode would not do it: the suite may run as root, where chmod 000 is still readable. A
+# directory in the document's place raises the same read error for every user.
+build_fixture
+rm -f "$DOC"
+mkdir -p "$DOC"
+expect_exit "an unreadable document fails" 1 gate
+expect_contains "an unreadable document is reported as unreadable" "$WORK/err" \
+  "missing  §3  docs/GAPS_CAMCRAFT.md is unreadable (IsADirectoryError)"
+expect_err_lines "an unreadable document is the only defect" 2
+
+build_fixture
+sed -i 's|^## 3\. Gaps por fase del plan$|## 3 Gaps por fase del plan|' "$DOC"
+expect_exit "a document without §3 fails" 1 gate
+expect_contains "a missing §3 heading is reported as missing" "$WORK/err" \
+  "missing  §3  docs/GAPS_CAMCRAFT.md has no «## 3.» section"
+expect_err_lines "a missing §3 heading is the only defect" 2
+
 # ---------------------------------------------------------------- S5: not a prose linter
 build_fixture
 sed -i 's|^- \*\*G2\.2 — .*$|- **G2.2 — Otro título y otra redacción por completo, con otra severidad. Estado: «ya no aplica».** Cita `src/lib.rs:1`.|' "$DOC"

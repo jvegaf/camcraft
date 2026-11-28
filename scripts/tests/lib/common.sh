@@ -66,8 +66,9 @@ summary() {
   [ "$failed" -eq 0 ]
 }
 
-# A repository that looks enough like this one: the scripts, a task index and task documents with and
-# without a `## Surfaces` block. Sets MAIN, builds worktrees wt100…wt107 and a `cargo` stub, because
+# A repository that looks enough like this one: the scripts, a task index, task documents with and
+# without a `## Surfaces` block, and the `docs/GAPS_CAMCRAFT.md` §3 the gaps gate reads. Sets MAIN,
+# builds worktrees wt100…wt107 and a `cargo` stub, because
 # running the real workspace suite is not what these tests judge.
 #
 # The optional tag lets one test build a second, independent repository beside the first (`repo2`,
@@ -78,7 +79,7 @@ build_repo() {
   mkdir -p "$MAIN/scripts" "$MAIN/odd/tasks" "$WORK/bin"
 
   local script
-  for script in claim-task release-task check-worktree check check-docs check-records deliver-task; do
+  for script in claim-task release-task check-worktree check check-docs check-records check-gaps-states deliver-task; do
     [ -f "$REPO_ROOT/scripts/$script.sh" ] && cp "$REPO_ROOT/scripts/$script.sh" "$MAIN/scripts/"
   done
   chmod +x "$MAIN"/scripts/*.sh
@@ -293,6 +294,33 @@ MD
 MD
 
   printf '# fixture justfile\n' >"$MAIN/justfile"
+
+  # `check.sh`'s `== gaps ==` step reads §3 of `docs/GAPS_CAMCRAFT.md` and the file its citations name,
+  # so the fixture carries both. Without them the fixture's `check.sh` cannot pass the real gate, and
+  # the tooling test would be measuring a fixture that no real repository resembles.
+  #
+  # COUPLING: this id list is a third copy of the gate's expected set, after
+  # `scripts/check-gaps-states.sh` (`EXPECTED`) and `scripts/tests/gaps-states.sh` (`IDS`). The gate
+  # hard-codes the 30 ids on purpose (deriving them would let a deleted finding pass), so a change to
+  # that set has to change this fixture and the gate's own test together — the fixture does not learn
+  # the set from anywhere.
+  mkdir -p "$MAIN/docs" "$MAIN/src"
+  {
+    printf '# GAPS (fixture del arnés)\n\n'
+    printf 'Este documento **no es** `docs/GAPS_CAMCRAFT.md`: es el fixture que escribe\n'
+    printf '`scripts/tests/lib/common.sh` para que el `check.sh` de los repositorios de prueba pueda\n'
+    printf 'pasar el gate real. No lo actualices a partir del documento de verdad, y no lo tomes por\n'
+    printf 'la diagnosis: sus hallazgos son de relleno y sólo importa su forma.\n\n'
+    printf '## 3. Gaps por fase del plan (dashboard)\n\n'
+    local gid
+    for gid in G0.1 G0.2 G0.3 G1.1 G1.2 G1.3 G1.4 G2.1 G2.2 G2.3 G2.4 G2.5 \
+      G3.1 G3.2 G3.3 G3.4 G3.5 G3.6 G3.7 G4.1 G4.2 G4.3 G4.4 G5.1 G5.2 G5.3 \
+      G6.1 G6.2 G6.3 G6.4; do
+      printf -- '- **%s — Hallazgo de relleno. Estado: «ya no aplica».** Cita `src/lib.rs:1`.\n' "$gid"
+    done
+    printf '\n## 4. El gap transversal\n\nFuera del §3, para que el gate tenga dónde parar.\n'
+  } >"$MAIN/docs/GAPS_CAMCRAFT.md"
+  printf 'one\ntwo\nthree\n' >"$MAIN/src/lib.rs"
 
   # The real repository ignores the claims directory; without this the fixture's own claims make the
   # primary tree dirty and the gate test would be measuring the wrong thing.

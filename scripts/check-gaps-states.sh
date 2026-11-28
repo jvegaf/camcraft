@@ -27,7 +27,7 @@ cd "$(dirname "$0")/.."
 python3 - <<'PY'
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path.cwd()
 DOC_NAME = "docs/GAPS_CAMCRAFT.md"
@@ -97,12 +97,28 @@ def check_state(gid, header, defects):
     defects.append((gid, "state-value", f"Estado: {token} is not a quoted state"))
 
 
+def escaped(rel):
+    """`None` when `rel` stays inside the checkout, else why it cannot be a repository citation.
+
+    This is checked before joining, not after: `ROOT / "/etc/passwd"` is `/etc/passwd` (an absolute
+    path discards the root) and `ROOT / "../x"` walks out of the tree, so either one would cite a
+    file the checkout does not contain and still look like a resolved citation.
+    """
+    path = PurePosixPath(rel)
+    if path.is_absolute():
+        return "absolute"
+    if ".." in path.parts:
+        return "parent"
+    return None
+
+
 def check_citations(gid, body, defects):
     """At least one path citation that resolves, and every `path:N[-M]` citation within the file.
 
-    A path without a line that does not resolve is not a defect: the document cites module and
-    historical paths (`tool_geometry/tool_cutting_data/…`, `crates/cam-toolpath`) that are not files of
-    this tree, and they are not a `path:line` claim.
+    A citation resolves only as a regular file inside the checkout: a directory is not evidence that a
+    finding still holds. A path without a line that does not resolve is not a defect: the document
+    cites module and historical paths (`tool_geometry/tool_cutting_data/…`, `crates/cam-toolpath`)
+    that are not files of this tree, and they are not a `path:line` claim.
     """
     resolved = False
     reported = False
@@ -110,7 +126,19 @@ def check_citations(gid, body, defects):
         span = raw.strip()
         match = CITE.match(span)
         if match and "/" in match.group(1):
-            path = ROOT / match.group(1)
+            rel = match.group(1)
+            escape = escaped(rel)
+            if escape == "absolute":
+                defects.append((gid, "citation",
+                                f"`{span}` is an absolute path, not one from the repository root"))
+                reported = True
+                continue
+            if escape == "parent":
+                defects.append((gid, "citation",
+                                f"`{span}` leaves the repository root with a «..» component"))
+                reported = True
+                continue
+            path = ROOT / rel
             first = int(match.group(2))
             last = int(match.group(3)) if match.group(3) is not None else None
             if not path.exists():
@@ -142,7 +170,8 @@ def check_citations(gid, body, defects):
                     continue
             resolved = True
             continue
-        if "/" in span and not any(ch.isspace() for ch in span) and (ROOT / span).exists():
+        if ("/" in span and not any(ch.isspace() for ch in span)
+                and escaped(span) is None and (ROOT / span).is_file()):
             resolved = True
     if not resolved and not reported:
         defects.append((gid, "citation",
