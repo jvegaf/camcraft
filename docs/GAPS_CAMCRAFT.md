@@ -98,15 +98,16 @@ ejecutor y comando (G3.1, G3.3), el cutout tiene tabs y mouse-bites (G3.6), el t
 `exc_areas` (G4.2), los escritores Gerber y Excellon existen (G4.3), y el corpus, el arnés de paridad,
 los benches y el CI ya son gate (G1.4, G6.1-G6.3)—. Lo que queda no es el motor sino su **modelo y su
 superficie**: la semántica Gerber no tiene IR de importación (G1.3), la placa no tiene stackup ni
-espejado de bottom (G2.3), `Paint` y `Panelize` siguen siendo parámetros sin ejecutor (G3.7), no hay
-autolevelling (G4.1) y la UI no genera G-code (G5.2); más dos bordes del kernel —el rechazo de
-`Region::offset` (G3.2) y las primitivas de conjunto que faltan (G0.2)— y el supuesto de una sola placa
-por documento.
+espejado de bottom (G2.3), `Paint` y `Panelize` siguen siendo parámetros sin ejecutor (G3.7) y no hay
+autolevelling (G4.1); más dos bordes del kernel —el rechazo de `Region::offset` (G3.2) y las
+primitivas de conjunto que faltan (G0.2)— y el supuesto de una sola placa por documento. G5.2, que este
+veredicto daba por abierto, ya no aplica: «Generate G-code» escribe el programa por el mismo emisor que
+la CLI.
 
 | Veredicto               | Elementos                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Reutilizar tal cual** | `cam-units`, `cam-move` (contrato de stream), `cam-post` (parser/emisor `.pp` con tres dialectos y golden byte a byte, G4.4), `cam-app` (undo/commands), `cam-sim` y el predicado de `src-tauri/crates/cam-ops/src/penetration.rs` como oráculos, `cam-cli` (contrato headless: `isolate`, `ncc`, `drill`, `cutout`, `program`), `cam-store` (escalera de migraciones; ángulo y punta de V-bit medidos y usados, G2.5), `cam-geom` (booleanas G0.1 y `offset_contour`, que conserva arcos; el rechazo de `Region::offset` es el riesgo de abajo, G3.2), `cam-gerber` y `cam-excellon`, y los cuatro escritores de `cam-export` |
-| **Adaptar**             | `cam-import` → dar a la semántica Gerber un IR propio en vez de aplanarla a contornos (G1.3); `cam-model` → stackup de placa y espejado de bottom sobre `Board`/`Layer`, que ya existen (G2.3); `cam-ui` → formularios de paint/panelize y el «Generate G-code» que hoy es sólo un hit-target (G5.2)                                                                                                                                                                                                                                                                                                                           |
+| **Adaptar**             | `cam-import` → dar a la semántica Gerber un IR propio en vez de aplanarla a contornos (G1.3); `cam-model` → stackup de placa y espejado de bottom sobre `Board`/`Layer`, que ya existen (G2.3); `cam-ui` → formularios de paint/panelize; el «Generate G-code» ya no es un hit-target y escribe el programa por el emisor compartido con la CLI (G5.2, «ya no aplica»)                                                                                                                                                                                                                                                         |
 | **Construir**           | Ejecutores de paint y panelize (G3.7); autolevelling (G4.1); índice espacial fuera de NCC y las primitivas de conjunto que faltan (G0.2, G0.3). Ya no se construyen: motor booleano (G0.1), isolation (G3.1), NCC (G3.3), drill Excellon (G3.4), ordenamiento por cercanía (G3.5), tabs (G3.6), ruteo de exclusiones (G4.2), escritores (G4.3), corpus y arnés (G1.4, G6.3), benches (G6.2) ni CI (G6.1)                                                                                                                                                                                                                       |
 | **Riesgo de rediseño**  | El rechazo de `Region::offset` en cobre denso (G3.2); el supuesto de un solo `Board`/`Frame` por documento (G2.3); el `EntityKind` de tres variantes con 140 sitios en 41 archivos (G2.1, el tope de D3); autolevelling como retrofit del stream (G4.1)                                                                                                                                                                                                                                                                                                                                                                        |
 
@@ -377,15 +378,22 @@ picking en `cam-view`.
   hallazgo citaba ya no es donde vive `Layer`. Entró con `7add080` (2026-11-11) y se completó como
   identidad de placa en `5a95d49` (2026-11-22, E6.1). Lo que la UI haga con ese rol es de E6, no un
   hallazgo de modelo.
-- **G5.2 — Formularios por operación PCB. Estado: «sigue siendo cierto» (hechos; el hueco es «generar
-  G-code»).** `src-tauri/crates/cam-ui/src/shell/panels.rs` edita las seis variantes de `Operation` —
-  `OperationKind::ALL` (`:522`), con su bloque por variante desde `:534`—, según E6.3 y la
-  [tarea 073](../odd/tasks/073-e6-3-operation-forms.md). Lo que sigue sin formulario es «generar
-  G-code»: `src-tauri/crates/cam-ui/src/chrome/app_bar.rs:153` dibuja «Generate G-code» y sólo lo
-  registra como hit-target de test (`:156`), sin comando detrás; y el botón «Post…» sigue al lado sin
-  comando tampoco: se dibuja con `post: Option<String> = None` y sólo se registra como hit
-  (`:161-167`). La emisión con selección de preprocesador vive en la CLI (`cam-cli program --post`,
-  `cam-cli postp`), así que lo que falta es el camino de la UI hacia ella.
+- **G5.2 — Formularios por operación PCB. Estado: «ya no aplica» (los formularios ya existían; el hueco
+  era «generar G-code» y lo cerró la [tarea 113](../odd/tasks/113-gaps-g52-generate-gcode.md) con
+  `600d5dd`, `c0f41be` y `3eccded`).** `src-tauri/crates/cam-ui/src/shell/panels.rs` edita las seis
+  variantes de `Operation` —`OperationKind::ALL` (`:522`), con su bloque por variante desde `:534`—,
+  según E6.3 y la [tarea 073](../odd/tasks/073-e6-3-operation-forms.md). El hueco que quedaba era
+  «generar G-code»: el botón se dibujaba y sólo se registraba como hit-target de test, y «Post…» se
+  dibujaba con `post: Option<String> = None` sin comando tampoco, porque la emisión con selección de
+  preprocesador vivía sólo en la CLI (`cam-cli program --post`, `cam-cli postp`). Hoy el botón empuja
+  `UiAction::RequestGenerateProgram` (`src-tauri/crates/cam-ui/src/chrome/app_bar.rs:163`) y
+  `Shell::generate_program` (`src-tauri/crates/cam-ui/src/shell/action.rs:329`) escribe el programa por
+  la API pública que comparte con la CLI (`cam_cli::emit_program`,
+  `src-tauri/crates/cam-cli/src/lib.rs:39`), sin un emisor propio en `cam-ui`; el picker «Post…» también
+  está vivo (`Shell::choose_post`, `src-tauri/crates/cam-ui/src/shell/action.rs:297`, respuesta al botón
+  en `src-tauri/crates/cam-ui/src/chrome/app_bar.rs:180`) y el host sólo aporta la ruta
+  (`src-tauri/crates/cam-desktop/src/main.rs:311`). Lo que sigue sin formulario es paint/panelize sin
+  ejecutor, que es G3.7 y no este hallazgo.
 - **G5.3 — Atajos y Ctrl+S. Estado: «ya no aplica».** El mapa de atajos existe y es explícito:
   `src-tauri/crates/cam-ui/src/shell/input.rs:308-321` lee undo/redo, `Ctrl+S`, `Ctrl+Shift+S`, delete
   y fit, con el comentario que separa Save de Save As. Entró con la
@@ -692,10 +700,10 @@ no se reutilizan como si lo fueran.
 ## 8. Resumen de severidad
 
 Re-derivada el **2026-11-28** desde el estado que el §3 le asignó a cada hallazgo, no parcheada fila por
-fila (S6). Quedan las **12** filas que un hallazgo todavía sostiene —seis «sigue siendo cierto» y seis
-«cambió de forma»—: **8** de las 22 filas viejas se quedaron y **4** se agregaron. El §3 da **18**
-hallazgos por «ya no aplica», pero de ellos sólo **14 tenían fila** en la tabla vieja (22 − 14 = 8) y son
-esas 14 las que salieron; las otras cuatro —G1.4, G3.5, G4.4 y G2.4— nunca tuvieron fila. Las 18, con
+fila (S6). Quedan las **11** filas que un hallazgo todavía sostiene —cinco «sigue siendo cierto» y seis
+«cambió de forma»—: **7** de las 22 filas viejas se quedaron y **4** se agregaron. El §3 da **19**
+hallazgos por «ya no aplica», pero de ellos sólo **15 tenían fila** en la tabla vieja (22 − 15 = 7) y son
+esas 15 las que salieron; las otras cuatro —G1.4, G3.5, G4.4 y G2.4— nunca tuvieron fila. Las 19, con
 el commit o la tarea que las cerró, están abajo. La convención es la que fija S6: un hallazgo que dejó
 de aplicar no ocupa fila, y cada salida queda nombrada para que no se lea como un borrado silencioso
 —con esa misma regla salieron las dos filas «—» que el relevamiento viejo todavía arrastraba, G2.1 y
@@ -716,21 +724,22 @@ la que el §3 sigue llamando «lo que sigue abierto del bloqueante».
 | G0.3 | Índice espacial: hay grilla propia por operación, no hay índice compartido                                        | **MEDIO**      | Performance fuera de NCC: el hit-testing y el `nearest` de paint no pasan por la grilla                                                                         |
 | G1.1 | Lector Gerber: lector e imagen de capa cerrados, quedan formas que se rechazan por nombre                         | **MEDIO**      | Las placas con un `D01` en arco o una apertura `RoundRect`: se rechazan, no se aproximan                                                                        |
 | G3.7 | Sin ejecutor de paint ni de panelize, y sin nester                                                                | **MEDIO**      | La fase 3 tardía: `Paint` y `Panelize` son parámetros sin ejecutor y no hay colocador                                                                           |
-| G5.2 | «Generate G-code» de la UI es un hit-target sin comando detrás                                                    | **MEDIO**      | La fase 5: el camino de la UI hacia una emisión que la CLI ya tiene                                                                                             |
 | G6.4 | Empaquetado: andamiaje puesto, ningún release                                                                     | **MEDIO**      | La fase 6: no hay release ni artefacto publicado (`git tag` vacío, ningún job de release)                                                                       |
 | G2.5 | Tools DB: ángulo y punta de V-bit medidos y en uso; falta la relación diámetro/profundidad del drill              | **BAJO**       | Mapear la Tools DB de FlatCAM, que necesita esa decisión de modelo; no bloquea la fase 2                                                                        |
 | G0.1 | Motor booleano: existe y está cerrado, con un límite conocido                                                     | —              | Nada: el §3 lo da por cerrado y su impacto es histórico; el límite —un disco que toca desde adentro el borde— es robustez del arrangement, no ausencia de motor |
 
-**Los 18 hallazgos que dejaron de aplicar, y qué los cerró.** Catorce tenían fila en la tabla vieja y
-salieron de ésta; los otros cuatro se nombran abajo por primera vez. Quince los cerró el árbol, que ya
+**Los 19 hallazgos que dejaron de aplicar, y qué los cerró.** Quince tenían fila en la tabla vieja y
+salieron de ésta; los otros cuatro se nombran abajo por primera vez. Dieciséis los cerró el árbol, que ya
 tiene lo que el hallazgo daba por ausente: G1.2 (parser Excellon, `a6e4d21`), G1.4 y G6.3 (corpus y
 arnés de paridad, `1e7cb07` y `0061226`), G3.1 (isolation, `e91882b` y `7714fc1`), G3.3 (NCC y sus
 palancas, `8d0ad9d`), G3.4 (drilling desde la tabla Excellon, `b324e3c`), G3.5 (ordenamiento por
 cercanía, `3f1a524` y `b324e3c`), G3.6 (tabs y mouse-bites, `487a020` y `dc3196e`), G4.2 (ruteo de exclusiones, `3d4c012` y
 `39c6fb3`), G4.3 (escritores Gerber/Excellon, `a949ebe`), G4.4 (los tres `.pp`, `2be97e3` y
-`bb7a342`), G5.1 (identidad de placa en `Layer`, `7add080` y `5a95d49`), G5.3 (atajos y `Ctrl+S`,
-[tarea 075](../odd/tasks/075-e6-5-shortcuts-save.md)), G6.1 (CI, `65d1499`) y G6.2 (benches con
-baseline, `cfb7feb` y `8d0ad9d`). Las otras tres las cerró una decisión o un barrido, no una cifra:
+`bb7a342`), G5.1 (identidad de placa en `Layer`, `7add080` y `5a95d49`), G5.2 (el camino de la UI a la
+emisión, [tarea 113](../odd/tasks/113-gaps-g52-generate-gcode.md), `600d5dd`, `c0f41be` y `3eccded`),
+G5.3 (atajos y `Ctrl+S`, [tarea 075](../odd/tasks/075-e6-5-shortcuts-save.md)), G6.1 (CI, `65d1499`) y
+G6.2 (benches con baseline, `cfb7feb` y `8d0ad9d`). Las otras tres las cerró una decisión o un barrido,
+no una cifra:
 G2.1 (`EntityKind` llegó a `Contour`/`Drill`/`Slot` con `2c29e36`, el tope de D3 —alcanzado, no
 excedido—), G2.2 (`Operation` pasó a operaciones PCB con `68b9841`) y G2.4 (schema
 `camcraft/document@1` y rechazo de `c2d`, `7aeba69`, D3). Los cuatro que
@@ -769,10 +778,10 @@ cifras de 2026-05-09 —16 crates, ≈58k y ≈124k líneas, ≈1.687 `#[test]`,
 reporte F4 que cita el §4. Los «142 sitios» no son historia: fueron un error de medición de este barrido
 (`7aeba69`) que la re-medición bajó a 140.
 
-**Lo que sigue abierto.** El §8 deja **12** filas: una BLOQUEANTE —el offset que se rechaza (G3.2), el
+**Lo que sigue abierto.** El §8 deja **11** filas: una BLOQUEANTE —el offset que se rechaza (G3.2), el
 borde que isolation y NCC en cobre denso todavía pagan—, tres ALTO (G1.3 sin IR de importación, G2.3 sin
-stackup ni espejado de bottom, G4.1 sin autolevelling), seis MEDIO (G0.2, G0.3, G1.1, G3.7, G5.2 y
-G6.4), una BAJO (G2.5, la relación diámetro/profundidad del drill) y G0.1 sin bloquear nada.
+stackup ni espejado de bottom, G4.1 sin autolevelling), cinco MEDIO (G0.2, G0.3, G1.1, G3.7 y G6.4), una
+BAJO (G2.5, la relación diámetro/profundidad del drill) y G0.1 sin bloquear nada.
 
 **Lo que el barrido no pudo cerrar, o no pudo verificar.**
 
