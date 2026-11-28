@@ -110,3 +110,4 @@ archivo y no cambia nunca; el estado es el que declara el propio documento de la
 | 110 | [gaps-resurvey](110-gaps-resurvey.md)                                               | delivered                | 2026-11-28 | `72f87be`     |
 | 111 | [gaps-states-gate](111-gaps-states-gate.md)                                         | delivered                | 2026-11-28 | `e35a4f8`     |
 | 112 | [ncc-performance-regression](112-ncc-performance-regression.md)                     | delivered                | 2026-11-28 | `b428ea3`     |
+| 113 | [gaps-g52-generate-gcode](113-gaps-g52-generate-gcode.md)                           | in progress              | 2026-11-28 | —             |
