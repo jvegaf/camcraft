@@ -113,6 +113,26 @@ fn canonical_orientation(region: &Region, tolerance: TolerancePolicy) -> Result<
 /// Containment is answered by the region's own membership test against a single boundary, and by a
 /// majority of the boundary's vertices: a clearance that touches the copper that encloses it shares
 /// a vertex with it, which membership reports as neither side.
+///
+/// # Cost
+///
+/// Asking membership is the expensive half — `Region::contains` measures the exact distance to every
+/// segment of the candidate cell and then walks them again for the winding number — and a layer of
+/// copper has hundreds of boundaries, so asking it once per (vertex, other boundary) pair is what made
+/// this classification cost seconds on a real board. Two exact filters remove almost all of that
+/// without changing a single answer:
+///
+/// * a vertex can only be enclosed by a boundary whose bounds contain it, so the vertices of a boundary
+///   that fall outside the other boundary's bounds are counted, never asked, and a pair whose count
+///   cannot reach a majority is skipped before any membership test runs;
+/// * the majority question is answered as soon as it is decided — `enclosed * 2 > vertices.len()` once
+///   enough vertices are inside, and `enclosed + remaining` too small to ever reach it — because both
+///   bounds are monotone in the vertices still to visit.
+///
+/// Neither filter reads anything the unfiltered count did not: the bound test only skips vertices
+/// `contains` would have answered `false` for (a point inside a boundary lies inside its bounds, and
+/// the bounds contain a point the tolerance calls near their edge), and the early exits only stop
+/// counting once the comparison's outcome cannot change.
 fn nesting_depths(
   boundaries: &[Contour],
   tolerance: TolerancePolicy,
@@ -121,21 +141,38 @@ fn nesting_depths(
     .iter()
     .map(|boundary| Region::new(vec![boundary.clone()]))
     .collect::<Result<Vec<_>, _>>()?;
+  let spans: Vec<_> = boundaries.iter().map(Contour::bounds).collect();
   let mut depths = vec![0_usize; boundaries.len()];
   for (index, boundary) in boundaries.iter().enumerate() {
     let vertices = boundary.vertices();
     if vertices.is_empty() {
       continue;
     }
+    let majority = vertices.len() / 2 + 1;
     for (other, region) in regions.iter().enumerate() {
       if other == index {
         continue;
       }
-      let enclosed = vertices
+      let span = spans[other];
+      let reachable = vertices
         .iter()
-        .filter(|vertex| region.contains(vertex.point, tolerance))
+        .filter(|vertex| span.contains(vertex.point, tolerance))
         .count();
-      if enclosed * 2 > vertices.len() {
+      if reachable < majority {
+        continue;
+      }
+      let mut enclosed = 0_usize;
+      for (seen, vertex) in vertices.iter().enumerate() {
+        if region.contains(vertex.point, tolerance) {
+          enclosed += 1;
+        }
+        // `enclosed` only grows and there are `vertices.len() - seen - 1` vertices left, so neither
+        // side of the majority comparison can change once one of these holds.
+        if enclosed >= majority || enclosed + vertices.len() - seen - 1 < majority {
+          break;
+        }
+      }
+      if enclosed >= majority {
         depths[index] += 1;
       }
     }
