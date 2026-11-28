@@ -129,11 +129,11 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   conmutatividad, idempotencia, determinismo y las dos de De Morgan, con 128 casos).
   **La reapertura del 2026-11-11 y su lección siguen en pie.** Construyendo el flash de una apertura
   circular de Gerber, `combine` rechazaba con "the arrangement revisits a piece" **todo** círculo hecho
-  de dos semicircunferencias que nada cortara: `dedup_pieces` (`boolean.rs:2613`) agrupaba las piezas
+  de dos semicircunferencias que nada cortara: `dedup_pieces` (`src-tauri/crates/cam-geom/src/boolean.rs:2613`) agrupaba las piezas
   por par de extremos, y las dos semicircunferencias de un mismo círculo comparten exactamente los dos
   puntos de costura, así que borraba una. El defecto era del motor y no del primitivo, y lo arregló
   `c3c1fb0`: dos piezas son la misma arista sólo si son la misma curva recorrida en el mismo sentido.
-  Los generadores incluyen hoy un disco de dos arcos (`tests/boolean_properties.rs:108`, `any_disc`).
+  Los generadores incluyen hoy un disco de dos arcos (`src-tauri/crates/cam-geom/tests/boolean_properties.rs:108`, `any_disc`).
   **Límite conocido:** un disco que **toca** desde adentro el borde de una región sin cruzarlo sigue
   rechazándose a tolerancia 1e-9. Anotado, no disimulado.
   **Impacto (histórico):** isolation multipasada, unión de cobre, resolución de polaridad dark/clear,
@@ -287,7 +287,7 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   («Offsetting preserves arcs wherever `offset_contour` does», `:47-49`) y conserva `flattened` como
   bandera con su warning (`:79`, `:169-170`). **Lo que sigue abierto del bloqueante** es exactamente lo
   que el hallazgo dice: un offset que atraviesa la forma se rechaza
-  (`GeomError::EditRefused`, `region_offset.rs:181`) en vez de devolver un resultado; también se
+  (`GeomError::EditRefused`, `src-tauri/crates/cam-geom/src/region_offset.rs:181`) en vez de devolver un resultado; también se
   rechaza un cruce entre dos fronteras antes de calcular ningún offset (`:268`). Ese es el borde que
   isolation en cobre denso todavía paga.
 - **G3.3 — NCC. Estado: «ya no aplica».** Hay operación, ejecutor y comando:
@@ -296,9 +296,9 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   (`src-tauri/crates/cam-cli/src/lib.rs:240`). Entró con `8d0ad9d` (2026-11-21), que también trajo el
   índice (G0.3) y el rest machining. **Las palancas de performance que el hallazgo daba por ausentes también existen:** `rayon`
   es dependencia de `cam-ops` (`src-tauri/crates/cam-ops/Cargo.toml:16`) y se usa en el fill
-  (`ncc.rs:141`, `par_iter`) con determinismo probado entre números de hilos
+  (`src-tauri/crates/cam-ops/src/ncc.rs:141`, `par_iter`) con determinismo probado entre números de hilos
   (`src-tauri/crates/cam-ops/tests/ncc.rs:503`), el índice espacial de NCC vive en
-  `ncc_index.rs:62` y el rest machining entró con `8d0ad9d`. Lo que no se midió en este barrido son los
+  `src-tauri/crates/cam-ops/src/ncc_index.rs:62` y el rest machining entró con `8d0ad9d`. Lo que no se midió en este barrido son los
   offsets incrementales entre pasadas — §4 es de T3 — y su borde conocido es el rechazo de G3.2.
 - **G3.4 — Drilling. Estado: «ya no aplica».** El drill sale de la tabla Excellon:
   `plan_excellon_drill` agrupa por herramienta, ordena cada grupo y produce los moves
@@ -309,7 +309,7 @@ cerrado (G0.1); lo que queda de la fase son bordes del arrangement, no el motor.
   herramientas, agrupado por diámetro, ranuras y ordenamiento (G3.5).
 - **G3.5 — Ordenamiento por cercanía. Estado: «ya no aplica».** Hay tour heurístico, y no es
   OR-Tools: `peck.rs` documenta y ejecuta nearest-neighbour con 2-opt de presupuesto determinista
-  (`src-tauri/crates/cam-ops/src/peck.rs:225`, `:230`, `:67-72`), y `excellon_drill.rs:85` lo aplica
+  (`src-tauri/crates/cam-ops/src/peck.rs:225`, `:230`, `:67-72`), y `src-tauri/crates/cam-ops/src/excellon_drill.rs:85` lo aplica
   por grupo de herramienta. El nearest-neighbour entró con `3f1a524` (2026-11-11, el rescate del drill
   bank) y el pase de 2-opt con `b324e3c` (2026-11-15, W4a). Ya no hace falta el **A VERIFICAR** del
   hallazgo: sí hay ordenamiento por cercanía, con presupuesto fijo en vez de por tiempo.
@@ -427,7 +427,7 @@ cifra lleva el comando que la produjo.
 | Palanca                                               | 2026-05-09 (historia)                                                                                    | Evidencia y medición de 2026-11-28                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Estado          |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | Paralelismo                                           | Ausente: «Sin `rayon` en ningún `Cargo.toml`; cero usos en `cam-geom`, `cam-toolpath`, `cam-sim`»        | `rayon` está en el workspace (`Cargo.toml:58`) y en `cam-ops` (`src-tauri/crates/cam-ops/Cargo.toml:16`), con **un solo** punto de uso: `src-tauri/crates/cam-ops/src/ncc.rs:18`, `:141` (`par_iter` sobre las islas del relleno NCC, `8d0ad9d`). `cam-geom` y `cam-sim` siguen sin ningún uso (`grep -rn 'rayon' src-tauri/crates --include='*.rs'` → 4 líneas, todas en `cam-ops`). Medido: el bench de tres islas **no gana con hilos** (3,72 ms a 1 hilo vs 3,83 ms a 16). `cam-toolpath` no existe (§1).                                                                                                                                                                                         | cambió de forma |
-| Índice espacial                                       | Ausente: «Sin `rstar`/`kdtree`; sin grilla propia»                                                       | `rstar`/`kdtree` siguen sin entrar (`grep -rn 'rstar' --include=Cargo.toml .` y `grep -rn 'kdtree' --include=Cargo.toml .` → sin coincidencias, código 1), pero **sí hay grilla propia**, y una por operación: `SpatialGrid` en `src-tauri/crates/cam-ops/src/ncc_index.rs:62` (E4.3, `8d0ad9d`) y `SegmentGrid` en `src-tauri/crates/cam-geom/src/boolean.rs:1368` («local to a single boolean operation», `b6f6643`), más la grilla de vértices de `boolean.rs:925` (`139f299`). No hay índice compartido ni uso del mismo en `cam-model`. Medido en el bench del propio índice: 200 consultas AABB sobre el relleno NCC, **83,9 µs** recorriendo todos los segmentos vs **16,5 µs** con la grilla. | cambió de forma |
+| Índice espacial                                       | Ausente: «Sin `rstar`/`kdtree`; sin grilla propia»                                                       | `rstar`/`kdtree` siguen sin entrar (`grep -rn 'rstar' --include=Cargo.toml .` y `grep -rn 'kdtree' --include=Cargo.toml .` → sin coincidencias, código 1), pero **sí hay grilla propia**, y una por operación: `SpatialGrid` en `src-tauri/crates/cam-ops/src/ncc_index.rs:62` (E4.3, `8d0ad9d`) y `SegmentGrid` en `src-tauri/crates/cam-geom/src/boolean.rs:1368` («local to a single boolean operation», `b6f6643`), más la grilla de vértices de `src-tauri/crates/cam-geom/src/boolean.rs:925` (`139f299`). No hay índice compartido ni uso del mismo en `cam-model`. Medido en el bench del propio índice: 200 consultas AABB sobre el relleno NCC, **83,9 µs** recorriendo todos los segmentos vs **16,5 µs** con la grilla. | cambió de forma |
 | Algoritmos preparados para rest/offsets incrementales | Parcial: «Anillos de offset existen en `pocket`, sin acumulación multipasada ni rest entre herramientas» | Los anillos siguen en `pocket` (`src-tauri/crates/cam-ops/src/rings.rs:1-2`, `:90`) y ahora hay además ley de offset multipasada acumulada en isolation (`src-tauri/crates/cam-ops/src/isolation.rs:5-8`; `isolation_passes`, `:236`; `e91882b`) y rest machining de NCC (`src-tauri/crates/cam-ops/src/ncc.rs:345`; `ncc_rest_region`, `:349`; `8d0ad9d`), con su prueba en `src-tauri/crates/cam-ops/tests/ncc.rs:575`. Sigue siendo **por operación**: no hay un contrato de rest fuera de NCC ni de offset multipasada fuera de isolation.                                                                                                                                                        | cambió de forma |
 | Medición                                              | Ausente: «Sin `benches/`, sin CI, sin baseline»                                                          | `benches/` con baselines criterion comprometidos entró con `cfb7feb` (2026-11-13): `src-tauri/crates/cam-geom/benches/kernel.rs` (2 benches) y `src-tauri/crates/cam-ops/benches/toolpaths.rs` (5, los dos de NCC desde `8d0ad9d`, 2026-11-21); el CI entró con `65d1499` (2026-11-13). Límites medidos: el job `bench` es un placeholder que **no corre ningún bench** (`.github/workflows/ci.yml:110-121`), el baseline comprometido cubre 5 de los 7 benches —los dos de NCC no lo tienen— y `src-tauri/crates/cam-ops/benches/check_regression.sh:6` copia el baseline a `src-tauri/target/criterion` mientras cargo lee `target/criterion`, así que el script **aborta** sin comparar.           | ya no aplica    |
 
@@ -547,10 +547,10 @@ medición de hoy contradice.
    (`grep -rn 'TolerancePolicy' src-tauri/crates --include='*.rs' | wc -l` → 456; `-l | wc -l` → 94).
    Lo que sobrevive de la fragmentación está medido: constantes canónicas paralelas
    (`DEFAULT_TOLERANCE`, `src-tauri/crates/cam-geom/src/lib.rs:49`; `DEFAULT_CHORD`,
-   `tolerance.rs:59`), un default propio del importador (`DEFAULT_TOLERANCE = 0.01`,
+   `src-tauri/crates/cam-geom/src/tolerance.rs:59`), un default propio del importador (`DEFAULT_TOLERANCE = 0.01`,
    `src-tauri/crates/cam-import/src/lib.rs:36`) y **9** literales de slack dentro del kernel
    (`grep -rn '1\.0e-9\|1e-9' src-tauri/crates/cam-geom/src/*.rs` → 9, p. ej.
-   `region_offset.rs:324`). La política única que el riesgo pedía existe para la API; los literales
+   `src-tauri/crates/cam-geom/src/region_offset.rs:324`). La política única que el riesgo pedía existe para la API; los literales
    internos son los que quedan. **Estado:** «cambió de forma».
 
 ---
