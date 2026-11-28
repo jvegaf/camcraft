@@ -173,7 +173,7 @@ expect_missing() {
 expect_no_swallow_on() {
   local label=$1 file=$2 needle=$3
   if grep -F -- "$needle" "$file" | grep -Fq -- "||"; then
-    fail "$label (the $needle line contains a `||` swallow)"
+    fail "$label (the «$needle» line contains a «||» swallow)"
   else
     pass "$label"
   fi
